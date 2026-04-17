@@ -1,0 +1,146 @@
+﻿{
+  "settings": {
+    "postProcessEnabled": false,
+    "vignette": 0.5,
+    "distortion": 0,
+    "noiseStrength": 0.02,
+    "chromaShift": 0.01,
+    "scanline": 0.1
+  },
+  "objects": [
+    {
+      "name": "EnemyCube",
+      "locked": false,
+      "modelPath": "Resources/Models/cube/cube.obj",
+      "texturePath": "Resources/Textures/white1x1.png",
+      "translate": [0, 7.82, 12.22],
+      "rotate": [0, 0, 0],
+      "scale": [1, 1, 1],
+      "color": [1, 0.2, 0.2, 1],
+      "extraTexturePaths": [],
+      "shaderName": "Default",
+      "components": [
+        {"type": "MeshRenderer", "enabled": true, "modelPath": "Resources/Models/cube/cube.obj", "texturePath": "Resources/Textures/white1x1.png", "color": [1,0.2,0.2,1], "uvTiling": [1,1], "uvOffset": [0,0], "extraTexturePaths": [], "lightmapPath": "", "shaderName": "Default"},
+        {"type": "Hurtbox", "enabled": true, "center": [0,0,0], "size": [2,2,2], "tag": "Body", "damageMultiplier": 1},
+        {"type": "Health", "enabled": true, "hp": 100, "maxHp": 100, "stamina": 100, "maxStamina": 100, "invincibleTime": 0, "isDead": false}
+      ]
+    },
+    {
+      "name": "Model",
+      "locked": false,
+      "modelPath": "Resources\\Models\\Stages\\karimap.obj",
+      "texturePath": "",
+      "translate": [0, 0, 0],
+      "rotate": [0, 0, 0],
+      "scale": [1, 1, 1],
+      "color": [0.690196, 0.388235, 0.388235, 1],
+      "extraTexturePaths": [],
+      "shaderName": "Default",
+      "components": [
+        {"type": "MeshRenderer", "enabled": true, "modelPath": "Resources\\Models\\Stages\\karimap.obj", "texturePath": "Resources\\Textures\\uvChecker.png", "color": [0.69112,0.38692,0.38692,1], "uvTiling": [1,1], "uvOffset": [0,0], "extraTexturePaths": ["Resources\\Models\\Terrain\\grass.png", "Resources\\Models\\Terrain\\rock.png", "Resources\\Models\\Terrain\\dirt.png", "Resources\\Textures\\basecolor.jpg", "Resources\\Textures\\white1x1.png"], "lightmapPath": "", "shaderName": "EnhancedTerrain"},
+        {"type": "GpuMeshCollider", "enabled": true, "isTrigger": false, "collisionType": 0, "meshPath": "Resources\\Models\\Stages\\karimap.obj"}
+      ]
+    },
+    {
+      "name": "Plane",
+      "locked": true,
+      "modelPath": "Resources/Models/plane.obj",
+      "texturePath": "Resources/Textures/white1x1.png",
+      "translate": [0, 0, 0],
+      "rotate": [0, 0, 0],
+      "scale": [20, 1, 20],
+      "color": [0.3, 0.3, 0.3, 1],
+      "extraTexturePaths": [],
+      "shaderName": "Default",
+      "components": [
+        {"type": "MeshRenderer", "enabled": true, "modelPath": "Resources/Models/plane.obj", "texturePath": "Resources/Textures/white1x1.png", "color": [0.3,0.3,0.3,1], "uvTiling": [1,1], "uvOffset": [0,0], "extraTexturePaths": [], "lightmapPath": "", "shaderName": "Default"},
+        {"type": "BoxCollider", "enabled": true, "center": [0,-0.5,0], "size": [40,1,40], "isTrigger": false}
+      ]
+    },
+    {
+      "name": "Plane",
+      "locked": false,
+      "modelPath": "Resources/Models/plane.obj",
+      "texturePath": "Resources/Textures/white1x1.png",
+      "translate": [12.2, 0.96, 5.12],
+      "rotate": [0, 0, 0],
+      "scale": [0.17, 1, 1],
+      "color": [0.353535, 0.861004, 0.172866, 1],
+      "extraTexturePaths": [],
+      "shaderName": "Default",
+      "components": [
+        {"type": "MeshRenderer", "enabled": true, "modelPath": "", "texturePath": "", "color": [0.352941,0.862745,0.172549,1], "uvTiling": [1,1], "uvOffset": [0,0], "extraTexturePaths": [], "lightmapPath": "", "shaderName": "StylizedGrass"}
+      ]
+    },
+    {
+      "name": "Plane_1",
+      "locked": false,
+      "modelPath": "Resources/Models/plane.obj",
+      "texturePath": "Resources/Textures/white1x1.png",
+      "translate": [14.0582, 0.889561, 4.58536],
+      "rotate": [0, 0, 0],
+      "scale": [0.17, 1, 1],
+      "color": [0.353535, 0.861004, 0.172866, 1],
+      "extraTexturePaths": [],
+      "shaderName": "Default",
+      "components": [
+        {"type": "MeshRenderer", "enabled": true, "modelPath": "", "texturePath": "", "color": [0.352941,0.862745,0.172549,1], "uvTiling": [1,1], "uvOffset": [0,0], "extraTexturePaths": [], "lightmapPath": "", "shaderName": "StylizedGrass"}
+      ]
+    },
+    {
+      "name": "Plane_2",
+      "locked": false,
+      "modelPath": "Resources/Models/plane.obj",
+      "texturePath": "Resources/Textures/white1x1.png",
+      "translate": [13.2, 0.96, 5.12],
+      "rotate": [0, 0, 0],
+      "scale": [0.17, 1, 1],
+      "color": [0.353535, 0.861004, 0.172866, 1],
+      "extraTexturePaths": [],
+      "shaderName": "Default",
+      "components": [
+        {"type": "MeshRenderer", "enabled": true, "modelPath": "", "texturePath": "", "color": [0.352941,0.862745,0.172549,1], "uvTiling": [1,1], "uvOffset": [0,0], "extraTexturePaths": [], "lightmapPath": "", "shaderName": "StylizedGrass"}
+      ]
+    },
+    {
+      "name": "Player",
+      "locked": false,
+      "modelPath": "Resources/Models/cube/cube.obj",
+      "texturePath": "Resources/Textures/white1x1.png",
+      "translate": [0, 16.72, 0],
+      "rotate": [0, 0, 0],
+      "scale": [1, 1, 1],
+      "color": [0.2, 0.5, 1, 1],
+      "extraTexturePaths": [],
+      "shaderName": "Default",
+      "components": [
+        {"type": "MeshRenderer", "enabled": true, "modelPath": "Resources/Models/cube/cube.obj", "texturePath": "Resources/Textures/white1x1.png", "color": [0.2,0.5,1,1], "uvTiling": [1,1], "uvOffset": [0,0], "extraTexturePaths": [], "lightmapPath": "", "shaderName": "Default"},
+        {"type": "BoxCollider", "enabled": true, "center": [0,0,0], "size": [1,2,1], "isTrigger": false},
+        {"type": "Rigidbody", "enabled": true, "velocity": [0,0,0], "useGravity": true, "isKinematic": false},
+        {"type": "GpuMeshCollider", "enabled": true, "isTrigger": false, "collisionType": 0, "meshPath": "Resources/Models/cube/cube.obj"},
+        {"type": "PlayerInput", "enabled": true},
+        {"type": "CharacterMovement", "enabled": true, "speed": 7, "jumpPower": 20, "gravity": 9.8},
+        {"type": "CameraTarget", "enabled": true, "distance": 10, "height": 3, "smoothSpeed": 5},
+        {"type": "Health", "enabled": true, "hp": 1000, "maxHp": 1000, "stamina": 100, "maxStamina": 100, "invincibleTime": 0, "isDead": false},
+        {"type": "Script", "enabled": true, "scriptPath": "PlayerScript"}
+      ]
+    },
+    {
+      "name": "Sun",
+      "locked": false,
+      "modelPath": "",
+      "texturePath": "",
+      "translate": [0, 10, 0],
+      "rotate": [0.7854, 0.5236, 0],
+      "scale": [1, 1, 1],
+      "color": [1, 1, 1, 1],
+      "extraTexturePaths": [],
+      "shaderName": "Default",
+      "components": [
+        {"type": "DirectionalLight", "enabled": true, "color": [1,0.95,0.8], "intensity": 1.2}
+      ]
+    }
+  ]
+}
+
+

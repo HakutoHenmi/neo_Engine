@@ -1,0 +1,24 @@
+﻿{
+  "prefab":
+    {
+      "id": 52,
+      "parentId": 0,
+      "name": "UI",
+      "locked": false,
+      "modelPath": "",
+      "texturePath": "Resources/Textures/white1x1.png",
+      "translate": [0, 0, 0],
+      "rotate": [0, 0, 0],
+      "scale": [1, 1, 1],
+      "color": [1, 1, 1, 1],
+      "extraTexturePaths": [],
+      "shaderName": "Default",
+      "components": [
+        {"type": "RectTransform", "enabled": true, "pos": [0,-167.642], "size": [599.023,269.254], "anchor": [0.5,0.5], "pivot": [0.5,0.5], "rotation": 0},
+        {"type": "UIImage", "enabled": true, "texturePath": "Resources\\Textures\\uvChecker.png", "color": [1,1,1,1]},
+        {"type": "UIButton", "enabled": true, "normalColor": [1,1,1,1], "hoverColor": [0.8,0.8,0.8,1], "pressedColor": [0.6,0.6,0.6,1]}
+      ]
+    }
+}
+
+

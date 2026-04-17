@@ -1,0 +1,17 @@
+{
+  "prefab":
+    {
+      "id": 6291477,
+      "parentId": 4294967295,
+      "name": "Cube",
+      "locked": false,
+      "translate": [-11.5546, 1, -14.5465],
+      "rotate": [0, 0, 0],
+      "scale": [1, 1, 1],
+      "components": [
+        {"type": "MeshRenderer", "enabled": true, "modelPath": "Resources/Models/cube/cube.obj", "texturePath": "Resources/Textures/white1x1.png", "shaderName": "Default", "color": [1,1,1,1], "uvTiling": [1,1], "uvOffset": [0,0]},
+        {"type": "Script", "enabled": true, "scripts": [{"path": "Canon", "param": ""}]},
+        {"type": "Tag", "enabled": true, "tag": "Canon"}
+      ]
+    }
+}

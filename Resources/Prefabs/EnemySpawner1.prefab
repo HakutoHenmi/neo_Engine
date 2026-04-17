@@ -1,0 +1,15 @@
+{
+  "prefab":
+    {
+      "id": 3145735,
+      "parentId": 0,
+      "name": "EnemySpawner1",
+      "locked": false,
+      "translate": [26.5446, 0.015221, -19.1171],
+      "rotate": [0, 0, 0],
+      "scale": [1, 1, 1],
+      "components": [
+        {"type": "Script", "enabled": true, "scripts": [{"path": "EnemySpawnerScript", "param": "{\"enemyScriptParams\":\"{\\\"moveType\\\":0,\\\"priority\\\":0,\\\"speed\\\":2.0,\\\"targetType\\\":1}\",\"enemyScriptPath\":\"EnemyBehavior\",\"enemyType\":0,\"maxCount\":5,\"pattern\":0,\"patternRadius\":3.0,\"spawnDuration\":10.0,\"startWave\":0,\"waveCount\":1,\"waveDelay\":2.0}"}]}
+      ]
+    }
+}

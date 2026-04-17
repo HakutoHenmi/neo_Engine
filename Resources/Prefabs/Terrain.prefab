@@ -1,0 +1,20 @@
+﻿{
+  "prefab":
+    {
+      "name": "Terrain",
+      "locked": false,
+      "modelPath": "Resources\\Models\\Stages\\karimap.obj",
+      "texturePath": "",
+      "translate": [0, 0, 0],
+      "rotate": [0, 0, 0],
+      "scale": [1, 1, 1],
+      "color": [0.690196, 0.388235, 0.388235, 1],
+      "extraTexturePaths": [],
+      "shaderName": "Default",
+      "components": [
+        {"type": "MeshRenderer", "enabled": true, "modelPath": "Resources\\Models\\Stages\\karimap.obj", "texturePath": "Resources\\Textures\\uvChecker.png", "color": [0.69112,0.38692,0.38692,1], "uvTiling": [1,1], "uvOffset": [0,0], "extraTexturePaths": ["Resources\\Models\\Terrain\\grass.png", "Resources\\Models\\Terrain\\rock.png", "Resources\\Models\\Terrain\\dirt.png", "Resources\\Textures\\basecolor.jpg", "Resources\\Textures\\white1x1.png"], "lightmapPath": "", "shaderName": "EnhancedTerrain"},
+        {"type": "GpuMeshCollider", "enabled": true, "isTrigger": false, "collisionType": 0, "meshPath": "Resources\\Models\\Stages\\karimap.obj"}
+      ]
+    }
+}
+

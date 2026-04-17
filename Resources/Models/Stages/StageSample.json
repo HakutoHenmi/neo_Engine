@@ -1,0 +1,119 @@
+{
+  "meta": {
+    "name": "Test01",
+    "targetTimeSec": 60
+  },
+
+  "spawn": {
+    "player": { "pos": [ 0, 2, 0 ] },
+    "ball": {
+      "pos": [ 1, 2, 0 ],
+      "radius": 0.6
+    }
+  },
+
+  "route": {
+    "nodes": [
+      {
+        "id": "N0",
+        "pos": [ 0, 2, 0 ]
+      },
+      {
+        "id": "N1",
+        "pos": [ 10, 2, 0 ]
+      },
+      {
+        "id": "N2",
+        "pos": [ 20, 2, 5 ]
+      },
+      {
+        "id": "N3",
+        "pos": [ 30, 2, 10 ]
+      }
+    ],
+    "edges": [
+      {
+        "id": "E0",
+        "from": "N0",
+        "to": "N1",
+        "width": 3.0,
+        "guard": true,
+        "friction": 0.9,
+        "gravity": {
+          "mode": "world",
+          "dir": [ 0, -1, 0 ]
+        }
+      },
+
+      {
+        "id": "E1",
+        "from": "N1",
+        "to": "N2",
+        "width": 2.5,
+        "guard": false,
+        "friction": 0.85,
+        "gravity": {
+          "mode": "world",
+          "dir": [ 0, -1, 0 ]
+        }
+      },
+
+      {
+        "id": "E2",
+        "from": "N2",
+        "to": "N3",
+        "width": 3.0,
+        "guard": true,
+        "friction": 0.9,
+        "gravity": {
+          "mode": "world",
+          "dir": [ 0, -1, 0 ]
+        }
+      }
+    ]
+  },
+
+  "entities": [
+    {
+      "id": "SW1",
+      "type": "Switch",
+      "pos": [ 10, 2, 0 ],
+      "params": {
+        "once": "true",
+        "radius": "2.0"
+      }
+    },
+    {
+      "id": "DR1",
+      "type": "Door",
+      "pos": [ 15, 2, 0 ],
+      "params": {
+        "openY": "4.0",
+        "speed": "1.2",
+        "radius": "1.8"
+      },
+      "links": [ "SW1" ]
+    },
+    {
+      "id": "GOAL",
+      "type": "Goal",
+      "pos": [ 30, 2, 10 ],
+      "params": { "radius": "2.5" }
+    }
+  ],
+
+  "camera": {
+    "volumes": [
+      {
+        "id": "C0",
+        "aabbMin": [ 8, 0, -5 ],
+        "aabbMax": [ 18, 10, 5 ],
+        "params": {
+          "distance": "9",
+          "pitchDeg": "18",
+          "yawClampDeg": "45"
+        }
+      }
+    ]
+  }
+}

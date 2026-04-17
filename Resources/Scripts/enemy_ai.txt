@@ -1,0 +1,4 @@
+# enemy_ai.txt
+# TagがPlayerであるオブジェクトとの距離が100.0以下の場合、
+# スピード2.0でそのターゲットに向かって移動する。
+IF_DIST Player 100.0 MOVE_TOWARD 2.0

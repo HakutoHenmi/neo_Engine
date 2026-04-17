@@ -1,0 +1,9 @@
+# bullet_logic.txt
+# 前方(Z方向)に弾を移動させ、寿命で消滅させるための簡易スクリプト
+
+# 前へ移動 (speed: 50.0)
+MOVE 0 0 50.0
+
+# ※ 簡易設計: 寿命管理がScriptEngineに未実装のため、
+# 現状はGameScene.cpp側で画面外に出たら消す処理か、
+# 将来的に DELAY 3.0 DESTROY を実装する。

@@ -1,0 +1,77 @@
+{
+  "skills": [
+    {
+      "id": 0,
+      "name": "Base",
+      "cost": 0,
+      "parentId": -1,
+      "unlocked": true,
+      "gridX": 1.0,
+      "gridY": 0.0,
+      "description": "すべてのスキルの起点となる基本能力。"
+    },
+    {
+      "id": 1,
+      "name": "Power",
+      "cost": 1,
+      "parentId": 0,
+      "gridX": 0.0,
+      "gridY": 1.0,
+      "description": "攻撃力が 10% 上昇します。"
+    },
+    {
+      "id": 2,
+      "name": "Speed",
+      "cost": 1,
+      "parentId": 0,
+      "gridX": 1.0,
+      "gridY": 1.0,
+      "description": "移動速度が 15% 上昇します。"
+    },
+    {
+      "id": 3,
+      "name": "Range",
+      "cost": 1,
+      "parentId": 0,
+      "gridX": 2.0,
+      "gridY": 1.0,
+      "description": "射程距離が 20% 上昇します。"
+    },
+    {
+      "id": 4,
+      "name": "Power+",
+      "cost": 2,
+      "parentId": 1,
+      "gridX": 0.0,
+      "gridY": 2.0,
+      "description": "さらに攻撃力が 20% 上昇します。"
+    },
+    {
+      "id": 5,
+      "name": "Rapid",
+      "cost": 2,
+      "parentId": 2,
+      "gridX": 1.0,
+      "gridY": 2.0,
+      "description": "攻撃速度が 25% 上昇します。"
+    },
+    {
+      "id": 6,
+      "name": "Sniper",
+      "cost": 2,
+      "parentId": 3,
+      "gridX": 2.0,
+      "gridY": 2.0,
+      "description": "クリティカル率が 10% 上昇します。"
+    },
+    {
+      "id": 7,
+      "name": "Ultimate",
+      "cost": 3,
+      "parentId": 5,
+      "gridX": 1.0,
+      "gridY": 3.0,
+      "description": "究極の力を解放し、全ステータスを大幅に強化します。"
+    }
+  ]
+}

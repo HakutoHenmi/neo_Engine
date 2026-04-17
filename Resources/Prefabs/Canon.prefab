@@ -1,0 +1,19 @@
+﻿{
+  "prefab":
+    {
+      "id": 1048593,
+      "parentId": 4294967295,
+      "name": "Cannon",
+      "locked": false,
+      "translate": [5.41751, 8.70545, 0.651643],
+      "rotate": [0, 0, 0],
+      "scale": [1, 1, 1],
+      "components": [
+        {"type": "MeshRenderer", "enabled": true, "modelPath": "Resources/Models/canon.obj", "texturePath": "Resources/Textures/white1x1.png", "shaderName": "Default", "color": [0.301158,0.29767,0.29767,1], "uvTiling": [1,1], "uvOffset": [0,0]},
+        {"type": "Script", "enabled": true, "scripts": [{"path": "Canon", "param": ""}]},
+        {"type": "Health", "enabled": true, "hp": 100, "maxHp": 100, "isDead": false},
+        {"type": "Tag", "enabled": true, "tag": "Canon"}
+      ]
+    }
+}
+

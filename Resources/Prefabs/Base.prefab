@@ -1,0 +1,19 @@
+﻿{
+  "prefab":
+    {
+      "id": 1048576,
+      "parentId": 4294967295,
+      "name": "Base",
+      "locked": false,
+      "translate": [-1.7093, 0.0149813, -0.144065],
+      "rotate": [0, 0, 0],
+      "scale": [1, 1, 1],
+      "components": [
+        {"type": "MeshRenderer", "enabled": true, "modelPath": "Resources\\Models\\sword.obj", "texturePath": "Resources/Textures/white1x1.png", "shaderName": "Default", "color": [0.176279,0.50446,0.830116,1], "uvTiling": [1,1], "uvOffset": [0,0]},
+        {"type": "Script", "enabled": true, "scriptPath": "BaseScript", "parameterData": "rotationSpeed=1;attackInterval=1;damage=10;attackRange=30;"},
+        {"type": "Tag", "enabled": true, "tag": "Base"}
+      ]
+    }
+}
+
+

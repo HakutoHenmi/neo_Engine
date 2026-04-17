@@ -1,0 +1,22 @@
+﻿{
+  "prefab":
+    {
+      "id": 68,
+      "parentId": 0,
+      "name": "Model",
+      "locked": false,
+      "modelPath": "Resources\\Models\\Stages\\kariMap2.obj",
+      "texturePath": "",
+      "translate": [353.4, -61.3, -232.9],
+      "rotate": [0, 0, 0],
+      "scale": [1, 1, 1],
+      "color": [1, 1, 1, 1],
+      "extraTexturePaths": [],
+      "shaderName": "Default",
+      "components": [
+        {"type": "MeshRenderer", "enabled": true, "modelPath": "Resources\\Models\\Stages\\kariMap2.obj", "texturePath": "Resources\\Textures\\white1x1.png", "color": [0.517375,0.355925,0.171792,1], "uvTiling": [1,1], "uvOffset": [0,0], "extraTexturePaths": [], "lightmapPath": "", "shaderName": "Default"},
+        {"type": "GpuMeshCollider", "enabled": true, "isTrigger": false, "collisionType": 0, "meshPath": "Resources\\Models\\Stages\\kariMap2.obj"}
+      ]
+    }
+}
+

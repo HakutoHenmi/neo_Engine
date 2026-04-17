@@ -1,0 +1,22 @@
+﻿{
+  "prefab":
+    {
+      "id": 80,
+      "parentId": 0,
+      "name": "BulletTank",
+      "locked": false,
+      "modelPath": "Resources/Models/cube/cube.obj",
+      "texturePath": "Resources/Textures/white1x1.png",
+      "translate": [13.205, -0.044103, -0.00894012],
+      "rotate": [0, 0, 0],
+      "scale": [1, 1, 1],
+      "color": [0.46332, 0.46332, 0.46332, 1],
+      "extraTexturePaths": [],
+      "shaderName": "Default",
+      "components": [
+        {"type": "Tag", "enabled": true, "tag": "BulletTank"},
+        {"type": "MeshRenderer", "enabled": true, "modelPath": "Resources/Models/cube/cube.obj", "texturePath": "Resources/Textures/white1x1.png", "color": [1,1,1,1], "uvTiling": [1,1], "uvOffset": [0,0], "extraTexturePaths": [], "lightmapPath": "", "shaderName": "Toon"}
+      ]
+    }
+}
+

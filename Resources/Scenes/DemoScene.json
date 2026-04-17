@@ -1,0 +1,175 @@
+{
+  "settings": {
+    "postProcessEnabled": true,
+    "ambientColor": [0.4, 0.4, 0.45]
+  },
+  "objects": [
+    {
+      "id": 0,
+      "name": "Floor",
+      "translate": [0, 0, 0],
+      "rotate": [-1.57, 0, 0],
+      "scale": [100, 100, 1],
+      "components": [
+        {
+          "type": "MeshRenderer",
+          "enabled": true,
+          "modelPath": "Resources/Models/plane.obj",
+          "texturePath": "Resources/Textures/white1x1.png",
+          "color": [0.3, 0.3, 0.3, 1]
+        },
+        {
+          "type": "BoxCollider",
+          "enabled": true,
+          "center": [0, 0, 0],
+          "size": [1, 1, 0.1]
+        }
+      ]
+    },
+    {
+      "id": 1,
+      "name": "Sun",
+      "translate": [0, 20, 0],
+      "rotate": [0.785, 0.785, 0],
+      "scale": [1, 1, 1],
+      "components": [
+        {
+          "type": "DirectionalLight",
+          "enabled": true,
+          "color": [1, 1, 0.9],
+          "intensity": 1.5
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "name": "Player",
+      "translate": [0, 1, -5],
+      "rotate": [0, 0, 0],
+      "scale": [1, 1, 1],
+      "components": [
+        {
+          "type": "MeshRenderer",
+          "enabled": true,
+          "modelPath": "Resources/Models/cube/cube.obj",
+          "texturePath": "Resources/Textures/white1x1.png",
+          "color": [0.2, 0.6, 1, 1]
+        },
+        {
+          "type": "BoxCollider",
+          "enabled": true,
+          "center": [0, 0, 0],
+          "size": [2, 2, 2]
+        },
+        {
+          "type": "Rigidbody",
+          "enabled": true,
+          "useGravity": true,
+          "isKinematic": true
+        },
+        {
+          "type": "Script",
+          "enabled": true,
+          "scripts": [
+            {
+              "path": "PlayerScript",
+              "param": ""
+            }
+          ]
+        },
+        {
+          "type": "Tag",
+          "enabled": true,
+          "tag": "Player"
+        },
+        {
+          "type": "PlayerInput",
+          "enabled": true
+        },
+        {
+          "type": "CharacterMovement",
+          "enabled": true,
+          "speed": 7.0,
+          "jumpPower": 15.0,
+          "gravity": 9.8
+        },
+        {
+          "type": "CameraTarget",
+          "enabled": true,
+          "distance": 10.0,
+          "height": 4.0,
+          "smoothSpeed": 10.0
+        },
+        {
+          "type": "Health",
+          "enabled": true,
+          "hp": 100,
+          "maxHp": 100
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "name": "Enemy_SplineDemo",
+      "translate": [0, 1, 5],
+      "rotate": [0, 0, 0],
+      "scale": [2, 2, 2],
+      "components": [
+        {
+          "type": "MeshRenderer",
+          "enabled": true,
+          "modelPath": "Resources/Models/cube/cube.obj",
+          "texturePath": "Resources/Textures/white1x1.png",
+          "color": [1, 0.2, 0.2, 1]
+        },
+        {
+          "type": "BoxCollider",
+          "enabled": true,
+          "center": [0, 0, 0],
+          "size": [2, 2, 2]
+        },
+        {
+          "type": "Tag",
+          "enabled": true,
+          "tag": "Enemy"
+        },
+        {
+          "type": "Health",
+          "enabled": true,
+          "hp": 100,
+          "maxHp": 100
+        },
+        {
+          "type": "Motion",
+          "enabled": true,
+          "loop": true,
+          "totalDuration": 5.0,
+          "keyframes": [
+            { "time": 0.0, "translate": [0, 1, 5] },
+            { "time": 1.25, "translate": [8, 5, 0] },
+            { "time": 2.5, "translate": [0, 1, -5] },
+            { "time": 3.75, "translate": [-8, 5, 0] },
+            { "time": 5.0, "translate": [0, 1, 5] }
+          ]
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "name": "DistortionVFX",
+      "translate": [0, 3, 0],
+      "rotate": [0, 0, 0],
+      "scale": [2, 2, 2],
+      "components": [
+        {
+          "type": "MeshRenderer",
+          "enabled": true,
+          "modelPath": "Resources/Models/cube/cube.obj",
+          "texturePath": "Resources/Textures/normal.png",
+          "shaderName": "Distortion",
+          "color": [1, 1, 1, 0.5]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,30 @@
+﻿{
+  "prefab":
+    {
+      "id": 49,
+      "parentId": 0,
+      "name": "Player",
+      "locked": false,
+      "modelPath": "Resources/Models/cube/cube.obj",
+      "texturePath": "Resources/Textures/white1x1.png",
+      "translate": [0.435737, 16.6527, 0.684708],
+      "rotate": [0, 0, 0],
+      "scale": [1, 1, 1],
+      "color": [0.2, 0.5, 1, 1],
+      "extraTexturePaths": [],
+      "shaderName": "Default",
+      "components": [
+        {"type": "MeshRenderer", "enabled": true, "modelPath": "Resources/Models/cube/cube.obj", "texturePath": "Resources/Textures/white1x1.png", "color": [0.2,0.5,1,1], "uvTiling": [1,1], "uvOffset": [0,0], "extraTexturePaths": [], "lightmapPath": "", "shaderName": "Toon"},
+        {"type": "BoxCollider", "enabled": true, "center": [0,0,0], "size": [1,2,1], "isTrigger": false},
+        {"type": "Tag", "enabled": true, "tag": "Player"},
+        {"type": "Rigidbody", "enabled": true, "velocity": [0,0,0], "useGravity": true, "isKinematic": false},
+        {"type": "GpuMeshCollider", "enabled": true, "isTrigger": false, "collisionType": 0, "meshPath": "Resources/Models/cube/cube.obj"},
+        {"type": "PlayerInput", "enabled": true},
+        {"type": "CharacterMovement", "enabled": true, "speed": 7, "jumpPower": 20, "gravity": 9.8},
+        {"type": "CameraTarget", "enabled": true, "distance": 10, "height": 3, "smoothSpeed": 5},
+        {"type": "Health", "enabled": true, "hp": 1000, "maxHp": 1000, "stamina": 100, "maxStamina": 100, "invincibleTime": 0, "isDead": false},
+        {"type": "Script", "enabled": true, "scriptPath": "PlayerScript", "paramData": ""}
+      ]
+    }
+}
+

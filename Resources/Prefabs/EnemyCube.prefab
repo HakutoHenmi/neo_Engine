@@ -1,0 +1,26 @@
+﻿{
+  "prefab":
+    {
+      "id": 42,
+      "parentId": 0,
+      "name": "EnemyCube",
+      "locked": false,
+      "modelPath": "Resources/Models/cube/cube.obj",
+      "texturePath": "Resources/Textures/white1x1.png",
+      "translate": [-0.110276, 8.77524, 12.6897],
+      "rotate": [0, 0, 0],
+      "scale": [1, 1, 1],
+      "color": [1, 0.2, 0.2, 1],
+      "extraTexturePaths": [],
+      "shaderName": "Default",
+      "components": [
+        {"type": "MeshRenderer", "enabled": true, "modelPath": "Resources/Models/cube/cube.obj", "texturePath": "Resources/Textures/white1x1.png", "color": [1,0.2,0.2,1], "uvTiling": [1,1], "uvOffset": [0,0], "extraTexturePaths": [], "lightmapPath": "", "shaderName": "Toon"},
+        {"type": "BoxCollider", "enabled": true, "center": [0,0,0], "size": [1,2,1], "isTrigger": false},
+        {"type": "Rigidbody", "enabled": true, "velocity": [0,0,0], "useGravity": true, "isKinematic": false},
+        {"type": "Hurtbox", "enabled": true, "center": [0,0,0], "size": [2,2,2], "tag": "Body", "damageMultiplier": 1},
+        {"type": "Health", "enabled": true, "hp": 100, "maxHp": 100, "stamina": 100, "maxStamina": 100, "invincibleTime": 0, "isDead": false},
+        {"type": "Script", "enabled": true, "scriptPath": "ToObjectMove", "paramData": ""}
+      ]
+    }
+}
+

@@ -1,0 +1,235 @@
+﻿{
+  "settings": {
+    "postProcessEnabled": false,
+    "vignette": 0.5,
+    "distortion": 0,
+    "noiseStrength": 0.02,
+    "chromaShift": 0.01,
+    "scanline": 0.1
+  },
+  "objects": [
+    {
+      "id": 51,
+      "parentId": 0,
+      "name": "Empty",
+      "locked": false,
+      "modelPath": "",
+      "texturePath": "Resources\\Textures\\uvChecker.png",
+      "translate": [10.7905, 0.947513, 2.06532],
+      "rotate": [0, 0, 0],
+      "scale": [1, 1, 1],
+      "color": [1, 1, 1, 1],
+      "extraTexturePaths": [],
+      "shaderName": "Default",
+      "components": [
+        {"type": "MeshRenderer", "enabled": true, "modelPath": "", "texturePath": "Resources\\Textures\\uvChecker.png", "color": [1,1,1,1], "uvTiling": [1,1], "uvOffset": [0,0], "extraTexturePaths": [], "lightmapPath": "", "shaderName": "Toon"},
+        {"type": "River", "enabled": true, "width": 2, "flowSpeed": 0.34, "uvScale": 1, "texture": "Resources/Textures/uvChecker.png", "points": [8.96039,8.8169,26.9277,20.0804,1.0169,17.9477,18.7777,1.00264,6.99556,10.7905,0.947513,2.06532]}
+      ]
+    },
+    {
+      "id": 42,
+      "parentId": 0,
+      "name": "EnemyCube",
+      "locked": false,
+      "modelPath": "Resources/Models/cube/cube.obj",
+      "texturePath": "Resources/Textures/white1x1.png",
+      "translate": [-0.110276, 8.77524, 12.6897],
+      "rotate": [0, 0, 0],
+      "scale": [1, 1, 1],
+      "color": [1, 0.2, 0.2, 1],
+      "extraTexturePaths": [],
+      "shaderName": "Default",
+      "components": [
+        {"type": "MeshRenderer", "enabled": true, "modelPath": "Resources/Models/cube/cube.obj", "texturePath": "Resources/Textures/white1x1.png", "color": [1,0.2,0.2,1], "uvTiling": [1,1], "uvOffset": [0,0], "extraTexturePaths": [], "lightmapPath": "", "shaderName": "Toon"},
+        {"type": "Hurtbox", "enabled": true, "center": [0,0,0], "size": [2,2,2], "tag": "Body", "damageMultiplier": 1},
+        {"type": "Health", "enabled": true, "hp": 100, "maxHp": 100, "stamina": 100, "maxStamina": 100, "invincibleTime": 0, "isDead": false}
+      ]
+    },
+    {
+      "id": 69,
+      "parentId": 0,
+      "name": "EnemySpawner",
+      "locked": false,
+      "modelPath": "",
+      "texturePath": "",
+      "translate": [73.6684, 26.54, -0.88176],
+      "rotate": [0, 0, 0],
+      "scale": [1, 1, 1],
+      "color": [1, 1, 1, 1],
+      "extraTexturePaths": [],
+      "shaderName": "Default",
+      "components": [
+        {"type": "Script", "enabled": true, "scriptPath": "EnemySpawnerScript", "paramData": "{\"enemyScriptParams\":\"\",\"enemyScriptPath\":\"EnemyBehavior\",\"enemyType\":0,\"maxCount\":10,\"pattern\":1,\"patternRadius\":4.099999904632568,\"spawnDuration\":21.399999618530273,\"startWave\":0,\"waveCount\":3,\"waveDelay\":2.0}"}
+      ]
+    },
+    {
+      "id": 44,
+      "parentId": 0,
+      "name": "Model",
+      "locked": false,
+      "modelPath": "Resources\\walk.gltf",
+      "texturePath": "",
+      "translate": [10.4991, 3.39298, 2.15136],
+      "rotate": [0, 0, 0],
+      "scale": [1, 1, 1],
+      "color": [1, 1, 1, 1],
+      "extraTexturePaths": [],
+      "shaderName": "Default",
+      "components": [
+        {"type": "MeshRenderer", "enabled": true, "modelPath": "Resources\\walk.gltf", "texturePath": "", "color": [1,1,1,1], "uvTiling": [1,1], "uvOffset": [0,0], "extraTexturePaths": [], "lightmapPath": "", "shaderName": "Toon"}
+      ]
+    },
+    {
+      "id": 68,
+      "parentId": 0,
+      "name": "Model",
+      "locked": false,
+      "modelPath": "Resources\\Models\\Stages\\kariMap2.obj",
+      "texturePath": "",
+      "translate": [-67.4, -105, -547.7],
+      "rotate": [0, 0, 0],
+      "scale": [1, 1, 1],
+      "color": [1, 1, 1, 1],
+      "extraTexturePaths": [],
+      "shaderName": "Default",
+      "components": [
+        {"type": "MeshRenderer", "enabled": true, "modelPath": "Resources\\Models\\Stages\\kariMap2.obj", "texturePath": "Resources\\Textures\\white1x1.png", "color": [0.517375,0.355925,0.171792,1], "uvTiling": [1,1], "uvOffset": [0,0], "extraTexturePaths": [], "lightmapPath": "", "shaderName": "Default"},
+        {"type": "GpuMeshCollider", "enabled": true, "isTrigger": false, "collisionType": 0, "meshPath": "Resources\\Models\\Stages\\kariMap2.obj"}
+      ]
+    },
+    {
+      "id": 45,
+      "parentId": 0,
+      "name": "Plane",
+      "locked": true,
+      "modelPath": "Resources/Models/plane.obj",
+      "texturePath": "Resources/Textures/white1x1.png",
+      "translate": [0, 0, 0],
+      "rotate": [0, 0, 0],
+      "scale": [20, 1, 20],
+      "color": [0.3, 0.3, 0.3, 1],
+      "extraTexturePaths": [],
+      "shaderName": "Default",
+      "components": [
+        {"type": "MeshRenderer", "enabled": true, "modelPath": "Resources/Models/plane.obj", "texturePath": "Resources/Textures/white1x1.png", "color": [0.3,0.3,0.3,1], "uvTiling": [1,1], "uvOffset": [0,0], "extraTexturePaths": [], "lightmapPath": "", "shaderName": "Default"},
+        {"type": "BoxCollider", "enabled": true, "center": [0,-0.5,0], "size": [40,1,40], "isTrigger": false}
+      ]
+    },
+    {
+      "id": 46,
+      "parentId": 0,
+      "name": "Plane",
+      "locked": false,
+      "modelPath": "Resources/Models/plane.obj",
+      "texturePath": "Resources/Textures/white1x1.png",
+      "translate": [12.2, 0.96, 5.12],
+      "rotate": [0, 0, 0],
+      "scale": [0.17, 1, 1],
+      "color": [0.353535, 0.861004, 0.172866, 1],
+      "extraTexturePaths": [],
+      "shaderName": "Default",
+      "components": [
+        {"type": "MeshRenderer", "enabled": true, "modelPath": "", "texturePath": "", "color": [0.352941,0.862745,0.172549,1], "uvTiling": [1,1], "uvOffset": [0,0], "extraTexturePaths": [], "lightmapPath": "", "shaderName": "StylizedGrass"}
+      ]
+    },
+    {
+      "id": 47,
+      "parentId": 0,
+      "name": "Plane_1",
+      "locked": false,
+      "modelPath": "Resources/Models/plane.obj",
+      "texturePath": "Resources/Textures/white1x1.png",
+      "translate": [14.0582, 0.889561, 4.58536],
+      "rotate": [0, 0, 0],
+      "scale": [0.17, 1, 1],
+      "color": [0.353535, 0.861004, 0.172866, 1],
+      "extraTexturePaths": [],
+      "shaderName": "Default",
+      "components": [
+        {"type": "MeshRenderer", "enabled": true, "modelPath": "", "texturePath": "", "color": [0.352941,0.862745,0.172549,1], "uvTiling": [1,1], "uvOffset": [0,0], "extraTexturePaths": [], "lightmapPath": "", "shaderName": "StylizedGrass"}
+      ]
+    },
+    {
+      "id": 48,
+      "parentId": 0,
+      "name": "Plane_2",
+      "locked": false,
+      "modelPath": "Resources/Models/plane.obj",
+      "texturePath": "Resources/Textures/white1x1.png",
+      "translate": [13.2, 0.96, 5.12],
+      "rotate": [0, 0, 0],
+      "scale": [0.17, 1, 1],
+      "color": [0.353535, 0.861004, 0.172866, 1],
+      "extraTexturePaths": [],
+      "shaderName": "Default",
+      "components": [
+        {"type": "MeshRenderer", "enabled": true, "modelPath": "", "texturePath": "", "color": [0.352941,0.862745,0.172549,1], "uvTiling": [1,1], "uvOffset": [0,0], "extraTexturePaths": [], "lightmapPath": "", "shaderName": "StylizedGrass"}
+      ]
+    },
+    {
+      "id": 49,
+      "parentId": 0,
+      "name": "Player",
+      "locked": false,
+      "modelPath": "Resources/Models/cube/cube.obj",
+      "texturePath": "Resources/Textures/white1x1.png",
+      "translate": [0.435737, 16.6527, 0.684708],
+      "rotate": [0, 0, 0],
+      "scale": [1, 1, 1],
+      "color": [0.2, 0.5, 1, 1],
+      "extraTexturePaths": [],
+      "shaderName": "Default",
+      "components": [
+        {"type": "MeshRenderer", "enabled": true, "modelPath": "Resources/Models/cube/cube.obj", "texturePath": "Resources/Textures/white1x1.png", "color": [0.2,0.5,1,1], "uvTiling": [1,1], "uvOffset": [0,0], "extraTexturePaths": [], "lightmapPath": "", "shaderName": "Toon"},
+        {"type": "BoxCollider", "enabled": true, "center": [0,0,0], "size": [1,2,1], "isTrigger": false},
+        {"type": "Tag", "enabled": true, "tag": "Player"},
+        {"type": "Rigidbody", "enabled": true, "velocity": [0,0,0], "useGravity": true, "isKinematic": false},
+        {"type": "GpuMeshCollider", "enabled": true, "isTrigger": false, "collisionType": 0, "meshPath": "Resources/Models/cube/cube.obj"},
+        {"type": "PlayerInput", "enabled": true},
+        {"type": "CharacterMovement", "enabled": true, "speed": 7, "jumpPower": 20, "gravity": 9.8},
+        {"type": "CameraTarget", "enabled": true, "distance": 10, "height": 3, "smoothSpeed": 5},
+        {"type": "Health", "enabled": true, "hp": 1000, "maxHp": 1000, "stamina": 100, "maxStamina": 100, "invincibleTime": 0, "isDead": false},
+        {"type": "Script", "enabled": true, "scriptPath": "PlayerScript", "paramData": ""},
+        {"type": "WorldSpaceUI", "enabled": true, "showHealthBar": true, "showDamageNumbers": true, "offset": [0,1.2,0], "barWidth": 60, "barHeight": 6}
+      ]
+    },
+    {
+      "id": 50,
+      "parentId": 0,
+      "name": "Sun",
+      "locked": false,
+      "modelPath": "",
+      "texturePath": "",
+      "translate": [0, 10, 0],
+      "rotate": [0.7854, 0.5236, 0],
+      "scale": [1, 1, 1],
+      "color": [1, 1, 1, 1],
+      "extraTexturePaths": [],
+      "shaderName": "Default",
+      "components": [
+        {"type": "DirectionalLight", "enabled": true, "color": [1,0.95,0.8], "intensity": 1.2}
+      ]
+    },
+    {
+      "id": 52,
+      "parentId": 0,
+      "name": "UI",
+      "locked": false,
+      "modelPath": "",
+      "texturePath": "Resources/Textures/white1x1.png",
+      "translate": [0, 0, 0],
+      "rotate": [0, 0, 0],
+      "scale": [1, 1, 1],
+      "color": [1, 1, 1, 1],
+      "extraTexturePaths": [],
+      "shaderName": "Default",
+      "components": [
+        {"type": "RectTransform", "enabled": true, "pos": [-661.826,-386.866], "size": [568.942,282.15], "anchor": [0.5,0.5], "pivot": [0.5,0.5], "rotation": 0},
+        {"type": "UIImage", "enabled": true, "texturePath": "Resources\\Textures\\uvChecker.png", "color": [1,1,1,1]},
+        {"type": "UIButton", "enabled": true, "normalColor": [1,1,1,1], "hoverColor": [0.8,0.8,0.8,1], "pressedColor": [0.6,0.6,0.6,1]}
+      ]
+    }
+  ]
+}
+
+
