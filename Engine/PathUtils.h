@@ -31,7 +31,7 @@ public:
 
     /**
      * @brief Unity's Application.persistentDataPath equivalent.
-     * Returns %APPDATA%/Local/TD_Engine.
+     * Returns %APPDATA%/Local/neo_Engine.
      * @return Absolute path in UTF-8.
      */
     static std::string GetPersistentDataPath() {
@@ -40,7 +40,7 @@ public:
         if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_LocalAppData, 0, NULL, &localAppData))) {
             std::filesystem::path p(localAppData);
             CoTaskMemFree(localAppData);
-            p /= "TD_Engine";
+            p /= "neo_Engine";
             if (!std::filesystem::exists(p)) {
                 std::filesystem::create_directories(p);
             }
@@ -109,7 +109,7 @@ private:
     static bool HasProjectFile(const std::filesystem::path& dir) {
         try {
             if (std::filesystem::exists(dir / "DirectXGame_New.sln")) return true;
-            if (std::filesystem::exists(dir / "TD_Engine.sln")) return true;
+            if (std::filesystem::exists(dir / "neo_Engine.sln")) return true;
             if (std::filesystem::exists(dir / "DirectXGameApp.vcxproj")) return true;
         } catch (...) {}
         return false;
@@ -152,10 +152,10 @@ private:
                         rootPath = current;
                         return rootPath;
                     }
-                    // Check child "TD_Engine" folder
-                    if (std::filesystem::exists(current / "TD_Engine") && 
-                        (HasProjectFile(current / "TD_Engine") || std::filesystem::exists(current / "TD_Engine" / ".git"))) {
-                        rootPath = current / "TD_Engine";
+                    // Check child "neo_Engine" folder
+                    if (std::filesystem::exists(current / "neo_Engine") && 
+                        (HasProjectFile(current / "neo_Engine") || std::filesystem::exists(current / "neo_Engine" / ".git"))) {
+                        rootPath = current / "neo_Engine";
                         return rootPath;
                     }
                 } catch (...) {}

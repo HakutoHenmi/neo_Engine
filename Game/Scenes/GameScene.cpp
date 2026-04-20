@@ -11,12 +11,12 @@
 #include "../Systems/CameraFollowSystem.h"
 #include "../Systems/CharacterMovementSystem.h"
 #include "../Systems/CleanupSystem.h"
-#include "../Systems/CombatSystem.h"
+
 #include "../Systems/HealthSystem.h"
 #include "../Systems/MotionSystem.h" // ★追加
 #include "../Systems/PhysicsSystem.h"
 #include "../Systems/PlayerInputSystem.h"
-#include "../Systems/RiverSystem.h" // ★追加
+
 #include "../Systems/ScriptSystem.h"
 #include "../Systems/UISystem.h"
 #include "imgui.h"
@@ -88,11 +88,6 @@ void GameScene::Initialize(Engine::WindowDX* dx, const Engine::SceneParameters& 
 		gmc.meshHandle = mesh.modelHandle;
 		gmc.enabled = true;
 
-		// 準備フェーズシステムの作成 (フォールバック)
-		auto ps = registry_.create();
-		registry_.emplace<NameComponent>(ps, "PhaseSystem");
-		auto& sc = registry_.emplace<ScriptComponent>(ps);
-		sc.scripts.push_back({"PhaseSystemScript"});
 	}
 
 	// エディターUIの初期化
@@ -116,7 +111,7 @@ void GameScene::Initialize(Engine::WindowDX* dx, const Engine::SceneParameters& 
 	scriptSys->SetScene(this);
 	systems_.push_back(std::move(scriptSys));
 
-	systems_.push_back(std::make_unique<CombatSystem>());
+
 	systems_.push_back(std::make_unique<AudioSystem>());
 	systems_.push_back(std::make_unique<UISystem>());
 	systems_.push_back(std::make_unique<MotionSystem>());
@@ -125,31 +120,14 @@ void GameScene::Initialize(Engine::WindowDX* dx, const Engine::SceneParameters& 
 	// ★追加: 起動直後の状態を初期スナップショットとして保存
 	initialSceneSnapshot_ = EditorUI::SaveToMemory(this);
 
-	// 前回プレイで動的に生成されたオブジェクトの削除
-	auto bulletView = registry_.view<TagComponent>();
-	for (auto entity : bulletView) {
-		if (bulletView.get<TagComponent>(entity).tag == TagType::Bullet) {
-			registry_.destroy(entity);
-		}
-	}
-	auto nameView = registry_.view<NameComponent>();
-	for (auto entity : nameView) {
-		if (nameView.get<NameComponent>(entity).name == "Bullet" && registry_.valid(entity)) {
-			registry_.destroy(entity);
-		}
-	}
+
 
 	// 各Systemのリセット
 	for (auto& sys : systems_) {
 		sys->Reset(registry_);
 	}
 
-	// ★追加: 川の初期メッシュ生成
-	registry_.view<RiverComponent, TransformComponent>().each([&](RiverComponent& rv, TransformComponent& tc) {
-		if (rv.enabled && rv.meshHandle == 0) {
-			RiverSystem::BuildRiverMesh(rv, renderer_, registry_, tc.translate);
-		}
-	});
+
 
 	// ★追加: タグシステムの初期化
 	tagCache_.clear();
@@ -166,12 +144,6 @@ void GameScene::Initialize(Engine::WindowDX* dx, const Engine::SceneParameters& 
 	registry_.on_destroy<TagComponent>().disconnect<&GameScene::OnTagRemoved>(this);
 	registry_.on_destroy<TagComponent>().connect<&GameScene::OnTagRemoved>(this);
 
-	// NavigationManagerの初期化
-	flowField_ = std::make_unique<NavigationManager>();
-	flowField_->Initialize(100, 100, 2.0f, -100, -100);
-
-	//ステージロード直後に一度地形を読み込む
-	flowField_->UpdateCostMap(this);
 }
 
 // =====================================================
@@ -223,34 +195,8 @@ void GameScene::Update() {
 	if (isPlaying_)
 		playTime_ += dt;
 
-	// ★ 勝利/敗北判定 (テスト用)
-	if (isPlaying_) {
-		bool win = Engine::Input::GetInstance()->Trigger(DIK_G);
-		bool loss = Engine::Input::GetInstance()->Trigger(DIK_J);
 
-		// プレイヤーの生存確認 (Viewを直接参照して同期ズレを防ぐ)
-		// プレイヤーの生存確認
-		const auto& players = GetEntitiesByTag(TagType::Player);
-		for (auto entity : players) {
-			if (registry_.valid(entity) && registry_.all_of<HealthComponent>(entity)) {
-				if (registry_.get<HealthComponent>(entity).hp <= 0) {
-					loss = true;
-					break;
-				}
-			}
-		}
 
-		if (win || loss) {
-			Engine::SceneParameters res;
-			res.isWin = win;
-			res.score = win ? 1500 : 300;
-			res.clearTime = playTime_;
-			Engine::SceneManager::GetInstance()->RequestChange("Result", res);
-			isPlaying_ = false;
-			// 修正: 即座に return せず、以降のガード (!isPlaying_) でシステムをスキップさせつつ、
-			// フレーム末尾のクリーンアップ処理（pendingDestroys等）まで到達させる
-		}
-	}
 
 	ctx_.camera = &camera_;
 	ctx_.renderer = renderer_;
@@ -455,8 +401,7 @@ float GameScene::GetHeightAt(float x, float z, float startY, uint32_t excludeId)
 		bool isEnemyOrBullet = false;
 		if (registry_.all_of<TagComponent>(entity)) {
 			const auto tag = registry_.get<TagComponent>(entity).tag;
-			if (tag == TagType::Enemy || tag == TagType::Bullet || tag == TagType::Player || tag == TagType::Sword || tag == TagType::PlayerSword || tag == TagType::Projectile || tag == TagType::Pipe || tag == TagType::Canon || tag == TagType::BulletTank ||
-			    tag == TagType::PipeCannon || tag == TagType::VFX || tag == TagType::HitDistortion_VFX) {
+			if (tag == TagType::Enemy || tag == TagType::Bullet || tag == TagType::Player || tag == TagType::Projectile || tag == TagType::VFX) {
 				isEnemyOrBullet = true;
 			}
 		}
@@ -512,7 +457,7 @@ bool GameScene::RayCast(const Engine::Vector3& origin, const Engine::Vector3& di
 		// タグによるフィルタリング
 		if (registry_.all_of<TagComponent>(entity)) {
 			const auto tag = registry_.get<TagComponent>(entity).tag;
-			if (tag == TagType::Enemy || tag == TagType::Bullet || tag == TagType::Player || tag == TagType::Sword || tag == TagType::PlayerSword || tag == TagType::Projectile || tag == TagType::VFX || tag == TagType::HitDistortion_VFX)
+			if (tag == TagType::Enemy || tag == TagType::Bullet || tag == TagType::Player || tag == TagType::Projectile || tag == TagType::VFX)
 				continue;
 		}
 
@@ -583,50 +528,12 @@ void GameScene::Draw() {
 	if (!renderer_)
 		return;
 
-	// ★★★ GPU負荷テスト: Hキーで大量オブジェクト生成 ★★★
-	{
-		static int stressTestGridSize = 0;
-		if (!isPlaying_)
-			stressTestGridSize = 0; // Stop時にリセット
-		static bool prevH = false;
-		bool currH = (GetAsyncKeyState('H') & 0x8000) != 0;
-		if (currH && !prevH) {
-			stressTestGridSize += 32; // add 32x32 = 1024 objects each press
-			std::string msg = "[StressTest] Triggered! Grid size: " + std::to_string(stressTestGridSize) + "x" + std::to_string(stressTestGridSize) + " (" +
-			                  std::to_string(stressTestGridSize * stressTestGridSize) + " objects)\n";
-			OutputDebugStringA(msg.c_str());
-		}
-		prevH = currH;
 
-		if (stressTestGridSize > 0) {
-			uint32_t cubeModel = renderer_->LoadObjMesh("Resources/Models/cube/cube.obj");
-			uint32_t whiteTex = renderer_->LoadTexture2D("Resources/Textures/white1x1.png");
-
-			float spacing = 2.0f;
-			float startOffset = -(stressTestGridSize / 2.0f) * spacing;
-
-			for (int z = 0; z < stressTestGridSize; ++z) {
-				for (int x = 0; x < stressTestGridSize; ++x) {
-					Engine::Transform t;
-					t.translate = {startOffset + x * spacing, 10.0f, startOffset + z * spacing};
-					t.rotate = {0, 0, 0};
-					t.scale = {0.5f, 0.5f, 0.5f};
-					Engine::Vector4 color = {0.3f + (x % 5) * 0.15f, 0.3f + (z % 5) * 0.15f, 0.5f + ((x + z) % 3) * 0.2f, 1.0f};
-					renderer_->DrawMeshInstanced(cubeModel, whiteTex, t, color, "Default");
-				}
-			}
-		}
-	}
-	// ★★★ GPU負荷テスト ここまで ★★★
 
 	renderer_->SetCamera(camera_);
 #ifdef USE_IMGUI
 	if (!isPlaying_) {
 		DrawEditorGizmos();
-	}
-	// デバッグ時のみフローフィールドを表示
-	if (!isPlaying_ && flowField_) {
-		flowField_->DrawDebug(this);
 	}
 #endif
 
@@ -1117,12 +1024,8 @@ void GameScene::SetIsPlaying(bool play) {
 		// 一旦、毎回保存するようにするのでクリアしても良いはず
 		sceneSnapshot_ = "";
 
-		// ★追加: 川のメッシュなど、動的メッシュの再生成
-		registry_.view<RiverComponent, TransformComponent>().each([&](RiverComponent& rv, TransformComponent& tc) {
-			if (rv.enabled && rv.meshHandle == 0) {
-				RiverSystem::BuildRiverMesh(rv, renderer_, registry_, tc.translate);
-			}
-		});
+
+
 
 		// ペンディングデータのクリア
 		std::lock_guard<std::mutex> lock(spawnMutex_);

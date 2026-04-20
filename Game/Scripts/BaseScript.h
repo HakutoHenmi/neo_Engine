@@ -6,6 +6,7 @@
 
 namespace Game {
 
+// サンプルスクリプト: 新しいスクリプトを作る際のテンプレートとして利用してください
 class BaseScript : public IScript {
 public:
 	void Start(entt::entity entity, GameScene* scene) override;
@@ -14,13 +15,6 @@ public:
 	void OnEditorUI() override;
 	std::string SerializeParameters() override;
 	void DeserializeParameters(const std::string& data) override;
-
-private:
-	float rotationSpeed_ = 1.0f;
-	float attackInterval_ = 1.0f;
-	float attackTimer_ = 0.0f;
-	float damage_ = 10.0f;
-	float attackRange_ = 30.0f;
 };
 
 } // namespace Game

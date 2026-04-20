@@ -35,7 +35,7 @@ public:
 				// Player は破棄しない
 				if (registry.all_of<TagComponent>(entity)) {
 					auto& tag = registry.get<TagComponent>(entity);
-					if (tag.tag == TagType::Player || tag.tag == TagType::PlayerSword) continue;
+					if (tag.tag == TagType::Player) continue;
 				}
 				toDestroy.push_back(entity);
 			}

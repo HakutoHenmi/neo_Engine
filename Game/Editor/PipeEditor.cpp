@@ -98,8 +98,8 @@ void PipeEditor::UpdateAndDraw(GameScene* scene, Engine::Renderer* renderer, con
     bool insideImage = (localX >= 0 && localY >= 0 && localX <= tW && localY <= tH);
 
     if (insideImage) {
-        auto viewMat = scene->camera_.View();
-        auto projMat = scene->camera_.Proj();
+        auto viewMat = scene->GetCamera().View();
+        auto projMat = scene->GetCamera().Proj();
         DirectX::XMVECTOR rayOrig, rayDir;
         EditorUI::ScreenToWorldRay(localX, localY, tW, tH, viewMat, projMat, rayOrig, rayDir);
 

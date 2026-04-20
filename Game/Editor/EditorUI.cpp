@@ -1989,7 +1989,7 @@ void EditorUI::ShowInspector(GameScene* scene) {
 					
 					const char* currentTagName = TagToString(tag->tag);
 					if (ImGui::BeginCombo("Tag##TagCombo", currentTagName)) {
-						for (int i = 0; i <= (int)TagType::HitDistortion_VFX; ++i) {
+						for (int i = 0; i <= (int)TagType::VFX; ++i) {
 							TagType t = (TagType)i;
 							bool isSelected = (tag->tag == t);
 							if (ImGui::Selectable(TagToString(t), isSelected)) {
@@ -2441,7 +2441,7 @@ void EditorUI::ShowInspector(GameScene* scene) {
 					
 					const char* currentTagName = TagToString(hb->tag);
 					if (ImGui::BeginCombo("Tag##HBTagCombo", currentTagName)) {
-						for (int i = 0; i <= (int)TagType::HitDistortion_VFX; ++i) {
+						for (int i = 0; i <= (int)TagType::VFX; ++i) {
 							TagType t = (TagType)i;
 							bool isSelected = (hb->tag == t);
 							if (ImGui::Selectable(TagToString(t), isSelected)) hb->tag = t;
@@ -2463,7 +2463,7 @@ void EditorUI::ShowInspector(GameScene* scene) {
 
 					const char* currentTagName = TagToString(hb->tag);
 					if (ImGui::BeginCombo("Tag##HurtBTagCombo", currentTagName)) {
-						for (int i = 0; i <= (int)TagType::HitDistortion_VFX; ++i) {
+						for (int i = 0; i <= (int)TagType::VFX; ++i) {
 							TagType t = (TagType)i;
 							bool isSelected = (hb->tag == t);
 							if (ImGui::Selectable(TagToString(t), isSelected)) hb->tag = t;
