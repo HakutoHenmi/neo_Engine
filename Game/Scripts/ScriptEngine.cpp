@@ -2,28 +2,6 @@
 #include "Scenes/GameScene.h"
 #include <iostream>
 #include <Windows.h> // OutputDebugStringA
-#include "PhaseSystemScript.h"
-#include "PreparationCamera.h"
-#include "BaseScript.h"
-#include "PlayerScript.h"
-#include "EnemyAIScript.h"
-#include "EnemyBehavior.h"
-#include "EnemySpawnerScript.h"
-#include "Canon.h"
-// ★追加: リリースビルドでリンク漏れ防止のため全スクリプトをinclude
-#include "BulletScript.h"
-#include "BulletTank.h"
-#include "TowerScript.h"
-#include "PipeScript.h"
-#include "KamikazeEnemyScript.h"
-#include "ExperienceOrbScript.h"
-#include "ExperienceMiner.h"
-#include "ExperienceHopper.h"
-#include "CommunicationTestScript.h"
-#include "HitDistortionScript.h" // ★追加
-#include "InstallationButton.h"
-#include "PhaseTransition.h"
-#include "WaveManagement.h"
 
 namespace Game {
 
@@ -37,29 +15,8 @@ ScriptEngine* ScriptEngine::GetInstance() {
 }
 
 void ScriptEngine::Initialize() {
-	// ★変更: マクロによる自動登録に加え、リリースビルドでのリンク漏れ防止のため明示的に登録
-	RegisterScript("PhaseSystemScript", []() { return std::make_shared<PhaseSystemScript>(); });
-	RegisterScript("PreparationCamera", []() { return std::make_shared<PreparationCamera>(); });
-	RegisterScript("BaseScript", []() { return std::make_shared<BaseScript>(); });
-	RegisterScript("PlayerScript", []() { return std::make_shared<PlayerScript>(); });
-	RegisterScript("EnemyAIScript", []() { return std::make_shared<EnemyAIScript>(); });
-	RegisterScript("EnemyBehavior", []() { return std::make_shared<EnemyBehavior>(); });
-	RegisterScript("EnemySpawnerScript", []() { return std::make_shared<EnemySpawnerScript>(); });
-	RegisterScript("Canon", []() { return std::make_shared<Canon>(); });
-	// ★追加: 不足していたスクリプトの明示登録
-	RegisterScript("BulletScript", []() { return std::make_shared<BulletScript>(); });
-	RegisterScript("BulletTank", []() { return std::make_shared<BulletTank>(); });
-	RegisterScript("TowerScript", []() { return std::make_shared<TowerScript>(); });
-	RegisterScript("PipeScript", []() { return std::make_shared<PipeScript>(); });
-	RegisterScript("KamikazeEnemyScript", []() { return std::make_shared<KamikazeEnemyScript>(); });
-	RegisterScript("ExperienceOrbScript", []() { return std::make_shared<ExperienceOrbScript>(); });
-	RegisterScript("ExperienceMiner", []() { return std::make_shared<ExperienceMiner>(); });
-	RegisterScript("ExperienceHopper", []() { return std::make_shared<ExperienceHopper>(); });
-	RegisterScript("CommunicationTestScript", []() { return std::make_shared<CommunicationTestScript>(); });
-	RegisterScript("HitDistortionScript", []() { return std::make_shared<HitDistortionScript>(); }); // ★追加
-	RegisterScript("InstallationButton", []() { return std::make_shared<InstallationButton>(); });
-	RegisterScript("PhaseTransition", []() { return std::make_shared<PhaseTransition>(); });
-	RegisterScript("WaveManagement", []() { return std::make_shared<WaveManagement>(); });
+	// 新しいスクリプトを作成したらここに登録してください
+	// 例: RegisterScript("MyScript", []() { return std::make_shared<MyScript>(); });
 }
 
 void ScriptEngine::Shutdown() {

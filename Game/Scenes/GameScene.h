@@ -14,7 +14,7 @@
 #include "../../externals/entt/entt.hpp"
 #include "../../Engine/ParticleEmitter.h"
 #include "../../Engine/ParticleEditor.h"
-#include "../EnemySystem/NavigationManager.h"
+
 
 namespace Game {
 
@@ -68,8 +68,7 @@ public:
 	void SetTag(entt::entity entity, TagType tag); // ★追加
 	void SyncTag(entt::entity entity); // ★追加: 手動同期用
 
-	// flowField_取得
-	NavigationManager& GetNavigationManager() { return *flowField_; }
+
 
 private:
     Engine::WindowDX* dx_ = nullptr;
@@ -110,12 +109,9 @@ private:
     float playTime_ = 0.0f; // クリアタイム計測用
 
     friend class EditorUI;
-    friend class PipeEditor;
-    friend class EnemySpawnerEditor;
 
 
-	//フローフィールド用
-	std::unique_ptr<NavigationManager> flowField_ = nullptr;
+
 };
 
 } // namespace Game
