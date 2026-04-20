@@ -221,6 +221,17 @@ bool Renderer::Initialize(WindowDX* window) {
 	// ※"msgothic.ttc" はWindows環境依存ですがテスト用に使用
 	InitTextSystem("C:\\Windows\\Fonts\\msgothic.ttc", 64.0f);
 
+	// ★追加: デフォルトのプロシージャルSkybox生成（グラデーション空）
+	{
+		TextureHandle cubeHandle = LoadCubeMap("Resources/Textures/skybox.dds");
+		if (cubeHandle == 0 || cubeHandle >= textures_.size()) {
+			OutputDebugStringA("[Renderer] Proceeding without custom skybox.dds\n");
+		} else {
+			SetSkyboxTexture(cubeHandle);
+			OutputDebugStringA(("[Renderer] Loaded skybox from DDS, handle=" + std::to_string(cubeHandle) + "\n").c_str());
+		}
+	}
+
 	return true;
 }
 
@@ -238,6 +249,14 @@ void Renderer::Shutdown() {
 	rootSig3D_.Reset();
 	pipelines_.clear();
 	shaderNames_.clear();
+
+	// ★追加: Skyboxリソース解放
+	rootSigSkybox_.Reset();
+	psoSkybox_.Reset();
+	skyboxVB_.Reset();
+	skyboxIB_.Reset();
+	skyboxCubeMapHandle_ = 0;
+	envMapSrvGpu_ = {};
 
 	rootSig2D_.Reset();
 	pso2D_.Reset();
@@ -387,10 +406,7 @@ void Renderer::ResetGameViewport() {
 }
 
 void Renderer::FlushDrawCalls() {
-	if (drawCalls_.empty() && instancedDrawCalls_.empty() && instancedParticleDrawCalls_.empty()) {
-		FlushLines();
-		return;
-	}
+	// オブジェクトが無くてもSkyboxは描画したいため、早期リターンをSkybox描画の後に移動します。
 
 	const uint32_t fi = window_->FrameIndex();
 
@@ -409,6 +425,28 @@ void Renderer::FlushDrawCalls() {
 
 	D3D12_GPU_DESCRIPTOR_HANDLE defaultSrv = textures_[0].srvGpu;
 
+	// ★追加: Skybox描画（最背面、全ドローコールの前）
+	DrawSkybox();
+
+	// ★RootSignatureを3D用に戻す（DrawSkyboxで変更されたため）
+	list_->SetGraphicsRootSignature(rootSig3D_.Get());
+	list_->SetGraphicsRootConstantBufferView(0, cbFrameAddr_);
+	list_->SetGraphicsRootConstantBufferView(2, cbLightAddr_);
+	if (shadowSrv_.ptr != 0) list_->SetGraphicsRootDescriptorTable(5, shadowSrv_);
+
+	// ★追加: 環境マップ(t3)をバインド
+	if (envMapSrvGpu_.ptr != 0) {
+		list_->SetGraphicsRootDescriptorTable(7, envMapSrvGpu_);
+	} else {
+		list_->SetGraphicsRootDescriptorTable(7, textures_[0].srvGpu); // フォールバック (RootSig要件を満たすため)
+	}
+
+	// ★追加: Skybox描画後にオブジェクトがなければ早期リターン
+	if (drawCalls_.empty() && instancedDrawCalls_.empty() && instancedParticleDrawCalls_.empty()) {
+		FlushLines();
+		return;
+	}
+
 	for (const auto& dc : drawCalls_) {
 		if (dc.shaderName == "Distortion") continue; // 空間のゆがみは EndFrame で別途描画
 
@@ -419,6 +457,8 @@ void Renderer::FlushDrawCalls() {
 		if (pipelines_.find(dc.shaderName) != pipelines_.end()) {
 			pso = pipelines_[dc.shaderName].Get();
 		}
+
+		if (!pso) continue;
 		list_->SetPipelineState(pso);
 
 		list_->SetGraphicsRootConstantBufferView(0, cbFrameAddr_);
@@ -462,6 +502,10 @@ void Renderer::FlushDrawCalls() {
 			list_->SetGraphicsRootConstantBufferView(0, cbFrameAddr_);
 			list_->SetGraphicsRootConstantBufferView(2, cbLightAddr_);
 			if (shadowSrv_.ptr != 0) list_->SetGraphicsRootDescriptorTable(5, shadowSrv_);
+			
+			// param 7 is no longer used by ObjPS since we use procedural space reflection.
+			// Just bind dummy to prevent RootSignature uninitialized warnings.
+			list_->SetGraphicsRootDescriptorTable(7, textures_[0].srvGpu);
 			
 			if (dc.tex != 0 && dc.tex < textures_.size()) {
 				list_->SetGraphicsRootDescriptorTable(3, textures_[dc.tex].srvGpu);
@@ -1190,7 +1234,11 @@ bool Renderer::InitPipelines() {
 		CD3DX12_DESCRIPTOR_RANGE rangeInstanceSRV;
 		rangeInstanceSRV.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 2); // t2 (Instance Data)
 
-		CD3DX12_ROOT_PARAMETER params[7]{};
+		// ★追加: 環境マップ用
+		CD3DX12_DESCRIPTOR_RANGE rangeEnvMapSRV;
+		rangeEnvMapSRV.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 3); // t3 (Environment CubeMap)
+
+		CD3DX12_ROOT_PARAMETER params[8]{};
 		params[0].InitAsConstantBufferView(0);                                        // b0: CBFrame
 		params[1].InitAsConstantBufferView(1);                                        // b1: CBObj
 		params[2].InitAsConstantBufferView(2);                                        // b2: CBLight
@@ -1198,6 +1246,7 @@ bool Renderer::InitPipelines() {
 		params[4].InitAsConstantBufferView(3);                                        // b3: CBBone (スキニング用)
 		params[5].InitAsDescriptorTable(1, &rangeShadowSRV, D3D12_SHADER_VISIBILITY_PIXEL); // t1: ShadowMap
 		params[6].InitAsShaderResourceView(2, 0, D3D12_SHADER_VISIBILITY_VERTEX);       // t2: InstanceData (SRV)
+		params[7].InitAsDescriptorTable(1, &rangeEnvMapSRV, D3D12_SHADER_VISIBILITY_PIXEL); // t3: EnvMap (★追加)
 
 		// s0: 通常のテクスチャサンプラー, s1: 影比較用サンプラー
 		CD3DX12_STATIC_SAMPLER_DESC samp[2]{};
@@ -2057,6 +2106,13 @@ float4 main(PSIn i) : SV_TARGET { return i.color; }
 		// シェーダー名リストに追加 (エディタのドロップダウンに表示される)
 		// ※CreatePSO や CreatePSO_Transparent 内部で重複チェック付きで push_back されるため、明示的な処理は不要です。
 
+		// ★追加: 反射(映り込み)用シェーダー
+		auto vsReflection = CompileShaderFromFile(L"Resources/shaders/ObjVS.hlsl", "main", "vs_5_0");
+		auto psReflection = CompileShaderFromFile(L"Resources/shaders/ObjPS.hlsl", "main", "ps_5_0");
+		if (vsReflection && psReflection) {
+			CreatePSO("Reflection", vsReflection.Get(), psReflection.Get());
+		}
+
 		// ★追加: リッチシェーダー
 		auto vsEmissive = CompileShaderFromFile(L"Resources/shaders/EmissiveGlowVS.hlsl", "main", "vs_5_0");
 		auto psEmissive = CompileShaderFromFile(L"Resources/shaders/EmissiveGlowPS.hlsl", "main", "ps_5_0");
@@ -2150,6 +2206,10 @@ float4 main(PSIn i) : SV_TARGET { return i.color; }
 			}
 		}
 	}
+
+	// ★追加: Skybox メッシュ＆パイプライン初期化
+	InitSkyboxMesh();
+	InitSkyboxPipeline();
 
 	return true;
 }
@@ -3449,6 +3509,257 @@ void Renderer::UpdateDynamicMesh(MeshHandle handle, const std::vector<VertexData
 	if (handle < models_.size() && models_[handle]) {
 		models_[handle]->UpdateVertices(vertices);
 	}
+}
+
+
+// ====================================================================
+// ★★★ Skybox / 環境マップ 実装 (CG4 00. 環境マップ) ★★★
+// ====================================================================
+
+Renderer::TextureHandle Renderer::LoadCubeMap(const std::string& ddsPath) {
+	if (ddsPath.empty()) return 0;
+
+	std::string unifiedPath = PathUtils::GetUnifiedPath(ddsPath);
+	auto it = textureCache_.find(unifiedPath);
+	if (it != textureCache_.end()) return it->second;
+
+	std::wstring wpath = PathUtils::FromUTF8(unifiedPath);
+	DirectX::TexMetadata meta{};
+	DirectX::ScratchImage img;
+	HRESULT hr = DirectX::LoadFromDDSFile(wpath.c_str(), DirectX::DDS_FLAGS_NONE, &meta, img);
+	if (FAILED(hr)) {
+		OutputDebugStringA(("[Renderer] LoadCubeMap FAILED: " + unifiedPath + "\n").c_str());
+		return 0;
+	}
+
+	// キューブマップであることを確認
+	if (!meta.IsCubemap()) {
+		OutputDebugStringA(("[Renderer] LoadCubeMap: Not a cubemap: " + unifiedPath + "\n").c_str());
+		return 0;
+	}
+
+	// リソース作成
+	ComPtr<ID3D12Resource> tex;
+	{
+		D3D12_RESOURCE_DESC desc{};
+		desc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+		desc.Width = (UINT64)meta.width;
+		desc.Height = (UINT)meta.height;
+		desc.DepthOrArraySize = (UINT16)meta.arraySize; // 6 for cubemap
+		desc.MipLevels = (UINT16)meta.mipLevels;
+		desc.Format = meta.format;
+		desc.SampleDesc.Count = 1;
+		desc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+		desc.Flags = D3D12_RESOURCE_FLAG_NONE;
+
+		CD3DX12_HEAP_PROPERTIES heapDefault(D3D12_HEAP_TYPE_DEFAULT);
+		hr = dev_->CreateCommittedResource(&heapDefault, D3D12_HEAP_FLAG_NONE, &desc,
+			D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&tex));
+		if (FAILED(hr)) return 0;
+	}
+
+	// サブリソースデータの準備とアップロード
+	std::vector<D3D12_SUBRESOURCE_DATA> subData;
+	const DirectX::Image* imgs = img.GetImages();
+	size_t nimages = img.GetImageCount();
+	subData.reserve(nimages);
+	for (size_t i = 0; i < nimages; ++i) {
+		D3D12_SUBRESOURCE_DATA sd{};
+		sd.pData = imgs[i].pixels;
+		sd.RowPitch = (LONG_PTR)imgs[i].rowPitch;
+		sd.SlicePitch = (LONG_PTR)imgs[i].slicePitch;
+		subData.push_back(sd);
+	}
+
+	UINT64 uploadSize = GetRequiredIntermediateSize(tex.Get(), 0, (UINT)subData.size());
+	ComPtr<ID3D12Resource> uploadBuf;
+	{
+		CD3DX12_HEAP_PROPERTIES heapUp(D3D12_HEAP_TYPE_UPLOAD);
+		CD3DX12_RESOURCE_DESC bufDesc = CD3DX12_RESOURCE_DESC::Buffer(uploadSize);
+		dev_->CreateCommittedResource(&heapUp, D3D12_HEAP_FLAG_NONE, &bufDesc,
+			D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&uploadBuf));
+	}
+
+	// 一時コマンドリストで転送
+	ComPtr<ID3D12CommandAllocator> alloc;
+	ComPtr<ID3D12GraphicsCommandList> cmd;
+	dev_->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&alloc));
+	dev_->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, alloc.Get(), nullptr, IID_PPV_ARGS(&cmd));
+
+	UpdateSubresources(cmd.Get(), tex.Get(), uploadBuf.Get(), 0, 0, (UINT)subData.size(), subData.data());
+
+	auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(tex.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+	cmd->ResourceBarrier(1, &barrier);
+	cmd->Close();
+	ID3D12CommandList* ppLists[] = { cmd.Get() };
+	queue_->ExecuteCommandLists(1, ppLists);
+	WaitGPU();
+
+	// SRV作成 (TextureCube)
+	Texture t{};
+	t.res = tex;
+	const uint32_t srvIdx = AllocateSrvIndex();
+	t.srvCpu = window_->SRV_CPU((int)srvIdx);
+	t.srvCpuMaster = window_->SRV_CPU_Master((int)srvIdx);
+	t.srvGpu = window_->SRV_GPU((int)srvIdx);
+
+	D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc{};
+	srvDesc.Format = meta.format;
+	srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURECUBE;
+	srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+	srvDesc.TextureCube.MipLevels = (UINT)meta.mipLevels;
+	srvDesc.TextureCube.MostDetailedMip = 0;
+	dev_->CreateShaderResourceView(tex.Get(), &srvDesc, t.srvCpu);
+	dev_->CreateShaderResourceView(tex.Get(), &srvDesc, t.srvCpuMaster);
+
+	TextureHandle handle = (TextureHandle)textures_.size();
+	textures_.push_back(t);
+	textureCache_[unifiedPath] = handle;
+
+	OutputDebugStringA(("[Renderer] LoadCubeMap OK: " + unifiedPath + " handle=" + std::to_string(handle) + "\n").c_str());
+	return handle;
+}
+
+void Renderer::SetSkyboxTexture(TextureHandle cubeMap) {
+	skyboxCubeMapHandle_ = cubeMap;
+	if (cubeMap > 0 && cubeMap < textures_.size()) {
+		envMapSrvGpu_ = textures_[cubeMap].srvGpu;
+	}
+}
+
+void Renderer::InitSkyboxMesh() {
+	// キューブの頂点（内側向き：天球として見る）
+	struct SkyboxVertex { float x, y, z; };
+	SkyboxVertex verts[] = {
+		{-1, -1, -1}, {+1, -1, -1}, {+1, +1, -1}, {-1, +1, -1}, // 前面
+		{-1, -1, +1}, {+1, -1, +1}, {+1, +1, +1}, {-1, +1, +1}, // 背面
+	};
+
+	// インデックス（内側向き＝表裏反転）
+	uint32_t indices[] = {
+		// 前面 (z-)
+		0, 2, 1,  0, 3, 2,
+		// 背面 (z+)
+		4, 5, 6,  4, 6, 7,
+		// 左面 (x-)
+		0, 4, 7,  0, 7, 3,
+		// 右面 (x+)
+		1, 2, 6,  1, 6, 5,
+		// 上面 (y+)
+		3, 7, 6,  3, 6, 2,
+		// 下面 (y-)
+		0, 1, 5,  0, 5, 4,
+	};
+
+	skyboxIndexCount_ = _countof(indices);
+
+	// VB作成
+	{
+		CD3DX12_HEAP_PROPERTIES hp(D3D12_HEAP_TYPE_UPLOAD);
+		CD3DX12_RESOURCE_DESC desc = CD3DX12_RESOURCE_DESC::Buffer(sizeof(verts));
+		dev_->CreateCommittedResource(&hp, D3D12_HEAP_FLAG_NONE, &desc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&skyboxVB_));
+		void* mapped;
+		skyboxVB_->Map(0, nullptr, &mapped);
+		std::memcpy(mapped, verts, sizeof(verts));
+		skyboxVB_->Unmap(0, nullptr);
+		skyboxVBV_ = { skyboxVB_->GetGPUVirtualAddress(), sizeof(verts), sizeof(SkyboxVertex) };
+	}
+	// IB作成
+	{
+		CD3DX12_HEAP_PROPERTIES hp(D3D12_HEAP_TYPE_UPLOAD);
+		CD3DX12_RESOURCE_DESC desc = CD3DX12_RESOURCE_DESC::Buffer(sizeof(indices));
+		dev_->CreateCommittedResource(&hp, D3D12_HEAP_FLAG_NONE, &desc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&skyboxIB_));
+		void* mapped;
+		skyboxIB_->Map(0, nullptr, &mapped);
+		std::memcpy(mapped, indices, sizeof(indices));
+		skyboxIB_->Unmap(0, nullptr);
+		skyboxIBV_ = { skyboxIB_->GetGPUVirtualAddress(), sizeof(indices), DXGI_FORMAT_R32_UINT };
+	}
+}
+
+bool Renderer::InitSkyboxPipeline() {
+	// Skybox用 RootSignature: b0(CBFrame), t0(TextureCube), s0(Sampler)
+	{
+		CD3DX12_DESCRIPTOR_RANGE rangeSRV;
+		rangeSRV.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0); // t0: TextureCube
+
+		CD3DX12_ROOT_PARAMETER params[2]{};
+		params[0].InitAsConstantBufferView(0); // b0: CBFrame
+		params[1].InitAsDescriptorTable(1, &rangeSRV, D3D12_SHADER_VISIBILITY_PIXEL); // t0
+
+		CD3DX12_STATIC_SAMPLER_DESC samp{};
+		samp.Init(0, D3D12_FILTER_MIN_MAG_MIP_LINEAR);
+
+		CD3DX12_ROOT_SIGNATURE_DESC rsDesc;
+		rsDesc.Init(_countof(params), params, 1, &samp, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+
+		ComPtr<ID3DBlob> blob, err;
+		if (FAILED(D3D12SerializeRootSignature(&rsDesc, D3D_ROOT_SIGNATURE_VERSION_1, &blob, &err))) {
+			if (err) OutputDebugStringA((const char*)err->GetBufferPointer());
+			return false;
+		}
+		if (FAILED(dev_->CreateRootSignature(0, blob->GetBufferPointer(), blob->GetBufferSize(), IID_PPV_ARGS(&rootSigSkybox_))))
+			return false;
+	}
+
+	// シェーダーコンパイル
+	auto vs = CompileShaderFromFile(L"Resources/shaders/SkyboxVS.hlsl", "main", "vs_5_0");
+	auto ps = CompileShaderFromFile(L"Resources/shaders/SkyboxPS.hlsl", "main", "ps_5_0");
+	if (!vs || !ps) {
+		OutputDebugStringA("[Renderer] Skybox shader compile failed\n");
+		return false;
+	}
+
+	// PSO作成
+	D3D12_INPUT_ELEMENT_DESC layout[] = {
+		{"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+	};
+
+	D3D12_GRAPHICS_PIPELINE_STATE_DESC pso{};
+	pso.InputLayout = { layout, _countof(layout) };
+	pso.pRootSignature = rootSigSkybox_.Get();
+	pso.VS = { vs->GetBufferPointer(), vs->GetBufferSize() };
+	pso.PS = { ps->GetBufferPointer(), ps->GetBufferSize() };
+	pso.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
+	pso.RasterizerState.CullMode = D3D12_CULL_MODE_NONE; // 内側を描画
+	pso.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
+	pso.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
+	pso.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_LESS_EQUAL; // z=1.0でも描画
+	pso.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ZERO; // 深度書き込みOFF
+	pso.SampleMask = UINT_MAX;
+	pso.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+	pso.NumRenderTargets = 1;
+	pso.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+	pso.DSVFormat = DXGI_FORMAT_D32_FLOAT;
+	pso.SampleDesc.Count = 1;
+
+	if (FAILED(dev_->CreateGraphicsPipelineState(&pso, IID_PPV_ARGS(&psoSkybox_)))) {
+		OutputDebugStringA("[Renderer] Skybox PSO creation failed\n");
+		return false;
+	}
+
+	OutputDebugStringA("[Renderer] Skybox pipeline initialized OK\n");
+	return true;
+}
+
+void Renderer::DrawSkybox() {
+	if (!psoSkybox_ || skyboxCubeMapHandle_ == 0 || skyboxCubeMapHandle_ >= textures_.size()) return;
+	if (skyboxIndexCount_ == 0) return;
+
+	list_->SetPipelineState(psoSkybox_.Get());
+	list_->SetGraphicsRootSignature(rootSigSkybox_.Get());
+
+	// CBFrame バインド
+	if (cbFrameAddr_ != 0)
+		list_->SetGraphicsRootConstantBufferView(0, cbFrameAddr_);
+
+	// キューブマップテクスチャ バインド
+	list_->SetGraphicsRootDescriptorTable(1, textures_[skyboxCubeMapHandle_].srvGpu);
+
+	list_->IASetVertexBuffers(0, 1, &skyboxVBV_);
+	list_->IASetIndexBuffer(&skyboxIBV_);
+	list_->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+	list_->DrawIndexedInstanced(skyboxIndexCount_, 1, 0, 0, 0);
 }
 
 } // namespace Engine

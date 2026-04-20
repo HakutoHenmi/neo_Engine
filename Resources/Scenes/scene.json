@@ -7,7 +7,7 @@
   },
   "objects": [
     {
-      "id": 3145729,
+      "id": 1048577,
       "parentId": 4294967295,
       "name": "Sun",
       "locked": false,
@@ -19,7 +19,7 @@
       ]
     },
     {
-      "id": 3145728,
+      "id": 1048576,
       "parentId": 4294967295,
       "name": "Ground",
       "locked": false,

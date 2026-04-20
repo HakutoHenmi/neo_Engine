@@ -23,6 +23,7 @@
 #include <Windows.h> // OutputDebugStringA
 #include <algorithm>
 #include <cmath>
+#include <filesystem> // ★追加: Skybox DDS検索用
 
 namespace Game {
 
@@ -92,6 +93,33 @@ void GameScene::Initialize(Engine::WindowDX* dx, const Engine::SceneParameters& 
 
 	// エディターUIの初期化
 	EditorUI::Initialize(renderer_);
+
+	// ★追加: Skybox用キューブマップの読み込み (00. 環境マップ)
+	// DDSファイルが Resources/Textures/ に配置されていれば読み込む
+	// 注意: rostock_laage_airport_4k.dds は使用禁止
+	{
+		namespace fs = std::filesystem;
+		std::string texDir = EditorUI::GetUnifiedProjectPath("Resources/Textures");
+		try {
+			for (const auto& entry : fs::directory_iterator(Engine::PathUtils::FromUTF8(texDir))) {
+				if (entry.is_regular_file() && entry.path().extension() == L".dds") {
+					std::string filename = Engine::PathUtils::ToUTF8(entry.path().filename().wstring());
+					// 使用禁止のファイルをスキップ
+					if (filename.find("rostock_laage_airport") != std::string::npos) continue;
+					
+					std::string ddsPath = Engine::PathUtils::ToUTF8(entry.path().wstring());
+					auto cubeHandle = renderer_->LoadCubeMap(ddsPath);
+					if (cubeHandle > 0) {
+						renderer_->SetSkyboxTexture(cubeHandle);
+						OutputDebugStringA(("[GameScene] Skybox loaded: " + filename + "\n").c_str());
+					}
+					break; // 最初に見つかったDDSを使用
+				}
+			}
+		} catch (...) {
+			OutputDebugStringA("[GameScene] Skybox DDS search failed, using default\n");
+		}
+	}
 
 	// パーティクルエディターの初期化
 	particleEditor_.Initialize();

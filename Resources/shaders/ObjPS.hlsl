@@ -1,4 +1,5 @@
 #include "Obj.hlsli"
+#include "Space.hlsli"
 
 Texture2D<float4> tex : register(t0);
 SamplerState smp : register(s0);
@@ -19,8 +20,12 @@ float4 main(VSOutput input) : SV_TARGET
     float4 texcolor = tex.Sample(smp, uv);
 
     // 基本ベクトル
-    float3 N = normalize(input.normal);
-    float3 V = normalize(cameraPos - input.worldpos.xyz);
+    float normalLen = length(input.normal);
+    float3 N = normalLen > 0.0001 ? input.normal / normalLen : float3(0, 1, 0);
+    
+    float3 viewDir = cameraPos - input.worldpos.xyz;
+    float viewDist = length(viewDir);
+    float3 V = viewDist > 0.0001 ? viewDir / viewDist : float3(0, 0, 1);
     
     // ベースカラー
     float3 albedo = texcolor.rgb * color.rgb;
@@ -100,6 +105,18 @@ float4 main(VSOutput input) : SV_TARGET
             }
         }
     }
+
+    // ★追加: 環境反射 (プロシージャル宇宙空間を直接計算)
+    float3 reflectDir = reflect(-V, N);
+    
+    // gEnvMap.SampleLevel(...) ではなく軽量シミュレータを利用する。これによってTDRハングとテクスチャ次元不一致を回避。
+    float3 envColor = GetProceduralSpaceColor(reflectDir, time);
+    
+    // フレネル近似 (Schlick) で視線角度に応じた反射強度
+    float fresnel = pow(max(1.0 - saturate(dot(N, V)), 0.0), 5.0);
+    // 反射の合成 (m_specular.x をreflectivityとして利用)
+    float reflectivity = m_specular.x * 0.5; // 控えめなデフォルト反射
+    finalColor = lerp(finalColor, envColor, reflectivity * fresnel);
 
     return float4(finalColor, texcolor.a * color.a);
 }
