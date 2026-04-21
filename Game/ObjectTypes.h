@@ -121,6 +121,7 @@ struct MeshRendererComponent : public Component {
 	std::vector<uint32_t> extraTextureHandles; // ★追加
 	std::vector<std::string> extraTexturePaths; // ★追加
 	std::string shaderName = "Default"; // ★追加
+	float reflectivity = 0.0f; // ★追加: 環境マップ反射率 (0.0〜1.0)
 	MeshRendererComponent() { type = ComponentType::MeshRenderer; }
 };
 

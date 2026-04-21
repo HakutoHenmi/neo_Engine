@@ -233,8 +233,8 @@ public:
 	}
 
 	// 通常メッシュ描画
-	void DrawMesh(MeshHandle mesh, TextureHandle texture, const Transform& transform, const Vector4& mulColor, const std::string& shaderName = "Default");
-	void DrawMesh(MeshHandle mesh, TextureHandle texture, const Matrix4x4& worldMatrix, const Vector4& mulColor, const std::string& shaderName = "Default");
+	void DrawMesh(MeshHandle mesh, TextureHandle texture, const Transform& transform, const Vector4& mulColor, const std::string& shaderName = "Default", float reflectivity = 0.0f);
+	void DrawMesh(MeshHandle mesh, TextureHandle texture, const Matrix4x4& worldMatrix, const Vector4& mulColor, const std::string& shaderName = "Default", float reflectivity = 0.0f);
 
 	// インスタンス描画の予約
 	void DrawMeshInstanced(MeshHandle mesh, TextureHandle texture, const Transform& transform, const Vector4& mulColor, 
@@ -366,6 +366,7 @@ private:
 		std::vector<Matrix4x4> bones;
 		bool isParticle = false;
 		Vector4 uvScaleOffset;
+		float reflectivity = 0.0f; // ★追加: 環境マップ反射率
 	};
 
 	struct InstanceData {

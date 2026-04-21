@@ -520,12 +520,13 @@ void Renderer::FlushDrawCalls() {
 #pragma warning(push)
 #pragma warning(disable : 4324)
 #endif
-		struct alignas(256) CBObj { Matrix4x4 world; float color[4]; };
+		struct alignas(256) CBObj { Matrix4x4 world; float color[4]; float reflectivity; float pad[3]; };
 #ifdef _MSC_VER
 #pragma warning(pop)
 #endif
 		CBObj ocb{}; ocb.world = dc.worldMatrix; 
 		ocb.color[0]=dc.color.x; ocb.color[1]=dc.color.y; ocb.color[2]=dc.color.z; ocb.color[3]=dc.color.w;
+		ocb.reflectivity = dc.reflectivity;
 		uint32_t oOff = upload_[fi].Allocate(sizeof(CBObj), 256);
 		if (oOff != UINT32_MAX) {
 			std::memcpy(upload_[fi].mapped + oOff, &ocb, sizeof(CBObj));
@@ -588,7 +589,7 @@ void Renderer::FlushDrawCalls() {
 			}
 			// ★修正: Toon系や新しく追加したリッチシェーダーはインスタンス描画非対応のためデフォルトにフォールバック
 			if (sName == "Toon" || sName == "ToonSkinning" || sName == "ToonOutline" || sName == "ToonSkinningOutline" ||
-				sName == "Hologram" || sName == "EmissiveGlow" || sName == "ForceField" || sName == "Dissolve" || sName == "Distortion") {
+				sName == "Hologram" || sName == "EmissiveGlow" || sName == "ForceField" || sName == "Dissolve" || sName == "Distortion" || sName == "Reflection") {
 				sName = defaultShaderName;
 			}
 
@@ -727,11 +728,11 @@ void Renderer::EndFrame() {
 #pragma warning(push)
 #pragma warning(disable : 4324)
 #endif
-			struct alignas(256) CBObj { Matrix4x4 world; float color[4]; };
+			struct alignas(256) CBObj { Matrix4x4 world; float color[4]; float reflectivity; float pad[3]; };
 #ifdef _MSC_VER
 #pragma warning(pop)
 #endif
-			CBObj objCb{}; objCb.world = dc.worldMatrix; 
+			CBObj objCb{}; objCb.world = dc.worldMatrix; objCb.reflectivity = dc.reflectivity;
 			uint32_t oOff = upload_[fi].Allocate(sizeof(CBObj), 256);
 			std::memcpy(upload_[fi].mapped + oOff, &objCb, sizeof(CBObj));
 			list_->SetGraphicsRootConstantBufferView(1, upload_[fi].buffer->GetGPUVirtualAddress() + oOff);
@@ -2423,11 +2424,11 @@ Model* Renderer::GetModel(MeshHandle handle) {
 	return models_[handle].get();
 }
 
-void Renderer::DrawMesh(MeshHandle meshH, TextureHandle texH, const Transform& tr, const Vector4& mulColor, const std::string& shaderName) {
-	DrawMesh(meshH, texH, tr.ToMatrix(), mulColor, shaderName);
+void Renderer::DrawMesh(MeshHandle meshH, TextureHandle texH, const Transform& tr, const Vector4& mulColor, const std::string& shaderName, float reflectivity) {
+	DrawMesh(meshH, texH, tr.ToMatrix(), mulColor, shaderName, reflectivity);
 }
 
-void Renderer::DrawMesh(MeshHandle meshH, TextureHandle texH, const Matrix4x4& worldMatrix, const Vector4& mulColor, const std::string& shaderName) {
+void Renderer::DrawMesh(MeshHandle meshH, TextureHandle texH, const Matrix4x4& worldMatrix, const Vector4& mulColor, const std::string& shaderName, float reflectivity) {
 	if (meshH == 0 || meshH >= models_.size())
 		return;
 
@@ -2437,6 +2438,7 @@ void Renderer::DrawMesh(MeshHandle meshH, TextureHandle texH, const Matrix4x4& w
 	dc.worldMatrix = worldMatrix;
 	dc.color = mulColor;
 	dc.shaderName = shaderName;
+	dc.reflectivity = reflectivity;
 	drawCalls_.push_back(dc);
 }
 
