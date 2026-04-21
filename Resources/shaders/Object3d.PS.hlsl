@@ -2,6 +2,7 @@
 #include "Space.hlsli"
 
 Texture2D<float4> tex : register(t0);
+TextureCube<float4> envMap : register(t3); // ★追加: キューブマップ用テクスチャ
 SamplerState smp : register(s0);
 
 // 距離減衰計算
@@ -110,8 +111,18 @@ float4 main(VSOutput input) : SV_TARGET
     // 視線の反射ベクトルを計算
     float3 reflectDir = reflect(-V, N);
     
-    // プロシージャル宇宙空間から環境色を取得 (軽量版でTDR回避)
-    float3 envColor = GetReflectionEnvColor(reflectDir, time);
+    // 環境色を取得 (useCubemapフラグで切り替え)
+    float3 envColor;
+    if (useCubemap != 0)
+    {
+        // Cubemapテクスチャ（t3）からサンプリング
+        envColor = envMap.Sample(smp, reflectDir).rgb;
+    }
+    else
+    {
+        // プロシージャル宇宙空間から環境色を取得 (軽量版でTDR回避)
+        envColor = GetReflectionEnvColor(reflectDir, time);
+    }
     
     // フレネル近似 (Schlick) で視線角度に応じた反射強度を計算
     // F0 = 基本反射率 (金属: 高い, 非金属: 低い)

@@ -520,13 +520,14 @@ void Renderer::FlushDrawCalls() {
 #pragma warning(push)
 #pragma warning(disable : 4324)
 #endif
-		struct alignas(256) CBObj { Matrix4x4 world; float color[4]; float reflectivity; float pad[3]; };
+		struct alignas(256) CBObj { Matrix4x4 world; float color[4]; float reflectivity; uint32_t useCubemap; float pad[2]; };
 #ifdef _MSC_VER
 #pragma warning(pop)
 #endif
 		CBObj ocb{}; ocb.world = dc.worldMatrix; 
 		ocb.color[0]=dc.color.x; ocb.color[1]=dc.color.y; ocb.color[2]=dc.color.z; ocb.color[3]=dc.color.w;
 		ocb.reflectivity = dc.reflectivity;
+		ocb.useCubemap = dc.useCubemap ? 1 : 0;
 		uint32_t oOff = upload_[fi].Allocate(sizeof(CBObj), 256);
 		if (oOff != UINT32_MAX) {
 			std::memcpy(upload_[fi].mapped + oOff, &ocb, sizeof(CBObj));
@@ -728,11 +729,11 @@ void Renderer::EndFrame() {
 #pragma warning(push)
 #pragma warning(disable : 4324)
 #endif
-			struct alignas(256) CBObj { Matrix4x4 world; float color[4]; float reflectivity; float pad[3]; };
+			struct alignas(256) CBObj { Matrix4x4 world; float color[4]; float reflectivity; uint32_t useCubemap; float pad[2]; };
 #ifdef _MSC_VER
 #pragma warning(pop)
 #endif
-			CBObj objCb{}; objCb.world = dc.worldMatrix; objCb.reflectivity = dc.reflectivity;
+			CBObj objCb{}; objCb.world = dc.worldMatrix; objCb.reflectivity = dc.reflectivity; objCb.useCubemap = dc.useCubemap ? 1 : 0;
 			uint32_t oOff = upload_[fi].Allocate(sizeof(CBObj), 256);
 			std::memcpy(upload_[fi].mapped + oOff, &objCb, sizeof(CBObj));
 			list_->SetGraphicsRootConstantBufferView(1, upload_[fi].buffer->GetGPUVirtualAddress() + oOff);
@@ -2109,7 +2110,7 @@ float4 main(PSIn i) : SV_TARGET { return i.color; }
 
 		// ★追加: 反射(映り込み)用シェーダー
 		auto vsReflection = CompileShaderFromFile(L"Resources/shaders/ObjVS.hlsl", "main", "vs_5_0");
-		auto psReflection = CompileShaderFromFile(L"Resources/shaders/ObjPS.hlsl", "main", "ps_5_0");
+		auto psReflection = CompileShaderFromFile(L"Resources/shaders/Object3d.PS.hlsl", "main", "ps_5_0");
 		if (vsReflection && psReflection) {
 			CreatePSO("Reflection", vsReflection.Get(), psReflection.Get());
 		}
@@ -2211,6 +2212,16 @@ float4 main(PSIn i) : SV_TARGET { return i.color; }
 	// ★追加: Skybox メッシュ＆パイプライン初期化
 	InitSkyboxMesh();
 	InitSkyboxPipeline();
+
+	// ★追加: リング、シリンダー用シェーダー
+	CreateShaderPipelineTransparent("BoostRing", L"Resources/shaders/BoostRingVS.hlsl", L"Resources/shaders/BoostRingPS.hlsl", true);
+	CreateShaderPipelineTransparent("EnergyCylinder", L"Resources/shaders/EnergyCylinderVS.hlsl", L"Resources/shaders/EnergyCylinderPS.hlsl", true);
+
+	// ★さらに未登録だったエフェクト群も追加登録 (JumpPadEnergyは加算、他は通常アルファブレンド)
+	CreateShaderPipelineTransparent("JumpPadEnergy", L"Resources/shaders/JumpPadEnergyVS.hlsl", L"Resources/shaders/JumpPadEnergyPS.hlsl", true);
+	CreateShaderPipelineTransparent("Heathaze", L"Resources/shaders/HeathazeVS.hlsl", L"Resources/shaders/HeathazePS.hlsl", false);
+	CreateShaderPipelineTransparent("Lift", L"Resources/shaders/LiftVS.hlsl", L"Resources/shaders/LiftPS.hlsl", false);
+	CreateShaderPipelineTransparent("TimedBlock", L"Resources/shaders/TimedBlockVS.hlsl", L"Resources/shaders/TimedBlockPS.hlsl", false);
 
 	return true;
 }
@@ -2424,11 +2435,11 @@ Model* Renderer::GetModel(MeshHandle handle) {
 	return models_[handle].get();
 }
 
-void Renderer::DrawMesh(MeshHandle meshH, TextureHandle texH, const Transform& tr, const Vector4& mulColor, const std::string& shaderName, float reflectivity) {
-	DrawMesh(meshH, texH, tr.ToMatrix(), mulColor, shaderName, reflectivity);
+void Renderer::DrawMesh(MeshHandle meshH, TextureHandle texH, const Transform& tr, const Vector4& mulColor, const std::string& shaderName, float reflectivity, bool useCubemap) {
+	DrawMesh(meshH, texH, tr.ToMatrix(), mulColor, shaderName, reflectivity, useCubemap);
 }
 
-void Renderer::DrawMesh(MeshHandle meshH, TextureHandle texH, const Matrix4x4& worldMatrix, const Vector4& mulColor, const std::string& shaderName, float reflectivity) {
+void Renderer::DrawMesh(MeshHandle meshH, TextureHandle texH, const Matrix4x4& worldMatrix, const Vector4& mulColor, const std::string& shaderName, float reflectivity, bool useCubemap) {
 	if (meshH == 0 || meshH >= models_.size())
 		return;
 
@@ -2439,6 +2450,7 @@ void Renderer::DrawMesh(MeshHandle meshH, TextureHandle texH, const Matrix4x4& w
 	dc.color = mulColor;
 	dc.shaderName = shaderName;
 	dc.reflectivity = reflectivity;
+	dc.useCubemap = useCubemap;
 	drawCalls_.push_back(dc);
 }
 
@@ -3511,6 +3523,88 @@ void Renderer::UpdateDynamicMesh(MeshHandle handle, const std::vector<VertexData
 	if (handle < models_.size() && models_[handle]) {
 		models_[handle]->UpdateVertices(vertices);
 	}
+}
+
+Renderer::MeshHandle Renderer::CreateRingMesh(float outerRadius, float innerRadius, uint32_t segments) {
+	std::vector<VertexData> vertices;
+	std::vector<uint32_t> indices;
+
+	if (segments < 3) segments = 3;
+
+	for (uint32_t i = 0; i <= segments; ++i) {
+		float angle = (DirectX::XM_2PI * i) / segments;
+		float c = std::cos(angle);
+		float s = std::sin(angle);
+		float u = static_cast<float>(i) / segments;
+
+		VertexData vOuter{};
+		vOuter.position = { outerRadius * c, 0.0f, outerRadius * s, 1.0f };
+		vOuter.normal = { 0.0f, 1.0f, 0.0f };
+		vOuter.texcoord = { u, 0.0f };
+
+		VertexData vInner{};
+		vInner.position = { innerRadius * c, 0.0f, innerRadius * s, 1.0f };
+		vInner.normal = { 0.0f, 1.0f, 0.0f };
+		vInner.texcoord = { u, 1.0f };
+
+		vertices.push_back(vOuter);
+		vertices.push_back(vInner);
+	}
+
+	for (uint32_t i = 0; i < segments; ++i) {
+		uint32_t start = i * 2;
+		indices.push_back(start);
+		indices.push_back(start + 1);
+		indices.push_back(start + 2);
+
+		indices.push_back(start + 2);
+		indices.push_back(start + 1);
+		indices.push_back(start + 3);
+	}
+
+	return CreateDynamicMesh(vertices, indices);
+}
+
+Renderer::MeshHandle Renderer::CreateCylinderMesh(float radius, float height, uint32_t segments) {
+	std::vector<VertexData> vertices;
+	std::vector<uint32_t> indices;
+
+	if (segments < 3) segments = 3;
+
+	float halfH = height * 0.5f;
+
+	for (uint32_t i = 0; i <= segments; ++i) {
+		float angle = (DirectX::XM_2PI * i) / segments;
+		float c = std::cos(angle);
+		float s = std::sin(angle);
+		float u = static_cast<float>(i) / segments;
+
+		VertexData vTop{};
+		vTop.position = { radius * c, halfH, radius * s, 1.0f };
+		vTop.normal = { c, 0.0f, s };
+		vTop.texcoord = { u, 0.0f };
+
+		VertexData vBottom{};
+		vBottom.position = { radius * c, -halfH, radius * s, 1.0f };
+		vBottom.normal = { c, 0.0f, s };
+		vBottom.texcoord = { u, 1.0f };
+
+		vertices.push_back(vTop);
+		vertices.push_back(vBottom);
+	}
+
+	for (uint32_t i = 0; i < segments; ++i) {
+		uint32_t start = i * 2;
+		indices.push_back(start);
+		indices.push_back(start + 1);
+		indices.push_back(start + 2);
+
+		indices.push_back(start + 2);
+		indices.push_back(start + 1);
+		indices.push_back(start + 3);
+	}
+
+	return CreateDynamicMesh(vertices, indices);
 }
 
 
