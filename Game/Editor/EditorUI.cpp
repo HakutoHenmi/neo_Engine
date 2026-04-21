@@ -117,6 +117,7 @@ static std::vector<entt::entity> RestoreSceneFromJson(GameScene* scene, const js
 					if (comp.contains("color")) c.color = {comp["color"][0], comp["color"][1], comp["color"][2], comp["color"][3]};
 					if (comp.contains("uvTiling")) c.uvTiling = {comp["uvTiling"][0], comp["uvTiling"][1]};
 					if (comp.contains("uvOffset")) c.uvOffset = {comp["uvOffset"][0], comp["uvOffset"][1]};
+					if (comp.contains("reflectivity")) c.reflectivity = comp["reflectivity"].get<float>();
 					if (!c.modelPath.empty()) c.modelHandle = Engine::Renderer::GetInstance()->LoadObjMesh(c.modelPath);
 					if (!c.texturePath.empty()) c.textureHandle = Engine::Renderer::GetInstance()->LoadTexture2D(c.texturePath);
 				} else if (type == "BoxCollider") {
@@ -548,7 +549,7 @@ static std::string SerializeEntity(entt::registry& registry, entt::entity entity
 	if (auto* cp = registry.try_get<MeshRendererComponent>(entity)) {
 		addComma();
 		ss << "        {\"type\": \"MeshRenderer\", \"enabled\": " << (cp->enabled ? "true" : "false") << ", \"modelPath\": \"" << EscapeJson(cp->modelPath) << "\", \"texturePath\": \""
-		   << EscapeJson(cp->texturePath) << "\", \"shaderName\": \"" << EscapeJson(cp->shaderName) << "\", \"color\": [" << cp->color.x << "," << cp->color.y << "," << cp->color.z << "," << cp->color.w << "], \"uvTiling\": [" << cp->uvTiling.x << "," << cp->uvTiling.y << "], \"uvOffset\": [" << cp->uvOffset.x << "," << cp->uvOffset.y << "]}";
+		   << EscapeJson(cp->texturePath) << "\", \"shaderName\": \"" << EscapeJson(cp->shaderName) << "\", \"color\": [" << cp->color.x << "," << cp->color.y << "," << cp->color.z << "," << cp->color.w << "], \"uvTiling\": [" << cp->uvTiling.x << "," << cp->uvTiling.y << "], \"uvOffset\": [" << cp->uvOffset.x << "," << cp->uvOffset.y << "], \"reflectivity\": " << cp->reflectivity << "}";
 	}
 	if (auto* cp = registry.try_get<BoxColliderComponent>(entity)) {
 		addComma();
@@ -1952,6 +1953,12 @@ void EditorUI::ShowInspector(GameScene* scene) {
 					ImGui::ColorEdit4("Base Color", &cp->color.x);
 					ImGui::DragFloat2("UV Tiling", &cp->uvTiling.x, 0.01f);
 					ImGui::DragFloat2("UV Offset", &cp->uvOffset.x, 0.01f);
+
+					// ★追加: Reflection シェーダー時に反射率スライダーを表示
+					if (cp->shaderName == "Reflection") {
+						ImGui::SliderFloat("Reflectivity", &cp->reflectivity, 0.0f, 1.0f, "%.2f");
+					}
+
 					if (ImGui::Button("Remove##MR")) registry.remove<MeshRendererComponent>(entity);
 				}
 			}

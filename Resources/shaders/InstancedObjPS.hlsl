@@ -1,5 +1,7 @@
 #pragma pack_matrix(row_major)
 
+#include "Space.hlsli"
+
 struct VSOut
 {
     float4 svpos : SV_POSITION;
@@ -63,7 +65,16 @@ float4 main(VSOut input) : SV_TARGET {
 
     for(int i=0; i<MAX_DIR; ++i) if(gDir[i].enabled) finalColor += BlinnPhong(normalize(-gDir[i].dir), V, N, gDir[i].color, albedo) * shadowFactor;
     for(int i=0; i<MAX_POINT; ++i) if(gPoint[i].enabled) { float3 Lv = gPoint[i].pos - input.worldPos; float d = length(Lv); if(d < gPoint[i].range) finalColor += BlinnPhong(normalize(Lv), V, N, gPoint[i].color, albedo) * GetAttenuation(gPoint[i].atten, d); }
-    for(int i=0; i<MAX_SPOT; ++i) if(gSpot[i].enabled) { float3 Lv = gSpot[i].pos - input.worldPos; float d = length(Lv); if(d < gSpot[i].range) { float3 L = normalize(Lv); float c = dot(L, normalize(-gSpot[i].dir)); float s = smoothstep(gSpot[i].outer, gSpot[i].inner, c); finalColor += BlinnPhong(L, V, N, gSpot[i].color, albedo) * GetAttenuation(gSpot[i].atten, d) * s; } }
+    for(int k=0; k<MAX_SPOT; ++k) if(gSpot[k].enabled) { float3 Lv = gSpot[k].pos - input.worldPos; float d = length(Lv); if(d < gSpot[k].range) { float3 L = normalize(Lv); float c = dot(L, normalize(-gSpot[k].dir)); float s = smoothstep(gSpot[k].outer, gSpot[k].inner, c); finalColor += BlinnPhong(L, V, N, gSpot[k].color, albedo) * GetAttenuation(gSpot[k].atten, d) * s; } }
     
+    // ★環境マッピング: 周囲の映り込み
+    float3 reflectDir = reflect(-V, N);
+    float3 envColor = GetReflectionEnvColor(reflectDir, gTime);
+    float F0 = 0.04;
+    float fresnel = F0 + (1.0 - F0) * pow(max(1.0 - saturate(dot(N, V)), 0.0), 5.0);
+    float reflectivity = 0.5;
+    float reflectAmount = reflectivity * saturate(fresnel + reflectivity * 0.5);
+    finalColor = lerp(finalColor, envColor, reflectAmount);
+
     return float4(finalColor, tex.a * input.color.a);
 }
