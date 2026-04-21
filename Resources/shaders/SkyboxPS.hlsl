@@ -11,6 +11,9 @@ cbuffer CBFrame : register(b0) {
     matrix gViewProj;
     float3 gCameraPos;
     float  gTime;
+    float4 gWindParams;
+    float3 gPlayerPos;
+    uint   gUseCubemapBackground;
 };
 
 struct PSIn {
@@ -21,8 +24,14 @@ struct PSIn {
 float4 main(PSIn p) : SV_TARGET {
     float3 dir = normalize(p.texCoord);
     
-    // 超高速化＆軽量化された美しい宇宙空間の生成（TDRの原因を取り除いた完全版）
-    float3 color = GetProceduralSpaceColor(dir, gTime);
+    float3 color;
+    if (gUseCubemapBackground != 0) {
+        // Cubemapから景色をサンプリング
+        color = gCubeMap.Sample(gSampler, dir).rgb;
+    } else {
+        // 超高速化＆軽量化された美しい宇宙空間の生成（TDRの原因を取り除いた完全版）
+        color = GetProceduralSpaceColor(dir, gTime);
+    }
 
     return float4(color, 1.0);
 }
