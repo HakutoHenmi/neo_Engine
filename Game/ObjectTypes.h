@@ -122,6 +122,7 @@ struct MeshRendererComponent : public Component {
 	std::vector<std::string> extraTexturePaths; // ★追加
 	std::string shaderName = "Default"; // ★追加
 	float reflectivity = 0.0f; // ★追加: 環境マップ反射率 (0.0〜1.0)
+	bool useCubemap = true; // ★追加: キューブマップ使用判定 (初期値trueで課題要件をデフォルトに)
 	MeshRendererComponent() { type = ComponentType::MeshRenderer; }
 };
 

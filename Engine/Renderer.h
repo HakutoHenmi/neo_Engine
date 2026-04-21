@@ -226,6 +226,10 @@ public:
 	MeshHandle CreateDynamicMesh(const std::vector<VertexData>& vertices, const std::vector<uint32_t>& indices);
 	void UpdateDynamicMesh(MeshHandle handle, const std::vector<VertexData>& vertices);
 
+	// ★追加: プリミティブ形状の動的生成
+	MeshHandle CreateRingMesh(float outerRadius, float innerRadius, uint32_t segments);
+	MeshHandle CreateCylinderMesh(float radius, float height, uint32_t segments);
+
 	// ★追加: テクスチャのSRVハンドルを取得 (ImGui::Imageでサムネイル表示用)
 	D3D12_GPU_DESCRIPTOR_HANDLE GetTextureSrvGpu(TextureHandle handle) const {
 		if (handle < textures_.size()) return textures_[handle].srvGpu;
@@ -233,8 +237,8 @@ public:
 	}
 
 	// 通常メッシュ描画
-	void DrawMesh(MeshHandle mesh, TextureHandle texture, const Transform& transform, const Vector4& mulColor, const std::string& shaderName = "Default", float reflectivity = 0.0f);
-	void DrawMesh(MeshHandle mesh, TextureHandle texture, const Matrix4x4& worldMatrix, const Vector4& mulColor, const std::string& shaderName = "Default", float reflectivity = 0.0f);
+	void DrawMesh(MeshHandle mesh, TextureHandle texture, const Transform& transform, const Vector4& mulColor, const std::string& shaderName = "Default", float reflectivity = 0.0f, bool useCubemap = false);
+	void DrawMesh(MeshHandle mesh, TextureHandle texture, const Matrix4x4& worldMatrix, const Vector4& mulColor, const std::string& shaderName = "Default", float reflectivity = 0.0f, bool useCubemap = false);
 
 	// インスタンス描画の予約
 	void DrawMeshInstanced(MeshHandle mesh, TextureHandle texture, const Transform& transform, const Vector4& mulColor, 
@@ -367,6 +371,7 @@ private:
 		bool isParticle = false;
 		Vector4 uvScaleOffset;
 		float reflectivity = 0.0f; // ★追加: 環境マップ反射率
+		bool useCubemap = false; // ★追加: キューブマップ使用フラグ
 	};
 
 	struct InstanceData {

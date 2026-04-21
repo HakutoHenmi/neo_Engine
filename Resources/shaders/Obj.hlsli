@@ -16,7 +16,8 @@ cbuffer WorldTransform : register(b1)
     matrix world; // ワールド行列
     float4 color; // オブジェクトカラー
     float reflectivity; // ★追加: 環境マップ反射率
-    float3 pad_b1;
+    uint useCubemap; // ★追加: キューブマップ使用フラグ
+    float2 pad_b1;
 };
 
 // 方向光源構造体
