@@ -7,15 +7,15 @@
   },
   "objects": [
     {
-      "id": 2,
-      "parentId": 0,
+      "id": 1048578,
+      "parentId": 4294967295,
       "name": "Cube",
       "locked": false,
       "translate": [0, 0, 0],
       "rotate": [0, 0, 0],
       "scale": [1, 1, 1],
       "components": [
-        {"type": "MeshRenderer", "enabled": true, "modelPath": "Resources/Models/cube/cube.obj", "texturePath": "Resources/Textures/white1x1.png", "shaderName": "Reflection", "color": [1,1,1,1], "uvTiling": [1,1], "uvOffset": [0,0], "reflectivity": 1}
+        {"type": "MeshRenderer", "enabled": true, "modelPath": "Resources/Models/cube/cube.obj", "texturePath": "Resources/Textures/white1x1.png", "shaderName": "Reflection", "color": [1,1,1,1], "uvTiling": [1,1], "uvOffset": [0,0], "reflectivity": 1, "useCubemap": true}
       ]
     },
     {

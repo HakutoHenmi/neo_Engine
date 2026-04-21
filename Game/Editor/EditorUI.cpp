@@ -2653,6 +2653,11 @@ void EditorUI::ShowSceneSettings(Engine::Renderer* renderer) {
 	// Removed ImGui::Begin("Scene Settings")
 	bool en = renderer->GetPostProcessEnabled();
 	if (ImGui::Checkbox("Post Process", &en)) renderer->SetPostProcessEnabled(en);
+
+	bool useCubemapBg = renderer->GetUseCubemapBackground();
+	if (ImGui::Checkbox("Use Cubemap Background", &useCubemapBg)) {
+		renderer->SetUseCubemapBackground(useCubemapBg);
+	}
 }
 
 void EditorUI::ShowConsole() {

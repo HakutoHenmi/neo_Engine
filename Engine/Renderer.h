@@ -173,6 +173,11 @@ public:
 	void SetPostProcessParams(const PostProcessParams& p) { ppParams_ = p; }
 	const PostProcessParams& GetPostProcessParams() const { return ppParams_; }
 
+	void SetUseCubemapBackground(bool use) { 
+		cbFrame_.useCubemapBackground = use ? 1 : 0; 
+	}
+	bool GetUseCubemapBackground() const { return cbFrame_.useCubemapBackground != 0; }
+
 	D3D12_GPU_DESCRIPTOR_HANDLE GetPostProcessSRV() const { return ppSrvGpu_; }
 
 	// ★追加: Gameシーンの最終出力テクスチャ。エディタUIからここを描画する。
@@ -556,7 +561,7 @@ private:
 		float time = 0.0f;
 		Vector4 windParams = {1.0f, 0.0f, 0.5f, 0.2f}; // x,y:方向, z:速度, w:強さ
 		Vector3 playerPos = {0.0f, 0.0f, 0.0f};
-		float pad;
+		uint32_t useCubemapBackground = 1; // ★追加: 背景も環境マップを使うか
 	} cbFrame_{};
 #ifdef _MSC_VER
 #pragma warning(pop)
