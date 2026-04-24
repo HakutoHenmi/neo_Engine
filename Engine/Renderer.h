@@ -525,6 +525,7 @@ private:
 	D3D12_GPU_DESCRIPTOR_HANDLE backdropSrv_{};
 
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> psoPP_;
+	Microsoft::WRL::ComPtr<ID3D12PipelineState> psoPPDefault_; // ★追加: デフォルトPSOバックアップ
 
 	// ★追加: 最終テクスチャをバックバッファにそのままコピーして映すパイプライン
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> psoCopy_;

@@ -3045,6 +3045,7 @@ float4 main(float4 svpos:SV_POSITION, float2 uv:TEXCOORD0) : SV_TARGET {
 		pso.DSVFormat = DXGI_FORMAT_UNKNOWN;
 		if (FAILED(dev_->CreateGraphicsPipelineState(&pso, IID_PPV_ARGS(&psoPP_))))
 			return false;
+		psoPPDefault_ = psoPP_; // ★追加: デフォルトPSOをバックアップ
 
 		// ★追加：PostProcessと同様、そのままテクスチャをコピーするだけのパイプライン
 		static const char* kPSCopy = R"(
@@ -3065,6 +3066,76 @@ float4 main(float4 svpos:SV_POSITION, float2 uv:TEXCOORD0) : SV_TARGET {
 			Microsoft::WRL::ComPtr<ID3D12PipelineState> psoRich;
 			if (SUCCEEDED(dev_->CreateGraphicsPipelineState(&pso, IID_PPV_ARGS(&psoRich)))) {
 				pipelines_["Rich"] = psoRich;
+			}
+		}
+
+		// ★追加: Anime PostProcess パイプライン
+		auto psAnime = CompileShaderFromFile(L"Resources/shaders/AnimePostProcess.hlsl", "main", "ps_5_0");
+		if (psAnime) {
+			pso.PS = { psAnime->GetBufferPointer(), psAnime->GetBufferSize() };
+			Microsoft::WRL::ComPtr<ID3D12PipelineState> psoAnime;
+			if (SUCCEEDED(dev_->CreateGraphicsPipelineState(&pso, IID_PPV_ARGS(&psoAnime)))) {
+				pipelines_["Anime"] = psoAnime;
+			}
+		}
+
+		// ★追加: Grayscale ポストエフェクト
+		auto psGray = CompileShaderFromFile(L"Resources/shaders/GrayscalePost.hlsl", "main", "ps_5_0");
+		if (psGray) {
+			pso.PS = { psGray->GetBufferPointer(), psGray->GetBufferSize() };
+			Microsoft::WRL::ComPtr<ID3D12PipelineState> psoGray;
+			if (SUCCEEDED(dev_->CreateGraphicsPipelineState(&pso, IID_PPV_ARGS(&psoGray)))) {
+				pipelines_["Grayscale"] = psoGray;
+			}
+		}
+
+		// ★追加: Smoothing ポストエフェクト（平滑化 / ボックスフィルタ）
+		auto psSmooth = CompileShaderFromFile(L"Resources/shaders/SmoothingPost.hlsl", "main", "ps_5_0");
+		if (psSmooth) {
+			pso.PS = { psSmooth->GetBufferPointer(), psSmooth->GetBufferSize() };
+			Microsoft::WRL::ComPtr<ID3D12PipelineState> psoSmooth;
+			if (SUCCEEDED(dev_->CreateGraphicsPipelineState(&pso, IID_PPV_ARGS(&psoSmooth)))) {
+				pipelines_["Smoothing"] = psoSmooth;
+			}
+		}
+
+		// ★追加: GaussianFilter ポストエフェクト（ガウシアンぼかし）
+		auto psGauss = CompileShaderFromFile(L"Resources/shaders/GaussianPost.hlsl", "main", "ps_5_0");
+		if (psGauss) {
+			pso.PS = { psGauss->GetBufferPointer(), psGauss->GetBufferSize() };
+			Microsoft::WRL::ComPtr<ID3D12PipelineState> psoGauss;
+			if (SUCCEEDED(dev_->CreateGraphicsPipelineState(&pso, IID_PPV_ARGS(&psoGauss)))) {
+				pipelines_["GaussianFilter"] = psoGauss;
+			}
+		}
+
+		// ★追加: OutlinePost ポストエフェクト（エッジ検出アウトライン）
+		auto psOutlinePost = CompileShaderFromFile(L"Resources/shaders/OutlinePost.hlsl", "main", "ps_5_0");
+		if (psOutlinePost) {
+			pso.PS = { psOutlinePost->GetBufferPointer(), psOutlinePost->GetBufferSize() };
+			Microsoft::WRL::ComPtr<ID3D12PipelineState> psoOutlinePost;
+			if (SUCCEEDED(dev_->CreateGraphicsPipelineState(&pso, IID_PPV_ARGS(&psoOutlinePost)))) {
+				pipelines_["OutlinePost"] = psoOutlinePost;
+			}
+		}
+
+		// ★追加: RadialBlur ポストエフェクト（放射状ぼかし）
+		auto psRadial = CompileShaderFromFile(L"Resources/shaders/RadialBlurPost.hlsl", "main", "ps_5_0");
+		if (psRadial) {
+			pso.PS = { psRadial->GetBufferPointer(), psRadial->GetBufferSize() };
+			Microsoft::WRL::ComPtr<ID3D12PipelineState> psoRadial;
+			if (SUCCEEDED(dev_->CreateGraphicsPipelineState(&pso, IID_PPV_ARGS(&psoRadial)))) {
+				pipelines_["RadialBlur"] = psoRadial;
+			}
+		}
+
+		// ★追加: Random ポストエフェクト（ランダムノイズ）
+		auto psRandom = CompileShaderFromFile(L"Resources/shaders/RandomPost.hlsl", "main", "ps_5_0");
+		if (psRandom) {
+			pso.PS = { psRandom->GetBufferPointer(), psRandom->GetBufferSize() };
+			Microsoft::WRL::ComPtr<ID3D12PipelineState> psoRandom;
+			if (SUCCEEDED(dev_->CreateGraphicsPipelineState(&pso, IID_PPV_ARGS(&psoRandom)))) {
+				pipelines_["Random"] = psoRandom;
 			}
 		}
 	}
@@ -3186,9 +3257,12 @@ float4 main(float4 svpos:SV_POSITION, float2 uv:TEXCOORD0) : SV_TARGET {
 }
 
 void Renderer::SetPostEffect(const std::string& name) {
-	// 空文字の場合は無効化
+	// 空文字の場合はデフォルト（CRT）に戻す
 	if (name.empty()) {
-		ppEnabled_ = false;
+		if (psoPPDefault_) {
+			psoPP_ = psoPPDefault_;
+			ppEnabled_ = true;
+		}
 		return;
 	}
 

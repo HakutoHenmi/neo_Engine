@@ -2651,8 +2651,42 @@ void EditorUI::ShowProject([[maybe_unused]] Engine::Renderer* renderer, [[maybe_
 
 void EditorUI::ShowSceneSettings(Engine::Renderer* renderer) {
 	// Removed ImGui::Begin("Scene Settings")
-	bool en = renderer->GetPostProcessEnabled();
-	if (ImGui::Checkbox("Post Process", &en)) renderer->SetPostProcessEnabled(en);
+	auto pp = renderer->GetPostProcessParams();
+	bool ch = false;
+
+	// ★ポストエフェクト種類のドロップダウン（常時表示）
+	static const char* ppTypes[] = { "None", "Default(CRT)", "Rich", "Anime", "Grayscale", "Smoothing", "GaussianFilter", "OutlinePost", "RadialBlur", "Random" };
+	static int currentPP = 1; // デフォルトはCRT
+	if (ImGui::BeginCombo("PostEffect", ppTypes[currentPP])) {
+		for (int n = 0; n < IM_ARRAYSIZE(ppTypes); n++) {
+			bool isSelected = (currentPP == n);
+			if (ImGui::Selectable(ppTypes[n], isSelected)) {
+				currentPP = n;
+				if (currentPP == 0) {
+					renderer->SetPostProcessEnabled(false);
+				} else if (currentPP == 1) {
+					renderer->SetPostEffect("");
+					renderer->SetPostProcessEnabled(true);
+				} else {
+					renderer->SetPostEffect(ppTypes[currentPP]);
+				}
+			}
+			if (isSelected) ImGui::SetItemDefaultFocus();
+		}
+		ImGui::EndCombo();
+	}
+
+	// パラメータ（ポストエフェクト有効時のみ表示）
+	if (currentPP > 0) {
+		ImGui::Separator();
+		ch |= ImGui::DragFloat("Vignette", &pp.vignette, 0.01f);
+		ch |= ImGui::DragFloat("Noise", &pp.noiseStrength, 0.01f);
+		ch |= ImGui::DragFloat("Distortion", &pp.distortion, 0.001f);
+		ch |= ImGui::DragFloat("ChromaShift", &pp.chromaShift, 0.0001f);
+		ch |= ImGui::DragFloat("Scanline", &pp.scanline, 0.01f);
+		ch |= ImGui::DragFloat("SAN", &pp.san, 0.01f, 0.0f, 1.0f);
+	}
+	if (ch) renderer->SetPostProcessParams(pp);
 
 	bool useCubemapBg = renderer->GetUseCubemapBackground();
 	if (ImGui::Checkbox("Use Cubemap Background", &useCubemapBg)) {
