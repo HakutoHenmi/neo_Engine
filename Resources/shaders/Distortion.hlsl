@@ -60,42 +60,38 @@ float4 ps_main(VSOut i) : SV_TARGET {
     screenUV.x = screenUV.x * 0.5f + 0.5f;
     screenUV.y = -screenUV.y * 0.5f + 0.5f;
 
-    // --- Premium Distortion Adjustments ---
+    // 中心(0.5, 0.5)からの距離
+    float dist = length(i.uv - 0.5f);
     
-    // --- Single Clean Ripple Logic ---
-    
-    // 中心(0.5, 0.5)からの距離と方向を計算
-    float2 distDir = i.uv - 0.5f;
-    float dist = length(distDir);
-    float2 dir = normalize(distDir);
-    
-    // 境界チェック: ゼロ除算を避ける
-    if (dist < 0.0001f) dir = float2(0, 0);
+    // i.color.a は 1.0(開始) から 0.0(終了) へ変化する
+    float progress = 1.0f - i.color.a;
 
-    // ★単一の波紋(リング)を作る
-    // 外側に行くほど歪むのではなく、特定の「輪」の部分だけが歪むように設計
-    float ringWidth = 0.15f;
-    float ringPos = 0.3f; // リングの位置
-    float ringMask = smoothstep(ringWidth, 0.0f, abs(dist - ringPos));
-    
-    // 放射状グラデーション(全体的なぼかし)
-    float radialFalloff = smoothstep(0.5f, 0.2f, dist);
-    
-    // 歪み強度
-    float strength = i.color.a * 0.15f * ringMask * radialFalloff;
-    
-    // 法線マップを1層だけ使用（ディテール用、スクロールなし）
+    // 波紋が外側に広がりながら消えていく自然な表現
+    // ポリゴンの外枠がパツンと切れないようにエッジを柔らかくする
+    float edgeMask = smoothstep(0.5f, 0.35f, dist);
+
+    // 中心からドーナツ状にフェードアウトするマスク
+    // progressが進むにつれて、内側(穴)が大きくなり、外側へと波紋の帯が移動していく
+    float ringInner = progress * 0.4f; // 穴の広がる速度
+    float ringOuter = ringInner + 0.15f; // 波紋の帯の太さ
+    float waveMask = smoothstep(ringInner - 0.05f, ringInner, dist) * smoothstep(ringOuter, ringOuter - 0.1f, dist);
+
+    // 法線マップから歪み方向を取得（rg成分がXYの歪み）
     float3 n = gDistortionMap.Sample(gSmp, i.uv).rgb * 2.0f - 1.0f;
     
-    // 歪み方向: 中心から外側へのベクトルをベースに、法線の微細な凹凸を混ぜる
-    float2 offset = dir * strength + n.xy * strength * 0.3f;
+    // 歪みの強度
+    // i.color.a自体で全体的なフェードアウトもかけつつ、waveMaskでリング状にする
+    float strength = i.color.a * 0.2f * edgeMask * waveMask;
+    
+    // 歪みオフセット
+    float2 offset = n.xy * strength;
 
-    // Clamp to screen edges
+    // クランプしてバックドロップからサンプリング
     float2 distortedUV = clamp(screenUV + offset, 0.001f, 0.999f);
     float3 sceneColor = gBackdropTex.Sample(gSmp, distortedUV).rgb;
     
-    // Chromatic aberration (屈折が強い場所ほど強く、弱い場所はスキップ)
-    float aberration = 0.25f * strength; 
+    // 色収差（Chromatic aberration）
+    float aberration = 0.5f * strength; 
     [branch]
     if (aberration > 0.001f) {
         float3 colorR = gBackdropTex.Sample(gSmp, distortedUV + float2(offset.x * aberration, 0)).rgb;
@@ -104,6 +100,5 @@ float4 ps_main(VSOut i) : SV_TARGET {
         sceneColor.b = colorB.b;
     }
 
-    // Tint and Final Color
-    return float4(sceneColor * i.color.rgb, 1.0f);
+    return float4(sceneColor, 1.0f); // i.color.rgb は乗算せずシーンの色のまま返す
 }

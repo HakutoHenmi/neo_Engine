@@ -52,7 +52,8 @@ enum class ComponentType {
 	River, // ★追加: 川コンポーネント
 	Variable, // ★追加: 汎用変数
 	WorldSpaceUI, // ★追加: ワールド空間UI
-	Motion // ★追加: モーションエディタ用
+	Motion, // ★追加: モーションエディタ用
+	PlayerAction // ★追加: プレイヤーアクション（攻撃・パリィ・回避）
 };
 struct Component { 
 	ComponentType type = ComponentType::MeshRenderer; 
@@ -410,6 +411,22 @@ struct WorldSpaceUIComponent : public Component {
 	float barWidth = 60.0f;
 	float barHeight = 6.0f;
 	WorldSpaceUIComponent() { type = ComponentType::WorldSpaceUI; }
+};
+
+// ★追加: ダメージ数字コンポーネント
+struct DamageNumberComponent : public Component {
+	float damage = 0.0f;
+	float lifetime = 1.0f;
+	float maxLifetime = 1.0f;
+	DirectX::XMFLOAT3 color = {1.0f, 1.0f, 1.0f};
+	DirectX::XMFLOAT3 startPos = {0,0,0};
+	DamageNumberComponent() { type = static_cast<ComponentType>(999); } // enumは不要
+};
+
+// ★追加: 自動削除コンポーネント
+struct AutoDestroyComponent : public Component {
+	float timer = 1.0f;
+	AutoDestroyComponent() { type = static_cast<ComponentType>(999); }
 };
 
 // ★追加: 汎用変数コンポーネント (スクリプト間通信用)

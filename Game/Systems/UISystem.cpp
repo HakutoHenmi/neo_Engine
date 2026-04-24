@@ -179,6 +179,34 @@ void UISystem::DrawUI(entt::registry& registry, GameContext& ctx) {
             }
         }
     }
+    // 2. ダメージ数字の描画
+    auto dmgView = registry.view<DamageNumberComponent>();
+    for (auto e : dmgView) {
+        auto& dnc = dmgView.get<DamageNumberComponent>(e);
+        float sx, sy;
+        // 上に昇るアニメーション
+        float progress = 1.0f - (dnc.lifetime / dnc.maxLifetime);
+        DirectX::XMFLOAT3 pos = dnc.startPos;
+        pos.y += progress * 2.0f; // 最大2.0m上昇
+        if (WorldToScreenWithView(pos, *ctx.camera, ctx.viewportOffset, ctx.viewportSize, sx, sy)) {
+            char text[32];
+            snprintf(text, sizeof(text), "%.0f", dnc.damage);
+            
+            // 少し上に浮き上がりながらフェードアウトする効果
+            float alpha = (dnc.lifetime > 0.5f) ? 1.0f : (dnc.lifetime / 0.5f);
+            int a = static_cast<int>(alpha * 255);
+            
+            // フォントサイズは距離でスケール（簡易）
+            // float dist = DirectX::XMVectorGetZ(DirectX::XMVector3Length(DirectX::XMLoadFloat3(&pos) - ctx.camera->GetPosition()));
+            // 今回は固定サイズ
+            ImVec2 txtSize = ImGui::CalcTextSize(text);
+            ImVec2 drawPos(sx - txtSize.x * 0.5f, sy - txtSize.y * 0.5f);
+            
+            // アウトライン付きテキスト
+            drawList->AddText(ImGui::GetFont(), 32.0f, ImVec2(drawPos.x + 1, drawPos.y + 1), IM_COL32(0, 0, 0, a), text);
+            drawList->AddText(ImGui::GetFont(), 32.0f, drawPos, IM_COL32((int)(dnc.color.x * 255), (int)(dnc.color.y * 255), (int)(dnc.color.z * 255), a), text);
+        }
+    }
 #endif
 }
 
