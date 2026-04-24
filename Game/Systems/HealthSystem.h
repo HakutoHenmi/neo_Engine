@@ -1,5 +1,6 @@
 #pragma once
 #include "ISystem.h"
+#include "../Scenes/GameScene.h"
 #include <unordered_map>
 
 namespace Game {
@@ -51,13 +52,41 @@ public:
 			if (lastHp_.find(eid) != lastHp_.end()) {
 				float diff = lastHp_[eid] - hc.hp;
 				if (diff > 0.1f) {
-					// ダメージポップアップ（簡易版、WorldSpaceUIコンポーネントが存在する場合）
+					// ダメージポップアップの生成
+					auto dmgEntity = registry.create();
+					auto& dnc = registry.emplace<DamageNumberComponent>(dmgEntity);
+					dnc.damage = diff;
+					dnc.lifetime = 1.0f;
+					dnc.maxLifetime = 1.0f;
+					// プレイヤーなら赤、敵なら白
+					if (registry.all_of<TagComponent>(entity) && registry.get<TagComponent>(entity).tag == TagType::Player) {
+						dnc.color = {1.0f, 0.2f, 0.2f};
+					} else {
+						dnc.color = {1.0f, 1.0f, 1.0f};
+					}
+					// 発生位置
+					if (registry.all_of<TransformComponent>(entity)) {
+						auto tc = registry.get<TransformComponent>(entity);
+						dnc.startPos = {tc.translate.x, tc.translate.y + 1.5f, tc.translate.z};
+					}
 				}
 			}
 			lastHp_[eid] = hc.hp;
 
 			if (hc.hp <= 0.0f && !hc.isDead) {
 				hc.isDead = true;
+			}
+		}
+
+		// --- ダメージ数字コンポーネントの更新 ---
+		auto dmgView = registry.view<DamageNumberComponent>();
+		for (auto entity : dmgView) {
+			auto& dnc = dmgView.get<DamageNumberComponent>(entity);
+			dnc.lifetime -= ctx.dt;
+			if (dnc.lifetime <= 0.0f) {
+				if (ctx.scene) {
+					ctx.scene->DestroyObject(static_cast<uint32_t>(entity));
+				}
 			}
 		}
 	}

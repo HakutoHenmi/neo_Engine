@@ -28,6 +28,17 @@ public:
 
 		// dead のエンティティを破棄
 		std::vector<entt::entity> toDestroy;
+		
+		// ★追加: 自動削除コンポーネントの処理
+		auto autoView = registry.view<AutoDestroyComponent>();
+		for (auto entity : autoView) {
+			auto& adc = registry.get<AutoDestroyComponent>(entity);
+			adc.timer -= ctx.dt;
+			if (adc.timer <= 0.0f) {
+				toDestroy.push_back(entity);
+			}
+		}
+
 		auto healthView = registry.view<HealthComponent>();
 		for (auto entity : healthView) {
 			auto& hc = registry.get<HealthComponent>(entity);

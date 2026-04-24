@@ -36,17 +36,15 @@ public:
 				pi.jumpRequested = false;
 			prevSpace_ = currentSpace;
 
-			// 攻撃入力
-			pi.attackRequested = (GetAsyncKeyState('J') & 0x8000) != 0;
+			// ★変更: 攻撃入力 → 左クリック
+			pi.attackRequested = (GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0;
 
-			// カメラ操作
+			// ★変更: カメラ操作 → 常時マウス追従（右クリック不要）
 			pi.cameraYaw = 0.0f;
 			pi.cameraPitch = 0.0f;
-			if (GetAsyncKeyState(VK_RBUTTON) & 0x8000) {
-				if (ctx.input) {
-					pi.cameraYaw = ctx.input->GetMouseDeltaX() * 0.005f;
-					pi.cameraPitch = ctx.input->GetMouseDeltaY() * 0.005f;
-				}
+			if (ctx.input) {
+				pi.cameraYaw = ctx.input->GetMouseDeltaX() * 0.005f;
+				pi.cameraPitch = ctx.input->GetMouseDeltaY() * 0.005f;
 			}
 		}
 	}

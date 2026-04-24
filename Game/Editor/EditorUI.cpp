@@ -4,6 +4,8 @@
 #include "../../externals/imgui/imgui_internal.h"
 #include "../Scenes/GameScene.h"
 #include "../Systems/RiverSystem.h" 
+#include "../Systems/PlayerActionSystem.h" // ★追加: PlayerAction/Hitbox/HurtboxのJSON対応
+#include "../Systems/EnemyAISystem.h"      // ★追加: EnemyAIのJSON対応
 #include "../Systems/UISystem.h"    
 #include "../Scripts/IScript.h"     
 #include "../Scripts/ScriptEngine.h" 
@@ -325,6 +327,38 @@ static std::vector<entt::entity> RestoreSceneFromJson(GameScene* scene, const js
 					if (comp.contains("hitboxScale")) c.hitboxScale = {comp["hitboxScale"][0], comp["hitboxScale"][1]};
 				} else if (type == "AudioListener") {
 					reg.get_or_emplace<AudioListenerComponent>(entity).enabled = en;
+				} else if (type == "Hitbox") {
+					auto& c = reg.get_or_emplace<HitboxComponent>(entity);
+					c.enabled = en;
+					if (comp.contains("center")) c.center = {comp["center"][0], comp["center"][1], comp["center"][2]};
+					if (comp.contains("size")) c.size = {comp["size"][0], comp["size"][1], comp["size"][2]};
+					c.damage = comp.value("damage", 10.0f);
+					c.isActive = comp.value("isActive", false);
+					if (comp.contains("tag")) c.tag = StringToTag(comp.value("tag", "Default"));
+				} else if (type == "Hurtbox") {
+					auto& c = reg.get_or_emplace<HurtboxComponent>(entity);
+					c.enabled = en;
+					if (comp.contains("center")) c.center = {comp["center"][0], comp["center"][1], comp["center"][2]};
+					if (comp.contains("size")) c.size = {comp["size"][0], comp["size"][1], comp["size"][2]};
+					c.damageMultiplier = comp.value("damageMultiplier", 1.0f);
+					if (comp.contains("tag")) c.tag = StringToTag(comp.value("tag", "Default"));
+				} else if (type == "PlayerAction") {
+					auto& c = reg.get_or_emplace<PlayerActionComponent>(entity);
+					c.enabled = en;
+					c.parryWindowDuration = comp.value("parryWindow", 0.4f);
+					c.dodgeDuration = comp.value("dodgeDuration", 0.4f);
+					c.dodgeSpeed = comp.value("dodgeSpeed", 15.0f);
+				} else if (type == "EnemyAI") {
+					auto& c = reg.get_or_emplace<EnemyAIComponent>(entity);
+					c.enabled = en;
+					c.attackInterval = comp.value("attackInterval", 3.0f);
+					c.windUpDuration = comp.value("windUpDuration", 0.6f);
+					c.attackDuration = comp.value("attackDuration", 1.0f);
+					c.cooldownDuration = comp.value("cooldownDuration", 1.0f);
+					c.stunDuration = comp.value("stunDuration", 1.5f);
+					c.chaseSpeed = comp.value("chaseSpeed", 4.0f);
+					c.chaseRange = comp.value("chaseRange", 15.0f);
+					c.attackRange = comp.value("attackRange", 15.0f);
 				} else if (type == "Motion") {
 					auto& c = reg.get_or_emplace<MotionComponent>(entity);
 					c.enabled = en;
@@ -705,6 +739,22 @@ static std::string SerializeEntity(entt::registry& registry, entt::entity entity
 		addComma();
 		ss << "        {\"type\": \"AudioListener\", \"enabled\": " << (cp->enabled ? "true" : "false") << "}";
 	}
+	if (auto* cp = registry.try_get<HitboxComponent>(entity)) {
+		addComma();
+		ss << "        {\"type\": \"Hitbox\", \"enabled\": " << (cp->enabled ? "true" : "false") << ", \"center\": [" << cp->center.x << "," << cp->center.y << "," << cp->center.z << "], \"size\": [" << cp->size.x << "," << cp->size.y << "," << cp->size.z << "], \"damage\": " << cp->damage << ", \"isActive\": " << (cp->isActive ? "true" : "false") << ", \"tag\": \"" << EscapeJson(TagToString(cp->tag)) << "\"}";
+	}
+	if (auto* cp = registry.try_get<HurtboxComponent>(entity)) {
+		addComma();
+		ss << "        {\"type\": \"Hurtbox\", \"enabled\": " << (cp->enabled ? "true" : "false") << ", \"center\": [" << cp->center.x << "," << cp->center.y << "," << cp->center.z << "], \"size\": [" << cp->size.x << "," << cp->size.y << "," << cp->size.z << "], \"damageMultiplier\": " << cp->damageMultiplier << ", \"tag\": \"" << EscapeJson(TagToString(cp->tag)) << "\"}";
+	}
+	if (auto* cp = registry.try_get<PlayerActionComponent>(entity)) {
+		addComma();
+		ss << "        {\"type\": \"PlayerAction\", \"enabled\": " << (cp->enabled ? "true" : "false") << ", \"parryWindow\": " << cp->parryWindowDuration << ", \"dodgeDuration\": " << cp->dodgeDuration << ", \"dodgeSpeed\": " << cp->dodgeSpeed << "}";
+	}
+	if (auto* cp = registry.try_get<EnemyAIComponent>(entity)) {
+		addComma();
+		ss << "        {\"type\": \"EnemyAI\", \"enabled\": " << (cp->enabled ? "true" : "false") << ", \"attackInterval\": " << cp->attackInterval << ", \"windUpDuration\": " << cp->windUpDuration << ", \"attackDuration\": " << cp->attackDuration << ", \"cooldownDuration\": " << cp->cooldownDuration << ", \"stunDuration\": " << cp->stunDuration << ", \"chaseSpeed\": " << cp->chaseSpeed << ", \"chaseRange\": " << cp->chaseRange << ", \"attackRange\": " << cp->attackRange << "}";
+	}
 	if (auto* cp = registry.try_get<MotionComponent>(entity)) {
 		addComma();
 		ss << "        {\"type\": \"Motion\", \"enabled\": " << (cp->enabled ? "true" : "false") << ", \"activeClip\": \"" << EscapeJson(cp->activeClip) << "\", \"clips\": {\n";
@@ -996,8 +1046,18 @@ void EditorUI::Show(Engine::Renderer* renderer, GameScene* gameScene) {
 		ImGui::DockSpace(dockspace_id, ImVec2(0.0f, 0.0f), ImGuiDockNodeFlags_None);
 	}
 
+	// ★追加: Play中はImGuiのカーソルを消す
+	if (gameScene->GetIsPlaying()) {
+		ImGui::SetMouseCursor(ImGuiMouseCursor_None);
+	}
+
 	// Global Shortcuts
 	if (!io.WantTextInput) {
+		// ★追加: PキーでPlay/Stopのトグル
+		if (ImGui::IsKeyPressed(ImGuiKey_P, false)) {
+			gameScene->SetIsPlaying(!gameScene->GetIsPlaying());
+		}
+
 		if (io.KeyCtrl) {
 			if (ImGui::IsKeyPressed(ImGuiKey_S)) SaveScene(gameScene, currentScenePath);
 			if (ImGui::IsKeyPressed(ImGuiKey_Z)) Undo();
@@ -2444,9 +2504,9 @@ void EditorUI::ShowInspector(GameScene* scene) {
 			if (auto* hb = registry.try_get<HitboxComponent>(entity)) {
 				if (ImGui::CollapsingHeader("Hitbox", ImGuiTreeNodeFlags_DefaultOpen)) {
 					ImGui::Checkbox("Enabled##HB", &hb->enabled);
-					ImGui::DragFloat3("Ofs", &hb->center.x, 0.1f);
-					ImGui::DragFloat3("Size", &hb->size.x, 0.1f);
-					ImGui::DragFloat("DMG", &hb->damage, 1.0f);
+					ImGui::DragFloat3("Ofs##HB", &hb->center.x, 0.1f);
+					ImGui::DragFloat3("Size##HB", &hb->size.x, 0.1f);
+					ImGui::DragFloat("DMG##HB", &hb->damage, 1.0f);
 					
 					const char* currentTagName = TagToString(hb->tag);
 					if (ImGui::BeginCombo("Tag##HBTagCombo", currentTagName)) {
@@ -2459,16 +2519,16 @@ void EditorUI::ShowInspector(GameScene* scene) {
 						ImGui::EndCombo();
 					}
 
-					ImGui::Checkbox("Active", &hb->isActive);
+					ImGui::Checkbox("Active##HB", &hb->isActive);
 					if (ImGui::Button("Remove##HB")) registry.remove<HitboxComponent>(entity);
 				}
 			}
 			if (auto* hb = registry.try_get<HurtboxComponent>(entity)) {
 				if (ImGui::CollapsingHeader("Hurtbox", ImGuiTreeNodeFlags_DefaultOpen)) {
 					ImGui::Checkbox("Enabled##HurtB", &hb->enabled);
-					ImGui::DragFloat3("Ofs", &hb->center.x, 0.1f);
-					ImGui::DragFloat3("Size", &hb->size.x, 0.1f);
-					ImGui::DragFloat("Mult", &hb->damageMultiplier, 0.1f);
+					ImGui::DragFloat3("Ofs##HurtB", &hb->center.x, 0.1f);
+					ImGui::DragFloat3("Size##HurtB", &hb->size.x, 0.1f);
+					ImGui::DragFloat("Mult##HurtB", &hb->damageMultiplier, 0.1f);
 
 					const char* currentTagName = TagToString(hb->tag);
 					if (ImGui::BeginCombo("Tag##HurtBTagCombo", currentTagName)) {
@@ -2487,8 +2547,8 @@ void EditorUI::ShowInspector(GameScene* scene) {
 			if (auto* ws = registry.try_get<WorldSpaceUIComponent>(entity)) {
 				if (ImGui::CollapsingHeader("WorldSpaceUI", ImGuiTreeNodeFlags_DefaultOpen)) {
 					ImGui::Checkbox("Enabled##WS", &ws->enabled);
-					ImGui::Checkbox("HP Bar", &ws->showHealthBar);
-					ImGui::DragFloat3("Ofs", &ws->offset.x, 0.1f);
+					ImGui::Checkbox("HP Bar##WS", &ws->showHealthBar);
+					ImGui::DragFloat3("Ofs##WS", &ws->offset.x, 0.1f);
 					if (ImGui::Button("Remove##WS")) registry.remove<WorldSpaceUIComponent>(entity);
 				}
 			}

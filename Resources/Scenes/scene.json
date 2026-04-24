@@ -7,39 +7,70 @@
   },
   "objects": [
     {
-      "id": 1048578,
-      "parentId": 4294967295,
-      "name": "Cube",
-      "locked": false,
-      "translate": [0, 0, 0],
-      "rotate": [0, 0, 0],
-      "scale": [1, 1, 1],
-      "components": [
-        {"type": "MeshRenderer", "enabled": true, "modelPath": "Resources/Models/cube/cube.obj", "texturePath": "Resources/Textures/white1x1.png", "shaderName": "Reflection", "color": [1,1,1,1], "uvTiling": [1,1], "uvOffset": [0,0], "reflectivity": 1, "useCubemap": true}
-      ]
-    },
-    {
-      "id": 1048577,
+      "id": 5242883,
       "parentId": 4294967295,
       "name": "Sun",
       "locked": false,
-      "translate": [0, 0, 0],
-      "rotate": [0, 0, 0],
+      "translate": [0, 10, 0],
+      "rotate": [0.785, 0.524, 0],
       "scale": [1, 1, 1],
       "components": [
-
+        {"type": "DirectionalLight", "enabled": true, "color": [1,1,1], "intensity": 1}
       ]
     },
     {
-      "id": 1048576,
+      "id": 5242882,
       "parentId": 4294967295,
       "name": "Ground",
-      "locked": false,
+      "locked": true,
       "translate": [0, 0, 0],
       "rotate": [0, 0, 0],
-      "scale": [1, 1, 1],
+      "scale": [50, 1, 50],
       "components": [
-
+        {"type": "MeshRenderer", "enabled": true, "modelPath": "Resources/Models/plane.obj", "texturePath": "Resources/Textures/white1x1.png", "shaderName": "Default", "color": [0.35,0.35,0.4,1], "uvTiling": [1,1], "uvOffset": [0,0], "reflectivity": 0, "useCubemap": false},
+        {"type": "Tag", "enabled": true, "tag": "Default"},
+        {"type": "GpuMeshCollider", "enabled": true, "meshPath": "Resources/Models/plane.obj", "isTrigger": false}
+      ]
+    },
+    {
+      "id": 5242881,
+      "parentId": 4294967295,
+      "name": "Player",
+      "locked": false,
+      "translate": [0, 1, -0.154525],
+      "rotate": [0, 0, 0],
+      "scale": [1, 2, 1],
+      "components": [
+        {"type": "MeshRenderer", "enabled": true, "modelPath": "Resources/Models/cube/cube.obj", "texturePath": "Resources/Textures/white1x1.png", "shaderName": "Default", "color": [0.2,0.4,1,1], "uvTiling": [1,1], "uvOffset": [0,0], "reflectivity": 0, "useCubemap": true},
+        {"type": "BoxCollider", "enabled": true, "center": [0,0,0], "size": [2,2,2], "isTrigger": false},
+        {"type": "Rigidbody", "enabled": true, "velocity": [0,0,0], "useGravity": true, "isKinematic": true},
+        {"type": "Health", "enabled": true, "hp": 100, "maxHp": 100, "isDead": false},
+        {"type": "Tag", "enabled": true, "tag": "Player"},
+        {"type": "PlayerInput", "enabled": true},
+        {"type": "CharacterMovement", "enabled": true, "speed": 8, "jumpPower": 10, "gravity": 9.8},
+        {"type": "CameraTarget", "enabled": true, "distance": 12, "height": 4, "smoothSpeed": 8},
+        {"type": "Hitbox", "enabled": true, "center": [0,0,1.5], "size": [1.5,1.5,4], "damage": 15, "isActive": true, "tag": "Player"},
+        {"type": "Hurtbox", "enabled": true, "center": [0,0,0], "size": [2,2,2], "damageMultiplier": 1, "tag": "Player"},
+        {"type": "PlayerAction", "enabled": true, "parryWindow": 0.4, "dodgeDuration": 0.4, "dodgeSpeed": 15}
+      ]
+    },
+    {
+      "id": 5242880,
+      "parentId": 4294967295,
+      "name": "DummyBoss",
+      "locked": false,
+      "translate": [0, 1.5, 10],
+      "rotate": [0, 0, 0],
+      "scale": [2, 3, 2],
+      "components": [
+        {"type": "MeshRenderer", "enabled": true, "modelPath": "Resources/Models/cube/cube.obj", "texturePath": "Resources/Textures/white1x1.png", "shaderName": "Default", "color": [1,0.2,0.2,1], "uvTiling": [1,1], "uvOffset": [0,0], "reflectivity": 0, "useCubemap": true},
+        {"type": "BoxCollider", "enabled": true, "center": [0,0,0], "size": [2,3,2], "isTrigger": false},
+        {"type": "Rigidbody", "enabled": true, "velocity": [0,0,0], "useGravity": true, "isKinematic": true},
+        {"type": "Health", "enabled": true, "hp": 500, "maxHp": 500, "isDead": false},
+        {"type": "Tag", "enabled": true, "tag": "Enemy"},
+        {"type": "Hitbox", "enabled": true, "center": [0,0,0], "size": [2,3,2], "damage": 20, "isActive": false, "tag": "Enemy"},
+        {"type": "Hurtbox", "enabled": true, "center": [0,0,0], "size": [2,3,2], "damageMultiplier": 1, "tag": "Enemy"},
+        {"type": "EnemyAI", "enabled": true, "attackInterval": 3, "windUpDuration": 0.6, "attackDuration": 1, "cooldownDuration": 1, "stunDuration": 1.5, "chaseSpeed": 4, "chaseRange": 15, "attackRange": 15}
       ]
     }
   ]

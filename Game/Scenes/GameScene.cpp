@@ -16,6 +16,9 @@
 #include "../Systems/MotionSystem.h" // ★追加
 #include "../Systems/PhysicsSystem.h"
 #include "../Systems/PlayerInputSystem.h"
+#include "../Systems/PlayerActionSystem.h" // ★追加: プレイヤーアクション
+#include "../Systems/CombatSystem.h"       // ★追加: 戦闘判定
+#include "../Systems/EnemyAISystem.h"      // ★追加: 敵AI
 
 #include "../Systems/ScriptSystem.h"
 #include "../Systems/UISystem.h"
@@ -130,8 +133,11 @@ void GameScene::Initialize(Engine::WindowDX* dx, const Engine::SceneParameters& 
 	// ★ Systemの登録（順序が重要）
 	systems_.clear();
 	systems_.push_back(std::make_unique<PlayerInputSystem>());
+	systems_.push_back(std::make_unique<PlayerActionSystem>());  // ★追加: 攻撃・パリィ・回避
 	systems_.push_back(std::make_unique<CharacterMovementSystem>());
 	systems_.push_back(std::make_unique<PhysicsSystem>());
+	systems_.push_back(std::make_unique<EnemyAISystem>());      // ★追加: 敵AI（CombatSystemの前）
+	systems_.push_back(std::make_unique<CombatSystem>());         // ★追加: Hitbox vs Hurtbox 判定
 	systems_.push_back(std::make_unique<CameraFollowSystem>());
 	systems_.push_back(std::make_unique<HealthSystem>());
 
@@ -220,8 +226,16 @@ void GameScene::Update() {
 
 	// コンテキストを更新
 	ctx_.dt = dt;
-	if (isPlaying_)
+
+	if (isPlaying_) {
 		playTime_ += dt;
+		// ★追加: Play中はマウスカーソルを画面中央に固定
+		if (dx_ && dx_->GetHwnd()) {
+			POINT center = { (LONG)Engine::WindowDX::kW / 2, (LONG)Engine::WindowDX::kH / 2 };
+			ClientToScreen(dx_->GetHwnd(), &center);
+			SetCursorPos(center.x, center.y);
+		}
+	}
 
 
 
@@ -1000,7 +1014,6 @@ void GameScene::SetIsPlaying(bool play) {
 			sys->Reset(registry_);
 		}
 
-		// リセット後のクリーンな状態をスナップショット保存（Stop時にこの状態に完全に戻すため）
 		sceneSnapshot_ = EditorUI::SaveToMemory(this);
 		{
 			char logBuf[128];
@@ -1009,6 +1022,7 @@ void GameScene::SetIsPlaying(bool play) {
 		}
 
 		isPlaying_ = true;
+		ShowCursor(FALSE); // ★追加: カーソルを非表示
 	} else {
 		// プレイ停止時: Play ボタンを押した直前の状態 (`sceneSnapshot_`) に戻す
 		// 選択状態のエンティティ名を一時保存
@@ -1021,6 +1035,8 @@ void GameScene::SetIsPlaying(bool play) {
 		}
 
 		isPlaying_ = false;
+		ShowCursor(TRUE); // ★追加: カーソルを表示
+		
 		if (!sceneSnapshot_.empty()) {
 			OutputDebugStringA(("[GameScene] Restoring from memory snapshot (size: " + std::to_string(sceneSnapshot_.size()) + ")...\n").c_str());
 			EditorUI::LoadFromMemory(this, sceneSnapshot_);
