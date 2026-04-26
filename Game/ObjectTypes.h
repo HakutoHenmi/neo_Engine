@@ -202,6 +202,20 @@ struct TagComponent : public Component {
 	TagComponent(TagType t) : tag(t) { type = ComponentType::Tag; }
 };
 
+// ★追加: 武器タイプ
+enum class WeaponType {
+	Greatsword,    // 大剣
+	DualBlades,    // 双剣
+	MultiBlades    // 浮遊機巧剣（ファンネルソード）
+};
+
+// ★追加: プレイヤーの武器管理
+struct PlayerWeaponComponent : public Component {
+	WeaponType currentWeapon = WeaponType::Greatsword;
+	std::vector<entt::entity> weaponEntities; // 武器の視覚モデルエンティティ
+	PlayerWeaponComponent() { type = static_cast<ComponentType>(999); }
+};
+
 // ★追加: プレイヤー入力 (意思)
 struct PlayerInputComponent : public Component {
 	DirectX::XMFLOAT2 moveDir = {0, 0};
@@ -307,6 +321,7 @@ struct HitboxComponent : public Component {
 	float damage = 10.0f;                  // ダメージ量
 	bool isActive = false;                 // 有効フラグ（攻撃アニメ中のみtrue等）
 	TagType tag = TagType::Default;           // 識別タグ ("Sword", "Projectile"等)
+	std::vector<entt::entity> hitTargets; // ★追加: 1回の攻撃で既にヒットした対象（多段ヒット防止）
 	HitboxComponent() { type = ComponentType::Hitbox; }
 };
 

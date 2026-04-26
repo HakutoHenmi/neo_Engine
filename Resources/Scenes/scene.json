@@ -7,7 +7,7 @@
   },
   "objects": [
     {
-      "id": 5242883,
+      "id": 1048582,
       "parentId": 4294967295,
       "name": "Sun",
       "locked": false,
@@ -19,7 +19,7 @@
       ]
     },
     {
-      "id": 5242882,
+      "id": 1048578,
       "parentId": 4294967295,
       "name": "Ground",
       "locked": true,
@@ -33,7 +33,7 @@
       ]
     },
     {
-      "id": 5242881,
+      "id": 1048577,
       "parentId": 4294967295,
       "name": "Player",
       "locked": false,
@@ -44,7 +44,7 @@
         {"type": "MeshRenderer", "enabled": true, "modelPath": "Resources/Models/cube/cube.obj", "texturePath": "Resources/Textures/white1x1.png", "shaderName": "Default", "color": [0.2,0.4,1,1], "uvTiling": [1,1], "uvOffset": [0,0], "reflectivity": 0, "useCubemap": true},
         {"type": "BoxCollider", "enabled": true, "center": [0,0,0], "size": [2,2,2], "isTrigger": false},
         {"type": "Rigidbody", "enabled": true, "velocity": [0,0,0], "useGravity": true, "isKinematic": true},
-        {"type": "Health", "enabled": true, "hp": 100, "maxHp": 100, "isDead": false},
+        {"type": "Health", "enabled": true, "hp": 5000, "maxHp": 5000, "isDead": false},
         {"type": "Tag", "enabled": true, "tag": "Player"},
         {"type": "PlayerInput", "enabled": true},
         {"type": "CharacterMovement", "enabled": true, "speed": 8, "jumpPower": 10, "gravity": 9.8},
@@ -55,7 +55,7 @@
       ]
     },
     {
-      "id": 5242880,
+      "id": 1048576,
       "parentId": 4294967295,
       "name": "DummyBoss",
       "locked": false,
@@ -66,11 +66,11 @@
         {"type": "MeshRenderer", "enabled": true, "modelPath": "Resources/Models/cube/cube.obj", "texturePath": "Resources/Textures/white1x1.png", "shaderName": "Default", "color": [1,0.2,0.2,1], "uvTiling": [1,1], "uvOffset": [0,0], "reflectivity": 0, "useCubemap": true},
         {"type": "BoxCollider", "enabled": true, "center": [0,0,0], "size": [2,3,2], "isTrigger": false},
         {"type": "Rigidbody", "enabled": true, "velocity": [0,0,0], "useGravity": true, "isKinematic": true},
+        {"type": "Script", "enabled": true, "scripts": [{"path": "BossTestScript", "param": ""}]},
         {"type": "Health", "enabled": true, "hp": 500, "maxHp": 500, "isDead": false},
         {"type": "Tag", "enabled": true, "tag": "Enemy"},
         {"type": "Hitbox", "enabled": true, "center": [0,0,0], "size": [2,3,2], "damage": 20, "isActive": false, "tag": "Enemy"},
-        {"type": "Hurtbox", "enabled": true, "center": [0,0,0], "size": [2,3,2], "damageMultiplier": 1, "tag": "Enemy"},
-        {"type": "Script", "enabled": true, "scripts": [{"path": "BossTestScript", "param": "{}"}]}
+        {"type": "Hurtbox", "enabled": true, "center": [0,0,0], "size": [2,3,2], "damageMultiplier": 1, "tag": "Enemy"}
       ]
     }
   ]
