@@ -2,12 +2,12 @@
 #include "../../Engine/PathUtils.h"
 #include "../../externals/imgui/imgui.h"
 #include "../../externals/imgui/imgui_internal.h"
+#include "../Scripts/IScript.h" // 循環参照を避けるため先にインクルード
 #include "../Scenes/GameScene.h"
 #include "../Systems/RiverSystem.h" 
-#include "../Systems/PlayerActionSystem.h" // ★追加: PlayerAction/Hitbox/HurtboxのJSON対応
-#include "../Systems/EnemyAISystem.h"      // ★追加: EnemyAIのJSON対応
+#include "../Systems/PlayerActionSystem.h" 
+#include "../Systems/EnemyAISystem.h"      
 #include "../Systems/UISystem.h"    
-#include "../Scripts/IScript.h"     
 #include "../Scripts/ScriptEngine.h" 
 #ifdef _MSC_VER
 #pragma warning(disable: 4865)

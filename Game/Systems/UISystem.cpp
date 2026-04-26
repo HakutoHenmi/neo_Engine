@@ -6,6 +6,7 @@
 #include "../../Engine/WindowDX.h"
 #include "../../externals/imgui/imgui.h"
 #include "../Scenes/GameScene.h" // ★追加
+#include "../Scripts/GameManagerScript.h"
 #include <unordered_map>
 #include <set>
 #include <algorithm>
@@ -136,8 +137,8 @@ void UISystem::DrawUI(entt::registry& registry, GameContext& ctx) {
                 DirectX::XMFLOAT3 basePos;
                 DirectX::XMStoreFloat3(&basePos, trans);
                 
-                float barW = 60.0f;
-                float barH = 6.0f;
+                float barW = 100.0f; // デフォルトを大きく
+                float barH = 12.0f;  // デフォルトを大きく
                 DirectX::XMFLOAT3 pos = basePos;
 
                 // 頭上の高さを動的に計算（Colliderの大きさに合わせる）
@@ -146,17 +147,17 @@ void UISystem::DrawUI(entt::registry& registry, GameContext& ctx) {
                     auto& bc = registry.get<BoxColliderComponent>(e);
                     // 中心高さ + 半分 に スケールを掛ける
                     float yBasis = (bc.center.y + bc.size.y * 0.5f) * std::abs(DirectX::XMVectorGetY(scale));
-                    heightOffset = yBasis + 0.3f;
+                    heightOffset = yBasis + 0.5f; // 少し高めに
                 } else if (registry.all_of<TransformComponent>(e)) {
                     heightOffset = registry.get<TransformComponent>(e).scale.y + 0.5f;
                 }
 
                 if (uiComp) {
                     pos.x += uiComp->offset.x;
-                    pos.y += heightOffset + uiComp->offset.y - 1.2f; 
+                    pos.y += heightOffset + uiComp->offset.y; // 不要なマイナスオフセットを削除
                     pos.z += uiComp->offset.z;
-                    barW = uiComp->barWidth;
-                    barH = uiComp->barHeight;
+                    if (uiComp->barWidth > 0.0f) barW = uiComp->barWidth;
+                    if (uiComp->barHeight > 0.0f) barH = uiComp->barHeight;
                 } else {
                     pos.y += heightOffset;
                 }
@@ -171,7 +172,7 @@ void UISystem::DrawUI(entt::registry& registry, GameContext& ctx) {
                     
                     // 背景
                     drawList->AddRectFilled(pMin, pMax, IM_COL32(40, 40, 40, 180));
-                    // HP残量
+                    // HP残量 (緑〜黄〜赤の変化をつけるのもアリだが、とりあえず緑で統一)
                     drawList->AddRectFilled(pMin, ImVec2(pMin.x + curW, pMax.y), IM_COL32(50, 230, 50, 255));
                     // 枠
                     drawList->AddRect(pMin, pMax, IM_COL32(255, 255, 255, 200));
@@ -187,26 +188,132 @@ void UISystem::DrawUI(entt::registry& registry, GameContext& ctx) {
         // 上に昇るアニメーション
         float progress = 1.0f - (dnc.lifetime / dnc.maxLifetime);
         DirectX::XMFLOAT3 pos = dnc.startPos;
-        pos.y += progress * 2.0f; // 最大2.0m上昇
+        pos.y += progress * 2.5f; // 最大2.5m上昇
         if (WorldToScreenWithView(pos, *ctx.camera, ctx.viewportOffset, ctx.viewportSize, sx, sy)) {
             char text[32];
             snprintf(text, sizeof(text), "%.0f", dnc.damage);
             
             // 少し上に浮き上がりながらフェードアウトする効果
             float alpha = (dnc.lifetime > 0.5f) ? 1.0f : (dnc.lifetime / 0.5f);
-            int a = static_cast<int>(alpha * 255);
             
-            // フォントサイズは距離でスケール（簡易）
-            // float dist = DirectX::XMVectorGetZ(DirectX::XMVector3Length(DirectX::XMLoadFloat3(&pos) - ctx.camera->GetPosition()));
-            // 今回は固定サイズ
-            ImVec2 txtSize = ImGui::CalcTextSize(text);
-            ImVec2 drawPos(sx - txtSize.x * 0.5f, sy - txtSize.y * 0.5f);
-            
-            // アウトライン付きテキスト
-            drawList->AddText(ImGui::GetFont(), 32.0f, ImVec2(drawPos.x + 1, drawPos.y + 1), IM_COL32(0, 0, 0, a), text);
-            drawList->AddText(ImGui::GetFont(), 32.0f, drawPos, IM_COL32((int)(dnc.color.x * 255), (int)(dnc.color.y * 255), (int)(dnc.color.z * 255), a), text);
+            // Engine::Renderer の高品質なテキスト描画機能を使う
+            if (ctx.renderer) {
+                float scale = 2.0f; // 大きめのフォント
+                
+                // ドロップシャドウ（黒縁）
+                ctx.renderer->DrawString(text, sx + 2.0f, sy + 2.0f, scale, {0.0f, 0.0f, 0.0f, alpha});
+                
+                // メインテキスト
+                ctx.renderer->DrawString(text, sx, sy, scale, {dnc.color.x, dnc.color.y, dnc.color.z, alpha});
+            } else {
+                // フォールバック (ImGui)
+                int a = static_cast<int>(alpha * 255);
+                ImVec2 txtSize = ImGui::CalcTextSize(text);
+                ImVec2 drawPos(sx - txtSize.x * 0.5f, sy - txtSize.y * 0.5f);
+                drawList->AddText(ImGui::GetFont(), 32.0f, ImVec2(drawPos.x + 2, drawPos.y + 2), IM_COL32(0, 0, 0, a), text);
+                drawList->AddText(ImGui::GetFont(), 32.0f, drawPos, IM_COL32((int)(dnc.color.x * 255), (int)(dnc.color.y * 255), (int)(dnc.color.z * 255), a), text);
+            }
         }
     }
+
+    // 3. ロックオンカーソルとプレイヤーHUDの描画
+    auto playerView = registry.view<PlayerInputComponent, HealthComponent>();
+    for (auto playerEnt : playerView) {
+        auto& pi = playerView.get<PlayerInputComponent>(playerEnt);
+        auto& pHealth = playerView.get<HealthComponent>(playerEnt);
+
+        // --- ロックオンカーソル ---
+        if (pi.lockedEnemy != entt::null && registry.valid(pi.lockedEnemy)) {
+            if (registry.all_of<TransformComponent>(pi.lockedEnemy)) {
+                auto& eTc = registry.get<TransformComponent>(pi.lockedEnemy);
+                DirectX::XMFLOAT3 pos = eTc.translate;
+                pos.y += 1.0f; // 敵の中央付近
+
+                float sx, sy;
+                if (WorldToScreenWithView(pos, *ctx.camera, ctx.viewportOffset, ctx.viewportSize, sx, sy)) {
+                    // カーソルの描画（四隅のブラケットや円など）
+                    float size = 20.0f;
+                    ImU32 col = IM_COL32(255, 100, 100, 255);
+                    float thick = 2.0f;
+                    // 十字マーク
+                    drawList->AddLine(ImVec2(sx - size, sy), ImVec2(sx + size, sy), col, thick);
+                    drawList->AddLine(ImVec2(sx, sy - size), ImVec2(sx, sy + size), col, thick);
+                    // 円
+                    drawList->AddCircle(ImVec2(sx, sy), size * 0.8f, col, 0, thick);
+                }
+            }
+        }
+
+        // --- プレイヤーHUD（画面左上に固定表示） ---
+        float hudX = ctx.viewportOffset.x + 40.0f;
+        float hudY = ctx.viewportOffset.y + 40.0f;
+        float hpRate = pHealth.hp / (pHealth.maxHp > 0 ? pHealth.maxHp : 1.0f);
+        float barW = 200.0f;
+        float barH = 20.0f;
+        float curW = barW * std::clamp(hpRate, 0.0f, 1.0f);
+
+        ImVec2 pMin(hudX, hudY);
+        ImVec2 pMax(hudX + barW, hudY + barH);
+        
+        // 背景
+        drawList->AddRectFilled(pMin, pMax, IM_COL32(40, 40, 40, 200));
+        // HP残量（プレイヤーは少し青緑がかった色）
+        drawList->AddRectFilled(pMin, ImVec2(pMin.x + curW, pMax.y), IM_COL32(50, 200, 150, 255));
+        // 枠
+        drawList->AddRect(pMin, pMax, IM_COL32(255, 255, 255, 255), 0.0f, 0, 2.0f);
+
+        // HPテキスト
+        char hpText[32];
+        snprintf(hpText, sizeof(hpText), "PLAYER HP: %.0f / %.0f", pHealth.hp, pHealth.maxHp);
+        drawList->AddText(ImGui::GetFont(), 18.0f, ImVec2(hudX, hudY - 20.0f), IM_COL32(255, 255, 255, 255), hpText);
+
+        // --- 4. ゲームオーバー（YOU DIED）画面 ---
+        if (pHealth.isDead) {
+            drawList->AddRectFilled(
+                ImVec2(ctx.viewportOffset.x, ctx.viewportOffset.y),
+                ImVec2(ctx.viewportOffset.x + ctx.viewportSize.x, ctx.viewportOffset.y + ctx.viewportSize.y),
+                IM_COL32(0, 0, 0, 180)
+            );
+
+            auto* gm = GameManagerScript::GetInstance();
+            std::string defeatStr = gm ? gm->defeatText : "YOU DIED";
+            std::string retryStr = gm ? gm->retryText : "Press [ R ] to Retry";
+            float scale = gm ? gm->textScale : 6.0f;
+            float rColor[4] = {1.0f, 0.1f, 0.1f, 1.0f};
+            if (gm) { rColor[0]=gm->defeatColor[0]; rColor[1]=gm->defeatColor[1]; rColor[2]=gm->defeatColor[2]; rColor[3]=gm->defeatColor[3]; }
+
+            float centerX = ctx.viewportOffset.x + ctx.viewportSize.x * 0.5f;
+            float centerY = ctx.viewportOffset.y + ctx.viewportSize.y * 0.5f;
+            
+            if (ctx.renderer) {
+                float defeatWidth = ctx.renderer->MeasureTextWidth(defeatStr, scale);
+                float sx = centerX - defeatWidth * 0.5f; 
+                float sy = centerY - 180.0f;
+                ctx.renderer->DrawString(defeatStr, sx + 5.0f, sy + 5.0f, scale, {0.0f, 0.0f, 0.0f, 1.0f});
+                ctx.renderer->DrawString(defeatStr, sx, sy, scale, {rColor[0], rColor[1], rColor[2], rColor[3]});
+
+                float retryWidth = ctx.renderer->MeasureTextWidth(retryStr, 2.5f);
+                float rx = centerX - retryWidth * 0.5f;
+                float ry = centerY + 220.0f;
+                ctx.renderer->DrawString(retryStr, rx + 2.0f, ry + 2.0f, 2.5f, {0.0f, 0.0f, 0.0f, 1.0f});
+                ctx.renderer->DrawString(retryStr, rx, ry, 2.5f, {1.0f, 1.0f, 1.0f, 1.0f});
+            } else {
+                ImVec2 txtSize = ImGui::CalcTextSize(defeatStr.c_str());
+                ImVec2 center(centerX - txtSize.x * 0.5f, centerY - txtSize.y * 0.5f);
+                drawList->AddText(ImGui::GetFont(), 64.0f, center, IM_COL32((int)(rColor[0]*255), (int)(rColor[1]*255), (int)(rColor[2]*255), 255), defeatStr.c_str());
+            }
+
+            // Rキーでリトライ (SetIsPlaying(false) -> SetIsPlaying(true) の擬似リセット)
+            if (GetAsyncKeyState('R') & 0x8000) {
+                // GameScene側でリセット処理が走るようにするフラグを立てる、または直接実行
+                if (ctx.scene) {
+                    ctx.scene->SetIsPlaying(false);
+                    ctx.scene->SetIsPlaying(true);
+                }
+            }
+        }
+    }
+
 #endif
 }
 
