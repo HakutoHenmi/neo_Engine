@@ -117,10 +117,18 @@ public:
 				// --- AABB衝突判定 ---
 				if (!AABBOverlap(hbWorldCenter, hbWorldSize, hrWorldCenter, hrWorldSize)) continue;
 
+				// ★追加: 既にこの攻撃でヒット済みの対象ならスキップ
+				if (std::find(hb.hitTargets.begin(), hb.hitTargets.end(), hrEntity) != hb.hitTargets.end()) {
+					continue;
+				}
+
 				// 重複ヒット防止（同じペアは1フレームに1回まで）
 				uint64_t pairKey = MakePairKey(hbEntity, hrEntity);
 				if (hitPairs_.count(pairKey)) continue;
 				hitPairs_.insert(pairKey);
+
+				// ヒット履歴に記録
+				hb.hitTargets.push_back(hrEntity);
 
 				// --- パリィ判定 ---
 				bool parried = false;

@@ -14,6 +14,10 @@ enum class PlayerActionState : uint32_t {
 	Parry,          // パリィ受付中
 	ParrySuccess,   // パリィ成功演出中
 	Stagger,        // のけぞり中
+	Charging,       // 溜め中（大剣用）
+	ChargeAttack1,  // 溜め攻撃1段目
+	ChargeAttack2,  // 溜め攻撃2段目
+	ChargeAttack3,  // 溜め攻撃3段目（大技）
 };
 
 // ★ プレイヤーアクションコンポーネント
@@ -44,6 +48,13 @@ struct PlayerActionComponent : public Component {
 	// ヒットストップ
 	float hitStopTimer = 0.0f;     // ヒットストップ残り時間
 	float hitStopDuration = 0.08f; // デフォルトのヒットストップ時間
+
+	// 溜め攻撃用
+	float chargeTimer = 0.0f;
+	float currentDamageMultiplier = 1.0f;
+	int chargeLevel = 0;           // 溜めコンボ段数 (0=なし, 1~3)
+	float holdTimer = 0.0f;        // ボタン押下時間（タップ/ホールド判定用）
+	bool isHolding = false;        // ボタン長押し中か
 
 	bool enabled = true;
 	PlayerActionComponent() { type = ComponentType::PlayerAction; }
@@ -78,6 +89,11 @@ public:
 
 			// --- 入力の読み取り ---
 			bool attackInput = pi.attackRequested;
+			bool attackPressed = attackInput && !prevAttack_;
+			bool attackReleased = !attackInput && prevAttack_;
+			(void)attackReleased; // 警告抑制（Charging内で直接attackInputを使用）
+			prevAttack_ = attackInput;
+
 			// ★変更: 右クリック=パリィ、Shift=回避
 			bool parryInput = (GetAsyncKeyState(VK_RBUTTON) & 0x8000) != 0;
 			bool dodgeInput = (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0;
@@ -88,16 +104,32 @@ public:
 			prevParry_ = parryInput;
 			prevDodge_ = dodgeInput;
 
+			// ★追加: PlayerWeaponComponentがなければ追加
+			if (!registry.all_of<PlayerWeaponComponent>(entity)) {
+				registry.emplace<PlayerWeaponComponent>(entity);
+			}
+			WeaponType currentWeapon = registry.get<PlayerWeaponComponent>(entity).currentWeapon;
+
 			// --- ステートマシン ---
 			switch (pa.state) {
 			case PlayerActionState::Idle:
-				HandleIdleState(pa, pi, tc, ctx, attackInput, parryPressed, dodgePressed);
+				HandleIdleState(pa, pi, tc, ctx, attackInput, attackPressed, parryPressed, dodgePressed, currentWeapon);
+				break;
+
+			case PlayerActionState::Charging:
+				HandleChargeState(pa, attackInput, currentWeapon, ctx);
 				break;
 
 			case PlayerActionState::Attack1:
 			case PlayerActionState::Attack2:
 			case PlayerActionState::Attack3:
-				HandleAttackState(registry, entity, pa, pi, tc, ctx, attackInput);
+				HandleAttackState(registry, entity, pa, pi, tc, ctx, attackPressed, currentWeapon);
+				break;
+
+			case PlayerActionState::ChargeAttack1:
+			case PlayerActionState::ChargeAttack2:
+			case PlayerActionState::ChargeAttack3:
+				HandleChargeAttackState(pa, attackInput, attackPressed, currentWeapon);
 				break;
 
 			case PlayerActionState::Dodge:
@@ -118,7 +150,7 @@ public:
 			}
 
 			// --- Hitbox の有効化/無効化 ---
-			UpdateHitbox(registry, entity, pa);
+			UpdateHitbox(registry, entity, pa, currentWeapon);
 		}
 	}
 
@@ -140,6 +172,7 @@ public:
 	}
 
 private:
+	bool prevAttack_ = false;
 	bool prevParry_ = false;
 	bool prevDodge_ = false;
 
@@ -151,15 +184,43 @@ private:
 		float comboStart;    // コンボ受付開始
 		float comboEnd;      // コンボ受付終了
 		float damage;        // ダメージ
+		DirectX::XMFLOAT3 hitboxSize; // 当たり判定のサイズ
 	};
 
-	static AttackParams GetAttackParams(int step) {
-		switch (step) {
-		case 1: return { 0.45f, 0.10f, 0.25f, 0.20f, 0.40f, 15.0f }; // 素早い横斬り
-		case 2: return { 0.50f, 0.12f, 0.28f, 0.25f, 0.45f, 20.0f }; // 逆横斬り
-		case 3: return { 0.65f, 0.15f, 0.35f, 0.50f, 0.60f, 35.0f }; // 強縦斬り
-		default: return { 0.45f, 0.10f, 0.25f, 0.20f, 0.40f, 15.0f };
+	static AttackParams GetAttackParams(int step, WeaponType weaponType) {
+		if (weaponType == WeaponType::Greatsword) {
+			// 大剣 通常コンボ（タップ連打）
+			switch (step) {
+			case 1: return { 0.7f, 0.3f, 0.5f, 0.5f, 0.7f, 35.0f, {4, 4, 4} };
+			case 2: return { 0.8f, 0.3f, 0.5f, 0.6f, 0.8f, 45.0f, {4, 4, 4} };
+			case 3: return { 1.0f, 0.5f, 0.8f, 0.8f, 1.0f, 70.0f, {5, 5, 5} };
+			}
+		} 
+		else if (weaponType == WeaponType::DualBlades) {
+			switch (step) {
+			case 1: return { 0.3f, 0.1f, 0.2f, 0.15f, 0.3f, 8.0f, {2.5f, 2.5f, 3} };
+			case 2: return { 0.3f, 0.1f, 0.2f, 0.15f, 0.3f, 10.0f, {2.5f, 2.5f, 3} };
+			case 3: return { 0.8f, 0.2f, 0.7f, 0.6f,  0.8f, 25.0f, {6, 3, 6} };
+			}
 		}
+		else if (weaponType == WeaponType::MultiBlades) {
+			switch (step) {
+			case 1: return { 0.4f, 0.1f, 0.3f, 0.2f, 0.4f, 15.0f, {2, 2, 8} };
+			case 2: return { 0.4f, 0.1f, 0.3f, 0.2f, 0.4f, 15.0f, {2, 2, 8} };
+			case 3: return { 1.0f, 0.5f, 0.8f, 0.8f, 1.0f, 80.0f, {12, 3, 12} };
+			}
+		}
+		return { 0.45f, 0.10f, 0.25f, 0.20f, 0.40f, 15.0f, {1.5f, 1.5f, 4.0f} };
+	}
+
+	// 大剣 溜めコンボ専用パラメータ
+	static AttackParams GetChargeAttackParams(int chargeLevel) {
+		switch (chargeLevel) {
+		case 1: return { 0.9f, 0.35f, 0.6f, 0.7f, 0.9f, 60.0f, {5, 5, 5} };  // 力強い縦斬り
+		case 2: return { 1.1f, 0.4f, 0.7f, 0.8f, 1.1f, 100.0f, {7, 4, 7} };  // 大薙ぎ払い
+		case 3: return { 1.5f, 0.6f, 1.0f, 1.2f, 1.5f, 200.0f, {8, 6, 8} };  // 天墜斬（大技）
+		}
+		return { 0.9f, 0.35f, 0.6f, 0.7f, 0.9f, 60.0f, {5, 5, 5} };
 	}
 
 	void TransitionTo(PlayerActionComponent& pa, PlayerActionState newState, float duration) {
@@ -170,36 +231,125 @@ private:
 
 	// --- Idle ---
 	void HandleIdleState(PlayerActionComponent& pa, PlayerInputComponent& pi, TransformComponent& tc,
-		GameContext& ctx, bool attackInput, bool parryPressed, bool dodgePressed) {
+		GameContext& ctx, bool attackInput, bool attackPressed, bool parryPressed, bool dodgePressed, WeaponType currentWeapon) {
 		pa.comboStep = 0;
 		pa.comboQueued = false;
 
-		// 攻撃 -> Attack1
-		if (attackInput) {
-			StartAttack(pa, 1);
-			return;
+		if (currentWeapon == WeaponType::Greatsword) {
+			// 大剣: ボタン押した瞬間にholdTimerを開始
+			if (attackPressed) {
+				pa.holdTimer = 0.0f;
+				pa.isHolding = true;
+				pa.chargeLevel = 0; // 溜めコンボリセット
+			}
+			if (pa.isHolding) {
+				pa.holdTimer += ctx.dt;
+				if (!attackInput) {
+					// ボタンを離した = タップ → 通常攻撃1段目
+					pa.isHolding = false;
+					StartAttack(pa, 1, currentWeapon, 1.0f);
+					return;
+				}
+				if (pa.holdTimer >= 0.2f) {
+					// 0.2秒以上長押し → 溜め状態に遷移
+					pa.isHolding = false;
+					pa.chargeLevel = 1;
+					StartCharge(pa, 1);
+					return;
+				}
+			}
+		} else {
+			// 他の武器: タップで即攻撃
+			if (attackPressed) {
+				StartAttack(pa, 1, currentWeapon, 1.0f);
+				return;
+			}
 		}
 
-		// パリィ -> Parry
 		if (parryPressed && pa.parryCooldown <= 0.0f) {
 			TransitionTo(pa, PlayerActionState::Parry, pa.parryWindowDuration);
-			pa.parryCooldown = 0.5f; // パリィ後0.5秒のクールダウン
+			pa.parryCooldown = 0.5f;
 			return;
 		}
-
-		// 回避 -> Dodge
 		if (dodgePressed && pa.dodgeCooldown <= 0.0f) {
 			StartDodge(pa, pi, tc, ctx);
 			return;
 		}
 	}
 
-	void StartAttack(PlayerActionComponent& pa, int step) {
-		auto params = GetAttackParams(step);
+	// --- Charging（溜め中）: ボタンを離すまで攻撃を出さない ---
+	void StartCharge(PlayerActionComponent& pa, int level) {
+		pa.chargeLevel = level;
+		pa.comboQueued = false;
+		pa.chargeTimer = 0.0f;
+		TransitionTo(pa, PlayerActionState::Charging, 999.0f);
+	}
+
+	void HandleChargeState(PlayerActionComponent& pa, bool attackInput, WeaponType currentWeapon, GameContext& ctx) {
+		(void)currentWeapon;
+		pa.chargeTimer += ctx.dt;
+		float maxCharge = 1.5f; // 1.5秒で最大溜め
+
+		if (!attackInput) {
+			// ボタンを離した → 溜め攻撃発動！
+			float chargeRatio = std::min(pa.chargeTimer, maxCharge) / maxCharge;
+			// 溜め段に応じた基礎倍率 + 溜め時間による追加倍率
+			float baseMult = 1.0f + (pa.chargeLevel - 1) * 0.5f; // Lv1=1.0, Lv2=1.5, Lv3=2.0
+			float chargeMult = 1.0f + chargeRatio * 1.5f;         // 溜め0=1.0倍, 最大=2.5倍
+			pa.currentDamageMultiplier = baseMult * chargeMult;
+			StartChargeAttack(pa, pa.chargeLevel);
+			return;
+		}
+		// ボタンを押している間は最大溜めのまま待機する
+	}
+
+	void StartChargeAttack(PlayerActionComponent& pa, int level) {
+		auto params = GetChargeAttackParams(level);
+		pa.comboStep = level;
+		pa.comboQueued = false;
+		pa.comboWindowStart = params.comboStart;
+		pa.comboWindowEnd = params.comboEnd;
+
+		PlayerActionState state = PlayerActionState::ChargeAttack1;
+		if (level == 2) state = PlayerActionState::ChargeAttack2;
+		if (level == 3) state = PlayerActionState::ChargeAttack3;
+		TransitionTo(pa, state, params.duration);
+	}
+
+	// --- ChargeAttack（溜め攻撃モーション中）---
+	void HandleChargeAttackState(PlayerActionComponent& pa, bool attackInput, bool attackPressed, WeaponType currentWeapon) {
+		// 先行入力（モーション中いつでも受け付け）
+		if (attackPressed) {
+			pa.comboQueued = true;
+		}
+
+		// コンボ受付開始時間を過ぎていて、かつバッファがあればキャンセルして次の段へ
+		bool canComboCancel = (pa.comboQueued && pa.stateTimer >= pa.comboWindowStart);
+		
+		// モーション終了 または キャンセル可能
+		if (pa.stateTimer >= pa.stateDuration || canComboCancel) {
+			if (pa.comboQueued && pa.chargeLevel < 3) {
+				// 次の段へ。ホールド中なら溜めへ、離していれば通常攻撃へ
+				if (attackInput) {
+					StartCharge(pa, pa.chargeLevel + 1);
+				} else {
+					StartAttack(pa, pa.chargeLevel + 1, currentWeapon, 1.0f);
+				}
+			} else if (pa.stateTimer >= pa.stateDuration) {
+				// 溜め3段目完了 または コンボ入力なし → Idle
+				TransitionTo(pa, PlayerActionState::Idle, 0.0f);
+			}
+		}
+	}
+
+	// --- 通常コンボ ---
+	void StartAttack(PlayerActionComponent& pa, int step, WeaponType currentWeapon, float multiplier) {
+		auto params = GetAttackParams(step, currentWeapon);
 		pa.comboStep = step;
 		pa.comboQueued = false;
 		pa.comboWindowStart = params.comboStart;
 		pa.comboWindowEnd = params.comboEnd;
+		pa.currentDamageMultiplier = multiplier;
 
 		PlayerActionState state = PlayerActionState::Attack1;
 		if (step == 2) state = PlayerActionState::Attack2;
@@ -210,19 +360,20 @@ private:
 	// --- Attack ---
 	void HandleAttackState(entt::registry& /*registry*/, entt::entity /*entity*/,
 		PlayerActionComponent& pa, PlayerInputComponent& /*pi*/, TransformComponent& /*tc*/,
-		GameContext& /*ctx*/, bool attackInput) {
-		// コンボ受付ウィンドウ内に攻撃入力があればバッファリング
-		if (attackInput && pa.stateTimer >= pa.comboWindowStart && pa.stateTimer <= pa.comboWindowEnd) {
+		GameContext& /*ctx*/, bool attackPressed, WeaponType currentWeapon) {
+		// 先行入力（モーション中いつでも受け付け）
+		if (attackPressed) {
 			pa.comboQueued = true;
 		}
 
-		// モーション終了
-		if (pa.stateTimer >= pa.stateDuration) {
+		// コンボ受付開始時間を過ぎていて、かつバッファがあればキャンセルして次の段へ
+		bool canComboCancel = (pa.comboQueued && pa.stateTimer >= pa.comboWindowStart);
+
+		// モーション終了 または キャンセル可能
+		if (pa.stateTimer >= pa.stateDuration || canComboCancel) {
 			if (pa.comboQueued && pa.comboStep < 3) {
-				// 次のコンボ段へ
-				StartAttack(pa, pa.comboStep + 1);
-			} else {
-				// コンボ終了 -> Idle
+				StartAttack(pa, pa.comboStep + 1, currentWeapon, 1.0f);
+			} else if (pa.stateTimer >= pa.stateDuration) {
 				TransitionTo(pa, PlayerActionState::Idle, 0.0f);
 			}
 		}
@@ -297,20 +448,37 @@ private:
 	}
 
 	// --- Hitboxの有効/無効を攻撃タイミングに合わせて制御 ---
-	void UpdateHitbox(entt::registry& registry, entt::entity entity, PlayerActionComponent& pa) {
+	void UpdateHitbox(entt::registry& registry, entt::entity entity, PlayerActionComponent& pa, WeaponType currentWeapon) {
 		if (!registry.all_of<HitboxComponent>(entity)) return;
 		auto& hb = registry.get<HitboxComponent>(entity);
 
 		bool isAttacking = (pa.state == PlayerActionState::Attack1 ||
 		                    pa.state == PlayerActionState::Attack2 ||
 		                    pa.state == PlayerActionState::Attack3);
+		bool isChargeAttacking = (pa.state == PlayerActionState::ChargeAttack1 ||
+		                          pa.state == PlayerActionState::ChargeAttack2 ||
+		                          pa.state == PlayerActionState::ChargeAttack3);
 
-		if (isAttacking) {
-			auto params = GetAttackParams(pa.comboStep);
+		if (isAttacking || isChargeAttacking) {
+			AttackParams params;
+			if (isChargeAttacking) {
+				params = GetChargeAttackParams(pa.chargeLevel);
+			} else {
+				params = GetAttackParams(pa.comboStep, currentWeapon);
+			}
+			
+			// 新しく攻撃判定が発生した瞬間（false -> true）にヒット履歴をクリア
+			bool wasActive = hb.isActive;
 			hb.isActive = (pa.stateTimer >= params.hitStart && pa.stateTimer <= params.hitEnd);
-			hb.damage = params.damage;
+			if (!wasActive && hb.isActive) {
+				hb.hitTargets.clear();
+			}
+			
+			hb.damage = params.damage * pa.currentDamageMultiplier;
+			hb.size = params.hitboxSize;
 		} else {
 			hb.isActive = false;
+			hb.hitTargets.clear();
 		}
 	}
 };

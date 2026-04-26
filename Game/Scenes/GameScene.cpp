@@ -11,6 +11,7 @@
 #include "../Systems/CameraFollowSystem.h"
 #include "../Systems/CharacterMovementSystem.h"
 #include "../Systems/CleanupSystem.h"
+#include "../Systems/WeaponSystem.h" // ★追加
 
 #include "../Systems/HealthSystem.h"
 #include "../Systems/MotionSystem.h" // ★追加
@@ -136,6 +137,7 @@ void GameScene::Initialize(Engine::WindowDX* dx, const Engine::SceneParameters& 
 	systems_.clear();
 	systems_.push_back(std::make_unique<PlayerInputSystem>());
 	systems_.push_back(std::make_unique<PlayerActionSystem>());  // ★追加: 攻撃・パリィ・回避
+	systems_.push_back(std::make_unique<WeaponSystem>());        // ★追加: 武器の管理・アニメーション
 	systems_.push_back(std::make_unique<CharacterMovementSystem>());
 	systems_.push_back(std::make_unique<PhysicsSystem>());
 	systems_.push_back(std::make_unique<EnemyAISystem>());      // ★追加: 敵AI（CombatSystemの前）
