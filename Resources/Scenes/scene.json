@@ -70,7 +70,7 @@
         {"type": "Tag", "enabled": true, "tag": "Enemy"},
         {"type": "Hitbox", "enabled": true, "center": [0,0,0], "size": [2,3,2], "damage": 20, "isActive": false, "tag": "Enemy"},
         {"type": "Hurtbox", "enabled": true, "center": [0,0,0], "size": [2,3,2], "damageMultiplier": 1, "tag": "Enemy"},
-        {"type": "EnemyAI", "enabled": true, "attackInterval": 3, "windUpDuration": 0.6, "attackDuration": 1, "cooldownDuration": 1, "stunDuration": 1.5, "chaseSpeed": 4, "chaseRange": 15, "attackRange": 15}
+        {"type": "Script", "enabled": true, "scripts": [{"path": "BossTestScript", "param": "{}"}]}
       ]
     }
   ]

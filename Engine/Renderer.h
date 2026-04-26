@@ -273,11 +273,13 @@ public:
 	};
 
 	struct Sprite9SliceDesc {
-		float x, y, w, h;
-		float left, right, top, bottom; // border in pixels
+		float x = 0.0f, y = 0.0f, w = 64.0f, h = 64.0f;
+		float left = 0.0f, right = 0.0f, top = 0.0f, bottom = 0.0f; // border in pixels
 		Vector4 color{1,1,1,1};
-		float rotationRad = 0;
+		float rotationRad = 0.0f;
 		int layer = 0; // ★追加: 描画レイヤー
+
+		Sprite9SliceDesc() : x(0), y(0), w(64), h(64), left(0), right(0), top(0), bottom(0), rotationRad(0), layer(0) {}
 	};
 	void DrawSprite(TextureHandle texH, const SpriteDesc& s);
 	void DrawSprite9Slice(TextureHandle texH, const Sprite9SliceDesc& s); // ★追加

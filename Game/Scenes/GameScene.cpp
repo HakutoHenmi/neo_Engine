@@ -19,6 +19,7 @@
 #include "../Systems/PlayerActionSystem.h" // ★追加: プレイヤーアクション
 #include "../Systems/CombatSystem.h"       // ★追加: 戦闘判定
 #include "../Systems/EnemyAISystem.h"      // ★追加: 敵AI
+#include "../Systems/BossActionSystem.h"    // ★追加: ボスAI
 #include "../Systems/WaveSystem.h"         // ★追加: ウェーブ管理
 
 #include "../Systems/ScriptSystem.h"
@@ -138,6 +139,7 @@ void GameScene::Initialize(Engine::WindowDX* dx, const Engine::SceneParameters& 
 	systems_.push_back(std::make_unique<CharacterMovementSystem>());
 	systems_.push_back(std::make_unique<PhysicsSystem>());
 	systems_.push_back(std::make_unique<EnemyAISystem>());      // ★追加: 敵AI（CombatSystemの前）
+	systems_.push_back(std::make_unique<BossActionSystem>());   // ★追加: ボスAI（CombatSystemの前）
 	systems_.push_back(std::make_unique<CombatSystem>());         // ★追加: Hitbox vs Hurtbox 判定
 	systems_.push_back(std::make_unique<CameraFollowSystem>());
 	systems_.push_back(std::make_unique<HealthSystem>());

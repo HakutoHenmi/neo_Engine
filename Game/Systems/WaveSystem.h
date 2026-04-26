@@ -19,9 +19,17 @@ public:
 
 	State state = State::Playing;
 	float clearAlpha = 0.0f;
+	int warmupFrames_ = 0; // スクリプト初期化を待つ猶予フレーム
 
 	void Update(entt::registry& registry, GameContext& ctx) override {
 		if (!ctx.isPlaying) return;
+
+		// ScriptSystemがWaveSystemの後に実行されるため、
+		// 最初の数フレームはスクリプトの初期化を待つ
+		if (warmupFrames_ < 3) {
+			warmupFrames_++;
+			return;
+		}
 
 		// スクリプトインスタンスがなければ動的に生成してアタッチする（フォールバック）
 		if (!GameManagerScript::GetInstance()) {
@@ -43,11 +51,23 @@ public:
 
 		// 敵の数を数える
 		int enemyCount = 0;
-		auto eView = registry.view<EnemyAIComponent, HealthComponent>();
+		auto eView = registry.view<EnemyAIComponent>();
 		for (auto entity : eView) {
-			auto& hc = eView.get<HealthComponent>(entity);
-			if (!hc.isDead) enemyCount++;
+			if (registry.all_of<HealthComponent>(entity)) {
+				if (!registry.get<HealthComponent>(entity).isDead) enemyCount++;
+			} else {
+				enemyCount++; // Initialization pending
+			}
 		}
+		auto bView = registry.view<BossActionComponent>();
+		for (auto entity : bView) {
+			if (registry.all_of<HealthComponent>(entity)) {
+				if (!registry.get<HealthComponent>(entity).isDead) enemyCount++;
+			} else {
+				enemyCount++; // Initialization pending
+			}
+		}
+
 
 		if (state == State::Playing) {
 			if (enemyCount == 0) {
@@ -82,6 +102,7 @@ public:
 	void Reset(entt::registry& /*registry*/) override {
 		state = State::Playing;
 		clearAlpha = 0.0f;
+		warmupFrames_ = 0;
 	}
 };
 

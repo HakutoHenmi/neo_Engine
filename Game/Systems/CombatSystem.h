@@ -6,14 +6,6 @@
 
 namespace Game {
 
-// パリィの歪みエフェクト用コンポーネント
-struct ParryDistortionComponent {
-	float timer = 0.0f;
-	float duration = 0.5f;
-	float startScale = 0.5f;
-	float endScale = 12.0f;
-};
-
 // ★ CombatSystem: Hitbox vs Hurtbox の衝突判定 + パリィ処理
 class CombatSystem : public ISystem {
 public:
@@ -40,13 +32,21 @@ public:
 			mr.color.w = 1.0f - easeT;
 
 			// 毎フレーム常にカメラの方を向く（ビルボード）
-			if (ctx.camera) {
+			if (pd.isBillboard && ctx.camera) {
 				// カメラと同じ回転を与えると、オブジェクトのローカル座標系がカメラと一致する
 				tc.rotate = ctx.camera->Rotation();
 				
 				// Planeモデルの法線が上（Y+）だとすると、この時点では上を向いている。
 				// カメラ方向（Z軸）に面を向かせるため、ローカルでX軸に-90度回転を追加する
 				tc.rotate.x -= DirectX::XM_PIDIV2;
+			}
+
+			// ★追加: 衝撃波のようにHitboxを持つ場合は、エフェクトの大きさに合わせて当たり判定も広げる
+			if (registry.all_of<HitboxComponent>(entity)) {
+				auto& hb = registry.get<HitboxComponent>(entity);
+				// plane.obj のベースサイズが 2x2（半径1）なので、直径は s * 2 になる
+				hb.size.x = s * 2.0f;
+				hb.size.z = s * 2.0f;
 			}
 		}
 
@@ -238,6 +238,15 @@ private:
 				registry.get<HitboxComponent>(attacker).isActive = false;
 			}
 		}
+		// ★追加: BossActionComponentを持つボスはStunned状態に遷移
+		if (registry.all_of<BossActionComponent>(attacker)) {
+			auto& boss = registry.get<BossActionComponent>(attacker);
+			boss.state = BossState::Stunned;
+			boss.stateTimer = 0.0f;
+			if (registry.all_of<HitboxComponent>(attacker)) {
+				registry.get<HitboxComponent>(attacker).isActive = false;
+			}
+		}
 
 		// 4. カメラシェイク（パリィは強め）
 		if (ctx.camera) {
@@ -292,6 +301,37 @@ private:
 
 	// ダメージ適用
 	void ApplyDamage(entt::registry& registry, entt::entity target, float damage, GameContext& ctx) {
+		// --- ★追加: 部位破壊コンポーネント（BodyPart）がある場合 ---
+		if (registry.all_of<BodyPartComponent>(target)) {
+			auto& part = registry.get<BodyPartComponent>(target);
+			if (part.isDestroyed) return; // すでに破壊済みなら無視
+
+			part.hp -= damage;
+			if (part.hp <= 0.0f) {
+				part.hp = 0.0f;
+				part.isDestroyed = true;
+				
+				// 部位破壊時のイベント：親（ボス）を大ダウン状態にする
+				if (registry.valid(part.parentEntity) && registry.all_of<BossActionComponent>(part.parentEntity)) {
+					auto& boss = registry.get<BossActionComponent>(part.parentEntity);
+					boss.state = BossState::Down;
+					boss.stateTimer = 0.0f;
+				}
+				
+				// 破壊エフェクトやHurtbox無効化
+				if (registry.all_of<HurtboxComponent>(target)) {
+					registry.get<HurtboxComponent>(target).enabled = false;
+				}
+			}
+
+			// 親エンティティ（HealthComponent持ち）にダメージを伝播させる
+			if (registry.valid(part.parentEntity) && registry.all_of<HealthComponent>(part.parentEntity)) {
+				ApplyDamage(registry, part.parentEntity, damage * part.damageMultiplierToParent, ctx);
+			}
+			return; // 部位自体の処理はここで終わり
+		}
+
+		// --- 既存の本体HealthComponentの処理 ---
 		if (!registry.all_of<HealthComponent>(target)) return;
 		auto& hc = registry.get<HealthComponent>(target);
 

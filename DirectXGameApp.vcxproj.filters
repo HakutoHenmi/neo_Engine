@@ -83,6 +83,9 @@
     <ClCompile Include="Game\Scripts\ExplosionAttackArea.cpp" />
     <ClCompile Include="Game\Scripts\PhaseTransition.cpp" />
     <ClCompile Include="Game\Scripts\WaveManagement.cpp" />
+    <ClCompile Include="Game\Scripts\BossTestScript.cpp">
+      <Filter>Scripts</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Game\Scenes\TitleScene.h">
@@ -197,6 +200,9 @@
     <ClInclude Include="Game\Scripts\ExplosionAttackArea.h" />
     <ClInclude Include="Game\Scripts\PhaseTransition.h" />
     <ClInclude Include="Game\Scripts\WaveManagement.h" />
+    <ClInclude Include="Game\Scripts\BossTestScript.h">
+      <Filter>Scripts</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="Scenes">

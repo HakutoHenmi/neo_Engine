@@ -21,6 +21,13 @@ void GameManagerScript::OnDestroy(entt::entity /*entity*/, GameScene* /*scene*/)
     }
 }
 
+GameManagerScript::~GameManagerScript() {
+    if (instance_ == this) {
+        instance_ = nullptr;
+    }
+}
+
+
 std::string GameManagerScript::SerializeParameters() {
     nlohmann::json j;
     j["defeatText"] = defeatText;
