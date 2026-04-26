@@ -209,6 +209,9 @@ struct PlayerInputComponent : public Component {
 	// ★追加: マウス操作によるカメラの旋回量（intent）
 	float cameraYaw = 0.0f;
 	float cameraPitch = 0.0f;
+	
+	entt::entity lockedEnemy = entt::null; // ★追加: ロックオン中の敵エンティティ
+
 	PlayerInputComponent() { type = ComponentType::PlayerInput; }
 };
 

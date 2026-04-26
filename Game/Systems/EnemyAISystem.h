@@ -1,6 +1,7 @@
 #pragma once
 #include "ISystem.h"
 #include <cmath>
+#include "../Scripts/WarningEffectScript.h"
 
 namespace Game {
 
@@ -83,12 +84,12 @@ public:
 
 				// 距離が遠い → 追跡
 				if (dist > ai.chaseRange) {
-					TransitionTo(ai, EnemyAIState::Chase);
+					TransitionTo(entity, registry, ai, EnemyAIState::Chase);
 				}
 				// 攻撃間隔が経過 & 攻撃範囲内 → 攻撃予備動作
 				else if (ai.idleTimer >= ai.attackInterval && dist <= ai.attackRange) {
 					ai.idleTimer = 0.0f;
-					TransitionTo(ai, EnemyAIState::WindUp);
+					TransitionTo(entity, registry, ai, EnemyAIState::WindUp);
 
 					// ★ 予備動作の視覚フィードバック: スケールを少し膨らませる
 					if (registry.all_of<MeshRendererComponent>(entity)) {
@@ -113,7 +114,7 @@ public:
 				// 攻撃範囲に入ったらIdleへ
 				if (dist <= ai.attackRange) {
 					ai.idleTimer = ai.attackInterval * 0.5f; // 少し待ってから攻撃
-					TransitionTo(ai, EnemyAIState::Idle);
+					TransitionTo(entity, registry, ai, EnemyAIState::Idle);
 				}
 				break;
 
@@ -121,26 +122,14 @@ public:
 				// 予備動作中: プレイヤーをロックオン
 				SmoothRotate(tc, targetAngle, ai.rotationSpeed * 0.5f, ctx.dt);
 
-				// スケールパルス（膨張→収縮）で攻撃予告
-				{
-					float pulse = 1.0f + 0.1f * std::sin(ai.stateTimer * 20.0f);
-					tc.scale.x = 2.0f * pulse;
-					tc.scale.z = 2.0f * pulse;
-				}
-
 				if (ai.stateTimer >= ai.windUpDuration) {
 					// 攻撃開始！
-					TransitionTo(ai, EnemyAIState::Attack);
+					TransitionTo(entity, registry, ai, EnemyAIState::Attack);
 
 					// Hitbox有効化
 					if (registry.all_of<HitboxComponent>(entity)) {
 						auto& hb = registry.get<HitboxComponent>(entity);
 						hb.isActive = true;
-					}
-					// 攻撃色（明るい赤）
-					if (registry.all_of<MeshRendererComponent>(entity)) {
-						auto& mr = registry.get<MeshRendererComponent>(entity);
-						mr.color = {1.0f, 0.0f, 0.0f, 1.0f};
 					}
 					// スケール戻す
 					tc.scale.x = 2.0f;
@@ -159,7 +148,7 @@ public:
 
 				if (ai.stateTimer >= ai.attackDuration) {
 					// 攻撃終了 → クールダウン
-					TransitionTo(ai, EnemyAIState::Cooldown);
+					TransitionTo(entity, registry, ai, EnemyAIState::Cooldown);
 
 					// Hitbox無効化
 					if (registry.all_of<HitboxComponent>(entity)) {
@@ -176,7 +165,7 @@ public:
 			case EnemyAIState::Cooldown:
 				// 攻撃後の隙（プレイヤーの反撃チャンス）
 				if (ai.stateTimer >= ai.cooldownDuration) {
-					TransitionTo(ai, EnemyAIState::Idle);
+					TransitionTo(entity, registry, ai, EnemyAIState::Idle);
 				}
 				break;
 
@@ -189,7 +178,7 @@ public:
 				}
 
 				if (ai.stateTimer >= ai.stunDuration) {
-					TransitionTo(ai, EnemyAIState::Idle);
+					TransitionTo(entity, registry, ai, EnemyAIState::Idle);
 					// 色を戻す
 					if (registry.all_of<MeshRendererComponent>(entity)) {
 						auto& mr = registry.get<MeshRendererComponent>(entity);
@@ -221,9 +210,25 @@ public:
 	}
 
 private:
-	void TransitionTo(EnemyAIComponent& ai, EnemyAIState newState) {
+	void TransitionTo(entt::entity entity, entt::registry& registry, EnemyAIComponent& ai, EnemyAIState newState) {
 		ai.state = newState;
 		ai.stateTimer = 0.0f;
+
+		if (newState == EnemyAIState::WindUp) {
+			if (!registry.all_of<ScriptComponent>(entity)) {
+				registry.emplace<ScriptComponent>(entity);
+			}
+			auto& sc = registry.get<ScriptComponent>(entity);
+			
+			// すでにアタッチされていなければ追加
+			bool hasWarning = false;
+			for (const auto& entry : sc.scripts) {
+				if (entry.scriptPath == "WarningEffectScript") hasWarning = true;
+			}
+			if (!hasWarning) {
+				sc.scripts.push_back({"WarningEffectScript", "{ \"duration\": " + std::to_string(ai.windUpDuration) + " }", std::make_shared<WarningEffectScript>(), false});
+			}
+		}
 	}
 
 	void SmoothRotate(TransformComponent& tc, float targetAngle, float speed, float dt) {

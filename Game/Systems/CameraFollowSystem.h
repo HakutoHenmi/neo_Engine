@@ -32,8 +32,38 @@ public:
 				auto& pi = registry.get<PlayerInputComponent>(entity);
 				if (pi.enabled) {
 					auto rot = ctx.camera->Rotation();
-					rot.y += pi.cameraYaw;
-					rot.x += pi.cameraPitch;
+					
+					// ★追加: ロックオン中の場合、カメラを敵の方に向ける
+					if (pi.lockedEnemy != entt::null && registry.valid(pi.lockedEnemy)) {
+						if (registry.all_of<TransformComponent>(pi.lockedEnemy)) {
+							auto& eTc = registry.get<TransformComponent>(pi.lockedEnemy);
+							// 敵の少し上（体の中央あたり）を注視点にする
+							float targetY = eTc.translate.y + 1.5f;
+							
+							float dx = eTc.translate.x - targetPos.x;
+							float dy = targetY - (targetPos.y + ct.height);
+							float dz = eTc.translate.z - targetPos.z;
+							
+							float targetYaw = std::atan2(dx, dz);
+							float horizontalDist = std::sqrt(dx * dx + dz * dz);
+							float targetPitch = -std::atan2(dy, horizontalDist);
+							
+							// スムーズに追従
+							float lerpSpeed = 10.0f * ctx.dt;
+							
+							// Yawの最短角度補間
+							float diffYaw = targetYaw - rot.y;
+							while (diffYaw < -DirectX::XM_PI) diffYaw += DirectX::XM_2PI;
+							while (diffYaw > DirectX::XM_PI) diffYaw -= DirectX::XM_2PI;
+							rot.y += diffYaw * lerpSpeed;
+							
+							rot.x += (targetPitch - rot.x) * lerpSpeed;
+						}
+					} else {
+						// 通常のマウス操作
+						rot.y += pi.cameraYaw;
+						rot.x += pi.cameraPitch;
+					}
 
 					const float PITCH_LIMIT = 1.5f;
 					if (rot.x > PITCH_LIMIT) rot.x = PITCH_LIMIT;
