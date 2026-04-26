@@ -189,6 +189,7 @@ exit /b 0
     <ClCompile Include="Game\Scripts\IScript.cpp" />
     <ClCompile Include="Game\Scripts\WarningEffectScript.cpp" />
     <ClCompile Include="Game\Scripts\GameManagerScript.cpp" />
+    <ClCompile Include="Game\Scripts\BossTestScript.cpp" />
     <ClCompile Include="Game\Systems\UISystem.cpp" />
     <ClCompile Include="Game\Systems\RiverSystem.cpp" />
   </ItemGroup>
@@ -202,6 +203,7 @@ exit /b 0
     <ClInclude Include="Game\Scripts\IScript.h" />
     <ClInclude Include="Game\Scripts\WarningEffectScript.h" />
     <ClInclude Include="Game\Scripts\GameManagerScript.h" />
+    <ClInclude Include="Game\Scripts\BossTestScript.h" />
     <ClInclude Include="Game\Scripts\ScriptEngine.h" />
     <ClInclude Include="Game\Scripts\ScriptUtils.h" />
     <ClInclude Include="Game\Systems\UISystem.h" />

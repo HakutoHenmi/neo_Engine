@@ -36,6 +36,7 @@ public:
 			auto& sc = registry.get<ScriptComponent>(entity);
 			for (auto& entry : sc.scripts) {
 				entry.instance = nullptr;
+				entry.isStarted = false;
 			}
 		}
 	}

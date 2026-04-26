@@ -1,11 +1,43 @@
 #include "ISystem.h"
 #include <cmath>
 #include <algorithm>
-#include "../Engine/Input.h" // ★追加
+#include "../Engine/Input.h"
 
 namespace Game {
 
 class CameraFollowSystem : public ISystem {
+private:
+	// AABBとレイの交差判定 (簡単なスプリングアーム用)
+	static float RaycastAABB(const DirectX::XMFLOAT3& rayOrigin, const DirectX::XMFLOAT3& rayDir,
+	                         const TransformComponent& tc, const BoxColliderComponent& bc) {
+		// ワールド空間のAABB（回転なしを仮定するか、AABBを最大化して計算）
+		float cx = tc.translate.x + bc.center.x;
+		float cy = tc.translate.y + bc.center.y;
+		float cz = tc.translate.z + bc.center.z;
+		// AABBの半分
+		float hx = bc.size.x * 0.5f * tc.scale.x;
+		float hy = bc.size.y * 0.5f * tc.scale.y;
+		float hz = bc.size.z * 0.5f * tc.scale.z;
+
+		float minX = cx - hx, maxX = cx + hx;
+		float minY = cy - hy, maxY = cy + hy;
+		float minZ = cz - hz, maxZ = cz + hz;
+
+		float t1 = (minX - rayOrigin.x) / (rayDir.x != 0 ? rayDir.x : 1e-5f);
+		float t2 = (maxX - rayOrigin.x) / (rayDir.x != 0 ? rayDir.x : 1e-5f);
+		float t3 = (minY - rayOrigin.y) / (rayDir.y != 0 ? rayDir.y : 1e-5f);
+		float t4 = (maxY - rayOrigin.y) / (rayDir.y != 0 ? rayDir.y : 1e-5f);
+		float t5 = (minZ - rayOrigin.z) / (rayDir.z != 0 ? rayDir.z : 1e-5f);
+		float t6 = (maxZ - rayOrigin.z) / (rayDir.z != 0 ? rayDir.z : 1e-5f);
+
+		float tmin = std::max(std::max(std::min(t1, t2), std::min(t3, t4)), std::min(t5, t6));
+		float tmax = std::min(std::min(std::max(t1, t2), std::max(t3, t4)), std::max(t5, t6));
+
+		// 衝突しなかったか、レイの後ろで衝突した場合
+		if (tmax < 0 || tmin > tmax) return -1.0f;
+		return tmin; // 交差距離
+	}
+
 public:
 	void Update(entt::registry& registry, GameContext& ctx) override {
 		if (!ctx.isPlaying || !ctx.camera) return;
@@ -90,6 +122,40 @@ public:
 				targetPos.y + offset.y,
 				targetPos.z + offset.z
 			};
+
+			// ★追加: スプリングアーム（レイキャストによる壁めり込み防止）
+			DirectX::XMFLOAT3 rayDir = { desiredPos.x - targetPos.x, desiredPos.y - targetPos.y, desiredPos.z - targetPos.z };
+			float distToDesired = std::sqrt(rayDir.x * rayDir.x + rayDir.y * rayDir.y + rayDir.z * rayDir.z);
+			
+			if (distToDesired > 0.001f) {
+				rayDir.x /= distToDesired; rayDir.y /= distToDesired; rayDir.z /= distToDesired;
+				
+				float minHitDist = distToDesired;
+				auto walls = registry.view<BoxColliderComponent, TransformComponent, TagComponent>();
+				for (auto w : walls) {
+					// TagType::Wall のみ判定する（ボス自身などを避けたい場合はWallタグのみにする）
+					if (walls.get<TagComponent>(w).tag != TagType::Wall) continue;
+					
+					auto& bc = walls.get<BoxColliderComponent>(w);
+					auto& wtc = walls.get<TransformComponent>(w);
+					
+					float hitT = RaycastAABB(targetPos, rayDir, wtc, bc);
+					if (hitT >= 0.0f && hitT < minHitDist) {
+						minHitDist = hitT;
+					}
+				}
+
+				// 壁に当たった場合、カメラを壁の少し手前に寄せる
+				if (minHitDist < distToDesired) {
+					float margin = 0.3f; // 壁からのマージン
+					float safeDist = std::max(0.0f, minHitDist - margin);
+					desiredPos = {
+						targetPos.x + rayDir.x * safeDist,
+						targetPos.y + rayDir.y * safeDist,
+						targetPos.z + rayDir.z * safeDist
+					};
+				}
+			}
 
 			DirectX::XMFLOAT3 currentPos = ctx.camera->Position();
 			float t = ct.smoothSpeed * ctx.dt;

@@ -53,7 +53,9 @@ enum class ComponentType {
 	Variable, // ★追加: 汎用変数
 	WorldSpaceUI, // ★追加: ワールド空間UI
 	Motion, // ★追加: モーションエディタ用
-	PlayerAction // ★追加: プレイヤーアクション（攻撃・パリィ・回避）
+	PlayerAction, // ★追加: プレイヤーアクション（攻撃・パリィ・回避）
+	BossAction,   // ★追加: ボス用アクションステートマシン
+	BodyPart      // ★追加: ボス部位破壊用
 };
 struct Component { 
 	ComponentType type = ComponentType::MeshRenderer; 
@@ -426,10 +428,67 @@ struct DamageNumberComponent : public Component {
 	DamageNumberComponent() { type = static_cast<ComponentType>(999); } // enumは不要
 };
 
+// パリィの歪みエフェクト用コンポーネント（地面の衝撃波にも流用）
+struct ParryDistortionComponent {
+	float timer = 0.0f;
+	float duration = 0.5f;
+	float startScale = 0.5f;
+	float endScale = 12.0f;
+	bool isBillboard = true; // 常にカメラを向くか（地面の衝撃波用はfalse）
+};
+
 // ★追加: 自動削除コンポーネント
 struct AutoDestroyComponent : public Component {
 	float timer = 1.0f;
 	AutoDestroyComponent() { type = static_cast<ComponentType>(999); }
+};
+
+// ★追加: ボスの攻撃タイプ
+enum class BossAttackType {
+	Thrust,       // 突進（デフォルト）
+	TailSpin,     // 尻尾なぎ払い（大回転）
+	JumpPress     // 飛びかかりプレス（衝撃波）
+};
+
+// ★追加: ボス専用アクションステートマシン用
+struct BossActionPattern {
+	std::string name;
+	BossAttackType type = BossAttackType::Thrust; // 攻撃のタイプ
+	float windUpDuration = 0.8f;
+	float activeDuration = 0.3f;
+	float recoveryDuration = 1.0f;
+	float range = 5.0f;
+	float damage = 20.0f;
+	float thrustForce = 10.0f; // 攻撃時の前進力（Thrust用）
+};
+
+enum class BossState : uint32_t {
+	Idle = 0, Chase, WindUp, Attack, Cooldown, Stunned, Down, Dead
+};
+
+struct BossActionComponent : public Component {
+	BossState state = BossState::Idle;
+	float stateTimer = 0.0f;
+	
+	float chaseSpeed = 3.0f;
+	float rotationSpeed = 4.0f;
+	float stunDuration = 2.0f; // パリィされた時のスタン時間
+	
+	int currentPatternIndex = -1;
+	std::vector<BossActionPattern> patterns;
+	
+	BossActionComponent() { type = ComponentType::BossAction; }
+};
+
+// ★追加: ボスの部位破壊用コンポーネント
+struct BodyPartComponent : public Component {
+	entt::entity parentEntity = entt::null; // 本体（BossActionを持つエンティティ）
+	float hp = 100.0f;
+	float maxHp = 100.0f;
+	bool isDestroyed = false;
+	float damageMultiplierToParent = 0.5f; // 部位へのダメージが本体にどれくらい入るか
+	std::string partName = "Part";
+	BodyPartComponent() { type = ComponentType::BodyPart; }
 };
 
 // ★追加: 汎用変数コンポーネント (スクリプト間通信用)

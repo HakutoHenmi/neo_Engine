@@ -92,15 +92,14 @@ void UISystem::Draw(entt::registry& registry, GameContext& ctx) {
     renderRecursive(renderRecursive, entt::null, screen);
 
     // ★追加: RectTransformを持たないが、Transform と UIText を持つエンティティの簡易2D描画
-    auto viewRawText = registry.view<TransformComponent, UITextComponent>(entt::exclude<RectTransformComponent>);
-    for (auto e : viewRawText) {
-        auto& text = viewRawText.get<UITextComponent>(e);
-        auto& transform = viewRawText.get<TransformComponent>(e);
+    auto viewRawText = registry.view<TransformComponent, UITextComponent>();
+    viewRawText.each([&](entt::entity e, TransformComponent& transform, UITextComponent& text) {
+        if (registry.all_of<RectTransformComponent>(e)) return; // exclude RectTransformComponent
         if (text.enabled) {
             // Transformの X/Y をスクリーンのピクセル座標として扱う (Zは無視)
             DrawTextW(e, registry, text, transform.translate.x, transform.translate.y, 0.0f, 0.0f, ctx.renderer);
         }
-    }
+    });
 }
 
 // ★追加: ワールド空間UI（HPバー）の描画パス
@@ -218,9 +217,7 @@ void UISystem::DrawUI(entt::registry& registry, GameContext& ctx) {
 
     // 3. ロックオンカーソルとプレイヤーHUDの描画
     auto playerView = registry.view<PlayerInputComponent, HealthComponent>();
-    for (auto playerEnt : playerView) {
-        auto& pi = playerView.get<PlayerInputComponent>(playerEnt);
-        auto& pHealth = playerView.get<HealthComponent>(playerEnt);
+    playerView.each([&](entt::entity /*playerEnt*/, PlayerInputComponent& pi, HealthComponent& pHealth) {
 
         // --- ロックオンカーソル ---
         if (pi.lockedEnemy != entt::null && registry.valid(pi.lockedEnemy)) {
@@ -312,7 +309,7 @@ void UISystem::DrawUI(entt::registry& registry, GameContext& ctx) {
                 }
             }
         }
-    }
+    });
 
 #endif
 }
