@@ -631,8 +631,39 @@ bool Model::RayCast(const DirectX::XMVECTOR& rayOrig, const DirectX::XMVECTOR& r
 	return false;
 }
 
-void Model::UpdateSkeleton(const Node& /*node*/, const Matrix4x4& /*parentMatrix*/, const Animation& /*animation*/, float /*time*/, std::vector<Matrix4x4>& /*skeletonParams*/) {
-	// (未使用) 互換性のためのダミー実装
+void Model::UpdateSkeleton(const Node& node, const Matrix4x4& parentMatrix, const Animation& animation, float time, std::vector<Matrix4x4>& skeletonParams) {
+	Matrix4x4 localTransform = node.transform;
+
+	auto it = animation.nodeAnimations.find(node.name);
+	if (it != animation.nodeAnimations.end()) {
+		const NodeAnimation& nodeAnim = it->second;
+		Vector3 trans = CalculateTranslation(nodeAnim.translations, time);
+		XMFLOAT4 rot = CalculateRotation(nodeAnim.rotations, time);
+		Vector3 scale = CalculateScale(nodeAnim.scales, time);
+
+		DirectX::XMMATRIX S = DirectX::XMMatrixScaling(scale.x, scale.y, scale.z);
+		DirectX::XMMATRIX R = DirectX::XMMatrixRotationQuaternion(DirectX::XMLoadFloat4(&rot));
+		DirectX::XMMATRIX T = DirectX::XMMatrixTranslation(trans.x, trans.y, trans.z);
+		localTransform = XMToM4(S * R * T);
+	}
+
+	DirectX::XMMATRIX localMat = DirectX::XMLoadFloat4x4(reinterpret_cast<const DirectX::XMFLOAT4X4*>(&localTransform));
+	DirectX::XMMATRIX parentMat = DirectX::XMLoadFloat4x4(reinterpret_cast<const DirectX::XMFLOAT4X4*>(&parentMatrix));
+	Matrix4x4 globalTransform = XMToM4(localMat * parentMat);
+
+	auto boneIt = data_.boneMapping.find(node.name);
+	if (boneIt != data_.boneMapping.end()) {
+		int boneIndex = boneIt->second;
+		if (boneIndex < (int)skeletonParams.size()) {
+			DirectX::XMMATRIX offsetMat = DirectX::XMLoadFloat4x4(reinterpret_cast<const DirectX::XMFLOAT4X4*>(&data_.bones[boneIndex].offsetMatrix));
+			DirectX::XMMATRIX globalMat = DirectX::XMLoadFloat4x4(reinterpret_cast<const DirectX::XMFLOAT4X4*>(&globalTransform));
+			skeletonParams[boneIndex] = XMToM4(offsetMat * globalMat);
+		}
+	}
+
+	for (const Node& child : node.children) {
+		UpdateSkeleton(child, globalTransform, animation, time, skeletonParams);
+	}
 }
 
 } // namespace Engine

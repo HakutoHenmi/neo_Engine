@@ -3604,36 +3604,39 @@ Renderer::MeshHandle Renderer::CreateRingMesh(float outerRadius, float innerRadi
 	std::vector<uint32_t> indices;
 
 	if (segments < 3) segments = 3;
+	float angleStep = DirectX::XM_2PI / segments;
 
 	for (uint32_t i = 0; i <= segments; ++i) {
-		float angle = (DirectX::XM_2PI * i) / segments;
-		float c = std::cos(angle);
-		float s = std::sin(angle);
-		float u = static_cast<float>(i) / segments;
+		float angle = i * angleStep;
+		float c = cosf(angle);
+		float s = sinf(angle);
 
 		VertexData vOuter{};
 		vOuter.position = { outerRadius * c, 0.0f, outerRadius * s, 1.0f };
 		vOuter.normal = { 0.0f, 1.0f, 0.0f };
-		vOuter.texcoord = { u, 0.0f };
+		vOuter.texcoord = { (float)i / segments, 0.0f };
+		vertices.push_back(vOuter);
 
 		VertexData vInner{};
 		vInner.position = { innerRadius * c, 0.0f, innerRadius * s, 1.0f };
 		vInner.normal = { 0.0f, 1.0f, 0.0f };
-		vInner.texcoord = { u, 1.0f };
-
-		vertices.push_back(vOuter);
+		vInner.texcoord = { (float)i / segments, 1.0f };
 		vertices.push_back(vInner);
 	}
 
 	for (uint32_t i = 0; i < segments; ++i) {
-		uint32_t start = i * 2;
-		indices.push_back(start);
-		indices.push_back(start + 1);
-		indices.push_back(start + 2);
+		uint32_t i0 = i * 2;
+		uint32_t i1 = i0 + 1;
+		uint32_t i2 = i0 + 2;
+		uint32_t i3 = i0 + 3;
 
-		indices.push_back(start + 2);
-		indices.push_back(start + 1);
-		indices.push_back(start + 3);
+		indices.push_back(i0);
+		indices.push_back(i1);
+		indices.push_back(i2);
+
+		indices.push_back(i1);
+		indices.push_back(i3);
+		indices.push_back(i2);
 	}
 
 	return CreateDynamicMesh(vertices, indices);
@@ -3644,38 +3647,94 @@ Renderer::MeshHandle Renderer::CreateCylinderMesh(float radius, float height, ui
 	std::vector<uint32_t> indices;
 
 	if (segments < 3) segments = 3;
+	float angleStep = DirectX::XM_2PI / segments;
+	float halfHeight = height * 0.5f;
 
-	float halfH = height * 0.5f;
-
+	// 側面
+	uint32_t sideOffset = (uint32_t)vertices.size();
 	for (uint32_t i = 0; i <= segments; ++i) {
-		float angle = (DirectX::XM_2PI * i) / segments;
-		float c = std::cos(angle);
-		float s = std::sin(angle);
-		float u = static_cast<float>(i) / segments;
+		float angle = i * angleStep;
+		float c = cosf(angle);
+		float s = sinf(angle);
 
 		VertexData vTop{};
-		vTop.position = { radius * c, halfH, radius * s, 1.0f };
+		vTop.position = { radius * c, halfHeight, radius * s, 1.0f };
 		vTop.normal = { c, 0.0f, s };
-		vTop.texcoord = { u, 0.0f };
-
-		VertexData vBottom{};
-		vBottom.position = { radius * c, -halfH, radius * s, 1.0f };
-		vBottom.normal = { c, 0.0f, s };
-		vBottom.texcoord = { u, 1.0f };
-
+		vTop.texcoord = { (float)i / segments, 0.0f };
 		vertices.push_back(vTop);
-		vertices.push_back(vBottom);
+
+		VertexData vBot{};
+		vBot.position = { radius * c, -halfHeight, radius * s, 1.0f };
+		vBot.normal = { c, 0.0f, s };
+		vBot.texcoord = { (float)i / segments, 1.0f };
+		vertices.push_back(vBot);
 	}
 
 	for (uint32_t i = 0; i < segments; ++i) {
-		uint32_t start = i * 2;
-		indices.push_back(start);
-		indices.push_back(start + 1);
-		indices.push_back(start + 2);
+		uint32_t i0 = sideOffset + i * 2;
+		uint32_t i1 = i0 + 1;
+		uint32_t i2 = i0 + 2;
+		uint32_t i3 = i0 + 3;
 
-		indices.push_back(start + 2);
-		indices.push_back(start + 1);
-		indices.push_back(start + 3);
+		indices.push_back(i0);
+		indices.push_back(i1);
+		indices.push_back(i2);
+
+		indices.push_back(i1);
+		indices.push_back(i3);
+		indices.push_back(i2);
+	}
+
+	// 上の蓋
+	uint32_t topOffset = (uint32_t)vertices.size();
+	VertexData vTopCenter{};
+	vTopCenter.position = { 0.0f, halfHeight, 0.0f, 1.0f };
+	vTopCenter.normal = { 0.0f, 1.0f, 0.0f };
+	vTopCenter.texcoord = { 0.5f, 0.5f };
+	vertices.push_back(vTopCenter);
+
+	for (uint32_t i = 0; i <= segments; ++i) {
+		float angle = i * angleStep;
+		float c = cosf(angle);
+		float s = sinf(angle);
+
+		VertexData v{};
+		v.position = { radius * c, halfHeight, radius * s, 1.0f };
+		v.normal = { 0.0f, 1.0f, 0.0f };
+		v.texcoord = { c * 0.5f + 0.5f, -s * 0.5f + 0.5f };
+		vertices.push_back(v);
+	}
+
+	for (uint32_t i = 0; i < segments; ++i) {
+		indices.push_back(topOffset);
+		indices.push_back(topOffset + 1 + i);
+		indices.push_back(topOffset + 1 + i + 1);
+	}
+
+	// 下の蓋
+	uint32_t botOffset = (uint32_t)vertices.size();
+	VertexData vBotCenter{};
+	vBotCenter.position = { 0.0f, -halfHeight, 0.0f, 1.0f };
+	vBotCenter.normal = { 0.0f, -1.0f, 0.0f };
+	vBotCenter.texcoord = { 0.5f, 0.5f };
+	vertices.push_back(vBotCenter);
+
+	for (uint32_t i = 0; i <= segments; ++i) {
+		float angle = i * angleStep;
+		float c = cosf(angle);
+		float s = sinf(angle);
+
+		VertexData v{};
+		v.position = { radius * c, -halfHeight, radius * s, 1.0f };
+		v.normal = { 0.0f, -1.0f, 0.0f };
+		v.texcoord = { c * 0.5f + 0.5f, s * 0.5f + 0.5f };
+		vertices.push_back(v);
+	}
+
+	for (uint32_t i = 0; i < segments; ++i) {
+		indices.push_back(botOffset);
+		indices.push_back(botOffset + 1 + i + 1);
+		indices.push_back(botOffset + 1 + i);
 	}
 
 	return CreateDynamicMesh(vertices, indices);
