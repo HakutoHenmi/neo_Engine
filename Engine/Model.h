@@ -10,7 +10,9 @@
 #include <wrl.h>
 
 #include "Matrix4x4.h"
+#include "Transform.h"
 #include <algorithm> // 追加
+#include <optional>
 
 namespace Engine {
 
@@ -42,8 +44,28 @@ struct Bone {
 // ノード階層構造（アニメーション計算用）
 struct Node {
 	std::string name;
-	Matrix4x4 transform; // ローカル変換行列
+	QuaternionTransform transform; // ローカル変換
+	Matrix4x4 localMatrix;
 	std::vector<Node> children;
+};
+
+// --- 追加: スケルトン用構造体 ---
+struct Joint {
+	QuaternionTransform transform; // ローカル変換
+	Matrix4x4 localMatrix;
+	Matrix4x4 skeletonSpaceMatrix;
+	std::string name;
+	std::vector<int32_t> children;
+	int32_t index;
+	std::optional<int32_t> parent;
+};
+
+struct Skeleton {
+	int32_t root;
+	std::map<std::string, int32_t> jointMap;
+	std::vector<Joint> joints;
+
+	void Update();
 };
 
 // --- アニメーション用構造体 ---
@@ -141,7 +163,8 @@ public:
 	// animation: 再生するアニメーションデータ
 	// time: 現在のアニメーション時刻(Tick)
 	// outPalette: 計算結果のボーン行列書き込み先
-	void UpdateSkeleton(const Node& node, const Matrix4x4& parentTransform, const Animation& animation, float time, std::vector<Matrix4x4>& outPalette);
+	// debugLines: デバッグ用のスケルトン描画ライン出力先（任意）
+	void UpdateSkeleton(const Node& node, const Matrix4x4& parentTransform, const Animation& animation, float time, std::vector<Matrix4x4>& outPalette, std::vector<std::pair<Vector3, Vector3>>* debugLines = nullptr);
 
 	// BVH構築
 	void BuildBVH();

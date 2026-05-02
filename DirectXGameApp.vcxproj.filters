@@ -974,6 +974,15 @@
     <None Include="Resources\shaders\ParticleVS.hlsl">
       <Filter>Resources\shaders</Filter>
     </None>
+    <None Include="Resources\shaders\GPUParticleCS.hlsl">
+      <Filter>Resources\shaders</Filter>
+    </None>
+    <None Include="Resources\shaders\GPUParticleVS.hlsl">
+      <Filter>Resources\shaders</Filter>
+    </None>
+    <None Include="Resources\shaders\GPUParticlePS.hlsl">
+      <Filter>Resources\shaders</Filter>
+    </None>
     <None Include="Resources\shaders\PathMV_PS.hlsl">
       <Filter>Resources\shaders</Filter>
     </None>

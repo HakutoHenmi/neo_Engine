@@ -436,6 +436,9 @@ exit /b 0
     <None Include="Resources\shaders\OnOffObject3d.VS.hlsl" />
     <None Include="Resources\shaders\ParticlePS.hlsl" />
     <None Include="Resources\shaders\ParticleVS.hlsl" />
+    <None Include="Resources\shaders\GPUParticleCS.hlsl" />
+    <None Include="Resources\shaders\GPUParticleVS.hlsl" />
+    <None Include="Resources\shaders\GPUParticlePS.hlsl" />
     <None Include="Resources\shaders\PathMV_PS.hlsl" />
     <None Include="Resources\shaders\PathMV_VS.hlsl" />
     <None Include="Resources\shaders\PixelShaderUI.hlsl" />

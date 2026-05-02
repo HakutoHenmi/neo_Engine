@@ -67,7 +67,16 @@ static Matrix4x4 AiToMat4(const aiMatrix4x4& m) {
 
 static void ReadNodeHierarchy(Node& node, const aiNode* src) {
 	node.name = src->mName.C_Str();
-	node.transform = AiToMat4(src->mTransformation);
+
+	aiVector3D scale, pos;
+	aiQuaternion rot;
+	src->mTransformation.Decompose(scale, rot, pos);
+	node.transform.scale = {scale.x, scale.y, scale.z};
+	node.transform.rotate = {rot.x, -rot.y, -rot.z, rot.w};
+	node.transform.translate = {-pos.x, pos.y, pos.z};
+
+	node.localMatrix = AiToMat4(src->mTransformation);
+
 	node.children.resize(src->mNumChildren);
 	for (unsigned int i = 0; i < src->mNumChildren; ++i) {
 		ReadNodeHierarchy(node.children[i], src->mChildren[i]);
@@ -204,22 +213,19 @@ ComPtr<ID3D12Resource> Model::UploadTextureData(ID3D12Resource* tex, const Direc
 }
 
 bool Model::Load(ID3D12Device* device, ID3D12GraphicsCommandList* cmd, const std::string& objPath) {
-	// Use wide string path to read file into memory for Assimp (Windows Unicode support)
-	std::wstring wpath = PathUtils::FromUTF8(objPath);
-	std::ifstream fileStream(wpath, std::ios::binary | std::ios::ate);
-	if (!fileStream.is_open()) return false;
-
-	std::streamsize size = fileStream.tellg();
-	fileStream.seekg(0, std::ios::beg);
-	std::vector<char> buffer((size_t)size);
-	if (!fileStream.read(buffer.data(), size)) return false;
-
 	Assimp::Importer importer;
 	const unsigned int flags = aiProcess_FlipWindingOrder | aiProcess_FlipUVs | aiProcess_Triangulate | aiProcess_LimitBoneWeights;
-	const aiScene* scene = importer.ReadFileFromMemory(buffer.data(), buffer.size(), flags);
+	
+	// ReadFile supports external files (.bin, .mtl) unlike ReadFileFromMemory without an IO handler
+	const aiScene* scene = importer.ReadFile(objPath.c_str(), flags);
 
-	if (!scene || !scene->mRootNode)
+	if (!scene || !scene->mRootNode) {
+		OutputDebugStringA(("[Model::Load] Failed to load model: " + objPath + "\n").c_str());
+		if (importer.GetErrorString()) {
+			OutputDebugStringA((std::string("Assimp Error: ") + importer.GetErrorString() + "\n").c_str());
+		}
 		return false;
+	}
 
 	ReadNodeHierarchy(data_.rootNode, scene->mRootNode);
 	if (scene->HasAnimations())
@@ -631,8 +637,8 @@ bool Model::RayCast(const DirectX::XMVECTOR& rayOrig, const DirectX::XMVECTOR& r
 	return false;
 }
 
-void Model::UpdateSkeleton(const Node& node, const Matrix4x4& parentMatrix, const Animation& animation, float time, std::vector<Matrix4x4>& skeletonParams) {
-	Matrix4x4 localTransform = node.transform;
+void Model::UpdateSkeleton(const Node& node, const Matrix4x4& parentMatrix, const Animation& animation, float time, std::vector<Matrix4x4>& skeletonParams, std::vector<std::pair<Vector3, Vector3>>* debugLines) {
+	Matrix4x4 localTransform = node.localMatrix;
 
 	auto it = animation.nodeAnimations.find(node.name);
 	if (it != animation.nodeAnimations.end()) {
@@ -651,6 +657,14 @@ void Model::UpdateSkeleton(const Node& node, const Matrix4x4& parentMatrix, cons
 	DirectX::XMMATRIX parentMat = DirectX::XMLoadFloat4x4(reinterpret_cast<const DirectX::XMFLOAT4X4*>(&parentMatrix));
 	Matrix4x4 globalTransform = XMToM4(localMat * parentMat);
 
+	if (debugLines) {
+		Vector3 pParent = { parentMatrix.m[3][0], parentMatrix.m[3][1], parentMatrix.m[3][2] };
+		Vector3 pCurrent = { globalTransform.m[3][0], globalTransform.m[3][1], globalTransform.m[3][2] };
+		if (node.name != "RootNode") {
+			debugLines->push_back({ pParent, pCurrent });
+		}
+	}
+
 	auto boneIt = data_.boneMapping.find(node.name);
 	if (boneIt != data_.boneMapping.end()) {
 		int boneIndex = boneIt->second;
@@ -662,7 +676,18 @@ void Model::UpdateSkeleton(const Node& node, const Matrix4x4& parentMatrix, cons
 	}
 
 	for (const Node& child : node.children) {
-		UpdateSkeleton(child, globalTransform, animation, time, skeletonParams);
+		UpdateSkeleton(child, globalTransform, animation, time, skeletonParams, debugLines);
+	}
+}
+
+void Skeleton::Update() {
+	for (Joint& joint : joints) {
+		joint.localMatrix = joint.transform.ToMatrix();
+		if (joint.parent) {
+			joint.skeletonSpaceMatrix = Matrix4x4::Multiply(joint.localMatrix, joints[*joint.parent].skeletonSpaceMatrix);
+		} else {
+			joint.skeletonSpaceMatrix = joint.localMatrix;
+		}
 	}
 }
 

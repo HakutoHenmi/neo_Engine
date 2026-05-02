@@ -140,6 +140,7 @@
     <ClCompile Include="Engine\Input.cpp" />
     <ClCompile Include="Engine\Model.cpp" />
     <ClCompile Include="Engine\Particle.cpp" />
+    <ClCompile Include="Engine\GPUParticle.cpp" />
     <ClCompile Include="Engine\ParticleEmitter.cpp" />
     <ClCompile Include="Engine\ParticleEditor.cpp" />
     <ClCompile Include="Engine\Renderer.cpp" />
@@ -184,6 +185,7 @@
     <ClInclude Include="Engine\SceneParameters.h" />
     <ClInclude Include="Engine\Model.h" />
     <ClInclude Include="Engine\Particle.h" />
+    <ClInclude Include="Engine\GPUParticle.h" />
     <ClInclude Include="Engine\ParticleEmitter.h" />
     <ClInclude Include="Engine\ParticleEditor.h" />
     <ClInclude Include="Engine\Renderer.h" />
