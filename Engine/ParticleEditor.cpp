@@ -10,6 +10,8 @@ void ParticleEditor::Initialize() {
 
 	// ★追加: プレビュー用レンダーターゲットとカメラの初期化
 	previewTarget_ = Renderer::GetInstance()->CreateRenderTarget(512, 512);
+	// GPUParticleの初期化
+	gpuParticleSystem_.Initialize(Renderer::GetInstance()->GetDevice(), 10000);
 
 	previewCamera_.Initialize();
 	// ★修正: 透視投影行列を設定（これがないと何も描画されない）
@@ -19,7 +21,12 @@ void ParticleEditor::Initialize() {
 
 void ParticleEditor::Update(float dt) {
 	if (targetEmitter == &previewEmitter_) {
-		previewEmitter_.Update(dt);
+		GPUParticleEmitterData ed{};
+		ed.emitPos = { targetEmitter->params.position.x, targetEmitter->params.position.y, targetEmitter->params.position.z };
+		ed.emitRate = targetEmitter->params.emitRate;
+		ed.emitVel = { targetEmitter->params.startVelocity.x, targetEmitter->params.startVelocity.y, targetEmitter->params.startVelocity.z };
+		ed.emitLife = targetEmitter->params.lifeTime;
+		gpuParticleSystem_.Update(Renderer::GetInstance()->GetCommandList(), dt, ed);
 	}
 
 	// ★変更: ImGui コンテキストがない場合は以降の入力をスキップ
@@ -86,13 +93,22 @@ void ParticleEditor::DrawUI() {
 	r->DrawLine3D({0,0,0}, {0,axisLen,0}, {0.2f, 1.0f, 0.2f, 1.0f}); // Y: 緑
 	r->DrawLine3D({0,0,0}, {0,0,axisLen}, {0.3f, 0.3f, 1.0f, 1.0f}); // Z: 青
 
-	// パーティクルの描画
+	// ★修正: 先に FlushDrawCalls() を呼び、Skyboxやグリッドなどを描画させてから、
+	// その上にパーティクルを描画するようにする（Skyboxにパーティクルが上書きされるのを防ぐため）
+	r->FlushDrawCalls();
+
+	// パーティクルの描画 (常にGPU)
 	if (targetEmitter == &previewEmitter_) {
-		previewEmitter_.Draw(previewCamera_);
+		DirectX::XMMATRIX vp = previewCamera_.View() * previewCamera_.Proj();
+		Matrix4x4 viewProjMat;
+		DirectX::XMStoreFloat4x4(reinterpret_cast<DirectX::XMFLOAT4X4*>(&viewProjMat), vp);
+
+		Vector3 pos = previewCamera_.GetPosition();
+		DirectX::XMFLOAT3 camPos(pos.x, pos.y, pos.z);
+
+		gpuParticleSystem_.Draw(Renderer::GetInstance()->GetCommandList(), viewProjMat, camPos, targetEmitter->params.useBillboard);
 	}
 
-	// ★即座に描画コマンドを発行して、プレビューターゲットに書き込む
-	r->FlushDrawCalls();
 	Renderer::GetInstance()->EndCustomRenderTarget();
 
 	// ImGui上に画像として表示
@@ -110,6 +126,7 @@ void ParticleEditor::DrawUI() {
 	}
 
 	if (ImGui::CollapsingHeader("Playback", ImGuiTreeNodeFlags_DefaultOpen)) {
+		ImGui::Text("GPU Particle Active");
 		ImGui::Checkbox("Is Playing", &targetEmitter->isPlaying);
 		if (ImGui::Button("Emit Burst (10)")) {
 			targetEmitter->EmitBurst(10);

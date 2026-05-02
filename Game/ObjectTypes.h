@@ -158,6 +158,7 @@ struct AnimatorComponent : public Component {
 	float speed = 1.0f;
 	bool isPlaying = false;
 	bool loop = true;
+	bool drawSkeleton = false; // ★追加: デバッグ用スケルトン表示
 	AnimatorComponent() { type = ComponentType::Animator; }
 };
 

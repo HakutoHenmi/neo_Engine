@@ -162,6 +162,7 @@ public:
 	void Shutdown();
 
 	ID3D12Device* GetDevice() const { return dev_; }
+	ID3D12GraphicsCommandList* GetCommandList() const { return list_; }
 	static Renderer* GetInstance() { return instance_; }
 
 	void BeginFrame(const float clearColorRGBA[4]);

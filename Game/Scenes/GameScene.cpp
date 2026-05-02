@@ -628,8 +628,25 @@ void GameScene::Draw() {
 								bonePalette.resize(data.bones.size());
 								for (auto& b : bonePalette)
 									b = Engine::Matrix4x4::Identity();
-								m->UpdateSkeleton(data.rootNode, Engine::Matrix4x4::Identity(), *currAnim, anim.time, bonePalette);
+
+								std::vector<std::pair<Engine::Vector3, Engine::Vector3>> debugLines;
+								m->UpdateSkeleton(data.rootNode, Engine::Matrix4x4::Identity(), *currAnim, anim.time, bonePalette, anim.drawSkeleton ? &debugLines : nullptr);
 								hasAnim = true;
+
+								if (anim.drawSkeleton) {
+									Engine::Matrix4x4 world = this->GetWorldMatrix(static_cast<int>(entity));
+									DirectX::XMMATRIX w = DirectX::XMLoadFloat4x4(reinterpret_cast<const DirectX::XMFLOAT4X4*>(&world));
+									for (const auto& line : debugLines) {
+										DirectX::XMVECTOR p1 = DirectX::XMVectorSet(line.first.x, line.first.y, line.first.z, 1.0f);
+										DirectX::XMVECTOR p2 = DirectX::XMVectorSet(line.second.x, line.second.y, line.second.z, 1.0f);
+										p1 = DirectX::XMVector3TransformCoord(p1, w);
+										p2 = DirectX::XMVector3TransformCoord(p2, w);
+										Engine::Vector3 wp1, wp2;
+										DirectX::XMStoreFloat3(reinterpret_cast<DirectX::XMFLOAT3*>(&wp1), p1);
+										DirectX::XMStoreFloat3(reinterpret_cast<DirectX::XMFLOAT3*>(&wp2), p2);
+										renderer_->DrawLine3D(wp1, wp2, {0.0f, 1.0f, 0.0f, 1.0f}, true); // X-Ray true
+									}
+								}
 							}
 						}
 					}

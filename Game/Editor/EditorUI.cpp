@@ -2485,10 +2485,35 @@ void EditorUI::ShowInspector(GameScene* scene) {
 			if (auto* anim = registry.try_get<AnimatorComponent>(entity)) {
 				if (ImGui::CollapsingHeader("Animator", ImGuiTreeNodeFlags_DefaultOpen)) {
 					ImGui::Checkbox("Enabled##ANIM", &anim->enabled);
-					ImGui::Text("Animation: %s", anim->currentAnimation.c_str());
+					if (auto* mr = registry.try_get<MeshRendererComponent>(entity)) {
+						if (mr->modelHandle != 0) {
+							auto* m = Engine::Renderer::GetInstance()->GetModel(mr->modelHandle);
+							if (m && !m->GetData().animations.empty()) {
+								if (ImGui::BeginCombo("Clips", anim->currentAnimation.c_str())) {
+									for (const auto& a : m->GetData().animations) {
+										if (ImGui::Selectable(a.name.c_str(), anim->currentAnimation == a.name)) {
+											anim->currentAnimation = a.name;
+											anim->time = 0.0f;
+										}
+									}
+									ImGui::EndCombo();
+								}
+							} else {
+								ImGui::Text("No animations in model.");
+							}
+						} else {
+							ImGui::Text("No Model attached.");
+						}
+					} else {
+						ImGui::Text("Require MeshRenderer.");
+					}
+
 					ImGui::DragFloat("Speed", &anim->speed, 0.1f);
 					ImGui::Checkbox("Playing", &anim->isPlaying);
+					ImGui::SameLine();
 					ImGui::Checkbox("Loop", &anim->loop);
+					ImGui::Checkbox("Draw Skeleton (Debug)", &anim->drawSkeleton);
+
 					if (ImGui::Button("Remove##ANIM")) registry.remove<AnimatorComponent>(entity);
 				}
 			}

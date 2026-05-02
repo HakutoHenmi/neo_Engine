@@ -1,5 +1,6 @@
-﻿#pragma once
+#pragma once
 #include "ParticleEmitter.h"
+#include "GPUParticle.h"
 #include <string>
 
 namespace Engine {
@@ -13,6 +14,7 @@ public:
 
 	// ★追加: 編集用・プレビュー用のエミッター（対象が外部から与えられない場合に使用）
 	ParticleEmitter previewEmitter_;
+	GPUParticleSystem gpuParticleSystem_;
 
 	// 編集対象のエミッター（コンポーネント用、nullptrでもよい）
 	ParticleEmitter* targetEmitter = nullptr;
