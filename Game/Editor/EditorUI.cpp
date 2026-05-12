@@ -1780,6 +1780,22 @@ void EditorUI::ShowHierarchy(GameScene* scene) {
 				mr.textureHandle = Engine::Renderer::GetInstance()->LoadTexture2D(mr.texturePath);
 				scene->SetSelectedEntity(e);
 			}
+			if (ImGui::MenuItem("Create Ring")) {
+				auto e = scene->CreateEntity("Ring");
+				auto& mr = registry.emplace<MeshRendererComponent>(e);
+				mr.modelHandle = Engine::Renderer::GetInstance()->CreateRingMesh(2.0f, 1.0f, 32);
+				mr.texturePath = "Resources/Textures/white1x1.png";
+				mr.textureHandle = Engine::Renderer::GetInstance()->LoadTexture2D(mr.texturePath);
+				scene->SetSelectedEntity(e);
+			}
+			if (ImGui::MenuItem("Create Cylinder")) {
+				auto e = scene->CreateEntity("Cylinder");
+				auto& mr = registry.emplace<MeshRendererComponent>(e);
+				mr.modelHandle = Engine::Renderer::GetInstance()->CreateCylinderMesh(1.0f, 2.0f, 32);
+				mr.texturePath = "Resources/Textures/white1x1.png";
+				mr.textureHandle = Engine::Renderer::GetInstance()->LoadTexture2D(mr.texturePath);
+				scene->SetSelectedEntity(e);
+			}
 			ImGui::EndPopup();
 		}
 
@@ -1798,6 +1814,22 @@ void EditorUI::ShowHierarchy(GameScene* scene) {
 				auto& mr = registry.emplace<MeshRendererComponent>(e);
 				mr.modelPath = "Resources/Models/cube/cube.obj";
 				mr.modelHandle = Engine::Renderer::GetInstance()->LoadObjMesh(mr.modelPath);
+				mr.texturePath = "Resources/Textures/white1x1.png";
+				mr.textureHandle = Engine::Renderer::GetInstance()->LoadTexture2D(mr.texturePath);
+				scene->SetSelectedEntity(e);
+			}
+			if (ImGui::MenuItem("Create Ring")) {
+				auto e = scene->CreateEntity("Ring");
+				auto& mr = registry.emplace<MeshRendererComponent>(e);
+				mr.modelHandle = Engine::Renderer::GetInstance()->CreateRingMesh(2.0f, 1.0f, 32);
+				mr.texturePath = "Resources/Textures/white1x1.png";
+				mr.textureHandle = Engine::Renderer::GetInstance()->LoadTexture2D(mr.texturePath);
+				scene->SetSelectedEntity(e);
+			}
+			if (ImGui::MenuItem("Create Cylinder")) {
+				auto e = scene->CreateEntity("Cylinder");
+				auto& mr = registry.emplace<MeshRendererComponent>(e);
+				mr.modelHandle = Engine::Renderer::GetInstance()->CreateCylinderMesh(1.0f, 2.0f, 32);
 				mr.texturePath = "Resources/Textures/white1x1.png";
 				mr.textureHandle = Engine::Renderer::GetInstance()->LoadTexture2D(mr.texturePath);
 				scene->SetSelectedEntity(e);
