@@ -97,6 +97,22 @@ void GameScene::Initialize(Engine::WindowDX* dx, const Engine::SceneParameters& 
 
 	}
 
+	// ★追加: Ring メッシュの生成と表示 (CG4_01_01 Ring課題)
+	// シーンロードの有無に関わらず常にRingを生成する
+	{
+		auto ring = registry_.create();
+		registry_.emplace<NameComponent>(ring, "Ring");
+		auto& ringMesh = registry_.emplace<MeshRendererComponent>(ring);
+		ringMesh.modelHandle = renderer_->CreateRingMesh(2.0f, 1.0f, 32); // 外半径2.0, 内半径1.0, 分割数32
+		ringMesh.textureHandle = renderer_->LoadTexture2D("Resources/Textures/white1x1.png");
+		ringMesh.texturePath = "Resources/Textures/white1x1.png";
+		registry_.emplace<TransformComponent>(ring,
+			DirectX::XMFLOAT3{0.0f, 1.0f, 0.0f},   // 位置: 地面より少し上
+			DirectX::XMFLOAT3{0.0f, 0.0f, 0.0f},   // 回転: なし
+			DirectX::XMFLOAT3{1.0f, 1.0f, 1.0f});   // スケール: 等倍
+		registry_.emplace<ColorComponent>(ring, DirectX::XMFLOAT4{1.0f, 1.0f, 1.0f, 1.0f});
+	}
+
 	// エディターUIの初期化
 	EditorUI::Initialize(renderer_);
 
