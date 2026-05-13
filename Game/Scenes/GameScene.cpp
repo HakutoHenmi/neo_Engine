@@ -25,6 +25,7 @@
 
 #include "../Systems/ScriptSystem.h"
 #include "../Systems/UISystem.h"
+#include "../Systems/PostProcessSystem.h" // ★追加
 #include "imgui.h"
 #include <Windows.h> // OutputDebugStringA
 #include <algorithm>
@@ -171,6 +172,7 @@ void GameScene::Initialize(Engine::WindowDX* dx, const Engine::SceneParameters& 
 	systems_.push_back(std::make_unique<AudioSystem>());
 	systems_.push_back(std::make_unique<UISystem>());
 	systems_.push_back(std::make_unique<MotionSystem>());
+	systems_.push_back(std::make_unique<PostProcessSystem>()); // ★追加
 	systems_.push_back(std::make_unique<CleanupSystem>());
 
 	// ★追加: 起動直後の状態を初期スナップショットとして保存
