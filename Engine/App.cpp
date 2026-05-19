@@ -107,6 +107,11 @@ void App::Shutdown() {
 #endif
 	audio_.Shutdown();
 	input_.Shutdown();
+
+	// ★修正: RendererとSceneをDeviceより先に解放する
+	sceneManager_.Clear();
+	renderer_.Shutdown();
+
 	dx_.WaitIdle();
 	dx_.Shutdown();
 }

@@ -2772,7 +2772,7 @@ void EditorUI::ShowSceneSettings(Engine::Renderer* renderer) {
 	bool ch = false;
 
 	// ★ポストエフェクト種類のドロップダウン（常時表示）
-	static const char* ppTypes[] = { "None", "Default(CRT)", "Rich", "Anime", "Grayscale", "Smoothing", "GaussianFilter", "OutlinePost", "RadialBlur", "Random" };
+	static const char* ppTypes[] = { "None", "Default(CRT)", "Rich", "Anime", "Grayscale", "Smoothing", "GaussianFilter", "OutlinePost", "RadialBlur", "Random", "PaperFrame" };
 	static int currentPP = 1; // デフォルトはCRT
 	if (ImGui::BeginCombo("PostEffect", ppTypes[currentPP])) {
 		for (int n = 0; n < IM_ARRAYSIZE(ppTypes); n++) {

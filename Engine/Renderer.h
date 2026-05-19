@@ -226,6 +226,12 @@ public:
 	// ★追加: キューブマップ読み込み (DDS) と Skybox 設定
 	TextureHandle LoadCubeMap(const std::string& ddsPath);
 	void SetSkyboxTexture(TextureHandle cubeMap);
+	// ★追加: 和風ポストプロセス用テクスチャ
+	void SetSumiETextures(TextureHandle paper, TextureHandle vignette) {
+		sumiEPaperTex_ = paper;
+		sumiEVignetteTex_ = vignette;
+	}
+
 	TextureHandle GetSkyboxTexture() const { return skyboxCubeMapHandle_; }
 
 	// ★追加: 動的メッシュの作成と更新
@@ -596,6 +602,15 @@ private:
 	// ★追加: コリジョン同期用
 	Microsoft::WRL::ComPtr<ID3D12CommandAllocator> collisionAlloc_;
 	Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> collisionList_;
+	TextureHandle sumiEPaperTex_ = 0;
+	TextureHandle sumiEVignetteTex_ = 0;
+
+	// ★追加: ポストプロセス用G-Buffer
+	Microsoft::WRL::ComPtr<ID3D12Resource> ppSceneDepth_;
+	D3D12_GPU_DESCRIPTOR_HANDLE ppDepthSrvGpu_{};
+	D3D12_CPU_DESCRIPTOR_HANDLE ppDepthDsv_{};
+	D3D12_RESOURCE_STATES ppDepthState_ = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+	Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> ppDepthDsvHeap_;
 };
 
 } // namespace Engine

@@ -122,14 +122,6 @@ public:
 					continue;
 				}
 
-				// 重複ヒット防止（同じペアは1フレームに1回まで）
-				uint64_t pairKey = MakePairKey(hbEntity, hrEntity);
-				if (hitPairs_.count(pairKey)) continue;
-				hitPairs_.insert(pairKey);
-
-				// ヒット履歴に記録
-				hb.hitTargets.push_back(hrEntity);
-
 				// --- パリィ判定 ---
 				bool parried = false;
 				if (registry.all_of<PlayerActionComponent>(hrEntity)) {
@@ -138,12 +130,28 @@ public:
 						// パリィ成功！
 						parried = true;
 						OnParrySuccess(registry, hrEntity, hbEntity, pa, ctx);
+						
+						// パリィ処理をしたのでヒット済みとして記録
+						hb.hitTargets.push_back(hrEntity);
+						
+						// 重複ヒット防止
+						uint64_t pairKey = MakePairKey(hbEntity, hrEntity);
+						hitPairs_.insert(pairKey);
 					}
 				}
 
 				if (!parried) {
 					// --- 通常ダメージ処理 ---
-					ApplyDamage(registry, hrEntity, hb.damage * hr.damageMultiplier, ctx);
+					bool hitSuccess = ApplyDamage(registry, hrEntity, hb.damage * hr.damageMultiplier, ctx);
+
+					// 無敵時間などでダメージが適用されなかった場合は、履歴に残さず（後で当たるように）スキップ
+					if (!hitSuccess) continue;
+
+					// ダメージが通ったのでヒット履歴に記録
+					hb.hitTargets.push_back(hrEntity);
+					
+					uint64_t pairKey = MakePairKey(hbEntity, hrEntity);
+					hitPairs_.insert(pairKey);
 
 					// 攻撃側のヒットストップ
 					if (registry.all_of<PlayerActionComponent>(hbEntity)) {
@@ -307,12 +315,12 @@ private:
 		}
 	}
 
-	// ダメージ適用
-	void ApplyDamage(entt::registry& registry, entt::entity target, float damage, GameContext& ctx) {
+	// ダメージ適用 (成功したらtrue)
+	bool ApplyDamage(entt::registry& registry, entt::entity target, float damage, GameContext& ctx) {
 		// --- ★追加: 部位破壊コンポーネント（BodyPart）がある場合 ---
 		if (registry.all_of<BodyPartComponent>(target)) {
 			auto& part = registry.get<BodyPartComponent>(target);
-			if (part.isDestroyed) return; // すでに破壊済みなら無視
+			if (part.isDestroyed) return false; // すでに破壊済みなら無視
 
 			part.hp -= damage;
 			if (part.hp <= 0.0f) {
@@ -336,15 +344,15 @@ private:
 			if (registry.valid(part.parentEntity) && registry.all_of<HealthComponent>(part.parentEntity)) {
 				ApplyDamage(registry, part.parentEntity, damage * part.damageMultiplierToParent, ctx);
 			}
-			return; // 部位自体の処理はここで終わり
+			return true; // 部位自体の処理はここで終わり
 		}
 
 		// --- 既存の本体HealthComponentの処理 ---
-		if (!registry.all_of<HealthComponent>(target)) return;
+		if (!registry.all_of<HealthComponent>(target)) return false;
 		auto& hc = registry.get<HealthComponent>(target);
 
 		// 無敵時間中はダメージを受けない
-		if (hc.invincibleTime > 0.0f) return;
+		if (hc.invincibleTime > 0.0f) return false;
 
 		hc.hp -= damage;
 		hc.hitFlashTimer = 0.1f; // ヒットフラッシュ演出
@@ -365,8 +373,14 @@ private:
 				pa.state = PlayerActionState::Stagger;
 				pa.stateTimer = 0.0f;
 				pa.stateDuration = 0.3f;
-			}
+			} else {
+                // 回避中のためダメージ無効
+                // (すでにinvincibleTimeで弾かれているはずだが、念のため)
+                return false;
+            }
 		}
+
+        return true;
 	}
 };
 

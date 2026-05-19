@@ -269,6 +269,12 @@ void Renderer::Shutdown() {
 	ppRtv_ = {};
 	ppSceneState_ = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
 
+	ppSceneDepth_.Reset();
+	ppDepthDsvHeap_.Reset();
+	ppDepthSrvGpu_ = {};
+	ppDepthDsv_ = {};
+	ppDepthState_ = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+
 	// ★追加: 最終描画先の解放
 	finalSceneColor_.Reset();
 	finalRtvHeap_.Reset();
@@ -777,10 +783,26 @@ void Renderer::EndFrame() {
 		list_->ResourceBarrier(1, &b);
 	}
 
-	// ====== 2. メインパス ======
-	auto rtv = ppRtv_;
-	auto dsv = window_->DSV_CPU(0);
-	list_->OMSetRenderTargets(1, &rtv, FALSE, &dsv);
+	// ====== 2. メインパス (Color + Depth) ======
+	// バリア遷移
+	std::vector<D3D12_RESOURCE_BARRIER> mainBars;
+	if (ppSceneState_ != D3D12_RESOURCE_STATE_RENDER_TARGET) {
+		mainBars.push_back(CD3DX12_RESOURCE_BARRIER::Transition(ppSceneColor_.Get(), ppSceneState_, D3D12_RESOURCE_STATE_RENDER_TARGET));
+		ppSceneState_ = D3D12_RESOURCE_STATE_RENDER_TARGET;
+	}
+	if (ppDepthState_ != D3D12_RESOURCE_STATE_DEPTH_WRITE) {
+		mainBars.push_back(CD3DX12_RESOURCE_BARRIER::Transition(ppSceneDepth_.Get(), ppDepthState_, D3D12_RESOURCE_STATE_DEPTH_WRITE));
+		ppDepthState_ = D3D12_RESOURCE_STATE_DEPTH_WRITE;
+	}
+	if (!mainBars.empty()) {
+		list_->ResourceBarrier((UINT)mainBars.size(), mainBars.data());
+	}
+
+	list_->OMSetRenderTargets(1, &ppRtv_, FALSE, &ppDepthDsv_);
+
+	list_->ClearRenderTargetView(ppRtv_, kPPSceneClearColor, 0, nullptr);
+	list_->ClearDepthStencilView(ppDepthDsv_, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
+
 	list_->RSSetViewports(1, &viewport_);
 	list_->RSSetScissorRects(1, &scissor_);
 
@@ -827,7 +849,7 @@ void Renderer::EndFrame() {
 		}
 
 		if (ppSceneColor_ && backdropColor_) {
-			list_->OMSetRenderTargets(1, &rtv, FALSE, &dsv);
+			list_->OMSetRenderTargets(1, &ppRtv_, FALSE, &ppDepthDsv_);
 			list_->SetGraphicsRootSignature(rootSigDistortion_.Get()); 
 			list_->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 			list_->SetGraphicsRootConstantBufferView(0, cbFrameAddr_);
@@ -873,11 +895,18 @@ void Renderer::EndFrame() {
 		}
 	}
 
-	// --- 1. sceneBaseColor_ (ppSceneColor_) をShaderResourceStateに遷移 ---
+	// --- 1. Color+Depth を PIXEL_SHADER_RESOURCE に遷移 ---
+	std::vector<D3D12_RESOURCE_BARRIER> postBars;
 	if (ppSceneState_ != D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE) {
-		auto b = CD3DX12_RESOURCE_BARRIER::Transition(ppSceneColor_.Get(), ppSceneState_, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
-		list_->ResourceBarrier(1, &b);
+		postBars.push_back(CD3DX12_RESOURCE_BARRIER::Transition(ppSceneColor_.Get(), ppSceneState_, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE));
 		ppSceneState_ = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+	}
+	if (ppDepthState_ != D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE) {
+		postBars.push_back(CD3DX12_RESOURCE_BARRIER::Transition(ppSceneDepth_.Get(), ppDepthState_, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE));
+		ppDepthState_ = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+	}
+	if (!postBars.empty()) {
+		list_->ResourceBarrier((UINT)postBars.size(), postBars.data());
 	}
 
 	// --- 2. finalSceneColor_ をRenderTargetStateに遷移し描画 ---
@@ -941,11 +970,14 @@ void Renderer::EndFrame() {
 	}
 
 	list_->SetGraphicsRootDescriptorTable(1, ppSrvGpu_);
+	// ★追加: 和風テクスチャのバインド (t1, t2)
+	list_->SetGraphicsRootDescriptorTable(2, GetTextureSrvGpu(sumiEPaperTex_));
+	list_->SetGraphicsRootDescriptorTable(3, GetTextureSrvGpu(sumiEVignetteTex_));
+	// ★修正: 深度バッファを t3 にバインド (法線バッファは廃止)
+	list_->SetGraphicsRootDescriptorTable(4, ppDepthSrvGpu_);
+
 	list_->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 	list_->DrawInstanced(3, 1, 0, 0);
-
-	FlushSprites();
-	FlushText(); // ★追加: メインUI描画後にテキスト描画を実行
 
 	if (finalSceneState_ != D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE) {
 		auto b = CD3DX12_RESOURCE_BARRIER::Transition(finalSceneColor_.Get(), finalSceneState_, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
@@ -971,6 +1003,10 @@ void Renderer::EndFrame() {
 	list_->SetGraphicsRootSignature(rootSigPP_.Get());
 	list_->SetGraphicsRootDescriptorTable(1, finalSrvGpu_);
 	list_->DrawInstanced(3, 1, 0, 0);
+
+	// ★UI描画順序の変更: 最終バックバッファコピーの後に描画することで、ポストプロセスによるボケや変色を防ぎ、100%くっきりと描画します。
+	FlushSprites();
+	FlushText();
 }
 
 void Renderer::SetCamera(const Camera& camera) {
@@ -1104,8 +1140,8 @@ bool Renderer::CreatePSO(const std::string& name, ID3DBlob* vsBlob, ID3DBlob* ps
 	pso.PS = {psBlob->GetBufferPointer(), psBlob->GetBufferSize()};
 	pso.InputLayout = {layout, numElements};
 	pso.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
-	pso.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
 	pso.NumRenderTargets = 1;
+	pso.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
 	pso.SampleDesc.Count = 1;
 	pso.SampleMask = UINT_MAX;
 
@@ -1156,8 +1192,8 @@ bool Renderer::CreatePSO_Transparent(const std::string& name, ID3DBlob* vsBlob, 
 	};
 	pso.InputLayout = {layout, _countof(layout)};
 	pso.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
-	pso.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
 	pso.NumRenderTargets = 1;
+	pso.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
 	pso.SampleDesc.Count = 1;
 	pso.SampleMask = UINT_MAX;
 
@@ -2972,22 +3008,47 @@ bool Renderer::InitPostProcess_() {
 		D3D12_DESCRIPTOR_HEAP_DESC hd{};
 		hd.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
 		hd.NumDescriptors = 1;
-		hr = dev_->CreateDescriptorHeap(&hd, IID_PPV_ARGS(&ppRtvHeap_));
-		if (FAILED(hr)) return false;
+		dev_->CreateDescriptorHeap(&hd, IID_PPV_ARGS(&ppRtvHeap_));
 		ppRtv_ = ppRtvHeap_->GetCPUDescriptorHandleForHeapStart();
 		dev_->CreateRenderTargetView(ppSceneColor_.Get(), nullptr, ppRtv_);
 
-		const uint32_t idx = AllocateSrvIndex();
-		D3D12_CPU_DESCRIPTOR_HANDLE cpu = window_->SRV_CPU((int)idx);
-		D3D12_CPU_DESCRIPTOR_HANDLE cpuMaster = window_->SRV_CPU_Master((int)idx); // ★追加
-		ppSrvGpu_ = window_->SRV_GPU((int)idx);
-		D3D12_SHADER_RESOURCE_VIEW_DESC srv{};
-		srv.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-		srv.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-		srv.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
-		srv.Texture2D.MipLevels = 1;
-		dev_->CreateShaderResourceView(ppSceneColor_.Get(), &srv, cpu);
-		dev_->CreateShaderResourceView(ppSceneColor_.Get(), &srv, cpuMaster); // ★追加
+		// Depth Buffer (初期状態は DEPTH_WRITE)
+		D3D12_RESOURCE_DESC drd = rd;
+		drd.Format = DXGI_FORMAT_R32_TYPELESS;
+		drd.Flags = D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
+		D3D12_CLEAR_VALUE dcv{};
+		dcv.Format = DXGI_FORMAT_D32_FLOAT;
+		dcv.DepthStencil.Depth = 1.0f;
+		hr = dev_->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &drd, D3D12_RESOURCE_STATE_DEPTH_WRITE, &dcv, IID_PPV_ARGS(&ppSceneDepth_));
+		if (FAILED(hr)) return false;
+		ppDepthState_ = D3D12_RESOURCE_STATE_DEPTH_WRITE;
+
+		hd.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
+		hr = dev_->CreateDescriptorHeap(&hd, IID_PPV_ARGS(&ppDepthDsvHeap_));
+		if (FAILED(hr)) return false;
+		ppDepthDsv_ = ppDepthDsvHeap_->GetCPUDescriptorHandleForHeapStart();
+		D3D12_DEPTH_STENCIL_VIEW_DESC dsvDesc{};
+		dsvDesc.Format = DXGI_FORMAT_D32_FLOAT;
+		dsvDesc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
+		dev_->CreateDepthStencilView(ppSceneDepth_.Get(), &dsvDesc, ppDepthDsv_);
+
+		auto SetSRV = [&](ID3D12Resource* res, D3D12_GPU_DESCRIPTOR_HANDLE& handle) {
+			uint32_t i = AllocateSrvIndex();
+			dev_->CreateShaderResourceView(res, nullptr, window_->SRV_CPU((int)i));
+			dev_->CreateShaderResourceView(res, nullptr, window_->SRV_CPU_Master((int)i));
+			handle = window_->SRV_GPU((int)i);
+		};
+		SetSRV(ppSceneColor_.Get(), ppSrvGpu_);
+		
+		uint32_t di = AllocateSrvIndex();
+		D3D12_SHADER_RESOURCE_VIEW_DESC dsrv{};
+		dsrv.Format = DXGI_FORMAT_R32_FLOAT;
+		dsrv.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+		dsrv.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+		dsrv.Texture2D.MipLevels = 1;
+		dev_->CreateShaderResourceView(ppSceneDepth_.Get(), &dsrv, window_->SRV_CPU((int)di));
+		dev_->CreateShaderResourceView(ppSceneDepth_.Get(), &dsrv, window_->SRV_CPU_Master((int)di));
+		ppDepthSrvGpu_ = window_->SRV_GPU((int)di);
 	}
 	{
 		static const char* kVSPP = R"(
@@ -3018,10 +3079,21 @@ float4 main(float4 svpos:SV_POSITION, float2 uv:TEXCOORD0) : SV_TARGET {
 			return false;
 
 		CD3DX12_DESCRIPTOR_RANGE rangeSRV;
-		rangeSRV.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);
-		CD3DX12_ROOT_PARAMETER params[2]{};
-		params[0].InitAsConstantBufferView(0);
-		params[1].InitAsDescriptorTable(1, &rangeSRV, D3D12_SHADER_VISIBILITY_PIXEL);
+		rangeSRV.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0); // t0: Scene
+		CD3DX12_DESCRIPTOR_RANGE rangePaper;
+		rangePaper.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1); // t1: Paper
+		CD3DX12_DESCRIPTOR_RANGE rangeVignette;
+		rangeVignette.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 2); // t2: Vignette
+		CD3DX12_DESCRIPTOR_RANGE rangeDepth;
+		rangeDepth.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 3); // t3: Depth (Normalは廃止)
+
+		CD3DX12_ROOT_PARAMETER params[5]{};
+		params[0].InitAsConstantBufferView(0); // b0
+		params[1].InitAsDescriptorTable(1, &rangeSRV, D3D12_SHADER_VISIBILITY_PIXEL); // t0
+		params[2].InitAsDescriptorTable(1, &rangePaper, D3D12_SHADER_VISIBILITY_PIXEL); // t1
+		params[3].InitAsDescriptorTable(1, &rangeVignette, D3D12_SHADER_VISIBILITY_PIXEL); // t2
+		params[4].InitAsDescriptorTable(1, &rangeDepth, D3D12_SHADER_VISIBILITY_PIXEL); // t3
+
 		CD3DX12_STATIC_SAMPLER_DESC samp(0, D3D12_FILTER_MIN_MAG_MIP_LINEAR);
 		CD3DX12_ROOT_SIGNATURE_DESC rs{};
 		rs.Init(_countof(params), params, 1, &samp, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
@@ -3136,6 +3208,16 @@ float4 main(float4 svpos:SV_POSITION, float2 uv:TEXCOORD0) : SV_TARGET {
 			Microsoft::WRL::ComPtr<ID3D12PipelineState> psoRandom;
 			if (SUCCEEDED(dev_->CreateGraphicsPipelineState(&pso, IID_PPV_ARGS(&psoRandom)))) {
 				pipelines_["Random"] = psoRandom;
+			}
+		}
+
+		// ★追加: PaperFrame ポストエフェクト（和紙ビネットブレンド）
+		auto psPaperFrame = CompileShaderFromFile(L"Resources/shaders/PaperFramePost.hlsl", "main", "ps_5_0");
+		if (psPaperFrame) {
+			pso.PS = { psPaperFrame->GetBufferPointer(), psPaperFrame->GetBufferSize() };
+			Microsoft::WRL::ComPtr<ID3D12PipelineState> psoPaperFrame;
+			if (SUCCEEDED(dev_->CreateGraphicsPipelineState(&pso, IID_PPV_ARGS(&psoPaperFrame)))) {
+				pipelines_["PaperFrame"] = psoPaperFrame;
 			}
 		}
 	}
@@ -3956,11 +4038,11 @@ bool Renderer::InitSkyboxPipeline() {
 	pso.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_LESS_EQUAL; // z=1.0でも描画
 	pso.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ZERO; // 深度書き込みOFF
 	pso.SampleMask = UINT_MAX;
-	pso.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
 	pso.NumRenderTargets = 1;
 	pso.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
 	pso.DSVFormat = DXGI_FORMAT_D32_FLOAT;
 	pso.SampleDesc.Count = 1;
+	pso.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
 
 	if (FAILED(dev_->CreateGraphicsPipelineState(&pso, IID_PPV_ARGS(&psoSkybox_)))) {
 		OutputDebugStringA("[Renderer] Skybox PSO creation failed\n");
