@@ -2,7 +2,7 @@
 #include "ISystem.h"
 #include "../../Engine/Renderer.h"
 #include "../ObjectTypes.h"
-#include "PlayerActionSystem.h" // PlayerActionState 等を使用
+#include "PlayerActionSystem.h"
 #include <algorithm>
 #include <cmath>
 
@@ -14,21 +14,28 @@ public:
         auto* renderer = ctx.renderer;
         if (!renderer) return;
 
-        // --- 1. ベースパラメータの設定 ---
+        // --- 0. 和風テクスチャのロードと設定 (初回のみ) ---
+        static bool texturesLoaded = false;
+        if (!texturesLoaded) {
+            auto paper = renderer->LoadTexture2D("Resources/Textures/paper.png");
+            auto vignette = renderer->LoadTexture2D("Resources/Textures/vignette.png");
+            renderer->SetSumiETextures(paper, vignette);
+            texturesLoaded = true;
+        }
+
+        // --- 1. ベースパラメータの設定 (明るさとクリアさを重視) ---
         Engine::Renderer::PostProcessParams target;
-        target.noiseStrength = 0.002f;
-        target.vignette = 0.08f;
-        target.chromaShift = 0.0f;
+        target.noiseStrength = 0.6f; // 紙の凹凸による歪みと質感の強さ
+        target.vignette = 0.4f;      // 墨スプラッシュの馴染み具合
+        target.chromaShift = 0.6f;   // 線の太さ
         target.distortion = 0.0f;
         target.san = 0.0f;
-        target.scanline = 0.0f;
+        target.scanline = 0.02f;      // 極めて薄い階調化 (常時)
 
-        // 状態フラグ
         bool isLowHealth = false;
         bool isDead = false;
         bool hasLockedTarget = false;
 
-        // プレイヤーの状態を取得
         auto playerView = registry.view<TagComponent, HealthComponent, PlayerInputComponent>();
         entt::entity playerEntity = entt::null;
         for (auto entity : playerView) {
@@ -46,37 +53,33 @@ public:
             float hpRate = hc.hp / (hc.maxHp > 0 ? hc.maxHp : 1.0f);
             isLowHealth = (hpRate < 0.3f);
 
-            // 被弾によるパルス
-            if (hc.hitFlashTimer > 0.0f) {
-                hitPulseTimer_ = 0.4f;
-            }
-
+            if (hc.hitFlashTimer > 0.0f) hitPulseTimer_ = 0.4f;
             hasLockedTarget = (pi.lockedEnemy != entt::null && registry.valid(pi.lockedEnemy));
 
-            // アクション（強攻撃など）の検出
             if (registry.all_of<PlayerActionComponent>(playerEntity)) {
                 auto& pa = registry.get<PlayerActionComponent>(playerEntity);
                 
-                // 1. 強攻撃の開始時にパルスを発生させる
                 bool isStrongAttack = (pa.state == PlayerActionState::ChargeAttack1 || 
                                        pa.state == PlayerActionState::ChargeAttack2 || 
                                        pa.state == PlayerActionState::ChargeAttack3 ||
-                                       pa.state == PlayerActionState::Attack3); // 3段目も強攻撃扱い
+                                       pa.state == PlayerActionState::Attack3);
                 
                 if (isStrongAttack && pa.stateTimer < 0.1f) {
                     float power = (pa.state == PlayerActionState::ChargeAttack3) ? 1.0f : 0.5f;
                     actionPulseTimer_ = std::max(actionPulseTimer_, power); 
                 }
 
-                // 2. ヒットストップ中（攻撃が当たった瞬間）に強烈なブラーをかける
+                // ヒットインパクト
                 if (pa.hitStopTimer > 0.0f) {
                     hitStopPulse_ = std::lerp(hitStopPulse_, 1.5f, std::clamp(ctx.dt * 20.0f, 0.0f, 1.0f));
+                    inkWashFade_ = std::lerp(inkWashFade_, 0.5f, std::clamp(ctx.dt * 15.0f, 0.0f, 1.0f));
                 } else {
-                    hitStopPulse_ = std::lerp(hitStopPulse_, 0.0f, std::clamp(ctx.dt * 15.0f, 0.0f, 1.0f));
+                    hitStopPulse_ = std::lerp(hitStopPulse_, 0.0f, std::clamp(ctx.dt * 12.0f, 0.0f, 1.0f));
+                    inkWashFade_ = std::lerp(inkWashFade_, 0.0f, std::clamp(ctx.dt * 8.0f, 0.0f, 1.0f));
                 }
             }
 
-            // ダッシュ（速度）ブラー
+            // 速度ブラー
             if (registry.all_of<TransformComponent>(playerEntity)) {
                 auto& tc = registry.get<TransformComponent>(playerEntity);
                 static DirectX::XMFLOAT3 lastPos = tc.translate;
@@ -95,40 +98,31 @@ public:
         // --- 2. パラメータ合成 ---
         if (isDead) {
             target.scanline = 1.0f; 
-            target.vignette = 0.5f;
+            target.vignette = 0.4f;
         } 
         else {
-            if (hasLockedTarget) {
-                target.chromaShift = 0.4f; 
-            }
+            if (hasLockedTarget) target.chromaShift = 0.45f; 
 
-            // ラジアルブラーの合成 (速度 + 被弾 + アクションパルス + ヒットストップ)
             float radialEffect = speedEffectIntensity_;
-            
-            // アクションパルス (強攻撃)
             if (actionPulseTimer_ > 0.0f) {
                 radialEffect = std::max(radialEffect, actionPulseTimer_ * 1.2f);
-                actionPulseTimer_ -= ctx.dt * 2.0f; // 素早く減衰
+                actionPulseTimer_ -= ctx.dt * 2.0f;
             }
-
-            // 被弾パルス
             if (hitPulseTimer_ > 0.0f) {
                 radialEffect = std::max(radialEffect, hitPulseTimer_ * 2.0f);
                 hitPulseTimer_ -= ctx.dt;
             }
-
-            // ヒットストップ（ヒットの瞬間）
             radialEffect = std::max(radialEffect, hitStopPulse_);
 
             target.distortion = radialEffect;
+            target.scanline = std::max(target.scanline, inkWashFade_);
 
             if (isLowHealth) {
-                target.scanline = 0.25f;
-                target.vignette = 0.25f;
+                target.scanline = std::max(target.scanline, 0.3f);
+                target.vignette = 0.2f;
             }
         }
 
-        // パラメータの補完
         auto Lerp = [](float a, float b, float t) { return a + (b - a) * t; };
         float lerpSpeed = std::clamp(ctx.dt * 10.0f, 0.0f, 1.0f);
 
@@ -140,17 +134,23 @@ public:
 
         currentParams_.time = renderer->GetPostProcessParams().time;
         renderer->SetPostProcessParams(currentParams_);
-        renderer->SetPostEffect("Rich"); 
+        if (isDead) {
+            renderer->SetPostEffect("Grayscale");
+        } else {
+            renderer->SetPostEffect("Rich");
+        }
     }
 
     void Draw(entt::registry& /*registry*/, GameContext& /*ctx*/) override {}
 
     void Reset(entt::registry& /*registry*/) override {
         currentParams_ = Engine::Renderer::PostProcessParams();
-        currentParams_.vignette = 0.08f;
+        currentParams_.vignette = 0.4f;
+        currentParams_.noiseStrength = 0.6f;
         hitPulseTimer_ = 0.0f;
         actionPulseTimer_ = 0.0f;
         hitStopPulse_ = 0.0f;
+        inkWashFade_ = 0.0f;
         speedEffectIntensity_ = 0.0f;
     }
 
@@ -159,6 +159,7 @@ private:
     float hitPulseTimer_ = 0.0f;
     float actionPulseTimer_ = 0.0f;
     float hitStopPulse_ = 0.0f;
+    float inkWashFade_ = 0.0f;
     float speedEffectIntensity_ = 0.0f;
 };
 

@@ -2,7 +2,7 @@
 #include "Space.hlsli"
 
 Texture2D<float4> tex : register(t0);
-TextureCube<float4> envMap : register(t3); // ★追加: キューブマップ用テクスチャ
+TextureCube<float4> envMap : register(t3); 
 SamplerState smp : register(s0);
 
 // 距離減衰計算
@@ -33,9 +33,7 @@ float4 main(VSOutput input) : SV_TARGET
     // アンビエント成分
     float3 finalColor = albedo * ambientColor;
 
-    // ----------------------------------------------------
     // Directional Lights
-    // ----------------------------------------------------
     for (int i = 0; i < MAX_DIR_LIGHTS; ++i)
     {
         if (dirLights[i].enabled != 0)
@@ -44,7 +42,7 @@ float4 main(VSOutput input) : SV_TARGET
             float NdotL = saturate(dot(N, L));
             
             float3 H = normalize(L + V);
-            float spec = pow(saturate(dot(N, H)), 32.0f); // Shininess=32
+            float spec = pow(saturate(dot(N, H)), 32.0f); 
 
             float3 diffuse = albedo * NdotL;
             float3 specular = m_specular * spec;
@@ -53,9 +51,7 @@ float4 main(VSOutput input) : SV_TARGET
         }
     }
 
-    // ----------------------------------------------------
     // Point Lights
-    // ----------------------------------------------------
     for (int j = 0; j < MAX_POINT_LIGHTS; ++j)
     {
         if (pointLights[j].enabled != 0)
@@ -79,9 +75,7 @@ float4 main(VSOutput input) : SV_TARGET
         }
     }
 
-    // ----------------------------------------------------
     // Spot Lights
-    // ----------------------------------------------------
     for (int k = 0; k < MAX_SPOT_LIGHTS; ++k)
     {
         if (spotLights[k].enabled != 0)
@@ -107,32 +101,15 @@ float4 main(VSOutput input) : SV_TARGET
         }
     }
 
-    // ★環境マッピング: 周囲の映り込み (Environment Mapping / Reflection)
-    // 視線の反射ベクトルを計算
+    // ★環境マッピング
     float3 reflectDir = reflect(-V, N);
-    
-    // 環境色を取得 (useCubemapフラグで切り替え)
     float3 envColor;
-    if (useCubemap != 0)
-    {
-        // Cubemapテクスチャ（t3）からサンプリング
-        envColor = envMap.Sample(smp, reflectDir).rgb;
-    }
-    else
-    {
-        // プロシージャル宇宙空間から環境色を取得 (軽量版でTDR回避)
-        envColor = GetReflectionEnvColor(reflectDir, time);
-    }
+    if (useCubemap != 0) envColor = envMap.Sample(smp, reflectDir).rgb;
+    else envColor = GetReflectionEnvColor(reflectDir, time);
     
-    // フレネル近似 (Schlick) で視線角度に応じた反射強度を計算
-    // F0 = 基本反射率 (金属: 高い, 非金属: 低い)
-    float F0 = 0.04; // 非金属のデフォルト反射率
+    float F0 = 0.04; 
     float fresnel = F0 + (1.0 - F0) * pow(max(1.0 - saturate(dot(N, V)), 0.0), 5.0);
-    
-    // 環境反射の合成
-    // reflectivity: CBObjから取得した環境マップ反射率
     float reflectAmount = reflectivity * saturate(fresnel + reflectivity * 0.5);
-    
     finalColor = lerp(finalColor, envColor, reflectAmount);
 
     return float4(finalColor, texcolor.a * color.a);

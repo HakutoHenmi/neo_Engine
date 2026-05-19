@@ -2,6 +2,7 @@
 #include "../ObjectTypes.h"
 #include "../../Engine/Renderer.h"
 #include "../../Engine/Input.h"
+#include "../../Engine/SceneManager.h"
 #include "../Scripts/IScript.h" // ★追加
 #include "../../Engine/WindowDX.h"
 #include "../../externals/imgui/imgui.h"
@@ -266,15 +267,18 @@ void UISystem::DrawUI(entt::registry& registry, GameContext& ctx) {
 
         // --- 4. ゲームオーバー（YOU DIED）画面 ---
         if (pHealth.isDead) {
+            deathTimer_ += ctx.dt;
+
+            // 画面を徐々に暗くする
+            float darkAlpha = std::min(180.0f, deathTimer_ * 120.0f);
             drawList->AddRectFilled(
                 ImVec2(ctx.viewportOffset.x, ctx.viewportOffset.y),
                 ImVec2(ctx.viewportOffset.x + ctx.viewportSize.x, ctx.viewportOffset.y + ctx.viewportSize.y),
-                IM_COL32(0, 0, 0, 180)
+                IM_COL32(0, 0, 0, (int)darkAlpha)
             );
 
             auto* gm = GameManagerScript::GetInstance();
             std::string defeatStr = gm ? gm->defeatText : "YOU DIED";
-            std::string retryStr = gm ? gm->retryText : "Press [ R ] to Retry";
             float scale = gm ? gm->textScale : 6.0f;
             float rColor[4] = {1.0f, 0.1f, 0.1f, 1.0f};
             if (gm) { rColor[0]=gm->defeatColor[0]; rColor[1]=gm->defeatColor[1]; rColor[2]=gm->defeatColor[2]; rColor[3]=gm->defeatColor[3]; }
@@ -282,31 +286,24 @@ void UISystem::DrawUI(entt::registry& registry, GameContext& ctx) {
             float centerX = ctx.viewportOffset.x + ctx.viewportSize.x * 0.5f;
             float centerY = ctx.viewportOffset.y + ctx.viewportSize.y * 0.5f;
             
+            // 文字のフェードイン
+            float textAlpha = std::min(1.0f, deathTimer_);
+
             if (ctx.renderer) {
                 float defeatWidth = ctx.renderer->MeasureTextWidth(defeatStr, scale);
                 float sx = centerX - defeatWidth * 0.5f; 
                 float sy = centerY - 180.0f;
-                ctx.renderer->DrawString(defeatStr, sx + 5.0f, sy + 5.0f, scale, {0.0f, 0.0f, 0.0f, 1.0f});
-                ctx.renderer->DrawString(defeatStr, sx, sy, scale, {rColor[0], rColor[1], rColor[2], rColor[3]});
-
-                float retryWidth = ctx.renderer->MeasureTextWidth(retryStr, 2.5f);
-                float rx = centerX - retryWidth * 0.5f;
-                float ry = centerY + 220.0f;
-                ctx.renderer->DrawString(retryStr, rx + 2.0f, ry + 2.0f, 2.5f, {0.0f, 0.0f, 0.0f, 1.0f});
-                ctx.renderer->DrawString(retryStr, rx, ry, 2.5f, {1.0f, 1.0f, 1.0f, 1.0f});
+                ctx.renderer->DrawString(defeatStr, sx + 5.0f, sy + 5.0f, scale, {0.0f, 0.0f, 0.0f, textAlpha});
+                ctx.renderer->DrawString(defeatStr, sx, sy, scale, {rColor[0], rColor[1], rColor[2], rColor[3] * textAlpha});
             } else {
                 ImVec2 txtSize = ImGui::CalcTextSize(defeatStr.c_str());
                 ImVec2 center(centerX - txtSize.x * 0.5f, centerY - txtSize.y * 0.5f);
-                drawList->AddText(ImGui::GetFont(), 64.0f, center, IM_COL32((int)(rColor[0]*255), (int)(rColor[1]*255), (int)(rColor[2]*255), 255), defeatStr.c_str());
+                drawList->AddText(ImGui::GetFont(), 64.0f, center, IM_COL32((int)(rColor[0]*255), (int)(rColor[1]*255), (int)(rColor[2]*255), (int)(textAlpha * 255)), defeatStr.c_str());
             }
 
-            // Rキーでリトライ (SetIsPlaying(false) -> SetIsPlaying(true) の擬似リセット)
-            if (GetAsyncKeyState('R') & 0x8000) {
-                // GameScene側でリセット処理が走るようにするフラグを立てる、または直接実行
-                if (ctx.scene) {
-                    ctx.scene->SetIsPlaying(false);
-                    ctx.scene->SetIsPlaying(true);
-                }
+            // 1.5秒後に完全にGameOverシーンへ遷移
+            if (deathTimer_ >= 1.5f) {
+                Engine::SceneManager::GetInstance()->RequestChange("GameOver");
             }
         }
     });
@@ -347,7 +344,7 @@ bool UISystem::WorldToScreenWithView(const DirectX::XMFLOAT3& worldPos, const En
 }
 
 void UISystem::Reset(entt::registry& /*registry*/) {
-    // 必要に応じて初期化処理を記述
+    deathTimer_ = 0.0f;
 }
 
 void UISystem::RenderNodeWithRect(entt::entity entity, entt::registry& registry, const WorldRect& wr, GameContext& ctx) {

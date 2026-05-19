@@ -7,6 +7,9 @@
     <ClCompile Include="Game\Scenes\GameScene.cpp">
       <Filter>Scenes</Filter>
     </ClCompile>
+    <ClCompile Include="Game\Scenes\GameOverScene.cpp">
+      <Filter>Scenes</Filter>
+    </ClCompile>
     <ClCompile Include="Game\Editor\EditorUI.cpp">
       <Filter>Editor</Filter>
     </ClCompile>
@@ -92,6 +95,9 @@
       <Filter>Scenes</Filter>
     </ClInclude>
     <ClInclude Include="Game\Scenes\GameScene.h">
+      <Filter>Scenes</Filter>
+    </ClInclude>
+    <ClInclude Include="Game\Scenes\GameOverScene.h">
       <Filter>Scenes</Filter>
     </ClInclude>
     <ClInclude Include="Game\Editor\EditorUI.h">
