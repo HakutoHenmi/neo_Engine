@@ -26,7 +26,7 @@ public:
         // --- 1. ベースパラメータの設定 (明るさとクリアさを重視) ---
         Engine::Renderer::PostProcessParams target;
         target.noiseStrength = 0.6f; // 紙の凹凸による歪みと質感の強さ
-        target.vignette = 0.4f;      // 墨スプラッシュの馴染み具合
+        target.vignette = 0.0f;      // デフォルトではダメージビネットはゼロ
         target.chromaShift = 0.6f;   // 線の太さ
         target.distortion = 0.0f;
         target.san = 0.0f;
@@ -38,12 +38,11 @@ public:
 
         auto playerView = registry.view<TagComponent, HealthComponent, PlayerInputComponent>();
         entt::entity playerEntity = entt::null;
-        for (auto entity : playerView) {
-            if (playerView.get<TagComponent>(entity).tag == TagType::Player) {
+        playerView.each([&](entt::entity entity, const TagComponent& tagComp, const HealthComponent&, const PlayerInputComponent&) {
+            if (tagComp.tag == TagType::Player) {
                 playerEntity = entity;
-                break;
             }
-        }
+        });
 
         if (playerEntity != entt::null) {
             auto& hc = playerView.get<HealthComponent>(playerEntity);
@@ -110,6 +109,7 @@ public:
             }
             if (hitPulseTimer_ > 0.0f) {
                 radialEffect = std::max(radialEffect, hitPulseTimer_ * 2.0f);
+                target.vignette = std::max(target.vignette, hitPulseTimer_ * 1.5f); // 被弾時に赤くする
                 hitPulseTimer_ -= ctx.dt;
             }
             radialEffect = std::max(radialEffect, hitStopPulse_);
@@ -145,7 +145,7 @@ public:
 
     void Reset(entt::registry& /*registry*/) override {
         currentParams_ = Engine::Renderer::PostProcessParams();
-        currentParams_.vignette = 0.4f;
+        currentParams_.vignette = 0.0f;
         currentParams_.noiseStrength = 0.6f;
         hitPulseTimer_ = 0.0f;
         actionPulseTimer_ = 0.0f;

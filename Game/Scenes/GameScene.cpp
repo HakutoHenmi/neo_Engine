@@ -175,6 +175,36 @@ void GameScene::Initialize(Engine::WindowDX* dx, const Engine::SceneParameters& 
 	systems_.push_back(std::make_unique<PostProcessSystem>()); // ★追加
 	systems_.push_back(std::make_unique<CleanupSystem>());
 
+	// ★追加: 操作説明テキストUIの生成
+	{
+		std::vector<std::string> controls = {
+			"【操作説明】",
+			"W, A, S, D : 移動",
+			"Space : ジャンプ",
+			"Shift : 回避",
+			"左クリック : 攻撃 (大剣は長押しで溜め)",
+			"右クリック : パリィ",
+			"中クリック : ロックオン",
+			"マウス : 視点移動"
+		};
+		float startX = 20.0f;
+		float startY = 120.0f; // プレイヤーHUD(左上)に被らないように下げる
+		float gapY = 35.0f;
+		for (size_t i = 0; i < controls.size(); ++i) {
+			auto textEntity = registry_.create();
+			registry_.emplace<NameComponent>(textEntity, "ControlText_" + std::to_string(i));
+			auto& tc = registry_.emplace<TransformComponent>(textEntity);
+			tc.translate.x = startX;
+			tc.translate.y = startY + (i * gapY);
+			tc.translate.z = 0.0f;
+			
+			auto& txt = registry_.emplace<UITextComponent>(textEntity);
+			txt.text = controls[i];
+			txt.fontSize = (i == 0) ? 28.0f : 24.0f;
+			txt.color = (i == 0) ? DirectX::XMFLOAT4{1.0f, 0.9f, 0.5f, 1.0f} : DirectX::XMFLOAT4{1.0f, 1.0f, 1.0f, 1.0f}; // 見出しは黄色
+		}
+	}
+
 	// ★追加: 起動直後の状態を初期スナップショットとして保存
 	initialSceneSnapshot_ = EditorUI::SaveToMemory(this);
 

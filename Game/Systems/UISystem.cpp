@@ -89,18 +89,20 @@ void UISystem::Draw(entt::registry& registry, GameContext& ctx) {
         }
     };
 
-    WorldRect screen = { 0, 0, (float)Engine::WindowDX::kW, (float)Engine::WindowDX::kH };
-    renderRecursive(renderRecursive, entt::null, screen);
+	float vw = ctx.viewportSize.x > 0 ? ctx.viewportSize.x : (float)Engine::WindowDX::kW;
+	float vh = ctx.viewportSize.y > 0 ? ctx.viewportSize.y : (float)Engine::WindowDX::kH;
+	WorldRect screen = { 0.0f, 0.0f, vw, vh };
+	renderRecursive(renderRecursive, entt::null, screen);
 
-    // ★追加: RectTransformを持たないが、Transform と UIText を持つエンティティの簡易2D描画
-    auto viewRawText = registry.view<TransformComponent, UITextComponent>();
-    viewRawText.each([&](entt::entity e, TransformComponent& transform, UITextComponent& text) {
-        if (registry.all_of<RectTransformComponent>(e)) return; // exclude RectTransformComponent
-        if (text.enabled) {
-            // Transformの X/Y をスクリーンのピクセル座標として扱う (Zは無視)
-            DrawTextW(e, registry, text, transform.translate.x, transform.translate.y, 0.0f, 0.0f, ctx.renderer);
-        }
-    });
+	// ★追加: RectTransformを持たないが、Transform と UIText を持つエンティティの簡易2D描画
+	auto viewRawText = registry.view<TransformComponent, UITextComponent>();
+	viewRawText.each([&](entt::entity e, TransformComponent& transform, UITextComponent& text) {
+		if (registry.all_of<RectTransformComponent>(e)) return; // exclude RectTransformComponent
+		if (text.enabled) {
+			// Transformの X/Y をスクリーンのピクセル座標として扱う (Zは無視)
+			DrawTextW(e, registry, text, transform.translate.x, transform.translate.y, 0.0f, 0.0f, ctx.renderer);
+		}
+	});
 }
 
 // ★追加: ワールド空間UI（HPバー）の描画パス
@@ -196,16 +198,18 @@ void UISystem::DrawUI(entt::registry& registry, GameContext& ctx) {
             // 少し上に浮き上がりながらフェードアウトする効果
             float alpha = (dnc.lifetime > 0.5f) ? 1.0f : (dnc.lifetime / 0.5f);
             
-            // Engine::Renderer の高品質なテキスト描画機能を使う
-            if (ctx.renderer) {
-                float scale = 2.0f; // 大きめのフォント
-                
-                // ドロップシャドウ（黒縁）
-                ctx.renderer->DrawString(text, sx + 2.0f, sy + 2.0f, scale, {0.0f, 0.0f, 0.0f, alpha});
-                
-                // メインテキスト
-                ctx.renderer->DrawString(text, sx, sy, scale, {dnc.color.x, dnc.color.y, dnc.color.z, alpha});
-            } else {
+			// Engine::Renderer の高品質なテキスト描画機能を使う
+			if (ctx.renderer) {
+				float scale = 2.0f; // 大きめのフォント
+				float localX = sx - ctx.viewportOffset.x;
+				float localY = sy - ctx.viewportOffset.y;
+				
+				// ドロップシャドウ（黒縁）
+				ctx.renderer->DrawString(text, localX + 2.0f, localY + 2.0f, scale, {0.0f, 0.0f, 0.0f, alpha});
+				
+				// メインテキスト
+				ctx.renderer->DrawString(text, localX, localY, scale, {dnc.color.x, dnc.color.y, dnc.color.z, alpha});
+			} else {
                 // フォールバック (ImGui)
                 int a = static_cast<int>(alpha * 255);
                 ImVec2 txtSize = ImGui::CalcTextSize(text);
@@ -425,6 +429,10 @@ void UISystem::DrawTextW(entt::entity /*entity*/, entt::registry& /*registry*/, 
 	float py = worldY;
 	if (worldW > 0.0f) px += (worldW - tw) * 0.5f;
 	if (worldH > 0.0f) py += (worldH - th) * 0.5f;
+
+	// ドロップシャドウを追加 (見やすさ向上)
+	Engine::Vector4 shadowColor = { 0.0f, 0.0f, 0.0f, text.color.w };
+	renderer->DrawString(text.text, px + 2.0f, py + 2.0f, fontScale, shadowColor, text.fontPath);
 
 	Engine::Vector4 colorVec = { text.color.x, text.color.y, text.color.z, text.color.w };
 	renderer->DrawString(text.text, px, py, fontScale, colorVec, text.fontPath);

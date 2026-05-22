@@ -979,6 +979,10 @@ void Renderer::EndFrame() {
 	list_->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 	list_->DrawInstanced(3, 1, 0, 0);
 
+	// ★UI描画順序の変更: ポストプロセス適用後のGameビュー用テクスチャにUIを直接描画することで、エディタ上でもUIが表示されるようにします。
+	FlushSprites();
+	FlushText();
+
 	if (finalSceneState_ != D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE) {
 		auto b = CD3DX12_RESOURCE_BARRIER::Transition(finalSceneColor_.Get(), finalSceneState_, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
 		list_->ResourceBarrier(1, &b);
@@ -1003,10 +1007,6 @@ void Renderer::EndFrame() {
 	list_->SetGraphicsRootSignature(rootSigPP_.Get());
 	list_->SetGraphicsRootDescriptorTable(1, finalSrvGpu_);
 	list_->DrawInstanced(3, 1, 0, 0);
-
-	// ★UI描画順序の変更: 最終バックバッファコピーの後に描画することで、ポストプロセスによるボケや変色を防ぎ、100%くっきりと描画します。
-	FlushSprites();
-	FlushText();
 }
 
 void Renderer::SetCamera(const Camera& camera) {
