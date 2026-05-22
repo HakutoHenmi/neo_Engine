@@ -140,10 +140,12 @@ float4 main(float4 svpos:SV_POSITION, float2 uv:TEXCOORD0) : SV_TARGET {
             blurCol += gScene.Sample(gSmp, saturate(distortedUV - centerOffset * (float)s / 4.0 * blurStrength)).rgb;
         }
         sceneCol = lerp(sceneCol, blurCol / 5.0, 0.5);
-        
-        // ★追加: ダメージを受けた瞬間の赤いダメージビネット
+    }
+
+    // ★修正: ダメージ/ピンチ時の赤いビネット (gVignetteに連動させることでダッシュと分離)
+    if (gVignette > 0.001) {
         float distSq = dot(centerOffset, centerOffset);
-        float damageVignette = saturate(distSq * 3.0f * gDistortion);
+        float damageVignette = saturate(distSq * 3.0f * gVignette);
         sceneCol = lerp(sceneCol, float3(1.0, 0.1, 0.1), damageVignette * 0.6f);
     }
 
