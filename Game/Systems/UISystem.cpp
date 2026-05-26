@@ -271,6 +271,7 @@ void UISystem::DrawUI(entt::registry& registry, GameContext& ctx) {
 
         // --- 4. ゲームオーバー（YOU DIED）画面 ---
         if (pHealth.isDead) {
+            if (ctx.renderer) ctx.renderer->SetPostEffect("Smoothing"); // ★追加：死亡時に背景をぼかす
             deathTimer_ += ctx.dt;
 
             // 画面を徐々に暗くする

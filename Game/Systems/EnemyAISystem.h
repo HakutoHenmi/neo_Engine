@@ -130,6 +130,7 @@ public:
 					if (registry.all_of<HitboxComponent>(entity)) {
 						auto& hb = registry.get<HitboxComponent>(entity);
 						hb.isActive = true;
+						hb.hitTargets.clear(); // 多段ヒット防止の履歴をクリア
 					}
 					// スケール戻す
 					tc.scale.x = 2.0f;

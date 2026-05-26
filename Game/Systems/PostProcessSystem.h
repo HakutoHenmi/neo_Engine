@@ -135,7 +135,7 @@ public:
         currentParams_.time = renderer->GetPostProcessParams().time;
         renderer->SetPostProcessParams(currentParams_);
         if (isDead) {
-            renderer->SetPostEffect("Grayscale");
+            renderer->SetPostEffect("Smoothing");
         } else {
             renderer->SetPostEffect("Rich");
         }

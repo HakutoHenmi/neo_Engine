@@ -80,6 +80,7 @@ public:
 							auto& hb = registry.get<HitboxComponent>(entity);
 							hb.isActive = true;
 							hb.damage = p.damage;
+							hb.hitTargets.clear(); // 多段ヒット防止の履歴をクリア
 						}
 					}
 				}
