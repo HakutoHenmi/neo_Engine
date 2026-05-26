@@ -10,12 +10,20 @@ void GameOverScene::Initialize(Engine::WindowDX* dx, const Engine::SceneParamete
     dx_ = dx;
     // マウスカーソルを表示する
     ShowCursor(TRUE);
+
+    // ゲームオーバー演出として、画面全体に平滑化（ぼかし）エフェクトを適用
+    if (auto* renderer = Engine::Renderer::GetInstance()) {
+        renderer->SetPostEffect("Smoothing");
+    }
 }
 
 void GameOverScene::Update() {
     // Rキーでもリトライできるようにショートカットを設ける
     auto* input = Engine::Input::GetInstance();
     if (input && input->Trigger(DIK_R)) {
+        if (auto* renderer = Engine::Renderer::GetInstance()) {
+            renderer->SetPostEffect(""); // エフェクトをリセット
+        }
         Engine::SceneManager::GetInstance()->Change("Game");
     }
 }
@@ -59,6 +67,9 @@ void GameOverScene::DrawUI() {
     ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.4f, 0.05f, 0.05f, 1.0f));
     
     if (ImGui::Button("RETRY (R)", btnSize)) {
+        if (auto* renderer = Engine::Renderer::GetInstance()) {
+            renderer->SetPostEffect(""); // エフェクトをリセット
+        }
         Engine::SceneManager::GetInstance()->Change("Game");
     }
     

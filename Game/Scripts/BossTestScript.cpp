@@ -25,7 +25,7 @@ void BossTestScript::Start(entt::entity entity, GameScene* scene) {
 		thrust.activeDuration = 0.5f;
 		thrust.recoveryDuration = 1.5f;
 		thrust.range = 7.0f;
-		thrust.damage = 25.0f;
+		thrust.damage = 40.0f;
 		thrust.thrustForce = 15.0f;
 		boss.patterns.push_back(thrust);
 
@@ -37,7 +37,7 @@ void BossTestScript::Start(entt::entity entity, GameScene* scene) {
 		tailSpin.activeDuration = 0.6f;
 		tailSpin.recoveryDuration = 2.0f;
 		tailSpin.range = 5.0f;
-		tailSpin.damage = 35.0f;
+		tailSpin.damage = 50.0f;
 		tailSpin.thrustForce = 0.0f; // 回転なので前進しない
 		boss.patterns.push_back(tailSpin);
 
@@ -49,7 +49,7 @@ void BossTestScript::Start(entt::entity entity, GameScene* scene) {
 		jumpPress.activeDuration = 0.8f; // ジャンプ時間
 		jumpPress.recoveryDuration = 2.5f; // 大きな隙
 		jumpPress.range = 10.0f; // 遠くからでも飛んでくる
-		jumpPress.damage = 40.0f;
+		jumpPress.damage = 60.0f;
 		jumpPress.thrustForce = 12.0f; // ジャンプの前進力
 		boss.patterns.push_back(jumpPress);
 	}
@@ -322,7 +322,7 @@ void BossTestScript::Update(entt::entity entity, GameScene* scene, float /*dt*/)
 			// CombatSystemで動的に拡大されるため、初期サイズはstartScaleに合わせる
 			swHb.size = {pd.startScale * 2.0f, 4.0f, pd.startScale * 2.0f}; 
 			swHb.center = {0, 2.0f, 0};
-			swHb.damage = 30.0f;
+			swHb.damage = 45.0f;
 			swHb.tag = TagType::Enemy;
 			swHb.isActive = true; // 出現と同時に攻撃判定
 			
