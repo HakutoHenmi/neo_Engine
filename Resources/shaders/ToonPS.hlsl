@@ -1,4 +1,5 @@
 #include "Obj.hlsli"
+#include "ProceduralPaper.hlsli" // ★追加: 和紙マテリアル
 
 Texture2D<float4> tex : register(t0);
 SamplerState smp : register(s0);
@@ -34,6 +35,9 @@ float4 main(VSOutput input) : SV_TARGET
     // 2. 基本ベクトル
     float3 N = normalize(input.normal);
     float3 V = normalize(cameraPos - input.worldpos.xyz);
+
+    // ★追加: プロシージャル和紙マテリアルを適用
+    ApplyProceduralPaper(input.worldpos.xyz, baseColor, N, 0.4, 0.8);
 
     // 3. 影の色味
     float3 shadowTint = float3(0.5f, 0.4f, 0.6f); 

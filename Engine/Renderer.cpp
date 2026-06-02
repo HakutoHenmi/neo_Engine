@@ -1390,177 +1390,9 @@ bool Renderer::InitPipelines() {
 	// ---------------------------------------------------------
 	// Default Shader
 	// ---------------------------------------------------------
-	static const char* kVS3D = R"(
-cbuffer CBFrame : register(b0) { row_major float4x4 gView; row_major float4x4 gProj; row_major float4x4 gViewProj; float3 gCamPos; float gTime; };
-cbuffer CBObj : register(b1) { row_major float4x4 gWorld; float4 gColor; };
-// スキニング用の入力も受け取るが、ここでは使わない
-struct VSIn { 
-	float4 pos : POSITION; 
-	float2 uv : TEXCOORD0; 
-	float3 nrm : NORMAL; 
-	float4 weights : WEIGHTS; 
-	uint4 indices : BONES; 
-};
-struct VSOut { float4 svpos : SV_POSITION; float3 worldPos: TEXCOORD0; float3 normal : TEXCOORD1; float2 uv : TEXCOORD2; };
-VSOut main(VSIn v) { 
-    VSOut o; 
-    float4 wp = mul(v.pos, gWorld); 
-    o.worldPos = wp.xyz; 
-    float3 wn = mul(float4(v.nrm, 0), gWorld).xyz; 
-    o.normal = normalize(wn); 
-    float4 vp = mul(wp, gView); 
-    o.svpos = mul(vp, gProj); 
-    o.uv = v.uv; 
-    return o; 
-}
-)";
-
-	static const char* kVSInstanced = R"(
-struct InstanceData { row_major float4x4 world; float4 color; };
-StructuredBuffer<InstanceData> gInstanceData : register(t2);
-
-cbuffer CBFrame : register(b0) { row_major float4x4 gView; row_major float4x4 gProj; row_major float4x4 gViewProj; float3 gCamPos; float gTime; };
-
-struct VSIn { float4 pos : POSITION; float2 uv : TEXCOORD0; float3 nrm : NORMAL; };
-struct VSOut { float4 svpos : SV_POSITION; float3 worldPos: TEXCOORD0; float3 normal : TEXCOORD1; float2 uv : TEXCOORD2; float4 color : COLOR0; };
-
-VSOut main(VSIn v, uint instanceID : SV_InstanceID) {
-    VSOut o;
-    InstanceData data = gInstanceData[instanceID];
-    float4 wp = mul(v.pos, data.world);
-    o.worldPos = wp.xyz;
-    o.normal = normalize(mul(float4(v.nrm, 0), data.world).xyz);
-    o.svpos = mul(mul(wp, gView), gProj);
-    o.uv = v.uv;
-    o.color = data.color;
-    return o;
-}
-)";
-
-	static const char* kPS3D = R"(
-Texture2D gTex : register(t0); 
-Texture2D gShadowMap : register(t1);
-SamplerState gSmp : register(s0);
-SamplerComparisonState gShadowSmp : register(s1);
-
-cbuffer CBFrame : register(b0) { row_major float4x4 gView; row_major float4x4 gProj; row_major float4x4 gViewProj; float3 gCamPos; float gTime; };
-cbuffer CBObj : register(b1) { row_major float4x4 gWorld; float4 gColor; };
-
-struct DirLight { float3 dir; float pad0; float3 color; float pad1; uint enabled; float3 pad2; };
-struct PointLight { float3 pos; float pad0; float3 color; float range; float3 atten; float pad1; uint enabled; float3 pad2; };
-struct SpotLight { float3 pos; float pad0; float3 dir; float range; float3 color; float inner; float3 atten; float outer; uint enabled; float3 pad2; };
-struct AreaLight { float3 pos; float pad0; float3 color; float range; float3 right; float halfWidth; float3 up; float halfHeight; float3 dir; float pad1; float3 atten; float pad2; uint enabled; float3 pad3; };
-
-#define MAX_DIR 1
-#define MAX_POINT 4
-#define MAX_SPOT 4
-#define MAX_AREA 4
-cbuffer CBLight : register(b2) { float3 gAmbientColor; float padA0; DirLight gDir[MAX_DIR]; PointLight gPoint[MAX_POINT]; SpotLight gSpot[MAX_SPOT]; AreaLight gArea[MAX_AREA]; row_major float4x4 gShadowMatrix; };
-
-float GetAttenuation(float3 atten, float d) { return 1.0 / (atten.x + atten.y * d + atten.z * d * d); }
-float3 BlinnPhong(float3 L, float3 V, float3 N, float3 C, float3 A) {
-    float NdotL = max(dot(N, L), 0.0); float3 diff = A * C * NdotL;
-    float3 H = normalize(L + V); float NdotH = max(dot(N, H), 0.0);
-    float3 spec = C * pow(NdotH, 32.0) * 0.5; return diff + spec;
-}
-float3 CalcAreaLight(AreaLight L, float3 wPos, float3 N, float3 V, float3 A) {
-	float3 Lvec = L.pos - wPos; float distPlane = dot(Lvec, L.dir); float3 planePoint = wPos + L.dir * distPlane; float3 dirFromCenter = planePoint - L.pos;
-	float distRight = dot(dirFromCenter, L.right); float distUp = dot(dirFromCenter, L.up);
-	float clampedRight = clamp(distRight, -L.halfWidth, L.halfWidth); float clampedUp = clamp(distUp, -L.halfHeight, L.halfHeight);
-	float3 closest = L.pos + L.right * clampedRight + L.up * clampedUp;
-	float3 lightDirVec = closest - wPos; float d = length(lightDirVec); if(d >= L.range) return float3(0,0,0);
-	float3 lDir = normalize(lightDirVec); float att = GetAttenuation(L.atten, d);
-	return BlinnPhong(lDir, V, N, L.color, A) * att;
-}
-
-float CalcShadow(float3 worldPos) {
-    float4 shadowPos = mul(float4(worldPos, 1.0f), gShadowMatrix);
-    float3 projCoords = shadowPos.xyz / shadowPos.w;
-    
-    // NDC [-1, 1] to UV [0, 1]
-    projCoords.x = projCoords.x * 0.5f + 0.5f;
-    projCoords.y = -projCoords.y * 0.5f + 0.5f;
-    
-    // Check if outside shadow map
-    if (projCoords.x < 0.0f || projCoords.x > 1.0f || projCoords.y < 0.0f || projCoords.y > 1.0f || projCoords.z < 0.0f || projCoords.z > 1.0f)
-        return 1.0f;
-
-    // PCF 3x3
-    float shadow = 0.0f;
-    float texelSize = 1.0f / 2048.0f;
-    for(int x = -1; x <= 1; ++x) {
-        for(int y = -1; y <= 1; ++y) {
-            shadow += gShadowMap.SampleCmpLevelZero(gShadowSmp, projCoords.xy + float2(x, y) * texelSize, projCoords.z).r;
-        }
-    }
-    return shadow / 9.0f;
-}
-
-float4 main(float4 svpos:SV_POSITION, float3 worldPos:TEXCOORD0, float3 normal:TEXCOORD1, float2 uv:TEXCOORD2) : SV_TARGET {
-    float4 tex = gTex.Sample(gSmp, uv); 
-    float3 albedo = tex.rgb * gColor.rgb; 
-    float3 N = normalize(normal); 
-    float3 V = normalize(gCamPos - worldPos);
-    float3 finalColor = albedo * gAmbientColor;
-
-    float shadowFactor = CalcShadow(worldPos);
-
-    for(int i=0; i<MAX_DIR; ++i) if(gDir[i].enabled) finalColor += BlinnPhong(normalize(-gDir[i].dir), V, N, gDir[i].color, albedo) * shadowFactor;
-    for(int i=0; i<MAX_POINT; ++i) if(gPoint[i].enabled) { float3 Lv = gPoint[i].pos - worldPos; float d = length(Lv); if(d < gPoint[i].range) finalColor += BlinnPhong(normalize(Lv), V, N, gPoint[i].color, albedo) * GetAttenuation(gPoint[i].atten, d); }
-    for(int i=0; i<MAX_SPOT; ++i) if(gSpot[i].enabled) { float3 Lv = gSpot[i].pos - worldPos; float d = length(Lv); if(d < gSpot[i].range) { float3 L = normalize(Lv); float c = dot(L, normalize(-gSpot[i].dir)); float s = smoothstep(gSpot[i].outer, gSpot[i].inner, c); finalColor += BlinnPhong(L, V, N, gSpot[i].color, albedo) * GetAttenuation(gSpot[i].atten, d) * s; } }
-    for(int i=0; i<MAX_AREA; ++i) if(gArea[i].enabled) finalColor += CalcAreaLight(gArea[i], worldPos, N, V, albedo);
-
-    return float4(finalColor, tex.a * gColor.a);
-}
-)";
-
-	// ---------------------------------------------------------
-	// Skinning Vertex Shader
-	// ---------------------------------------------------------
-	static const char* kVSSkin = R"(
-cbuffer CBFrame : register(b0) { row_major float4x4 gView; row_major float4x4 gProj; row_major float4x4 gViewProj; float3 gCamPos; float gTime; };
-cbuffer CBObj : register(b1) { row_major float4x4 gWorld; float4 gColor; };
-cbuffer CBBone : register(b3) { row_major float4x4 gBones[128]; };
-
-struct VSIn { 
-	float4 pos : POSITION; 
-	float2 uv : TEXCOORD0; 
-	float3 nrm : NORMAL; 
-	float4 weights : WEIGHTS; 
-	uint4 indices : BONES; 
-};
-struct VSOut { float4 svpos : SV_POSITION; float3 worldPos: TEXCOORD0; float3 normal : TEXCOORD1; float2 uv : TEXCOORD2; };
-
-VSOut main(VSIn v) { 
-    VSOut o; 
-    
-    // スキニング行列の合成
-    float4x4 skinMat = 
-        gBones[v.indices.x] * v.weights.x +
-        gBones[v.indices.y] * v.weights.y +
-        gBones[v.indices.z] * v.weights.z +
-        gBones[v.indices.w] * v.weights.w;
-
-    float4 localPos = v.pos;
-    float4 skinnedPos = mul(localPos, skinMat);
-    float4 localNrm = float4(v.nrm, 0.0f);
-    float3 skinnedNrm = mul(localNrm, skinMat).xyz;
-
-    float4 wp = mul(skinnedPos, gWorld); 
-    o.worldPos = wp.xyz; 
-    float3 wn = mul(float4(skinnedNrm, 0), gWorld).xyz; 
-    o.normal = normalize(wn); 
-    
-    float4 vp = mul(wp, gView); 
-    o.svpos = mul(vp, gProj); 
-    o.uv = v.uv; 
-    return o; 
-}
-)";
-
-	auto vs3d = CompileShader(kVS3D, "main", "vs_5_0");
-	auto ps3d = CompileShader(kPS3D, "main", "ps_5_0");
-	auto vsSkin = CompileShader(kVSSkin, "main", "vs_5_0");
+	auto vs3d = CompileShaderFromFile(L"Resources/shaders/DefaultVS.hlsl", "main", "vs_5_0");
+	auto ps3d = CompileShaderFromFile(L"Resources/shaders/DefaultPS.hlsl", "main", "ps_5_0");
+	auto vsSkin = CompileShaderFromFile(L"Resources/shaders/SkinningVS.hlsl", "main", "vs_5_0");
 
 	if (!vs3d || !ps3d || !vsSkin)
 		return false;
@@ -1569,107 +1401,14 @@ VSOut main(VSIn v) {
 		return false;
 
 	// 通常オブジェクト インスタンス描画 (インラインコンパイルで環境非依存にする)
-	static const char* kVSInstancedObj = R"(
-struct InstanceData { row_major float4x4 world; float4 color; float4 uvScaleOffset; };
-StructuredBuffer<InstanceData> gInstanceData : register(t2);
-cbuffer CBFrame : register(b0) { row_major float4x4 gView; row_major float4x4 gProj; row_major float4x4 gViewProj; float3 gCamPos; float gTime; };
-struct VSIn { float4 pos : POSITION; float2 uv : TEXCOORD0; float3 nrm : NORMAL; };
-struct VSOut { float4 svpos : SV_POSITION; float3 worldPos: TEXCOORD0; float3 normal : TEXCOORD1; float2 uv : TEXCOORD2; float4 color : COLOR0; };
-VSOut main(VSIn v, uint instanceID : SV_InstanceID) {
-    VSOut o;
-    InstanceData data = gInstanceData[instanceID];
-    float4 wp = mul(v.pos, data.world);
-    o.worldPos = wp.xyz;
-    o.normal = normalize(mul(float4(v.nrm, 0), data.world).xyz);
-    o.svpos = mul(mul(wp, gView), gProj);
-    o.uv = v.uv;
-    o.color = data.color;
-    return o;
-}
-)";
-	static const char* kPSInstancedObj = R"(
-Texture2D gTex : register(t0);
-Texture2D gShadowMap : register(t1);
-SamplerState gSmp : register(s0);
-SamplerComparisonState gShadowSmp : register(s1);
-cbuffer CBFrame : register(b0) { row_major float4x4 gView; row_major float4x4 gProj; row_major float4x4 gViewProj; float3 gCamPos; float gTime; };
-struct DirLight { float3 dir; float pad0; float3 color; float pad1; uint enabled; float3 pad2; };
-struct PointLight { float3 pos; float pad0; float3 color; float range; float3 atten; float pad1; uint enabled; float3 pad2; };
-struct SpotLight { float3 pos; float pad0; float3 dir; float range; float3 color; float inner; float3 atten; float outer; uint enabled; float3 pad2; };
-struct AreaLight { float3 pos; float pad0; float3 color; float range; float3 right; float halfWidth; float3 up; float halfHeight; float3 dir; float pad1; float3 atten; float pad2; uint enabled; float3 pad3; };
-#define MAX_DIR 1
-#define MAX_POINT 4
-#define MAX_SPOT 4
-#define MAX_AREA 4
-cbuffer CBLight : register(b2) { float3 gAmbientColor; float padA0; DirLight gDir[MAX_DIR]; PointLight gPoint[MAX_POINT]; SpotLight gSpot[MAX_SPOT]; AreaLight gArea[MAX_AREA]; row_major float4x4 gShadowMatrix; };
-float GetAttenuation(float3 atten, float d) { return 1.0 / (atten.x + atten.y * d + atten.z * d * d); }
-float3 BlinnPhong(float3 L, float3 V, float3 N, float3 C, float3 A) {
-    float NdotL = max(dot(N, L), 0.0); float3 diff = A * C * NdotL;
-    float3 H = normalize(L + V); float NdotH = max(dot(N, H), 0.0);
-    float3 spec = C * pow(NdotH, 32.0) * 0.5; return diff + spec;
-}
-float CalcShadow(float3 worldPos) {
-    float4 shadowPos = mul(float4(worldPos, 1.0f), gShadowMatrix);
-    float3 projCoords = shadowPos.xyz / shadowPos.w;
-    projCoords.x = projCoords.x * 0.5f + 0.5f;
-    projCoords.y = -projCoords.y * 0.5f + 0.5f;
-    if (projCoords.x < 0.0f || projCoords.x > 1.0f || projCoords.y < 0.0f || projCoords.y > 1.0f || projCoords.z < 0.0f || projCoords.z > 1.0f)
-        return 1.0f;
-    float shadow = 0.0f;
-    float texelSize = 1.0f / 2048.0f;
-    for(int x = -1; x <= 1; ++x) {
-        for(int y = -1; y <= 1; ++y) {
-            shadow += gShadowMap.SampleCmpLevelZero(gShadowSmp, projCoords.xy + float2(x, y) * texelSize, projCoords.z).r;
-        }
-    }
-    return shadow / 9.0f;
-}
-float4 main(float4 svpos:SV_POSITION, float3 worldPos:TEXCOORD0, float3 normal:TEXCOORD1, float2 uv:TEXCOORD2, float4 color:COLOR0) : SV_TARGET {
-    float4 tex = gTex.Sample(gSmp, uv);
-    float3 albedo = tex.rgb * color.rgb;
-    float3 N = normalize(normal);
-    float3 V = normalize(gCamPos - worldPos);
-    float3 finalColor = albedo * gAmbientColor;
-    float shadowFactor = CalcShadow(worldPos);
-    for(int i=0; i<MAX_DIR; ++i) if(gDir[i].enabled) finalColor += BlinnPhong(normalize(-gDir[i].dir), V, N, gDir[i].color, albedo) * shadowFactor;
-    for(int j=0; j<MAX_POINT; ++j) if(gPoint[j].enabled) { float3 Lv = gPoint[j].pos - worldPos; float d = length(Lv); if(d < gPoint[j].range) finalColor += BlinnPhong(normalize(Lv), V, N, gPoint[j].color, albedo) * GetAttenuation(gPoint[j].atten, d); }
-    for(int k=0; k<MAX_SPOT; ++k) if(gSpot[k].enabled) { float3 Lv = gSpot[k].pos - worldPos; float d = length(Lv); if(d < gSpot[k].range) { float3 L = normalize(Lv); float c = dot(L, normalize(-gSpot[k].dir)); float s = smoothstep(gSpot[k].outer, gSpot[k].inner, c); finalColor += BlinnPhong(L, V, N, gSpot[k].color, albedo) * GetAttenuation(gSpot[k].atten, d) * s; } }
-    return float4(finalColor, tex.a * color.a);
-}
-)";
-	auto vsInst = CompileShader(kVSInstancedObj, "main", "vs_5_0");
-	auto psInst = CompileShader(kPSInstancedObj, "main", "ps_5_0");
+	auto vsInst = CompileShaderFromFile(L"Resources/shaders/InstancedObjVS.hlsl", "main", "vs_5_0");
+	auto psInst = CompileShaderFromFile(L"Resources/shaders/InstancedObjPS.hlsl", "main", "ps_5_0");
 	if (!vsInst || !psInst || !CreatePSO("Instanced", vsInst.Get(), psInst.Get()))
 		return false;
 
 	// パーティクル インスタンス描画 (インラインコンパイルで環境非依存にする)
-	static const char* kVSParticleInstanced = R"(
-struct InstanceData { row_major float4x4 world; float4 color; float4 uvScaleOffset; };
-StructuredBuffer<InstanceData> gInstanceData : register(t2);
-cbuffer CBFrame : register(b0) { row_major float4x4 gView; row_major float4x4 gProj; row_major float4x4 gViewProj; float3 gCamPos; float gTime; };
-struct VSOutput { float4 svpos : SV_POSITION; float2 uv : TEXCOORD; float4 color : COLOR; };
-VSOutput main(float4 pos : POSITION, float3 normal : NORMAL, float2 uv : TEXCOORD, uint instanceID : SV_InstanceID) {
-    VSOutput output;
-    InstanceData data = gInstanceData[instanceID];
-    output.svpos = mul(pos, mul(data.world, mul(gView, gProj)));
-    output.uv.x = uv.x * data.uvScaleOffset.x + data.uvScaleOffset.z;
-    output.uv.y = uv.y * data.uvScaleOffset.y + data.uvScaleOffset.w;
-    output.color = data.color;
-    return output;
-}
-)";
-	static const char* kPSParticle = R"(
-Texture2D<float4> tex : register(t0);
-SamplerState smp : register(s0);
-float4 main(float4 svpos:SV_POSITION, float2 uv:TEXCOORD, float4 color:COLOR) : SV_TARGET {
-    float4 texColor = tex.Sample(smp, uv);
-    texColor *= color;
-    if (texColor.a <= 0.0f) { discard; }
-    return texColor;
-}
-)";
-	auto vsPartInst = CompileShader(kVSParticleInstanced, "main", "vs_5_0");
-	auto psPart = CompileShader(kPSParticle, "main", "ps_5_0");
+	auto vsPartInst = CompileShaderFromFile(L"Resources/shaders/ParticleInstancedVS.hlsl", "main", "vs_5_0");
+	auto psPart = CompileShaderFromFile(L"Resources/shaders/ParticlePS.hlsl", "main", "ps_5_0");
 	if (!vsPartInst || !psPart || !CreatePSO("ParticleInstanced", vsPartInst.Get(), psPart.Get()))
 		return false;
 
@@ -1679,100 +1418,7 @@ float4 main(float4 svpos:SV_POSITION, float2 uv:TEXCOORD, float4 color:COLOR) : 
 	}
 
 	// ★追加: プロシージャル煙パーティクル (FBMノイズベース)
-	static const char* kPSProceduralSmoke = R"(
-cbuffer CBFrame : register(b0) {
-    row_major float4x4 gView;
-    row_major float4x4 gProj;
-    row_major float4x4 gViewProj;
-    float3 gCamPos;
-    float gTime;
-};
-
-struct VSOutput {
-    float4 svpos : SV_POSITION;
-    float2 uv    : TEXCOORD;
-    float4 color : COLOR;
-};
-
-// --- ノイズ関数群 ---
-float hash(float2 p) {
-    float3 p3 = frac(float3(p.xyx) * 0.1031);
-    p3 += dot(p3, p3.yzx + 33.33);
-    return frac((p3.x + p3.y) * p3.z);
-}
-
-float noise(float2 p) {
-    float2 i = floor(p);
-    float2 f = frac(p);
-    f = f * f * (3.0 - 2.0 * f); // smoothstep
-    float a = hash(i);
-    float b = hash(i + float2(1.0, 0.0));
-    float c = hash(i + float2(0.0, 1.0));
-    float d = hash(i + float2(1.0, 1.0));
-    return lerp(lerp(a, b, f.x), lerp(c, d, f.x), f.y);
-}
-
-// FBM (Fractal Brownian Motion) - 軽量版 (2オクターブ)
-float fbm(float2 p) {
-    float val = 0.5 * noise(p);
-    p = float2(p.x * 0.866 - p.y * 0.5, p.x * 0.5 + p.y * 0.866) * 2.17;
-    val += 0.235 * noise(p);
-    return val;
-}
-
-float4 main(VSOutput input) : SV_TARGET {
-    // カメラ近接フェード (近い場合は重いノイズ計算をスキップ)
-    float camFade = smoothstep(3.0, 10.0, input.svpos.w);
-    if (camFade <= 0.01) discard;
-
-    float2 uv = input.uv;
-    float2 center = uv - 0.5;
-    float baseDist = length(center);
-
-    // 画面外周は無条件で破棄 (最適化)
-    if (baseDist >= 0.5) discard;
-
-    // 時間によるスクロール (煙特有の湧き上がる動き)
-    float t = gTime * 0.3;
-    float2 noiseUV = uv * 3.0 + float2(-t * 0.3, -t * 1.2);
-
-    // FBMで煙のシルエットとなるディティールを生成 (1回のみ)
-    float n = fbm(noiseUV);
-
-    // 原点からの距離にノイズを足して、円を「モクモクした形」に歪ませる
-    float distortedDist = baseDist + (n * 0.4);
-
-    // 歪んだ距離を使って、滑らかなモヤモヤしたマスクを作る
-    float smokeDensity = 1.0 - smoothstep(0.15, 0.55, distortedDist);
-    if (smokeDensity <= 0.01) discard;
-
-    // --- スチームパンク風ライティング ---
-    float3 lightDir = normalize(float3(0.3, 0.8, -0.5));
-    // 煙のふくらみを擬似的に法線として扱う (中心から外に向かう法線 + 上向き成分)
-    float3 fakeNormal = normalize(float3(center.x, -center.y, 0.4 - n * 0.3));
-    float NdotL = saturate(dot(fakeNormal, lightDir));
-
-    // 水蒸気(Steam)向けのスチームパンク風ライティング
-    // 環境光や下からの反射光として、ほんのり暖かみのあるハイライト
-    float3 warmLight = float3(1.15, 1.05, 0.95);
-    
-    // 基本色 (入力カラーを活用)
-    float3 baseColor = input.color.rgb;
-    
-    // 水蒸気は黒くならず、影部分は少しグレー・青みがかった透かし色になる
-    float3 shadowColor = baseColor * float3(0.65, 0.70, 0.75);
-    float3 litColor = baseColor * warmLight * 1.25;
-
-    // シャドウとハイライトのコントラストを合成
-    float3 finalColor = lerp(shadowColor, litColor, NdotL);
-
-    // アルファ値: 外枠が滑らかに透ける
-    float alpha = smokeDensity * input.color.a * camFade;
-
-    return float4(finalColor, alpha);
-}
-)";
-	auto psProceduralSmoke = CompileShader(kPSProceduralSmoke, "main", "ps_5_0");
+	auto psProceduralSmoke = CompileShaderFromFile(L"Resources/shaders/ProceduralSmokePS.hlsl", "main", "ps_5_0");
 	if (vsPartInst && psProceduralSmoke) {
 		CreatePSO_Transparent("ProceduralSmokeInstanced", vsPartInst.Get(), psProceduralSmoke.Get(), false);
 		CreatePSO_Transparent("ProceduralSmokeAdditiveInstanced", vsPartInst.Get(), psProceduralSmoke.Get(), true);
@@ -3120,12 +2766,7 @@ float4 main(float4 svpos:SV_POSITION, float2 uv:TEXCOORD0) : SV_TARGET {
 		psoPPDefault_ = psoPP_; // ★追加: デフォルトPSOをバックアップ
 
 		// ★追加：PostProcessと同様、そのままテクスチャをコピーするだけのパイプライン
-		static const char* kPSCopy = R"(
-Texture2D gScene : register(t0); SamplerState gSmp : register(s0);
-float4 main(float4 svpos:SV_POSITION, float2 uv:TEXCOORD0) : SV_TARGET {
-    return float4(gScene.Sample(gSmp, uv).rgb, 1.0f);
-})";
-		auto psCopy = CompileShader(kPSCopy, "main", "ps_5_0");
+		auto psCopy = CompileShaderFromFile(L"Resources/shaders/CopyPS.hlsl", "main", "ps_5_0");
 		if (psCopy) {
 			pso.PS = { psCopy->GetBufferPointer(), psCopy->GetBufferSize() };
 			dev_->CreateGraphicsPipelineState(&pso, IID_PPV_ARGS(&psoCopy_));

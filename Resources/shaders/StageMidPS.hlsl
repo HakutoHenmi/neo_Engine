@@ -74,6 +74,7 @@
 // 同じ構造：全体の流れ + 弱い揺らぎ
 //======================================================
 #include "Obj.hlsli"
+#include "ProceduralPaper.hlsli"
 
 float4 main(VSOutput i) : SV_TARGET
 {
@@ -121,6 +122,9 @@ float4 main(VSOutput i) : SV_TARGET
     // ----------------------------------
     float fogMix = 0.10f; // 明るいので少量
     float3 col = lerp(base, 1.0.xxx, fogMix);
+
+    // ★追加: プロシージャル和紙マテリアルを適用
+    ApplyProceduralPaper(i.worldpos.xyz, col, n, 0.4, 0.8);
 
     // ----------------------------------
     // ⑥ 上面／側面の差（主張しない）

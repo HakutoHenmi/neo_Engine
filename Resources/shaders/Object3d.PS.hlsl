@@ -1,5 +1,6 @@
 #include "Obj.hlsli"
 #include "Space.hlsli"
+#include "ProceduralPaper.hlsli" // ★追加: 和紙マテリアル
 
 Texture2D<float4> tex : register(t0);
 TextureCube<float4> envMap : register(t3); 
@@ -30,6 +31,10 @@ float4 main(VSOutput input) : SV_TARGET
     
     // ベースカラー
     float3 albedo = texcolor.rgb * color.rgb;
+
+    // ★追加: プロシージャル和紙マテリアルを適用 (ベースカラーと法線を調整)
+    ApplyProceduralPaper(input.worldpos.xyz, albedo, N, 0.4, 0.8);
+
     // アンビエント成分
     float3 finalColor = albedo * ambientColor;
 

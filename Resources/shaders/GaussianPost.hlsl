@@ -3,6 +3,7 @@
 #include "PostProcessCommon.hlsli"
 
 Texture2D gScene : register(t0);
+Texture2D gPaper : register(t1); // 未使用
 SamplerState gSmp : register(s0);
 
 cbuffer CBPost : register(b0)
@@ -24,7 +25,6 @@ struct PSIn
 };
 
 // 5x5 ガウシアンカーネル（σ≒1.0）
-// 重み合計 = 256
 static const float kernel[5][5] = {
     { 1,  4,  6,  4, 1 },
     { 4, 16, 24, 16, 4 },
@@ -38,7 +38,7 @@ float4 main(PSIn i) : SV_TARGET
 {
     float2 texelSize = float2(1.0 / 1280.0, 1.0 / 720.0);
 
-    // gDistortion でぼかし強度を制御（テクセルの倍率）
+    // gDistortion でぼかし強度を制御
     float scale = max(1.0, 1.0 + gDistortion * 2.0);
 
     float3 col = float3(0, 0, 0);
@@ -57,9 +57,22 @@ float4 main(PSIn i) : SV_TARGET
     }
     col /= kernelSum;
 
-    // Vignette
-    float2 d = i.uv - 0.5;
-    col *= saturate(1.0 - dot(d, d) * gVignette);
+    // --- ダメージ表現の追加 ---
 
-    return float4(Saturate3(col), 1.0);
+    // ダメージ/ピンチ時の赤いビネット
+    float2 centerOffset = i.uv - 0.5;
+    if (gVignette > 0.001) {
+        float distSq = dot(centerOffset, centerOffset);
+        float damageVignette = saturate(distSq * 3.0f * gVignette);
+        col = lerp(col, float3(1.0, 0.1, 0.1), damageVignette * 0.6f);
+    }
+
+    // 輝度補正
+    col *= 1.15;
+
+    // 黒ビネット
+    float2 d = i.uv - 0.5;
+    col *= saturate(1.0 - dot(d, d) * (gVignette * 0.2));
+
+    return float4(saturate(col), 1.0);
 }
