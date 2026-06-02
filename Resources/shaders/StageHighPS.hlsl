@@ -72,6 +72,7 @@
 // ・消す：一ブロック内の補助グラデ（t_detail）
 //======================================================
 #include "Obj.hlsli"
+#include "ProceduralPaper.hlsli"
 
 float4 main(VSOutput i) : SV_TARGET
 {
@@ -104,6 +105,9 @@ float4 main(VSOutput i) : SV_TARGET
     float fogMix = lerp(fogAqua, fogCoral, t);
 
     float3 col = lerp(base, 1.0.xxx, fogMix);
+
+    // ★追加: プロシージャル和紙マテリアルを適用
+    ApplyProceduralPaper(i.worldpos.xyz, col, n, 0.4, 0.8);
 
     // 立体感（控えめ）
     float up = saturate(n.y);

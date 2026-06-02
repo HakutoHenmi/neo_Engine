@@ -1,14 +1,18 @@
 #include "ProceduralPaper.hlsli"
 
-Texture2D gTex : register(t0);
+Texture2D gTex : register(t0); 
 Texture2D gShadowMap : register(t1);
 SamplerState gSmp : register(s0);
 SamplerComparisonState gShadowSmp : register(s1);
+
 cbuffer CBFrame : register(b0) { row_major float4x4 gView; row_major float4x4 gProj; row_major float4x4 gViewProj; float3 gCamPos; float gTime; };
+cbuffer CBObj : register(b1) { row_major float4x4 gWorld; float4 gColor; };
+
 struct DirLight { float3 dir; float pad0; float3 color; float pad1; uint enabled; float3 pad2; };
 struct PointLight { float3 pos; float pad0; float3 color; float range; float3 atten; float pad1; uint enabled; float3 pad2; };
 struct SpotLight { float3 pos; float pad0; float3 dir; float range; float3 color; float inner; float3 atten; float outer; uint enabled; float3 pad2; };
 struct AreaLight { float3 pos; float pad0; float3 color; float range; float3 right; float halfWidth; float3 up; float halfHeight; float3 dir; float pad1; float3 atten; float pad2; uint enabled; float3 pad3; };
+
 #define MAX_DIR 1
 #define MAX_POINT 4
 #define MAX_SPOT 4
@@ -22,6 +26,16 @@ float3 BlinnPhong(float3 L, float3 V, float3 N, float3 C, float3 A) {
     // 和紙のようなマットな質感にするため、スペキュラ（金属的な反射）を極限まで下げる
     float3 spec = C * pow(NdotH, 8.0) * 0.02; return diff + spec;
 }
+float3 CalcAreaLight(AreaLight L, float3 wPos, float3 N, float3 V, float3 A) {
+	float3 Lvec = L.pos - wPos; float distPlane = dot(Lvec, L.dir); float3 planePoint = wPos + L.dir * distPlane; float3 dirFromCenter = planePoint - L.pos;
+	float distRight = dot(dirFromCenter, L.right); float distUp = dot(dirFromCenter, L.up);
+	float clampedRight = clamp(distRight, -L.halfWidth, L.halfWidth); float clampedUp = clamp(distUp, -L.halfHeight, L.halfHeight);
+	float3 closest = L.pos + L.right * clampedRight + L.up * clampedUp;
+	float3 lightDirVec = closest - wPos; float d = length(lightDirVec); if(d >= L.range) return float3(0,0,0);
+	float3 lDir = normalize(lightDirVec); float att = GetAttenuation(L.atten, d);
+	return BlinnPhong(lDir, V, N, L.color, A) * att;
+}
+
 float CalcShadow(float3 worldPos) {
     float4 shadowPos = mul(float4(worldPos, 1.0f), gShadowMatrix);
     float3 projCoords = shadowPos.xyz / shadowPos.w;
@@ -38,19 +52,24 @@ float CalcShadow(float3 worldPos) {
     }
     return shadow / 9.0f;
 }
-float4 main(float4 svpos:SV_POSITION, float3 worldPos:TEXCOORD0, float3 normal:TEXCOORD1, float2 uv:TEXCOORD2, float4 color:COLOR0) : SV_TARGET {
-    float4 tex = gTex.Sample(gSmp, uv);
-    float3 albedo = tex.rgb * color.rgb;
-    float3 N = normalize(normal);
+
+float4 main(float4 svpos:SV_POSITION, float3 worldPos:TEXCOORD0, float3 normal:TEXCOORD1, float2 uv:TEXCOORD2) : SV_TARGET {
+    float4 tex = gTex.Sample(gSmp, uv); 
+    float3 albedo = tex.rgb * gColor.rgb; 
+    float3 N = normalize(normal); 
     
     // プロシージャル和紙マテリアルを適用
     ApplyProceduralPaper(worldPos, albedo, N, 0.4, 0.8);
 
     float3 V = normalize(gCamPos - worldPos);
     float3 finalColor = albedo * gAmbientColor;
+
     float shadowFactor = CalcShadow(worldPos);
+
     for(int i=0; i<MAX_DIR; ++i) if(gDir[i].enabled) finalColor += BlinnPhong(normalize(-gDir[i].dir), V, N, gDir[i].color, albedo) * shadowFactor;
-    for(int j=0; j<MAX_POINT; ++j) if(gPoint[j].enabled) { float3 Lv = gPoint[j].pos - worldPos; float d = length(Lv); if(d < gPoint[j].range) finalColor += BlinnPhong(normalize(Lv), V, N, gPoint[j].color, albedo) * GetAttenuation(gPoint[j].atten, d); }
-    for(int k=0; k<MAX_SPOT; ++k) if(gSpot[k].enabled) { float3 Lv = gSpot[k].pos - worldPos; float d = length(Lv); if(d < gSpot[k].range) { float3 L = normalize(Lv); float c = dot(L, normalize(-gSpot[k].dir)); float s = smoothstep(gSpot[k].outer, gSpot[k].inner, c); finalColor += BlinnPhong(L, V, N, gSpot[k].color, albedo) * GetAttenuation(gSpot[k].atten, d) * s; } }
-    return float4(finalColor, tex.a * color.a);
+    for(int i=0; i<MAX_POINT; ++i) if(gPoint[i].enabled) { float3 Lv = gPoint[i].pos - worldPos; float d = length(Lv); if(d < gPoint[i].range) finalColor += BlinnPhong(normalize(Lv), V, N, gPoint[i].color, albedo) * GetAttenuation(gPoint[i].atten, d); }
+    for(int i=0; i<MAX_SPOT; ++i) if(gSpot[i].enabled) { float3 Lv = gSpot[i].pos - worldPos; float d = length(Lv); if(d < gSpot[i].range) { float3 L = normalize(Lv); float c = dot(L, normalize(-gSpot[i].dir)); float s = smoothstep(gSpot[i].outer, gSpot[i].inner, c); finalColor += BlinnPhong(L, V, N, gSpot[i].color, albedo) * GetAttenuation(gSpot[i].atten, d) * s; } }
+    for(int i=0; i<MAX_AREA; ++i) if(gArea[i].enabled) finalColor += CalcAreaLight(gArea[i], worldPos, N, V, albedo);
+
+    return float4(finalColor, tex.a * gColor.a);
 }

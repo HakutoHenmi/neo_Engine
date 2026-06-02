@@ -136,6 +136,8 @@ public:
         renderer->SetPostProcessParams(currentParams_);
         if (isDead) {
             renderer->SetPostEffect("Smoothing");
+        } else if (isLowHealth) {
+            renderer->SetPostEffect("GaussianFilter");
         } else {
             renderer->SetPostEffect("Rich");
         }
