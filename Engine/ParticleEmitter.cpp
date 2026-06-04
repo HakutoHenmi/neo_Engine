@@ -1,4 +1,4 @@
-﻿#include "ParticleEmitter.h"
+#include "ParticleEmitter.h"
 #include <fstream>
 #include <cstdlib>
 
@@ -26,7 +26,7 @@ void ParticleEmitter::Initialize(Renderer& renderer, const std::string& name) {
 
 void ParticleEmitter::ApplySystemSettings() {
 	if (!renderer_) return;
-	particleSystem_.Initialize(*renderer_, 1000, "Resources/Models/plane.obj", params.texturePath, true, params.useBillboard);
+	particleSystem_.Initialize(*renderer_, 1000, params.meshPath, params.texturePath, true, params.useBillboard);
 	currentTexturePath_ = params.texturePath;
 	currentBillboard_ = params.useBillboard;
 }
@@ -157,6 +157,7 @@ bool ParticleEmitter::SaveToJson(const std::string& path) {
 	j["angularVelocity"] = {params.angularVelocity.x, params.angularVelocity.y, params.angularVelocity.z};
 	j["angularVelocityVariance"] = {params.angularVelocityVariance.x, params.angularVelocityVariance.y, params.angularVelocityVariance.z};
 
+	j["meshPath"] = params.meshPath;
 	j["texturePath"] = params.texturePath;
 	j["shaderName"] = params.shaderName;
 	j["useBillboard"] = params.useBillboard;
@@ -225,6 +226,7 @@ bool ParticleEmitter::LoadFromJson(const std::string& path) {
 		if (j.contains("angularVelocity")) params.angularVelocity = getVec3(j["angularVelocity"]);
 		if (j.contains("angularVelocityVariance")) params.angularVelocityVariance = getVec3(j["angularVelocityVariance"]);
 
+		if (j.contains("meshPath")) params.meshPath = j["meshPath"].get<std::string>();
 		if (j.contains("texturePath")) params.texturePath = j["texturePath"].get<std::string>();
 		if (j.contains("shaderName")) params.shaderName = j["shaderName"].get<std::string>();
 		if (j.contains("useBillboard")) params.useBillboard = j["useBillboard"].get<bool>();

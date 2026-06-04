@@ -13,42 +13,8 @@ public:
 		if (!ctx.isPlaying) return;
 
 		// --- パリィ歪みエフェクトのアニメーション ---
-		auto distView = registry.view<ParryDistortionComponent, TransformComponent, MeshRendererComponent>();
-		for (auto entity : distView) {
-			auto& pd = distView.get<ParryDistortionComponent>(entity);
-			auto& tc = distView.get<TransformComponent>(entity);
-			auto& mr = distView.get<MeshRendererComponent>(entity);
-			pd.timer += ctx.dt;
-			float t = pd.timer / pd.duration;
-			if (t > 1.0f) t = 1.0f;
-			
-			// イーズアウト（急速に広がり、ゆっくり止まる）
-			float easeT = 1.0f - std::pow(1.0f - t, 3.0f);
-			float s = pd.startScale + (pd.endScale - pd.startScale) * easeT;
-			tc.scale = { s, s, s };
-			
-			// アルファ値（シェーダー側では 1.0 - color.w を progress として扱う）
-			// easeT を渡すことで、スケールの拡大とリングの広がりが完全に同期する
-			mr.color.w = 1.0f - easeT;
+		// ※RingEffectScriptへ移行したため削除
 
-			// 毎フレーム常にカメラの方を向く（ビルボード）
-			if (pd.isBillboard && ctx.camera) {
-				// カメラと同じ回転を与えると、オブジェクトのローカル座標系がカメラと一致する
-				tc.rotate = ctx.camera->Rotation();
-				
-				// Planeモデルの法線が上（Y+）だとすると、この時点では上を向いている。
-				// カメラ方向（Z軸）に面を向かせるため、ローカルでX軸に-90度回転を追加する
-				tc.rotate.x -= DirectX::XM_PIDIV2;
-			}
-
-			// ★追加: 衝撃波のようにHitboxを持つ場合は、エフェクトの大きさに合わせて当たり判定も広げる
-			if (registry.all_of<HitboxComponent>(entity)) {
-				auto& hb = registry.get<HitboxComponent>(entity);
-				// plane.obj のベースサイズが 2x2（半径1）なので、直径は s * 2 になる
-				hb.size.x = s * 2.0f;
-				hb.size.z = s * 2.0f;
-			}
-		}
 
 		// --- 前フレームのヒット済みペアをクリア ---
 		hitPairs_.clear();
@@ -166,29 +132,16 @@ public:
 
 					// ★追加: ヒットエフェクト（パーティクル）の生成
 					auto effectEntity = registry.create();
-					registry.emplace<AutoDestroyComponent>(effectEntity).timer = 0.5f;
 					auto& tc = registry.emplace<TransformComponent>(effectEntity);
 					tc.translate = {
 						(hbWorldCenter.x + hrWorldCenter.x) * 0.5f,
 						(hbWorldCenter.y + hrWorldCenter.y) * 0.5f,
 						(hbWorldCenter.z + hrWorldCenter.z) * 0.5f
 					};
-					auto& pe = registry.emplace<ParticleEmitterComponent>(effectEntity);
-					pe.emitter.params.name = "HitEffect";
-					pe.emitter.params.position = {0, 0, 0};
-					pe.emitter.params.emitRate = 0; // 継続放出なし
-					pe.emitter.params.burstCount = 15; // バーストで放出
-					pe.emitter.params.startColor = {1.0f, 0.8f, 0.2f, 1.0f}; // オレンジ
-					pe.emitter.params.endColor = {1.0f, 0.2f, 0.0f, 0.0f}; // 赤く消える
-					pe.emitter.params.startSize = {0.3f, 0.3f, 0.3f};
-					pe.emitter.params.startSizeVariance = {0.1f, 0.1f, 0.1f};
-					pe.emitter.params.startVelocity = {0, 3.0f, 0};
-					pe.emitter.params.velocityVariance = {5.0f, 5.0f, 5.0f};
-					pe.emitter.params.lifeTime = 0.4f;
-					pe.emitter.params.lifeTimeVariance = 0.2f;
-					pe.emitter.params.shape = Engine::EmissionShape::Sphere;
-					pe.emitter.params.shapeRadius = 0.2f;
-					pe.emitter.params.damping = 2.0f;
+					auto& sc = registry.emplace<ScriptComponent>(effectEntity);
+					ScriptEntry entry;
+					entry.scriptPath = "HitEffectScript";
+					sc.scripts.push_back(entry);
 				}
 			}
 		}
@@ -280,38 +233,24 @@ private:
 			auto& attTc = registry.get<TransformComponent>(attacker);
 
 			auto distEntity = registry.create();
-			registry.emplace<AutoDestroyComponent>(distEntity).timer = 0.6f;
 			auto& dtc = registry.emplace<TransformComponent>(distEntity);
 			dtc.translate = {
 				(defTc.translate.x + attTc.translate.x) * 0.5f,
 				(defTc.translate.y + attTc.translate.y) * 0.5f + 3.0f, // 敵の高さに合わせてしっかり上に
 				(defTc.translate.z + attTc.translate.z) * 0.5f
 			};
-			dtc.scale = { 0.1f, 0.1f, 0.1f };
 
-			// カメラの方向を向くように回転（ビルボード初期化）
-			if (ctx.camera) {
-				dtc.rotate = ctx.camera->Rotation();
-				dtc.rotate.x -= DirectX::XM_PIDIV2;
-			} else {
-				dtc.rotate = { 0, 0, 0 };
-			}
-
-			auto& dmr = registry.emplace<MeshRendererComponent>(distEntity);
-			dmr.modelPath = "Resources/Models/plane.obj";
-			dmr.texturePath = "Resources/Textures/ripple_normal.png"; // ノーマルマップを指定
-			dmr.shaderName = "Distortion";
-			dmr.color = { 1.0f, 1.0f, 1.0f, 1.0f }; // W成分(アルファ)はDistortionの強度として使われる
-
-			if (ctx.renderer) {
-				dmr.modelHandle = ctx.renderer->LoadObjMesh(dmr.modelPath);
-				dmr.textureHandle = ctx.renderer->LoadTexture2D(dmr.texturePath);
-			}
-
-			auto& pdc = registry.emplace<ParryDistortionComponent>(distEntity);
-			pdc.duration = 0.8f;
-			pdc.startScale = 5.0f;   // 最初から敵より大きく
-			pdc.endScale = 30.0f;    // さらに大きく広がる
+			auto& sc = registry.emplace<ScriptComponent>(distEntity);
+			ScriptEntry entry;
+			entry.scriptPath = "RingEffectScript";
+			sc.scripts.push_back(entry);
+			
+			// オプション: ヒットボックスを持たせたい場合は付ける
+			auto& hb = registry.emplace<HitboxComponent>(distEntity);
+			hb.size = {0, 0, 0};
+			hb.damage = 0; // パリィ波動の追加ダメージなど
+			hb.enabled = true;
+			hb.isActive = true;
 		}
 	}
 
