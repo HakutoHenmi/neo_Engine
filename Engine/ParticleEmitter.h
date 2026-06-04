@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include "Particle.h"
 #include <string>
@@ -63,6 +63,7 @@ struct EmitterParams {
 	Vector3 angularVelocityVariance{0, 0, 0};
 
 	// Rendering
+	std::string meshPath = "Resources/Models/plane.obj"; // ★追加: 放出するメッシュ
 	std::string texturePath = "Resources/Textures/uvChecker.png";
 	std::string shaderName = ""; // empty means default
 	bool useBillboard = true;

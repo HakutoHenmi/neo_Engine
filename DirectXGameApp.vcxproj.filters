@@ -86,6 +86,21 @@
     <ClCompile Include="Game\Scripts\ExplosionAttackArea.cpp" />
     <ClCompile Include="Game\Scripts\PhaseTransition.cpp" />
     <ClCompile Include="Game\Scripts\WaveManagement.cpp" />
+    <ClCompile Include="Game\Scripts\HitEffectScript.cpp">
+      <Filter>Scripts</Filter>
+    </ClCompile>
+    <ClCompile Include="Game\Scripts\RingEffectScript.cpp">
+      <Filter>Scripts</Filter>
+    </ClCompile>
+    <ClCompile Include="Game\Scripts\CylinderEffectScript.cpp">
+      <Filter>Scripts</Filter>
+    </ClCompile>
+    <ClCompile Include="Game\Scripts\WarningEffectScript.cpp">
+      <Filter>Scripts</Filter>
+    </ClCompile>
+    <ClCompile Include="Game\Scripts\GameManagerScript.cpp">
+      <Filter>Scripts</Filter>
+    </ClCompile>
     <ClCompile Include="Game\Scripts\BossTestScript.cpp">
       <Filter>Scripts</Filter>
     </ClCompile>
@@ -206,6 +221,21 @@
     <ClInclude Include="Game\Scripts\ExplosionAttackArea.h" />
     <ClInclude Include="Game\Scripts\PhaseTransition.h" />
     <ClInclude Include="Game\Scripts\WaveManagement.h" />
+    <ClInclude Include="Game\Scripts\HitEffectScript.h">
+      <Filter>Scripts</Filter>
+    </ClInclude>
+    <ClInclude Include="Game\Scripts\RingEffectScript.h">
+      <Filter>Scripts</Filter>
+    </ClInclude>
+    <ClInclude Include="Game\Scripts\CylinderEffectScript.h">
+      <Filter>Scripts</Filter>
+    </ClInclude>
+    <ClInclude Include="Game\Scripts\WarningEffectScript.h">
+      <Filter>Scripts</Filter>
+    </ClInclude>
+    <ClInclude Include="Game\Scripts\GameManagerScript.h">
+      <Filter>Scripts</Filter>
+    </ClInclude>
     <ClInclude Include="Game\Scripts\BossTestScript.h">
       <Filter>Scripts</Filter>
     </ClInclude>

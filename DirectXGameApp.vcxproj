@@ -190,6 +190,9 @@ exit /b 0
     <ClCompile Include="Game\Scripts\ScriptEngine.cpp" />
     <ClCompile Include="Game\Scripts\IScript.cpp" />
     <ClCompile Include="Game\Scripts\WarningEffectScript.cpp" />
+    <ClCompile Include="Game\Scripts\HitEffectScript.cpp" />
+    <ClCompile Include="Game\Scripts\RingEffectScript.cpp" />
+    <ClCompile Include="Game\Scripts\CylinderEffectScript.cpp" />
     <ClCompile Include="Game\Scripts\GameManagerScript.cpp" />
     <ClCompile Include="Game\Scripts\BossTestScript.cpp" />
     <ClCompile Include="Game\Systems\UISystem.cpp" />
@@ -206,6 +209,9 @@ exit /b 0
     <ClInclude Include="Game\Scripts\BaseScript.h" />
     <ClInclude Include="Game\Scripts\IScript.h" />
     <ClInclude Include="Game\Scripts\WarningEffectScript.h" />
+    <ClInclude Include="Game\Scripts\HitEffectScript.h" />
+    <ClInclude Include="Game\Scripts\RingEffectScript.h" />
+    <ClInclude Include="Game\Scripts\CylinderEffectScript.h" />
     <ClInclude Include="Game\Scripts\GameManagerScript.h" />
     <ClInclude Include="Game\Scripts\BossTestScript.h" />
     <ClInclude Include="Game\Scripts\ScriptEngine.h" />
