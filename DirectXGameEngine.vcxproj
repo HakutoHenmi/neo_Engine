@@ -134,6 +134,7 @@
     <ClCompile Include="Engine\JobSystem.cpp" />
     <ClCompile Include="Engine\QuadTree.cpp" />
     <ClCompile Include="Engine\App.cpp" />
+    <ClCompile Include="Engine\SharedMemoryProfiler.cpp" />
     <ClCompile Include="Engine\Audio.cpp" />
     <ClCompile Include="Engine\Camera.cpp" />
     <ClCompile Include="Engine\ImGuiLayer.cpp" />
@@ -175,6 +176,7 @@
     <ClInclude Include="Engine\JobSystem.h" />
     <ClInclude Include="Engine\QuadTree.h" />
     <ClInclude Include="Engine\App.h" />
+    <ClInclude Include="Engine\SharedMemoryProfiler.h" />
     <ClInclude Include="Engine\Audio.h" />
     <ClInclude Include="Engine\Camera.h" />
     <ClInclude Include="Engine\GameObject.h" />

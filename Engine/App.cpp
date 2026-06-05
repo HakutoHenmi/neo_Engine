@@ -1,8 +1,9 @@
 #include "App.h"
 #include <Windows.h>
+#include <chrono>
 #include "JobSystem.h"
 #include "Time/TimeManager.h" // ★追加
-
+#include "SharedMemoryProfiler.h"
 
 namespace Engine {
 
@@ -14,6 +15,8 @@ bool App::Initialize(HINSTANCE hInst, int cmdShow) {
 	// Job Systemの初期化
 	JobSystem::Initialize();
 
+	// 共有メモリプロファイラの初期化
+	SharedMemoryProfiler::GetInstance().Initialize();
 
 	if (!renderer_.Initialize(&dx_))
 		return false;
@@ -49,6 +52,10 @@ void App::Run() {
 	MSG msg{};
 	bool running = true;
 
+	auto prevTime = std::chrono::high_resolution_clock::now();
+	int frameCount = 0;
+	float timeElapsed = 0.0f;
+
 	while (running) {
 		while (PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE)) {
 			if (msg.message == WM_QUIT) {
@@ -68,9 +75,25 @@ void App::Run() {
 			dx_.ToggleFullscreen();
 		}
 
+		// フレームタイムの計算
+		auto currentTime = std::chrono::high_resolution_clock::now();
+		float dt = std::chrono::duration<float>(currentTime - prevTime).count();
+		prevTime = currentTime;
+
+		// FPSの計算
+		frameCount++;
+		timeElapsed += dt;
+		if (timeElapsed >= 1.0f) {
+			SharedMemoryProfiler::GetInstance().SetFPS((float)frameCount / timeElapsed);
+			frameCount = 0;
+			timeElapsed = 0.0f;
+		}
+
 		// ★追加: TimeManagerの更新
-		// 本来は正確なフレーム時間(dt)を計算すべき
-		TimeManager::GetInstance().Update(1.0f / 60.0f);
+		TimeManager::GetInstance().Update(dt);
+
+		// プロファイラにフレームタイムをセット
+		SharedMemoryProfiler::GetInstance().SetDeltaTime(dt);
 
 		dx_.BeginFrame();
 		const float clearColor[] = {0.1f, 0.25f, 0.5f, 1.0f};
@@ -97,10 +120,33 @@ void App::Run() {
 		imgui_.Render(dx_);
 #endif
 		dx_.EndFrame();
+
+		// ★追加: 詳細な統計データをプロファイラへ送る
+		auto* renderer = Renderer::GetInstance();
+		if (renderer) {
+			SharedMemoryProfiler::GetInstance().SetDrawCalls(renderer->GetDrawCallCount());
+			SharedMemoryProfiler::GetInstance().SetParticleCount(renderer->GetParticleCount());
+			
+			// 有効なライトの数を数える
+			uint32_t activeLights = 0;
+			auto lcb = renderer->GetLightCB();
+			for (int i = 0; i < Renderer::kMaxDirLights; ++i) if (lcb.dirLights[i].enabled) activeLights++;
+			for (int i = 0; i < Renderer::kMaxPointLights; ++i) if (lcb.pointLights[i].enabled) activeLights++;
+			for (int i = 0; i < Renderer::kMaxSpotLights; ++i) if (lcb.spotLights[i].enabled) activeLights++;
+			for (int i = 0; i < Renderer::kMaxAreaLights; ++i) if (lcb.areaLights[i].enabled) activeLights++;
+			SharedMemoryProfiler::GetInstance().SetLightCount(activeLights);
+
+			Vector3 pPos = renderer->GetPlayerPos();
+			SharedMemoryProfiler::GetInstance().SetPlayerPos(pPos.x, pPos.y, pPos.z);
+		}
+
+		// プロファイラのデータを共有メモリに書き込む
+		SharedMemoryProfiler::GetInstance().CommitFrame();
 	}
 }
 
 void App::Shutdown() {
+	SharedMemoryProfiler::GetInstance().Shutdown();
 	JobSystem::Shutdown();
 #ifdef USE_IMGUI
 	imgui_.Shutdown();

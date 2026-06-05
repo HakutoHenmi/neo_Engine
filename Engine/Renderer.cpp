@@ -326,6 +326,10 @@ void Renderer::BeginFrame(const float clearColorRGBA[4]) {
 
 	drawCalls_.clear(); // ★追加: ドローコールをクリア
 	
+	// ★追加: 毎フレーム最初にカウンタをリセット
+	frameDrawCalls_ = 0;
+	frameParticleCount_ = 0;
+
 	cbFrame_.time += 0.016f; // 固定値だが、本来はDeltaTimeを使うべき
 
 	// インスタンス描画用のキューをクリア
@@ -453,6 +457,10 @@ void Renderer::FlushDrawCalls() {
 		return;
 	}
 
+	// ★追加: カウンタに加算 (Skyboxや通常ドローコールの数)
+	frameDrawCalls_ += 1; // Skybox用
+	frameDrawCalls_ += static_cast<uint32_t>(drawCalls_.size());
+
 	for (const auto& dc : drawCalls_) {
 		if (dc.shaderName == "Distortion") continue; // 空間のゆがみは EndFrame で別途描画
 
@@ -579,10 +587,15 @@ void Renderer::FlushDrawCalls() {
 	// ====== インスタンス描画の共通処理関数 (ラムダ) ======
 	auto flushInstanced = [&](std::vector<InstancedDrawCall>& calls, const std::string& defaultShaderName) {
 		if (calls.empty()) return;
+		frameDrawCalls_ += static_cast<uint32_t>(calls.size()); // ★追加
 
 		for (auto& idc : calls) {
 			auto* model = GetModel(idc.mesh);
 			if (!model || idc.instances.empty()) continue;
+
+			if (defaultShaderName == "ParticleInstanced") {
+				frameParticleCount_ += static_cast<uint32_t>(idc.instances.size()); // ★追加
+			}
 
 			// シェーダー設定
 			std::string sName = idc.shaderName;

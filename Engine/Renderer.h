@@ -179,6 +179,13 @@ public:
 	}
 	bool GetUseCubemapBackground() const { return cbFrame_.useCubemapBackground != 0; }
 
+	// ★追加: プロファイラ用統計データ取得
+	uint32_t frameDrawCalls_ = 0;
+	uint32_t frameParticleCount_ = 0;
+	uint32_t GetDrawCallCount() const { return frameDrawCalls_; }
+	uint32_t GetParticleCount() const { return frameParticleCount_; }
+	Vector3 GetPlayerPos() const { return cbFrame_.playerPos; }
+
 	D3D12_GPU_DESCRIPTOR_HANDLE GetPostProcessSRV() const { return ppSrvGpu_; }
 
 	// ★追加: Gameシーンの最終出力テクスチャ。エディタUIからここを描画する。

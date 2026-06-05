@@ -28,6 +28,9 @@
     <ClCompile Include="Engine\App.cpp">
       <Filter>Core</Filter>
     </ClCompile>
+    <ClCompile Include="Engine\SharedMemoryProfiler.cpp">
+      <Filter>Core</Filter>
+    </ClCompile>
     <ClCompile Include="Engine\Audio.cpp">
       <Filter>Core</Filter>
     </ClCompile>
@@ -98,6 +101,9 @@
       <Filter>ImGui</Filter>
     </ClInclude>
     <ClInclude Include="Engine\App.h">
+      <Filter>Core</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\SharedMemoryProfiler.h">
       <Filter>Core</Filter>
     </ClInclude>
     <ClInclude Include="Engine\Audio.h">

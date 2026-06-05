@@ -53,9 +53,6 @@ void SceneManager::RequestChange(const std::string& name, const SceneParameters&
 }
 
 void SceneManager::Update() {
-	static int u = 0;
-	if ((++u % 120) == 0)
-		OutputDebugStringA("[SceneManager] Update running\n");
 	if (!pendingNext_.empty()) {
 		Change(pendingNext_, pendingParams_);
 	}
@@ -73,9 +70,6 @@ void SceneManager::Update() {
 }
 
 void SceneManager::Draw() {
-	static int d = 0;
-	if ((++d % 120) == 0)
-		OutputDebugStringA("[SceneManager] Draw running\n");
 	if (current_) {
 		current_->Draw();
 	}
