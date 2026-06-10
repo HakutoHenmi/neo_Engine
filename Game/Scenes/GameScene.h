@@ -107,6 +107,7 @@ private:
     Engine::ParticleEditor particleEditor_;
 
     float playTime_ = 0.0f; // クリアタイム計測用
+    bool wasLiquidated_ = false;
 
     friend class EditorUI;
 

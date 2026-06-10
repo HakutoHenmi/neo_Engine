@@ -11,6 +11,7 @@
 #include "../Systems/CameraFollowSystem.h"
 #include "../Systems/CharacterMovementSystem.h"
 #include "../Systems/CleanupSystem.h"
+#include "../Systems/FluidSystem.h"
 #include "../Systems/WeaponSystem.h" // ★追加
 
 #include "../Systems/HealthSystem.h"
@@ -113,6 +114,8 @@ void GameScene::Initialize(Engine::WindowDX* dx, const Engine::SceneParameters& 
 			DirectX::XMFLOAT3{1.0f, 1.0f, 1.0f});   // スケール: 等倍
 		registry_.emplace<ColorComponent>(ring, DirectX::XMFLOAT4{1.0f, 1.0f, 1.0f, 1.0f});
 	}
+
+	Game::FluidSystem::GetInstance()->Initialize(renderer_->GetDevice());
 
 	// エディターUIの初期化
 	EditorUI::Initialize(renderer_);
@@ -624,7 +627,35 @@ void GameScene::Draw() {
 	if (!renderer_)
 		return;
 
+	DirectX::XMFLOAT3 corePos = { 0.0f, 1.0f, 0.0f };
+	DirectX::XMFLOAT3 blobRadii = { 1.2f, 0.85f, 1.2f };
+	bool isLiquidated = false;
+	bool hasPlayerSlime = false;
 
+	const auto& playersForCore = GetEntitiesByTag(TagType::Player);
+	if (!playersForCore.empty() && registry_.valid(playersForCore[0])) {
+		entt::entity playerEntity = playersForCore[0];
+		if (registry_.all_of<TransformComponent>(playerEntity)) {
+			auto& tc = registry_.get<TransformComponent>(playerEntity);
+			corePos = { tc.translate.x, tc.translate.y, tc.translate.z };
+			blobRadii = { tc.scale.x, tc.scale.y, tc.scale.z };
+		}
+		if (registry_.all_of<PlayerActionComponent>(playerEntity)) {
+			isLiquidated = registry_.get<PlayerActionComponent>(playerEntity).state == PlayerActionState::Liquefy;
+		}
+		if (registry_.all_of<MeshRendererComponent>(playerEntity)) {
+			hasPlayerSlime = registry_.get<MeshRendererComponent>(playerEntity).shaderName == "Slime";
+		}
+	}
+
+	if (hasPlayerSlime) {
+		if (isLiquidated && !wasLiquidated_) {
+			Game::FluidSystem::GetInstance()->RequestParticleReset(Game::FluidResetShape::Puddle, blobRadii);
+		} else if (!isLiquidated && wasLiquidated_) {
+			Game::FluidSystem::GetInstance()->RequestParticleReset(Game::FluidResetShape::Blob, blobRadii);
+		}
+	}
+	wasLiquidated_ = isLiquidated;
 
 	renderer_->SetCamera(camera_);
 #ifdef USE_IMGUI
@@ -704,6 +735,15 @@ void GameScene::Draw() {
 				if (hasAnim) {
 					renderer_->DrawSkinnedMesh(mr.modelHandle, mr.textureHandle, world, bonePalette, {color.x * mr.color.x, color.y * mr.color.y, color.z * mr.color.z, color.w * mr.color.w});
 				} else {
+					if (mr.shaderName == "Slime") {
+						if (isPlaying_) {
+							continue; // PLAY中は SSFR 流体で描画
+						}
+						renderer_->DrawMesh(mr.modelHandle, mr.textureHandle, world,
+						    {color.x * mr.color.x, color.y * mr.color.y, color.z * mr.color.z, color.w * mr.color.w},
+						    "Slime", mr.reflectivity, mr.useCubemap);
+						continue;
+					}
 					if (mr.shaderName == "Toon" || mr.shaderName == "ToonSkinning" || mr.shaderName == "Hologram" || mr.shaderName == "EmissiveGlow" || mr.shaderName == "ForceField" ||
 					    mr.shaderName == "Dissolve" || mr.shaderName == "Distortion" || mr.shaderName == "Reflection") {
 						renderer_->DrawMesh(mr.modelHandle, mr.textureHandle, world, {color.x * mr.color.x, color.y * mr.color.y, color.z * mr.color.z, color.w * mr.color.w}, mr.shaderName, mr.reflectivity, mr.useCubemap);
@@ -745,7 +785,20 @@ void GameScene::Draw() {
 		}
 	});
 
-	// ★ 各Systemの描画処理を呼び出す（UISystem等）
+	// プレイヤースライム: Screen-Space Fluid Rendering（参考: UE5 Niagara / 液状スライム）
+	if (isPlaying_ && hasPlayerSlime) {
+		DirectX::XMFLOAT3 corePosCopy = corePos;
+		DirectX::XMFLOAT3 blobRadiiCopy = blobRadii;
+		bool isLiquidatedCopy = isLiquidated;
+		renderer_->SetCustomDrawJob([this, corePosCopy, blobRadiiCopy, isLiquidatedCopy](ID3D12GraphicsCommandList* cmdList) {
+			auto* fluid = Game::FluidSystem::GetInstance();
+			fluid->Update(cmdList, ctx_.dt, corePosCopy, blobRadiiCopy, isLiquidatedCopy);
+			fluid->Draw(cmdList, &camera_, ctx_.dt, corePosCopy, blobRadiiCopy, isLiquidatedCopy, renderer_->GetMainRTV(), renderer_->GetMainDSV());
+		});
+	} else {
+		renderer_->SetCustomDrawJob(nullptr);
+	}
+
 	for (auto& system : systems_) {
 		system->Draw(registry_, ctx_);
 	}
@@ -1053,6 +1106,8 @@ void GameScene::DrawLightGizmos() {
 void GameScene::SetIsPlaying(bool play) {
 	if (isPlaying_ == play)
 		return;
+
+	wasLiquidated_ = false;
 
 	if (play) {
 		// プレイ開始時: スクリプトの現在の設定（インスペクターでの変更）をコンポーネントに確実に反映 (Flush)

@@ -235,11 +235,20 @@ namespace EngineProfiler
             Log($"  DrawCalls: {lastLog.drawCalls}, Particles: {lastLog.particleCount}, Lights: {lastLog.lightCount}");
             Log($"  PlayerPos: ({lastLog.playerX:F2}, {lastLog.playerY:F2}, {lastLog.playerZ:F2})");
 
-            // APIキーを取得 (環境変数 GROQ_API_KEY または 直接指定)
-            string apiKey = Environment.GetEnvironmentVariable("GROQ_API_KEY") ?? "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";
+            // APIキーを取得 (api_key.txt を最優先で読み込む)
+            string apiKey = "";
+            if (System.IO.File.Exists("api_key.txt"))
+            {
+                apiKey = System.IO.File.ReadAllText("api_key.txt").Trim();
+            }
             if (string.IsNullOrEmpty(apiKey))
             {
-                Log("[警告] GROQ_API_KEY が設定されていません。");
+                apiKey = Environment.GetEnvironmentVariable("GROQ_API_KEY") ?? "";
+            }
+
+            if (string.IsNullOrEmpty(apiKey))
+            {
+                Log("[警告] APIキーが設定されていません。'api_key.txt' にキーを保存してください。");
                 isAnalyzing = false;
                 return;
             }

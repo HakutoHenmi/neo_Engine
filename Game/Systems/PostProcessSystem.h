@@ -58,13 +58,10 @@ public:
             if (registry.all_of<PlayerActionComponent>(playerEntity)) {
                 auto& pa = registry.get<PlayerActionComponent>(playerEntity);
                 
-                bool isStrongAttack = (pa.state == PlayerActionState::ChargeAttack1 || 
-                                       pa.state == PlayerActionState::ChargeAttack2 || 
-                                       pa.state == PlayerActionState::ChargeAttack3 ||
-                                       pa.state == PlayerActionState::Attack3);
+                bool isStrongAttack = (pa.state == PlayerActionState::SlimeHammer);
                 
                 if (isStrongAttack && pa.stateTimer < 0.1f) {
-                    float power = (pa.state == PlayerActionState::ChargeAttack3) ? 1.0f : 0.5f;
+                    float power = 1.0f;
                     actionPulseTimer_ = std::max(actionPulseTimer_, power); 
                 }
 
