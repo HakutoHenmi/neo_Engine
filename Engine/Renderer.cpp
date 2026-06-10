@@ -517,9 +517,11 @@ void Renderer::FlushDrawCalls() {
 			list_->SetGraphicsRootConstantBufferView(2, cbLightAddr_);
 			if (shadowSrv_.ptr != 0) list_->SetGraphicsRootDescriptorTable(5, shadowSrv_);
 			
-			// param 7 is no longer used by ObjPS since we use procedural space reflection.
-			// Just bind dummy to prevent RootSignature uninitialized warnings.
-			list_->SetGraphicsRootDescriptorTable(7, textures_[0].srvGpu);
+			if (dc.useCubemap && envMapSrvGpu_.ptr != 0) {
+				list_->SetGraphicsRootDescriptorTable(7, envMapSrvGpu_);
+			} else {
+				list_->SetGraphicsRootDescriptorTable(7, textures_[0].srvGpu);
+			}
 			
 			if (dc.tex != 0 && dc.tex < textures_.size()) {
 				list_->SetGraphicsRootDescriptorTable(3, textures_[dc.tex].srvGpu);
@@ -609,7 +611,7 @@ void Renderer::FlushDrawCalls() {
 			}
 			// ★修正: Toon系や新しく追加したリッチシェーダーはインスタンス描画非対応のためデフォルトにフォールバック
 			if (sName == "Toon" || sName == "ToonSkinning" || sName == "ToonOutline" || sName == "ToonSkinningOutline" ||
-				sName == "Hologram" || sName == "EmissiveGlow" || sName == "ForceField" || sName == "Dissolve" || sName == "Distortion" || sName == "Reflection") {
+				sName == "Hologram" || sName == "EmissiveGlow" || sName == "ForceField" || sName == "Dissolve" || sName == "Distortion" || sName == "Reflection" || sName == "Slime") {
 				sName = defaultShaderName;
 			}
 
@@ -846,6 +848,12 @@ void Renderer::EndFrame() {
 
 	FlushDrawCalls();
 	
+	// ★追加: FlushDrawCalls 直後（通常の不透明/透過描画が終わった後）にカスタム描画ジョブを実行する
+	if (customDrawJob_) {
+		customDrawJob_(list_);
+		customDrawJob_ = nullptr;
+	}
+	
 	// ★完全最適化: 空間のゆがみ (Distortion) パス (一括インスタンス描画)
 	if (!aggregatedJobs.empty()) {
 		if (ppSceneColor_ && backdropColor_) {
@@ -1081,6 +1089,22 @@ uint32_t Renderer::AllocateSrvIndex(uint32_t count) {
 	uint32_t idx = srvCursor_;
 	srvCursor_ += count;
 	return idx;
+}
+
+void Renderer::SnapshotSceneForRefraction(ID3D12GraphicsCommandList* list) {
+	if (!list || !ppSceneColor_ || !backdropColor_) {
+		return;
+	}
+	auto b1 = CD3DX12_RESOURCE_BARRIER::Transition(ppSceneColor_.Get(), ppSceneState_, D3D12_RESOURCE_STATE_COPY_SOURCE);
+	auto b2 = CD3DX12_RESOURCE_BARRIER::Transition(backdropColor_.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COPY_DEST);
+	D3D12_RESOURCE_BARRIER bars[] = { b1, b2 };
+	list->ResourceBarrier(2, bars);
+	list->CopyResource(backdropColor_.Get(), ppSceneColor_.Get());
+	auto b3 = CD3DX12_RESOURCE_BARRIER::Transition(ppSceneColor_.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_RENDER_TARGET);
+	auto b4 = CD3DX12_RESOURCE_BARRIER::Transition(backdropColor_.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+	D3D12_RESOURCE_BARRIER bars2[] = { b3, b4 };
+	list->ResourceBarrier(2, bars2);
+	ppSceneState_ = D3D12_RESOURCE_STATE_RENDER_TARGET;
 }
 
 uint32_t Renderer::AllocateDynamicSrvIndex(uint32_t count) {
@@ -1833,6 +1857,13 @@ float4 main(PSIn i) : SV_TARGET { return i.color; }
 		auto psDissolve = CompileShaderFromFile(L"Resources/shaders/DissolvePS.hlsl", "main", "ps_5_0");
 		if (vsDissolve && psDissolve) {
 			CreatePSO("Dissolve", vsDissolve.Get(), psDissolve.Get());
+		}
+
+		// ★追加: スライムシェーダー
+		auto vsSlime = CompileShaderFromFile(L"Resources/shaders/SlimeVS.hlsl", "main", "vs_5_0");
+		auto psSlime = CompileShaderFromFile(L"Resources/shaders/SlimePS.hlsl", "main", "ps_5_0");
+		if (vsSlime && psSlime) {
+			CreatePSO_Transparent("Slime", vsSlime.Get(), psSlime.Get(), false);
 		}
 	}
 

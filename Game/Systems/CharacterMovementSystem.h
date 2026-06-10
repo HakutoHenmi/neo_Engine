@@ -54,8 +54,8 @@ public:
 				float futureX = tc.translate.x + desiredX;
 				float futureZ = tc.translate.z + desiredZ;
 				float currentFeetY = tc.translate.y - cm.heightOffset;
-				// 移動先の地面高さを先読み (startY は現在地 y。自己判定回避のため中心から発射)
-				float futureGround = ctx.scene->GetHeightAt(futureX, futureZ, tc.translate.y, static_cast<uint32_t>(entity));
+				// 移動先の地面高さを先読み (startY は少し上から発射してすり抜け防止)
+				float futureGround = ctx.scene->GetHeightAt(futureX, futureZ, tc.translate.y + 1.0f, static_cast<uint32_t>(entity));
 
 				// 移動先が 0.4m 以上高いなら壁とみなして移動をブロック
 				if (futureGround > currentFeetY + 0.4f) {
@@ -91,9 +91,8 @@ public:
 
 			// 3. 接地判定とスナップ (レイキャストを使用)
 			if (ctx.scene) {
-				// 自身の位置から真下の地面高さを取得 (excludeIdに自分を指定)
-				// 発射位置を y (中心) にすることで、自分の上半身や剣への誤判定を物理的に防ぐ
-				float groundHeight = ctx.scene->GetHeightAt(tc.translate.x, tc.translate.z, tc.translate.y, static_cast<uint32_t>(entity));
+				// 自身の位置から真下の地面高さを取得 (少し上から発射してすり抜け防止)
+				float groundHeight = ctx.scene->GetHeightAt(tc.translate.x, tc.translate.z, tc.translate.y + 1.0f, static_cast<uint32_t>(entity));
 				
 				// 接地判定ロジックの刷新: 
 				// 1. 上昇中 (rb.velocity.y > 0.01) は絶対に接地させない (多段ジャンプ防止)

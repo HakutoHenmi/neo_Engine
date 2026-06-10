@@ -88,25 +88,7 @@ public:
 					continue;
 				}
 
-				// --- パリィ判定 ---
-				bool parried = false;
-				if (registry.all_of<PlayerActionComponent>(hrEntity)) {
-					auto& pa = registry.get<PlayerActionComponent>(hrEntity);
-					if (pa.state == PlayerActionState::Parry) {
-						// パリィ成功！
-						parried = true;
-						OnParrySuccess(registry, hrEntity, hbEntity, pa, ctx);
-						
-						// パリィ処理をしたのでヒット済みとして記録
-						hb.hitTargets.push_back(hrEntity);
-						
-						// 重複ヒット防止
-						uint64_t pairKey = MakePairKey(hbEntity, hrEntity);
-						hitPairs_.insert(pairKey);
-					}
-				}
-
-				if (!parried) {
+				// --- 通常ダメージ処理 ---
 					// --- 通常ダメージ処理 ---
 					bool hitSuccess = ApplyDamage(registry, hrEntity, hb.damage * hr.damageMultiplier, ctx);
 
@@ -122,7 +104,7 @@ public:
 					// 攻撃側のヒットストップ
 					if (registry.all_of<PlayerActionComponent>(hbEntity)) {
 						auto& attackerPa = registry.get<PlayerActionComponent>(hbEntity);
-						attackerPa.hitStopTimer = attackerPa.hitStopDuration;
+						attackerPa.hitStopTimer = 0.08f;
 					}
 
 					// カメラシェイク（軽い）
@@ -142,7 +124,6 @@ public:
 					ScriptEntry entry;
 					entry.scriptPath = "HitEffectScript";
 					sc.scripts.push_back(entry);
-				}
 			}
 		}
 	}
@@ -172,88 +153,7 @@ private:
 		       (std::abs(c1.z - c2.z) < hz1 + hz2);
 	}
 
-	// パリィ成功時の処理
-	void OnParrySuccess(entt::registry& registry, entt::entity defender, entt::entity attacker,
-	                    PlayerActionComponent& defenderPa, GameContext& ctx) {
-		// 1. パリィ成功ステートへ遷移
-		defenderPa.state = PlayerActionState::ParrySuccess;
-		defenderPa.stateTimer = 0.0f;
-		defenderPa.stateDuration = 0.3f; // パリィ成功後の硬直（短め）
-
-		// 2. ヒットストップ（パリィ時は長め）
-		defenderPa.hitStopTimer = 0.15f;
-
-		// 3. 攻撃側もヒットストップ + のけぞり
-		if (registry.all_of<PlayerActionComponent>(attacker)) {
-			auto& attackerPa = registry.get<PlayerActionComponent>(attacker);
-			attackerPa.hitStopTimer = 0.15f;
-			attackerPa.state = PlayerActionState::Stagger;
-			attackerPa.stateTimer = 0.0f;
-			attackerPa.stateDuration = 0.8f; // パリィされた側は長い隙
-		}
-		// 敵がPlayerActionComponentを持っていない場合、HealthComponentのhitStopTimerで対応
-		if (registry.all_of<HealthComponent>(attacker)) {
-			auto& attackerHp = registry.get<HealthComponent>(attacker);
-			attackerHp.hitStopTimer = 0.8f; // 敵がスタン的な硬直
-			attackerHp.hitFlashTimer = 0.2f;
-		}
-		// ★追加: EnemyAIComponentを持つ敵はStunned状態に遷移
-		if (registry.all_of<EnemyAIComponent>(attacker)) {
-			auto& ai = registry.get<EnemyAIComponent>(attacker);
-			ai.state = EnemyAIState::Stunned;
-			ai.stateTimer = 0.0f;
-			// 攻撃中のHitboxを即座に無効化
-			if (registry.all_of<HitboxComponent>(attacker)) {
-				registry.get<HitboxComponent>(attacker).isActive = false;
-			}
-		}
-		// ★追加: BossActionComponentを持つボスはStunned状態に遷移
-		if (registry.all_of<BossActionComponent>(attacker)) {
-			auto& boss = registry.get<BossActionComponent>(attacker);
-			boss.state = BossState::Stunned;
-			boss.stateTimer = 0.0f;
-			if (registry.all_of<HitboxComponent>(attacker)) {
-				registry.get<HitboxComponent>(attacker).isActive = false;
-			}
-		}
-
-		// 4. カメラシェイク（パリィは強め）
-		if (ctx.camera) {
-			ctx.camera->StartShake(0.2f, 0.4f); // 時間, 振幅（パリィは強め）
-		}
-
-		// 5. イベント発火（スクリプトから反応可能に）
-		if (ctx.eventSystem) {
-			ctx.eventSystem->Emit("OnParrySuccess", static_cast<float>(static_cast<uint32_t>(defender)));
-		}
-
-		// 6. ★追加: 空間歪みエフェクト（Distortion）の生成
-		if (registry.all_of<TransformComponent>(defender) && registry.all_of<TransformComponent>(attacker)) {
-			auto& defTc = registry.get<TransformComponent>(defender);
-			auto& attTc = registry.get<TransformComponent>(attacker);
-
-			auto distEntity = registry.create();
-			auto& dtc = registry.emplace<TransformComponent>(distEntity);
-			dtc.translate = {
-				(defTc.translate.x + attTc.translate.x) * 0.5f,
-				(defTc.translate.y + attTc.translate.y) * 0.5f + 3.0f, // 敵の高さに合わせてしっかり上に
-				(defTc.translate.z + attTc.translate.z) * 0.5f
-			};
-
-			auto& sc = registry.emplace<ScriptComponent>(distEntity);
-			ScriptEntry entry;
-			entry.scriptPath = "RingEffectScript";
-			sc.scripts.push_back(entry);
-			
-			// オプション: ヒットボックスを持たせたい場合は付ける
-			auto& hb = registry.emplace<HitboxComponent>(distEntity);
-			hb.size = {0, 0, 0};
-			hb.damage = 0; // パリィ波動の追加ダメージなど
-			hb.enabled = true;
-			hb.isActive = true;
-		}
-	}
-
+	// パリィ機能は削除されました
 	// ダメージ適用 (成功したらtrue)
 	bool ApplyDamage(entt::registry& registry, entt::entity target, float damage, GameContext& ctx) {
 		// --- ★追加: 部位破壊コンポーネント（BodyPart）がある場合 ---

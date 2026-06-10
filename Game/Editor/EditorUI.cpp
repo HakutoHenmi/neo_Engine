@@ -206,7 +206,7 @@ static std::vector<entt::entity> RestoreSceneFromJson(GameScene* scene, const js
 					reg.get_or_emplace<PlayerInputComponent>(entity).enabled = en;
 				} else if (type == "CharacterMovement") {
 					auto& c = reg.get_or_emplace<CharacterMovementComponent>(entity);
-					c.enabled = en; c.speed = comp.value("speed", 5.0f); c.jumpPower = comp.value("jumpPower", 6.0f); c.gravity = comp.value("gravity", 9.8f);
+					c.enabled = en; c.speed = comp.value("speed", 5.0f); c.jumpPower = comp.value("jumpPower", 6.0f); c.gravity = comp.value("gravity", 9.8f); c.heightOffset = comp.value("heightOffset", 1.0f);
 				} else if (type == "CameraTarget") {
 					auto& c = reg.get_or_emplace<CameraTargetComponent>(entity);
 					c.enabled = en; c.distance = comp.value("distance", 10.0f); c.height = comp.value("height", 3.0f); c.smoothSpeed = comp.value("smoothSpeed", 5.0f);
@@ -345,7 +345,6 @@ static std::vector<entt::entity> RestoreSceneFromJson(GameScene* scene, const js
 				} else if (type == "PlayerAction") {
 					auto& c = reg.get_or_emplace<PlayerActionComponent>(entity);
 					c.enabled = en;
-					c.parryWindowDuration = comp.value("parryWindow", 0.4f);
 					c.dodgeDuration = comp.value("dodgeDuration", 0.4f);
 					c.dodgeSpeed = comp.value("dodgeSpeed", 15.0f);
 				} else if (type == "EnemyAI") {
@@ -644,7 +643,7 @@ static std::string SerializeEntity(entt::registry& registry, entt::entity entity
 	}
 	if (auto* cp = registry.try_get<CharacterMovementComponent>(entity)) {
 		addComma();
-		ss << "        {\"type\": \"CharacterMovement\", \"enabled\": " << (cp->enabled ? "true" : "false") << ", \"speed\": " << cp->speed << ", \"jumpPower\": " << cp->jumpPower << ", \"gravity\": " << cp->gravity << "}";
+		ss << "        {\"type\": \"CharacterMovement\", \"enabled\": " << (cp->enabled ? "true" : "false") << ", \"speed\": " << cp->speed << ", \"jumpPower\": " << cp->jumpPower << ", \"gravity\": " << cp->gravity << ", \"heightOffset\": " << cp->heightOffset << "}";
 	}
 	if (auto* cp = registry.try_get<CameraTargetComponent>(entity)) {
 		addComma();
@@ -749,7 +748,7 @@ static std::string SerializeEntity(entt::registry& registry, entt::entity entity
 	}
 	if (auto* cp = registry.try_get<PlayerActionComponent>(entity)) {
 		addComma();
-		ss << "        {\"type\": \"PlayerAction\", \"enabled\": " << (cp->enabled ? "true" : "false") << ", \"parryWindow\": " << cp->parryWindowDuration << ", \"dodgeDuration\": " << cp->dodgeDuration << ", \"dodgeSpeed\": " << cp->dodgeSpeed << "}";
+		ss << "        {\"type\": \"PlayerAction\", \"enabled\": " << (cp->enabled ? "true" : "false") << ", \"dodgeDuration\": " << cp->dodgeDuration << ", \"dodgeSpeed\": " << cp->dodgeSpeed << "}";
 	}
 	if (auto* cp = registry.try_get<EnemyAIComponent>(entity)) {
 		addComma();

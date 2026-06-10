@@ -6,6 +6,7 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include <functional>
 
 // ★追加: テキスト描画用
 #include "DynamicGlyphCache.h"
@@ -155,7 +156,14 @@ public:
 	Renderer(const Renderer&) = delete;
 	Renderer& operator=(const Renderer&) = delete;
 
+	// ★追加: カスタム描画ジョブの遅延実行
+	using CustomDrawJob = std::function<void(ID3D12GraphicsCommandList*)>;
+	void SetCustomDrawJob(CustomDrawJob job) { customDrawJob_ = job; }
+
 	void SetPostEffect(const std::string& name);
+
+private:
+	CustomDrawJob customDrawJob_ = nullptr;
 
 public:
 	bool Initialize(WindowDX* window);
@@ -197,6 +205,17 @@ public:
 
 	// ★追加: 描画領域を元（フルスクリーン）に戻すメソッド
 	void ResetGameViewport();
+
+	// ★追加: 現在のメインレンダーターゲットと深度バッファの取得
+	D3D12_CPU_DESCRIPTOR_HANDLE GetMainRTV() const { return ppRtv_; }
+	D3D12_CPU_DESCRIPTOR_HANDLE GetMainDSV() const { return ppDepthDsv_; }
+
+	// ★追加: SRVヒープの取得（CustomDrawJob用）
+	ID3D12DescriptorHeap* GetSrvHeap() const { return srvHeap_; }
+
+	// スライム屈折用: 現在のシーン色をバックドロップへコピー
+	void SnapshotSceneForRefraction(ID3D12GraphicsCommandList* list);
+	D3D12_CPU_DESCRIPTOR_HANDLE GetBackdropSrvCpuMaster() const { return backdropSrvCpuMaster_; }
 
 	// ★追加: 外部（ParticleEditorなど）用のカスタムレンダーターゲット
 	struct CustomRenderTarget {
