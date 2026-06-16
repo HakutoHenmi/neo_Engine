@@ -629,6 +629,7 @@ void GameScene::Draw() {
 
 	DirectX::XMFLOAT3 corePos = { 0.0f, 1.0f, 0.0f };
 	DirectX::XMFLOAT3 blobRadii = { 1.2f, 0.85f, 1.2f };
+	DirectX::XMFLOAT3 inputForce = { 0.0f, 0.0f, 0.0f };
 	bool isLiquidated = false;
 	bool hasPlayerSlime = false;
 
@@ -639,6 +640,10 @@ void GameScene::Draw() {
 			auto& tc = registry_.get<TransformComponent>(playerEntity);
 			corePos = { tc.translate.x, tc.translate.y, tc.translate.z };
 			blobRadii = { tc.scale.x, tc.scale.y, tc.scale.z };
+		}
+		if (registry_.all_of<RigidbodyComponent>(playerEntity)) {
+			auto& rb = registry_.get<RigidbodyComponent>(playerEntity);
+			inputForce = rb.velocity; // 速度を流体への外力として適用
 		}
 		if (registry_.all_of<PlayerActionComponent>(playerEntity)) {
 			isLiquidated = registry_.get<PlayerActionComponent>(playerEntity).state == PlayerActionState::Liquefy;
@@ -789,10 +794,11 @@ void GameScene::Draw() {
 	if (isPlaying_ && hasPlayerSlime) {
 		DirectX::XMFLOAT3 corePosCopy = corePos;
 		DirectX::XMFLOAT3 blobRadiiCopy = blobRadii;
+		DirectX::XMFLOAT3 inputForceCopy = inputForce;
 		bool isLiquidatedCopy = isLiquidated;
-		renderer_->SetCustomDrawJob([this, corePosCopy, blobRadiiCopy, isLiquidatedCopy](ID3D12GraphicsCommandList* cmdList) {
+		renderer_->SetCustomDrawJob([this, corePosCopy, blobRadiiCopy, inputForceCopy, isLiquidatedCopy](ID3D12GraphicsCommandList* cmdList) {
 			auto* fluid = Game::FluidSystem::GetInstance();
-			fluid->Update(cmdList, ctx_.dt, corePosCopy, blobRadiiCopy, isLiquidatedCopy);
+			fluid->Update(cmdList, ctx_.dt, corePosCopy, blobRadiiCopy, isLiquidatedCopy, inputForceCopy);
 			fluid->Draw(cmdList, &camera_, ctx_.dt, corePosCopy, blobRadiiCopy, isLiquidatedCopy, renderer_->GetMainRTV(), renderer_->GetMainDSV());
 		});
 	} else {

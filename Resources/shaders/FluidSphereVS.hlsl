@@ -61,10 +61,14 @@ VSOutput main(uint vertexID : SV_VertexID, uint instanceID : SV_InstanceID) {
     output.centerWorldPos = centerWorld;
     output.radius = radius;
 
-    // 速度ベースのヒートマップ（参考画像風: 速い=赤、中間=緑黄、遅い=青）
-    float speedT = saturate(length(p.velocity) / 3.0f);
+    // 速度と位置（中心距離）ベースのヒートマップ
+    // 中心（radialT=0）が赤、外側（radialT=1）が青になるように反転する
+    float speedT = saturate(length(p.velocity) / 5.0f);
     float radialT = saturate(length(p.position) / 1.2f);
-    float t = lerp(radialT, speedT, 0.5f); // 位置と速度を混合
+    
+    // tが0(外側)で青、tが1(中心または高速)で赤
+    float t = saturate((1.0f - radialT) * 0.7f + speedT * 0.3f);
+    
     float3 heatColor = lerp(float3(0.1f, 0.4f, 1.0f), float3(0.2f, 0.9f, 0.3f), saturate(t * 2.0f));
     heatColor = lerp(heatColor, float3(1.0f, 0.2f, 0.1f), saturate((t - 0.5f) * 2.0f));
     output.color = heatColor;
