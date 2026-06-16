@@ -21,6 +21,8 @@ struct FluidParticle {
     float pressure;
     DirectX::XMFLOAT3 force;
     float pad1;
+    DirectX::XMFLOAT3 restPosition; // ★形状記憶用
+    float pad2;
 };
 
 #ifdef _MSC_VER
@@ -47,6 +49,8 @@ struct alignas(256) FluidConstants {
     float pad0;
     DirectX::XMFLOAT3 blobRadii;
     float pad1;
+    DirectX::XMFLOAT3 playerInputForce; // ★追加：プレイヤーからの外力
+    float pad2;
 };
 
 struct alignas(256) FluidRenderConstants {
@@ -333,6 +337,8 @@ public:
             out[i].pressure = 0.0f;
             out[i].force = { 0, 0, 0 };
             out[i].pad1 = 0.0f;
+            out[i].restPosition = out[i].position;
+            out[i].pad2 = 0.0f;
         }
     }
 
@@ -348,6 +354,8 @@ public:
             out[i].pressure = 0.0f;
             out[i].force = { 0, 0, 0 };
             out[i].pad1 = 0.0f;
+            out[i].restPosition = out[i].position;
+            out[i].pad2 = 0.0f;
         }
     }
 
@@ -366,7 +374,7 @@ public:
     }
 
     void Update(ID3D12GraphicsCommandList* list, float dt, const DirectX::XMFLOAT3& corePos,
-                DirectX::XMFLOAT3 blobRadii, bool isLiquidated) {
+                DirectX::XMFLOAT3 blobRadii, bool isLiquidated, DirectX::XMFLOAT3 inputForce = {0.0f, 0.0f, 0.0f}) {
         if (!isInitialized_ || !pso_ || !particleBuffer_) return;
 
         if (resetRequested_) {
@@ -398,22 +406,21 @@ public:
         constants.particleMass = 0.1f;
         constants.restDensity = 150.0f;
         // スライム時: 重力ほぼゼロ。地面衝突で底が平らになり自然なドーム型になる
-        // 液状化時も弱い重力で急に潰れない
         constants.gravity = isLiquidated ? -2.0f : -0.5f;
         constants.floorWorldY = 0.0f;
         constants.blobRadii = blobRadii;
         constants.simMode = isLiquidated ? 1u : 0u;
+        constants.playerInputForce = inputForce;
 
         if (isLiquidated) {
-            // 液状化: トロ〜ッとゆっくり溶ける（高粘度 + 弱い重力）
             constants.gasStiffness = 60.0f;
-            constants.viscosity = 15.0f;    // 高粘度でゆっくり広がる
+            constants.viscosity = 15.0f;
             constants.damping = 0.990f;
         } else {
-            // ドーム型スライム: 強い圧力 + 表面張力で球状を保ち、地面衝突でドームに
+            // ドーム型スライム: 強い圧力 + 高粘度 + 表面張力
             constants.gasStiffness = 600.0f;
-            constants.viscosity = 18.0f;
-            constants.damping = 0.990f;
+            constants.viscosity = 25.0f; // 粘度を上げて重みを出す
+            constants.damping = 0.985f;
         }
 
         list->SetPipelineState(pso_.Get());

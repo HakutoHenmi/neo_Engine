@@ -136,7 +136,7 @@ public:
         } else if (isLowHealth) {
             renderer->SetPostEffect("GaussianFilter");
         } else {
-            renderer->SetPostEffect("Rich");
+            renderer->SetPostEffect("OutlinePost");
         }
     }
 
