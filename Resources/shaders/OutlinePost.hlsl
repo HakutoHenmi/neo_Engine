@@ -25,7 +25,7 @@ struct PSIn
 
 float4 main(PSIn i) : SV_TARGET
 {
-    float2 texelSize = float2(1.0 / 1280.0, 1.0 / 720.0);
+    float2 texelSize = float2(1.0 / 1280.0, 1.0 / 720.0) * gChromaShift;
 
     // 周囲8近傍の輝度を取得
     float luTL = Luminance(gScene.Sample(gSmp, i.uv + float2(-1, -1) * texelSize).rgb);
@@ -55,19 +55,8 @@ float4 main(PSIn i) : SV_TARGET
     // 元の色を取得
     float3 sceneColor = gScene.Sample(gSmp, i.uv).rgb;
 
-    // エッジ部分を暗くする（アウトライン描画）
-    // gChromaShift > 0 ならエッジのみ表示モード
-    float3 col;
-    if (gChromaShift > 0.5)
-    {
-        // エッジのみ表示（白い線 on 黒背景）
-        col = edge.xxx;
-    }
-    else
-    {
-        // 元の画像にアウトラインを重ねる
-        col = sceneColor * (1.0 - edge);
-    }
+    // 元の画像にアウトラインを重ねる（墨絵風）
+    float3 col = sceneColor * (1.0 - edge);
 
     // Vignette
     float2 d = i.uv - 0.5;

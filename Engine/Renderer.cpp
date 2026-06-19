@@ -463,6 +463,7 @@ void Renderer::FlushDrawCalls() {
 
 	for (const auto& dc : drawCalls_) {
 		if (dc.shaderName == "Distortion") continue; // 空間のゆがみは EndFrame で別途描画
+		if (dc.shaderName == "Slime" || dc.shaderName == "Hologram" || dc.shaderName == "ForceField" || dc.shaderName == "Reflection" || dc.shaderName == "Particle" || dc.shaderName == "ParticleAdditive" || dc.isParticle) continue;
 
 		auto* model = GetModel(dc.mesh);
 		if (!model) continue;
@@ -690,6 +691,127 @@ void Renderer::FlushDrawCalls() {
 	
 	// パーティクルのインスタンス描画
 	flushInstanced(instancedParticleDrawCalls_, "ParticleInstanced");
+
+	// --- 半透明オブジェクトの描画 (不透明オブジェクトの後に描画する) ---
+	for (const auto& dc : drawCalls_) {
+		if (dc.shaderName != "Slime" && dc.shaderName != "Hologram" && dc.shaderName != "ForceField" && dc.shaderName != "Reflection" && dc.shaderName != "Particle" && dc.shaderName != "ParticleAdditive" && !dc.isParticle) continue;
+
+		auto* model = GetModel(dc.mesh);
+		if (!model) continue;
+
+		ID3D12PipelineState* pso = pipelines_["Default"].Get();
+		if (pipelines_.find(dc.shaderName) != pipelines_.end()) {
+			pso = pipelines_[dc.shaderName].Get();
+		}
+
+		if (!pso) continue;
+		list_->SetPipelineState(pso);
+
+		list_->SetGraphicsRootConstantBufferView(0, cbFrameAddr_);
+		list_->SetGraphicsRootConstantBufferView(2, cbLightAddr_);
+		if (shadowSrv_.ptr != 0) {
+			list_->SetGraphicsRootDescriptorTable(5, shadowSrv_);
+		}
+
+		if (dc.shaderName == "EnhancedTerrain") {
+			list_->SetGraphicsRootSignature(rootSigTerrain_.Get());
+			list_->SetGraphicsRootConstantBufferView(0, cbFrameAddr_);
+			list_->SetGraphicsRootConstantBufferView(2, cbLightAddr_);
+			
+			// t0-t5: Descriptor Table
+			uint32_t sIdx = AllocateDynamicSrvIndex(6);
+			if (sIdx != UINT32_MAX) {
+				D3D12_CPU_DESCRIPTOR_HANDLE dest = window_->SRV_CPU((int)sIdx);
+				D3D12_GPU_DESCRIPTOR_HANDLE destGpu = window_->SRV_GPU((int)sIdx);
+				for (int i = 0; i < 6; ++i) {
+					Texture* texObj = &textures_[0];
+					if (i == 0 && dc.tex < textures_.size()) texObj = &textures_[dc.tex];
+					else if (i > 0 && (i - 1) < (int)dc.extraTex.size() && dc.extraTex[i - 1] < textures_.size())
+						texObj = &textures_[dc.extraTex[i - 1]];
+
+					if (texObj && texObj->res) {
+						D3D12_RESOURCE_DESC resDesc = texObj->res->GetDesc();
+						D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc{};
+						srvDesc.Format = resDesc.Format;
+						srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+						srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+						srvDesc.Texture2D.MipLevels = resDesc.MipLevels > 0 ? resDesc.MipLevels : 1;
+						dev_->CreateShaderResourceView(texObj->res.Get(), &srvDesc, dest);
+					}
+					dest.ptr += srvInc_;
+				}
+				list_->SetGraphicsRootDescriptorTable(3, destGpu);
+			}
+			if (shadowSrv_.ptr != 0) list_->SetGraphicsRootDescriptorTable(4, shadowSrv_);
+		} else {
+			list_->SetGraphicsRootSignature(rootSig3D_.Get());
+			list_->SetGraphicsRootConstantBufferView(0, cbFrameAddr_);
+			list_->SetGraphicsRootConstantBufferView(2, cbLightAddr_);
+			if (shadowSrv_.ptr != 0) list_->SetGraphicsRootDescriptorTable(5, shadowSrv_);
+			
+			if (dc.useCubemap && envMapSrvGpu_.ptr != 0) {
+				list_->SetGraphicsRootDescriptorTable(7, envMapSrvGpu_);
+			} else {
+				list_->SetGraphicsRootDescriptorTable(7, textures_[0].srvGpu);
+			}
+			
+			if (dc.tex != 0 && dc.tex < textures_.size()) {
+				list_->SetGraphicsRootDescriptorTable(3, textures_[dc.tex].srvGpu);
+			} else if (model->GetSrvGpu().ptr != 0) {
+				list_->SetGraphicsRootDescriptorTable(3, model->GetSrvGpu());
+			} else {
+				list_->SetGraphicsRootDescriptorTable(3, textures_[0].srvGpu);
+			}
+		}
+
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable : 4324)
+#endif
+		struct alignas(256) CBObj { Matrix4x4 world; float color[4]; float reflectivity; uint32_t useCubemap; float pad[2]; };
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
+		CBObj ocb{}; ocb.world = dc.worldMatrix; 
+		ocb.color[0]=dc.color.x; ocb.color[1]=dc.color.y; ocb.color[2]=dc.color.z; ocb.color[3]=dc.color.w;
+		ocb.reflectivity = dc.reflectivity;
+		ocb.useCubemap = dc.useCubemap ? 1 : 0;
+		uint32_t oOff = upload_[fi].Allocate(sizeof(CBObj), 256);
+		if (oOff != UINT32_MAX) {
+			std::memcpy(upload_[fi].mapped + oOff, &ocb, sizeof(CBObj));
+			auto gpuAddr = upload_[fi].buffer->GetGPUVirtualAddress() + oOff;
+			list_->SetGraphicsRootConstantBufferView(1, gpuAddr);
+			
+			if (dc.shaderName == "EnhancedTerrain") {
+				list_->SetGraphicsRootShaderResourceView(5, gpuAddr);
+			}
+		}
+		
+		if (dc.shaderName != "EnhancedTerrain") {
+			if (dc.isSkinned) {
+				struct CBBone { Matrix4x4 bones[128]; };
+				CBBone boneData{};
+				size_t count = (std::min)(dc.bones.size(), size_t(128));
+				std::memcpy(boneData.bones, dc.bones.data(), count * sizeof(Matrix4x4));
+				uint32_t bOff = upload_[fi].Allocate(sizeof(CBBone), 256);
+				std::memcpy(upload_[fi].mapped + bOff, &boneData, sizeof(CBBone));
+				list_->SetGraphicsRootConstantBufferView(4, upload_[fi].buffer->GetGPUVirtualAddress() + bOff);
+			} else {
+				list_->SetGraphicsRootConstantBufferView(4, upload_[fi].buffer->GetGPUVirtualAddress() + oOff);
+			}
+		}
+
+		if (dc.shaderName == "Toon" || dc.shaderName == "ToonSkinning") {
+			std::string outlineName = dc.isSkinned ? "ToonSkinningOutline" : "ToonOutline";
+			if (pipelines_.count(outlineName)) {
+				list_->SetPipelineState(pipelines_[outlineName].Get());
+				model->Draw(list_);
+			}
+			list_->SetPipelineState(pso);
+		}
+
+		model->Draw(list_);
+	}
 
 	FlushLines();
 	drawCalls_.clear();

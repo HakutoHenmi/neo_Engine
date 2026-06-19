@@ -89,11 +89,11 @@ void main(uint3 DTid : SV_DispatchThreadID) {
         density = max(density, 0.001f);
         p.density = density;
         
-        // Tait式（指数4: 爆発を防ぐためratioに上限を設ける）
-        float ratio = min(density / restDensity, 3.0f);
+        // Tait式（指数を下げて爆発を防ぎつつ、上限クランプを外して特異点への圧潰を防ぐ）
+        float ratio = density / restDensity;
         // 密度が低い時に引力にならないよう max(..., 0.0f)
         float effGasStiffness = gasStiffness * 1.5f; // 反発力を底上げ
-        p.pressure = max(0.0f, effGasStiffness * (ratio * ratio * ratio * ratio - 1.0f));
+        p.pressure = max(0.0f, effGasStiffness * (ratio * ratio - 1.0f));
         
         Particles[id] = p;
     }
@@ -141,7 +141,7 @@ void main(uint3 DTid : SV_DispatchThreadID) {
             // 粒子ごとに記憶された初期位置(restPosition)へ強力に引き戻す
             float3 diffToRest = p.restPosition - p.position;
             // 弾力のあるゼリー感を出すため、距離に比例したバネの力をかける
-            coreForce = diffToRest * 25.0f; 
+            coreForce = diffToRest * 35.0f; 
         } else {
             // 液状化
             float pullStrength = 0.3f;
@@ -156,8 +156,10 @@ void main(uint3 DTid : SV_DispatchThreadID) {
         float3 gravityForce = float3(0, gravity * p.density, 0);
         
         // 力の合成
-        float3 totalForce = pressureForce + viscosityForce + surfaceTensionForce + coreForce * p.density + gravityForce + inputF;
-        float3 accel = totalForce / max(p.density, 0.01f);
+        // 旧来は totalForce を p.density で割っていたため、密度が低い（離れた）粒子の加速度が異常に大きくなり
+        // 飛び散る原因となっていた。SPH力は一定の restDensity で割り、他はそのまま足すことで安定させる。
+        float3 sphAccel = (pressureForce + viscosityForce + surfaceTensionForce) / restDensity;
+        float3 accel = sphAccel + coreForce + float3(0, gravity, 0) + (playerInputForce * 2.0f);
         
         // 速度・位置更新
         p.velocity += accel * deltaTime;
@@ -177,7 +179,7 @@ void main(uint3 DTid : SV_DispatchThreadID) {
         // オーバーシュート防止
         if (simMode == 0) {
             float dist = length(p.position);
-            float maxRadius = 1.5f; // 少し広めに許容
+            float maxRadius = 10.0f; // 広く許容（形状記憶を阻害しないため）
             if (dist > maxRadius) {
                 p.position = p.position * (maxRadius / dist);
                 p.velocity *= 0.5f;
@@ -188,12 +190,14 @@ void main(uint3 DTid : SV_DispatchThreadID) {
         float colRadius = 0.08f;
         float worldY = corePosition.y + p.position.y;
         
-        // 床に近いときの吸着力（張り付くような挙動）
+        // 床に近いときの吸着力（張り付くような挙動）は、スライムの丸みを保つため無効化
+        /*
         float distToFloor = worldY - floorWorldY;
         if (simMode == 0 && distToFloor > 0.0f && distToFloor < 0.2f) {
             // 床に近いほど床方向へ引っぱる
             p.velocity.y -= (0.2f - distToFloor) * 2.0f * deltaTime;
         }
+        */
 
         if (worldY < floorWorldY + colRadius) {
             p.position.y = floorWorldY + colRadius - corePosition.y;
