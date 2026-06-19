@@ -100,6 +100,12 @@ public:
     uint32_t screenHeight_ = 1080;
 
     bool Initialize(ID3D12Device* device) {
+        FILE* fp = nullptr;
+        fopen_s(&fp, "fluid_debug.txt", "a");
+        if (fp) {
+            fprintf(fp, "[FluidSystem] Initialize called\n");
+            fclose(fp);
+        }
         if (!device) return false;
         device_ = device;
 
@@ -321,15 +327,26 @@ public:
     void FillLocalBlobParticles(std::vector<FluidParticle>& out, DirectX::XMFLOAT3 radii) {
         std::mt19937 mt(42);
         std::uniform_real_distribution<float> dist(-1.0f, 1.0f);
+        float heightScale = 1.0f; // ★イラストに合わせて高さを少し抑える
         for (uint32_t i = 0; i < numParticles_; i++) {
             DirectX::XMFLOAT3 p{};
-            for (int attempt = 0; attempt < 8; ++attempt) {
-                float lx = dist(mt);
-                float ly = dist(mt) * 0.5f + 0.5f; // 上半分に配置してドーム型に
-                float lz = dist(mt);
-                p = { lx * radii.x, ly * radii.y, lz * radii.z };
-                float qx = p.x / radii.x, qy = (p.y / radii.y - 0.5f) * 2.0f, qz = p.z / radii.z;
-                if ((qx * qx + qy * qy + qz * qz) <= 1.0f) break;
+            for (int attempt = 0; attempt < 1000; ++attempt) {
+                // x, z を広げるため生成範囲を 2.5 に拡大
+                float lx = dist(mt) * 2.5f;
+                float ly = dist(mt) * 0.5f + 0.5f; // 0.0f 〜 1.0f
+                float lz = dist(mt) * 2.5f;
+                
+                float y = ly;
+                // 絵のような広く平らな裾野と小さな頭のスライム形状
+                float R = std::exp(-y * 5.0f) * 0.75f + std::sqrt(std::max(0.0f, 1.0f - y * y)) * 0.25f;
+                
+                // x, z が広がる分、判定用の半径も 2.5 倍する
+                float scaledR = R * 2.5f;
+                
+                if ((lx * lx + lz * lz) <= scaledR * scaledR) {
+                    p = { lx * radii.x, ly * radii.y * heightScale, lz * radii.z };
+                    break;
+                }
             }
             out[i].position = p;
             out[i].velocity = { 0, 0, 0 };
@@ -337,7 +354,7 @@ public:
             out[i].pressure = 0.0f;
             out[i].force = { 0, 0, 0 };
             out[i].pad1 = 0.0f;
-            out[i].restPosition = out[i].position;
+            out[i].restPosition = p; // ★これが形状記憶のベースになる
             out[i].pad2 = 0.0f;
         }
     }
@@ -347,7 +364,7 @@ public:
         std::uniform_real_distribution<float> dist(-1.0f, 1.0f);
         for (uint32_t i = 0; i < numParticles_; i++) {
             float angle = dist(mt) * 3.14159f;
-            float r = std::abs(dist(mt)) * radii.x * 1.8f;
+            float r = std::sqrt(std::abs(dist(mt))) * radii.x * 1.8f;
             out[i].position = { std::cos(angle) * r, dist(mt) * 0.08f, std::sin(angle) * r };
             out[i].velocity = { dist(mt) * 0.5f, -std::abs(dist(mt)) * 1.5f, dist(mt) * 0.5f };
             out[i].density = 0.0f;
@@ -361,6 +378,14 @@ public:
 
     void RebuildParticles(FluidResetShape shape, DirectX::XMFLOAT3 radii) {
         if (!particleUploadBuffer_) return;
+
+        FILE* fp = nullptr;
+        fopen_s(&fp, "fluid_debug.txt", "a");
+        if (fp) {
+            fprintf(fp, "[RebuildParticles] shape=%d, radii=(%.2f, %.2f, %.2f)\n", (int)shape, radii.x, radii.y, radii.z);
+            fclose(fp);
+        }
+
         std::vector<FluidParticle> initData(numParticles_);
         if (shape == FluidResetShape::Puddle) {
             FillLocalPuddleParticles(initData, radii);
@@ -375,9 +400,26 @@ public:
 
     void Update(ID3D12GraphicsCommandList* list, float dt, const DirectX::XMFLOAT3& corePos,
                 DirectX::XMFLOAT3 blobRadii, bool isLiquidated, DirectX::XMFLOAT3 inputForce = {0.0f, 0.0f, 0.0f}) {
+        static bool firstUpdate = true;
+        if (firstUpdate) {
+            firstUpdate = false;
+            FILE* fp = nullptr;
+            fopen_s(&fp, "fluid_debug.txt", "a");
+            if (fp) {
+                fprintf(fp, "[FluidSystem] First Update: isLiquidated=%d\n", isLiquidated);
+                fclose(fp);
+            }
+        }
         if (!isInitialized_ || !pso_ || !particleBuffer_) return;
 
         if (resetRequested_) {
+            FILE* fp = nullptr;
+            fopen_s(&fp, "fluid_debug.txt", "a");
+            if (fp) {
+                fprintf(fp, "[UpdateReset] executing: shape=%d, radii=(%.2f, %.2f, %.2f)\n", (int)resetShape_, resetRadii_.x, resetRadii_.y, resetRadii_.z);
+                fclose(fp);
+            }
+
             RebuildParticles(resetShape_, resetRadii_);
             if (!firstFrame_) {
                 auto toCopyDest = CD3DX12_RESOURCE_BARRIER::Transition(
@@ -508,6 +550,13 @@ public:
         resetShape_ = shape;
         resetRadii_ = radii;
         resetRequested_ = true;
+
+        FILE* fp = nullptr;
+        fopen_s(&fp, "fluid_debug.txt", "a");
+        if (fp) {
+            fprintf(fp, "[RequestReset] shape=%d, radii=(%.2f, %.2f, %.2f)\n", (int)shape, radii.x, radii.y, radii.z);
+            fclose(fp);
+        }
     }
 
     ID3D12Resource* GetParticleBuffer() const { return particleBuffer_.Get(); }
