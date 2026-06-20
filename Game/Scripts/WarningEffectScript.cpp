@@ -20,6 +20,7 @@ void WarningEffectScript::Start(entt::entity entity, GameScene* scene) {
 }
 
 void WarningEffectScript::Update(entt::entity entity, GameScene* scene, float dt) {
+	if (isFinished_) return;
 	timer_ += dt;
 	
 	auto& registry = scene->GetRegistry();
@@ -40,15 +41,9 @@ void WarningEffectScript::Update(entt::entity entity, GameScene* scene, float dt
 		if (originalColorSaved_ && registry.all_of<MeshRendererComponent>(entity)) {
 			auto& mr = registry.get<MeshRendererComponent>(entity);
 			mr.color = {origR_, origG_, origB_, origA_};
+			originalColorSaved_ = false; // 二度戻さないように
 		}
-		
-		if (registry.all_of<ScriptComponent>(entity)) {
-			auto& sc = registry.get<ScriptComponent>(entity);
-			// 自身(WarningEffectScript)を削除
-			auto it = std::remove_if(sc.scripts.begin(), sc.scripts.end(),
-				[](const auto& entry) { return entry.scriptPath == "WarningEffectScript"; });
-			sc.scripts.erase(it, sc.scripts.end());
-		}
+		isFinished_ = true;
 	}
 }
 

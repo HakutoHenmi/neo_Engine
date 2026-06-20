@@ -47,10 +47,11 @@ namespace {
 }
 
 GameScene::~GameScene() {
-	// 笘・ｿｽ蜉: 遐ｴ譽・凾縺ｫ繧ｷ繧ｰ繝翫Ν繧定ｧ｣髯､縺励∝ｮ牙・縺ｫ繝ｬ繧ｸ繧ｹ繝医Μ繧偵け繝ｪ繧｢縺吶ｋ
-	registry_.on_construct<TagComponent>().disconnect<&GameScene::OnTagAdded>(this);
-	registry_.on_destroy<TagComponent>().disconnect<&GameScene::OnTagRemoved>(this);
-	registry_.clear();
+    registry_.on_construct<TagComponent>().disconnect<&GameScene::OnTagAdded>(this);
+    registry_.on_destroy<TagComponent>().disconnect<&GameScene::OnTagRemoved>(this);
+    registry_.on_destroy<ScriptComponent>().disconnect<&GameScene::OnScriptDestroyed>(this);
+    ClearScene(); // ★重複排除: シーンの完全クリア処理を呼び出す
+    systems_.clear();
 }
 
 void GameScene::Initialize(Engine::WindowDX* dx, const Engine::SceneParameters& params) {
@@ -189,6 +190,14 @@ void GameScene::Initialize(Engine::WindowDX* dx, const Engine::SceneParameters& 
 	systems_.push_back(std::make_unique<PostProcessSystem>()); // 笘・ｿｽ蜉
 	systems_.push_back(std::make_unique<CleanupSystem>());
 
+	// リスナー登録
+	registry_.on_construct<TagComponent>().disconnect<&GameScene::OnTagAdded>(this);
+	registry_.on_construct<TagComponent>().connect<&GameScene::OnTagAdded>(this);
+	registry_.on_destroy<TagComponent>().disconnect<&GameScene::OnTagRemoved>(this);
+	registry_.on_destroy<TagComponent>().connect<&GameScene::OnTagRemoved>(this);
+	registry_.on_destroy<ScriptComponent>().disconnect<&GameScene::OnScriptDestroyed>(this);
+	registry_.on_destroy<ScriptComponent>().connect<&GameScene::OnScriptDestroyed>(this);
+
 	// 笘・ｿｽ蜉: 謫堺ｽ懆ｪｬ譏弱ユ繧ｭ繧ｹ繝・I縺ｮ逕滓・
 	{
 		std::vector<std::string> controls = {
@@ -240,12 +249,6 @@ void GameScene::Initialize(Engine::WindowDX* dx, const Engine::SceneParameters& 
 		const auto tag = tagInitView.get<TagComponent>(entity).tag;
 		tagCache_[tag].push_back(entity);
 	}
-	// 繝ｪ繧ｹ繝翫・逋ｻ骭ｲ
-	registry_.on_construct<TagComponent>().disconnect<&GameScene::OnTagAdded>(this);
-	registry_.on_construct<TagComponent>().connect<&GameScene::OnTagAdded>(this);
-	registry_.on_destroy<TagComponent>().disconnect<&GameScene::OnTagRemoved>(this);
-	registry_.on_destroy<TagComponent>().connect<&GameScene::OnTagRemoved>(this);
-
 }
 
 // =====================================================
@@ -262,7 +265,7 @@ void GameScene::Update() {
 	if (!pendingTagRemoved_.empty() || !pendingTagSync_.empty()) {
 		// 1. 蜑企勁繝ｻ螟画峩莠亥ｮ壹・繧ｨ繝ｳ繝・ぅ繝・ぅ繧貞・繧ｭ繝｣繝・す繝･縺九ｉ蜿悶ｊ髯､縺・
 		std::vector<entt::entity> toRemove = std::move(pendingTagRemoved_);
-		// pendingTagSync 縺ｫ蜈･縺｣縺ｦ縺・ｋ繧ゅ・縺ｯ縲後ち繧ｰ縺悟､峨ｏ繧九榊庄閭ｽ諤ｧ縺後≠繧九・縺ｧ縲∽ｸ譌ｦ蜿､縺・く繝｣繝・す繝･縺九ｉ豸医＠縺ｦ縺翫￥
+		// pendingTagSync 縺ｫ蜈･縺｣縺ｦ縺・ｋ繧ゅ・縺ｯ縲後ち繧ｰ縺悟､峨ｏ繧九€榊庄閭ｽ諤ｧ縺後≠繧九・縺ｧ縲∽ｸ€譌ｦ蜿､縺・く繝｣繝・す繝･縺九ｉ豸医＠縺ｦ縺翫￥
 		for (auto e : pendingTagSync_) {
 			toRemove.push_back(e);
 		}
@@ -270,12 +273,12 @@ void GameScene::Update() {
 		for (auto e : toRemove) {
 			for (auto& pair : tagCache_) {
 				auto& vec = pair.second;
-				// 縺吶∋縺ｦ縺ｮ繧ｿ繧ｰ繝ｪ繧ｹ繝医°繧峨√◎縺ｮ繧ｨ繝ｳ繝・ぅ繝・ぅ繧貞炎髯､
+				// 縺吶∋縺ｦ縺ｮ繧ｿ繧ｰ繝ｪ繧ｹ繝医°繧峨€√◎縺ｮ繧ｨ繝ｳ繝・ぅ繝・ぅ繧貞炎髯､
 				vec.erase(std::remove(vec.begin(), vec.end(), e), vec.end());
 			}
 		}
 
-		// 2. 譛譁ｰ縺ｮ繧ｿ繧ｰ縺ｧ蜷梧悄
+		// 2. 譛€譁ｰ縺ｮ繧ｿ繧ｰ縺ｧ蜷梧悄
 		std::vector<entt::entity> toSync = std::move(pendingTagSync_);
 		for (auto e : toSync) {
 			if (registry_.valid(e)) {
@@ -320,7 +323,7 @@ void GameScene::Update() {
 	ctx_.viewportOffset = { 0.0f, 0.0f };
 	ctx_.viewportSize = { (float)Engine::WindowDX::kW, (float)Engine::WindowDX::kH };
 
-	// GPU Collision Dispatch・医お繝ｳ繧ｸ繝ｳ縺ｮ豎守畑 PhysicsSystem.h 縺ｫ遘ｻ陦後＠縺溘◆繧√√％縺薙〒縺ｯ菴輔ｂ縺励↑縺・ｼ・
+	// GPU Collision Dispatch・医お繝ｳ繧ｸ繝ｳ縺ｮ豎守畑 PhysicsSystem.h 縺ｫ遘ｻ陦後＠縺溘◆繧√€√％縺薙〒縺ｯ菴輔ｂ縺励↑縺・ｼ・
 
 	// Animation・医お繝ｳ繧ｸ繝ｳ蝗ｺ譛牙・逅・・縺溘ａ谿狗蕗・・
 	auto animView = registry_.view<AnimatorComponent, MeshRendererComponent>();
@@ -364,7 +367,7 @@ void GameScene::Update() {
 
 	// 笘・蜈ｨSystem繧帝・↓螳溯｡・
 	for (auto& system : systems_) {
-		// 繝ｪ繧ｶ繝ｫ繝磯・遘ｻ荳ｭ縺ｪ縺ｩ縺ｯ繧ｷ繧ｹ繝・Β繧貞虚縺九＆縺ｪ縺・(繧ｨ繝ｳ繝・ぅ繝・ぅ縺悟炎髯､縺輔ｌ縺ｦ縺・ｋ蜿ｯ閭ｽ諤ｧ縺後≠繧九◆繧・
+		// 繝ｪ繧ｶ繝ｫ繝磯・遘ｻ荳ｭ縺ｪ縺ｩ縺ｯ繧ｷ繧ｹ繝・Β繧貞虚縺九＆縺ｪ縺・(繧ｨ繝ｳ繝・ぅ繧､繝・ぅ縺悟炎髯､縺輔ｌ縺ｦ縺・ｋ蜿ｯ閭ｽ諤ｧ縺後≠繧九◆繧・
 		if (!isPlaying_)
 			break;
 		system->Update(registry_, ctx_);
@@ -382,16 +385,20 @@ void GameScene::Update() {
 
 
 
-	// 笘・繝壹Φ繝・ぅ繝ｳ繧ｰ繧ｪ繝悶ず繧ｧ繧ｯ繝茨ｼ亥ｼｾ縺ｪ縺ｩ・峨ｒflush縺励∫ｴ譽・ｦ∵ｱゅｒ蜃ｦ逅・
+	// 笘・繝壹Φ繝・ぅ繝ｳ繧ｰ繧ｪ繝悶ず繧ｧ繧ｯ繝茨ｼ亥ｼｾ縺ｪ縺ｩ・峨ｒflush縺励€∫ｴ譽・ｦ∵ｱゅｒ蜃ｦ逅・
 	{
 		std::lock_guard<std::mutex> lock(spawnMutex_);
 
 		if (!pendingSpawns_.storage<entt::entity>().empty()) {
-			// 荳譌ｦ縲｝endingSpawns_ 繧偵ム繝溘・縺ｨ縺励※驕狗畑縺吶ｋ縺九∫峩謗･ `registry_.create()` 縺吶ｋ縺ｮ縺ｧ縺薙％縺ｯ螳溯ｳｪ遨ｺ縺ｫ縺ｪ繧・
+			// 荳€譌ｦ縲｝endingSpawns_ 繧偵ム繝溘・縺ｨ縺励※驕狗畑縺吶ｋ縺九€∫峩謗･ `registry_.create()` 縺吶ｋ縺ｮ縺ｧ縺薙％縺ｯ螳溯ｳｪ遨ｺ縺ｫ縺ｪ繧・
 			pendingSpawns_.clear();
 		}
 
 		if (!pendingDestroys_.empty()) {
+			// ★重複を排除して二重破棄を防ぐ
+			std::sort(pendingDestroys_.begin(), pendingDestroys_.end());
+			pendingDestroys_.erase(std::unique(pendingDestroys_.begin(), pendingDestroys_.end()), pendingDestroys_.end());
+
 			for (auto id : pendingDestroys_) {
 				if (registry_.valid(id)) {
 					registry_.destroy(id);
@@ -401,7 +408,7 @@ void GameScene::Update() {
 		}
 	}
 
-	// Light System・医Ξ繝ｳ繝繝ｪ繝ｳ繧ｰ險ｭ螳壹・縺溘ａ谿狗蕗・・
+	// Light System・医Ξ繝ｳ繝€繝ｪ繝ｳ繧ｰ險ｭ螳壹・縺溘ａ谿狗蕗・・
 	if (renderer_) {
 		int plCount = 0;
 		int slCount = 0;
@@ -481,7 +488,7 @@ entt::entity GameScene::CreateEntity(const std::string& name) {
 	return entity;
 }
 
-// 笘・ｿｽ蜉: ID縺ｧ繧ｪ繝悶ず繧ｧ繧ｯ繝医ｒ讀懃ｴ｢縺励∫ｴ譽・ヵ繝ｩ繧ｰ繧堤ｫ九※繧・
+// 笘・ｿｽ蜉: ID縺ｧ繧ｪ繝悶ず繧ｧ繧ｯ繝医ｒ讀懃ｴ｢縺励€∫ｴ譽・ヵ繝ｩ繧ｰ繧堤ｫ九※繧・
 void GameScene::DestroyObject(uint32_t id) {
 	std::lock_guard<std::mutex> lock(spawnMutex_);
 	// ID繧偵◎縺ｮ縺ｾ縺ｾentt::entity縺ｨ縺励※謇ｱ縺・ｼ医ム繧ｦ繝ｳ繧ｭ繝｣繧ｹ繝茨ｼ・
@@ -698,7 +705,7 @@ void GameScene::Draw() {
 			if (slimeCpuLogic_.initialized && registry_.all_of<TransformComponent>(playerEntity)) {
 				// 蜍慕噪繝｡繝・す繝･縺ｫ蟾ｮ縺玲崛縺・
 				mr.modelHandle = slimeCpuLogic_.dynamicMeshHandle;
-				// 繧ｷ繧ｧ繝ｼ繝繝ｼ縺ｯ縺ｲ縺ｨ縺ｾ縺售lime縺ｮ縺ｾ縺ｾ縺ｫ縺吶ｋ・亥ｱ域釜繝槭ユ繝ｪ繧｢繝ｫ繧堤函縺九☆縺溘ａ・・
+				// 繧ｷ繧ｧ繝ｼ繝€繝ｼ縺ｯ縺ｲ縺ｨ縺ｾ縺售lime縺ｮ縺ｾ縺ｾ縺ｫ縺吶ｋ・亥ｱ域釜繝槭ユ繝ｪ繧｢繝ｫ繧堤函縺九☆縺溘ａ・・
 				mr.shaderName = "Slime";
 				
 				auto& tc = registry_.get<TransformComponent>(playerEntity);
@@ -881,7 +888,7 @@ void GameScene::Draw() {
 	}
 #endif
 
-	// 笘・鬮倬溘ち繧ｰ讀懃ｴ｢繧堤畑縺・※繝励Ξ繧､繝､繝ｼ菴咲ｽｮ繧貞酔譛滂ｼ・(N) -> O(1)・・
+	// 笘・鬮倬€溘ち繧ｰ讀懃ｴ｢繧堤畑縺・※繝励Ξ繧､繝､繝ｼ菴咲ｽｮ繧貞酔譛滂ｼ・(N) -> O(1)・・
 	const auto& players = GetEntitiesByTag(TagType::Player);
 	if (!players.empty()) {
 		entt::entity playerEntity = players[0];
@@ -953,7 +960,7 @@ void GameScene::Draw() {
 					renderer_->DrawSkinnedMesh(mr.modelHandle, mr.textureHandle, world, bonePalette, {color.x * mr.color.x, color.y * mr.color.y, color.z * mr.color.z, color.w * mr.color.w});
 				} else {
 					if (mr.shaderName == "Slime" || mr.shaderName == "SlimeNoFace" || mr.shaderName == "SlimeNoFaceNoDepth") {
-						// 蜊企乗・繧ｪ繝悶ず繧ｧ繧ｯ繝医↑縺ｮ縺ｧ縲∽ｸ埼乗・繧ｪ繝悶ず繧ｧ繧ｯ繝医・閭悟ｾ後↓縺ｪ繧峨↑縺・ｈ縺・ｾ後〒謠冗判縺吶ｋ
+						// 蜊企€乗・繧ｪ繝悶ず繧ｧ繧ｯ繝医↑縺ｮ縺縲∽ｸ埼€乗・繧ｪ繝悶ず繧ｧ繧ｯ繝医・閭悟ｾ後↓縺ｪ繧峨↑縺・ｈ縺・ｾ後〒謠冗判縺吶ｋ
 						continue;
 					}
 					if (mr.shaderName == "Toon" || mr.shaderName == "ToonSkinning" || mr.shaderName == "Hologram" || mr.shaderName == "EmissiveGlow" || mr.shaderName == "ForceField" ||
@@ -968,7 +975,7 @@ void GameScene::Draw() {
 		}
 
 		// 譌ｧSceneObject縺ｮ莠呈鋤逕ｨ (繧ゅ＠ MeshRenderer 繧ｳ繝ｳ繝昴・繝阪Φ繝医′縺ｪ縺剰・霄ｫ縺ｮ modelHandle 遲峨′縺ゅ▲縺溷ｴ蜷・
-		// Registry蛹悶〒蝓ｺ譛ｬ逧・↓縺ｯ MeshRendererComponent 縺ｫ邨ｱ蜷医☆繧九・縺梧悍縺ｾ縺励＞縺後∽ｸ譌ｦ谿狗蕗
+		// Registry蛹悶〒蝓ｺ譛ｬ逧・↓縺ｯ MeshRendererComponent 縺ｫ邨ｱ蜷医☆繧九・縺梧悍縺ｾ縺励＞縺後€∽ｸ€譌ｦ谿狗蕗
 		/*
 		if (!hasMeshRenderer && obj.modelHandle != 0) { ... }
 		*/
@@ -987,7 +994,7 @@ void GameScene::Draw() {
 		}
 	}
 
-	// === 蜊企乗・繧ｪ繝悶ず繧ｧ繧ｯ繝茨ｼ・lime遲会ｼ峨・驕・ｻｶ謠冗判 ===
+	// === 蜊企€乗・繧ｪ繝悶ず繧ｧ繧ｯ繝茨ｼ・lime遲会ｼ峨・驕・ｻｶ謠冗判 ===
 	for (auto entity : renderView) {
 		if (registry_.all_of<MeshRendererComponent>(entity)) {
 			auto& mr = registry_.get<MeshRendererComponent>(entity);
@@ -1016,7 +1023,7 @@ void GameScene::Draw() {
 		}
 	});
 
-	// 繝励Ξ繧､繝､繝ｼ繧ｹ繝ｩ繧､繝: Screen-Space Fluid Rendering・亥盾閠・ UE5 Niagara / 豸ｲ迥ｶ繧ｹ繝ｩ繧､繝・峨・霆ｽ驥冗沿Slime繧ｷ繧ｧ繝ｼ繝繝ｼ縺ｫ鄂ｮ縺肴鋤縺医◆縺溘ａ辟｡蜉ｹ蛹・
+	// 繝励Ξ繧､繝､繝ｼ繧ｹ繝ｩ繧､繝: Screen-Space Fluid Rendering・亥盾閠・ UE5 Niagara / 豸ｲ迥ｶ繧ｹ繝ｩ繧､繝・峨・霆ｽ驥冗沿Slime繧ｷ繧ｧ繝ｼ繝€繝ｼ縺ｫ鄂ｮ縺肴鋤縺医◆縺溘ａ辟｡蜉ｹ蛹・
 	renderer_->SetCustomDrawJob(nullptr);
 
 	for (auto& system : systems_) {
@@ -1371,7 +1378,7 @@ void GameScene::SetIsPlaying(bool play) {
 		ShowCursor(FALSE); // 笘・ｿｽ蜉: 繧ｫ繝ｼ繧ｽ繝ｫ繧帝撼陦ｨ遉ｺ
 	} else {
 		// 繝励Ξ繧､蛛懈ｭ｢譎・ Play 繝懊ち繝ｳ繧呈款縺励◆逶ｴ蜑阪・迥ｶ諷・(`sceneSnapshot_`) 縺ｫ謌ｻ縺・
-		// 驕ｸ謚樒憾諷九・繧ｨ繝ｳ繝・ぅ繝・ぅ蜷阪ｒ荳譎ゆｿ晏ｭ・
+		// 驕ｸ謚樒憾諷九・繧ｨ繝ｳ繝・ぅ繝・ぅ蜷阪ｒ荳€譎ゆｿ晏ｭ・
 		std::vector<std::string> selectedNames;
 		auto& reg = GetRegistry();
 		for (auto entity : selectedEntities_) {
@@ -1411,7 +1418,7 @@ void GameScene::SetIsPlaying(bool play) {
 			}
 		}
 		// sceneSnapshot_ = ""; // 縺薙ｌ繧呈ｶ医☆縺ｨ縲∝・髢区凾縺ｫ谿九▲縺ｦ縺励∪縺・庄閭ｽ諤ｧ縺後≠繧九′縲∝ｿｵ縺ｮ縺溘ａ谿九☆縺具ｼ・
-		// 荳譌ｦ縲∵ｯ主屓菫晏ｭ倥☆繧九ｈ縺・↓縺吶ｋ縺ｮ縺ｧ繧ｯ繝ｪ繧｢縺励※繧り憶縺・・縺・
+		// 荳€譌ｦ縲∵ｯ主屓菫晏ｭ倥☆繧九ｈ縺・↓縺吶ｋ縺ｮ縺ｧ繧ｯ繝ｪ繧｢縺励※繧り憶縺・・縺・
 		sceneSnapshot_ = "";
 
 
@@ -1425,7 +1432,7 @@ void GameScene::SetIsPlaying(bool play) {
 }
 
 // =====================================================
-// 笘・鬮倬溘ち繧ｰ繧｢繧ｯ繧ｻ繧ｹ螳溯｣・
+// 笘・鬮倬€溘ち繧ｰ繧｢繧ｯ繧ｻ繧ｹ螳溯｣・
 // =====================================================
 
 const std::vector<entt::entity>& GameScene::GetEntitiesByTag(TagType tag) {
@@ -1448,7 +1455,7 @@ void GameScene::SetTag(entt::entity entity, TagType tag) {
 }
 
 void GameScene::OnTagAdded(entt::registry& /*registry*/, entt::entity entity) {
-	// 蜊ｳ蠎ｧ縺ｫ蜷梧悄縺帙★縲∵ｬ｡繝輔Ξ繝ｼ繝遲峨・驕ｩ蛻・↑繧ｿ繧､繝溘Φ繧ｰ縺ｧ蜷梧悄
+	// 蜊ｳ蠎ｧ縺ｫ蜷梧悄縺帙★∵ｬ｡繝輔Ξ繝ｼ繝遲峨・驕ｩ蛻・↑繧ｿ繧､繝溘Φ繧ｰ縺ｧ蜷梧悄
 	pendingTagSync_.push_back(entity);
 }
 
@@ -1456,6 +1463,17 @@ void GameScene::OnTagRemoved(entt::registry& /*registry*/, entt::entity entity) 
 	// 蜊ｳ蠎ｧ縺ｫ蜑企勁縺帙★縲・≦蟒ｶ繝ｪ繧ｹ繝医↓霑ｽ蜉縺励※谺｡繝輔Ξ繝ｼ繝髢句ｧ区凾縺ｫ蜑企勁繧定｡後≧
 	// 縺薙ｌ縺ｫ繧医ｊ縲√う繝・Ξ繝ｼ繧ｷ繝ｧ繝ｳ荳ｭ縺ｮ繧ｳ繝ｳ繝・リ螟画峩縺ｫ繧医ｋ萓句､悶ｒ髦ｲ豁｢縺吶ｋ
 	pendingTagRemoved_.push_back(entity);
+}
+
+void GameScene::OnScriptDestroyed(entt::registry& registry, entt::entity entity) {
+	// スクリプトが破棄された時にC++スクリプトの OnDestroy を呼ぶ
+	if (auto* sc = registry.try_get<ScriptComponent>(entity)) {
+		for (auto& entry : sc->scripts) {
+			if (entry.instance) {
+				entry.instance->OnDestroy(entity, this);
+			}
+		}
+	}
 }
 
 void GameScene::SyncTag(entt::entity entity) {
@@ -1476,6 +1494,29 @@ const std::vector<entt::entity>& GameScene::GetEntitiesByTag(const std::string& 
 
 void GameScene::SetTag(entt::entity entity, const std::string& tagStr) {
 	SetTag(entity, StringToTag(tagStr));
+}
+
+void GameScene::ClearScene() {
+	// 1. 各システムのリセット（システム側の状態をクリア）
+	for (auto& sys : systems_) {
+		sys->Reset(registry_);
+	}
+
+	// 2. 予約バッファやキャッシュの完全クリア
+	std::lock_guard<std::mutex> lock(spawnMutex_);
+	pendingDestroys_.clear();
+	pendingSpawns_.clear();
+	pendingTagSync_.clear();
+	pendingTagRemoved_.clear();
+	tagCache_.clear();
+	matrixCache_.clear();
+
+	// 3. レジストリのクリア
+	registry_.clear();
+
+	// 4. CPUスライム描画ロジックの非初期化
+	slimeCpuLogic_.initialized = false;
+	projectileCpuLogic_.initialized = false;
 }
 
 } // namespace Game

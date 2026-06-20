@@ -146,6 +146,10 @@ void App::Run() {
 }
 
 void App::Shutdown() {
+	// ★修正: 先にSceneManagerをクリアして、すべてのシーンオブジェクト・コンポーネントを安全に破棄する
+	// これにより、コンポーネント破棄時にオーディオやジョブシステムなどのサブシステムへ安全にアクセスできます
+	sceneManager_.Clear();
+
 	SharedMemoryProfiler::GetInstance().Shutdown();
 	JobSystem::Shutdown();
 #ifdef USE_IMGUI
@@ -154,8 +158,6 @@ void App::Shutdown() {
 	audio_.Shutdown();
 	input_.Shutdown();
 
-	// ★修正: RendererとSceneをDeviceより先に解放する
-	sceneManager_.Clear();
 	renderer_.Shutdown();
 
 	dx_.WaitIdle();

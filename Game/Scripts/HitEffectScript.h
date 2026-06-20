@@ -42,12 +42,12 @@ private:
 	float duration_ = 1.5f; // すべての破片が消えるまで待つ
 	float timer_ = 0.0f;
 	std::vector<SlimeFragmentData> fragments_;
-	entt::entity impactEntity_ = entt::null;
 	bool isMelee_ = false;
 	bool isExplosion_ = false; // 全方位爆発用
 	bool isExplosionHit_ = false; // 爆発が敵に当たった時のエフェクト用
 	float attackDirX_ = 0.0f; // ★追加: 攻撃方向X
 	float attackDirZ_ = 0.0f; // ★追加: 攻撃方向Z
+	bool isFinished_ = false; // ★追加: 終了フラグ
 };
 
 // Dummy line for rebuild
