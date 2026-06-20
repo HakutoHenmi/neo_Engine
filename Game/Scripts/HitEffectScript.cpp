@@ -350,7 +350,7 @@ void HitEffectScript::Update(entt::entity entity, GameScene* scene, float dt) {
 				if (fd.vx > 0.04f) { // 秒間25個
 					fd.vx = 0.0f;
 					auto trail = scene->CreateEntity("SlimeTentacleTrail");
-					auto& ttc = registry.emplace<TransformComponent>(trail);
+					auto& ttc = registry.get<TransformComponent>(trail);
 					ttc.translate = tc.translate;
 					ttc.scale = tc.scale;
 					
@@ -413,7 +413,7 @@ void HitEffectScript::Update(entt::entity entity, GameScene* scene, float dt) {
 			
 			// 残像生成 (少し細くする)
 			auto trail = scene->CreateEntity("ExplosionSpikeTrail");
-			auto& ttc = registry.emplace<TransformComponent>(trail);
+			auto& ttc = registry.get<TransformComponent>(trail);
 			ttc.translate = tc.translate;
 			ttc.scale = { tc.scale.x * 0.8f, tc.scale.y * 0.8f, tc.scale.z * 0.8f };
 			

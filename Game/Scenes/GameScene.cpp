@@ -51,6 +51,11 @@ GameScene::~GameScene() {
     registry_.on_destroy<TagComponent>().disconnect<&GameScene::OnTagRemoved>(this);
     registry_.on_destroy<ScriptComponent>().disconnect<&GameScene::OnScriptDestroyed>(this);
     ClearScene(); // ★重複排除: シーンの完全クリア処理を呼び出す
+    
+    // ClearScene 内で再接続されてしまうため、デストラクタの最後で確実に切断する
+    registry_.on_destroy<TagComponent>().disconnect<&GameScene::OnTagRemoved>(this);
+    registry_.on_destroy<ScriptComponent>().disconnect<&GameScene::OnScriptDestroyed>(this);
+
     systems_.clear();
 }
 
@@ -1503,16 +1508,26 @@ void GameScene::ClearScene() {
 	}
 
 	// 2. 予約バッファやキャッシュの完全クリア
-	std::lock_guard<std::mutex> lock(spawnMutex_);
-	pendingDestroys_.clear();
-	pendingSpawns_.clear();
-	pendingTagSync_.clear();
-	pendingTagRemoved_.clear();
-	tagCache_.clear();
-	matrixCache_.clear();
+	{
+		std::lock_guard<std::mutex> lock(spawnMutex_);
+		pendingDestroys_.clear();
+		pendingSpawns_.clear();
+		pendingTagSync_.clear();
+		pendingTagRemoved_.clear();
+		tagCache_.clear();
+		matrixCache_.clear();
+	}
 
 	// 3. レジストリのクリア
+	// ★追加: 全クリア中は `OnDestroy` などのシグナル発火による二重破棄（イテレータ破壊）を防ぐため、一時的にシグナルを切断する
+	registry_.on_destroy<TagComponent>().disconnect<&GameScene::OnTagRemoved>(this);
+	registry_.on_destroy<ScriptComponent>().disconnect<&GameScene::OnScriptDestroyed>(this);
+
 	registry_.clear();
+
+	// シグナルを再接続
+	registry_.on_destroy<TagComponent>().connect<&GameScene::OnTagRemoved>(this);
+	registry_.on_destroy<ScriptComponent>().connect<&GameScene::OnScriptDestroyed>(this);
 
 	// 4. CPUスライム描画ロジックの非初期化
 	slimeCpuLogic_.initialized = false;

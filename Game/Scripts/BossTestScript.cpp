@@ -343,7 +343,7 @@ void BossTestScript::Update(entt::entity entity, GameScene* scene, float /*dt*/)
 void BossTestScript::OnDestroy(entt::entity /*entity*/, GameScene* scene) {
 	// 本体が消えたら尻尾も消す
 	if (scene && scene->GetRegistry().valid(tailEntity_)) {
-		scene->GetRegistry().destroy(tailEntity_);
+		scene->DestroyObject(static_cast<uint32_t>(entt::to_entity(tailEntity_)));
 	}
 }
 

@@ -22,6 +22,7 @@ public:
 		// --- 全Hitboxエンティティを収集 ---
 		auto hitboxView = registry.view<HitboxComponent, TransformComponent>();
 		auto hurtboxView = registry.view<HurtboxComponent, TransformComponent>();
+		std::vector<std::function<void()>> deferredActions;
 
 		for (auto hbEntity : hitboxView) {
 			auto& hb = hitboxView.get<HitboxComponent>(hbEntity);
@@ -125,26 +126,16 @@ public:
 					// ★追加: ヒットエフェクト（パーティクル等）の生成
 					// プレイヤーの攻撃（スライム攻撃）がヒットした時のみエフェクトを出す
 					if (hb.tag == TagType::Player) {
-						auto effectEntity = registry.create();
-						registry.emplace<NameComponent>(effectEntity, "HitEffect");
-						auto& tc = registry.emplace<TransformComponent>(effectEntity);
-						
 						Engine::Vector3 attackDir = {
 							std::sin(hbTc.rotate.y),
 							0.0f,
 							std::cos(hbTc.rotate.y)
 						};
-
-						// ヒット位置を計算し、攻撃者の方向へめっちゃ手前に寄せる
-						tc.translate = {
+						DirectX::XMFLOAT3 spawnPos = {
 							(hbWorldCenter.x + hrWorldCenter.x) * 0.5f - attackDir.x * 1.5f,
 							(hbWorldCenter.y + hrWorldCenter.y) * 0.5f,
 							(hbWorldCenter.z + hrWorldCenter.z) * 0.5f - attackDir.z * 1.5f
 						};
-
-						auto& sc = registry.emplace<ScriptComponent>(effectEntity);
-						ScriptEntry entry;
-						entry.scriptPath = "HitEffectScript";
 						
 						bool isExplosionAttack = false;
 						if (registry.all_of<NameComponent>(hbEntity)) {
@@ -152,15 +143,33 @@ public:
 								isExplosionAttack = true;
 							}
 						}
+						
+						bool isProj = hb.isProjectile;
 
-						if (isExplosionAttack) {
-							entry.parameterData = "isExplosionHit=1";
-						} else if (!hb.isProjectile) {
-							entry.parameterData = "isMelee=1,dirX=" + std::to_string(attackDir.x) + ",dirZ=" + std::to_string(attackDir.z);
-						}
-						sc.scripts.push_back(entry);
+						deferredActions.push_back([&registry, spawnPos, attackDir, isExplosionAttack, isProj]() {
+							auto effectEntity = registry.create();
+							registry.emplace<NameComponent>(effectEntity, "HitEffect");
+							auto& tc = registry.emplace<TransformComponent>(effectEntity);
+							tc.translate = spawnPos;
+
+							auto& sc = registry.emplace<ScriptComponent>(effectEntity);
+							ScriptEntry entry;
+							entry.scriptPath = "HitEffectScript";
+
+							if (isExplosionAttack) {
+								entry.parameterData = "isExplosionHit=1";
+							} else if (!isProj) {
+								entry.parameterData = "isMelee=1,dirX=" + std::to_string(attackDir.x) + ",dirZ=" + std::to_string(attackDir.z);
+							}
+							sc.scripts.push_back(entry);
+						});
 					}
 			}
+		}
+
+		// ループ後に生成処理を実行
+		for (auto& action : deferredActions) {
+			action();
 		}
 	}
 
