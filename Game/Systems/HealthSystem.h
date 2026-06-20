@@ -66,7 +66,7 @@ public:
 					}
 					// 発生位置
 					if (registry.all_of<TransformComponent>(entity)) {
-						auto tc = registry.get<TransformComponent>(entity);
+						const auto& tc = registry.get<TransformComponent>(entity);
 						dnc.startPos = {tc.translate.x, tc.translate.y + 1.5f, tc.translate.z};
 					}
 				}

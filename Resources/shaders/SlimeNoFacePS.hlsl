@@ -57,46 +57,6 @@ float4 main(SlimeVSOutput input) : SV_TARGET {
     float specIntensity = saturate(length(specularLight));
     float alpha = saturate(baseAlpha + specIntensity * 0.8f);
 
-    // --- スライムの顔 (目と口) の描画 ---
-    // color.a が 0.985 ～ 0.995 の範囲（弾や破片の 0.99 など）の場合は顔を描画しない
-    bool hideFace = (color.a > 0.985f && color.a < 0.995f);
-    if (!hideFace) {
-        // モデル全体のスケールアップ (2.6) に合わせて座標をスケーリング
-        float3 localPos = input.localpos / 2.6f;
-
-        // 正面 (localPosNorm.z > 0.0) に描画
-        float dx_l = (localPos.x + 0.18) / 0.04;
-        float dy_l = (localPos.y - 0.15) / 0.10;
-        float dist_left_eye = dx_l * dx_l + dy_l * dy_l;
-        float eye_alpha = 1.0 - smoothstep(0.8, 1.0, dist_left_eye);
-        
-        float dx_r = (localPos.x - 0.18) / 0.04;
-        float dy_r = (localPos.y - 0.15) / 0.10;
-        float dist_right_eye = dx_r * dx_r + dy_r * dy_r;
-        float eye_alpha_r = 1.0 - smoothstep(0.8, 1.0, dist_right_eye);
-        
-        float eyes = saturate(eye_alpha + eye_alpha_r);
-        
-        // 口 (笑顔)
-        float mouth_y = 2.5 * localPos.x * localPos.x - 0.15;
-        float dist_to_mouth = abs(localPos.y - mouth_y);
-        float mouth_alpha = 0.0;
-        if (abs(localPos.x) < 0.15) {
-            mouth_alpha = 1.0 - smoothstep(0.015, 0.025, dist_to_mouth);
-            float edge_fade = 1.0 - smoothstep(0.12, 0.15, abs(localPos.x));
-            mouth_alpha *= edge_fade;
-        }
-        
-        float face_alpha = saturate(eyes + mouth_alpha);
-        float3 localPosNorm = normalize(input.localpos);
-        float front_fade = smoothstep(0.45, 0.65, localPosNorm.z);
-        face_alpha *= front_fade;
-        
-        float3 faceColor = float3(0.05, 0.05, 0.05);
-        finalColor = lerp(finalColor, faceColor, face_alpha * 0.95);
-        alpha = max(alpha, face_alpha * 0.95);
-    }
-
     // Limit overexposure
     finalColor = min(finalColor, float3(1.5f, 1.5f, 1.5f));
 

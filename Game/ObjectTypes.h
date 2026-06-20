@@ -247,6 +247,7 @@ struct CharacterMovementComponent : public Component {
 // ★追加: カメラ追従対象 (属性)
 struct CameraTargetComponent : public Component {
 	float distance = 10.0f;
+	float distanceOffset = 0.0f; // ★追加: アクション中の一時的なズームアウト用
 	float height = 3.0f;
 	float smoothSpeed = 5.0f;
 	CameraTargetComponent() { type = ComponentType::CameraTarget; }
@@ -323,6 +324,7 @@ struct HitboxComponent : public Component {
 	bool isActive = false;                 // 有効フラグ（攻撃アニメ中のみtrue等）
 	TagType tag = TagType::Default;           // 識別タグ ("Sword", "Projectile"等)
 	std::vector<entt::entity> hitTargets; // ★追加: 1回の攻撃で既にヒットした対象（多段ヒット防止）
+	bool isProjectile = false;             // Projectile flag
 	HitboxComponent() { type = ComponentType::Hitbox; }
 };
 

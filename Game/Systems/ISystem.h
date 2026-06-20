@@ -18,6 +18,7 @@ struct GameContext {
 	Engine::Input* input = nullptr;
 	Engine::EventSystem* eventSystem = nullptr; // ★追加: スクリプト間通信用
 	bool isPlaying = false;
+	bool isSandbagMode = false; // ★追加: サンドバッグモード
 	entt::registry* pendingSpawns = nullptr; // SpawnObject等の遅延追加用
 
 	// ★追加: 座標系補正用 (エディターGameビュー等での相対座標)

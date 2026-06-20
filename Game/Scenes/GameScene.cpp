@@ -1,7 +1,8 @@
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
-#include "GameScene.h"
+#include "./GameScene.h"
+#include "../ObjectTypes.h"
 #include "../../Engine/Audio.h"
 #include "../../Engine/PathUtils.h"
 #include "../../Engine/SceneManager.h"
@@ -375,6 +376,12 @@ void GameScene::Update() {
 	}
 	camera_.Tick(dt);
 
+
+
+
+
+
+
 	// 笘・繝壹Φ繝・ぅ繝ｳ繧ｰ繧ｪ繝悶ず繧ｧ繧ｯ繝茨ｼ亥ｼｾ縺ｪ縺ｩ・峨ｒflush縺励∫ｴ譽・ｦ∵ｱゅｒ蜃ｦ逅・
 	{
 		std::lock_guard<std::mutex> lock(spawnMutex_);
@@ -705,24 +712,52 @@ void GameScene::Draw() {
 					const auto& baseN = slimeCpuLogic_.baseNormals[i];
 					auto& dynV = slimeCpuLogic_.dynamicVerts[i];
 
+					// 元の球体頂点からスライムのデフォルト形状を計算
+					float bx = baseV.position.x;
+					float by = baseV.position.y;
+					float bz = baseV.position.z;
+
+					// t は 0.0 (底: -0.5) から 1.0 (頂点: 0.5)
+					float t = by + 0.5f;
+					t = std::max(0.0f, std::min(1.0f, t));
+
+					// スライムの裾野を広げ、てっぺんをすぼめるスケール
+					float invT = 1.0f - t;
+					// てっぺんの丸みを維持するため、頂点付近(invT=0)では sFactor を 1.0 に近づけ、下部にかけて広げる
+					float sFactor = 1.0f + 1.4f * (invT * invT);
+
+					// y方向の歪み（底に向かって少し持ち上げることで、肉厚な丸みを作る）
+					float newY = by;
+					if (t < 0.4f) {
+						float k = (0.4f - t) / 0.4f;
+						newY += 0.08f * std::sin(k * 1.57079f); // 90度 (PI/2)
+					}
+
+					// スライム形状のベース位置 (全体のスケールを大きくする)
+					float scaleUp = 2.6f;
+					float sx = bx * sFactor * scaleUp;
+					float sz = bz * sFactor * scaleUp;
+					float sy = newY * scaleUp;
+
 					// 1. 繝弱う繧ｺ縺ｫ繧医ｋ鬆らせ縺ｮ謠ｺ繧峨℃
 					float noise = Noise3D(
-						baseV.position.x * noiseScale + slimeCpuLogic_.time * noiseSpeed,
-						baseV.position.y * noiseScale,
-						baseV.position.z * noiseScale + slimeCpuLogic_.time * noiseSpeed
+						sx * noiseScale + slimeCpuLogic_.time * noiseSpeed,
+						sy * noiseScale,
+						sz * noiseScale + slimeCpuLogic_.time * noiseSpeed
 					);
 
+					// 元の法線方向にノイズを乗せる
 					Engine::Vector3 v = {
-						baseV.position.x + baseN.normal.x * (noise * 0.4f),
-						baseV.position.y + baseN.normal.y * (noise * 0.4f),
-						baseV.position.z + baseN.normal.z * (noise * 0.4f)
+						sx + baseN.normal.x * (noise * 0.25f),
+						sy + baseN.normal.y * (noise * 0.25f),
+						sz + baseN.normal.z * (noise * 0.25f)
 					};
 
 					// 繝ｯ繝ｼ繝ｫ繝臥ｩｺ髢薙〒縺ｮY蠎ｧ讓吶ｒ險育ｮ・
 					float worldY = tc.translate.y + (v.y * tc.scale.y);
 
 					// 2. 蝨ｰ髱｢縺ｨ縺ｮ陦晉ｪ∝愛螳壹→螟牙ｽ｢
-					if (worldY < slimeCpuLogic_.groundY) {
+					if (false && worldY < slimeCpuLogic_.groundY) {
 						float diff = slimeCpuLogic_.groundY - worldY;
 						
 						// Y繧偵け繝ｪ繝・・
@@ -755,6 +790,59 @@ void GameScene::Draw() {
 				}
 			}
 			// ----------------------------------------
+			
+			// --- 星形弾用メッシュの更新 ---
+			if (!projectileCpuLogic_.initialized && slimeCpuLogic_.initialized && !slimeCpuLogic_.baseVertices.empty()) {
+				// プレイヤーの元の球体頂点をコピーして確実なベースメッシュとして使う
+				projectileCpuLogic_.baseVertices = slimeCpuLogic_.baseVertices;
+				projectileCpuLogic_.baseNormals = slimeCpuLogic_.baseNormals; 
+				projectileCpuLogic_.indices = slimeCpuLogic_.indices;
+				projectileCpuLogic_.dynamicVerts = projectileCpuLogic_.baseVertices;
+				projectileCpuLogic_.dynamicMeshHandle = renderer_->CreateDynamicMesh(projectileCpuLogic_.baseVertices, projectileCpuLogic_.indices);
+				projectileCpuLogic_.initialized = true;
+			}
+
+			if (projectileCpuLogic_.initialized) {
+				projectileCpuLogic_.time += ctx_.dt;
+				const float pNoiseScale = 4.0f;  // 細かくうねらせる
+				const float pNoiseSpeed = 8.0f;  // 速くうねらせる
+				
+				for (size_t i = 0; i < projectileCpuLogic_.baseVertices.size(); ++i) {
+					const auto& baseV = projectileCpuLogic_.baseVertices[i];
+					const auto& baseN = projectileCpuLogic_.baseNormals[i];
+					auto& dynV = projectileCpuLogic_.dynamicVerts[i];
+
+					float bx = baseV.position.x;
+					float by = baseV.position.y;
+					float bz = baseV.position.z;
+
+					// 球体を少し大きめにベーススケール
+					float scaleUp = 1.8f;
+					float sx = bx * scaleUp;
+					float sy = by * scaleUp;
+					float sz = bz * scaleUp;
+
+					float noise = Noise3D(
+						sx * pNoiseScale + projectileCpuLogic_.time * pNoiseSpeed,
+						sy * pNoiseScale + projectileCpuLogic_.time * pNoiseSpeed,
+						sz * pNoiseScale + projectileCpuLogic_.time * pNoiseSpeed
+					);
+					
+					// ノイズを鋭くして星形の突起を作る
+					float spike = std::abs(noise) * 1.5f;
+
+					Engine::Vector3 v = {
+						sx + baseN.normal.x * spike,
+						sy + baseN.normal.y * spike,
+						sz + baseN.normal.z * spike
+					};
+
+					dynV.position = { v.x, v.y, v.z, 1.0f };
+					dynV.normal = baseN.normal; 
+				}
+				renderer_->UpdateDynamicMesh(projectileCpuLogic_.dynamicMeshHandle, projectileCpuLogic_.dynamicVerts);
+			}
+			// ----------------------------------------
 
 			hasPlayerSlime = mr.shaderName == "Slime";
 		}
@@ -768,6 +856,23 @@ void GameScene::Draw() {
 		}
 	}
 	wasLiquidated_ = isLiquidated;
+
+	// 弾エンティティに対して、星形メッシュとSlimeシェーダーを適用
+	auto projView = registry_.view<MeshRendererComponent>();
+	for (auto entity : projView) {
+		if (registry_.all_of<HitboxComponent>(entity)) {
+			auto& hb = registry_.get<HitboxComponent>(entity);
+			if (hb.isProjectile && projectileCpuLogic_.initialized) {
+				auto& pmr = registry_.get<MeshRendererComponent>(entity);
+				pmr.modelHandle = projectileCpuLogic_.dynamicMeshHandle;
+				if (registry_.all_of<NameComponent>(entity) && registry_.get<NameComponent>(entity).name == "PlayerProjectile") {
+					pmr.shaderName = "SlimeNoFace";
+				} else {
+					pmr.shaderName = "SlimeNoFaceNoDepth";
+				}
+			}
+		}
+	}
 
 	renderer_->SetCamera(camera_);
 #ifdef USE_IMGUI
@@ -847,7 +952,7 @@ void GameScene::Draw() {
 				if (hasAnim) {
 					renderer_->DrawSkinnedMesh(mr.modelHandle, mr.textureHandle, world, bonePalette, {color.x * mr.color.x, color.y * mr.color.y, color.z * mr.color.z, color.w * mr.color.w});
 				} else {
-					if (mr.shaderName == "Slime") {
+					if (mr.shaderName == "Slime" || mr.shaderName == "SlimeNoFace" || mr.shaderName == "SlimeNoFaceNoDepth") {
 						// 蜊企乗・繧ｪ繝悶ず繧ｧ繧ｯ繝医↑縺ｮ縺ｧ縲∽ｸ埼乗・繧ｪ繝悶ず繧ｧ繧ｯ繝医・閭悟ｾ後↓縺ｪ繧峨↑縺・ｈ縺・ｾ後〒謠冗判縺吶ｋ
 						continue;
 					}
@@ -886,7 +991,7 @@ void GameScene::Draw() {
 	for (auto entity : renderView) {
 		if (registry_.all_of<MeshRendererComponent>(entity)) {
 			auto& mr = registry_.get<MeshRendererComponent>(entity);
-			if (mr.shaderName == "Slime") {
+			if (mr.shaderName == "Slime" || mr.shaderName == "SlimeNoFace" || mr.shaderName == "SlimeNoFaceNoDepth") {
 				Engine::Matrix4x4 world = this->GetWorldMatrix(static_cast<int>(entity));
 				Engine::Vector4 color = { 1.0f, 1.0f, 1.0f, 1.0f };
 				if (registry_.all_of<ColorComponent>(entity)) {
@@ -895,7 +1000,7 @@ void GameScene::Draw() {
 				}
 				renderer_->DrawMesh(mr.modelHandle, mr.textureHandle, world,
 					{ color.x * mr.color.x, color.y * mr.color.y, color.z * mr.color.z, color.w * mr.color.w },
-					"Slime", mr.reflectivity > 0 ? mr.reflectivity : 1.0f, true);
+					mr.shaderName, mr.reflectivity > 0 ? mr.reflectivity : 1.0f, true);
 			}
 		}
 	}
@@ -1374,6 +1479,9 @@ void GameScene::SetTag(entt::entity entity, const std::string& tagStr) {
 }
 
 } // namespace Game
+
+
+// Dummy line to trigger rebuild
 
 
 

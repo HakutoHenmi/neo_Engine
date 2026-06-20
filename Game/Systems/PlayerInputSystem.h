@@ -10,6 +10,13 @@ public:
 	void Update(entt::registry& registry, GameContext& ctx) override {
 		if (!ctx.isPlaying) return;
 
+		// ★追加: サンドバッグモードのトグル (Tキー)
+		bool currentT = (GetAsyncKeyState('T') & 0x8000) != 0;
+		if (currentT && !prevT_) {
+			ctx.isSandbagMode = !ctx.isSandbagMode;
+		}
+		prevT_ = currentT;
+
 		auto view = registry.view<PlayerInputComponent>();
 		for (auto entity : view) {
 			auto& pi = registry.get<PlayerInputComponent>(entity);
@@ -95,11 +102,13 @@ public:
 	void Reset(entt::registry& /*registry*/) override {
 		prevSpace_ = false;
 		prevMButton_ = false;
+		prevT_ = false;
 	}
 
 private:
 	bool prevSpace_ = false;
 	bool prevMButton_ = false;
+	bool prevT_ = false;
 };
 
 } // namespace Game

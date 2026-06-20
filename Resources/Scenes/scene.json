@@ -13,9 +13,9 @@
       "locked": true,
       "translate": [0, 0, 0],
       "rotate": [0, 0, 0],
-      "scale": [50, 1, 50],
+      "scale": [200, 1, 200],
       "components": [
-        {"type": "MeshRenderer", "enabled": true, "modelPath": "Resources/Models/plane.obj", "texturePath": "Resources/Textures/white1x1.png", "shaderName": "Default", "color": [0.35,0.35,0.4,1], "uvTiling": [1,1], "uvOffset": [0,0], "reflectivity": 0, "useCubemap": false},
+        {"type": "MeshRenderer", "enabled": true, "modelPath": "Resources/Models/plane.obj", "texturePath": "Resources/Textures/white1x1.png", "shaderName": "Default", "color": [0.6,0.6,0.6,1], "uvTiling": [1,1], "uvOffset": [0,0], "reflectivity": 0, "useCubemap": false},
         {"type": "Tag", "enabled": true, "tag": "Default"},
         {"type": "GpuMeshCollider", "enabled": true, "meshPath": "Resources/Models/plane.obj", "isTrigger": false}
       ]
@@ -55,7 +55,7 @@
         {"type": "Tag", "enabled": true, "tag": "Player"},
         {"type": "PlayerInput", "enabled": true},
         {"type": "CharacterMovement", "enabled": true, "speed": 8, "jumpPower": 10, "gravity": 9.8, "heightOffset": 0.4},
-        {"type": "CameraTarget", "enabled": true, "distance": 8, "height": 1.5, "smoothSpeed": 8},
+        {"type": "CameraTarget", "enabled": true, "distance": 12.0, "height": 2.5, "smoothSpeed": 8},
         {"type": "Hitbox", "enabled": true, "center": [0,0,1.5], "size": [1.5,1.5,4], "damage": 15, "isActive": true, "tag": "Player"},
         {"type": "Hurtbox", "enabled": true, "center": [0,0,0], "size": [2,2,2], "damageMultiplier": 1, "tag": "Player"},
         {"type": "PlayerAction", "enabled": true, "parryWindow": 0.4, "dodgeDuration": 0.4, "dodgeSpeed": 15}

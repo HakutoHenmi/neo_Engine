@@ -217,11 +217,11 @@ public:
             CD3DX12_DESCRIPTOR_RANGE compSrvRange;
             compSrvRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 2, 0, 0, D3D12_SHADER_VISIBILITY_PIXEL);
             
-            CD3DX12_ROOT_PARAMETER compParams[2];
+            CD3DX12_ROOT_PARAMETER compParams[2]{};
             compParams[0].InitAsDescriptorTable(1, &compSrvRange, D3D12_SHADER_VISIBILITY_PIXEL);
             compParams[1].InitAsConstantBufferView(0, 0, D3D12_SHADER_VISIBILITY_PIXEL);
             
-            CD3DX12_STATIC_SAMPLER_DESC compSamplers[2];
+            CD3DX12_STATIC_SAMPLER_DESC compSamplers[2]{};
             compSamplers[0].Init(0, D3D12_FILTER_MIN_MAG_MIP_POINT);
             compSamplers[1].Init(1, D3D12_FILTER_MIN_MAG_MIP_LINEAR);
             

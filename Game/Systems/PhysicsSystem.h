@@ -127,8 +127,20 @@ public:
 					if (distSq > (sphereR1 + sphereR2) * (sphereR1 + sphereR2)) continue;
 
 					bool isC1 = false, isC2 = false;
-					if (auto* tag1 = registry.try_get<TagComponent>(d1.entity)) isC1 = (tag1->tag == TagType::Player || tag1->tag == TagType::Enemy);
-					if (auto* tag2 = registry.try_get<TagComponent>(d2.entity)) isC2 = (tag2->tag == TagType::Player || tag2->tag == TagType::Enemy);
+					bool isProj1 = false, isProj2 = false;
+					if (auto* tag1 = registry.try_get<TagComponent>(d1.entity)) {
+						isC1 = (tag1->tag == TagType::Player || tag1->tag == TagType::Enemy);
+						isProj1 = (tag1->tag == TagType::Projectile || tag1->tag == TagType::VFX);
+					}
+					if (auto* tag2 = registry.try_get<TagComponent>(d2.entity)) {
+						isC2 = (tag2->tag == TagType::Player || tag2->tag == TagType::Enemy);
+						isProj2 = (tag2->tag == TagType::Projectile || tag2->tag == TagType::VFX);
+					}
+
+					// エフェクトや弾がプレイヤーや敵を物理的に押し出さないようにする
+					if ((isProj1 && isC2) || (isProj2 && isC1) || (isProj1 && isProj2)) {
+						continue;
+					}
 
 					DirectX::XMVECTOR aAxes[3] = {
 						DirectX::XMLoadFloat3(reinterpret_cast<const DirectX::XMFLOAT3*>(&d1.axes[0])),
