@@ -58,8 +58,8 @@ float4 main(float4 svpos:SV_POSITION, float3 worldPos:TEXCOORD0, float3 normal:T
     float3 albedo = tex.rgb * gColor.rgb; 
     float3 N = normalize(normal); 
     
-    // プロシージャル和紙マテリアルを適用
-    ApplyProceduralPaper(worldPos, albedo, N, 0.4, 0.8);
+    // プロシージャル和紙マテリアルを適用（床の模様が邪魔という要望により無効化）
+    // ApplyProceduralPaper(worldPos, albedo, N, 0.4, 0.8);
 
     float3 V = normalize(gCamPos - worldPos);
     float3 finalColor = albedo * gAmbientColor;

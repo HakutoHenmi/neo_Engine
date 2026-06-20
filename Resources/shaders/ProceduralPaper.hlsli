@@ -36,45 +36,7 @@ float fbm(float3 p) {
 
 // プロシージャル和紙マテリアル適用関数
 void ApplyProceduralPaper(float3 worldPos, inout float3 albedo, inout float3 normal, float scale = 1.0, float strength = 1.0) {
-    
-    // スケールを調整（細かすぎないようにする）
-    float paperScale = 4.0 * scale;
-    
-    // 1. 和紙のベースとなる大きなムラ (ふんわりとした雲のようなムラ)
-    float baseNoise = fbm(worldPos * paperScale);
-    
-    // 2. 和紙の細かいザラザラ（繊維のちり）
-    // 倍率を8.0から4.0に下げて、テレビの砂嵐のような細かすぎるノイズを防ぐ
-    float detailScale = paperScale * 4.0;
-    float detailNoise = fbm(worldPos * detailScale);
-    
-    // コントラストを少し柔らかく調整
-    float mura = smoothstep(0.3, 0.7, baseNoise);
-    float zara = smoothstep(0.4, 0.7, detailNoise);
-    
-    // 3. 法線の乱れ (バンプマッピング)
-    float epsilon = 0.01;
-    // ザラザラ感だけを法線に適用 (偏微分)
-    float nx = fbm((worldPos + float3(epsilon, 0, 0)) * detailScale) - detailNoise;
-    float ny = fbm((worldPos + float3(0, epsilon, 0)) * detailScale) - detailNoise;
-    float nz = fbm((worldPos + float3(0, 0, epsilon)) * detailScale) - detailNoise;
-
-    // バンプの感度を大幅に下げる (5.0 -> 0.5)
-    // ノイズの差分が大きすぎると元の法線を完全に上書きしてしまい、アルミホイルのように乱反射するため。
-    float3 bumpNormal = float3(nx, ny, nz) * 0.5; 
-    
-    // バンプの強度をかける
-    normal = normalize(normal + bumpNormal * strength);
-    
-    // 4. 色のブレンド
-    
-    // ムラによるごくわずかな明暗（濁りを防ぐためさらに控えめに）
-    albedo *= lerp(0.9, 1.05, mura); 
-    
-    // 細かい繊維（白）を上からブレンドする
-    float3 fiberColor = float3(1.0, 0.98, 0.95);
-    
-    // ザラザラノイズの白飛びを抑える (0.4 -> 0.15)
-    albedo = lerp(albedo, fiberColor, zara * 0.15 * strength);
+    // ユーザーの要望により、床やオブジェクトに乗る「和紙エフェクト（ノイズ）」を完全に無効化します。
+    // albedo や normal には何の変更も加えません。
 }
 #endif // PROCEDURAL_PAPER_HLSLI

@@ -1,7 +1,15 @@
 #include "Obj.hlsli"
 
-VSOutput main(float4 pos : POSITION, float3 normal : NORMAL, float2 uv : TEXCOORD) {
-    VSOutput output;
+struct SlimeVSOutput {
+    float4 svpos : SV_POSITION;
+    float4 worldpos : POSITION;
+    float3 normal : NORMAL;
+    float2 uv : TEXCOORD0;
+    float3 localpos : TEXCOORD1;
+};
+
+SlimeVSOutput main(float4 pos : POSITION, float3 normal : NORMAL, float2 uv : TEXCOORD) {
+    SlimeVSOutput output;
     
     // ワールド座標を計算
     output.worldpos = mul(pos, world);
@@ -13,6 +21,7 @@ VSOutput main(float4 pos : POSITION, float3 normal : NORMAL, float2 uv : TEXCOOR
     output.normal = normalize(mul(normal, (float3x3)world));
     
     output.uv = uv;
+    output.localpos = pos.xyz;
 
     return output;
 }

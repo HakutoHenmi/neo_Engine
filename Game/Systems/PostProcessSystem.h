@@ -17,7 +17,8 @@ public:
         // --- 0. 和風テクスチャのロードと設定 (初回のみ) ---
         static bool texturesLoaded = false;
         if (!texturesLoaded) {
-            auto paper = renderer->LoadTexture2D("Resources/Textures/paper.png");
+            // ★和紙エフェクトを無くすため、paper.png の代わりに無地の白テクスチャを渡す
+            auto paper = renderer->LoadTexture2D("Resources/Textures/white1x1.png");
             auto vignette = renderer->LoadTexture2D("Resources/Textures/vignette.png");
             renderer->SetSumiETextures(paper, vignette);
             texturesLoaded = true;
@@ -25,12 +26,12 @@ public:
 
         // --- 1. ベースパラメータの設定 (明るさとクリアさを重視) ---
         Engine::Renderer::PostProcessParams target;
-        target.noiseStrength = 0.6f; // 紙の凹凸による歪みと質感の強さ
+        target.noiseStrength = 0.0f; // ★紙の凹凸（ノイズ）を完全に無効化
         target.vignette = 0.0f;      // デフォルトではダメージビネットはゼロ
         target.chromaShift = 0.6f;   // 線の太さ
         target.distortion = 0.0f;
         target.san = 0.0f;
-        target.scanline = 0.02f;      // 極めて薄い階調化 (常時)
+        target.scanline = 0.0f;      // ★階調化ノイズも無効化
 
         bool isLowHealth = false;
         bool isDead = false;
@@ -145,7 +146,7 @@ public:
     void Reset(entt::registry& /*registry*/) override {
         currentParams_ = Engine::Renderer::PostProcessParams();
         currentParams_.vignette = 0.0f;
-        currentParams_.noiseStrength = 0.6f;
+        currentParams_.noiseStrength = 0.0f;
         hitPulseTimer_ = 0.0f;
         actionPulseTimer_ = 0.0f;
         hitStopPulse_ = 0.0f;

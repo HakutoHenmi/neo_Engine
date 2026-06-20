@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 #include "IScene.h"
 #include "Camera.h"
 #include "Renderer.h"
@@ -90,6 +90,7 @@ private:
 		std::vector<Particle> particles;
 	};
 	PlayerSlimeCpuLogic slimeCpuLogic_;
+	PlayerSlimeCpuLogic projectileCpuLogic_; // Projectile mesh logic
 
     Engine::WindowDX* dx_ = nullptr;
     Engine::Renderer* renderer_ = nullptr;

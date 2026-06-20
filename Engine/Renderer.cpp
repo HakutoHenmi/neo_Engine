@@ -463,7 +463,7 @@ void Renderer::FlushDrawCalls() {
 
 	for (const auto& dc : drawCalls_) {
 		if (dc.shaderName == "Distortion") continue; // 空間のゆがみは EndFrame で別途描画
-		if (dc.shaderName == "Slime" || dc.shaderName == "Hologram" || dc.shaderName == "ForceField" || dc.shaderName == "Reflection" || dc.shaderName == "Particle" || dc.shaderName == "ParticleAdditive" || dc.isParticle) continue;
+		if (dc.shaderName == "Slime" || dc.shaderName == "SlimeNoFace" || dc.shaderName == "SlimeNoFaceNoDepth" || dc.shaderName == "Hologram" || dc.shaderName == "ForceField" || dc.shaderName == "Reflection" || dc.shaderName == "Particle" || dc.shaderName == "ParticleAdditive" || dc.isParticle) continue;
 
 		auto* model = GetModel(dc.mesh);
 		if (!model) continue;
@@ -694,7 +694,7 @@ void Renderer::FlushDrawCalls() {
 
 	// --- 半透明オブジェクトの描画 (不透明オブジェクトの後に描画する) ---
 	for (const auto& dc : drawCalls_) {
-		if (dc.shaderName != "Slime" && dc.shaderName != "Hologram" && dc.shaderName != "ForceField" && dc.shaderName != "Reflection" && dc.shaderName != "Particle" && dc.shaderName != "ParticleAdditive" && !dc.isParticle) continue;
+		if (dc.shaderName != "Slime" && dc.shaderName != "SlimeNoFace" && dc.shaderName != "SlimeNoFaceNoDepth" && dc.shaderName != "Hologram" && dc.shaderName != "ForceField" && dc.shaderName != "Reflection" && dc.shaderName != "Particle" && dc.shaderName != "ParticleAdditive" && !dc.isParticle) continue;
 
 		auto* model = GetModel(dc.mesh);
 		if (!model) continue;
@@ -1335,7 +1335,7 @@ bool Renderer::CreateShaderPipeline(const std::string& shaderName, const std::ws
 // ★追加：透明/加算 用 PSO作成
 // additive=false: 通常αブレンド
 // additive=true : 加算（エネルギー向き）
-bool Renderer::CreatePSO_Transparent(const std::string& name, ID3DBlob* vsBlob, ID3DBlob* psBlob, bool additive) {
+bool Renderer::CreatePSO_Transparent(const std::string& name, ID3DBlob* vsBlob, ID3DBlob* psBlob, bool additive, bool depthTest) {
 	if (!vsBlob || !psBlob)
 		return false;
 
@@ -1391,6 +1391,10 @@ bool Renderer::CreatePSO_Transparent(const std::string& name, ID3DBlob* vsBlob, 
 	pso.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
 	pso.DSVFormat = DXGI_FORMAT_D32_FLOAT;
 	pso.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ZERO;
+	if (!depthTest) {
+		pso.DepthStencilState.DepthEnable = FALSE;
+		pso.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_ALWAYS;
+	}
 
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> newPipeline;
 	if (FAILED(dev_->CreateGraphicsPipelineState(&pso, IID_PPV_ARGS(&newPipeline)))) {
@@ -1408,13 +1412,13 @@ bool Renderer::CreatePSO_Transparent(const std::string& name, ID3DBlob* vsBlob, 
 
 
 // 追加：透明/加算 シェーダー登録
-bool Renderer::CreateShaderPipelineTransparent(const std::string& shaderName, const std::wstring& vsPath, const std::wstring& psPath, bool additive) {
+bool Renderer::CreateShaderPipelineTransparent(const std::string& shaderName, const std::wstring& vsPath, const std::wstring& psPath, bool additive, bool depthTest) {
 	auto vs = CompileShaderFromFile(vsPath.c_str(), "main", "vs_5_0");
 	auto ps = CompileShaderFromFile(psPath.c_str(), "main", "ps_5_0");
 	if (!vs || !ps)
 		return false;
 
-	return CreatePSO_Transparent(shaderName, vs.Get(), ps.Get(), additive);
+	return CreatePSO_Transparent(shaderName, vs.Get(), ps.Get(), additive, depthTest);
 }
 
 bool Renderer::InitPipelines() {
@@ -1984,8 +1988,13 @@ float4 main(PSIn i) : SV_TARGET { return i.color; }
 		// ★追加: スライムシェーダー
 		auto vsSlime = CompileShaderFromFile(L"Resources/shaders/SlimeVS.hlsl", "main", "vs_5_0");
 		auto psSlime = CompileShaderFromFile(L"Resources/shaders/SlimePS.hlsl", "main", "ps_5_0");
+		auto psSlimeNoFace = CompileShaderFromFile(L"Resources/shaders/SlimeNoFacePS.hlsl", "main", "ps_5_0");
 		if (vsSlime && psSlime) {
 			CreatePSO_Transparent("Slime", vsSlime.Get(), psSlime.Get(), false);
+		}
+		if (vsSlime && psSlimeNoFace) {
+			CreatePSO_Transparent("SlimeNoFace", vsSlime.Get(), psSlimeNoFace.Get(), false);
+			CreatePSO_Transparent("SlimeNoFaceNoDepth", vsSlime.Get(), psSlimeNoFace.Get(), false, false);
 		}
 	}
 

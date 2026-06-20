@@ -42,6 +42,10 @@ public:
 			if (registry.all_of<TagComponent>(hbEntity)) {
 				hbTag = registry.get<TagComponent>(hbEntity).tag;
 			}
+			// ★修正: 弾（Projectile）の攻撃判定は、プレイヤー陣営（Player）として扱うことで自分自身へのヒットを防ぐ
+			if (hbTag == TagType::Projectile) {
+				hbTag = TagType::Player;
+			}
 
 			for (auto hrEntity : hurtboxView) {
 				// 自分自身とは衝突しない
@@ -88,18 +92,24 @@ public:
 					continue;
 				}
 
+				// ★修正: 弾の場合は、ダメージが通る通らない（敵の無敵時間）に関わらず、触れた時点で即座に消滅させる
+				if (hb.isProjectile) {
+					if (registry.all_of<AutoDestroyComponent>(hbEntity)) {
+						registry.get<AutoDestroyComponent>(hbEntity).timer = 0.0f;
+					}
+				}
+
 				// --- 通常ダメージ処理 ---
-					// --- 通常ダメージ処理 ---
-					bool hitSuccess = ApplyDamage(registry, hrEntity, hb.damage * hr.damageMultiplier, ctx);
+				bool hitSuccess = ApplyDamage(registry, hrEntity, hb.damage * hr.damageMultiplier, ctx);
 
-					// 無敵時間などでダメージが適用されなかった場合は、履歴に残さず（後で当たるように）スキップ
-					if (!hitSuccess) continue;
+				// 無敵時間などでダメージが適用されなかった場合は、履歴に残さず（後で当たるように）スキップ
+				if (!hitSuccess) continue;
 
-					// ダメージが通ったのでヒット履歴に記録
-					hb.hitTargets.push_back(hrEntity);
-					
-					uint64_t pairKey = MakePairKey(hbEntity, hrEntity);
-					hitPairs_.insert(pairKey);
+				// ダメージが通ったのでヒット履歴に記録
+				hb.hitTargets.push_back(hrEntity);
+				
+				uint64_t pairKey = MakePairKey(hbEntity, hrEntity);
+				hitPairs_.insert(pairKey);
 
 					// 攻撃側のヒットストップ
 					if (registry.all_of<PlayerActionComponent>(hbEntity)) {
@@ -112,18 +122,44 @@ public:
 						ctx.camera->StartShake(0.3f, 0.15f); // 時間, 振幅
 					}
 
-					// ★追加: ヒットエフェクト（パーティクル）の生成
-					auto effectEntity = registry.create();
-					auto& tc = registry.emplace<TransformComponent>(effectEntity);
-					tc.translate = {
-						(hbWorldCenter.x + hrWorldCenter.x) * 0.5f,
-						(hbWorldCenter.y + hrWorldCenter.y) * 0.5f,
-						(hbWorldCenter.z + hrWorldCenter.z) * 0.5f
-					};
-					auto& sc = registry.emplace<ScriptComponent>(effectEntity);
-					ScriptEntry entry;
-					entry.scriptPath = "HitEffectScript";
-					sc.scripts.push_back(entry);
+					// ★追加: ヒットエフェクト（パーティクル等）の生成
+					// プレイヤーの攻撃（スライム攻撃）がヒットした時のみエフェクトを出す
+					if (hb.tag == TagType::Player) {
+						auto effectEntity = registry.create();
+						registry.emplace<NameComponent>(effectEntity, "HitEffect");
+						auto& tc = registry.emplace<TransformComponent>(effectEntity);
+						
+						Engine::Vector3 attackDir = {
+							std::sin(hbTc.rotate.y),
+							0.0f,
+							std::cos(hbTc.rotate.y)
+						};
+
+						// ヒット位置を計算し、攻撃者の方向へめっちゃ手前に寄せる
+						tc.translate = {
+							(hbWorldCenter.x + hrWorldCenter.x) * 0.5f - attackDir.x * 1.5f,
+							(hbWorldCenter.y + hrWorldCenter.y) * 0.5f,
+							(hbWorldCenter.z + hrWorldCenter.z) * 0.5f - attackDir.z * 1.5f
+						};
+
+						auto& sc = registry.emplace<ScriptComponent>(effectEntity);
+						ScriptEntry entry;
+						entry.scriptPath = "HitEffectScript";
+						
+						bool isExplosionAttack = false;
+						if (registry.all_of<NameComponent>(hbEntity)) {
+							if (registry.get<NameComponent>(hbEntity).name == "ExplosionHitbox") {
+								isExplosionAttack = true;
+							}
+						}
+
+						if (isExplosionAttack) {
+							entry.parameterData = "isExplosionHit=1";
+						} else if (!hb.isProjectile) {
+							entry.parameterData = "isMelee=1,dirX=" + std::to_string(attackDir.x) + ",dirZ=" + std::to_string(attackDir.z);
+						}
+						sc.scripts.push_back(entry);
+					}
 			}
 		}
 	}
@@ -161,7 +197,18 @@ private:
 			auto& part = registry.get<BodyPartComponent>(target);
 			if (part.isDestroyed) return false; // すでに破壊済みなら無視
 
-			part.hp -= damage;
+			// サンドバッグモードかつ敵ならHPを減らさない
+			bool isEnemy = false;
+			if (registry.valid(part.parentEntity) && registry.all_of<TagComponent>(part.parentEntity)) {
+				isEnemy = (registry.get<TagComponent>(part.parentEntity).tag == TagType::Enemy);
+			} else if (registry.all_of<TagComponent>(target)) {
+				isEnemy = (registry.get<TagComponent>(target).tag == TagType::Enemy);
+			}
+
+			if (!(ctx.isSandbagMode && isEnemy)) {
+				part.hp -= damage;
+			}
+			
 			if (part.hp <= 0.0f) {
 				part.hp = 0.0f;
 				part.isDestroyed = true;
@@ -193,7 +240,15 @@ private:
 		// 無敵時間中はダメージを受けない
 		if (hc.invincibleTime > 0.0f) return false;
 
-		hc.hp -= damage;
+		// サンドバッグモードかつ敵ならHPを減らさない
+		bool isEnemyBase = false;
+		if (registry.all_of<TagComponent>(target)) {
+			isEnemyBase = (registry.get<TagComponent>(target).tag == TagType::Enemy);
+		}
+		
+		if (!(ctx.isSandbagMode && isEnemyBase)) {
+			hc.hp -= damage;
+		}
 		hc.hitFlashTimer = 0.1f; // ヒットフラッシュ演出
 		hc.hitStopTimer = 0.05f; // 被弾側の軽いヒットストップ
 

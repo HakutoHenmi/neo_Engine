@@ -28,6 +28,9 @@ public:
 			auto& boss = view.get<BossActionComponent>(entity);
 			auto& tc = view.get<TransformComponent>(entity);
 			if (!boss.enabled) continue;
+			
+			// ★追加: サンドバッグモード時はボスの行動（AI更新）を停止する
+			if (ctx.isSandbagMode) continue;
 
 			float dx = playerPos.x - tc.translate.x;
 			float dz = playerPos.z - tc.translate.z;

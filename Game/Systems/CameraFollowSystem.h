@@ -111,10 +111,11 @@ public:
 			float camSx = std::sin(curRot.x);
 			float camCx = std::cos(curRot.x);
 
+			float totalDistance = ct.distance + ct.distanceOffset;
 			DirectX::XMFLOAT3 offset = {
-				-camSy * camCx * ct.distance,
-				ct.height + camSx * ct.distance,
-				-camCy * camCx * ct.distance
+				-camSy * camCx * totalDistance,
+				ct.height + camSx * totalDistance,
+				-camCy * camCx * totalDistance
 			};
 
 			DirectX::XMFLOAT3 desiredPos = {

@@ -64,6 +64,9 @@ public:
 			auto& tc = view.get<TransformComponent>(entity);
 			if (!ai.enabled) continue;
 
+			// ★追加: サンドバッグモード時は敵の行動（AI更新）を停止する
+			if (ctx.isSandbagMode) continue;
+
 			// --- プレイヤーとの距離・方向計算 ---
 			float dx = playerPos.x - tc.translate.x;
 			float dz = playerPos.z - tc.translate.z;

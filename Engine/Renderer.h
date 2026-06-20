@@ -375,9 +375,9 @@ public:
 	// Modelへのポインタを取得
 	Model* GetModel(MeshHandle handle);
 	// 追加：透明/加算 シェーダー登録
-	bool CreateShaderPipelineTransparent(const std::string& shaderName, const std::wstring& vsPath, const std::wstring& psPath, bool additive);
+	bool CreateShaderPipelineTransparent(const std::string& shaderName, const std::wstring& vsPath, const std::wstring& psPath, bool additive, bool depthTest = true);
 	// 追加：透明/加算 用 PSO作成
-	bool CreatePSO_Transparent(const std::string& name, ID3DBlob* vsBlob, ID3DBlob* psBlob, bool additive);
+	bool CreatePSO_Transparent(const std::string& name, ID3DBlob* vsBlob, ID3DBlob* psBlob, bool additive, bool depthTest = true);
 
 	bool CreatePSOAlpha(const std::string& name, ID3DBlob* vsBlob, ID3DBlob* psBlob);
 
