@@ -45,7 +45,7 @@ static std::vector<entt::entity> RestoreSceneFromJson(GameScene* scene, const js
 	auto& reg = scene->GetRegistry();
 	if (!append) {
 		OutputDebugStringA("[EditorUI] RestoreSceneFromJson: Clearing registry (FULL RELOAD)\n");
-		reg.clear();
+		scene->ClearScene(); // ★修正: reg.clear() の代わりに ClearScene を呼び出し、内部の全キューとシステムをクリアする
 		scene->GetSelectedEntities().clear();
 		scene->SetSelectedEntity(entt::null);
 	}
@@ -550,12 +550,14 @@ static std::string EscapeJson(const std::string& s) {
 static std::string SerializeEntity(entt::registry& registry, entt::entity entity) {
 	std::stringstream ss;
 	ss << "    {\n";
-	uint32_t id = static_cast<uint32_t>(entity);
+	uint32_t id = static_cast<uint32_t>(entt::to_entity(entity)); // ★修正: バージョン情報を除外し、純粋なインデックスのみを保存する
 	ss << "      \"id\": " << id << ",\n";
 	
 	uint32_t parentId = 0;
 	if (auto* hc = registry.try_get<HierarchyComponent>(entity)) {
-		parentId = static_cast<uint32_t>(hc->parentId);
+		if (registry.valid(hc->parentId)) {
+			parentId = static_cast<uint32_t>(entt::to_entity(hc->parentId));
+		}
 	}
 	ss << "      \"parentId\": " << parentId << ",\n";
 

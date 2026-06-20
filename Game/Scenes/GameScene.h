@@ -35,6 +35,7 @@ public:
 	entt::entity CreateEntity(const std::string& name = "New Object");
 	// 笘・ｿｽ蜉: 繧ｪ繝悶ず繧ｧ繧ｯ繝医ｒID縺ｧ遐ｴ譽・ｿ晉蕗縺ｫ縺吶ｋ
 	void DestroyObject(uint32_t id);
+	void ClearScene(); // ★追加: シーンの完全クリアとキューのリセット
 
     entt::registry& GetRegistry() { return registry_; }
     const entt::registry& GetRegistry() const { return registry_; }
@@ -111,6 +112,9 @@ private:
 	std::vector<entt::entity> pendingTagRemoved_; // 笘・ｿｽ蜉: 遐ｴ譽・凾縺ｮ繧ｭ繝｣繝・す繝･蜑企勁蠕・■
 	void OnTagAdded(entt::registry& reg, entt::entity entity);
 	void OnTagRemoved(entt::registry& reg, entt::entity entity);
+
+	// スクリプト破棄用コールバック
+	void OnScriptDestroyed(entt::registry& registry, entt::entity entity);
 
 	// 陦悟・險育ｮ励く繝｣繝・す繝･ (FPS蜷台ｸ顔畑)
 	mutable std::unordered_map<entt::entity, Engine::Matrix4x4> matrixCache_;

@@ -270,28 +270,7 @@ void HitEffectScript::Start(entt::entity entity, GameScene* scene) {
 		}
 	}
 
-	// --- インパクトフラッシュ ---
-	if (!isExplosion_) {
-		impactEntity_ = scene->CreateEntity("ImpactFlash");
-		auto& itc = registry.get<TransformComponent>(impactEntity_);
-		itc.translate = pos;
-		itc.scale = { 0.5f, 0.5f, 0.5f };
 
-		auto& imr = registry.emplace<MeshRendererComponent>(impactEntity_);
-		imr.modelPath = "Resources/Models/sphere.obj"; 
-		imr.texturePath = "Resources/Textures/white1x1.png";
-		if (isMelee_) {
-			imr.shaderName = "SlimeNoFaceNoDepth"; 
-			imr.color = { 0.0f, 1.0f, 1.0f, 0.99f }; 
-		} else {
-			imr.shaderName = "EmissiveGlow"; 
-			imr.color = { 0.0f, 1.0f, 1.0f, 0.5f }; 
-		}
-		if (scene->GetRenderer()) {
-			imr.modelHandle = scene->GetRenderer()->LoadObjMesh(imr.modelPath);
-			imr.textureHandle = scene->GetRenderer()->LoadTexture2D(imr.texturePath);
-		}
-	}
 }
 
 void HitEffectScript::Update(entt::entity entity, GameScene* scene, float dt) {
@@ -299,29 +278,7 @@ void HitEffectScript::Update(entt::entity entity, GameScene* scene, float dt) {
 	
 	auto& registry = scene->GetRegistry();
 
-	// インパクトフラッシュの急拡大とフェードアウト
-	if (impactEntity_ != entt::null && registry.valid(impactEntity_)) {
-		if (registry.all_of<TransformComponent>(impactEntity_) && registry.all_of<MeshRendererComponent>(impactEntity_)) {
-			auto& itc = registry.get<TransformComponent>(impactEntity_);
-			auto& imr = registry.get<MeshRendererComponent>(impactEntity_);
 
-			float impactDur = 0.15f; 
-			if (timer_ <= impactDur) {
-				float t = timer_ / impactDur; 
-				float s = 0.5f + t * 3.5f; // 一気に大きく膨らむ
-				
-				// スライムの球体が弾けるように均等にスケールアップ
-				itc.scale = { s, s, s };
-				
-				imr.color.w = (isMelee_ ? 0.99f : 0.5f) * (1.0f - t);
-			} else {
-				if (scene) {
-					scene->DestroyObject(static_cast<uint32_t>(impactEntity_));
-				}
-				impactEntity_ = entt::null;
-			}
-		}
-	}
 
 	// 破片の独自物理・バウンド・破裂処理
 	float gravity = 25.0f;
@@ -548,18 +505,11 @@ void HitEffectScript::Update(entt::entity entity, GameScene* scene, float dt) {
 					scene->DestroyObject(static_cast<uint32_t>(fd.entity));
 				}
 			}
-			if (impactEntity_ != entt::null && registry.valid(impactEntity_)) {
-				scene->DestroyObject(static_cast<uint32_t>(impactEntity_));
-			}
 		}
 		fragments_.clear();
-		impactEntity_ = entt::null;
 
-		if (registry.all_of<ScriptComponent>(entity)) {
-			auto& sc = registry.get<ScriptComponent>(entity);
-			auto it = std::remove_if(sc.scripts.begin(), sc.scripts.end(),
-				[](const auto& entry) { return entry.scriptPath == "HitEffectScript"; });
-			sc.scripts.erase(it, sc.scripts.end());
+		if (scene) {
+			scene->DestroyObject(static_cast<uint32_t>(entity));
 		}
 	}
 }
@@ -572,12 +522,8 @@ void HitEffectScript::OnDestroy(entt::entity /*entity*/, GameScene* scene) {
 				scene->DestroyObject(static_cast<uint32_t>(fd.entity));
 			}
 		}
-		if (impactEntity_ != entt::null && registry.valid(impactEntity_)) {
-			scene->DestroyObject(static_cast<uint32_t>(impactEntity_));
-		}
 	}
 	fragments_.clear();
-	impactEntity_ = entt::null;
 }
 
 std::string HitEffectScript::SerializeParameters() {

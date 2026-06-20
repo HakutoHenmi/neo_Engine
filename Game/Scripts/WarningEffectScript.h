@@ -22,6 +22,7 @@ private:
 	float origG_ = 1.0f;
 	float origB_ = 1.0f;
 	float origA_ = 1.0f;
+	bool isFinished_ = false;
 };
 
 } // namespace Game

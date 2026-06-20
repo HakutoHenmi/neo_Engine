@@ -51,6 +51,11 @@ public:
 				toDestroy.push_back(entity);
 			}
 		}
+
+		// ★重複を排除して二重破棄を防止
+		std::sort(toDestroy.begin(), toDestroy.end());
+		toDestroy.erase(std::unique(toDestroy.begin(), toDestroy.end()), toDestroy.end());
+
 		for (auto e : toDestroy) {
 			if (registry.valid(e)) {
 				registry.destroy(e);

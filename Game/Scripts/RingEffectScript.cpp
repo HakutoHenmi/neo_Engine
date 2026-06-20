@@ -67,11 +67,8 @@ void RingEffectScript::Update(entt::entity entity, GameScene* scene, float dt) {
 	}
 
 	if (timer_ >= duration_) {
-		if (registry.all_of<ScriptComponent>(entity)) {
-			auto& sc = registry.get<ScriptComponent>(entity);
-			auto it = std::remove_if(sc.scripts.begin(), sc.scripts.end(),
-				[](const auto& entry) { return entry.scriptPath == "RingEffectScript"; });
-			sc.scripts.erase(it, sc.scripts.end());
+		if (scene) {
+			scene->DestroyObject(static_cast<uint32_t>(entity));
 		}
 	}
 }
