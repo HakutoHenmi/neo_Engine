@@ -15,13 +15,9 @@ public:
 	}
 
 	void Reset(entt::registry& registry) override {
-		// 武器エンティティを一旦すべて削除
 		auto view = registry.view<PlayerWeaponComponent>();
 		for (auto entity : view) {
 			auto& pw = registry.get<PlayerWeaponComponent>(entity);
-			for (auto we : pw.weaponEntities) {
-				if (registry.valid(we)) registry.destroy(we);
-			}
 			pw.weaponEntities.clear();
 		}
 	}

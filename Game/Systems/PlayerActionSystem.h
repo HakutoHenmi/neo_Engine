@@ -40,10 +40,12 @@ public:
 		if (!ctx.isPlaying) return;
 
 		auto view = registry.view<PlayerActionComponent, PlayerInputComponent, TransformComponent>();
-		for (auto entity : view) {
-			auto& pa = view.get<PlayerActionComponent>(entity);
-			auto& pi = view.get<PlayerInputComponent>(entity);
-			auto& tc = view.get<TransformComponent>(entity);
+		std::vector<entt::entity> entities(view.begin(), view.end());
+		for (auto entity : entities) {
+			if (!registry.valid(entity)) continue;
+			auto& pa = registry.get<PlayerActionComponent>(entity);
+			auto& pi = registry.get<PlayerInputComponent>(entity);
+			auto& tc = registry.get<TransformComponent>(entity);
 			if (!pa.enabled || !pi.enabled) continue;
 
 			if (pa.hitStopTimer > 0.0f) {
@@ -369,7 +371,7 @@ public:
 		for (const auto& ps : pendingProjectiles_) {
 			if (ctx.scene) {
 				entt::entity proj = ctx.scene->CreateEntity("PlayerProjectile");
-				auto& ptc = registry.emplace<TransformComponent>(proj);
+				auto& ptc = registry.get<TransformComponent>(proj);
 				ptc.translate = ps.pos;
 				ptc.rotate = ps.rot;
 				ptc.scale = { 0.6f, 0.6f, 0.6f };
