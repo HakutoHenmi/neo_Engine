@@ -1,6 +1,7 @@
 #pragma once
 #include "ISystem.h"
 #include "../Scenes/GameScene.h"
+#include "EnemyAISystem.h"
 #include <unordered_map>
 
 namespace Game {
@@ -74,7 +75,34 @@ public:
 			lastHp_[eid] = hc.hp;
 
 			if (hc.hp <= 0.0f && !hc.isDead) {
-				hc.isDead = true;
+				bool isEnemy = false;
+				if (registry.all_of<TagComponent>(entity) && registry.get<TagComponent>(entity).tag == TagType::Enemy) {
+					isEnemy = true;
+				}
+
+				if (isEnemy && registry.all_of<MeshRendererComponent>(entity)) {
+					auto& mr = registry.get<MeshRendererComponent>(entity);
+					if (mr.shaderName != "Dissolve") {
+						mr.shaderName = "Dissolve";
+						mr.color.w = 1.0f; // ディゾルブ開始は不透明から
+
+						if (!registry.all_of<AutoDestroyComponent>(entity)) {
+							registry.emplace<AutoDestroyComponent>(entity).timer = 1.5f; // 1.5秒かけて消滅
+						}
+
+						// 攻撃・被弾判定の無効化
+						if (registry.all_of<HurtboxComponent>(entity)) registry.get<HurtboxComponent>(entity).enabled = false;
+						if (registry.all_of<HitboxComponent>(entity)) registry.get<HitboxComponent>(entity).isActive = false;
+						if (registry.all_of<BoxColliderComponent>(entity)) registry.get<BoxColliderComponent>(entity).enabled = false;
+						
+						// AI更新停止
+						if (registry.all_of<EnemyAIComponent>(entity)) registry.get<EnemyAIComponent>(entity).enabled = false;
+
+						hc.enabled = false; // 以降のダメージ処理を止める（isDeadはfalseのまま残す）
+					}
+				} else {
+					hc.isDead = true;
+				}
 			}
 		}
 
