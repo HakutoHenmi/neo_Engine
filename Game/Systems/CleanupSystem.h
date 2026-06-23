@@ -34,6 +34,17 @@ public:
 		for (auto entity : autoView) {
 			auto& adc = registry.get<AutoDestroyComponent>(entity);
 			adc.timer -= ctx.dt;
+
+			// ディゾルブ用: タイマーに合わせて color.a を下げる
+			if (registry.all_of<MeshRendererComponent>(entity)) {
+				auto& mr = registry.get<MeshRendererComponent>(entity);
+				if (mr.shaderName == "Dissolve") {
+					// timerが1.5f -> 0.0f に変化するのを 1.0f -> 0.0f の割合として color.a に適用
+					// 初期値が1.5fだとする
+					mr.color.w = std::clamp(adc.timer / 1.5f, 0.0f, 1.0f);
+				}
+			}
+
 			if (adc.timer <= 0.0f) {
 				toDestroy.push_back(entity);
 			}

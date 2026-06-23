@@ -18,8 +18,8 @@ float4 main(VSOutput input) : SV_TARGET
     float2 uv = input.uv;
     float4 texColor = tex.Sample(smp, uv);
     
-    // 時間でディゾルブ閾値を変動ループ (0..1)
-    float threshold = sin(time * 0.5) * 0.5 + 0.5;
+    // color.a (0.0 ~ 1.0) を閾値として利用（1.0のとき完全に表示、0.0で完全に消える）
+    float threshold = 1.0 - color.a;
     
     // オブジェクトローカル座標やUVベースのノイズ
     float n = noise(uv * 10.0 + input.worldpos.xy * 0.5);
