@@ -2,6 +2,7 @@
 #include "ISystem.h"
 #include <vector>
 #include "../../externals/entt/entt.hpp"
+#include "../ObjectTypes.h"
 
 namespace Game {
 
