@@ -13,7 +13,7 @@ void GameOverScene::Initialize(Engine::WindowDX* dx, const Engine::SceneParamete
 
     // ゲームオーバー演出として、画面全体に平滑化（ぼかし）エフェクトを適用
     if (auto* renderer = Engine::Renderer::GetInstance()) {
-        renderer->SetPostEffect("Smoothing");
+        renderer->SetPostEffect("Random");
     }
 }
 
