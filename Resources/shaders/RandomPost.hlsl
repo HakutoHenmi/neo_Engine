@@ -20,47 +20,32 @@ cbuffer CBPost : register(b0)
 struct PSIn
 {
     float4 svpos : SV_POSITION;
-    float2 uv : TEXCOORD0;
+    float2 texcoord : TEXCOORD0; // スライドの input.texcoord に合わせる
 };
 
-float4 main(PSIn i) : SV_TARGET
+// スライドで紹介されている、Seed値のみで乱数を決定するアルゴリズム
+float rand2dTo1d(float2 value)
 {
-    float3 col = gScene.Sample(gSmp, i.uv).rgb;
+    // 一般的な乱数生成アルゴリズムの実装例
+    float2 smallValue = sin(value);
+    float random = dot(smallValue, float2(12.9898, 78.233));
+    random = frac(sin(random) * 143758.5453);
+    return random;
+}
 
-    // --- ランダムノイズ効果 ---
+// スライドの float32_t 等の型に合わせるためのエイリアス
+#define float32_t float
+#define float32_t4 float4
 
-    // 1. 細かい白色ノイズ（フィルムグレイン風）
-    float grain = Hash12(i.uv * 1000.0 + gTime * 7.3);
-    grain = (grain - 0.5) * 2.0; // -1 ~ 1
+float4 main(PSIn input) : SV_TARGET
+{
+    // --- 乱数を白黒で出力 ---
 
-    // 2. ブロックノイズ（デジタルグリッチ風）
-    float2 blockUV = floor(i.uv * 40.0) / 40.0; // ブロック化されたUV
-    float blockNoise = Hash12(blockUV + floor(gTime * 8.0));
-    float blockStrength = step(0.92, blockNoise); // ランダムな位置にブロックが出現
-
-    // 3. UV歪みノイズ
-    float2 noiseOffset;
-    noiseOffset.x = (Hash12(float2(floor(i.uv.y * 200.0), gTime * 3.0)) - 0.5) * 0.01;
-    noiseOffset.y = (Hash12(float2(floor(i.uv.x * 200.0), gTime * 5.0 + 100.0)) - 0.5) * 0.01;
-
-    // gDistortion でノイズ強度を制御
-    float intensity = 0.3 + gDistortion * 0.5;
-
-    // UV歪みを適用して再サンプリング
-    float2 noisyUV = i.uv + noiseOffset * intensity;
-    float3 noisyCol = gScene.Sample(gSmp, saturate(noisyUV)).rgb;
-
-    // ブロックノイズがある場所は色を乱す
-    float3 blockCol = Hash12(blockUV + gTime).xxx;
-    col = lerp(noisyCol, blockCol, blockStrength * intensity * 0.5);
-
-    // グレインノイズを加算
-    float noiseAmount = gNoiseStrength + intensity * 0.15;
-    col += grain * noiseAmount;
-
-    // Vignette
-    float2 d = i.uv - 0.5;
-    col *= saturate(1.0 - dot(d, d) * gVignette);
-
-    return float4(Saturate3(col), 1.0);
+    // 乱数生成。引数にtexcoordと時間（gTime）を渡して時間経過で動かす
+    float32_t random = rand2dTo1d(input.texcoord + gTime);
+    
+    // 色にする
+    float4 output_color = float32_t4(random, random, random, 1.0f);
+    
+    return output_color;
 }
