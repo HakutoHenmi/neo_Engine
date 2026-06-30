@@ -713,7 +713,7 @@ void GameScene::Draw() {
 				// 繧ｷ繧ｧ繝ｼ繝€繝ｼ縺ｯ縺ｲ縺ｨ縺ｾ縺售lime縺ｮ縺ｾ縺ｾ縺ｫ縺吶ｋ・亥ｱ域釜繝槭ユ繝ｪ繧｢繝ｫ繧堤函縺九☆縺溘ａ・・
 				mr.shaderName = "Slime";
 				
-				auto& tc = registry_.get<TransformComponent>(playerEntity);
+				// auto& tc = registry_.get<TransformComponent>(playerEntity);
 				slimeCpuLogic_.time += ctx_.dt;
 				
 				const float noiseScale = 0.5f;
@@ -766,10 +766,11 @@ void GameScene::Draw() {
 					};
 
 					// 繝ｯ繝ｼ繝ｫ繝臥ｩｺ髢薙〒縺ｮY蠎ｧ讓吶ｒ險育ｮ・
-					float worldY = tc.translate.y + (v.y * tc.scale.y);
+					// float worldY = tc.translate.y + (v.y * tc.scale.y);
 
 					// 2. 蝨ｰ髱｢縺ｨ縺ｮ陦晉ｪ∝愛螳壹→螟牙ｽ｢
-					if (false && worldY < slimeCpuLogic_.groundY) {
+					/*
+					if (worldY < slimeCpuLogic_.groundY) {
 						float diff = slimeCpuLogic_.groundY - worldY;
 						
 						// Y繧偵け繝ｪ繝・・
@@ -780,6 +781,7 @@ void GameScene::Draw() {
 						v.x *= flattenSpread;
 						v.z *= flattenSpread;
 					}
+					*/
 
 					dynV.position = { v.x, v.y, v.z, 1.0f };
 					dynV.normal = baseN.normal; 
