@@ -361,3 +361,8 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+
+# Neo Engine Specific Excludes
+externals/Generated/Outputs/
+imgui.ini
+temp_play.json
