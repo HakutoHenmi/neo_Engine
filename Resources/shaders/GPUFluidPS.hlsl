@@ -36,9 +36,15 @@ PSOut main(float4 svpos:SV_POSITION, float2 uv:TEXCOORD0, float viewZ:TEXCOORD1,
     PSOut o;
     o.color = outColor;
     
-    // 深度はパーティクルの中心距離（viewZ）をそのまま出力する
-    // 個別に丸みをつけると、重なった時に表面がトゲトゲになりノイズの塊になってしまうため
-    o.depth = viewZ; 
+    // スライムの立体感を出すため、球体としての丸み（深度のオフセット）を計算する
+    // サイズはVSと合わせて0.7fとする。
+    float sphereRadius = 0.7f;
+    float normalizedDistSq = distSq * 4.0f; // 0.0 ~ 1.0
+    float z_offset = sqrt(max(0.0f, 1.0f - normalizedDistSq)) * sphereRadius;
+    
+    // 丸みを持たせた深度を出力する（これがMetaballPSで法線計算に使われる）
+    // 丸みによる重なりのノイズはMetaballPS側の平滑化処理で吸収する
+    o.depth = viewZ - z_offset; 
     
     return o;
 }

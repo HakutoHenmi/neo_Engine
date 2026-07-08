@@ -4063,11 +4063,9 @@ void Renderer::EndLiquidPass() {
 		ID3D12DescriptorHeap* heaps[] = { srvHeap_ };
 		list_->SetDescriptorHeaps(1, heaps);
 		
-		// b0: ダミーの定数バッファ（CRTPost等と同じシグネチャなので何かしらバインドする）
-		const uint32_t fi = window_->FrameIndex();
-		const uint32_t off = upload_[fi].Allocate(256, 256);
-		if (off != UINT32_MAX) {
-			list_->SetGraphicsRootConstantBufferView(0, upload_[fi].buffer->GetGPUVirtualAddress() + off);
+		// b0: CBFrame (カメラ行列など)
+		if (cbFrameAddr_ != 0) {
+			list_->SetGraphicsRootConstantBufferView(0, cbFrameAddr_);
 		}
 		
 		// t0: liquidSrv_ (色)
