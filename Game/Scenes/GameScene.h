@@ -5,7 +5,7 @@
 #include "Model.h"
 #include "Transform.h"
 #include "WindowDX.h"
-#include "EventSystem.h" // 笘・ｿｽ蜉: 繧､繝吶Φ繝医す繧ｹ繝・Β
+#include "EventSystem.h" // ★追加: イベントシステム
 #include "../ObjectTypes.h"
 #include "../Systems/ISystem.h"
 #include <mutex>
@@ -24,16 +24,16 @@ public:
     void Initialize(Engine::WindowDX* dx, const Engine::SceneParameters& params) override;
     void Update() override;
     void Draw() override;
-    void DrawUI() override; // 笘・ｿｽ蜉: 繝ｯ繝ｼ繝ｫ繝臥ｩｺ髢填I逕ｨ
+    void DrawUI() override; // ★追加: ワールド空間UI用
     void DrawEditor() override;
 
     void DrawEditorGizmos();
     void DrawSelectionHighlight();
     void DrawLightGizmos();
 
-	// 笘・豎守畑繧ｹ繝昴・繝ｳ・・egistry繧堤峩謗･謫堺ｽ懊☆繧九％縺ｨ繧呈耳螂ｨ・・
+	// ★ 汎用スポーン（Registryを直接操作することを推奨）
 	entt::entity CreateEntity(const std::string& name = "New Object");
-	// 笘・ｿｽ蜉: 繧ｪ繝悶ず繧ｧ繧ｯ繝医ｒID縺ｧ遐ｴ譽・ｿ晉蕗縺ｫ縺吶ｋ
+	// ★追加: オブジェクトをIDで破棄保留にする
 	void DestroyObject(uint32_t id);
 	void ClearScene(); // ★追加: シーンの完全クリアとキューのリセット
 
@@ -52,27 +52,27 @@ public:
 	void SetSelectedEntity(entt::entity entity) { selectedEntity_ = entity; }
 	std::set<entt::entity>& GetSelectedEntities() { return selectedEntities_; }
 
-	// 笘・ｿｽ蜉: 繧ｳ繝ｳ繝・く繧ｹ繝医∈縺ｮ繧｢繧ｯ繧ｻ繧ｹ
+	// ★追加: コンテキストへのアクセス
 	GameContext& GetContext() { return ctx_; }
 
-	// 笘・ｿｽ蜉: 蜷榊燕縺ｧ繧ｪ繝悶ず繧ｧ繧ｯ繝医ｒ讀懃ｴ｢縺吶ｋ繝倥Ν繝代・
+	// ★追加: 名前でオブジェクトを検索するヘルパー
 	entt::entity FindObjectByName(const std::string& name);
-	// 笘・ｿｽ蜉: 謖・ｮ壼ｺｧ讓吶・繝｡繝・す繝･陦ｨ髱｢縺ｮ鬮倥＆繧貞叙蠕・(startY 莉倩ｿ代°繧我ｸ九ｒ謗｢邏｢)
+	// ★追加: 指定座標のメッシュ表面の高さを取得 (startY 付近から下を探索)
 	float GetHeightAt(float x, float z, float startY = 1000.0f, uint32_t excludeId = 0);
-	// 笘・ｿｽ蜉: 豎守畑繝ｬ繧､繧ｭ繝｣繧ｹ繝・(螢∝愛螳壹↑縺ｩ縺ｫ菴ｿ逕ｨ)
+	// ★追加: 汎用レイキャスト (壁判定などに使用)
 	bool RayCast(const Engine::Vector3& origin, const Engine::Vector3& direction, float maxDist, uint32_t excludeId, float& outDist);
 	
-	// 笘・ｿｽ蜉: 鬮倬溘ち繧ｰ讀懃ｴ｢繧ｷ繧ｹ繝・Β
+	// ★追加: 高速タグ検索システム
 	const std::vector<entt::entity>& GetEntitiesByTag(const std::string& tag);
-	const std::vector<entt::entity>& GetEntitiesByTag(TagType tag); // 笘・ｿｽ蜉
+	const std::vector<entt::entity>& GetEntitiesByTag(TagType tag); // ★追加
 	void SetTag(entt::entity entity, const std::string& tag);
-	void SetTag(entt::entity entity, TagType tag); // 笘・ｿｽ蜉
-	void SyncTag(entt::entity entity); // 笘・ｿｽ蜉: 謇句虚蜷梧悄逕ｨ
+	void SetTag(entt::entity entity, TagType tag); // ★追加
+	void SyncTag(entt::entity entity); // ★追加: 手動同期用
 
 
 
 private:
-	// CPU蛛ｴ縺ｧ縺ｮ繝励Ξ繧､繝､繝ｼ繧ｹ繝ｩ繧､繝螟牙ｽ｢繝ｻ繝代・繝・ぅ繧ｯ繝ｫ邂｡逅・畑繝ｭ繧ｸ繝・け
+	// CPU側でのプレイヤースライム変形・パーティクル管理用ロジック
 	struct PlayerSlimeCpuLogic {
 		uint32_t dynamicMeshHandle = 0;
 		std::vector<Engine::VertexData> baseVertices;
@@ -96,7 +96,7 @@ private:
     Engine::WindowDX* dx_ = nullptr;
     Engine::Renderer* renderer_ = nullptr;
     Engine::Camera camera_;
-    Engine::EventSystem eventSystem_; // 笘・ｿｽ蜉: 繧ｹ繧ｯ繝ｪ繝励ヨ髢馴壻ｿ｡逕ｨ
+    Engine::EventSystem eventSystem_; // ★追加: スクリプト間通信用
     entt::registry registry_;
     std::set<entt::entity> selectedEntities_;
     entt::entity selectedEntity_ = entt::null;
@@ -104,34 +104,34 @@ private:
     bool isPlaying_ = false;
     entt::registry pendingSpawns_;
     std::vector<entt::entity> pendingDestroys_;
-    std::mutex spawnMutex_; // 笘・ｿｽ蜉: 繝槭Ν繝√せ繝ｬ繝・ラ縺九ｉ螳牙・縺ｫ繧ｹ繝昴・繝ｳ繝ｻ遐ｴ譽・匳骭ｲ繧定｡後∴繧九ｈ縺・↓縺吶ｋ
+    std::mutex spawnMutex_; // ★追加: マルチスレッドから安全にスポーン・破棄登録を行えるようにする
 	
-	// 繧ｿ繧ｰ讀懃ｴ｢繧ｭ繝｣繝・す繝･
+	// タグ検索キャッシュ
 	std::unordered_map<TagType, std::vector<entt::entity>> tagCache_;
-	std::vector<entt::entity> pendingTagSync_; // 笘・ｿｽ蜉: 逕滓・逶ｴ蠕後・蜷梧悄蠕・■
-	std::vector<entt::entity> pendingTagRemoved_; // 笘・ｿｽ蜉: 遐ｴ譽・凾縺ｮ繧ｭ繝｣繝・す繝･蜑企勁蠕・■
+	std::vector<entt::entity> pendingTagSync_; // ★追加: 生成直後の同期待ち
+	std::vector<entt::entity> pendingTagRemoved_; // ★追加: 破棄時のキャッシュ削除待ち
 	void OnTagAdded(entt::registry& reg, entt::entity entity);
 	void OnTagRemoved(entt::registry& reg, entt::entity entity);
 
 	// スクリプト破棄用コールバック
 	void OnScriptDestroyed(entt::registry& registry, entt::entity entity);
 
-	// 陦悟・險育ｮ励く繝｣繝・す繝･ (FPS蜷台ｸ顔畑)
+	// 行列計算キャッシュ (FPS向上用)
 	mutable std::unordered_map<entt::entity, Engine::Matrix4x4> matrixCache_;
 	mutable uint64_t matrixFrameCount_ = 0;
 	void ClearMatrixCache() const { matrixCache_.clear(); matrixFrameCount_++; }
 
-	std::string sceneSnapshot_; // 笘・ｿｽ蜉: Play髢句ｧ区凾縺ｮ繧ｷ繝ｪ繧｢繝ｩ繧､繧ｺ譁・ｭ怜・
-	std::string initialSceneSnapshot_; // 笘・ｿｽ蜉: 襍ｷ蜍包ｼ・SON繝ｭ繝ｼ繝会ｼ臥峩蠕後・迥ｶ諷・
+	std::string sceneSnapshot_; // ★追加: Play開始時のシリアライズ文字列
+	std::string initialSceneSnapshot_; // ★追加: 起動（JSONロード）直後の状態
 
-    // 笘・ECS鬚ｨSystem繝ｪ繧ｹ繝・
+    // ★ ECS風Systemリスト
     std::vector<std::unique_ptr<ISystem>> systems_;
     GameContext ctx_;
 
-    // 繝代・繝・ぅ繧ｯ繝ｫ繧ｨ繝・ぅ繧ｿ繝ｼ
+    // パーティクルエディター
     Engine::ParticleEditor particleEditor_;
 
-    float playTime_ = 0.0f; // 繧ｯ繝ｪ繧｢繧ｿ繧､繝險域ｸｬ逕ｨ
+    float playTime_ = 0.0f; // クリアタイム計測用
     bool wasLiquidated_ = false;
     bool gpuSlimeEmitted_ = false; // ★追加: GPUスライムの初回放出フラグ
 
