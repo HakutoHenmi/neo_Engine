@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
     <ClCompile Include="Game\Scenes\TitleScene.cpp">
@@ -25,67 +25,14 @@
     <ClCompile Include="Game\Scripts\BaseScript.cpp">
       <Filter>Scripts</Filter>
     </ClCompile>
-    <ClCompile Include="Game\Scripts\BulletScript.cpp">
-      <Filter>Scripts</Filter>
-    </ClCompile>
-    <ClCompile Include="Game\Scripts\EnemyAIScript.cpp">
-      <Filter>Scripts</Filter>
-    </ClCompile>
-    <ClCompile Include="Game\Scripts\KamikazeEnemyScript.cpp">
-      <Filter>Scripts</Filter>
-    </ClCompile>
-    <ClCompile Include="Game\Scripts\PlayerScript.cpp">
-      <Filter>Scripts</Filter>
-    </ClCompile>
     <ClCompile Include="Game\Scripts\ScriptEngine.cpp">
       <Filter>Scripts</Filter>
     </ClCompile>
-    <ClCompile Include="Game\Scripts\TowerScript.cpp">
-      <Filter>Scripts</Filter>
-    </ClCompile>
     <ClCompile Include="Game\main.cpp" />
-    <ClCompile Include="Game\Scripts\EnemyBehavior.cpp" />
     <ClCompile Include="Game\Systems\RiverSystem.cpp" />
-    <ClCompile Include="Game\Scripts\Canon.cpp">
-      <Filter>Scripts</Filter>
-    </ClCompile>
-    <ClCompile Include="Game\Scripts\PipeScript.cpp" />
-    <ClCompile Include="Game\Scripts\PreparationCamera.cpp" />
-    <ClCompile Include="Game\Scripts\EnemySpawnerScript.cpp">
-      <Filter>Scripts</Filter>
-    </ClCompile>
-    <ClCompile Include="Game\Scripts\ExperienceHopper.cpp">
-      <Filter>Scripts</Filter>
-    </ClCompile>
-    <ClCompile Include="Game\Scripts\ExperienceMiner.cpp">
-      <Filter>Scripts</Filter>
-    </ClCompile>
-    <ClCompile Include="Game\Scripts\ExperienceOrbScript.cpp">
-      <Filter>Scripts</Filter>
-    </ClCompile>
-    <ClCompile Include="Game\Scripts\PhaseSystemScript.cpp">
-      <Filter>Scripts</Filter>
-    </ClCompile>
     <ClCompile Include="Game\Scripts\IScript.cpp">
       <Filter>Scripts</Filter>
     </ClCompile>
-    <ClCompile Include="Game\Scripts\CommunicationTestScript.cpp">
-      <Filter>Scripts</Filter>
-    </ClCompile>
-    <ClCompile Include="Game\Scenes\SelectScene.cpp" />
-    <ClCompile Include="Game\Scenes\ResultScene.cpp" />
-    <ClCompile Include="Game\Scripts\BulletTank.cpp" />
-    <ClCompile Include="Game\Scripts\SkillTree.cpp" />
-    <ClCompile Include="Game\Scripts\InstallationButton.cpp" />
-    <ClCompile Include="Game\EnemySystem\NavigationManager.cpp" />
-    <ClCompile Include="Game\Scripts\HitDistortionScript.cpp" />
-    <ClCompile Include="Game\Scripts\PoisonTrap.cpp" />
-    <ClCompile Include="Game\Scripts\PoisonAttackArea.cpp" />
-    <ClCompile Include="Game\Scripts\MissileBulletScript.cpp" />
-    <ClCompile Include="Game\Scripts\MissileCanonScript.cpp" />
-    <ClCompile Include="Game\Scripts\ExplosionAttackArea.cpp" />
-    <ClCompile Include="Game\Scripts\PhaseTransition.cpp" />
-    <ClCompile Include="Game\Scripts\WaveManagement.cpp" />
     <ClCompile Include="Game\Scripts\HitEffectScript.cpp">
       <Filter>Scripts</Filter>
     </ClCompile>
@@ -133,25 +80,10 @@
     <ClInclude Include="Game\Scripts\BaseScript.h">
       <Filter>Scripts</Filter>
     </ClInclude>
-    <ClInclude Include="Game\Scripts\BulletScript.h">
-      <Filter>Scripts</Filter>
-    </ClInclude>
-    <ClInclude Include="Game\Scripts\EnemyAIScript.h">
-      <Filter>Scripts</Filter>
-    </ClInclude>
     <ClInclude Include="Game\Scripts\IScript.h">
       <Filter>Scripts</Filter>
     </ClInclude>
-    <ClInclude Include="Game\Scripts\KamikazeEnemyScript.h">
-      <Filter>Scripts</Filter>
-    </ClInclude>
-    <ClInclude Include="Game\Scripts\PlayerScript.h">
-      <Filter>Scripts</Filter>
-    </ClInclude>
     <ClInclude Include="Game\Scripts\ScriptEngine.h">
-      <Filter>Scripts</Filter>
-    </ClInclude>
-    <ClInclude Include="Game\Scripts\TowerScript.h">
       <Filter>Scripts</Filter>
     </ClInclude>
     <ClInclude Include="Game\Systems\AudioSystem.h">
@@ -184,43 +116,10 @@
     <ClInclude Include="Game\Systems\ScriptSystem.h">
       <Filter>Systems</Filter>
     </ClInclude>
-    <ClInclude Include="Game\Scripts\EnemyBehavior.h" />
     <ClInclude Include="Game\Systems\RiverSystem.h" />
-    <ClInclude Include="Game\Scripts\PipeScript.h" />
-    <ClInclude Include="Game\Scripts\PhaseSystemScript.h" />
-    <ClInclude Include="Game\Scripts\PreparationCamera.h" />
-    <ClInclude Include="Game\Scripts\EnemySpawnerScript.h">
-      <Filter>Scripts</Filter>
-    </ClInclude>
-    <ClInclude Include="Game\Scripts\ExperienceHopper.h">
-      <Filter>Scripts</Filter>
-    </ClInclude>
-    <ClInclude Include="Game\Scripts\ExperienceMiner.h">
-      <Filter>Scripts</Filter>
-    </ClInclude>
-    <ClInclude Include="Game\Scripts\ExperienceOrbScript.h">
-      <Filter>Scripts</Filter>
-    </ClInclude>
-    <ClInclude Include="Game\Scripts\CommunicationTestScript.h">
-      <Filter>Scripts</Filter>
-    </ClInclude>
     <ClInclude Include="Game\Scripts\ScriptUtils.h">
       <Filter>Scripts</Filter>
     </ClInclude>
-    <ClInclude Include="Game\Scenes\SelectScene.h" />
-    <ClInclude Include="Game\Scenes\ResultScene.h" />
-    <ClInclude Include="Game\Scripts\BulletTank.h" />
-    <ClInclude Include="Game\Scripts\SkillTree.h" />
-    <ClInclude Include="Game\Scripts\InstallationButton.h" />
-    <ClInclude Include="Game\EnemySystem\NavigationManager.h" />
-    <ClInclude Include="Game\Scripts\HitDistortionScript.h" />
-    <ClInclude Include="Game\Scripts\PoisonTrap.h" />
-    <ClInclude Include="Game\Scripts\PoisonAttackArea.h" />
-    <ClInclude Include="Game\Scripts\MissileBulletScript.h" />
-    <ClInclude Include="Game\Scripts\MissileCanonScript.h" />
-    <ClInclude Include="Game\Scripts\ExplosionAttackArea.h" />
-    <ClInclude Include="Game\Scripts\PhaseTransition.h" />
-    <ClInclude Include="Game\Scripts\WaveManagement.h" />
     <ClInclude Include="Game\Scripts\HitEffectScript.h">
       <Filter>Scripts</Filter>
     </ClInclude>
@@ -383,12 +282,6 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <None Include="Resources\level_data.csv">
-      <Filter>Resources</Filter>
-    </None>
-    <None Include="Resources\level_datakaeri.csv">
-      <Filter>Resources</Filter>
-    </None>
     <None Include="Resources\cube\cube.jpg">
       <Filter>Resources\cube</Filter>
     </None>
@@ -884,34 +777,7 @@
     <None Include="Resources\Prefabs\UI.prefab">
       <Filter>Resources\Prefabs</Filter>
     </None>
-    <None Include="Resources\Scenes\.temp_play.json">
-      <Filter>Resources\Scenes</Filter>
-    </None>
-    <None Include="Resources\Scenes\particle.json">
-      <Filter>Resources\Scenes</Filter>
-    </None>
-    <None Include="Resources\Scenes\PhaseSystem.json">
-      <Filter>Resources\Scenes</Filter>
-    </None>
-    <None Include="Resources\Scenes\player.json">
-      <Filter>Resources\Scenes</Filter>
-    </None>
-    <None Include="Resources\Scenes\poro.json">
-      <Filter>Resources\Scenes</Filter>
-    </None>
     <None Include="Resources\Scenes\scene.json">
-      <Filter>Resources\Scenes</Filter>
-    </None>
-    <None Include="Resources\Scenes\skills.json">
-      <Filter>Resources\Scenes</Filter>
-    </None>
-    <None Include="Resources\Scenes\tesuto.json">
-      <Filter>Resources\Scenes</Filter>
-    </None>
-    <None Include="Resources\Scenes\TowerScene.json">
-      <Filter>Resources\Scenes</Filter>
-    </None>
-    <None Include="Resources\Scenes\TPS_Scene.json">
       <Filter>Resources\Scenes</Filter>
     </None>
     <None Include="Resources\Scripts\bullet_logic.txt">
@@ -1328,15 +1194,8 @@
     <None Include="Resources\Textures\UI\uvChecker.png">
       <Filter>Resources\Textures\UI</Filter>
     </None>
-    <None Include="Resources\Models\Signboard\縺薙ｌ縺・png" />
-    <None Include="Resources\Models\Signboard\縺溘∪縺輔ｓ.png" />
-    <None Include="Resources\Models\Signboard\縺ｯ縺ｭ繧九ｈ.png" />
-    <None Include="Resources\Models\Signboard\繧ｹ繧､繝・メ.png" />
     <None Include="Resources\shaders\TextVS.hlsl" />
     <None Include="Resources\shaders\TextPS.hlsl" />
     <None Include="Resources\shaders\Text.hlsli" />
-    <None Include="Resources\Textures\fonts\AppliMincho\繧｢繝励Μ譏取悃.otf" />
-    <None Include="Resources\Textures\fonts\AppliMincho\繧｢繝励Μ譏取悃Old.otf" />
-    <None Include="Resources\Textures\fonts\AppliMincho\繧｢繝励Μ譏取悃UD.otf" />
   </ItemGroup>
 </Project>

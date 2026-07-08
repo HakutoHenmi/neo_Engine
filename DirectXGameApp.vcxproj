@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="Debug|x64">
@@ -233,8 +233,6 @@ exit /b 0
     <ClInclude Include="Game\Systems\MotionSystem.h" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="Resources\level_data.csv" />
-    <None Include="Resources\level_datakaeri.csv" />
     <None Include="Resources\cube\cube.jpg" />
     <None Include="Resources\cube\cube.mtl" />
     <None Include="Resources\cube\cube.obj" />
@@ -323,10 +321,6 @@ exit /b 0
     <None Include="Resources\Models\Signboard\Switch.png" />
     <None Include="Resources\Models\Signboard\tamasan.png" />
     <None Include="Resources\Models\Signboard\ThisIsSwitch.png" />
-    <None Include="Resources\Models\Signboard\縺薙ｌ縺・png" />
-    <None Include="Resources\Models\Signboard\縺溘∪縺輔ｓ.png" />
-    <None Include="Resources\Models\Signboard\縺ｯ縺ｭ繧九ｈ.png" />
-    <None Include="Resources\Models\Signboard\繧ｹ繧､繝・メ.png" />
     <None Include="Resources\Models\Signboard\Signboard\Padjumpm.png" />
     <None Include="Resources\Models\Signboard\Signboard\Signboard.mtl" />
     <None Include="Resources\Models\Signboard\Signboard\Signboard.obj" />
@@ -404,16 +398,7 @@ exit /b 0
     <None Include="Resources\Prefabs\Player.prefab" />
     <None Include="Resources\Prefabs\Terrain.prefab" />
     <None Include="Resources\Prefabs\UI.prefab" />
-    <None Include="Resources\Scenes\.temp_play.json" />
-    <None Include="Resources\Scenes\particle.json" />
-    <None Include="Resources\Scenes\PhaseSystem.json" />
-    <None Include="Resources\Scenes\player.json" />
-    <None Include="Resources\Scenes\poro.json" />
     <None Include="Resources\Scenes\scene.json" />
-    <None Include="Resources\Scenes\skills.json" />
-    <None Include="Resources\Scenes\tesuto.json" />
-    <None Include="Resources\Scenes\TowerScene.json" />
-    <None Include="Resources\Scenes\TPS_Scene.json" />
     <None Include="Resources\Scripts\bullet_logic.txt" />
     <None Include="Resources\Scripts\enemy_ai.txt" />
     <None Include="Resources\Scripts\player_control.txt" />
@@ -509,9 +494,6 @@ exit /b 0
     <None Include="Resources\Textures\white1x1.png" />
     <None Include="Resources\Textures\fonts\AppliMincho\LICENSE_OFL.txt" />
     <None Include="Resources\Textures\fonts\AppliMincho\ReadMe.txt" />
-    <None Include="Resources\Textures\fonts\AppliMincho\繧｢繝励Μ譏取悃.otf" />
-    <None Include="Resources\Textures\fonts\AppliMincho\繧｢繝励Μ譏取悃Old.otf" />
-    <None Include="Resources\Textures\fonts\AppliMincho\繧｢繝励Μ譏取悃UD.otf" />
     <None Include="Resources\Textures\fonts\Huninn\Huninn-Regular.ttf" />
     <None Include="Resources\Textures\fonts\Huninn\OFL.txt" />
     <None Include="Resources\Textures\fonts\Kiwi_Maru\KiwiMaru-Light.ttf" />

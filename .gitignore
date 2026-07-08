@@ -364,5 +364,13 @@ FodyWeavers.xsd
 
 # Neo Engine Specific Excludes
 externals/Generated/Outputs/
+externals/Generated/Obj/
+externals/**/lib/
+externals/**/bin/
+externals/**/Obj/
+externals/**/*.lib
+externals/**/*.dll
+externals/**/*.pdb
+externals/**/*.exe
 imgui.ini
 temp_play.json
