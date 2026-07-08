@@ -210,6 +210,9 @@ bool Renderer::Initialize(WindowDX* window) {
 	if (!InitPostProcess_())
 		return false;
 
+	// ★追加: GPU流体初期化
+	InitGPUFluid();
+
 	ppEnabled_ = true;
 
 	// ★追加: コリジョン同期用のコマンドリスト作成
@@ -335,6 +338,7 @@ void Renderer::BeginFrame(const float clearColorRGBA[4]) {
 	// インスタンス描画用のキューをクリア
 	instancedDrawCalls_.clear();                    
 	instancedParticleDrawCalls_.clear();            
+	liquidParticleDrawCalls_.clear(); // ★追加
 	lastIDCIndex_ = -1;
 	srvDynamicCursor_ = kSrvStaticMax; // 動的SRVカーソルをリセット
 	spriteDrawCalls_.clear(); // ★スプライトもクリア
@@ -691,6 +695,33 @@ void Renderer::FlushDrawCalls() {
 	
 	// パーティクルのインスタンス描画
 	flushInstanced(instancedParticleDrawCalls_, "ParticleInstanced");
+
+	// ★追加: GPU流体更新
+	UpdateGPUFluid(1.0f / 60.0f);
+
+
+	// ★追加: 液体パーティクルのパス (メタボール)
+	if (!liquidParticleDrawCalls_.empty() || isGPUFluidReady_) {
+		BeginLiquidPass();
+		if (!liquidParticleDrawCalls_.empty()) {
+			flushInstanced(liquidParticleDrawCalls_, "ParticleInstanced");
+		}
+		if (isGPUFluidReady_) {
+			DrawGPUFluid(LoadTexture2D("Resources/Textures/ball.png"));
+		}
+		EndLiquidPass();
+		
+		// 描画先が liquidRT に切り替わった後、元のメイン用パイプライン設定に戻す必要がある場合のため、シグネチャを復帰する
+		list_->SetGraphicsRootSignature(rootSig3D_.Get());
+		list_->SetGraphicsRootConstantBufferView(0, cbFrameAddr_);
+		list_->SetGraphicsRootConstantBufferView(2, cbLightAddr_);
+		if (shadowSrv_.ptr != 0) list_->SetGraphicsRootDescriptorTable(5, shadowSrv_);
+		
+		// GPU流体のデバッグベクトルを描画
+		if (drawFluidDebugArrows_) {
+			DrawGPUFluidDebug();
+		}
+	}
 
 	// --- 半透明オブジェクトの描画 (不透明オブジェクトの後に描画する) ---
 	for (const auto& dc : drawCalls_) {
@@ -2241,6 +2272,27 @@ void Renderer::DrawParticleInstanced(MeshHandle mesh, TextureHandle texture, con
 	it->instances.push_back(data);
 }
 
+void Renderer::DrawLiquidParticleInstanced(MeshHandle mesh, TextureHandle texture, const Transform& transform, const Vector4& mulColor, const Vector4& uvScaleOffset, const std::string& shaderName) {
+	auto it = std::find_if(liquidParticleDrawCalls_.begin(), liquidParticleDrawCalls_.end(), [&](const InstancedDrawCall& idc) {
+		return idc.mesh == mesh && idc.tex == texture && idc.shaderName == shaderName;
+	});
+
+	if (it == liquidParticleDrawCalls_.end()) {
+		InstancedDrawCall newIdc;
+		newIdc.mesh = mesh;
+		newIdc.tex = texture;
+		newIdc.shaderName = shaderName;
+		liquidParticleDrawCalls_.push_back(newIdc);
+		it = liquidParticleDrawCalls_.end() - 1;
+	}
+
+	InstanceData data;
+	data.world = transform.ToMatrix();
+	data.color = mulColor;
+	data.uvScaleOffset = uvScaleOffset;
+	it->instances.push_back(data);
+}
+
 Renderer::MeshHandle Renderer::LoadObjMesh(const std::string& objFilePath) {
 	if (objFilePath.empty())
 		return 0;
@@ -3036,6 +3088,26 @@ float4 main(float4 svpos:SV_POSITION, float2 uv:TEXCOORD0) : SV_TARGET {
 				pipelines_["PaperFrame"] = psoPaperFrame;
 			}
 		}
+
+		// ★追加: Metaball ポストエフェクト（スクリーン空間流体・ステップ3）
+		auto psMetaball = CompileShaderFromFile(L"Resources/shaders/MetaballPS.hlsl", "main", "ps_5_0");
+		if (psMetaball) {
+			// メタボールはメインバッファに「アルファブレンド（加算など）」で合成したい場合もあるが、
+			// 基本はそのまま上書き（Zは既に書き込まれている）でブレンドする
+			// ここでは通常の半透明ブレンドを適用する
+			D3D12_GRAPHICS_PIPELINE_STATE_DESC psoMeta = pso;
+			psoMeta.PS = { psMetaball->GetBufferPointer(), psMetaball->GetBufferSize() };
+			auto& rt = psoMeta.BlendState.RenderTarget[0];
+			rt.BlendEnable = TRUE;
+			rt.SrcBlend = D3D12_BLEND_ONE; // プレマルチプライド・アルファ
+			rt.DestBlend = D3D12_BLEND_INV_SRC_ALPHA;
+			rt.BlendOp = D3D12_BLEND_OP_ADD;
+			
+			Microsoft::WRL::ComPtr<ID3D12PipelineState> psoMetaballState;
+			if (SUCCEEDED(dev_->CreateGraphicsPipelineState(&psoMeta, IID_PPV_ARGS(&psoMetaballState)))) {
+				pipelines_["Metaball"] = psoMetaballState;
+			}
+		}
 	}
 
 	// ★追加: 最終描画用テクスチャの作成
@@ -3148,6 +3220,59 @@ float4 main(float4 svpos:SV_POSITION, float2 uv:TEXCOORD0) : SV_TARGET {
 			if (SUCCEEDED(dev_->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&pipelines_["Distortion"])))) {
 				OutputDebugStringA("[Renderer] Distortion PSO created.\n");
 			}
+		}
+	}
+
+	// ★追加: 液体メタボール用の専用レンダーターゲット作成
+	{
+		const UINT W = Engine::WindowDX::kW;
+		const UINT H = Engine::WindowDX::kH;
+		D3D12_RESOURCE_DESC rd = CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R8G8B8A8_UNORM, W, H, 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET);
+		CD3DX12_HEAP_PROPERTIES heap(D3D12_HEAP_TYPE_DEFAULT);
+		D3D12_CLEAR_VALUE cv = { DXGI_FORMAT_R8G8B8A8_UNORM, {0,0,0,0} }; // 完全に透明でクリア
+		HRESULT hr = dev_->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &rd, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, &cv, IID_PPV_ARGS(&liquidRT_));
+		if (SUCCEEDED(hr)) {
+			liquidState_ = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+
+			uint32_t rtvIdx = rtvCursor_++;
+			liquidRtv_ = CD3DX12_CPU_DESCRIPTOR_HANDLE(finalRtvHeap_->GetCPUDescriptorHandleForHeapStart(), rtvIdx, dev_->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV));
+			dev_->CreateRenderTargetView(liquidRT_.Get(), nullptr, liquidRtv_);
+
+			uint32_t sIdx = AllocateSrvIndex();
+			liquidSrv_ = window_->SRV_GPU((int)sIdx);
+			D3D12_SHADER_RESOURCE_VIEW_DESC srv{};
+			srv.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+			srv.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+			srv.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+			srv.Texture2D.MipLevels = 1;
+			dev_->CreateShaderResourceView(liquidRT_.Get(), &srv, window_->SRV_CPU((int)sIdx));
+			dev_->CreateShaderResourceView(liquidRT_.Get(), &srv, window_->SRV_CPU_Master((int)sIdx));
+		}
+		
+		// ★追加: スライム（流体）のスクリーン空間深度用レンダーターゲット (R32_FLOAT)
+		rd.Format = DXGI_FORMAT_R32_FLOAT;
+		cv.Format = DXGI_FORMAT_R32_FLOAT;
+		cv.Color[0] = 10000.0f; // 背景は非常に遠くに設定
+		hr = dev_->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &rd, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, &cv, IID_PPV_ARGS(&liquidDepthRT_));
+		if (SUCCEEDED(hr)) {
+			liquidDepthState_ = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+			
+			uint32_t rtvIdx = rtvCursor_++;
+			liquidDepthRtv_ = CD3DX12_CPU_DESCRIPTOR_HANDLE(finalRtvHeap_->GetCPUDescriptorHandleForHeapStart(), rtvIdx, dev_->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV));
+			D3D12_RENDER_TARGET_VIEW_DESC rtvDesc{};
+			rtvDesc.Format = DXGI_FORMAT_R32_FLOAT;
+			rtvDesc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D;
+			dev_->CreateRenderTargetView(liquidDepthRT_.Get(), &rtvDesc, liquidDepthRtv_);
+
+			uint32_t sIdx = AllocateSrvIndex();
+			liquidDepthSrv_ = window_->SRV_GPU((int)sIdx);
+			D3D12_SHADER_RESOURCE_VIEW_DESC srv{};
+			srv.Format = DXGI_FORMAT_R32_FLOAT;
+			srv.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+			srv.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+			srv.Texture2D.MipLevels = 1;
+			dev_->CreateShaderResourceView(liquidDepthRT_.Get(), &srv, window_->SRV_CPU((int)sIdx));
+			dev_->CreateShaderResourceView(liquidDepthRT_.Get(), &srv, window_->SRV_CPU_Master((int)sIdx));
 		}
 	}
 
@@ -3887,6 +4012,286 @@ void Renderer::DrawSkybox() {
 	list_->IASetIndexBuffer(&skyboxIBV_);
 	list_->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 	list_->DrawIndexedInstanced(skyboxIndexCount_, 1, 0, 0, 0);
+}
+
+// ★追加: 液体描画パス開始
+void Renderer::BeginLiquidPass() {
+	if (!liquidRT_ || !liquidDepthRT_) return;
+
+	if (liquidState_ != D3D12_RESOURCE_STATE_RENDER_TARGET) {
+		D3D12_RESOURCE_BARRIER barriers[2];
+		barriers[0] = CD3DX12_RESOURCE_BARRIER::Transition(liquidRT_.Get(), liquidState_, D3D12_RESOURCE_STATE_RENDER_TARGET);
+		barriers[1] = CD3DX12_RESOURCE_BARRIER::Transition(liquidDepthRT_.Get(), liquidDepthState_, D3D12_RESOURCE_STATE_RENDER_TARGET);
+		list_->ResourceBarrier(2, barriers);
+		liquidState_ = D3D12_RESOURCE_STATE_RENDER_TARGET;
+		liquidDepthState_ = D3D12_RESOURCE_STATE_RENDER_TARGET;
+	}
+
+	D3D12_CPU_DESCRIPTOR_HANDLE rtvs[2] = { liquidRtv_, liquidDepthRtv_ };
+	list_->OMSetRenderTargets(2, rtvs, FALSE, &ppDepthDsv_);
+
+	const float clearColor[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+	list_->ClearRenderTargetView(liquidRtv_, clearColor, 0, nullptr);
+	
+	const float clearDepth[4] = {10000.0f, 0.0f, 0.0f, 0.0f};
+	list_->ClearRenderTargetView(liquidDepthRtv_, clearDepth, 0, nullptr);
+}
+
+// ★追加: 液体描画パス終了
+void Renderer::EndLiquidPass() {
+	if (!liquidRT_ || !liquidDepthRT_) return;
+
+	if (liquidState_ != D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE) {
+		D3D12_RESOURCE_BARRIER barriers[2];
+		barriers[0] = CD3DX12_RESOURCE_BARRIER::Transition(liquidRT_.Get(), liquidState_, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+		barriers[1] = CD3DX12_RESOURCE_BARRIER::Transition(liquidDepthRT_.Get(), liquidDepthState_, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+		list_->ResourceBarrier(2, barriers);
+		liquidState_ = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+		liquidDepthState_ = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+	}
+
+	// 元のメインレンダーターゲットに戻す
+	list_->OMSetRenderTargets(1, &ppRtv_, FALSE, &ppDepthDsv_);
+
+	// ★追加（ステップ3）: Metaballシェーダーを使ってメイン画面に合成（コンポジット）
+	if (pipelines_.count("Metaball")) {
+		list_->SetPipelineState(pipelines_["Metaball"].Get());
+		list_->SetGraphicsRootSignature(rootSigPP_.Get());
+		list_->RSSetViewports(1, &viewport_);
+		list_->RSSetScissorRects(1, &scissor_);
+
+		ID3D12DescriptorHeap* heaps[] = { srvHeap_ };
+		list_->SetDescriptorHeaps(1, heaps);
+		
+		// b0: ダミーの定数バッファ（CRTPost等と同じシグネチャなので何かしらバインドする）
+		const uint32_t fi = window_->FrameIndex();
+		const uint32_t off = upload_[fi].Allocate(256, 256);
+		if (off != UINT32_MAX) {
+			list_->SetGraphicsRootConstantBufferView(0, upload_[fi].buffer->GetGPUVirtualAddress() + off);
+		}
+		
+		// t0: liquidSrv_ (色)
+		list_->SetGraphicsRootDescriptorTable(1, liquidSrv_);
+		// t1: liquidDepthSrv_ (深度) 
+		list_->SetGraphicsRootDescriptorTable(2, liquidDepthSrv_);
+
+		list_->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+		list_->DrawInstanced(3, 1, 0, 0);
+	}
+}
+// ★追加: GPU流体パーティクルシステム
+void Renderer::InitGPUFluid() {
+	CD3DX12_ROOT_PARAMETER computeParams[2]{};
+	computeParams[0].InitAsConstants(20, 0); 
+	computeParams[1].InitAsUnorderedAccessView(0); 
+
+	CD3DX12_ROOT_SIGNATURE_DESC rsDescCompute;
+	rsDescCompute.Init(_countof(computeParams), computeParams, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_NONE);
+
+	ComPtr<ID3DBlob> sigCompute, errCompute;
+	D3D12SerializeRootSignature(&rsDescCompute, D3D_ROOT_SIGNATURE_VERSION_1, &sigCompute, &errCompute);
+	dev_->CreateRootSignature(0, sigCompute->GetBufferPointer(), sigCompute->GetBufferSize(), IID_PPV_ARGS(&rootSigFluid_));
+
+	auto csEmit = CompileShaderFromFile(L"Resources/shaders/FluidSimCS.hlsl", "Emit", "cs_5_0");
+	auto csDensity = CompileShaderFromFile(L"Resources/shaders/FluidSimCS.hlsl", "CalcDensity", "cs_5_0");
+	auto csForce = CompileShaderFromFile(L"Resources/shaders/FluidSimCS.hlsl", "CalcForce", "cs_5_0");
+	
+	if (csEmit && csDensity && csForce) {
+		D3D12_COMPUTE_PIPELINE_STATE_DESC psoDesc{};
+		psoDesc.pRootSignature = rootSigFluid_.Get();
+		
+		psoDesc.CS = { csEmit->GetBufferPointer(), csEmit->GetBufferSize() };
+		dev_->CreateComputePipelineState(&psoDesc, IID_PPV_ARGS(&psoFluidEmit_));
+		
+		psoDesc.CS = { csDensity->GetBufferPointer(), csDensity->GetBufferSize() };
+		dev_->CreateComputePipelineState(&psoDesc, IID_PPV_ARGS(&psoFluidDensity_));
+
+		psoDesc.CS = { csForce->GetBufferPointer(), csForce->GetBufferSize() };
+		dev_->CreateComputePipelineState(&psoDesc, IID_PPV_ARGS(&psoFluidForce_));
+	}
+
+	auto vsBlob = CompileShaderFromFile(L"Resources/shaders/GPUFluidVS.hlsl", "main", "vs_5_0");
+	auto psBlob = CompileShaderFromFile(L"Resources/shaders/GPUFluidPS.hlsl", "main", "ps_5_0"); // ★変更
+	if (vsBlob && psBlob) {
+		D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc{};
+		psoDesc.pRootSignature = rootSig3D_.Get();
+		psoDesc.VS = {vsBlob->GetBufferPointer(), vsBlob->GetBufferSize()};
+		psoDesc.PS = {psBlob->GetBufferPointer(), psBlob->GetBufferSize()};
+		D3D12_INPUT_ELEMENT_DESC layout[] = {
+			{"POSITION", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 0,  D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+			{"TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT,       0, 16, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+			{"NORMAL",   0, DXGI_FORMAT_R32G32B32_FLOAT,    0, 24, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+		};
+		psoDesc.InputLayout = {layout, _countof(layout)};
+		psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+		psoDesc.NumRenderTargets = 2;
+		psoDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+		psoDesc.RTVFormats[1] = DXGI_FORMAT_R32_FLOAT;
+		psoDesc.SampleDesc.Count = 1;
+		psoDesc.SampleMask = UINT_MAX;
+		psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
+		psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
+		
+		// RenderTarget[0]: 色と密度の蓄積 (加算ブレンド)
+		auto& rt0 = psoDesc.BlendState.RenderTarget[0];
+		rt0.BlendEnable = TRUE;
+		rt0.SrcBlend = D3D12_BLEND_SRC_ALPHA;
+		rt0.DestBlend = D3D12_BLEND_ONE; // ← 加算ブレンドに変更
+		rt0.BlendOp = D3D12_BLEND_OP_ADD;
+		// ★変更: アルファ成分を加算合成にしてメタボールの密度を蓄積する
+		rt0.SrcBlendAlpha = D3D12_BLEND_ONE;
+		rt0.DestBlendAlpha = D3D12_BLEND_ONE;
+		rt0.BlendOpAlpha = D3D12_BLEND_OP_ADD;
+
+		// RenderTarget[1]: 深度の記録 (手前の面を残すためMINブレンド)
+		auto& rt1 = psoDesc.BlendState.RenderTarget[1];
+		rt1.BlendEnable = TRUE;
+		rt1.SrcBlend = D3D12_BLEND_ONE;
+		rt1.DestBlend = D3D12_BLEND_ONE;
+		rt1.BlendOp = D3D12_BLEND_OP_MIN; // 最小値 (最も手前の深度) を残す
+		rt1.SrcBlendAlpha = D3D12_BLEND_ONE;
+		rt1.DestBlendAlpha = D3D12_BLEND_ONE;
+		rt1.BlendOpAlpha = D3D12_BLEND_OP_MIN;
+		psoDesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
+		psoDesc.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ZERO; 
+		psoDesc.DSVFormat = DXGI_FORMAT_D32_FLOAT;
+		dev_->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&psoFluidRender_));
+	}
+
+	auto vsDebug = CompileShaderFromFile(L"Resources/shaders/GPUFluidDebugVS.hlsl", "main", "vs_5_0");
+	auto psDebug = CompileShaderFromFile(L"Resources/shaders/GPUFluidDebugPS.hlsl", "main", "ps_5_0");
+	if (vsDebug && psDebug) {
+		D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc{};
+		psoDesc.pRootSignature = rootSig3D_.Get();
+		psoDesc.VS = {vsDebug->GetBufferPointer(), vsDebug->GetBufferSize()};
+		psoDesc.PS = {psDebug->GetBufferPointer(), psDebug->GetBufferSize()};
+		psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_LINE;
+		psoDesc.NumRenderTargets = 1;
+		psoDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+		psoDesc.SampleDesc.Count = 1;
+		psoDesc.SampleMask = UINT_MAX;
+		psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
+		psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
+		auto& rt = psoDesc.BlendState.RenderTarget[0];
+		rt.BlendEnable = TRUE;
+		rt.SrcBlend = D3D12_BLEND_SRC_ALPHA;
+		rt.DestBlend = D3D12_BLEND_INV_SRC_ALPHA;
+		rt.BlendOp = D3D12_BLEND_OP_ADD;
+		rt.SrcBlendAlpha = D3D12_BLEND_ONE;
+		rt.DestBlendAlpha = D3D12_BLEND_INV_SRC_ALPHA;
+		rt.BlendOpAlpha = D3D12_BLEND_OP_ADD;
+		psoDesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
+		psoDesc.DSVFormat = DXGI_FORMAT_D32_FLOAT;
+		dev_->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&psoFluidDebug_));
+	}
+
+	uint32_t bufferSize = gpuFluidMaxParticles_ * sizeof(GPUFluidParticle);
+	auto heapProps = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
+	auto resDesc = CD3DX12_RESOURCE_DESC::Buffer(bufferSize, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
+	dev_->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &resDesc, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr, IID_PPV_ARGS(&gpuFluidBuffer_));
+
+	isGPUFluidReady_ = true;
+}
+
+void Renderer::SetGPUFluidCore(const Vector3& pos, float attraction) {
+	gpuFluidCorePos_ = pos;
+	gpuFluidCoreAttraction_ = attraction;
+}
+
+void Renderer::UpdateGPUFluid(float dt) {
+	if (!isGPUFluidReady_ || !psoFluidDensity_ || !psoFluidForce_ || !gpuFluidBuffer_) return;
+	
+	struct CB { 
+		float dt; uint32_t emitCursor; uint32_t emitCount; uint32_t maxParticles; 
+		Vector3 emitPos; float pad1; 
+		Vector3 emitDir; float pad2; 
+		Vector4 emitColor; 
+		Vector3 corePos; float coreAttraction;
+	} cb;
+	cb.dt = dt; cb.emitCursor = 0; cb.emitCount = 0; cb.maxParticles = gpuFluidMaxParticles_;
+	cb.emitPos = {0,0,0}; cb.emitDir = {0,0,0}; cb.emitColor = {0,0,0,0};
+	cb.corePos = gpuFluidCorePos_; cb.coreAttraction = gpuFluidCoreAttraction_;
+	
+	list_->SetComputeRootSignature(rootSigFluid_.Get());
+	list_->SetComputeRoot32BitConstants(0, 20, &cb, 0);
+	list_->SetComputeRootUnorderedAccessView(1, gpuFluidBuffer_->GetGPUVirtualAddress());
+
+	uint32_t threadGroups = (gpuFluidMaxParticles_ + 255) / 256;
+
+	// Pass 1: Density
+	list_->SetPipelineState(psoFluidDensity_.Get());
+	list_->Dispatch(threadGroups, 1, 1);
+
+	// Barrier to ensure Density is written before Force reads it
+	auto barrier = CD3DX12_RESOURCE_BARRIER::UAV(gpuFluidBuffer_.Get());
+	list_->ResourceBarrier(1, &barrier);
+
+	// Pass 2: Force & Integrate
+	list_->SetPipelineState(psoFluidForce_.Get());
+	list_->Dispatch(threadGroups, 1, 1);
+	
+	// Another barrier after write
+	list_->ResourceBarrier(1, &barrier);
+}
+
+void Renderer::EmitGPUFluid(const Vector3& pos, const Vector3& velocityDir, const Vector4& color, int count) {
+	if (!isGPUFluidReady_ || !psoFluidEmit_ || !gpuFluidBuffer_) return;
+	list_->SetPipelineState(psoFluidEmit_.Get());
+	list_->SetComputeRootSignature(rootSigFluid_.Get());
+	struct CB { 
+		float dt; uint32_t emitCursor; uint32_t emitCount; uint32_t maxParticles; 
+		Vector3 emitPos; float pad1; 
+		Vector3 emitDir; float pad2; 
+		Vector4 emitColor; 
+		Vector3 corePos; float coreAttraction;
+	} cb;
+	cb.dt = 0.0f; cb.emitCursor = gpuFluidEmitCursor_; cb.emitCount = count; cb.maxParticles = gpuFluidMaxParticles_;
+	cb.emitPos = pos; cb.emitDir = velocityDir; cb.emitColor = color;
+	cb.corePos = gpuFluidCorePos_; cb.coreAttraction = gpuFluidCoreAttraction_;
+	
+	list_->SetComputeRoot32BitConstants(0, 20, &cb, 0);
+	list_->SetComputeRootUnorderedAccessView(1, gpuFluidBuffer_->GetGPUVirtualAddress());
+	uint32_t threadGroups = (gpuFluidMaxParticles_ + 255) / 256; 
+	list_->Dispatch(threadGroups, 1, 1);
+	
+	auto barrier = CD3DX12_RESOURCE_BARRIER::UAV(gpuFluidBuffer_.Get());
+	list_->ResourceBarrier(1, &barrier);
+	
+	gpuFluidEmitCursor_ = (gpuFluidEmitCursor_ + count) % gpuFluidMaxParticles_;
+}
+
+void Renderer::DrawGPUFluid(TextureHandle texture) {
+	if (!isGPUFluidReady_ || !psoFluidRender_ || !gpuFluidBuffer_) return;
+	list_->SetPipelineState(psoFluidRender_.Get());
+	list_->SetGraphicsRootSignature(rootSig3D_.Get());
+	list_->SetGraphicsRootConstantBufferView(0, cbFrameAddr_);
+	list_->SetGraphicsRootDescriptorTable(3, GetTextureSrvGpu(texture));
+	auto b1 = CD3DX12_RESOURCE_BARRIER::Transition(gpuFluidBuffer_.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+	list_->ResourceBarrier(1, &b1);
+	list_->SetGraphicsRootShaderResourceView(6, gpuFluidBuffer_->GetGPUVirtualAddress());
+    list_->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    // 外部モデルに依存せず、頂点シェーダー内で直接ビルボードを生成するため頂点バッファはセットしない
+    list_->DrawInstanced(6, gpuFluidMaxParticles_, 0, 0);
+	auto b2 = CD3DX12_RESOURCE_BARRIER::Transition(gpuFluidBuffer_.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+	list_->ResourceBarrier(1, &b2);
+}
+
+void Renderer::DrawGPUFluidDebug() {
+	if (!isGPUFluidReady_ || !psoFluidDebug_ || !gpuFluidBuffer_) return;
+	
+	list_->SetPipelineState(psoFluidDebug_.Get());
+	list_->SetGraphicsRootSignature(rootSig3D_.Get());
+	list_->SetGraphicsRootConstantBufferView(0, cbFrameAddr_);
+	
+	auto b1 = CD3DX12_RESOURCE_BARRIER::Transition(gpuFluidBuffer_.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+	list_->ResourceBarrier(1, &b1);
+	
+	list_->SetGraphicsRootShaderResourceView(6, gpuFluidBuffer_->GetGPUVirtualAddress());
+	list_->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_LINELIST);
+	list_->DrawInstanced(6, gpuFluidMaxParticles_, 0, 0); // 矢印は6頂点（3ライン）
+	
+	auto b2 = CD3DX12_RESOURCE_BARRIER::Transition(gpuFluidBuffer_.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+	list_->ResourceBarrier(1, &b2);
 }
 
 } // namespace Engine

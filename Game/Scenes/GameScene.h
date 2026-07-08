@@ -133,6 +133,7 @@ private:
 
     float playTime_ = 0.0f; // 繧ｯ繝ｪ繧｢繧ｿ繧､繝險域ｸｬ逕ｨ
     bool wasLiquidated_ = false;
+    bool gpuSlimeEmitted_ = false; // ★追加: GPUスライムの初回放出フラグ
 
     friend class EditorUI;
 

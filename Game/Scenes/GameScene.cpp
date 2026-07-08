@@ -14,6 +14,7 @@
 #include "../Systems/CleanupSystem.h"
 #include "../Systems/FluidSystem.h"
 #include "../Systems/WeaponSystem.h" // 笘・ｿｽ蜉
+#include "../../Engine/Input.h"      // ★追加
 
 #include "../Systems/HealthSystem.h"
 #include "../Systems/MotionSystem.h" // 笘・ｿｽ蜉
@@ -55,17 +56,15 @@ GameScene::~GameScene() {
     // ClearScene 内で再接続されてしまうため、デストラクタの最後で確実に切断する
     registry_.on_destroy<TagComponent>().disconnect<&GameScene::OnTagRemoved>(this);
     registry_.on_destroy<ScriptComponent>().disconnect<&GameScene::OnScriptDestroyed>(this);
-
     systems_.clear();
 }
 
 void GameScene::Initialize(Engine::WindowDX* dx, const Engine::SceneParameters& params) {
 	dx_ = dx;
 	renderer_ = Engine::Renderer::GetInstance();
-	eventSystem_.Clear(); // 笘・ｿｽ蜉: 繧､繝吶Φ繝医Μ繧ｹ繝翫・繧偵け繝ｪ繧｢
+	eventSystem_.Clear();
 	playTime_ = 0.0f;
 	camera_.Initialize();
-	// 笘・ｿｽ蜉: 譏守､ｺ逧・↓繝励Ο繧ｸ繧ｧ繧ｯ繧ｷ繝ｧ繝ｳ繧定ｨｭ螳・(1920x1080縺ｮ繧｢繧ｹ繝壹け繝域ｯ・
 	camera_.SetProjection(0.7854f, (float)Engine::WindowDX::kW / (float)Engine::WindowDX::kH, 0.1f, 1000.0f);
 	camera_.SetPosition(0, 2, -5);
 	camera_.SetRotation(0.2f, 0, 0);
@@ -75,11 +74,11 @@ void GameScene::Initialize(Engine::WindowDX* dx, const Engine::SceneParameters& 
 	// 笘・繝ｪ繝ｪ繝ｼ繧ｹ讒区・遲峨〒縺ｮ閾ｪ蜍輔Ο繝ｼ繝・
 	try {
 		std::string scenePath = params.stagePath.empty() ? EditorUI::GetUnifiedProjectPath("Resources/Scenes/scene.json") : params.stagePath;
-		// 笘・ｿｮ豁｣: UTF-8譁・ｭ怜・繧巽romUTF8邨檎罰縺ｧfs::path縺ｫ螟画鋤縺励∵律譛ｬ隱槭ヱ繧ｹ縺ｫ蟇ｾ蠢・
+		// 笘・ｿｮ豁｣: UTF-8譁・ｭ怜・繧巽romUTF8邨檎罰縺ｧfs::path縺ｫ螟画鋤縺励€∵律譛ｬ隱槭ヱ繧ｹ縺ｫ蟇ｾ蠢・
 		if (std::filesystem::exists(Engine::PathUtils::FromUTF8(scenePath))) {
 			OutputDebugStringA(("[GameScene] " + scenePath + " found. Loading...\n").c_str());
 			EditorUI::LoadScene(this, scenePath);
-			isPlaying_ = true; // 繝ｪ繝ｪ繝ｼ繧ｹ/襍ｷ蜍墓凾縺ｯ繝励Ξ繧､迥ｶ諷九°繧蛾幕蟋九☆繧・
+			isPlaying_ = true; // リリース/起動時はプレイ状態から開始する
 			loaded = true;
 		} else {
 			OutputDebugStringA(("[GameScene] " + scenePath + " NOT found.\n").c_str());
@@ -90,7 +89,7 @@ void GameScene::Initialize(Engine::WindowDX* dx, const Engine::SceneParameters& 
 		MessageBoxA(NULL, msg.c_str(), "Scene Load Error", MB_OK | MB_ICONERROR);
 	}
 
-	// 譌｢縺ｫ繧ｪ繝悶ず繧ｧ繧ｯ繝医′蟄伜惠縺吶ｋ蝣ｴ蜷茨ｼ医Μ繧ｹ繧ｿ繝ｼ繝域凾・峨ｄ繝ｭ繝ｼ繝牙､ｱ謨玲凾縺ｯ譛菴朱剞縺ｮ蜀・ｮｹ繧剃ｽ懈・
+	// 既にオブジェクトが存在する場合（リスタート時）やロード失敗時は最低限の内容を作成
 	if (registry_.storage<entt::entity>().empty() || !loaded) {
 		auto sun = registry_.create();
 		registry_.emplace<NameComponent>(sun, "Sun");
@@ -109,28 +108,12 @@ void GameScene::Initialize(Engine::WindowDX* dx, const Engine::SceneParameters& 
 
 		registry_.emplace<TransformComponent>(plane, DirectX::XMFLOAT3{0, 0, 0}, DirectX::XMFLOAT3{0, 0, 0}, DirectX::XMFLOAT3{20, 1, 20});
 
-		// 笘・ｿｽ蜉: 迚ｩ逅・愛螳夂畑縺ｫGpuMeshCollider繧剃ｻ倅ｸ・
+		// 物理判定用にGpuMeshColliderを付与
 		auto& gmc = registry_.emplace<GpuMeshColliderComponent>(plane);
 		gmc.meshHandle = mesh.modelHandle;
 		gmc.enabled = true;
-
 	}
 
-	// 笘・ｿｽ蜉: Ring 繝｡繝・す繝･縺ｮ逕滓・縺ｨ陦ｨ遉ｺ (CG4_01_01 Ring隱ｲ鬘・
-	// 繧ｷ繝ｼ繝ｳ繝ｭ繝ｼ繝峨・譛臥┌縺ｫ髢｢繧上ｉ縺壼ｸｸ縺ｫRing繧堤函謌舌☆繧・
-	{
-		auto ring = registry_.create();
-		registry_.emplace<NameComponent>(ring, "Ring");
-		auto& ringMesh = registry_.emplace<MeshRendererComponent>(ring);
-		ringMesh.modelHandle = renderer_->CreateRingMesh(2.0f, 1.0f, 32); // 螟門濠蠕・.0, 蜀・濠蠕・.0, 蛻・牡謨ｰ32
-		ringMesh.textureHandle = renderer_->LoadTexture2D("Resources/Textures/white1x1.png");
-		ringMesh.texturePath = "Resources/Textures/white1x1.png";
-		registry_.emplace<TransformComponent>(ring,
-			DirectX::XMFLOAT3{0.0f, 1.0f, 0.0f},   // 菴咲ｽｮ: 蝨ｰ髱｢繧医ｊ蟆代＠荳・
-			DirectX::XMFLOAT3{0.0f, 0.0f, 0.0f},   // 蝗櫁ｻ｢: 縺ｪ縺・
-			DirectX::XMFLOAT3{1.0f, 1.0f, 1.0f});   // 繧ｹ繧ｱ繝ｼ繝ｫ: 遲牙・
-		registry_.emplace<ColorComponent>(ring, DirectX::XMFLOAT4{1.0f, 1.0f, 1.0f, 1.0f});
-	}
 
 	Game::FluidSystem::GetInstance()->Initialize(renderer_->GetDevice());
 
@@ -261,6 +244,11 @@ void GameScene::Initialize(Engine::WindowDX* dx, const Engine::SceneParameters& 
 // =====================================================
 void GameScene::Update() {
 	if (!renderer_) return;
+
+	// ★追加: Yキーでデバッグベクトルの表示/非表示を切り替え
+	if (Engine::Input::GetInstance()->Trigger(0x15)) { // 0x15 = DIK_Y
+		renderer_->SetDrawFluidDebugArrows(!renderer_->GetDrawFluidDebugArrows());
+	}
 
 	// 笘・ｿｽ蜉: 陦悟・繧ｭ繝｣繝・す繝･繧呈ｯ弱ヵ繝ｬ繝ｼ繝繧ｯ繝ｪ繧｢
 	ClearMatrixCache();
@@ -708,100 +696,22 @@ void GameScene::Draw() {
 			}
 
 			if (slimeCpuLogic_.initialized && registry_.all_of<TransformComponent>(playerEntity)) {
-				// 蜍慕噪繝｡繝・す繝･縺ｫ蟾ｮ縺玲崛縺・
-				mr.modelHandle = slimeCpuLogic_.dynamicMeshHandle;
-				// 繧ｷ繧ｧ繝ｼ繝€繝ｼ縺ｯ縺ｲ縺ｨ縺ｾ縺售lime縺ｮ縺ｾ縺ｾ縺ｫ縺吶ｋ・亥ｱ域釜繝槭ユ繝ｪ繧｢繝ｫ繧堤函縺九☆縺溘ａ・・
-				mr.shaderName = "Slime";
+				// ★フェーズ3: CPUスライム描画をオフにし、GPU流体スライムに移行
+				mr.enabled = false;
 				
-				// auto& tc = registry_.get<TransformComponent>(playerEntity);
-				slimeCpuLogic_.time += ctx_.dt;
+				if (!gpuSlimeEmitted_) {
+					// プレイヤー初期化時に1回だけ、大量のGPUパーティクルをコア位置に放出する
+					Engine::Vector4 pColor = {0.2f, 0.8f, 1.0f, 1.0f}; // プレイヤースライムの色
+					renderer_->EmitGPUFluid({corePos.x, corePos.y, corePos.z}, {0, -2, 0}, pColor, 2000);
+					gpuSlimeEmitted_ = true;
+				}
 				
-				const float noiseScale = 0.5f;
-				const float noiseSpeed = 1.5f;
-
-				for (size_t i = 0; i < slimeCpuLogic_.baseVertices.size(); ++i) {
-					const auto& baseV = slimeCpuLogic_.baseVertices[i];
-					const auto& baseN = slimeCpuLogic_.baseNormals[i];
-					auto& dynV = slimeCpuLogic_.dynamicVerts[i];
-
-					// 元の球体頂点からスライムのデフォルト形状を計算
-					float bx = baseV.position.x;
-					float by = baseV.position.y;
-					float bz = baseV.position.z;
-
-					// t は 0.0 (底: -0.5) から 1.0 (頂点: 0.5)
-					float t = by + 0.5f;
-					t = std::max(0.0f, std::min(1.0f, t));
-
-					// スライムの裾野を広げ、てっぺんをすぼめるスケール
-					float invT = 1.0f - t;
-					// てっぺんの丸みを維持するため、頂点付近(invT=0)では sFactor を 1.0 に近づけ、下部にかけて広げる
-					float sFactor = 1.0f + 1.4f * (invT * invT);
-
-					// y方向の歪み（底に向かって少し持ち上げることで、肉厚な丸みを作る）
-					float newY = by;
-					if (t < 0.4f) {
-						float k = (0.4f - t) / 0.4f;
-						newY += 0.08f * std::sin(k * 1.57079f); // 90度 (PI/2)
-					}
-
-					// スライム形状のベース位置 (全体のスケールを大きくする)
-					float scaleUp = 2.6f;
-					float sx = bx * sFactor * scaleUp;
-					float sz = bz * sFactor * scaleUp;
-					float sy = newY * scaleUp;
-
-					// 1. 繝弱う繧ｺ縺ｫ繧医ｋ鬆らせ縺ｮ謠ｺ繧峨℃
-					float noise = Noise3D(
-						sx * noiseScale + slimeCpuLogic_.time * noiseSpeed,
-						sy * noiseScale,
-						sz * noiseScale + slimeCpuLogic_.time * noiseSpeed
-					);
-
-					// 元の法線方向にノイズを乗せる
-					Engine::Vector3 v = {
-						sx + baseN.normal.x * (noise * 0.25f),
-						sy + baseN.normal.y * (noise * 0.25f),
-						sz + baseN.normal.z * (noise * 0.25f)
-					};
-
-					// 繝ｯ繝ｼ繝ｫ繝臥ｩｺ髢薙〒縺ｮY蠎ｧ讓吶ｒ險育ｮ・
-					// float worldY = tc.translate.y + (v.y * tc.scale.y);
-
-					// 2. 蝨ｰ髱｢縺ｨ縺ｮ陦晉ｪ∝愛螳壹→螟牙ｽ｢
-					/*
-					if (worldY < slimeCpuLogic_.groundY) {
-						float diff = slimeCpuLogic_.groundY - worldY;
-						
-						// Y繧偵け繝ｪ繝・・
-						v.y = (slimeCpuLogic_.groundY - tc.translate.y) / tc.scale.y;
-
-						// 貎ｰ繧後◆蛻・□縺第ｨｪ縺ｫ蠎・￡繧・
-						float flattenSpread = 1.0f + (diff * 0.5f);
-						v.x *= flattenSpread;
-						v.z *= flattenSpread;
-					}
-					*/
-
-					dynV.position = { v.x, v.y, v.z, 1.0f };
-					dynV.normal = baseN.normal; 
-				}
-
-				// GPU縺ｸ鬆らせ繝舌ャ繝輔ぃ繧定ｻ｢騾・
-				renderer_->UpdateDynamicMesh(slimeCpuLogic_.dynamicMeshHandle, slimeCpuLogic_.dynamicVerts);
-
-				// 蜀・Κ繝代・繝・ぅ繧ｯ繝ｫ譖ｴ譁ｰ
-				for (auto& p : slimeCpuLogic_.particles) {
-					float pNoise = Noise3D(
-						p.basePos.x * 1.2f + slimeCpuLogic_.time * 0.8f,
-						p.basePos.y * 1.2f - slimeCpuLogic_.time * 0.5f,
-						p.basePos.z * 1.2f
-					);
-					Engine::Vector3 dir = Engine::Normalize(p.basePos);
-					p.currentPos.x = p.basePos.x + dir.x * (pNoise * 0.3f);
-					p.currentPos.y = p.basePos.y + dir.y * (pNoise * 0.3f);
-					p.currentPos.z = p.basePos.z + dir.z * (pNoise * 0.3f);
-				}
+				// アクション状態に応じて引力を変える（回避中は引力を弱めて散らばらせるなど）
+				float attraction = isLiquidated ? 10.0f : 80.0f;
+				
+				// Y座標を少し上げてコアとする（スライムが少し立つように）
+				Engine::Vector3 targetCore = {corePos.x, corePos.y + 0.8f, corePos.z};
+				renderer_->SetGPUFluidCore(targetCore, attraction);
 			}
 			// ----------------------------------------
 			
@@ -1005,6 +915,7 @@ void GameScene::Draw() {
 	for (auto entity : renderView) {
 		if (registry_.all_of<MeshRendererComponent>(entity)) {
 			auto& mr = registry_.get<MeshRendererComponent>(entity);
+			if (!mr.enabled) continue;
 			if (mr.shaderName == "Slime" || mr.shaderName == "SlimeNoFace" || mr.shaderName == "SlimeNoFaceNoDepth") {
 				Engine::Matrix4x4 world = this->GetWorldMatrix(static_cast<int>(entity));
 				Engine::Vector4 color = { 1.0f, 1.0f, 1.0f, 1.0f };

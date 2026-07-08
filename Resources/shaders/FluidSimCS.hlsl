@@ -1,212 +1,241 @@
-// ========================================================================
-// SPH流体シミュレーション v3 — パラメータバランス完全再計算版
-// 
-// 設計根拠:
-//   6144粒子を半径1.0の球に詰めた場合:
-//     平均粒子間隔 ≈ (4/3 π / 6144)^(1/3) ≈ 0.088
-//     smoothingLength = 3.5 × 間隔 ≈ 0.30（近傍約30粒子）
-//     particleMass = 0.1 → 総質量 614.4
-//     restDensity ≈ 総質量 / 体積 ≈ 147 → 150に設定
-//
-//   圧力: Tait式（指数4、7より柔らかくプルプルする）
-//   表面張力: 粒同士の引力で自然な丸みを保つ
-//   境界拘束: なし（SPH自体の表面張力と圧力で形を保つ）
-// ========================================================================
-
 struct Particle {
-    float3 position;
-    float density;
-    float3 velocity;
-    float pressure;
-    float3 force;
-    float pad1;
-    float3 restPosition;
-    float pad2;
-};
-
-cbuffer FluidConstants : register(b0) {
-    float3 corePosition;
-    uint numParticles;
-    
-    float deltaTime;
-    float smoothingLength;
-    float particleMass;
-    float restDensity;
-    
-    float gasStiffness;
-    float viscosity;
-    float gravity;
-    float damping;
-    
-    float floorWorldY;
-    uint passType;
-    uint simMode;
-    float pad0;
-    float3 blobRadii;
-    float pad1;
-    float3 playerInputForce;
-    float pad2;
+    float3 position; float density;
+    float3 velocity; float pressure;
+    float4 color;
 };
 
 RWStructuredBuffer<Particle> Particles : register(u0);
 
-#define PI 3.14159265359f
-
-// ---- SPHカーネル関数 ----
-float Poly6(float r2, float h) {
-    float h2 = h * h;
-    if (r2 < 0.0001f || r2 > h2) return 0.0f;
-    float t = h2 - r2;
-    return (315.0f / (64.0f * PI * pow(h, 9))) * t * t * t;
+cbuffer CBCompute : register(b0) {
+    float dt;
+    uint emitCursor;
+    uint emitCount;
+    uint maxParticles;
+    float3 emitPos; float pad1;
+    float3 emitDir; float pad2;
+    float4 emitColor;
+    float3 corePos; float coreAttraction;
 }
 
-float3 SpikyGrad(float3 dir, float r, float h) {
-    if (r < 0.0001f || r > h) return float3(0, 0, 0);
-    float t = h - r;
-    return dir * (-45.0f / (PI * pow(h, 6))) * t * t;
+// 疑似乱数ジェネレーター
+float hash(uint n) {
+    n = (n << 13U) ^ n;
+    n = n * (n * n * 15731U + 789221U) + 1376312589U;
+    return float(n & uint(0x7fffffffU)) / float(0x7fffffff);
 }
 
-float ViscosityLap(float r, float h) {
-    if (r < 0.0001f || r > h) return 0.0f;
-    return (45.0f / (PI * pow(h, 6))) * (h - r);
-}
-
+// ==========================================
+// Pass 0: Emit (パーティクル放出)
+// ==========================================
 [numthreads(256, 1, 1)]
-void main(uint3 DTid : SV_DispatchThreadID) {
-    uint id = DTid.x;
-    if (id >= numParticles) return;
-
-    Particle p = Particles[id];
-    float h = smoothingLength;
-
-        // ==== パス0: 密度計算 + Tait圧力 ====
-    if (passType == 0) {
-        float density = 0.0f;
-        for (uint i = 0; i < numParticles; i++) {
-            float3 diff = p.position - Particles[i].position;
-            density += particleMass * Poly6(dot(diff, diff), h);
-        }
-        density = max(density, 0.001f);
-        p.density = density;
-        
-        // Tait式（指数を下げて爆発を防ぎつつ、上限クランプを外して特異点への圧潰を防ぐ）
-        float ratio = density / restDensity;
-        // 密度が低い時に引力にならないよう max(..., 0.0f)
-        float effGasStiffness = gasStiffness * 1.5f; // 反発力を底上げ
-        p.pressure = max(0.0f, effGasStiffness * (ratio * ratio - 1.0f));
-        
-        Particles[id] = p;
-    }
-    // ==== パス1: 力の計算 + 位置更新 ====
-    else if (passType == 1) {
-        float3 pressureForce = float3(0, 0, 0);
-        float3 viscosityForce = float3(0, 0, 0);
-        float3 surfaceTensionForce = float3(0, 0, 0);
-        
-        // 表面張力係数（1.5は強すぎて1点に潰れる原因だったので下げる）
-        float cohesion = simMode == 0 ? 0.15f : 0.02f;
-        
-        for (uint i = 0; i < numParticles; i++) {
-            if (i == id) continue;
-            Particle neighbor = Particles[i];
-            float3 diff = p.position - neighbor.position;
-            float r = length(diff);
-            
-            if (r > 0.0001f && r < h) {
-                float3 dir = diff / r;
-                
-                // 圧力
-                float pTerm = (p.pressure / max(p.density * p.density, 0.01f))
-                            + (neighbor.pressure / max(neighbor.density * neighbor.density, 0.01f));
-                pressureForce -= particleMass * pTerm * SpikyGrad(dir, r, h);
-                
-                // 粘性
-                float3 velDiff = neighbor.velocity - p.velocity;
-                viscosityForce += velDiff * (particleMass / max(neighbor.density, 0.01f)) * ViscosityLap(r, h);
-                
-                // 表面張力（引力）
-                float w = Poly6(r * r, h);
-                surfaceTensionForce -= dir * cohesion * particleMass * w;
-            }
-        }
-        viscosityForce *= viscosity;
-        
-        // 中心への引き戻し力
-        float3 coreForce = float3(0, 0, 0);
-        float distToCore = length(p.position);
-        float3 dirToCore = distToCore > 0.001f ? -p.position / distToCore : float3(0,0,0);
-        
-        if (simMode == 0) {
-            // ★ アプローチ変更：形状記憶バネ (Shape Matching)
-            // 粒子ごとに記憶された初期位置(restPosition)へ強力に引き戻す
-            float3 diffToRest = p.restPosition - p.position;
-            // 弾力のあるゼリー感を出すため、距離に比例したバネの力をかける
-            coreForce = diffToRest * 35.0f; 
+void Emit(uint3 DTid : SV_DispatchThreadID) {
+    uint i = DTid.x;
+    if (i >= maxParticles) return;
+    
+    if (emitCount > 0) {
+        bool shouldEmit = false;
+        if (emitCursor + emitCount <= maxParticles) {
+            shouldEmit = (i >= emitCursor && i < emitCursor + emitCount);
         } else {
-            // 液状化
-            float pullStrength = 0.3f;
-            coreForce = -p.position * pullStrength;
+            uint overflow = (emitCursor + emitCount) % maxParticles;
+            shouldEmit = (i >= emitCursor) || (i < overflow);
         }
         
-        // プレイヤー入力（外力）の適用
-        // スライムの質量・密度に応じて適用し、全体としてドロっと動かす
-        float3 inputF = playerInputForce * p.density * 2.0f;
-        
-        // 重力
-        float3 gravityForce = float3(0, gravity * p.density, 0);
-        
-        // 力の合成
-        // 旧来は totalForce を p.density で割っていたため、密度が低い（離れた）粒子の加速度が異常に大きくなり
-        // 飛び散る原因となっていた。SPH力は一定の restDensity で割り、他はそのまま足すことで安定させる。
-        float3 sphAccel = (pressureForce + viscosityForce + surfaceTensionForce) / restDensity;
-        float3 accel = sphAccel + coreForce + float3(0, gravity, 0) + (playerInputForce * 2.0f);
-        
-        // 速度・位置更新
-        p.velocity += accel * deltaTime;
-        // スライム時は集まる際の勢いを殺す（ミルククラウン爆発防止）
-        float currentDamping = simMode == 0 ? 0.92f : damping;
-        p.velocity *= currentDamping;
-        
-        // 速度制限
-        float maxSpeed = simMode == 0 ? 12.0f : 8.0f;
-        float speed = length(p.velocity);
-        if (speed > maxSpeed) {
-            p.velocity *= maxSpeed / speed;
+        if (shouldEmit) {
+            Particle p = Particles[i];
+            
+            // 乱数で散らす (-1.0 ～ 1.0)
+            float rx = (hash(i * 123) - 0.5f) * 2.0f;
+            float ry = (hash(i * 456) - 0.5f) * 2.0f;
+            float rz = (hash(i * 789) - 0.5f) * 2.0f;
+            
+            // ★位置をばらけさせる (超重要: 同一座標に重なると圧力が爆発する)
+            p.position = emitPos + float3(rx, ry, rz) * 1.5f;
+            
+            // 速度もランダムに
+            p.velocity = emitDir * 5.0f + float3(rx, abs(ry) + 0.2f, rz) * 5.0f;
+            p.color = emitColor;
+            
+            // 物理初期値
+            p.density = 1.0f;
+            p.pressure = 0.0f;
+            Particles[i] = p;
         }
-        
-        p.position += p.velocity * deltaTime;
-        
-        // オーバーシュート防止
-        if (simMode == 0) {
-            float dist = length(p.position);
-            float maxRadius = 10.0f; // 広く許容（形状記憶を阻害しないため）
-            if (dist > maxRadius) {
-                p.position = p.position * (maxRadius / dist);
-                p.velocity *= 0.5f;
-            }
-        }
-        
-        // 地面衝突と吸着感（Adhesion）
-        float colRadius = 0.08f;
-        float worldY = corePosition.y + p.position.y;
-        
-        // 床に近いときの吸着力（張り付くような挙動）は、スライムの丸みを保つため無効化
-        /*
-        float distToFloor = worldY - floorWorldY;
-        if (simMode == 0 && distToFloor > 0.0f && distToFloor < 0.2f) {
-            // 床に近いほど床方向へ引っぱる
-            p.velocity.y -= (0.2f - distToFloor) * 2.0f * deltaTime;
-        }
-        */
-
-        if (worldY < floorWorldY + colRadius) {
-            p.position.y = floorWorldY + colRadius - corePosition.y;
-            p.velocity.y *= -0.05f;  // ほぼ跳ねない（ベチャッとする）
-            float friction = simMode == 0 ? 0.6f : 0.95f; // 床の摩擦
-            p.velocity.x *= friction;
-            p.velocity.z *= friction;
-        }
-        
-        Particles[id] = p;
     }
+}
+
+// ==========================================
+// SPH Parameters (安定化のためにマイルドに調整)
+// ==========================================
+static const float SMOOTHING_RADIUS = 1.0f;
+static const float PARTICLE_MASS = 1.0f;
+static const float REST_DENSITY = 3.0f;     // 基準密度を下げる
+static const float GAS_CONSTANT = 50.0f;    // 反発力を弱める
+static const float VISCOSITY = 15.0f;       // 粘性
+static const float GRAVITY = -20.0f;
+static const float PI = 3.1415926535f;
+
+// ==========================================
+// Pass 1: CalcDensity (密度と圧力の計算)
+// ==========================================
+[numthreads(256, 1, 1)]
+void CalcDensity(uint3 DTid : SV_DispatchThreadID) {
+    uint i = DTid.x;
+    if (i >= maxParticles) return;
+    
+    // ★追加: 未放出・未初期化のパーティクルは地底に飛ばして計算から完全除外
+    if (Particles[i].color.a < 0.01f || Particles[i].position.y < -500.0f) {
+        Particles[i].position = float3(0, -1000.0f, 0);
+        Particles[i].density = 0.01f;
+        Particles[i].pressure = 0.0f;
+        return;
+    }
+    
+    float h = SMOOTHING_RADIUS;
+    float h2 = h * h;
+    float3 pos_i = Particles[i].position;
+    
+    float density = 0.0f;
+    float poly6 = 315.0f / (64.0f * PI * pow(h, 9));
+    
+    // O(N^2) 探索
+    for (uint j = 0; j < maxParticles; ++j) {
+        if (Particles[j].position.y < -500.0f) continue;
+        
+        float3 diff = pos_i - Particles[j].position;
+        float r2 = dot(diff, diff);
+        if (r2 < h2) {
+            float w = h2 - r2;
+            density += PARTICLE_MASS * poly6 * w * w * w;
+        }
+    }
+    
+    // 自身の最低密度を保証 (0割り防止)
+    if (density < 0.01f) density = 0.01f;
+    
+    Particles[i].density = density;
+    
+    // 圧力計算 (マイナスにならないようにmaxを取る)
+    Particles[i].pressure = max(GAS_CONSTANT * (density - REST_DENSITY), 0.0f);
+}
+
+// ==========================================
+// Pass 2: CalcForce (力学計算と座標更新)
+// ==========================================
+[numthreads(256, 1, 1)]
+void CalcForce(uint3 DTid : SV_DispatchThreadID) {
+    uint i = DTid.x;
+    if (i >= maxParticles) return;
+    if (dt <= 0.0f) return;
+    
+    Particle pi = Particles[i];
+    if (pi.position.y < -500.0f) return;
+    
+    float h = SMOOTHING_RADIUS;
+    
+    float3 forcePressure = float3(0,0,0);
+    float3 forceViscosity = float3(0,0,0);
+    
+    // ★修正: -45.0f ではなく 45.0f にする (引力ではなく反発力にするため)
+    float spiky = 45.0f / (PI * pow(h, 6));
+    float visc = 45.0f / (PI * pow(h, 6));
+    
+    for (uint j = 0; j < maxParticles; ++j) {
+        if (i == j) continue;
+        Particle pj = Particles[j];
+        if (pj.position.y < -500.0f) continue;
+        
+        float3 diff = pi.position - pj.position;
+        float r = length(diff);
+        
+        // ★修正: 完全に同じ位置にある場合はランダムにずらして反発させる (特異点回避)
+        if (r < 0.001f) {
+            diff = float3(hash(i) - 0.5f, hash(j) - 0.5f, hash(i^j) - 0.5f) * 0.01f;
+            r = length(diff);
+            if (r < 0.0001f) { diff = float3(0, 0.01f, 0); r = 0.01f; }
+        }
+        
+        if (r < h) {
+            float3 dir = diff / r;
+            float w = h - r;
+            
+            // 圧力項
+            float pressureTerm = (pi.pressure + pj.pressure) / (2.0f * pj.density);
+            forcePressure += dir * PARTICLE_MASS * pressureTerm * spiky * w * w;
+            
+            // 粘性項
+            float3 velDiff = pj.velocity - pi.velocity;
+            forceViscosity += velDiff * PARTICLE_MASS * (1.0f / pj.density) * VISCOSITY * visc * w;
+        }
+    }
+    
+    // 加速度
+    float3 force = forcePressure + forceViscosity;
+    
+    // ★追加: プレイヤーのコアへ引っ張る力 (スライムの形を保つ)
+    if (coreAttraction > 0.0f) {
+        float3 toCore = corePos - pi.position;
+        float distToCore = length(toCore);
+        
+        if (distToCore > 0.001f) {
+            // 1. 全体を丸く保つための一定の引力（表面張力）＋距離によるバネ力
+            // ダンピングが効いているため、中心でも一定の引力をかけて中身を密にする
+            float pull = coreAttraction * PARTICLE_MASS * 1.2f;
+            pull += coreAttraction * PARTICLE_MASS * distToCore * 1.5f;
+            float3 springForce = (toCore / distToCore) * pull;
+            
+            // 2. 床に潰れるのを防ぐ上向きの持ち上げ（重力相殺）
+            if (pi.position.y < corePos.y) {
+                springForce.y += 20.0f * PARTICLE_MASS;
+            }
+            
+            // 3. 球形(雫)の形を保つため、一定の「3D距離(半径)」を超えたパーティクルを強力に中心へ押し戻す
+            // これにより、外側に漏れ出してパンケーキ状に張り付くのを完全に防ぐ
+            float maxRadius = 1.2f;
+            if (distToCore > maxRadius) {
+                float excess = distToCore - maxRadius;
+                // 半径を超えた分だけ、極めて強力に内側へ押し返す
+                springForce += (toCore / distToCore) * (excess * coreAttraction * PARTICLE_MASS * 15.0f);
+            }
+            
+            force += springForce;
+        }
+        
+        // ★ダンピング（超重要：振動を抑えて静止させる）
+        // コアに引かれている間は速度を強制的に減衰させることで、プルプル荒ぶるのをピタッと止める
+        force -= pi.velocity * (coreAttraction * 0.15f);
+    }
+    
+    float3 acceleration = force / pi.density;
+    
+    // ★発散防止のため加速度をクランプ
+    float accLen = length(acceleration);
+    if (accLen > 500.0f) {
+        acceleration = (acceleration / accLen) * 500.0f;
+    }
+    
+    // 外力 (重力)
+    acceleration.y += GRAVITY;
+    
+    // 積分 (Symplectic Euler)
+    pi.velocity += acceleration * dt;
+    
+    // ★発散防止のため速度をクランプ
+    float speed = length(pi.velocity);
+    if (speed > 30.0f) {
+        pi.velocity = (pi.velocity / speed) * 30.0f;
+    }
+    
+    pi.position += pi.velocity * dt;
+    
+    // コリジョン (簡易的な床バウンド)
+    if (pi.position.y < 0.2f) {
+        pi.position.y = 0.2f;
+        pi.velocity.y *= -0.3f;
+        pi.velocity.x *= 0.6f; // 床の摩擦
+        pi.velocity.z *= 0.6f;
+    }
+    
+    // 空間制限は削除（プレイヤーへの引力で十分なため）
+    Particles[i] = pi;
 }
