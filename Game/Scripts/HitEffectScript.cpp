@@ -19,258 +19,39 @@ void HitEffectScript::Start(entt::entity entity, GameScene* scene) {
 	std::uniform_real_distribution<float> dist(-1.0f, 1.0f);
 	std::uniform_real_distribution<float> colorDist(0.0f, 1.0f);
 
-	if (isExplosion_) {
-		// --- 案1: トゲトゲ大爆発専用エフェクト ---
-		// 全方位に多数の触手（直線的に伸びるトゲ）を一斉に放射する
-		int spikeCount = 30; // 30本のトゲ
-		for (int i = 0; i < spikeCount; ++i) {
-			auto tentacle = scene->CreateEntity("ExplosionSpike");
-			auto& tc = registry.get<TransformComponent>(tentacle);
-			tc.translate = {pos.x, pos.y + 1.0f, pos.z}; // 少し上から
-			tc.scale = { 0.4f, 0.4f, 0.4f }; // 先端部分
-			
-			auto& mr = registry.emplace<MeshRendererComponent>(tentacle);
-			// ランダムな紫色・水色
-			if (colorDist(mt) > 0.5f) mr.color = { 0.0f, 1.0f, 1.0f, 0.99f }; 
-			else mr.color = { 1.0f, 0.0f, 1.0f, 0.99f }; 
-			
-			mr.modelPath = "Resources/Models/cube/cube.obj";
-			mr.texturePath = "Resources/Models/cube/white1x1.png";
-			mr.shaderName = "SlimeNoFaceNoDepth"; 
-			if (scene->GetRenderer()) {
-				mr.modelHandle = scene->GetRenderer()->LoadObjMesh(mr.modelPath);
-				mr.textureHandle = scene->GetRenderer()->LoadTexture2D(mr.texturePath);
-			}
-
-			// 球面上にランダムな方向を計算
-			float u = dist(mt);
-			float theta = colorDist(mt) * 2.0f * 3.14159f;
-			float r = std::sqrt(1.0f - u * u);
-			float dirX = r * std::cos(theta);
-			float dirY = r * std::sin(theta) + 0.5f; // やや上向きに補正
-			float dirZ = u;
-			
-			float len = std::sqrt(dirX*dirX + dirY*dirY + dirZ*dirZ);
-			dirX /= len; dirY /= len; dirZ /= len;
-
-			float speed = 25.0f + std::abs(dist(mt)) * 10.0f; // 高速で飛び出す
-
-			SlimeFragmentData fd;
-			fd.entity = tentacle;
-			fd.isTentacle = false; // らせん軌道ではない
-			fd.isTentacleTrail = false; // ★修正: 残像として消滅するだけの処理を回避
-			fd.isExplosionSpike = true; // ★追加: 爆発トゲとしての更新を行う
-			fd.vx = dirX * speed;
-			fd.vy = dirY * speed;
-			fd.vz = dirZ * speed;
-			fd.maxLife = 0.3f + std::abs(dist(mt)) * 0.2f; // 短い寿命（一瞬で伸びる）
-			fd.life = fd.maxLife;
-			fd.baseScale = tc.scale.x;
-			fragments_.push_back(fd);
-		}
-	} else if (isExplosionHit_) {
-		// --- 爆発ヒット時の専用エフェクト ---
-		// 敵の体からスライムのトゲが複数本突き刺さって弾ける演出
-		int spikeCount = 6; 
-		for (int i = 0; i < spikeCount; ++i) {
-			auto spike = scene->CreateEntity("ExplosionHitSpike");
-			auto& tc = registry.get<TransformComponent>(spike);
-			tc.translate = pos; 
-			tc.scale = { 0.4f, 0.4f, 0.4f }; 
-			
-			auto& mr = registry.emplace<MeshRendererComponent>(spike);
-			if (colorDist(mt) > 0.5f) mr.color = { 0.0f, 1.0f, 1.0f, 0.99f }; 
-			else mr.color = { 1.0f, 0.0f, 1.0f, 0.99f }; 
-			
-			mr.modelPath = "Resources/Models/cube/cube.obj";
-			mr.texturePath = "Resources/Models/cube/white1x1.png";
-			mr.shaderName = "SlimeNoFaceNoDepth"; 
-			if (scene->GetRenderer()) {
-				mr.modelHandle = scene->GetRenderer()->LoadObjMesh(mr.modelPath);
-				mr.textureHandle = scene->GetRenderer()->LoadTexture2D(mr.texturePath);
-			}
-
-			float dirX = dist(mt);
-			float dirY = dist(mt);
-			float dirZ = dist(mt);
-			float len = std::sqrt(dirX*dirX + dirY*dirY + dirZ*dirZ);
-			if (len > 0.001f) { dirX /= len; dirY /= len; dirZ /= len; }
-
-			float speed = 12.0f + std::abs(dist(mt)) * 6.0f;
-
-			SlimeFragmentData fd;
-			fd.entity = spike;
-			fd.isTentacle = false; 
-			fd.isTentacleTrail = false; 
-			fd.isExplosionSpike = true; // 残像付きの直進トゲ
-			fd.vx = dirX * speed;
-			fd.vy = dirY * speed;
-			fd.vz = dirZ * speed;
-			fd.maxLife = 0.2f + std::abs(dist(mt)) * 0.1f;
-			fd.life = fd.maxLife;
-			fd.baseScale = tc.scale.x;
-			fragments_.push_back(fd);
-		}
+	Engine::Vector3 ePos = {pos.x, pos.y + 0.5f, pos.z};
+	Engine::Vector3 eDir = {attackDirX_, 1.0f, attackDirZ_};
+	
+	// 攻撃の強さや種類（近接・遠距離・液体スプラッター）に応じて色と放出量を変える
+	Engine::Vector4 eColor = { 0.0f, 0.8f, 1.0f, 1.0f }; // デフォルト水色
+	int emitCount = 400;
+	float speedMult = 1.0f;
+	
+	if (isExplosion_ || isExplosionHit_) {
+		emitCount = 1200;
+		eColor = { 1.0f, 0.2f, 1.0f, 1.0f }; // 爆発は紫/ピンク系
+		speedMult = 3.0f;
+	} else if (isLiquidSplatter_) {
+		emitCount = 400;
+		eColor = (colorDist(mt) > 0.5f) ? Engine::Vector4{ 0.0f, 0.8f, 1.0f, 1.0f } : Engine::Vector4{ 1.0f, 0.0f, 1.0f, 1.0f };
+		speedMult = 1.0f;
 	} else if (isMelee_) {
-		// --- リング波状の粘液の触手エフェクト ---
-		int tentacleCount = 12; // たくさん並べる
-
-		// 攻撃方向が指定されている場合はその方向を向き（法線）とする
-		float ax = attackDirX_;
-		float az = attackDirZ_;
-		if (std::abs(ax) < 0.001f && std::abs(az) < 0.001f) {
-			float ringYaw = colorDist(mt) * 2.0f * 3.14159f;
-			ax = std::cos(ringYaw);
-			az = std::sin(ringYaw);
-		} else {
-			float len = std::sqrt(ax*ax + az*az);
-			ax /= len;
-			az /= len;
-		}
-
-		for (int i = 0; i < tentacleCount; ++i) {
-			auto tentacle = scene->CreateEntity("SlimeTentacle");
-			auto& tc = registry.get<TransformComponent>(tentacle);
-			tc.translate = pos;
-			tc.scale = { 0.5f, 0.5f, 0.5f }; // ヘッド部分
-			
-			auto& mr = registry.emplace<MeshRendererComponent>(tentacle);
-			Engine::Vector4 color = (i % 2 == 0) ? Engine::Vector4{0.0f, 1.0f, 1.0f, 0.99f} : Engine::Vector4{1.0f, 0.0f, 1.0f, 0.99f};
-			mr.color = { color.x, color.y, color.z, color.w };
-			mr.modelPath = "Resources/Models/cube/cube.obj";
-			mr.texturePath = "Resources/Models/cube/white1x1.png";
-			mr.shaderName = "SlimeNoFaceNoDepth"; 
-			if (scene->GetRenderer()) {
-				mr.modelHandle = scene->GetRenderer()->LoadObjMesh(mr.modelPath);
-				mr.textureHandle = scene->GetRenderer()->LoadTexture2D(mr.texturePath);
-			}
-
-			auto& hb = registry.emplace<HitboxComponent>(tentacle);
-			hb.isActive = false;
-			hb.isProjectile = true; // これによりGameSceneで星形に置換される
-
-			SlimeFragmentData fd;
-			fd.entity = tentacle;
-			fd.isTentacle = true;
-			fd.vx = 0.0f; // 残像生成タイマーとして流用
-			fd.cx = pos.x;
-			fd.cy = pos.y; 
-			fd.cz = pos.z;
-			
-			// 円周上に配置
-			fd.angle = ((float)i / tentacleCount) * 2.0f * 3.14159f; 
-			
-			// 回転速度 (緩やかに波打つ)
-			fd.angularSpeed = 2.0f; 
-			
-			// 初期半径
-			fd.radius = 0.5f; 
-			
-			// 90度立てた軸を設定
-			fd.axisX = ax;
-			fd.axisY = 0.0f;
-			fd.axisZ = az;
-			
-			// 波状のバリエーション用
-			float wave = std::sin(fd.angle * 3.0f);
-
-			// 自分の方や敵の後ろに進まないように、軸方向への進行速度を0にする
-			fd.speedAlongAxis = 0.0f; 
-			
-			// 全体が消えるまでの寿命
-			fd.maxLife = 0.4f + std::abs(wave) * 0.1f;
-			fd.life = fd.maxLife;
-			fd.baseScale = tc.scale.x;
-			fragments_.push_back(fd);
-		}
+		emitCount = 800; // 近接は激しく飛び散る
+		eColor = { 1.0f, 0.0f, 1.0f, 1.0f }; // 紫色っぽく
+		speedMult = 2.0f;
 	} else {
-		// --- 遠距離用: 直線的に飛び散る破片と飛沫 ---
-		int fragmentCount = 18; 
-		for (int i = 0; i < fragmentCount; ++i) {
-			auto frag = scene->CreateEntity("SlimeFragment");
-			auto& tc = registry.get<TransformComponent>(frag);
-			tc.translate = pos;
-			float s = 0.15f + std::abs(dist(mt)) * 0.15f;
-			tc.scale = { s, s, s };
-			tc.rotate = { dist(mt) * 3.14f, dist(mt) * 3.14f, dist(mt) * 3.14f };
-
-			auto& mr = registry.emplace<MeshRendererComponent>(frag);
-			if (colorDist(mt) > 0.5f) mr.color = { 0.0f, 1.0f, 1.0f, 0.99f }; 
-			else mr.color = { 1.0f, 0.0f, 1.0f, 0.99f }; 
-			
-			mr.modelPath = "Resources/Models/cube/cube.obj";
-			mr.texturePath = "Resources/Models/cube/white1x1.png";
-			mr.shaderName = "SlimeNoFaceNoDepth"; 
-			if (scene->GetRenderer()) {
-				mr.modelHandle = scene->GetRenderer()->LoadObjMesh(mr.modelPath);
-				mr.textureHandle = scene->GetRenderer()->LoadTexture2D(mr.texturePath);
-			}
-
-			float speed = 12.0f + std::abs(dist(mt)) * 8.0f;
-			Engine::Vector3 dir = { dist(mt), std::abs(dist(mt)) + 0.4f, dist(mt) };
-			float len = std::sqrt(dir.x*dir.x + dir.y*dir.y + dir.z*dir.z);
-			
-			auto& pe = registry.emplace<ParticleEmitterComponent>(frag);
-			pe.emitter.params.name = "FragTrail";
-			pe.emitter.params.emitRate = 30; 
-			pe.emitter.params.lifeTime = 0.2f; 
-			pe.emitter.params.startColor = { mr.color.x, mr.color.y, mr.color.z, 0.8f };
-			pe.emitter.params.endColor = { mr.color.x, mr.color.y, mr.color.z, 0.0f };
-			pe.emitter.params.startSize = { s * 0.5f, s * 0.5f, s * 0.5f }; 
-			pe.emitter.params.endSize = { 0.0f, 0.0f, 0.0f };
-			pe.emitter.params.useBillboard = false; 
-			pe.emitter.params.isAdditive = false; 
-			pe.emitter.params.texturePath = "Resources/Textures/white1x1.png"; 
-
-			SlimeFragmentData fd;
-			fd.entity = frag;
-			fd.vx = (dir.x / len) * speed;
-			fd.vy = (dir.y / len) * speed;
-			fd.vz = (dir.z / len) * speed;
-			fd.maxLife = 0.6f + std::abs(dist(mt)) * 0.4f;
-			fd.life = fd.maxLife;
-			fd.baseScale = s;
-			fragments_.push_back(fd); 
-
-			auto& hb = registry.emplace<HitboxComponent>(frag);
-			hb.isActive = false;
-			hb.isProjectile = true;
-		}
-
-		int burstCount = 40; 
-		for (int i = 0; i < burstCount; ++i) {
-			entt::entity bubble = scene->CreateEntity("SlimeBubble");
-			auto& tc = registry.get<TransformComponent>(bubble);
-			tc.translate = pos;
-			float s = 0.05f + std::abs(dist(mt)) * 0.05f; 
-			tc.scale = { s, s, s };
-			tc.rotate = { dist(mt)*3.14f, dist(mt)*3.14f, dist(mt)*3.14f };
-
-			auto& mr = registry.emplace<MeshRendererComponent>(bubble);
-			mr.color = { 0.0f, 1.0f, 1.0f, 0.99f }; 
-
-			Engine::Vector3 dir = { dist(mt), dist(mt), dist(mt) };
-			float len = std::sqrt(dir.x*dir.x + dir.y*dir.y + dir.z*dir.z);
-			if (len < 0.001f) { dir.y = 1.0f; len = 1.0f; }
-			float speed = 15.0f + std::abs(dist(mt)) * 15.0f; 
-
-			SlimeFragmentData fd;
-			fd.entity = bubble;
-			fd.vx = (dir.x / len) * speed;
-			fd.vy = (dir.y / len) * speed;
-			fd.vz = (dir.z / len) * speed;
-			fd.maxLife = 0.3f + std::abs(dist(mt)) * 0.2f; 
-			fd.life = fd.maxLife;
-			fd.baseScale = s;
-			fragments_.push_back(fd); 
-
-			auto& hb = registry.emplace<HitboxComponent>(bubble);
-			hb.isActive = false;
-			hb.isProjectile = true;
-		}
+		emitCount = 200; // 遠距離ヒット時は少しだけ
+		eColor = { 0.0f, 1.0f, 1.0f, 1.0f }; // シアン
+		speedMult = 1.5f;
 	}
+	
+	eDir.x *= speedMult;
+	eDir.y *= speedMult;
+	eDir.z *= speedMult;
 
-
+	if (scene && scene->GetRenderer()) {
+		scene->GetRenderer()->EmitGPUFluid(ePos, eDir, eColor, emitCount); 
+	}
 }
 
 void HitEffectScript::Update(entt::entity entity, GameScene* scene, float dt) {
@@ -284,7 +65,9 @@ void HitEffectScript::Update(entt::entity entity, GameScene* scene, float dt) {
 	float gravity = 25.0f;
 	std::vector<SlimeFragmentData> newTrails;
 	for (auto& fd : fragments_) {
-		if (fd.entity == entt::null) continue;
+		if (fd.entity == entt::null && !fd.isLiquidParticle) continue;
+
+
 
 		if (fd.isTentacle) {
 			fd.life -= dt;
@@ -537,6 +320,18 @@ void HitEffectScript::DeserializeParameters(const std::string& data) {
 		isExplosion_ = true;
 	} else if (data.find("isExplosionHit=1") != std::string::npos) {
 		isExplosionHit_ = true;
+	} else if (data.find("isLiquidSplatter=1") != std::string::npos) {
+		isLiquidSplatter_ = true; // ★追加
+		size_t posX = data.find("dirX=");
+		if (posX != std::string::npos) {
+			size_t comma = data.find(',', posX);
+			attackDirX_ = std::stof(data.substr(posX + 5, comma - (posX + 5)));
+		}
+		size_t posZ = data.find("dirZ=");
+		if (posZ != std::string::npos) {
+			size_t comma = data.find(',', posZ);
+			attackDirZ_ = std::stof(data.substr(posZ + 5, comma - (posZ + 5)));
+		}
 	} else if (data.find("isMelee=1") != std::string::npos) {
 		isMelee_ = true;
 		

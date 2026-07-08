@@ -217,6 +217,11 @@ public:
 	void SnapshotSceneForRefraction(ID3D12GraphicsCommandList* list);
 	D3D12_CPU_DESCRIPTOR_HANDLE GetBackdropSrvCpuMaster() const { return backdropSrvCpuMaster_; }
 
+	// ★追加: 液体メタボール用の専用レンダーターゲット（ステップ1）
+	void BeginLiquidPass();
+	void EndLiquidPass();
+	D3D12_GPU_DESCRIPTOR_HANDLE GetLiquidSrv() const { return liquidSrv_; }
+
 	// ★追加: 外部（ParticleEditorなど）用のカスタムレンダーターゲット
 	struct CustomRenderTarget {
 		Microsoft::WRL::ComPtr<ID3D12Resource> texture;
@@ -286,6 +291,48 @@ public:
 
 	// ★追加: パーティクル インスタンス描画
 	void DrawParticleInstanced(MeshHandle mesh, TextureHandle texture, const Transform& transform, const Vector4& mulColor, const Vector4& uvScaleOffset, const std::string& shaderName = "Particle");
+	
+	// ★追加: 液体（スライムメタボール）パーティクル インスタンス描画
+	void DrawLiquidParticleInstanced(MeshHandle mesh, TextureHandle tex, const Transform& transform, const Vector4& color, const Vector4& uvScaleOffset, const std::string& shaderName);
+
+	// ★追加: GPU流体パーティクルシステム (フェーズ1)
+	struct GPUFluidParticle {
+		Vector3 position; float pad0;
+		Vector3 velocity; float pad1;
+		Vector4 color;
+	};
+
+	Microsoft::WRL::ComPtr<ID3D12RootSignature> rootSigFluid_;
+	Microsoft::WRL::ComPtr<ID3D12PipelineState> psoFluidEmit_;
+	Microsoft::WRL::ComPtr<ID3D12PipelineState> psoFluidDensity_;
+	Microsoft::WRL::ComPtr<ID3D12PipelineState> psoFluidForce_;
+	Microsoft::WRL::ComPtr<ID3D12PipelineState> psoFluidRender_; 
+	Microsoft::WRL::ComPtr<ID3D12PipelineState> psoFluidDebug_; 
+	Microsoft::WRL::ComPtr<ID3D12Resource> gpuFluidBuffer_;
+	uint32_t gpuFluidMaxParticles_ = 8192; // O(N^2)なので負荷を考慮して調整
+	uint32_t gpuFluidEmitCursor_ = 0;
+	bool isGPUFluidReady_ = false;
+
+	void InitGPUFluid();
+	void UpdateGPUFluid(float dt);
+	void EmitGPUFluid(const Vector3& pos, const Vector3& velocityDir, const Vector4& color, int count);
+	void DrawGPUFluid(TextureHandle texture);
+	void DrawGPUFluidDebug();
+	void SetGPUFluidCore(const Vector3& pos, float attraction);
+
+	Vector3 gpuFluidCorePos_ = {0,0,0};
+	float gpuFluidCoreAttraction_ = 0.0f;
+	
+	// ★追加: 矢印（デバッグベクトル）表示フラグ
+	bool drawFluidDebugArrows_ = true;
+	void SetDrawFluidDebugArrows(bool b) { drawFluidDebugArrows_ = b; }
+	bool GetDrawFluidDebugArrows() const { return drawFluidDebugArrows_; }
+
+	// ★追加: 深度ベースのメタボール用
+	Microsoft::WRL::ComPtr<ID3D12Resource> liquidDepthRT_;
+	D3D12_CPU_DESCRIPTOR_HANDLE liquidDepthRtv_{};
+	D3D12_GPU_DESCRIPTOR_HANDLE liquidDepthSrv_{};
+	D3D12_RESOURCE_STATES liquidDepthState_ = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
 
 	// ★追加: パーティクル描画 (UVスケール・オフセット付き)
 	void DrawParticle(MeshHandle mesh, TextureHandle texture, const Transform& transform, 
@@ -559,6 +606,13 @@ private:
 	D3D12_CPU_DESCRIPTOR_HANDLE backdropSrvCpuMaster_{}; // ★追加
 	D3D12_GPU_DESCRIPTOR_HANDLE backdropSrv_{};
 
+	// ★追加: 液体メタボール用レンダーターゲット
+	Microsoft::WRL::ComPtr<ID3D12Resource> liquidRT_;
+	D3D12_CPU_DESCRIPTOR_HANDLE liquidRtv_{};
+	D3D12_GPU_DESCRIPTOR_HANDLE liquidSrv_{};
+	D3D12_RESOURCE_STATES liquidState_ = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+
+
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> psoPP_;
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> psoPPDefault_; // ★追加: デフォルトPSOバックアップ
 
@@ -616,6 +670,7 @@ private:
 	int lastIDCIndex_ = -1;
 	std::vector<InstancedDrawCall> instancedDrawCalls_; // ★追加: インスタンスドローコール
 	std::vector<InstancedDrawCall> instancedParticleDrawCalls_; // ★追加: パーティクル用
+	std::vector<InstancedDrawCall> liquidParticleDrawCalls_; // ★追加: 液体パーティクル用
 	std::vector<SpriteDrawCall> spriteDrawCalls_; // ★追加: スプライト用
 
 	// ★変更: Mesh構造体ではなくModelクラスへのスマートポインタで管理

@@ -2,6 +2,7 @@
 #include "IScript.h"
 
 #include <vector>
+#include "../../Engine/Matrix4x4.h"
 
 namespace Game {
 
@@ -26,7 +27,9 @@ struct SlimeFragmentData {
 	float cy = 0.0f;
 	float cz = 0.0f;
 	bool isTentacleTrail = false;
-	bool isExplosionSpike = false; // ★追加: 爆発用トゲ
+	bool isExplosionSpike = false;                    // ★追加: 爆発用トゲ
+	bool isLiquidParticle = false;                    // ★追加: エンティティを持たない軽量液体パーティクル
+	Engine::Vector4 color = {1.0f, 1.0f, 1.0f, 1.0f}; // 液体パーティクル用色
 };
 
 class HitEffectScript : public IScript {
@@ -43,11 +46,12 @@ private:
 	float timer_ = 0.0f;
 	std::vector<SlimeFragmentData> fragments_;
 	bool isMelee_ = false;
-	bool isExplosion_ = false; // 全方位爆発用
+	bool isExplosion_ = false;    // 全方位爆発用
 	bool isExplosionHit_ = false; // 爆発が敵に当たった時のエフェクト用
-	float attackDirX_ = 0.0f; // ★追加: 攻撃方向X
-	float attackDirZ_ = 0.0f; // ★追加: 攻撃方向Z
-	bool isFinished_ = false; // ★追加: 終了フラグ
+	bool isLiquidSplatter_ = false; // ★追加: 液体スプラッター
+	float attackDirX_ = 0.0f;     // ★追加: 攻撃方向X
+	float attackDirZ_ = 0.0f;     // ★追加: 攻撃方向Z
+	bool isFinished_ = false;     // ★追加: 終了フラグ
 };
 
 // Dummy line for rebuild
