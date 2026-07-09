@@ -374,3 +374,4 @@ externals/**/*.pdb
 externals/**/*.exe
 imgui.ini
 temp_play.json
+*.temp_play.json

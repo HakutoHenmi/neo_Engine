@@ -709,6 +709,11 @@ void GameScene::Draw() {
 				// アクション状態に応じて引力を変える（回避中は引力を弱めて散らばらせるなど）
 				float attraction = isLiquidated ? 10.0f : 80.0f;
 				
+				// ★追加: 右クリック中は引力を完全にゼロにし、自由な液体として広がらせる
+				if ((GetAsyncKeyState(VK_RBUTTON) & 0x8000) != 0) {
+					attraction = 0.0f;
+				}
+				
 				// Y座標を少し上げてコアとする（スライムが少し立つように）
 				Engine::Vector3 targetCore = {corePos.x, corePos.y + 0.8f, corePos.z};
 				renderer_->SetGPUFluidCore(targetCore, attraction);
