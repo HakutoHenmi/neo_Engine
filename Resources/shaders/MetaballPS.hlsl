@@ -94,28 +94,32 @@ float4 main(PSIn input) : SV_TARGET
 {
     float4 color = tex.Sample(smp, input.uv);
     
+    // 薄く広がった液体が消えないよう密度を底上げしますが、
+    // ギザギザを防ぐためブーストを少し控えめにします。
+    color.a = saturate(color.a * 1.5);
+    
     // 完全に透明なら破棄
     if (color.a < 0.01) {
         discard;
     }
 
     // アルファ値の閾値でカットアウト
-    // ポストプロセス等の黒い輪郭線を防ぎつつ、滑らかさを保つバランスの閾値
-    float threshold = 0.55;
+    // ★ギザギザ（ジャギー）を防ぐため、discardの限界ラインを極限まで下げます
+    float threshold = 0.05;
     if (color.a < threshold) {
         discard;
     }
 
-    // 滑らかなエッジを作る（枠と内側を自然に馴染ませるため、グラデーションの幅を広げる）
-    float alphaEdge = smoothstep(threshold, threshold + 0.15, color.a);
+    // 滑らかなエッジを作る（枠と内側を自然に馴染ませるため、グラデーションの幅を大きく広げる）
+    float alphaEdge = smoothstep(threshold, threshold + 0.35, color.a);
     float w, h;
     depthTex.GetDimensions(w, h);
     float2 texelSize = float2(1.0 / w, 1.0 / h);
     
     // 周辺のアルファ（密度）をサンプリングして、滑らかな勾配を計算する
-    // サンプリング幅を少し広げて、丸みを帯びた丘のような法線を抽出する
-    float2 offX_a = float2(texelSize.x * 4.0, 0.0);
-    float2 offY_a = float2(0.0, texelSize.y * 4.0);
+    // ★サンプリング幅をさらに広げて、斜めから見た時の法線のギザギザ（陰影ノイズ）を滑らかにする
+    float2 offX_a = float2(texelSize.x * 6.0, 0.0);
+    float2 offY_a = float2(0.0, texelSize.y * 6.0);
     float a1 = tex.Sample(smp, input.uv + offX_a).a; // Right
     float a2 = tex.Sample(smp, input.uv - offX_a).a; // Left
     float a3 = tex.Sample(smp, input.uv + offY_a).a; // Bottom
@@ -144,8 +148,8 @@ float4 main(PSIn input) : SV_TARGET
     // 深度バッファは背景の箱や床の段差を拾って破綻するため使用しません。
     // 代わりに、中心の平坦な領域でも「はるか遠くのフチ」をサンプリングすることで、
     // 自分がスライムのどの位置にいるか（大局的な丸み）を確実に推定します。
-    float2 offX_far = float2(texelSize.x * 40.0, 0.0);
-    float2 offY_far = float2(0.0, texelSize.y * 40.0);
+    float2 offX_far = float2(texelSize.x * 60.0, 0.0);
+    float2 offY_far = float2(0.0, texelSize.y * 60.0);
     float aRight = tex.Sample(smp, input.uv + offX_far).a;
     float aLeft  = tex.Sample(smp, input.uv - offX_far).a;
     float aBottom = tex.Sample(smp, input.uv + offY_far).a;
@@ -157,8 +161,8 @@ float4 main(PSIn input) : SV_TARGET
     float dy_far = (aBottom - aTop);
     
     // 大局的な丸みを持つ球面法線の生成
-    // 丸みが強すぎると光を拾いすぎるため、自然でなだらかなドーム状に抑えます
-    float2 farNormalXY = float2(dx_far, dy_far) * 0.3; 
+    // シャープなハイライトが出るように、丸みのサンプリング距離と強さを調整します
+    float2 farNormalXY = float2(dx_far, dy_far) * 0.5; 
     float farXySq = saturate(dot(farNormalXY, farNormalXY));
     float3 farNormal = float3(farNormalXY.x, farNormalXY.y, -sqrt(1.0 - farXySq));
     
@@ -194,9 +198,9 @@ float4 main(PSIn input) : SV_TARGET
     // スペキュラ（ハイライト） - 太陽や強い光源の反射
     float3 halfVector = normalize(lightDir + viewDir);
     float NdotH = max(dot(normal, halfVector), 0.0);
-    // 内側が白飛びしないよう、ハイライトをシャープ（狭く）にして水滴感を出します
-    float specularSoft = pow(NdotH, 48.0) * 0.8;
-    float specularHard = pow(NdotH, 128.0) * 2.0; 
+    // 内側が白飛びしないよう、ハイライトをさらにシャープ（鋭く）にして水滴感を出します
+    float specularSoft = pow(NdotH, 64.0) * 0.8;
+    float specularHard = pow(NdotH, 256.0) * 2.0; 
     float3 specColor = float3(1.0, 1.0, 1.0) * (specularSoft + specularHard);
     
     // 環境反射 (疑似Skybox) 
@@ -204,14 +208,14 @@ float4 main(PSIn input) : SV_TARGET
     // 物理的な反射ベクトルだと球体の下部に空が映り込んでしまうため、
     // 法線の向き(normal.y)を使って「上半分が空の色、下半分が地面の色」になるように直感的なライティングにする
     float skyFactor = smoothstep(0.0, 1.0, normal.y); // 上を向いている部分だけ空を反射
-    float3 skyColor = float3(0.6, 0.8, 0.3);     // 空の反射を少し落ち着かせる
-    float3 groundColor = float3(0.05, 0.2, 0.1); // 地面の暗い緑
+    float3 skyColor = float3(0.4, 0.9, 0.6);     // 爽やかなエメラルドグリーン
+    float3 groundColor = float3(0.0, 0.3, 0.2);  // 深いエメラルド
     // 環境光の主張を抑えて、ベースの緑色をしっかり残す
-    float3 envColor = lerp(groundColor, skyColor, skyFactor) * 0.7;
+    float3 envColor = lerp(groundColor, skyColor, skyFactor) * 0.6;
     
     // フチが環境光（地面の暗い色など）や影の影響で黒い線になって分断されるのを防ぐため、
     // 内側と同じ明るい緑色（固有色）でフチを滑らかに発光させて馴染ませる
-    float3 edgeGlow = float3(0.5, 1.0, 0.2) * pow(rim, 3.0) * 1.5; 
+    float3 edgeGlow = float3(0.2, 0.9, 0.5) * pow(rim, 3.0) * 1.0; 
     
     float3 surfaceReflection = envColor * fresnel + specColor + edgeGlow;
     
@@ -220,8 +224,8 @@ float4 main(PSIn input) : SV_TARGET
     float apparentThickness = NdotV;
     
     // 参考画像風の、鮮やかで発光感のあるエメラルド〜イエローグリーン
-    float3 shallowColor = float3(0.5, 1.0, 0.2); // 縁の明るい黄緑
-    float3 deepColor = float3(0.05, 0.4, 0.1);   // 中央の濃い緑
+    float3 shallowColor = float3(0.2, 0.9, 0.5); // 縁の明るいエメラルドグリーン
+    float3 deepColor = float3(0.0, 0.3, 0.2);    // 中央の濃いエメラルド
     float3 waterBaseColor = lerp(shallowColor, deepColor, apparentThickness);
     
     // --- 奥行きと水感を出すパターン（コースティクスと気泡） ---
@@ -254,7 +258,7 @@ float4 main(PSIn input) : SV_TARGET
     // 内部発光 (Subsurface Scattering っぽさ)
     // 光が液体の中を透過して内側から光る表現
     float backLight = pow(max(dot(viewDir, -lightDir), 0.0), 2.0);
-    float3 sssColor = shallowColor * backLight * (1.0 - apparentThickness) * 2.0;
+    float3 sssColor = shallowColor * backLight * (1.0 - apparentThickness) * 1.0;
     
     float3 scatterColor = waterBaseColor * (NdotL * 0.4 + 0.6) + sssColor;
     

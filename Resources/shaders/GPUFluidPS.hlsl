@@ -21,7 +21,8 @@ PSOut main(float4 svpos:SV_POSITION, float2 uv:TEXCOORD0, float viewZ:TEXCOORD1,
     
     // メタボール合成用に、アルファ（密度）を少し高めに蓄積する
     float4 outColor = color;
-    outColor.a = alpha * 0.15f; 
+    // 水たまりとして薄く広がり、上から見下ろされた際にも消えないよう、基本密度を上げます
+    outColor.a = alpha * 0.25f; 
     
     // MetaballPSでの合成に向けたベースカラー（エメラルドグリーン）
     outColor.r = 0.2f;
