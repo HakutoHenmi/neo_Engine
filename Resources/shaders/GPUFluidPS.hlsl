@@ -24,10 +24,10 @@ PSOut main(float4 svpos:SV_POSITION, float2 uv:TEXCOORD0, float viewZ:TEXCOORD1,
     // 水たまりとして薄く広がり、上から見下ろされた際にも消えないよう、基本密度を上げます
     outColor.a = alpha * 0.25f; 
     
-    // MetaballPSでの合成に向けたベースカラー（エメラルドグリーン）
-    outColor.r = 0.2f;
-    outColor.g = 1.0f;
-    outColor.b = 0.5f;
+    // MetaballPSでの合成に向けたベースカラー（濃い黄緑色）
+    outColor.r = 0.4f;
+    outColor.g = 0.8f;
+    outColor.b = 0.1f;
     
     // 加算ブレンド(ONE)で正しく色を乗せるための事前乗算アルファ (Premultiplied Alpha)
     outColor.rgb *= outColor.a;

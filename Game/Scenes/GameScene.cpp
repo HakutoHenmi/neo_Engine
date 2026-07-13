@@ -25,6 +25,7 @@
 #include "../Systems/EnemyAISystem.h"      // ★追加: 敵AI
 #include "../Systems/BossActionSystem.h"    // ★追加: ボスAI
 #include "../Systems/WaveSystem.h"         // ★追加: ウェーブ管理
+#include "../Scripts/BossTestScript.h"      // ★追加: ボス生成用
 
 #include "../Systems/ScriptSystem.h"
 #include "../Systems/UISystem.h"
@@ -65,7 +66,7 @@ void GameScene::Initialize(Engine::WindowDX* dx, const Engine::SceneParameters& 
 	eventSystem_.Clear();
 	playTime_ = 0.0f;
 	camera_.Initialize();
-	camera_.SetProjection(0.7854f, (float)Engine::WindowDX::kW / (float)Engine::WindowDX::kH, 0.1f, 1000.0f);
+	camera_.SetProjection(0.7854f, (float)Engine::WindowDX::kW / (float)Engine::WindowDX::kH, 0.1f, 10000.0f);
 	camera_.SetPosition(0, 2, -5);
 	camera_.SetRotation(0.2f, 0, 0);
 	renderer_->SetAmbientColor({0.4f, 0.4f, 0.45f});
@@ -97,21 +98,68 @@ void GameScene::Initialize(Engine::WindowDX* dx, const Engine::SceneParameters& 
 		    sun, DirectX::XMFLOAT3{0, 10, 0}, DirectX::XMFLOAT3{DirectX::XMConvertToRadians(45.0f), DirectX::XMConvertToRadians(30.0f), 0}, DirectX::XMFLOAT3{1, 1, 1});
 		registry_.emplace<DirectionalLightComponent>(sun);
 
-		auto plane = registry_.create();
-		registry_.emplace<NameComponent>(plane, "Plane");
-
-		auto& mesh = registry_.emplace<MeshRendererComponent>(plane);
-		mesh.modelHandle = renderer_->LoadObjMesh("Resources/Models/plane.obj");
-		mesh.textureHandle = renderer_->LoadTexture2D("Resources/Textures/white1x1.png");
-		mesh.modelPath = "Resources/Models/plane.obj";
-		mesh.texturePath = "Resources/Textures/white1x1.png";
-
-		registry_.emplace<TransformComponent>(plane, DirectX::XMFLOAT3{0, 0, 0}, DirectX::XMFLOAT3{0, 0, 0}, DirectX::XMFLOAT3{20, 1, 20});
-
+		// ステージ：メインモデル（地形・コリジョンあり）
+		auto stageMain = registry_.create();
+		registry_.emplace<NameComponent>(stageMain, "CrystalForest_Main");
+		auto& meshMain = registry_.emplace<MeshRendererComponent>(stageMain);
+		meshMain.modelHandle = renderer_->LoadObjMesh("Resources/Models/Stages/map/CrystalForest_02_Main.glb");
+		meshMain.modelPath = "Resources/Models/Stages/map/CrystalForest_02_Main.glb";
+		registry_.emplace<TransformComponent>(stageMain, DirectX::XMFLOAT3{0, 0, 0}, DirectX::XMFLOAT3{0, 0, 0}, DirectX::XMFLOAT3{10.0f, 10.0f, 10.0f});
+		
 		// 物理判定用にGpuMeshColliderを付与
-		auto& gmc = registry_.emplace<GpuMeshColliderComponent>(plane);
-		gmc.meshHandle = mesh.modelHandle;
-		gmc.enabled = true;
+		auto& gmcMain = registry_.emplace<GpuMeshColliderComponent>(stageMain);
+		gmcMain.meshHandle = meshMain.modelHandle;
+		gmcMain.enabled = true;
+
+		// ステージ：空（Sky）モデル（コリジョンなし）
+		auto stageSky = registry_.create();
+		registry_.emplace<NameComponent>(stageSky, "CrystalForest_Sky");
+		auto& meshSky = registry_.emplace<MeshRendererComponent>(stageSky);
+		meshSky.modelHandle = renderer_->LoadObjMesh("Resources/Models/Stages/map/CrystalForest_01_Sky.glb");
+		meshSky.modelPath = "Resources/Models/Stages/map/CrystalForest_01_Sky.glb";
+		registry_.emplace<TransformComponent>(stageSky, DirectX::XMFLOAT3{0, 0, 0}, DirectX::XMFLOAT3{0, 0, 0}, DirectX::XMFLOAT3{10.0f, 10.0f, 10.0f});
+
+		// ★追加: プレイヤー（スライム）の生成
+		auto player = registry_.create();
+		registry_.emplace<NameComponent>(player, "Player");
+		registry_.emplace<TransformComponent>(player, DirectX::XMFLOAT3{0, 1.0f, -0.15f}, DirectX::XMFLOAT3{0, 0, 0}, DirectX::XMFLOAT3{1, 1, 1});
+		
+		auto& mrP = registry_.emplace<MeshRendererComponent>(player);
+		mrP.modelPath = "Resources/Models/player_ball/ball.obj";
+		mrP.modelHandle = renderer_->LoadObjMesh(mrP.modelPath);
+		mrP.shaderName = "Slime";
+		mrP.color = {0.4f, 0.8f, 0.1f, 0.8f};
+		mrP.useCubemap = true;
+		mrP.reflectivity = 1.0f;
+
+		auto& bc = registry_.emplace<BoxColliderComponent>(player);
+		bc.center = {0,0,0}; bc.size = {1.5f, 1.5f, 1.5f};
+		
+		auto& rb = registry_.emplace<RigidbodyComponent>(player);
+		rb.useGravity = true; rb.isKinematic = true;
+		
+		auto& hc = registry_.emplace<HealthComponent>(player);
+		hc.hp = 100; hc.maxHp = 100;
+		
+		auto& tc = registry_.emplace<TagComponent>(player);
+		tc.tag = TagType::Player;
+		
+		registry_.emplace<PlayerInputComponent>(player);
+		
+		auto& cmc = registry_.emplace<CharacterMovementComponent>(player);
+		cmc.speed = 8.0f; cmc.jumpPower = 10.0f; cmc.gravity = 9.8f; cmc.heightOffset = 0.4f;
+		
+		auto& ctc = registry_.emplace<CameraTargetComponent>(player);
+		ctc.distance = 12.0f; ctc.height = 2.5f; ctc.smoothSpeed = 8.0f;
+		
+		auto& hbc = registry_.emplace<HitboxComponent>(player);
+		hbc.center = {0,0,1.5f}; hbc.size = {1.5f,1.5f,4.0f}; hbc.damage = 15; hbc.tag = TagType::Player;
+		
+		auto& hurtc = registry_.emplace<HurtboxComponent>(player);
+		hurtc.center = {0,0,0}; hurtc.size = {2.0f,2.0f,2.0f}; hurtc.damageMultiplier = 1.0f; hurtc.tag = TagType::Player;
+		
+		auto& pac = registry_.emplace<PlayerActionComponent>(player);
+		pac.dodgeDuration = 0.4f; pac.dodgeSpeed = 15.0f;
 	}
 
 
@@ -212,7 +260,7 @@ void GameScene::Initialize(Engine::WindowDX* dx, const Engine::SceneParameters& 
 			auto& txt = registry_.emplace<UITextComponent>(textEntity);
 			txt.text = controls[i];
 			txt.fontSize = (i == 0) ? 28.0f : 24.0f;
-			txt.color = (i == 0) ? DirectX::XMFLOAT4{1.0f, 0.9f, 0.5f, 1.0f} : DirectX::XMFLOAT4{1.0f, 1.0f, 1.0f, 1.0f}; // 見出しは黄色
+			txt.color = (i == 0) ? DirectX::XMFLOAT4{0.6f, 1.0f, 0.4f, 1.0f} : DirectX::XMFLOAT4{0.4f, 1.0f, 0.4f, 1.0f}; // 見出しは黄緑、通常は緑色に変更して背景との同化を防ぐ
 		}
 	}
 
@@ -237,6 +285,26 @@ void GameScene::Initialize(Engine::WindowDX* dx, const Engine::SceneParameters& 
 		const auto tag = tagInitView.get<TagComponent>(entity).tag;
 		tagCache_[tag].push_back(entity);
 	}
+
+	// ★追加: ボスが存在しない場合は、ここで動的に生成する
+	if (registry_.view<BossActionComponent>().empty()) {
+		auto boss = registry_.create();
+		registry_.emplace<NameComponent>(boss, "Boss");
+		registry_.emplace<TransformComponent>(boss, DirectX::XMFLOAT3{0, 2.0f, 15.0f}, DirectX::XMFLOAT3{0, 0, 0}, DirectX::XMFLOAT3{3.0f, 3.0f, 3.0f});
+		
+		auto& mrBoss = registry_.emplace<MeshRendererComponent>(boss);
+		mrBoss.modelPath = "Resources/Models/cube/cube.obj";
+		mrBoss.modelHandle = renderer_->LoadObjMesh(mrBoss.modelPath);
+		mrBoss.color = {0.8f, 0.8f, 0.8f, 1.0f};
+
+		registry_.emplace<TagComponent>(boss).tag = TagType::Enemy;
+		
+		auto& scBoss = registry_.emplace<ScriptComponent>(boss);
+		scBoss.scripts.push_back({"BossTestScript", "{}", std::make_shared<BossTestScript>(), false});
+	}
+
+	// ★追加: 常にプレイ状態で開始する
+	isPlaying_ = true;
 }
 
 // =====================================================
@@ -689,7 +757,7 @@ void GameScene::Draw() {
 						p.basePos.x *= ((rand()%100)/100.0f) * 1.5f;
 						p.basePos.y *= ((rand()%100)/100.0f) * 1.5f;
 						p.basePos.z *= ((rand()%100)/100.0f) * 1.5f;
-						p.color = {0.2f, 0.8f, 1.0f, 1.0f}; // 青白い水
+						p.color = {0.4f, 0.8f, 0.1f, 1.0f}; // 濃い黄緑
 					}
 					slimeCpuLogic_.initialized = true;
 				}
@@ -701,7 +769,7 @@ void GameScene::Draw() {
 				
 				if (!gpuSlimeEmitted_) {
 					// プレイヤー初期化時に1回だけ、大量のGPUパーティクルをコア位置に放出する
-					Engine::Vector4 pColor = {0.2f, 0.8f, 1.0f, 1.0f}; // プレイヤースライムの色
+					Engine::Vector4 pColor = {0.4f, 0.8f, 0.1f, 1.0f}; // プレイヤースライムの色（濃い黄緑）
 					renderer_->EmitGPUFluid({corePos.x, corePos.y, corePos.z}, {0, -2, 0}, pColor, 2000);
 					gpuSlimeEmitted_ = true;
 				}
@@ -935,7 +1003,7 @@ void GameScene::Draw() {
 		}
 	}
 
-#ifdef USE_IMGUI
+#if defined(USE_IMGUI) && !defined(NDEBUG)
 	DrawSelectionHighlight();
 	DrawLightGizmos();
 #endif
@@ -1311,6 +1379,7 @@ void GameScene::SetIsPlaying(bool play) {
 		}
 
 		isPlaying_ = false;
+		gpuSlimeEmitted_ = false; // ★追加: プレイ終了時にGPUスライム放出フラグをリセット
 		ShowCursor(TRUE); // ★追加: カーソルを表示
 		
 		if (!sceneSnapshot_.empty()) {

@@ -55,6 +55,7 @@ float CalcShadow(float3 worldPos) {
 
 float4 main(float4 svpos:SV_POSITION, float3 worldPos:TEXCOORD0, float3 normal:TEXCOORD1, float2 uv:TEXCOORD2) : SV_TARGET {
     float4 tex = gTex.Sample(gSmp, uv); 
+    clip(tex.a - 0.1f);
     float3 albedo = tex.rgb * gColor.rgb; 
     float3 N = normalize(normal); 
     

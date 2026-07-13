@@ -34,6 +34,12 @@ struct MaterialData {
 	std::vector<std::string> extraTextures; // ★追加: 地形用のスプラットマップやレイヤー
 };
 
+struct MeshSubset {
+	uint32_t indexStart = 0;
+	uint32_t indexCount = 0;
+	int materialIndex = -1;
+};
+
 // ボーン単体
 struct Bone {
 	std::string name;
@@ -104,7 +110,9 @@ struct Animation {
 struct ModelData {
 	std::vector<VertexData> vertices;
 	std::vector<uint32_t> indices; // インデックスバッファ対応
-	MaterialData material;
+	
+	std::vector<MaterialData> materials; // ★修正: 複数マテリアル対応
+	std::vector<MeshSubset> subsets;     // ★追加: サブメッシュ情報
 
 	// スキニング情報
 	std::vector<Bone> bones;
@@ -134,12 +142,12 @@ public:
 	// 動的メッシュ頂点更新 (新規追加)
 	void UpdateVertices(const std::vector<VertexData>& vertices);
 
-	// SRV作成
-	void CreateSrv(ID3D12Device* device, ID3D12DescriptorHeap* srvHeap, ID3D12DescriptorHeap* srvHeapMaster, UINT descriptorSize, UINT heapIndex);
+	// SRV作成 (複数マテリアル対応)
+	void CreateSrvs(ID3D12Device* device, ID3D12DescriptorHeap* srvHeap, ID3D12DescriptorHeap* srvHeapMaster, UINT descriptorSize, const std::vector<uint32_t>& heapIndices);
 
-	// 描画 (Rendererの実装に合わせてデフォルト引数を調整: t0がindex 3の場合)
-	void Draw(ID3D12GraphicsCommandList* cmd, UINT rootSrvParamIndex = 3);
-	void DrawInstanced(ID3D12GraphicsCommandList* cmd, UINT instanceCount, UINT rootSrvParamIndex = 3);
+	// 描画
+	void Draw(ID3D12GraphicsCommandList* cmd, UINT rootSrvParamIndex = 3, bool useModelTextures = true);
+	void DrawInstanced(ID3D12GraphicsCommandList* cmd, UINT instanceCount, UINT rootSrvParamIndex = 3, bool useModelTextures = true);
 
 	// ゲッター
 	const ModelData& GetData() const { return data_; }
@@ -148,7 +156,13 @@ public:
 
 	const D3D12_VERTEX_BUFFER_VIEW& GetVBV() const { return vbv_; }
 	const D3D12_INDEX_BUFFER_VIEW& GetIBV() const { return ibv_; } // 追加
-	D3D12_GPU_DESCRIPTOR_HANDLE GetSrvGpu() const { return srvGpu_; }
+	
+	bool HasTexture() const { return texs_.size() > 0; } // 変更
+	uint32_t GetTextureCount() const { return (uint32_t)texs_.size(); }
+	D3D12_GPU_DESCRIPTOR_HANDLE GetSrvGpu(int index = 0) const {
+		if (index >= 0 && index < srvGpus_.size()) return srvGpus_[index];
+		return D3D12_GPU_DESCRIPTOR_HANDLE{0};
+	}
 
 	// ★追加: GPU用BVH・メッシュバッファ
 	D3D12_GPU_VIRTUAL_ADDRESS GetBvhNodeBufferAddr() const { return vbBvhNodes_ ? vbBvhNodes_->GetGPUVirtualAddress() : 0; }
@@ -196,11 +210,11 @@ private:
 	Microsoft::WRL::ComPtr<ID3D12Resource> vbBvhNodes_;
 	Microsoft::WRL::ComPtr<ID3D12Resource> vbBvhIndices_;
 
-	Microsoft::WRL::ComPtr<ID3D12Resource> tex_;
-	Microsoft::WRL::ComPtr<ID3D12Resource> upload_; // 中間バッファ保持
-	D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc_{};
-	D3D12_GPU_DESCRIPTOR_HANDLE srvGpu_{};
-	bool hasTexture_ = false;
+	// ★修正: 複数テクスチャ保持
+	std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>> texs_;
+	std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>> uploads_;
+	std::vector<D3D12_SHADER_RESOURCE_VIEW_DESC> srvDescs_;
+	std::vector<D3D12_GPU_DESCRIPTOR_HANDLE> srvGpus_;
 };
 
 } // namespace Engine

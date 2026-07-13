@@ -19,6 +19,7 @@ float4 main(VSOutput input) : SV_TARGET
         input.uv.y * m_uv_scale.y + m_uv_offset.y
     );
     float4 texcolor = tex.Sample(smp, uv);
+    clip(texcolor.a - 0.1f);
 
     // 基本ベクトル
     float normalLen = length(input.normal);
