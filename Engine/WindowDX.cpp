@@ -48,7 +48,7 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wp, LPARAM lp) {
 			}
 
 			// 対応拡張子なら現在のディレクトリへコピー
-			if (ext == ".obj" || ext == ".mtl" || ext == ".gltf" || ext == ".png" || ext == ".jpg" || ext == ".bmp" || ext == ".tga") {
+			if (ext == ".obj" || ext == ".mtl" || ext == ".gltf" || ext == ".glb" || ext == ".png" || ext == ".jpg" || ext == ".bmp" || ext == ".tga") {
 
 				// WindowDX::s_DropDirectory をコピー先として使う
 				std::filesystem::path destDir = WindowDX::s_DropDirectory;

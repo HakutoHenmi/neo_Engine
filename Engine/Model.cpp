@@ -214,7 +214,7 @@ ComPtr<ID3D12Resource> Model::UploadTextureData(ID3D12Resource* tex, const Direc
 
 bool Model::Load(ID3D12Device* device, ID3D12GraphicsCommandList* cmd, const std::string& objPath) {
 	Assimp::Importer importer;
-	const unsigned int flags = aiProcess_FlipWindingOrder | aiProcess_FlipUVs | aiProcess_Triangulate | aiProcess_LimitBoneWeights;
+	const unsigned int flags = aiProcess_FlipWindingOrder | aiProcess_FlipUVs | aiProcess_Triangulate | aiProcess_LimitBoneWeights | aiProcess_PreTransformVertices;
 	
 	// ReadFile supports external files (.bin, .mtl) unlike ReadFileFromMemory without an IO handler
 	const aiScene* scene = importer.ReadFile(objPath.c_str(), flags);
@@ -234,6 +234,11 @@ bool Model::Load(ID3D12Device* device, ID3D12GraphicsCommandList* cmd, const std
 	uint32_t vertexOffset = 0;
 	for (unsigned int m = 0; m < scene->mNumMeshes; ++m) {
 		aiMesh* mesh = scene->mMeshes[m];
+		
+		MeshSubset subset;
+		subset.indexStart = (uint32_t)data_.indices.size();
+		subset.materialIndex = mesh->mMaterialIndex;
+		
 		for (unsigned int i = 0; i < mesh->mNumVertices; ++i) {
 			VertexData v{};
 			// ★修正: 手動X反転 (World.cppと一致させる)
@@ -274,6 +279,10 @@ bool Model::Load(ID3D12Device* device, ID3D12GraphicsCommandList* cmd, const std
 				}
 			}
 		}
+		
+		subset.indexCount = (uint32_t)data_.indices.size() - subset.indexStart;
+		data_.subsets.push_back(subset);
+		
 		vertexOffset += mesh->mNumVertices;
 	}
 
@@ -292,22 +301,64 @@ bool Model::Load(ID3D12Device* device, ID3D12GraphicsCommandList* cmd, const std
 	}
 
 	// ★★★ 修正箇所: テクスチャ読み込み部分 ★★★
-	if (scene->mNumMaterials > 0) {
-		aiString str;
-		aiMaterial* material = scene->mMaterials[0];
+	std::vector<int> materialToTexIdx(scene->mNumMaterials, -1);
 
-		// 1. 従来(Legacy)のDiffuseテクスチャを探す
+	for (unsigned int i = 0; i < scene->mNumMaterials; ++i) {
+		aiMaterial* material = scene->mMaterials[i];
+		aiString str;
 		if (material->GetTexture(aiTextureType_DIFFUSE, 0, &str) != aiReturn_SUCCESS) {
-			// 2. なければglTF(PBR)のBaseColorテクスチャを探す
 			material->GetTexture(aiTextureType_BASE_COLOR, 0, &str);
 		}
 
-		// パスが見つかった場合のみ設定する
 		if (str.length > 0) {
-			std::filesystem::path fullPath(PathUtils::FromUTF8(objPath));
-			std::filesystem::path dir = fullPath.parent_path();
-			std::filesystem::path texPath = dir / str.C_Str();
-			data_.material.textureFilePath = PathUtils::ToUTF8(texPath.wstring());
+			ScratchImage mip;
+			bool textureReady = false;
+
+			const aiTexture* embeddedTex = scene->GetEmbeddedTexture(str.C_Str());
+			if (embeddedTex) {
+				if (embeddedTex->mHeight == 0) {
+					if (SUCCEEDED(LoadFromWICMemory(embeddedTex->pcData, embeddedTex->mWidth, WIC_FLAGS_FORCE_SRGB, nullptr, mip))) {
+						textureReady = true;
+					}
+				}
+			} else {
+				std::filesystem::path fullPath(PathUtils::FromUTF8(objPath));
+				std::filesystem::path dir = fullPath.parent_path();
+				std::filesystem::path texPath = dir / str.C_Str();
+				std::wstring widePath = PathUtils::GetUnifiedPathW(texPath.wstring());
+				if (SUCCEEDED(LoadFromWICFile(widePath.c_str(), WIC_FLAGS_FORCE_SRGB, nullptr, mip))) {
+					textureReady = true;
+				}
+			}
+
+			if (textureReady) {
+				auto tex = CreateTextureResource(device, mip.GetMetadata());
+				auto upload = UploadTextureData(tex.Get(), mip, device, cmd);
+				
+				D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc{};
+				srvDesc.Format = mip.GetMetadata().format;
+				srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+				srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+				srvDesc.Texture2D.MipLevels = (UINT)mip.GetMetadata().mipLevels;
+				srvDesc.Texture2D.MostDetailedMip = 0;
+				srvDesc.Texture2D.PlaneSlice = 0;
+				srvDesc.Texture2D.ResourceMinLODClamp = 0.0f;
+				
+				texs_.push_back(tex);
+				uploads_.push_back(upload);
+				srvDescs_.push_back(srvDesc);
+				
+				materialToTexIdx[i] = (int)texs_.size() - 1;
+			}
+		}
+	}
+	
+	// サブメッシュのマテリアルIDをテクスチャIDに変換
+	for (auto& sub : data_.subsets) {
+		if (sub.materialIndex >= 0 && sub.materialIndex < materialToTexIdx.size()) {
+			sub.materialIndex = materialToTexIdx[sub.materialIndex];
+		} else {
+			sub.materialIndex = -1;
 		}
 	}
 	// ★★★ 修正終わり ★★★
@@ -326,23 +377,6 @@ bool Model::Load(ID3D12Device* device, ID3D12GraphicsCommandList* cmd, const std
 	ibv_ = {ib_->GetGPUVirtualAddress(), (UINT)(sizeof(uint32_t) * data_.indices.size()), DXGI_FORMAT_R32_UINT};
 	indexCount_ = (uint32_t)data_.indices.size();
 
-	if (!data_.material.textureFilePath.empty()) {
-		ScratchImage mip;
-		std::wstring widePath = PathUtils::GetUnifiedPathW(PathUtils::FromUTF8(data_.material.textureFilePath));
-		if (SUCCEEDED(LoadFromWICFile(widePath.c_str(), WIC_FLAGS_FORCE_SRGB, nullptr, mip))) {
-			tex_ = CreateTextureResource(device, mip.GetMetadata());
-			upload_ = UploadTextureData(tex_.Get(), mip, device, cmd);
-			srvDesc_.Format = mip.GetMetadata().format;
-			srvDesc_.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
-			srvDesc_.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-			srvDesc_.Texture2D.MipLevels = (UINT)mip.GetMetadata().mipLevels;
-			srvDesc_.Texture2D.MostDetailedMip = 0;
-			srvDesc_.Texture2D.PlaneSlice = 0;
-			srvDesc_.Texture2D.ResourceMinLODClamp = 0.0f;
-			hasTexture_ = true;
-		}
-	}
-
 	// BVH構築
 	BuildBVH();
 
@@ -352,7 +386,6 @@ bool Model::Load(ID3D12Device* device, ID3D12GraphicsCommandList* cmd, const std
 void Model::InitializeDynamic(ID3D12Device* device, const std::vector<VertexData>& vertices, const std::vector<uint32_t>& indices) {
 	data_.vertices = vertices;
 	data_.indices = indices;
-	hasTexture_ = false;
 
 	vb_ = CreateBufferResource(device, sizeof(VertexData) * vertices.size());
 	UpdateVertices(vertices);
@@ -379,36 +412,58 @@ void Model::UpdateVertices(const std::vector<VertexData>& vertices) {
 	vb_->Unmap(0, nullptr);
 }
 
-void Model::CreateSrv(ID3D12Device* device, ID3D12DescriptorHeap* srvHeap, ID3D12DescriptorHeap* srvHeapMaster, UINT descriptorSize, UINT heapIndex) {
-	if (!hasTexture_)
-		return;
-	D3D12_CPU_DESCRIPTOR_HANDLE cpu = srvHeap->GetCPUDescriptorHandleForHeapStart();
-	cpu.ptr += (SIZE_T)descriptorSize * heapIndex;
+void Model::CreateSrvs(ID3D12Device* device, ID3D12DescriptorHeap* srvHeap, ID3D12DescriptorHeap* srvHeapMaster, UINT descriptorSize, const std::vector<uint32_t>& heapIndices) {
+	if (texs_.empty() || heapIndices.size() != texs_.size()) return;
 	
-	// ★追加: マスターヒープに対しても記述子を作成
-	if (srvHeapMaster) {
-		D3D12_CPU_DESCRIPTOR_HANDLE cpuMaster = srvHeapMaster->GetCPUDescriptorHandleForHeapStart();
-		cpuMaster.ptr += (SIZE_T)descriptorSize * heapIndex;
-		device->CreateShaderResourceView(tex_.Get(), &srvDesc_, cpuMaster);
+	srvGpus_.resize(texs_.size());
+	for (size_t i = 0; i < texs_.size(); ++i) {
+		D3D12_CPU_DESCRIPTOR_HANDLE cpu = srvHeap->GetCPUDescriptorHandleForHeapStart();
+		cpu.ptr += (SIZE_T)descriptorSize * heapIndices[i];
+		
+		if (srvHeapMaster) {
+			D3D12_CPU_DESCRIPTOR_HANDLE cpuMaster = srvHeapMaster->GetCPUDescriptorHandleForHeapStart();
+			cpuMaster.ptr += (SIZE_T)descriptorSize * heapIndices[i];
+			device->CreateShaderResourceView(texs_[i].Get(), &srvDescs_[i], cpuMaster);
+		}
+		
+		srvGpus_[i] = srvHeap->GetGPUDescriptorHandleForHeapStart();
+		srvGpus_[i].ptr += (UINT64)descriptorSize * heapIndices[i];
+		device->CreateShaderResourceView(texs_[i].Get(), &srvDescs_[i], cpu);
 	}
-
-	srvGpu_ = srvHeap->GetGPUDescriptorHandleForHeapStart();
-	srvGpu_.ptr += (UINT64)descriptorSize * heapIndex;
-	device->CreateShaderResourceView(tex_.Get(), &srvDesc_, cpu);
 }
 
-void Model::Draw(ID3D12GraphicsCommandList* cmd, UINT /*root*/) {
+void Model::Draw(ID3D12GraphicsCommandList* cmd, UINT rootSrvParamIndex, bool useModelTextures) {
 	cmd->IASetVertexBuffers(0, 1, &vbv_);
 	cmd->IASetIndexBuffer(&ibv_);
 	cmd->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-	cmd->DrawIndexedInstanced(indexCount_, 1, 0, 0, 0);
+	
+	if (data_.subsets.empty()) {
+		cmd->DrawIndexedInstanced(indexCount_, 1, 0, 0, 0);
+	} else {
+		for (const auto& sub : data_.subsets) {
+			if (useModelTextures && sub.materialIndex >= 0 && sub.materialIndex < (int)srvGpus_.size()) {
+				cmd->SetGraphicsRootDescriptorTable(rootSrvParamIndex, srvGpus_[sub.materialIndex]);
+			}
+			cmd->DrawIndexedInstanced(sub.indexCount, 1, sub.indexStart, 0, 0);
+		}
+	}
 }
 
-void Model::DrawInstanced(ID3D12GraphicsCommandList* cmd, UINT instanceCount, UINT /*root*/) {
+void Model::DrawInstanced(ID3D12GraphicsCommandList* cmd, UINT instanceCount, UINT rootSrvParamIndex, bool useModelTextures) {
 	cmd->IASetVertexBuffers(0, 1, &vbv_);
 	cmd->IASetIndexBuffer(&ibv_);
 	cmd->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-	cmd->DrawIndexedInstanced(indexCount_, instanceCount, 0, 0, 0);
+	
+	if (data_.subsets.empty()) {
+		cmd->DrawIndexedInstanced(indexCount_, instanceCount, 0, 0, 0);
+	} else {
+		for (const auto& sub : data_.subsets) {
+			if (useModelTextures && sub.materialIndex >= 0 && sub.materialIndex < (int)srvGpus_.size()) {
+				cmd->SetGraphicsRootDescriptorTable(rootSrvParamIndex, srvGpus_[sub.materialIndex]);
+			}
+			cmd->DrawIndexedInstanced(sub.indexCount, instanceCount, sub.indexStart, 0, 0);
+		}
+	}
 }
 
 void Model::BuildBVH() {

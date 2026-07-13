@@ -107,6 +107,8 @@ void UISystem::Draw(entt::registry& registry, GameContext& ctx) {
 
 // ★追加: ワールド空間UI（HPバー）の描画パス
 void UISystem::DrawUI(entt::registry& registry, GameContext& ctx) {
+    (void)registry;
+    (void)ctx;
     if (!ctx.camera) return;
 
     // OS画面全体に対して描画するため GetForegroundDrawList を使用

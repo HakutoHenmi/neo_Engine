@@ -480,6 +480,7 @@ void Renderer::FlushDrawCalls() {
 		if (!pso) continue;
 		list_->SetPipelineState(pso);
 
+		bool useModelTex = false;
 		list_->SetGraphicsRootConstantBufferView(0, cbFrameAddr_);
 		list_->SetGraphicsRootConstantBufferView(2, cbLightAddr_);
 		if (shadowSrv_.ptr != 0) {
@@ -530,8 +531,9 @@ void Renderer::FlushDrawCalls() {
 			
 			if (dc.tex != 0 && dc.tex < textures_.size()) {
 				list_->SetGraphicsRootDescriptorTable(3, textures_[dc.tex].srvGpu);
-			} else if (model->GetSrvGpu().ptr != 0) {
-				list_->SetGraphicsRootDescriptorTable(3, model->GetSrvGpu());
+			} else if (model->HasTexture() && model->GetSrvGpu(0).ptr != 0) {
+				useModelTex = true;
+				list_->SetGraphicsRootDescriptorTable(3, model->GetSrvGpu(0));
 			} else {
 				list_->SetGraphicsRootDescriptorTable(3, textures_[0].srvGpu);
 			}
@@ -582,13 +584,13 @@ void Renderer::FlushDrawCalls() {
 			std::string outlineName = dc.isSkinned ? "ToonSkinningOutline" : "ToonOutline";
 			if (pipelines_.count(outlineName)) {
 				list_->SetPipelineState(pipelines_[outlineName].Get());
-				model->Draw(list_);
+				model->Draw(list_, 3, useModelTex);
 			}
 			// 本体PSOに戻す
 			list_->SetPipelineState(pso);
 		}
 
-		model->Draw(list_);
+		model->Draw(list_, 3, useModelTex);
 	}
 
 	// ====== インスタンス描画の共通処理関数 (ラムダ) ======
@@ -606,6 +608,7 @@ void Renderer::FlushDrawCalls() {
 
 			// シェーダー設定
 			std::string sName = idc.shaderName;
+			bool useModelTex = false;
 			if (sName == "Default") sName = defaultShaderName;
 			// "Particle" -> "ParticleInstanced", "ParticleAdditive" -> "ParticleAdditiveInstanced" への自動マッピング
 			if (defaultShaderName == "ParticleInstanced") {
@@ -677,6 +680,9 @@ void Renderer::FlushDrawCalls() {
 					// テクスチャ
 					if (idc.tex != 0 && idc.tex < textures_.size()) {
 						list_->SetGraphicsRootDescriptorTable(3, textures_[idc.tex].srvGpu);
+					} else if (model->HasTexture() && model->GetSrvGpu(0).ptr != 0) {
+						useModelTex = true;
+						list_->SetGraphicsRootDescriptorTable(3, model->GetSrvGpu(0)); // bind 1st texture as default
 					} else {
 						list_->SetGraphicsRootDescriptorTable(3, textures_[0].srvGpu);
 					}
@@ -685,7 +691,7 @@ void Renderer::FlushDrawCalls() {
 				}
 			}
 
-			model->DrawInstanced(list_, static_cast<uint32_t>(idc.instances.size()));
+			model->DrawInstanced(list_, static_cast<uint32_t>(idc.instances.size()), 3, useModelTex);
 		}
 		calls.clear();
 	};
@@ -744,6 +750,7 @@ void Renderer::FlushDrawCalls() {
 			list_->SetGraphicsRootDescriptorTable(5, shadowSrv_);
 		}
 
+		bool useModelTex = false;
 		if (dc.shaderName == "EnhancedTerrain") {
 			list_->SetGraphicsRootSignature(rootSigTerrain_.Get());
 			list_->SetGraphicsRootConstantBufferView(0, cbFrameAddr_);
@@ -788,8 +795,9 @@ void Renderer::FlushDrawCalls() {
 			
 			if (dc.tex != 0 && dc.tex < textures_.size()) {
 				list_->SetGraphicsRootDescriptorTable(3, textures_[dc.tex].srvGpu);
-			} else if (model->GetSrvGpu().ptr != 0) {
-				list_->SetGraphicsRootDescriptorTable(3, model->GetSrvGpu());
+			} else if (model->HasTexture() && model->GetSrvGpu(0).ptr != 0) {
+				useModelTex = true;
+				list_->SetGraphicsRootDescriptorTable(3, model->GetSrvGpu(0));
 			} else {
 				list_->SetGraphicsRootDescriptorTable(3, textures_[0].srvGpu);
 			}
@@ -836,12 +844,12 @@ void Renderer::FlushDrawCalls() {
 			std::string outlineName = dc.isSkinned ? "ToonSkinningOutline" : "ToonOutline";
 			if (pipelines_.count(outlineName)) {
 				list_->SetPipelineState(pipelines_[outlineName].Get());
-				model->Draw(list_);
+				model->Draw(list_, 3, useModelTex);
 			}
 			list_->SetPipelineState(pso);
 		}
 
-		model->Draw(list_);
+		model->Draw(list_, 3, useModelTex);
 	}
 
 	FlushLines();
@@ -2327,9 +2335,12 @@ Renderer::MeshHandle Renderer::LoadObjMesh(const std::string& objFilePath) {
 	// 完了を待機 (テクスチャ転送を確実にするため)
 	WaitGPU();
 
-	if (model->GetData().material.textureFilePath.size() > 0) {
-		uint32_t idx = AllocateSrvIndex();
-		model->CreateSrv(dev_, srvHeap_, window_->SRV_CPU_Heap(), srvInc_, idx);
+	if (model->HasTexture()) {
+		std::vector<uint32_t> indices;
+		for (uint32_t i = 0; i < model->GetTextureCount(); ++i) {
+			indices.push_back(AllocateSrvIndex());
+		}
+		model->CreateSrvs(dev_, srvHeap_, window_->SRV_CPU_Heap(), srvInc_, indices);
 	}
 
 	MeshHandle handle = (MeshHandle)models_.size();
