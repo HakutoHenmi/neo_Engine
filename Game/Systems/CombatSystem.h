@@ -158,8 +158,8 @@ public:
 
 							if (isExplosionAttack) {
 								entry.parameterData = "isExplosionHit=1";
-							} else if (!isProj) {
-								// ★追加: 近接攻撃時は液体スプラッターを出す
+							} else {
+								// ★追加: 近接攻撃や水流ビーム（弾）ヒット時に液体スプラッターを出す
 								entry.parameterData = "isLiquidSplatter=1,dirX=" + std::to_string(attackDir.x) + ",dirZ=" + std::to_string(attackDir.z);
 							}
 							sc.scripts.push_back(entry);

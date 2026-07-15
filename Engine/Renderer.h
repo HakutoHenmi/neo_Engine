@@ -300,6 +300,7 @@ public:
 		Vector3 position; float pad0;
 		Vector3 velocity; float pad1;
 		Vector4 color;
+		float type; Vector3 pad2; // ★追加: 0=プレイヤー, 1=水しぶき
 	};
 
 	Microsoft::WRL::ComPtr<ID3D12RootSignature> rootSigFluid_;
@@ -310,21 +311,24 @@ public:
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> psoFluidDebug_; 
 	Microsoft::WRL::ComPtr<ID3D12Resource> gpuFluidBuffer_;
 	uint32_t gpuFluidMaxParticles_ = 8192; // O(N^2)なので負荷を考慮して調整
-	uint32_t gpuFluidEmitCursor_ = 0;
+	uint32_t gpuFluidEmitCursorPlayer_ = 0;
+	uint32_t gpuFluidEmitCursorSplash_ = 2000;
 	bool isGPUFluidReady_ = false;
 
 	void InitGPUFluid();
 	void UpdateGPUFluid(float dt);
-	void EmitGPUFluid(const Vector3& pos, const Vector3& velocityDir, const Vector4& color, int count);
+	void EmitGPUFluid(const Vector3& pos, const Vector3& velocityDir, const Vector4& color, int count, float type = 0.0f);
 	void DrawGPUFluid(TextureHandle texture);
 	void DrawGPUFluidDebug();
-	void SetGPUFluidCore(const Vector3& pos, float attraction);
+	void SetGPUFluidCore(const Vector3& pos, float attraction, const Vector3& scale = {1.0f, 1.0f, 1.0f}, const Vector3& forward = {0.0f, 0.0f, 1.0f});
 
 	Vector3 gpuFluidCorePos_ = {0,0,0};
 	float gpuFluidCoreAttraction_ = 0.0f;
+	Vector3 gpuFluidCoreScale_ = {1.0f, 1.0f, 1.0f};
+	Vector3 gpuFluidCoreForward_ = {0.0f, 0.0f, 1.0f};
 	
 	// ★追加: 矢印（デバッグベクトル）表示フラグ
-	bool drawFluidDebugArrows_ = true;
+	bool drawFluidDebugArrows_ = false;
 	void SetDrawFluidDebugArrows(bool b) { drawFluidDebugArrows_ = b; }
 	bool GetDrawFluidDebugArrows() const { return drawFluidDebugArrows_; }
 

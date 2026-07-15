@@ -52,8 +52,8 @@ public:
 			if (inputIns) {
 				float wheel = inputIns->GetMouseWheelDelta();
 				if (std::abs(wheel) > 0.001f) {
-					ct.distance -= wheel * 0.005f; // 感度調整
-					ct.distance = std::clamp(ct.distance, 3.0f, 20.0f); // 範囲制限
+					ct.distance -= wheel * 0.02f; // 感度を上げて大きく動くようにする (以前は0.005f)
+					ct.distance = std::clamp(ct.distance, 2.0f, 50.0f); // 範囲も広くする (以前は3.0〜20.0)
 				}
 			}
 

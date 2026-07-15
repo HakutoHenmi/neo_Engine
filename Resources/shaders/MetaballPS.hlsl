@@ -90,36 +90,57 @@ float bubbles3D(float3 wPos, float time) {
     return res;
 }
 
+// ---------------------------------------------------------
+// ブラー関数（強力なガウシアン）
+// ---------------------------------------------------------
+float4 GetBlurredColor(Texture2D<float4> texObj, SamplerState smpObj, float2 uv, float2 texelSize, float spread) {
+    float4 c = float4(0, 0, 0, 0);
+    float wSum = 0.0;
+    // 9x9 で極めて強力にブラーをかける（凸凹を完全に溶かして滑らかにする）
+    for(int y = -4; y <= 4; ++y) {
+        for(int x = -4; x <= 4; ++x) {
+            float w = exp(-float(x * x + y * y) / 10.0);
+            c += texObj.SampleLevel(smpObj, uv + float2(x, y) * texelSize * spread, 0) * w;
+            wSum += w;
+        }
+    }
+    return c / wSum;
+}
+
 float4 main(PSIn input) : SV_TARGET
 {
-    float4 color = tex.Sample(smp, input.uv);
-    
-    // 薄く広がった液体が消えないよう密度を底上げしますが、
-    // ギザギザを防ぐためブーストを少し控えめにします。
-    color.a = saturate(color.a * 1.5);
-    
-    // 完全に透明なら破棄（極限まで下げてジャギーを防ぐ）
-    if (color.a < 0.005) {
-        discard;
-    }
-
-    // アルファ値の閾値
-    float threshold = 0.05;
-
-    // 滑らかなエッジを作る（discardをせず、純粋なアルファブレンドでフチを滑らかに消す）
-    float alphaEdge = smoothstep(threshold, threshold + 0.35, color.a);
     float w, h;
     depthTex.GetDimensions(w, h);
     float2 texelSize = float2(1.0 / w, 1.0 / h);
+
+    // アウトラインと表面全体のギザギザを完全になくすため、中心色もブラーをかけたものを使う
+    // ★サンプリングの飛ばしすぎによるドット化（ブロック状のジャギー）を防ぐため、spread は 1.5 に抑えます
+    float4 color = GetBlurredColor(tex, smp, input.uv, texelSize, 1.5);
+    
+    // 完全に透明なら破棄
+    if (color.a < 0.001) {
+        discard;
+    }
+
+    // ★重要: パーティクルとアウトラインの間の「透明な空間」を無くすため、
+    // 閾値を引き上げることで、枠がパーティクルの中心（矢印）にさらに密着します。
+    // スプラッシュ(0.1)がギリギリ消えない 0.08 に設定します。
+    float threshold = 0.08;
+
+    // 滑らかさを保ちつつ、透明な枠を極限まで薄く（細く）するためのシャープなグラデーション幅
+    float alphaEdge = smoothstep(threshold, threshold + 0.03, color.a);
     
     // 周辺のアルファ（密度）をサンプリングして、滑らかな勾配を計算する
-    // ★斜めから見たときの縦方向の圧縮に対応するため、サンプリング距離を少し縮め、ノイズを減らす
+    // ★斜めから見たときの法線のギザギザ（ジャギー）を完全に解消するため、
+    // 法線計算用のサンプリングも「ブラーがかかった滑らかなアルファ」を使用する！
     float2 offX_a = float2(texelSize.x * 4.0, 0.0);
     float2 offY_a = float2(0.0, texelSize.y * 4.0);
-    float a1 = tex.Sample(smp, input.uv + offX_a).a; // Right
-    float a2 = tex.Sample(smp, input.uv - offX_a).a; // Left
-    float a3 = tex.Sample(smp, input.uv + offY_a).a; // Bottom
-    float a4 = tex.Sample(smp, input.uv - offY_a).a; // Top
+    
+    // サンプリング間隔を広げすぎると斜めから見たときに破綻するため、適度な距離(4.0)に戻す
+    float a1 = GetBlurredColor(tex, smp, input.uv + offX_a, texelSize, 1.5).a; // Right
+    float a2 = GetBlurredColor(tex, smp, input.uv - offX_a, texelSize, 1.5).a; // Left
+    float a3 = GetBlurredColor(tex, smp, input.uv + offY_a, texelSize, 1.5).a; // Bottom
+    float a4 = GetBlurredColor(tex, smp, input.uv - offY_a, texelSize, 1.5).a; // Top
     
     // 勾配ベクトルの計算
     float dx = (a2 - a1);
@@ -144,13 +165,13 @@ float4 main(PSIn input) : SV_TARGET
     // 深度バッファは背景の箱や床の段差を拾って破綻するため使用しません。
     // 代わりに、中心の平坦な領域でも「はるか遠くのフチ」をサンプリングすることで、
     // 自分がスライムのどの位置にいるか（大局的な丸み）を確実に推定します。
-    // ★60ピクセルは斜めから見たときに飛び出すため、距離を縮小します
-    float2 offX_far = float2(texelSize.x * 20.0, 0.0);
-    float2 offY_far = float2(0.0, texelSize.y * 20.0);
-    float aRight = tex.Sample(smp, input.uv + offX_far).a;
-    float aLeft  = tex.Sample(smp, input.uv - offX_far).a;
-    float aBottom = tex.Sample(smp, input.uv + offY_far).a;
-    float aTop    = tex.Sample(smp, input.uv - offY_far).a;
+    // ★斜めから見たときに距離が遠すぎると背景を拾ってギザギザになるため、20.0 -> 12.0 に縮小します
+    float2 offX_far = float2(texelSize.x * 12.0, 0.0);
+    float2 offY_far = float2(0.0, texelSize.y * 12.0);
+    float aRight = tex.SampleLevel(smp, input.uv + offX_far, 0).a;
+    float aLeft  = tex.SampleLevel(smp, input.uv - offX_far, 0).a;
+    float aBottom = tex.SampleLevel(smp, input.uv + offY_far, 0).a;
+    float aTop    = tex.SampleLevel(smp, input.uv - offY_far, 0).a;
     
     // 大局的な勾配（左が濃ければ自分は右側にいるため、法線は右を向く）
     float dx_far = (aLeft - aRight);
@@ -189,8 +210,8 @@ float4 main(PSIn input) : SV_TARGET
     // フレネル (縁の光の回り込み)
     float3 F0 = float3(0.04, 0.1, 0.04); 
     float rim = 1.0 - NdotV;
-    // 参考画像のようなゼリー感・水滴感を出すため、フチの光の回り込みを強くする
-    float3 fresnel = F0 + (1.0 - F0) * pow(rim, 2.5) * 2.0;
+    // 参考画像のようなゼリー感・水滴感を出すため、フチの光の回り込みを鋭く（薄く）する
+    float3 fresnel = F0 + (1.0 - F0) * pow(rim, 4.0) * 1.5;
     
     // スペキュラ（ハイライト） - 太陽や強い光源の反射
     float3 halfVector = normalize(lightDir + viewDir);
@@ -201,28 +222,25 @@ float4 main(PSIn input) : SV_TARGET
     float3 specColor = float3(1.0, 1.0, 1.0) * (specularSoft + specularHard);
     
     // 環境反射 (疑似Skybox) 
-    // 参考画像のような「森の中」を想定した、黄色〜黄緑の環境光
-    // 物理的な反射ベクトルだと球体の下部に空が映り込んでしまうため、
-    // 法線の向き(normal.y)を使って「上半分が空の色、下半分が地面の色」になるように直感的なライティングにする
+    // 入力カラー(avgColor)ベースで動的に環境光を生成し、水とスライムで別々の反射色にする
+    float3 avgColor = color.rgb / max(color.a, 0.0001);
     float skyFactor = smoothstep(0.0, 1.0, normal.y); // 上を向いている部分だけ空を反射
-    float3 skyColor = float3(0.5, 0.7, 0.1);     // 濃い黄緑の空色
-    float3 groundColor = float3(0.2, 0.3, 0.0);  // 深い黄緑
+    float3 skyColor = saturate(avgColor * 1.2 + float3(0.02, 0.02, 0.02));     // 空色
+    float3 groundColor = saturate(avgColor * 0.5);  // 地面色
     // 環境光の主張を抑えて、ベースの色をしっかり残す
     float3 envColor = lerp(groundColor, skyColor, skyFactor) * 0.6;
     
-    // フチが環境光（地面の暗い色など）や影の影響で黒い線になって分断されるのを防ぐため、
-    // 内側と同じ明るい色（固有色）でフチを滑らかに発光させて馴染ませる
-    float3 edgeGlow = float3(0.6, 0.9, 0.1) * pow(rim, 3.0) * 1.0; 
-    
-    float3 surfaceReflection = envColor * fresnel + specColor + edgeGlow;
+    // リアルな水滴・ガラスの質感を保つため、不自然な自己発光（ネオンのような縁のGlow）は削除し、
+    // 環境反射とフレネル、スペキュラのみでフチを表現します。
+    float3 surfaceReflection = envColor * fresnel + specColor;
     
     // --- 吸収（Absorption）と水の色 ---
     // 見た目の厚み（中央が厚く、縁が薄い）
     float apparentThickness = NdotV;
     
-    // 濃い黄緑色
-    float3 shallowColor = float3(0.5, 0.8, 0.1); // 縁の明るい黄緑
-    float3 deepColor = float3(0.25, 0.4, 0.05);  // 中央の濃い黄緑
+    // avgColor から動的に縁と中央の色を作る
+    float3 shallowColor = saturate(avgColor * 1.25); // 縁の明るい色
+    float3 deepColor = saturate(avgColor * 0.625);   // 中央の濃い色
     float3 waterBaseColor = lerp(shallowColor, deepColor, apparentThickness);
     
     // --- 奥行きと水感を出すパターン（コースティクスと気泡） ---
@@ -230,7 +248,7 @@ float4 main(PSIn input) : SV_TARGET
     float2 distortedUV = input.uv + normal.xy * 0.03 * (1.0 - apparentThickness);
     float caustics = waterCaustics(distortedUV, time * 0.5);
     // コースティクスの強度を抑えて白飛びを防ぐ
-    float3 causticColor = float3(0.7, 1.0, 0.2) * caustics * 0.3;
+    float3 causticColor = saturate(avgColor * 1.5) * caustics * 0.3;
     
     // --- 立体的な気泡（3D空間ベース） ---
     // 深度バッファ(d0)を用いて、ビュー空間のピクセル座標(p0)を復元
@@ -246,7 +264,7 @@ float4 main(PSIn input) : SV_TARGET
     
     // ワールド空間の座標を渡して、3D空間で昇る気泡を生成
     float bubblePattern = bubbles3D(worldPos, time * 0.8);
-    float3 bubbleColor = float3(0.9, 1.0, 0.6) * bubblePattern * 1.5;
+    float3 bubbleColor = saturate(avgColor * 2.0) * bubblePattern * 1.5;
     
     // ベースカラーに水感のディテールを合成
     waterBaseColor += causticColor * apparentThickness;
@@ -259,25 +277,24 @@ float4 main(PSIn input) : SV_TARGET
     
     float3 scatterColor = waterBaseColor * (NdotL * 0.4 + 0.6) + sssColor;
     
-    // --- プレマルチプライド・アルファ（Premultiplied Alpha）合成 ---
-    // 法線がカメラに向いている（内側・深い）ほど透けやすく、フチに向かうほど不透明になる表現
-    // ガラスや水のような、フチの屈折による厚みをシミュレート
-    float minAlpha = 0.55; // 中央の透明度（大幅に上げて内部の濃さを強調し、浸透させる）
-    float maxAlpha = 0.90; // フチの透明度（ほぼ不透明にしてゼリー状の立体感を出す）
+    // --- 通常のアルファブレンド合成 ---
+    // カメラに向いている（中央・深い）ほど透明で、フチに向かうほど不透明になる表現
+    float minAlpha = 0.55; 
+    float maxAlpha = 1.0; // フチは完全に不透明(1.0)にして、背景が透ける透明な枠をなくす
     
     // NdotV(apparentThickness) が 1.0 (中央) の時 minAlpha, 0.0 (フチ) の時 maxAlpha
     float baseAlpha = lerp(maxAlpha, minAlpha, apparentThickness);
     
-    // 最終的な色 = (水中の色 * 不透明度) + 表面の光の反射(そのまま加算)
-    // プレマルチプライドアルファなので、表面反射は不透明度を掛けずに加算し、光を乗せる
-    float3 finalColor = (scatterColor * baseAlpha) + surfaceReflection;
+    // 最終的な色 = (水中の色 * 不透明度) + 表面の光の反射
+    // （※C++側のBlendStateが通常アルファブレンド (SrcBlend=SRC_ALPHA) のため、シェーダー内でのアルファ乗算は行わない）
+    float3 finalColor = scatterColor + surfaceReflection;
     
-    // ハイライトが当たっている部分は少しだけアルファを上げるが、完全な不透明にはしない
+    // ハイライトやフチの光が当たっている部分は不透明度を上げる
     float dynamicAlpha = saturate(baseAlpha + (specularSoft + specularHard) * 0.4 + fresnel.x * 0.5);
     float finalAlpha = dynamicAlpha * alphaEdge;
     
-    // カットアウトエッジのフェードを適用
-    finalColor *= alphaEdge;
+    // 以前存在した `finalColor *= alphaEdge;` は削除しました。
+    // （これがあると、GPUのBlendStateと二重にアルファが掛かってしまい、フチが黒く濁る原因になります）
     
     return float4(finalColor, finalAlpha);
 }

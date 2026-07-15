@@ -76,13 +76,15 @@ void BossTestScript::Start(entt::entity entity, GameScene* scene) {
 		hc.maxHp = 500.0f;
 	}
 
-	// ★追加: ボス本体のHurtboxのサイズを見た目のスケールに完全に一致させる
-	if (registry.all_of<HurtboxComponent>(entity)) {
-		auto& hr = registry.get<HurtboxComponent>(entity);
-		// cube.obj はベースが 2x2x2 なので、スケール値に2をかけると見た目とピッタリ一致する
-		hr.size = { originalScale_.x * 2.0f, originalScale_.y * 2.0f, originalScale_.z * 2.0f };
-		hr.center = {0, 0, 0}; // ボスの中心
+	// ★修正: ボス本体にHurtboxComponentを追加し、サイズを見た目のスケールに完全に一致させる
+	if (!registry.all_of<HurtboxComponent>(entity)) {
+		registry.emplace<HurtboxComponent>(entity);
 	}
+	auto& hr = registry.get<HurtboxComponent>(entity);
+	// cube.obj はベースが 2x2x2 なので、スケール値に2をかけると見た目とピッタリ一致する
+	hr.size = { originalScale_.x * 2.0f, originalScale_.y * 2.0f, originalScale_.z * 2.0f };
+	hr.center = {0, 0, 0}; // ボスの中心
+	hr.tag = TagType::Enemy; // ★追加: 敵として判定させる
 
 	// 3. 弱点部位（尻尾）の生成と紐付け
 	tailEntity_ = registry.create();
@@ -100,11 +102,11 @@ void BossTestScript::Start(entt::entity entity, GameScene* scene) {
 		mr.textureHandle = renderer->LoadTexture2D(mr.texturePath);
 	}
 	
-	auto& hr = registry.emplace<HurtboxComponent>(tailEntity_);
+	auto& tailHr = registry.emplace<HurtboxComponent>(tailEntity_);
 	// 尻尾のHurtboxもスケールに合わせて完全に一致させる
-	hr.size = { tc.scale.x * 2.0f, tc.scale.y * 2.0f, tc.scale.z * 2.0f };
-	hr.tag = TagType::Enemy;
-	hr.damageMultiplier = 1.5f; // 弱点なのでダメージ1.5倍
+	tailHr.size = { tc.scale.x * 2.0f, tc.scale.y * 2.0f, tc.scale.z * 2.0f };
+	tailHr.tag = TagType::Enemy;
+	tailHr.damageMultiplier = 1.5f; // 弱点なのでダメージ1.5倍
 
 	// ★追加: 尻尾自身にもタグを設定しないと、自爆ダメージを受けてしまう
 	registry.emplace<TagComponent>(tailEntity_).tag = TagType::Enemy;

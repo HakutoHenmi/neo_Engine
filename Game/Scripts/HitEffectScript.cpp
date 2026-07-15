@@ -32,9 +32,15 @@ void HitEffectScript::Start(entt::entity entity, GameScene* scene) {
 		eColor = { 1.0f, 0.2f, 1.0f, 1.0f }; // 爆発は紫/ピンク系
 		speedMult = 3.0f;
 	} else if (isLiquidSplatter_) {
-		emitCount = 400;
-		eColor = (colorDist(mt) > 0.5f) ? Engine::Vector4{ 0.0f, 0.8f, 1.0f, 1.0f } : Engine::Vector4{ 1.0f, 0.0f, 1.0f, 1.0f };
-		speedMult = 1.0f;
+		emitCount = 500; // パーティクル数を調整
+		eColor = (colorDist(mt) > 0.5f) ? Engine::Vector4{ 0.2f, 0.8f, 1.0f, 1.0f } : Engine::Vector4{ 0.8f, 0.9f, 1.0f, 1.0f }; // 水色と白波の色
+		
+		// 敵に当たった後、後ろに突き抜けるのではなく、手前や周囲に跳ね返るようにベクトルを反転・拡散
+		eDir.x = -attackDirX_ * 0.5f; 
+		eDir.z = -attackDirZ_ * 0.5f;
+		eDir.y = 1.0f; // 少し上へ跳ねる
+		
+		speedMult = 2.5f; // 跳ね返りの勢い
 	} else if (isMelee_) {
 		emitCount = 800; // 近接は激しく飛び散る
 		eColor = { 1.0f, 0.0f, 1.0f, 1.0f }; // 紫色っぽく
@@ -50,7 +56,7 @@ void HitEffectScript::Start(entt::entity entity, GameScene* scene) {
 	eDir.z *= speedMult;
 
 	if (scene && scene->GetRenderer()) {
-		scene->GetRenderer()->EmitGPUFluid(ePos, eDir, eColor, emitCount); 
+		scene->GetRenderer()->EmitGPUFluid(ePos, eDir, eColor, emitCount, 1.0f); // 1.0f は水しぶき(引力に引かれない)
 	}
 }
 
