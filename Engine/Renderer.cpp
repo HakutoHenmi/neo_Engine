@@ -4091,7 +4091,7 @@ void Renderer::EndLiquidPass() {
 // ★追加: GPU流体パーティクルシステム
 void Renderer::InitGPUFluid() {
 	CD3DX12_ROOT_PARAMETER computeParams[2]{};
-	computeParams[0].InitAsConstants(20, 0); 
+	computeParams[0].InitAsConstants(32, 0); 
 	computeParams[1].InitAsUnorderedAccessView(0); 
 
 	CD3DX12_ROOT_SIGNATURE_DESC rsDescCompute;
@@ -4202,9 +4202,11 @@ void Renderer::InitGPUFluid() {
 	isGPUFluidReady_ = true;
 }
 
-void Renderer::SetGPUFluidCore(const Vector3& pos, float attraction) {
+void Renderer::SetGPUFluidCore(const Vector3& pos, float attraction, const Vector3& scale, const Vector3& forward) {
 	gpuFluidCorePos_ = pos;
 	gpuFluidCoreAttraction_ = attraction;
+	gpuFluidCoreScale_ = scale;
+	gpuFluidCoreForward_ = forward;
 }
 
 void Renderer::UpdateGPUFluid(float dt) {
@@ -4212,17 +4214,23 @@ void Renderer::UpdateGPUFluid(float dt) {
 	
 	struct CB { 
 		float dt; uint32_t emitCursor; uint32_t emitCount; uint32_t maxParticles; 
-		Vector3 emitPos; float pad1; 
-		Vector3 emitDir; float pad2; 
+		Vector3 emitPos; float emitType; 
+		Vector3 emitDir; uint32_t emitStartIndex; 
 		Vector4 emitColor; 
 		Vector3 corePos; float coreAttraction;
+		uint32_t emitEndIndex; Vector3 pad3;
+		Vector3 coreScale; float pad4;
+		Vector3 coreForward; float pad5;
 	} cb;
 	cb.dt = dt; cb.emitCursor = 0; cb.emitCount = 0; cb.maxParticles = gpuFluidMaxParticles_;
-	cb.emitPos = {0,0,0}; cb.emitDir = {0,0,0}; cb.emitColor = {0,0,0,0};
+	cb.emitPos = {0,0,0}; cb.emitType = 0.0f; cb.emitDir = {0,0,0}; cb.emitStartIndex = 0; cb.emitColor = {0,0,0,0};
 	cb.corePos = gpuFluidCorePos_; cb.coreAttraction = gpuFluidCoreAttraction_;
+	cb.emitEndIndex = gpuFluidMaxParticles_; cb.pad3 = {0,0,0};
+	cb.coreScale = gpuFluidCoreScale_; cb.pad4 = 0.0f;
+	cb.coreForward = gpuFluidCoreForward_; cb.pad5 = 0.0f;
 	
 	list_->SetComputeRootSignature(rootSigFluid_.Get());
-	list_->SetComputeRoot32BitConstants(0, 20, &cb, 0);
+	list_->SetComputeRoot32BitConstants(0, 32, &cb, 0);
 	list_->SetComputeRootUnorderedAccessView(1, gpuFluidBuffer_->GetGPUVirtualAddress());
 
 	uint32_t threadGroups = (gpuFluidMaxParticles_ + 255) / 256;
@@ -4243,22 +4251,39 @@ void Renderer::UpdateGPUFluid(float dt) {
 	list_->ResourceBarrier(1, &barrier);
 }
 
-void Renderer::EmitGPUFluid(const Vector3& pos, const Vector3& velocityDir, const Vector4& color, int count) {
+void Renderer::EmitGPUFluid(const Vector3& pos, const Vector3& velocityDir, const Vector4& color, int count, float type) {
 	if (!isGPUFluidReady_ || !psoFluidEmit_ || !gpuFluidBuffer_) return;
 	list_->SetPipelineState(psoFluidEmit_.Get());
 	list_->SetComputeRootSignature(rootSigFluid_.Get());
 	struct CB { 
 		float dt; uint32_t emitCursor; uint32_t emitCount; uint32_t maxParticles; 
-		Vector3 emitPos; float pad1; 
-		Vector3 emitDir; float pad2; 
+		Vector3 emitPos; float emitType; 
+		Vector3 emitDir; uint32_t emitStartIndex; 
 		Vector4 emitColor; 
 		Vector3 corePos; float coreAttraction;
+		uint32_t emitEndIndex; Vector3 pad3;
+		Vector3 coreScale; float pad4;
+		Vector3 coreForward; float pad5;
 	} cb;
-	cb.dt = 0.0f; cb.emitCursor = gpuFluidEmitCursor_; cb.emitCount = count; cb.maxParticles = gpuFluidMaxParticles_;
-	cb.emitPos = pos; cb.emitDir = velocityDir; cb.emitColor = color;
-	cb.corePos = gpuFluidCorePos_; cb.coreAttraction = gpuFluidCoreAttraction_;
 	
-	list_->SetComputeRoot32BitConstants(0, 20, &cb, 0);
+	uint32_t startIndex = 0;
+	uint32_t endIndex = 2000;
+	uint32_t* cursorPtr = &gpuFluidEmitCursorPlayer_;
+	
+	if (type > 0.5f) { // Splash
+		startIndex = 2000;
+		endIndex = gpuFluidMaxParticles_;
+		cursorPtr = &gpuFluidEmitCursorSplash_;
+	}
+	
+	cb.dt = 0.0f; cb.emitCursor = *cursorPtr; cb.emitCount = count; cb.maxParticles = gpuFluidMaxParticles_;
+	cb.emitPos = pos; cb.emitType = type; cb.emitDir = velocityDir; cb.emitStartIndex = startIndex; cb.emitColor = color;
+	cb.corePos = gpuFluidCorePos_; cb.coreAttraction = gpuFluidCoreAttraction_;
+	cb.emitEndIndex = endIndex; cb.pad3 = {0,0,0};
+	cb.coreScale = gpuFluidCoreScale_; cb.pad4 = 0.0f;
+	cb.coreForward = gpuFluidCoreForward_; cb.pad5 = 0.0f;
+	
+	list_->SetComputeRoot32BitConstants(0, 32, &cb, 0);
 	list_->SetComputeRootUnorderedAccessView(1, gpuFluidBuffer_->GetGPUVirtualAddress());
 	uint32_t threadGroups = (gpuFluidMaxParticles_ + 255) / 256; 
 	list_->Dispatch(threadGroups, 1, 1);
@@ -4266,7 +4291,8 @@ void Renderer::EmitGPUFluid(const Vector3& pos, const Vector3& velocityDir, cons
 	auto barrier = CD3DX12_RESOURCE_BARRIER::UAV(gpuFluidBuffer_.Get());
 	list_->ResourceBarrier(1, &barrier);
 	
-	gpuFluidEmitCursor_ = (gpuFluidEmitCursor_ + count) % gpuFluidMaxParticles_;
+	uint32_t size = endIndex - startIndex;
+	*cursorPtr = startIndex + ((*cursorPtr - startIndex + count) % size);
 }
 
 void Renderer::DrawGPUFluid(TextureHandle texture) {

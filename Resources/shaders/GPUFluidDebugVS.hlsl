@@ -2,6 +2,7 @@ struct Particle {
     float3 position; float density;
     float3 velocity; float pressure;
     float4 color;
+    float type; float3 pad;
 };
 
 StructuredBuffer<Particle> Particles : register(t2);

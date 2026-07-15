@@ -57,6 +57,11 @@ public:
 			if (pa.dodgeCooldown > 0.0f) pa.dodgeCooldown -= ctx.dt;
 
 			pa.stateTimer += ctx.dt;
+			
+			// ★追加: デフォルトでコライダーのオフセットをリセット
+			if (auto* bc = registry.try_get<BoxColliderComponent>(entity)) {
+				bc->center = { 0.0f, 0.0f, 0.0f };
+			}
 
 			bool attackInput = pi.attackRequested; // 左クリック (PlayerInputSystem.h)
 			bool attackPressed = attackInput && !prevAttack_;
@@ -216,11 +221,44 @@ public:
 					float facing = tc.rotate.y;
 					float dx = std::sin(facing);
 					float dz = std::cos(facing);
-					ProjectileSpawnData ps;
-					ps.pos = { tc.translate.x + dx * 1.5f, tc.translate.y + 0.8f, tc.translate.z + dz * 1.5f };
-					ps.rot = tc.rotate;
-					ps.dir = { dx, 0.0f, dz };
-					pendingProjectiles_.push_back(ps);
+
+					bool hasWater = true;
+					if (registry.all_of<HealthComponent>(entity)) {
+						auto& hc = registry.get<HealthComponent>(entity);
+						float cost = 5.0f; // 水の消費量
+						if (hc.hp >= cost) {
+							hc.hp -= cost;
+						} else {
+							hasWater = false; // 水切れ
+						}
+					}
+
+					if (hasWater) {
+						ProjectileSpawnData ps;
+						ps.pos = { tc.translate.x + dx * 1.5f, tc.translate.y + 0.8f, tc.translate.z + dz * 1.5f };
+						ps.rot = tc.rotate;
+						ps.dir = { dx, 0.0f, dz };
+						pendingProjectiles_.push_back(ps);
+					} else {
+						// シュゥゥ…というミスト（水切れ）
+						if (ctx.scene) {
+							entt::entity mist = ctx.scene->CreateEntity("MistEffect");
+							auto& mtc = registry.get<TransformComponent>(mist);
+							mtc.translate = { tc.translate.x + dx * 1.5f, tc.translate.y + 0.8f, tc.translate.z + dz * 1.5f };
+							
+							auto& pe = registry.emplace<ParticleEmitterComponent>(mist);
+							pe.emitter.params.name = "Mist";
+							pe.emitter.params.emitRate = 200;
+							pe.emitter.params.lifeTime = 0.6f;
+							pe.emitter.params.startColor = { 0.8f, 0.9f, 1.0f, 0.5f };
+							pe.emitter.params.endColor = { 1.0f, 1.0f, 1.0f, 0.0f };
+							pe.emitter.params.startSize = { 0.2f, 0.2f, 0.2f };
+							pe.emitter.params.endSize = { 1.5f, 1.5f, 1.5f };
+							pe.emitter.params.startVelocity = { dx * 3.0f, 0.5f, dz * 3.0f };
+							pe.emitter.params.velocityVariance = { 1.0f, 0.5f, 1.0f };
+							registry.emplace<AutoDestroyComponent>(mist).timer = 1.0f;
+						}
+					}
 				}
 
 				if (pa.stateTimer >= pa.stateDuration) {
@@ -239,9 +277,16 @@ public:
 				} else {
 					spike = 1.0f - ((progress - 0.2f) / 0.8f); // 戻る
 				}
-				tc.scale.x = 1.2f - (spike * 0.7f);
-				tc.scale.y = 0.8f - (spike * 0.3f);
-				tc.scale.z = 1.2f + (spike * 3.0f); // 鋭く伸びる
+				// 極限まで細く鋭く
+				tc.scale.x = std::max(0.05f, 1.2f - (spike * 1.15f)); // 非常に細く
+				tc.scale.y = std::max(0.05f, 0.8f - (spike * 0.75f)); // 非常に平たく
+				tc.scale.z = 1.2f + (spike * 12.0f); // 針のように長く伸びる
+				
+				// ★追加: 描画に合わせて当たり判定を「プレイヤーの根本から先端まで」に設定
+				if (auto* bc = registry.try_get<BoxColliderComponent>(entity)) {
+					// 物理コライダー: 伸びた長さの半分だけ前方にズラす
+					bc->center.z = tc.scale.z * 0.75f;
+				}
 
 				if (pa.stateTimer >= pa.stateDuration) {
 					TransitionTo(pa, PlayerActionState::Idle, 0.0f);
@@ -259,10 +304,16 @@ public:
 				} else {
 					smash = 1.0f - ((progress - 0.5f) / 0.5f);
 				}
-				float scaleBase = 1.0f + (1.2f * smash); // 大きく膨らむ
+				// もっとダイナミックに
+				float scaleBase = 1.0f + (1.8f * smash); // 大きく膨らむ
 				tc.scale.x = 1.2f * scaleBase;
-				tc.scale.y = 0.8f * scaleBase * (1.0f - smash * 0.6f); // 縦に潰れる
-				tc.scale.z = 1.2f * scaleBase * (1.0f + smash * 0.6f); // 前方に伸びる
+				tc.scale.y = std::max(0.1f, 0.8f * scaleBase * (1.0f - smash * 0.95f)); // 極限まで潰れる
+				tc.scale.z = 1.2f * scaleBase * (1.0f + smash * 2.5f); // さらに前方に伸びる
+				
+				// ★追加: 描画に合わせて当たり判定を「プレイヤーの根本から先端まで」に設定
+				if (auto* bc = registry.try_get<BoxColliderComponent>(entity)) {
+					bc->center.z = tc.scale.z * 0.75f;
+				}
 
 				if (pa.stateTimer >= pa.stateDuration) {
 					TransitionTo(pa, PlayerActionState::Idle, 0.0f);
@@ -325,6 +376,16 @@ public:
 				break;
 			}
 
+			// ★追加: 水量（HP）による全体スケールの適用
+			// (すべての変形が終わった後に掛けることで、どの状態でも水量が反映される)
+			if (registry.all_of<HealthComponent>(entity)) {
+				auto& hc = registry.get<HealthComponent>(entity);
+				float waterScale = 0.4f + 0.6f * (std::max(0.0f, hc.hp) / hc.maxHp); // 最小で40%の大きさ
+				tc.scale.x *= waterScale;
+				tc.scale.y *= waterScale;
+				tc.scale.z *= waterScale;
+			}
+
 			// ★追加: カメラのズームアウトオフセットの適用（滑らかに）
 			if (registry.all_of<CameraTargetComponent>(entity)) {
 				auto& ct = registry.get<CameraTargetComponent>(entity);
@@ -336,18 +397,25 @@ public:
 				auto& hb = registry.get<HitboxComponent>(entity);
 				if (pa.state == PlayerActionState::SlimeSpike) {
 					bool wasActive = hb.isActive;
-					hb.isActive = (pa.stateTimer >= 0.1f && pa.stateTimer <= 0.25f);
+					// ★修正: 最も水が伸びる瞬間(0.08秒)から縮む途中までしっかり判定を残す
+					hb.isActive = (pa.stateTimer >= 0.05f && pa.stateTimer <= 0.3f);
 					if (!wasActive && hb.isActive) hb.hitTargets.clear();
 					hb.damage = 15.0f;
-					hb.size = {1.5f, 1.5f, 5.0f}; // 縦長の当たり判定
+					// ★修正: 当たり判定(Hitbox)を、プレイヤーの根本から先端までカバーするように設定
+					hb.size = {1.5f, 1.5f, tc.scale.z * 1.5f}; // サイズを伸ばす
+					hb.center.z = tc.scale.z * 0.75f; // サイズの半分だけ前方にシフト
 				} else if (pa.state == PlayerActionState::SlimeHammer) {
 					bool wasActive = hb.isActive;
-					hb.isActive = (pa.stateTimer >= 0.4f && pa.stateTimer <= 0.6f);
+					// ★修正: ハンマー攻撃も判定発生を早め、長めに残す
+					hb.isActive = (pa.stateTimer >= 0.3f && pa.stateTimer <= 0.7f);
 					if (!wasActive && hb.isActive) hb.hitTargets.clear();
 					hb.damage = 40.0f;
-					hb.size = {5.0f, 4.0f, 5.0f}; // 巨大な当たり判定
+					// ★修正: ハンマーの当たり判定
+					hb.size = {5.0f, 4.0f, tc.scale.z * 1.5f};
+					hb.center.z = tc.scale.z * 0.75f;
 				} else {
 					hb.isActive = false;
+					hb.center.z = 0.0f; // アイドル時は戻す
 				}
 			}
 
@@ -374,13 +442,13 @@ public:
 				auto& ptc = registry.get<TransformComponent>(proj);
 				ptc.translate = ps.pos;
 				ptc.rotate = ps.rot;
-				ptc.scale = { 0.6f, 0.6f, 0.6f };
+				ptc.scale = { 0.8f, 0.8f, 8.0f }; // さらに太く長い超高圧水流ビームに巨大化
 				
-				// 弾本体の初期化（GameScene側で星形に差し替えられるまでのフォールバック）
+				// 弾本体の初期化
 				auto& mr = registry.emplace<MeshRendererComponent>(proj);
 				mr.modelPath = "Resources/Models/cube/cube.obj";
-				mr.texturePath = "Resources/Models/cube/white1x1.png";
-				mr.color = { 0.2f, 0.8f, 1.0f, 0.99f }; // 0.99fで顔消し
+				mr.texturePath = "Resources/Textures/white1x1.png";
+				mr.color = { 0.2f, 0.8f, 1.0f, 0.8f }; // 半透明の水色
 				if (ctx.renderer) {
 					mr.modelHandle = ctx.renderer->LoadObjMesh(mr.modelPath);
 					mr.textureHandle = ctx.renderer->LoadTexture2D(mr.texturePath);
@@ -388,39 +456,37 @@ public:
 				
 				auto& rb = registry.emplace<RigidbodyComponent>(proj);
 				rb.useGravity = false;
-				float speed = 30.0f;
+				float speed = 120.0f; // 高速で飛ぶ
 				rb.velocity = { ps.dir.x * speed, 0.0f, ps.dir.z * speed };
 				
 				auto& bc = registry.emplace<BoxColliderComponent>(proj);
-				bc.size = { 1.2f, 1.2f, 1.2f };
+				bc.size = { 2.0f, 2.0f, 8.0f }; // コライダーも拡大
 				
 				auto& hb = registry.emplace<HitboxComponent>(proj);
 				hb.isActive = true;
-				hb.damage = 30.0f;
+				hb.damage = 15.0f;
 				hb.tag = TagType::Player;
-				hb.size = { 1.5f, 1.5f, 1.5f };
+				hb.size = { 3.0f, 3.0f, 10.0f }; // ヒットボックスも特大化
 				hb.isProjectile = true; // ★追加
 				
 				// ★重要: タグは Projectile に戻し、GetEntitiesByTag(Player) で誤認されるのを防ぐ
 				registry.emplace<TagComponent>(proj, TagType::Projectile);
-				registry.emplace<AutoDestroyComponent>(proj).timer = 2.0f;
+				registry.emplace<AutoDestroyComponent>(proj).timer = 0.5f; // すぐに消える
 				
-				// 弾の軌跡用パーティクル
+				// 弾の軌跡用パーティクル（勢いのある水しぶき）
 				auto& pe = registry.emplace<ParticleEmitterComponent>(proj);
 				pe.emitter.params.name = "ProjTrail";
-				pe.emitter.params.emitRate = 80; // 密度を高くしてビームのようにする
-				pe.emitter.params.lifeTime = 0.3f;
-				pe.emitter.params.startColor = { 0.0f, 1.0f, 1.0f, 1.0f }; 
-				pe.emitter.params.endColor = { 1.0f, 0.0f, 1.0f, 0.0f }; 
-				pe.emitter.params.startSize = { 0.4f, 0.4f, 0.4f }; // 大幅に縮小
-				pe.emitter.params.endSize = { 0.05f, 0.05f, 0.05f };
-				pe.emitter.params.useBillboard = false; 
-				pe.emitter.params.isAdditive = false; 
+				pe.emitter.params.emitRate = 400; // 密度を倍増
+				pe.emitter.params.lifeTime = 0.3f; // 少し長く残る
+				pe.emitter.params.startColor = { 0.8f, 1.0f, 1.0f, 0.8f }; 
+				pe.emitter.params.endColor = { 0.2f, 0.8f, 1.0f, 0.0f }; 
+				pe.emitter.params.startSize = { 1.5f, 1.5f, 1.5f }; // パーティクルも巨大化
+				pe.emitter.params.endSize = { 0.2f, 0.2f, 0.2f };
+				pe.emitter.params.useBillboard = true; 
+				pe.emitter.params.isAdditive = true; 
 				pe.emitter.params.texturePath = "Resources/Textures/white1x1.png"; 
-				pe.emitter.params.startVelocity = {0, 0, 0};
-				pe.emitter.params.velocityVariance = {0.3f, 0.3f, 0.3f}; // 少し散らす
-				pe.emitter.params.angularVelocity = { 15.0f, 15.0f, 15.0f }; 
-				pe.emitter.params.angularVelocityVariance = { 10.0f, 10.0f, 10.0f };
+				pe.emitter.params.startVelocity = { -ps.dir.x * 10.0f, 2.0f, -ps.dir.z * 10.0f }; // 激しく散る
+				pe.emitter.params.velocityVariance = { 2.0f, 2.0f, 2.0f }; // 散らばり具合をアップ
 			}
 		}
 		pendingProjectiles_.clear();

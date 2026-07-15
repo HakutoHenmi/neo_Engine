@@ -66,7 +66,8 @@ public:
                     actionPulseTimer_ = std::max(actionPulseTimer_, power); 
                 }
 
-                // ヒットインパクト
+                // ヒットインパクトによる画面全体のエフェクト（ブラー、アウトライン強調など）は無効化
+                /*
                 if (pa.hitStopTimer > 0.0f) {
                     hitStopPulse_ = std::lerp(hitStopPulse_, 1.5f, std::clamp(ctx.dt * 20.0f, 0.0f, 1.0f));
                     inkWashFade_ = std::lerp(inkWashFade_, 0.5f, std::clamp(ctx.dt * 15.0f, 0.0f, 1.0f));
@@ -74,6 +75,10 @@ public:
                     hitStopPulse_ = std::lerp(hitStopPulse_, 0.0f, std::clamp(ctx.dt * 12.0f, 0.0f, 1.0f));
                     inkWashFade_ = std::lerp(inkWashFade_, 0.0f, std::clamp(ctx.dt * 8.0f, 0.0f, 1.0f));
                 }
+                */
+                // 代わりに常に0へ減衰させる
+                hitStopPulse_ = std::lerp(hitStopPulse_, 0.0f, std::clamp(ctx.dt * 12.0f, 0.0f, 1.0f));
+                inkWashFade_ = std::lerp(inkWashFade_, 0.0f, std::clamp(ctx.dt * 8.0f, 0.0f, 1.0f));
             }
 
             // 速度ブラー

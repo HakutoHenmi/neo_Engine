@@ -2,6 +2,7 @@ struct Particle {
     float3 position; float density;
     float3 velocity; float pressure;
     float4 color;
+    float type; float3 pad;
 };
 StructuredBuffer<Particle> Particles : register(t2); // In DrawGPUFluid it is mapped to t6 -> which is descriptor table? Wait, no, it's bound as SRV to root parameter 6. So register(t2) might be wrong if 6 is t0. Let's check rootSig3D_.
 
@@ -25,6 +26,7 @@ struct VSOut {
     float2 uv : TEXCOORD0;
     float viewZ : TEXCOORD1;
     float4 color : COLOR0;
+    float type : TEXCOORD2;
 };
 
 VSOut main(VSIn v, uint instanceID : SV_InstanceID) {
@@ -42,8 +44,11 @@ VSOut main(VSIn v, uint instanceID : SV_InstanceID) {
     };
     float2 localXY = quad[v.vertexID];
     
-    // パーティクルの大きさを設定（少し大きめにすることで隙間を埋める）
-    float size = 0.7f; 
+    // パーティクルの大きさを設定
+    float size = 0.7f; // スライム用（隙間を埋めるため大きめ）
+    if (p.type >= 0.5f) {
+        size = 0.4f;  // 物理的な反発距離に対して描画サイズが小さすぎるとカエルの卵のように分離するため、少し大きめにして融合させる
+    }
     
     float3 right = float3(gView[0][0], gView[1][0], gView[2][0]);
     float3 up = float3(gView[0][1], gView[1][1], gView[2][1]);
@@ -59,6 +64,7 @@ VSOut main(VSIn v, uint instanceID : SV_InstanceID) {
     o.uv = localXY * 0.5f + 0.5f;
     o.uv.y = 1.0f - o.uv.y; // DirectX仕様に合わせてYを反転
     o.color = p.color;
+    o.type = p.type;
     
     return o;
 }

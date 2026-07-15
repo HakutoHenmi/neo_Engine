@@ -782,9 +782,34 @@ void GameScene::Draw() {
 					attraction = 0.0f;
 				}
 				
-				// Y座標を少し上げてコアとする（スライムが少し立つように）
 				Engine::Vector3 targetCore = {corePos.x, corePos.y + 0.8f, corePos.z};
-				renderer_->SetGPUFluidCore(targetCore, attraction);
+				auto& playerTc = registry_.get<TransformComponent>(playerEntity);
+				Engine::Matrix4x4 mat = playerTc.GetTransform().ToMatrix();
+				Engine::Vector3 forward = {mat.m[2][0], mat.m[2][1], mat.m[2][2]};
+				Engine::Vector3 scaleVec = {blobRadii.x, blobRadii.y, blobRadii.z};
+				renderer_->SetGPUFluidCore(targetCore, attraction, scaleVec, forward);
+
+				// ★追加: 蛇口から回復の水を出し続ける (プレイヤーの位置から少しずらした空中に固定配置)
+				// ※ ここでは(x=2.0, y=5.0, z=2.0)の位置から水を落とす例
+				Engine::Vector3 faucetPos = {2.0f, 5.0f, 2.0f};
+				Engine::Vector4 faucetColor = {0.2f, 0.8f, 1.0f, 1.0f}; // 癒やしの水色
+				// 毎フレーム30粒ずつ水滴を落下させる
+				renderer_->EmitGPUFluid(faucetPos, {0.0f, -5.0f, 0.0f}, faucetColor, 30, 1.0f);
+				
+				// プレイヤーが水の下（半径1.5m以内）にいればHPを回復する
+				float dx = corePos.x - faucetPos.x;
+				float dz = corePos.z - faucetPos.z;
+				if (dx * dx + dz * dz < 1.5f * 1.5f) {
+					if (registry_.all_of<HealthComponent>(playerEntity)) {
+						auto& hc = registry_.get<HealthComponent>(playerEntity);
+						static float healTimer = 0.0f;
+						healTimer += ctx_.dt;
+						if (healTimer > 0.05f) { // 0.05秒ごとに1回復 (1秒で20回復)
+							healTimer = 0.0f;
+							hc.hp = std::min(hc.hp + 1, hc.maxHp);
+						}
+					}
+				}
 			}
 			// ----------------------------------------
 			
