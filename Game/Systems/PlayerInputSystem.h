@@ -17,10 +17,15 @@ public:
 		}
 		prevT_ = currentT;
 
+		// ★追加: ラジアルメニュー (TABキー)
+		bool currentTab = (GetAsyncKeyState(VK_TAB) & 0x8000) != 0;
+
 		auto view = registry.view<PlayerInputComponent>();
 		for (auto entity : view) {
 			auto& pi = registry.get<PlayerInputComponent>(entity);
 			if (!pi.enabled) continue;
+
+			pi.isRadialMenuOpen = currentTab;
 
 			DirectX::XMFLOAT2 moveDir = {0.0f, 0.0f};
 			if (GetAsyncKeyState('W') & 0x8000) moveDir.y += 1.0f;
@@ -91,8 +96,8 @@ public:
 			// ★変更: カメラ操作 → 常時マウス追従（右クリック不要）
 			pi.cameraYaw = 0.0f;
 			pi.cameraPitch = 0.0f;
-			if (ctx.input && pi.lockedEnemy == entt::null) {
-				// ロックオン中でない場合のみマウスで視点移動
+			if (ctx.input && pi.lockedEnemy == entt::null && !pi.isRadialMenuOpen) {
+				// ロックオン中でなく、かつラジアルメニューを開いていない場合のみマウスで視点移動
 				pi.cameraYaw = ctx.input->GetMouseDeltaX() * 0.005f;
 				pi.cameraPitch = ctx.input->GetMouseDeltaY() * 0.005f;
 			}

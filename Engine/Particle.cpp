@@ -135,7 +135,8 @@ void ParticleSystem::Draw(const Camera& cam, const std::string& shaderName, bool
 			const float yaw = std::atan2(d.x, d.z);
 			const float pitch = std::atan2(-d.y, std::sqrt(d.x * d.x + d.z * d.z));
 			const float roll = 0.0f;
-			tf.rotate = {pitch, yaw, roll};
+			// plane.obj は XZ 平面 (法線 +Y) なので、+Y がカメラを向くようにX軸で90度 (PI/2) 回転させる
+			tf.rotate = {pitch + 1.57079632679f, yaw, roll};
 		} else {
 			// ★追加: 自由回転（紙吹雪など）
 			tf.rotate = p.rotation;

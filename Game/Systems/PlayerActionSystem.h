@@ -13,7 +13,8 @@ enum class PlayerActionState : uint32_t {
 	Stagger,      // のけぞり
 	Charging,     // 溜め中
 	Shoot,        // 発射アクション
-	SpikeExplosion // ★追加: トゲトゲ大爆発
+	SpikeExplosion, // ★追加: トゲトゲ大爆発
+	FireBreath    // ★追加: 炎の缶の攻撃
 };
 
 struct PlayerActionComponent : public Component {
@@ -29,6 +30,12 @@ struct PlayerActionComponent : public Component {
 	DirectX::XMFLOAT3 dodgeDirection = {0, 0, 1};
 
 	float hitStopTimer = 0.0f;
+	float totalTime = 0.0f; // ★追加: ふわふわ用タイマー
+
+	CanType currentCan = CanType::None; // ★追加: 現在滞在している缶
+	entt::entity canEntity = entt::null; // ★追加: 缶のエンティティID
+	float canDropProgress = 1.0f; // ★追加: 0.0 -> 1.0 (落ちてくるアニメーション用)
+	bool prevRadialMenuOpen = false; // ★追加: 前回のラジアルメニュー開閉状態
 
 	bool enabled = true;
 	PlayerActionComponent() { type = ComponentType::PlayerAction; }
@@ -57,11 +64,59 @@ public:
 			if (pa.dodgeCooldown > 0.0f) pa.dodgeCooldown -= ctx.dt;
 
 			pa.stateTimer += ctx.dt;
+			pa.totalTime += ctx.dt; // ★追加
 			
 			// ★追加: デフォルトでコライダーのオフセットをリセット
 			if (auto* bc = registry.try_get<BoxColliderComponent>(entity)) {
 				bc->center = { 0.0f, 0.0f, 0.0f };
 			}
+
+			// ★追加: ラジアルメニューによる缶の切り替え
+			bool currentRadialMenuOpen = pi.isRadialMenuOpen;
+			if (!currentRadialMenuOpen && pa.prevRadialMenuOpen) {
+				if (pi.selectedCan != pa.currentCan) {
+					pendingCanChanges_.push_back({entity, pi.selectedCan});
+				}
+			}
+			pa.prevRadialMenuOpen = currentRadialMenuOpen;
+
+			// ★追加: 缶の追従とアニメーション
+			if (pa.canEntity != entt::null && registry.valid(pa.canEntity)) {
+				auto& canTc = registry.get<TransformComponent>(pa.canEntity);
+				
+				// 落下アニメーション
+				if (pa.canDropProgress < 1.0f) {
+					pa.canDropProgress += ctx.dt * 2.0f; // 0.5秒で落ちる
+					if (pa.canDropProgress > 1.0f) pa.canDropProgress = 1.0f;
+				}
+				
+				// イージング
+				float t = pa.canDropProgress;
+				float easeT = 1.0f - std::pow(1.0f - t, 3.0f); // easeOutCubic
+				
+				// ふわふわ
+				float hoverOffset = std::sin(pa.totalTime * 3.0f) * 0.1f;
+				
+				// 目標位置 (プレイヤーの中心やや上)
+				DirectX::XMFLOAT3 targetPos = tc.translate;
+				targetPos.y += 0.8f + hoverOffset; // 体内(または少し上)
+				
+				if (pa.canDropProgress < 1.0f) {
+					// 落下中
+					float startY = tc.translate.y + 3.0f;
+					canTc.translate.x = tc.translate.x;
+					canTc.translate.z = tc.translate.z;
+					canTc.translate.y = startY + (targetPos.y - startY) * easeT;
+				} else {
+					// 追従
+					canTc.translate = targetPos;
+				}
+				
+				// 回転
+				canTc.rotate.y += ctx.dt * 2.0f;
+				canTc.rotate.z = std::sin(pa.totalTime * 2.0f) * 0.2f;
+			}
+
 
 			bool attackInput = pi.attackRequested; // 左クリック (PlayerInputSystem.h)
 			bool attackPressed = attackInput && !prevAttack_;
@@ -139,7 +194,12 @@ public:
 						TransitionTo(pa, PlayerActionState::Shoot, 0.3f);
 						pa.chargeTimer = 0.0f;
 					} else { // 短い場合は通常の近接攻撃
-						TransitionTo(pa, PlayerActionState::SlimeSpike, 0.4f);
+						if (pa.currentCan == CanType::Fire) {
+							// ★追加: 火炎の缶なら専用の炎攻撃へ
+							TransitionTo(pa, PlayerActionState::FireBreath, 1.0f); // 1秒間の放射
+						} else {
+							TransitionTo(pa, PlayerActionState::SlimeSpike, 0.4f);
+						}
 						pa.chargeTimer = 0.0f;
 					}
 				}
@@ -165,37 +225,9 @@ public:
 					tc.scale.z = 1.0f + (pop * 2.5f);
 				}
 
-				// 爆発の瞬間にエフェクトとHitboxを生成
+				// 爆発の瞬間にエフェクトとHitboxを生成予約
 				if (pa.stateTimer >= 0.1f && pa.stateTimer - ctx.dt < 0.1f) {
-					// 1. エフェクト用エンティティ（スクリプトに管理させ、自動削除させない）
-					auto effectEntity = registry.create();
-					registry.emplace<NameComponent>(effectEntity, "ExplosionEffectVisual");
-					auto& eTc = registry.emplace<TransformComponent>(effectEntity);
-					eTc.translate = tc.translate;
-					
-					auto& sc = registry.emplace<ScriptComponent>(effectEntity);
-					ScriptEntry entry;
-					entry.scriptPath = "HitEffectScript";
-					entry.parameterData = "isExplosion=1"; // 専用フラグ
-					sc.scripts.push_back(entry);
-					
-					// 2. 攻撃判定用（Hitbox）エンティティ（短時間で消える）
-					auto hitboxEntity = registry.create();
-					registry.emplace<NameComponent>(hitboxEntity, "ExplosionHitbox");
-					registry.emplace<TagComponent>(hitboxEntity).tag = TagType::Player; 
-					auto& hTc = registry.emplace<TransformComponent>(hitboxEntity);
-					hTc.translate = tc.translate;
-
-					auto& hb = registry.emplace<HitboxComponent>(hitboxEntity);
-					hb.isActive = true;
-					hb.size = {8.0f, 4.0f, 8.0f}; // 半径4m程度の範囲攻撃
-					hb.center = {0, 1.0f, 0};
-					hb.damage = 40.0f; // 高めのダメージ
-					hb.tag = TagType::Player;
-					hb.isProjectile = false; // 弾ではないが、触手エフェクト用に近接扱い
-
-					// Hitboxエンティティは少ししたら消す
-					registry.emplace<AutoDestroyComponent>(hitboxEntity).timer = 0.5f;
+					pendingExplosions_.push_back({ tc.translate });
 					
 					// カメラシェイク
 					if (ctx.camera) ctx.camera->StartShake(0.3f, 0.4f);
@@ -242,21 +274,42 @@ public:
 					} else {
 						// シュゥゥ…というミスト（水切れ）
 						if (ctx.scene) {
-							entt::entity mist = ctx.scene->CreateEntity("MistEffect");
-							auto& mtc = registry.get<TransformComponent>(mist);
-							mtc.translate = { tc.translate.x + dx * 1.5f, tc.translate.y + 0.8f, tc.translate.z + dz * 1.5f };
-							
-							auto& pe = registry.emplace<ParticleEmitterComponent>(mist);
-							pe.emitter.params.name = "Mist";
-							pe.emitter.params.emitRate = 200;
-							pe.emitter.params.lifeTime = 0.6f;
-							pe.emitter.params.startColor = { 0.8f, 0.9f, 1.0f, 0.5f };
-							pe.emitter.params.endColor = { 1.0f, 1.0f, 1.0f, 0.0f };
-							pe.emitter.params.startSize = { 0.2f, 0.2f, 0.2f };
-							pe.emitter.params.endSize = { 1.5f, 1.5f, 1.5f };
-							pe.emitter.params.startVelocity = { dx * 3.0f, 0.5f, dz * 3.0f };
-							pe.emitter.params.velocityVariance = { 1.0f, 0.5f, 1.0f };
-							registry.emplace<AutoDestroyComponent>(mist).timer = 1.0f;
+							pendingMists_.push_back({
+								{ tc.translate.x + dx * 1.5f, tc.translate.y + 0.8f, tc.translate.z + dz * 1.5f },
+								{ dx, 0.0f, dz }
+							});
+						}
+					}
+				}
+
+				if (pa.stateTimer >= pa.stateDuration) {
+					TransitionTo(pa, PlayerActionState::Idle, 0.0f);
+				}
+				break;
+			}
+
+			case PlayerActionState::FireBreath:
+			{
+				float progress = pa.stateTimer / pa.stateDuration;
+				
+				// プレイヤーの変形 (前方に口を開けているような形)
+				tc.scale.x = 1.2f - std::sin(progress * 3.14f) * 0.2f;
+				tc.scale.y = 0.8f + std::sin(progress * 3.14f) * 0.2f;
+				tc.scale.z = 1.2f + std::sin(progress * 3.14f) * 0.5f;
+
+				// 炎のエフェクトとHitboxを一定間隔で生成
+				if (pa.stateTimer > 0.0f) {
+					float facing = tc.rotate.y;
+					float dx = std::sin(facing);
+					float dz = std::cos(facing);
+
+					// パーティクル生成予約 (炎) - 0.1秒に1回
+					if (std::fmod(pa.stateTimer, 0.1f) < ctx.dt) {
+						if (ctx.scene) {
+							pendingFireBreaths_.push_back({
+								{ tc.translate.x, tc.translate.y, tc.translate.z },
+								{ dx, 0.0f, dz }
+							});
 						}
 					}
 				}
@@ -392,6 +445,9 @@ public:
 				ct.distanceOffset += (targetCamOffset - ct.distanceOffset) * 10.0f * ctx.dt;
 			}
 
+			// ★追加: イテレーション中の CreateEntity() 呼び出しによって TransformComponent のメモリが再配置された場合に備え、参照を再取得する
+			auto& currentTc = registry.get<TransformComponent>(entity);
+
 			// Hitbox（攻撃判定）の更新
 			if (registry.all_of<HitboxComponent>(entity)) {
 				auto& hb = registry.get<HitboxComponent>(entity);
@@ -402,8 +458,8 @@ public:
 					if (!wasActive && hb.isActive) hb.hitTargets.clear();
 					hb.damage = 30.0f; // ダメージ上昇
 					// ★修正: 当たり判定(Hitbox)を、プレイヤーの根本から先端までカバーするように設定
-					hb.size = {1.5f, 1.5f, tc.scale.z * 1.5f}; // サイズを伸ばす
-					hb.center.z = tc.scale.z * 0.75f; // サイズの半分だけ前方にシフト
+					hb.size = {1.5f, 1.5f, currentTc.scale.z * 1.5f}; // サイズを伸ばす
+					hb.center.z = currentTc.scale.z * 0.75f; // サイズの半分だけ前方にシフト
 				} else if (pa.state == PlayerActionState::SlimeHammer) {
 					bool wasActive = hb.isActive;
 					// ★修正: ハンマー攻撃も判定発生を早め、長めに残す
@@ -411,8 +467,8 @@ public:
 					if (!wasActive && hb.isActive) hb.hitTargets.clear();
 					hb.damage = 40.0f;
 					// ★修正: ハンマーの当たり判定
-					hb.size = {5.0f, 4.0f, tc.scale.z * 1.5f};
-					hb.center.z = tc.scale.z * 0.75f;
+					hb.size = {5.0f, 4.0f, currentTc.scale.z * 1.5f};
+					hb.center.z = currentTc.scale.z * 0.75f;
 				} else {
 					hb.isActive = false;
 					hb.center.z = 0.0f; // アイドル時は戻す
@@ -422,13 +478,13 @@ public:
 			// ★超重要: 変形（スケール変化）に合わせて、常に底面が地面にくっつくように物理の浮遊オフセットを動的に同期する
 			if (registry.all_of<CharacterMovementComponent>(entity)) {
 				auto& cm = registry.get<CharacterMovementComponent>(entity);
-				float newOffset = tc.scale.y * 0.5f; 
+				float newOffset = currentTc.scale.y * 0.5f; 
 				float diff = newOffset - cm.heightOffset;
 
 				// 接地中であれば、オフセットが変化した分だけ自身のY座標も直接補正する。
 				// これをしないと、潰れた瞬間に足元が浮いて重力がかかり、ガクガク（ジッター）する原因になる。
 				if (cm.isGrounded) {
-					tc.translate.y += diff;
+					currentTc.translate.y += diff;
 				}
 				
 				cm.heightOffset = newOffset;
@@ -490,6 +546,124 @@ public:
 			}
 		}
 		pendingProjectiles_.clear();
+
+		// --- 爆発エフェクトの遅延生成 ---
+		for (const auto& exp : pendingExplosions_) {
+			if (ctx.scene) {
+				auto effectEntity = ctx.scene->CreateEntity("ExplosionEffectVisual");
+				auto& eTc = registry.get<TransformComponent>(effectEntity);
+				eTc.translate = exp.pos;
+				
+				auto& sc = registry.emplace<ScriptComponent>(effectEntity);
+				ScriptEntry entry;
+				entry.scriptPath = "HitEffectScript";
+				entry.parameterData = "isExplosion=1";
+				sc.scripts.push_back(entry);
+				
+				auto hitboxEntity = ctx.scene->CreateEntity("ExplosionHitbox");
+				registry.emplace<TagComponent>(hitboxEntity, TagType::Player); 
+				auto& hTc = registry.get<TransformComponent>(hitboxEntity);
+				hTc.translate = exp.pos;
+
+				auto& hb = registry.emplace<HitboxComponent>(hitboxEntity);
+				hb.isActive = true;
+				hb.size = {8.0f, 4.0f, 8.0f};
+				hb.center = {0, 1.0f, 0};
+				hb.damage = 40.0f;
+				hb.tag = TagType::Player;
+				hb.isProjectile = false;
+
+				registry.emplace<AutoDestroyComponent>(hitboxEntity).timer = 0.5f;
+			}
+		}
+		pendingExplosions_.clear();
+
+		// --- ミストの遅延生成 ---
+		for (const auto& mist : pendingMists_) {
+			if (ctx.scene) {
+				entt::entity m = ctx.scene->CreateEntity("MistEffect");
+				auto& mtc = registry.get<TransformComponent>(m);
+				mtc.translate = mist.pos;
+				
+				auto& pe = registry.emplace<ParticleEmitterComponent>(m);
+				pe.emitter.params.name = "Mist";
+				pe.emitter.params.emitRate = 0;       // 自動放出なし
+				pe.emitter.params.burstCount = 40;    // 一気に放出
+				pe.emitter.params.lifeTime = 0.6f;
+				pe.emitter.params.startColor = { 0.8f, 0.9f, 1.0f, 0.5f };
+				pe.emitter.params.endColor = { 1.0f, 1.0f, 1.0f, 0.0f };
+				pe.emitter.params.startSize = { 0.2f, 0.2f, 0.2f };
+				pe.emitter.params.endSize = { 1.5f, 1.5f, 1.5f };
+				pe.emitter.params.startVelocity = { mist.dir.x * 3.0f, 0.5f, mist.dir.z * 3.0f };
+				pe.emitter.params.velocityVariance = { 1.0f, 0.5f, 1.0f };
+				registry.emplace<AutoDestroyComponent>(m).timer = 0.8f; // パーティクル消滅まで待つ
+			}
+		}
+		pendingMists_.clear();
+
+		// --- 炎ブレスの遅延生成 (火炎放射エフェクト) ---
+		for (const auto& fire : pendingFireBreaths_) {
+			if (ctx.scene) {
+				// パーティクル発生地点 (プレイヤーの少し前方、高さ1m)
+				entt::entity flame = ctx.scene->CreateEntity("FlameEffect");
+				auto& ftc = registry.get<TransformComponent>(flame);
+				ftc.translate = { fire.pos.x + fire.dir.x * 1.5f, fire.pos.y + 1.0f, fire.pos.z + fire.dir.z * 1.5f };
+				
+				auto& pe = registry.emplace<ParticleEmitterComponent>(flame);
+				pe.emitter.params.name = "Flamethrower";
+				pe.emitter.params.emitRate = 60;       
+				pe.emitter.params.burstCount = 0;      
+				pe.emitter.params.lifeTime = 0.4f;     // 寿命を短くして炎っぽく
+				
+				// 加算ブレンドでは色が蓄積されるため、最初は明るい黄色〜オレンジ、最後は赤
+				pe.emitter.params.startColor = { 1.0f, 0.8f, 0.2f, 1.0f }; 
+				pe.emitter.params.endColor = { 1.0f, 0.1f, 0.0f, 0.0f };   
+				
+				// サイズは中くらいから大きく広がる
+				pe.emitter.params.startSize = { 1.5f, 1.5f, 1.5f }; 
+				pe.emitter.params.endSize = { 4.0f, 4.0f, 4.0f }; 
+				
+				pe.emitter.params.startVelocity = { fire.dir.x * 10.0f, 0.0f, fire.dir.z * 10.0f }; 
+				pe.emitter.params.velocityVariance = { 2.0f, 1.0f, 2.0f }; 
+				
+				pe.emitter.params.acceleration = { 0.0f, 2.0f, 0.0f }; // 少し上に昇るようにする
+				
+				// ★修正: 黒い背景を透明にするため加算ブレンドを有効にする
+				pe.emitter.params.isAdditive = true;
+				pe.emitter.params.shaderName = "SoftParticleAdditive";
+				pe.emitter.params.texturePath = "Resources/Textures/ball.png"; 
+				
+				registry.emplace<AutoDestroyComponent>(flame).timer = 0.5f;
+
+				// 火炎の当たり判定 (発生地点から前方に広い空間)
+				auto hitboxEntity = ctx.scene->CreateEntity("FireHitbox");
+				registry.emplace<TagComponent>(hitboxEntity, TagType::Player); 
+				auto& hTc = registry.get<TransformComponent>(hitboxEntity);
+				// Hitboxはパーティクルの発生地点よりさらに少し前に置く
+				hTc.translate = { ftc.translate.x + fire.dir.x * 2.0f, ftc.translate.y, ftc.translate.z + fire.dir.z * 2.0f };
+
+				auto& hb = registry.emplace<HitboxComponent>(hitboxEntity);
+				hb.isActive = true;
+				hb.size = {5.0f, 4.0f, 5.0f}; // 広範囲をカバー
+				hb.center = {0, 0, 0};
+				hb.damage = 1.5f; 
+				hb.tag = TagType::Player;
+				hb.isProjectile = false; 
+
+				registry.emplace<AutoDestroyComponent>(hitboxEntity).timer = 0.1f;
+			}
+		}
+		pendingFireBreaths_.clear();
+
+		// ★追加: 遅延させていた缶の切り替え処理を実行 (イテレータ無効化対策)
+		for (const auto& change : pendingCanChanges_) {
+			if (registry.valid(change.playerEntity) && registry.all_of<PlayerActionComponent, TransformComponent>(change.playerEntity)) {
+				auto& pa = registry.get<PlayerActionComponent>(change.playerEntity);
+				auto& tc = registry.get<TransformComponent>(change.playerEntity);
+				ChangeCan(registry, change.playerEntity, pa, tc, change.newCan, ctx);
+			}
+		}
+		pendingCanChanges_.clear();
 	}
 
 	void Reset(entt::registry& registry) override {
@@ -515,9 +689,75 @@ private:
 	};
 	std::vector<ProjectileSpawnData> pendingProjectiles_;
 
+	struct MistSpawnData {
+		DirectX::XMFLOAT3 pos;
+		DirectX::XMFLOAT3 dir;
+	};
+	std::vector<MistSpawnData> pendingMists_;
+
+	struct FireBreathSpawnData {
+		DirectX::XMFLOAT3 pos;
+		DirectX::XMFLOAT3 dir;
+	};
+	std::vector<FireBreathSpawnData> pendingFireBreaths_;
+
+	struct ExplosionSpawnData {
+		DirectX::XMFLOAT3 pos;
+	};
+	std::vector<ExplosionSpawnData> pendingExplosions_;
+
+	struct PendingCanChange {
+		entt::entity playerEntity;
+		CanType newCan;
+	};
+	std::vector<PendingCanChange> pendingCanChanges_;
+
 	bool prevAttack_ = false;
 	bool prevHammer_ = false;
 	bool prevDodge_ = false;
+
+	// ★追加: 缶の切り替え処理
+	void ChangeCan(entt::registry& registry, entt::entity /*playerEntity*/, PlayerActionComponent& pa, TransformComponent& ptc, CanType newCan, GameContext& ctx) {
+		if (pa.canEntity != entt::null && registry.valid(pa.canEntity)) {
+			if (ctx.scene) ctx.scene->DestroyObject(static_cast<uint32_t>(pa.canEntity));
+		}
+		pa.currentCan = newCan;
+		pa.canEntity = entt::null;
+		pa.canDropProgress = 0.0f;
+
+		if (newCan != CanType::None) {
+			if (ctx.scene) {
+				entt::entity can = ctx.scene->CreateEntity("PlayerCan");
+				pa.canEntity = can;
+				
+				auto& tc = registry.get<TransformComponent>(can);
+				tc.scale = {0.3f, 0.4f, 0.3f};
+				tc.translate = ptc.translate;
+				tc.translate.y += 3.0f; // 上空から
+				
+				auto& mr = registry.emplace<MeshRendererComponent>(can);
+				mr.modelPath = "Resources/Models/Cylinder/cylinder.obj";
+				mr.texturePath = "Resources/Textures/white1x1.png";
+				mr.useCubemap = true;
+
+				// ★追加: 缶を地面判定レイキャストに引っかからないようにVFXタグを付与
+				registry.emplace<TagComponent>(can, TagType::VFX);
+				
+				if (newCan == CanType::Fire) {
+					mr.color = {1.0f, 0.2f, 0.1f, 1.0f}; // 赤
+				} else if (newCan == CanType::Water) {
+					mr.color = {0.2f, 0.5f, 1.0f, 1.0f}; // 青
+				} else if (newCan == CanType::Thunder) {
+					mr.color = {1.0f, 0.9f, 0.1f, 1.0f}; // 黄
+				}
+				
+				if (ctx.renderer) {
+					mr.modelHandle = ctx.renderer->LoadObjMesh(mr.modelPath);
+					mr.textureHandle = ctx.renderer->LoadTexture2D(mr.texturePath);
+				}
+			}
+		}
+	}
 
 	void TransitionTo(PlayerActionComponent& pa, PlayerActionState newState, float duration) {
 		pa.state = newState;

@@ -434,8 +434,19 @@ void GameScene::Update() {
 
 		if (!isPaused_) {
 			playTime_ += dt;
-			// ★追加: Play中はマウスカーソルを画面中央に固定
-			if (dx_ && dx_->GetHwnd()) {
+			
+			// ★追加: ラジアルメニューが開いているかチェック
+			bool isRadialMenuOpen = false;
+			auto piView = registry_.view<PlayerInputComponent>();
+			for (auto e : piView) {
+				if (piView.get<PlayerInputComponent>(e).isRadialMenuOpen) {
+					isRadialMenuOpen = true;
+					break;
+				}
+			}
+
+			// ★追加: Play中はマウスカーソルを画面中央に固定 (ラジアルメニューを開いていない場合)
+			if (!isRadialMenuOpen && dx_ && dx_->GetHwnd()) {
 				POINT center = { (LONG)Engine::WindowDX::kW / 2, (LONG)Engine::WindowDX::kH / 2 };
 				ClientToScreen(dx_->GetHwnd(), &center);
 				SetCursorPos(center.x, center.y);
@@ -494,6 +505,101 @@ void GameScene::Update() {
 				}
 			});
 			Engine::JobSystem::Wait();
+		}
+	}
+
+	// ★追加: ラジアルメニューの描画
+	if (isPlaying_ && !isPaused_) {
+		auto piView = registry_.view<PlayerInputComponent>();
+		for (auto e : piView) {
+			auto& pi = registry_.get<PlayerInputComponent>(e);
+			if (pi.isRadialMenuOpen) {
+				ShowCursor(TRUE); // 開いている間はカーソルを表示
+				
+				float centerX = ctx_.viewportSize.x > 0 ? ctx_.viewportSize.x * 0.5f : (float)Engine::WindowDX::kW * 0.5f;
+				float centerY = ctx_.viewportSize.y > 0 ? ctx_.viewportSize.y * 0.5f : (float)Engine::WindowDX::kH * 0.5f;
+				
+				float mx, my;
+				if (ctx_.useOverrideMouse) {
+					mx = ctx_.overrideMouseX;
+					my = ctx_.overrideMouseY;
+				} else {
+					ctx_.input->GetMousePos(mx, my);
+					if (ctx_.viewportSize.x > 0 && ctx_.viewportSize.y > 0) {
+						mx = (mx - ctx_.viewportOffset.x) * (float)Engine::WindowDX::kW / ctx_.viewportSize.x;
+						my = (my - ctx_.viewportOffset.y) * (float)Engine::WindowDX::kH / ctx_.viewportSize.y;
+					}
+				}
+				
+				float dx_mouse = mx - centerX;
+				float dy_mouse = my - centerY;
+				float angle = std::atan2(dy_mouse, dx_mouse);
+				if (angle < 0) angle += 3.14159f * 2.0f;
+				
+				// 3分割: 右=Fire(0~120度), 左下=Water(120~240度), 左上=Thunder(240~360度)
+				int selectedIndex = 0;
+				if (angle > 3.14159f * 2.0f / 3.0f * 2.0f) {
+					selectedIndex = 2; // Thunder
+				} else if (angle > 3.14159f * 2.0f / 3.0f) {
+					selectedIndex = 1; // Water
+				} else {
+					selectedIndex = 0; // Fire
+				}
+				
+				// 選択中の缶をセット
+				if (selectedIndex == 0) pi.selectedCan = CanType::Fire;
+				else if (selectedIndex == 1) pi.selectedCan = CanType::Water;
+				else if (selectedIndex == 2) pi.selectedCan = CanType::Thunder;
+
+				// 描画 (ImGuiに依存せずRendererを使う)
+				const char* names[] = {"Fire", "Water", "Thunder"};
+				
+				float radius = 120.0f;
+				float boxSize = 80.0f;
+				
+				auto texH = ctx_.renderer->LoadTexture2D("Resources/Textures/ball.png");
+
+				for (int i = 0; i < 3; ++i) {
+					float startAngle = (3.14159f * 2.0f / 3.0f) * i;
+					float textAngle = startAngle + (3.14159f * 2.0f / 6.0f); // 扇形の中心角度
+					
+					float px = centerX + std::cos(textAngle) * radius;
+					float py = centerY + std::sin(textAngle) * radius;
+					
+					Engine::Vector4 color = {100.0f/255.0f, 100.0f/255.0f, 100.0f/255.0f, 180.0f/255.0f};
+					if (i == 0) color = (i == selectedIndex) ? Engine::Vector4{255.0f/255.0f, 100.0f/255.0f, 100.0f/255.0f, 220.0f/255.0f} : Engine::Vector4{150.0f/255.0f, 50.0f/255.0f, 50.0f/255.0f, 180.0f/255.0f};
+					if (i == 1) color = (i == selectedIndex) ? Engine::Vector4{100.0f/255.0f, 150.0f/255.0f, 255.0f/255.0f, 220.0f/255.0f} : Engine::Vector4{50.0f/255.0f, 80.0f/255.0f, 150.0f/255.0f, 180.0f/255.0f};
+					if (i == 2) color = (i == selectedIndex) ? Engine::Vector4{255.0f/255.0f, 255.0f/255.0f, 100.0f/255.0f, 220.0f/255.0f} : Engine::Vector4{150.0f/255.0f, 150.0f/255.0f, 50.0f/255.0f, 180.0f/255.0f};
+					
+					// 枠線の代わりの背景円 (少し大きめ)
+					Engine::Renderer::SpriteDesc border;
+					border.x = px - (boxSize + 8.0f) * 0.5f;
+					border.y = py - (boxSize + 8.0f) * 0.5f;
+					border.w = boxSize + 8.0f;
+					border.h = boxSize + 8.0f;
+					border.color = {1.0f, 1.0f, 1.0f, 0.5f};
+					if (i == selectedIndex) border.color = {1.0f, 1.0f, 0.2f, 0.8f}; // 選択中は黄色く光る
+					border.layer = 199;
+					ctx_.renderer->DrawSprite(texH, border);
+
+					Engine::Renderer::SpriteDesc box;
+					box.x = px - boxSize * 0.5f;
+					box.y = py - boxSize * 0.5f;
+					box.w = boxSize;
+					box.h = boxSize;
+					box.color = color;
+					box.layer = 200;
+					ctx_.renderer->DrawSprite(texH, box);
+					
+					// 枠線は背景円で表現するため削除
+					
+					// テキスト描画
+					float tw = ctx_.renderer->MeasureTextWidth(names[i], 0.3f);
+					ctx_.renderer->DrawString(names[i], px - tw * 0.5f, py - 12.0f, 0.3f, {1.0f, 1.0f, 1.0f, 1.0f});
+				}
+			} else {
+				if (!isPaused_) ShowCursor(FALSE);
+			}
 		}
 	}
 
