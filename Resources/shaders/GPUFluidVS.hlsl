@@ -33,6 +33,16 @@ VSOut main(VSIn v, uint instanceID : SV_InstanceID) {
     VSOut o;
     Particle p = Particles[instanceID];
     
+    // ★追加: 非アクティブなパーティクルは頂点を縮退させて描画とラスタライズを完全スキップ
+    if (p.color.a < 0.01f || p.position.y < -500.0f) {
+        o.svpos = float4(0, 0, 0, 0);
+        o.uv = float2(0, 0);
+        o.viewZ = 0.0f;
+        o.color = float4(0, 0, 0, 0);
+        o.type = 0.0f;
+        return o;
+    }
+    
     // 6頂点で1つのQuad(ビルボード)を生成する
     float2 quad[6] = {
         float2(-1.0f, -1.0f),

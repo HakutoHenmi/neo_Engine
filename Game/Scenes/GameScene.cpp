@@ -30,7 +30,9 @@
 #include "../Systems/ScriptSystem.h"
 #include "../Systems/UISystem.h"
 #include "../Systems/PostProcessSystem.h" // ★追加
-#include "imgui.h"
+#include "../../Engine/NetworkProfiler.h"
+#include "../../externals/nlohmann/json.hpp"
+#include "../../externals/imgui/imgui.h" // ★追加: ImGui
 #include <Windows.h> // OutputDebugStringA
 #include <algorithm>
 #include <cmath>
@@ -69,6 +71,10 @@ void GameScene::Initialize(Engine::WindowDX* dx, const Engine::SceneParameters& 
 	camera_.SetProjection(0.7854f, (float)Engine::WindowDX::kW / (float)Engine::WindowDX::kH, 0.1f, 10000.0f);
 	camera_.SetPosition(0, 2, -5);
 	camera_.SetRotation(0.2f, 0, 0);
+	
+	editorCameraPos_ = {0, 2, -5};
+	editorCameraRot_ = {0.2f, 0, 0};
+
 	renderer_->SetAmbientColor({0.4f, 0.4f, 0.45f});
 
 	bool loaded = false;
@@ -84,6 +90,7 @@ void GameScene::Initialize(Engine::WindowDX* dx, const Engine::SceneParameters& 
 		} else {
 			OutputDebugStringA(("[GameScene] " + scenePath + " NOT found.\n").c_str());
 		}
+
 	} catch (const std::exception& e) {
 		std::string msg = "[GameScene] EXCEPTION during scene load: " + std::string(e.what()) + "\n";
 		OutputDebugStringA(msg.c_str());
@@ -109,6 +116,7 @@ void GameScene::Initialize(Engine::WindowDX* dx, const Engine::SceneParameters& 
 		// 物理判定用にGpuMeshColliderを付与
 		auto& gmcMain = registry_.emplace<GpuMeshColliderComponent>(stageMain);
 		gmcMain.meshHandle = meshMain.modelHandle;
+		gmcMain.meshPath = meshMain.modelPath;
 		gmcMain.enabled = true;
 
 		// ステージ：空（Sky）モデル（コリジョンなし）
@@ -264,9 +272,10 @@ void GameScene::Initialize(Engine::WindowDX* dx, const Engine::SceneParameters& 
 		}
 	}
 
-	// ★追加: 起動直後の状態を初期スナップショットとして保存
-	initialSceneSnapshot_ = EditorUI::SaveToMemory(this);
-
+	// 5. 初期シーン状態の保存 (ロード時以外)
+	if (!loaded) {
+		initialSceneSnapshot_ = EditorUI::SaveToMemory(this);
+	}
 
 
 	// 各Systemのリセット
@@ -302,6 +311,43 @@ void GameScene::Initialize(Engine::WindowDX* dx, const Engine::SceneParameters& 
 		auto& scBoss = registry_.emplace<ScriptComponent>(boss);
 		scBoss.scripts.push_back({"BossTestScript", "{}", std::make_shared<BossTestScript>(), false});
 	}
+
+	// ★追加: WebProfilerの双方向通信パラメータのコールバック登録
+	Engine::NetworkProfiler::GetInstance().SetParameterUpdateCallback([this](const std::string& target, const std::string& prop, float val) {
+		if (target == "AmbientColor") {
+			auto current = renderer_->GetAmbientColor();
+			if (prop == "R") current.x = val;
+			else if (prop == "G") current.y = val;
+			else if (prop == "B") current.z = val;
+			renderer_->SetAmbientColor(current);
+		} else if (target == "Player" && prop == "Speed") {
+			const auto& players = GetEntitiesByTag(TagType::Player);
+			if (!players.empty()) {
+				entt::entity p = players[0];
+				if (registry_.valid(p) && registry_.all_of<CharacterMovementComponent>(p)) {
+					registry_.get<CharacterMovementComponent>(p).speed = val;
+				}
+			}
+		}
+	});
+
+	Engine::NetworkProfiler::GetInstance().SetParameterGetCallback([this]() -> std::string {
+		nlohmann::json j;
+		auto amb = renderer_->GetAmbientColor();
+		j["AmbientColor"]["R"] = amb.x;
+		j["AmbientColor"]["G"] = amb.y;
+		j["AmbientColor"]["B"] = amb.z;
+		
+		j["Player"]["Speed"] = 15.0f; // Default if not found
+		const auto& players = GetEntitiesByTag(TagType::Player);
+		if (!players.empty()) {
+			entt::entity p = players[0];
+			if (registry_.valid(p) && registry_.all_of<CharacterMovementComponent>(p)) {
+				j["Player"]["Speed"] = registry_.get<CharacterMovementComponent>(p).speed;
+			}
+		}
+		return j.dump();
+	});
 
 	// ★追加: 常にプレイ状態で開始する
 	isPlaying_ = true;
@@ -360,12 +406,51 @@ void GameScene::Update() {
 	ctx_.dt = dt;
 
 	if (isPlaying_) {
-		playTime_ += dt;
-		// ★追加: Play中はマウスカーソルを画面中央に固定
-		if (dx_ && dx_->GetHwnd()) {
-			POINT center = { (LONG)Engine::WindowDX::kW / 2, (LONG)Engine::WindowDX::kH / 2 };
-			ClientToScreen(dx_->GetHwnd(), &center);
-			SetCursorPos(center.x, center.y);
+		// ポーズメニューのボタン入力判定
+		if (isPaused_) {
+			const auto& pauseUIs = GetEntitiesByTag(TagType::PauseUI);
+			for (auto e : pauseUIs) {
+				if (registry_.valid(e) && registry_.all_of<UIButtonComponent, NameComponent>(e)) {
+					auto& btn = registry_.get<UIButtonComponent>(e);
+					if (btn.isHovered && Engine::Input::GetInstance()->IsMouseTrigger(0)) {
+						auto& name = registry_.get<NameComponent>(e).name;
+						if (name == "ResumeButton") {
+							isPaused_ = false;
+							ShowCursor(FALSE);
+							DestroyPauseMenu();
+							break;
+						} else if (name == "TitleButton") {
+							isPaused_ = false;
+							ShowCursor(FALSE);
+							DestroyPauseMenu();
+							Engine::SceneManager::GetInstance()->RequestChange("Title");
+							break;
+						}
+					}
+				}
+			}
+		}
+
+		// ESCキーでポーズ切り替え (0x01 = DIK_ESCAPE)
+		if (Engine::Input::GetInstance()->Trigger(0x01)) {
+			isPaused_ = !isPaused_;
+			if (isPaused_) {
+				ShowCursor(TRUE);
+				CreatePauseMenu();
+			} else {
+				ShowCursor(FALSE);
+				DestroyPauseMenu();
+			}
+		}
+
+		if (!isPaused_) {
+			playTime_ += dt;
+			// ★追加: Play中はマウスカーソルを画面中央に固定
+			if (dx_ && dx_->GetHwnd()) {
+				POINT center = { (LONG)Engine::WindowDX::kW / 2, (LONG)Engine::WindowDX::kH / 2 };
+				ClientToScreen(dx_->GetHwnd(), &center);
+				SetCursorPos(center.x, center.y);
+			}
 		}
 	}
 
@@ -388,7 +473,7 @@ void GameScene::Update() {
 
 	// Animation（エンジン固有処理のため残留）
 	auto animView = registry_.view<AnimatorComponent, MeshRendererComponent>();
-	if (isPlaying_) {
+	if (isPlaying_ && !isPaused_) {
 		std::vector<entt::entity> animEntities;
 		animView.each([&](entt::entity entity, auto&, auto&) { animEntities.push_back(entity); });
 
@@ -424,12 +509,14 @@ void GameScene::Update() {
 	}
 
 	// パーティクルエディター
-	particleEditor_.Update(dt);
+	if (!isPaused_) {
+		particleEditor_.Update(dt);
+	}
 
 	// ★ 全Systemを順に実行
 	for (auto& system : systems_) {
 		// リザルト遷移中などはシステムを動かさない (エンティティが削除されている可能性があるため)
-		if (!isPlaying_)
+		if (!isPlaying_ || isPaused_)
 			break;
 		system->Update(registry_, ctx_);
 	}
@@ -447,6 +534,7 @@ void GameScene::Update() {
 
 
 	// ★ペンディングオブジェクト（弾など）をflushし、破棄要求を処理
+	std::vector<entt::entity> destroysToProcess;
 	{
 		std::lock_guard<std::mutex> lock(spawnMutex_);
 
@@ -459,13 +547,16 @@ void GameScene::Update() {
 			// ★重複を排除して二重破棄を防ぐ
 			std::sort(pendingDestroys_.begin(), pendingDestroys_.end());
 			pendingDestroys_.erase(std::unique(pendingDestroys_.begin(), pendingDestroys_.end()), pendingDestroys_.end());
-
-			for (auto id : pendingDestroys_) {
-				if (registry_.valid(id)) {
-					registry_.destroy(id);
-				}
-			}
+			
+			destroysToProcess = std::move(pendingDestroys_);
 			pendingDestroys_.clear();
+		}
+	}
+
+	// ロックを外した状態で破棄を実行（OnDestroy から更に DestroyObject が呼ばれてもデッドロックしないようにする）
+	for (auto id : destroysToProcess) {
+		if (registry_.valid(id)) {
+			registry_.destroy(id);
 		}
 	}
 
@@ -719,8 +810,9 @@ void GameScene::Draw() {
 	bool hasPlayerSlime = false;
 
 	const auto& playersForCore = GetEntitiesByTag(TagType::Player);
+	entt::entity playerEntity = entt::null;
 	if (!playersForCore.empty() && registry_.valid(playersForCore[0])) {
-		entt::entity playerEntity = playersForCore[0];
+		playerEntity = playersForCore[0];
 		if (registry_.all_of<TransformComponent>(playerEntity)) {
 			auto& tc = registry_.get<TransformComponent>(playerEntity);
 			corePos = { tc.translate.x, tc.translate.y, tc.translate.z };
@@ -733,8 +825,44 @@ void GameScene::Draw() {
 		if (registry_.all_of<PlayerActionComponent>(playerEntity)) {
 			isLiquidated = registry_.get<PlayerActionComponent>(playerEntity).state == PlayerActionState::Liquefy;
 		}
-		if (registry_.all_of<MeshRendererComponent>(playerEntity)) {
-			auto& mr = registry_.get<MeshRendererComponent>(playerEntity);
+	}
+
+	// ★追加: エディター上で自由に配置・変更できる流体エミッターの処理 (プレイヤーの存在や非表示に依存しないよう外側に配置)
+	{
+		auto emitterView = registry_.view<TransformComponent, FluidEmitterComponent>();
+		for (auto e : emitterView) {
+			auto& tc = emitterView.get<TransformComponent>(e);
+			auto& fec = emitterView.get<FluidEmitterComponent>(e);
+			if (!fec.enabled || fec.emitCountPerFrame <= 0) continue;
+
+			Engine::Vector3 pos = { tc.translate.x, tc.translate.y, tc.translate.z };
+			Engine::Vector3 vel = { fec.velocity.x, fec.velocity.y, fec.velocity.z };
+			Engine::Vector4 col = { fec.color.x, fec.color.y, fec.color.z, fec.color.w };
+
+			// 毎フレームエミットを実行
+			renderer_->EmitGPUFluid(pos, vel, col, fec.emitCountPerFrame, fec.fluidType);
+
+			// スプラッシュ（水: fluidType >= 0.5f）の場合、プレイヤーが下（半径1.5m以内）にいればHPを回復する
+			if (isPlaying_ && !isPaused_ && fec.fluidType >= 0.5f && registry_.valid(playerEntity)) {
+				float dx = corePos.x - pos.x;
+				float dz = corePos.z - pos.z;
+				if (dx * dx + dz * dz < 1.5f * 1.5f) {
+					if (registry_.all_of<HealthComponent>(playerEntity)) {
+						auto& hc = registry_.get<HealthComponent>(playerEntity);
+						static float healTimer = 0.0f;
+						healTimer += ctx_.dt;
+						if (healTimer > 0.05f) { // 0.05秒ごとに1回復 (1秒で20回復)
+							healTimer = 0.0f;
+							hc.hp = (std::min)(hc.hp + 1, hc.maxHp);
+						}
+					}
+				}
+			}
+		}
+	}
+
+	if (registry_.valid(playerEntity) && registry_.all_of<MeshRendererComponent>(playerEntity)) {
+		auto& mr = registry_.get<MeshRendererComponent>(playerEntity);
 			
 			// --- CPU側スライムメッシュ更新ロジック ---
 			if (!slimeCpuLogic_.initialized) {
@@ -789,27 +917,37 @@ void GameScene::Draw() {
 				Engine::Vector3 scaleVec = {blobRadii.x, blobRadii.y, blobRadii.z};
 				renderer_->SetGPUFluidCore(targetCore, attraction, scaleVec, forward);
 
-				// ★追加: 蛇口から回復の水を出し続ける (プレイヤーの位置から少しずらした空中に固定配置)
-				// ※ ここでは(x=2.0, y=5.0, z=2.0)の位置から水を落とす例
-				Engine::Vector3 faucetPos = {2.0f, 5.0f, 2.0f};
-				Engine::Vector4 faucetColor = {0.2f, 0.8f, 1.0f, 1.0f}; // 癒やしの水色
-				// 毎フレーム30粒ずつ水滴を落下させる
-				renderer_->EmitGPUFluid(faucetPos, {0.0f, -5.0f, 0.0f}, faucetColor, 30, 1.0f);
-				
-				// プレイヤーが水の下（半径1.5m以内）にいればHPを回復する
-				float dx = corePos.x - faucetPos.x;
-				float dz = corePos.z - faucetPos.z;
-				if (dx * dx + dz * dz < 1.5f * 1.5f) {
-					if (registry_.all_of<HealthComponent>(playerEntity)) {
-						auto& hc = registry_.get<HealthComponent>(playerEntity);
-						static float healTimer = 0.0f;
-						healTimer += ctx_.dt;
-						if (healTimer > 0.05f) { // 0.05秒ごとに1回復 (1秒で20回復)
-							healTimer = 0.0f;
-							hc.hp = std::min(hc.hp + 1, hc.maxHp);
-						}
+				// ★追加: 流体シミュレーション用のAABBコリジョンを収集してレンダラーに送る
+				std::vector<Engine::Renderer::FluidAABB> fluidAABBs;
+				auto aabbView = registry_.view<TransformComponent, BoxColliderComponent>();
+				for (auto entity : aabbView) {
+					auto& tc = aabbView.get<TransformComponent>(entity);
+					auto& bc = aabbView.get<BoxColliderComponent>(entity);
+					
+					// トリガーは当たり判定にしない
+					if (bc.isTrigger) continue;
+					
+					// ★追加: プレイヤー自身の BoxCollider はスライム(流体)と衝突させない（弾き飛ばされて挙動がおかしくなるのを防ぐ）
+					if (registry_.all_of<TagComponent>(entity) && registry_.get<TagComponent>(entity).tag == TagType::Player) {
+						continue;
 					}
+					
+					Engine::Vector3 scale = {tc.scale.x * bc.size.x, tc.scale.y * bc.size.y, tc.scale.z * bc.size.z};
+					// 簡易的なワールド座標（回転を無視したAABB）
+					Engine::Vector3 pos = {
+						tc.translate.x + bc.center.x * tc.scale.x, 
+						tc.translate.y + bc.center.y * tc.scale.y, 
+						tc.translate.z + bc.center.z * tc.scale.z
+					};
+					
+					Engine::Renderer::FluidAABB aabb;
+					aabb.min = {pos.x - scale.x * 0.5f, pos.y - scale.y * 0.5f, pos.z - scale.z * 0.5f};
+					aabb.pad0 = 0.0f;
+					aabb.max = {pos.x + scale.x * 0.5f, pos.y + scale.y * 0.5f, pos.z + scale.z * 0.5f};
+					aabb.pad1 = 0.0f;
+					fluidAABBs.push_back(aabb);
 				}
+				renderer_->SetFluidAABBs(fluidAABBs);
 			}
 			// ----------------------------------------
 			
@@ -868,7 +1006,6 @@ void GameScene::Draw() {
 
 			hasPlayerSlime = mr.shaderName == "Slime";
 		}
-	}
 
 	if (hasPlayerSlime) {
 		if (isLiquidated && !wasLiquidated_) {
@@ -906,7 +1043,7 @@ void GameScene::Draw() {
 	// ★ 高速タグ検索を用いてプレイヤー位置を同期（O(N) -> O(1)）
 	const auto& players = GetEntitiesByTag(TagType::Player);
 	if (!players.empty()) {
-		entt::entity playerEntity = players[0];
+		playerEntity = players[0];
 		if (registry_.valid(playerEntity) && registry_.all_of<TransformComponent>(playerEntity)) {
 			auto& tc = registry_.get<TransformComponent>(playerEntity);
 			renderer_->SetPlayerPos(Engine::Vector3{tc.translate.x, tc.translate.y, tc.translate.z});
@@ -1390,7 +1527,14 @@ void GameScene::SetIsPlaying(bool play) {
 			OutputDebugStringA(logBuf);
 		}
 
+		// ★追加: プレイ開始時のエディタカメラの状態を保存
+		DirectX::XMFLOAT3 pos = camera_.Position();
+		editorCameraPos_ = {pos.x, pos.y, pos.z};
+		DirectX::XMFLOAT3 rot = camera_.Rotation();
+		editorCameraRot_ = {rot.x, rot.y, rot.z};
+
 		isPlaying_ = true;
+		isPaused_ = false;
 		ShowCursor(FALSE); // ★追加: カーソルを非表示
 	} else {
 		// プレイ停止時: Play ボタンを押した直前の状態 (`sceneSnapshot_`) に戻す
@@ -1406,6 +1550,10 @@ void GameScene::SetIsPlaying(bool play) {
 		isPlaying_ = false;
 		gpuSlimeEmitted_ = false; // ★追加: プレイ終了時にGPUスライム放出フラグをリセット
 		ShowCursor(TRUE); // ★追加: カーソルを表示
+
+		// ★追加: プレイ終了時にエディタカメラの状態を復元
+		camera_.SetPosition(editorCameraPos_.x, editorCameraPos_.y, editorCameraPos_.z);
+		camera_.SetRotation(editorCameraRot_.x, editorCameraRot_.y, editorCameraRot_.z);
 		
 		if (!sceneSnapshot_.empty()) {
 			OutputDebugStringA(("[GameScene] Restoring from memory snapshot (size: " + std::to_string(sceneSnapshot_.size()) + ")...\n").c_str());
@@ -1544,6 +1692,82 @@ void GameScene::ClearScene() {
 	// 4. CPUスライム描画ロジックの非初期化
 	slimeCpuLogic_.initialized = false;
 	projectileCpuLogic_.initialized = false;
+}
+
+void GameScene::CreatePauseMenu() {
+	float W = (float)Engine::WindowDX::kW;
+	float H = (float)Engine::WindowDX::kH;
+
+	// 背景 (半透明の黒)
+	auto bg = CreateEntity("PauseBG");
+	SetTag(bg, TagType::PauseUI);
+	auto& bgRt = registry_.emplace<RectTransformComponent>(bg);
+	bgRt.pos = { 0.0f, 0.0f };
+	bgRt.size = { W, H };
+	bgRt.anchor = { 0.5f, 0.5f };
+	bgRt.pivot = { 0.5f, 0.5f };
+	auto& bgImg = registry_.emplace<UIImageComponent>(bg);
+	bgImg.color = { 0.0f, 0.0f, 0.0f, 0.5f };
+	bgImg.layer = -1; 
+
+	// タイトル
+	auto title = CreateEntity("PauseTitle");
+	SetTag(title, TagType::PauseUI);
+	auto& tRt = registry_.emplace<RectTransformComponent>(title);
+	tRt.pos = { 0.0f, -H * 0.2f };
+	tRt.anchor = { 0.5f, 0.5f };
+	tRt.pivot = { 0.5f, 0.5f };
+	auto& tTxt = registry_.emplace<UITextComponent>(title);
+	tTxt.text = "PAUSE";
+	tTxt.fontSize = 64.0f;
+	tTxt.color = { 1.0f, 1.0f, 1.0f, 1.0f };
+
+	// 再開ボタン
+	auto resume = CreateEntity("ResumeButton");
+	SetTag(resume, TagType::PauseUI);
+	auto& rRt = registry_.emplace<RectTransformComponent>(resume);
+	rRt.pos = { 0.0f, 0.0f };
+	rRt.size = { 300, 60 };
+	rRt.anchor = { 0.5f, 0.5f };
+	rRt.pivot = { 0.5f, 0.5f };
+	auto& rImg = registry_.emplace<UIImageComponent>(resume);
+	rImg.color = { 0.3f, 0.3f, 0.3f, 0.8f };
+	auto& rBtn = registry_.emplace<UIButtonComponent>(resume);
+	rBtn.normalColor = { 0.3f, 0.3f, 0.3f, 0.8f };
+	rBtn.hoverColor = { 0.5f, 0.5f, 0.5f, 0.9f };
+	rBtn.pressedColor = { 0.2f, 0.2f, 0.2f, 1.0f };
+	auto& rTxt = registry_.emplace<UITextComponent>(resume);
+	rTxt.text = "Resume";
+	rTxt.fontSize = 32.0f;
+	rTxt.color = { 1.0f, 1.0f, 1.0f, 1.0f };
+
+	// タイトルに戻るボタン
+	auto back = CreateEntity("TitleButton");
+	SetTag(back, TagType::PauseUI);
+	auto& bRt = registry_.emplace<RectTransformComponent>(back);
+	bRt.pos = { 0.0f, 80.0f };
+	bRt.size = { 300, 60 };
+	bRt.anchor = { 0.5f, 0.5f };
+	bRt.pivot = { 0.5f, 0.5f };
+	auto& bImg = registry_.emplace<UIImageComponent>(back);
+	bImg.color = { 0.3f, 0.3f, 0.3f, 0.8f };
+	auto& bBtn = registry_.emplace<UIButtonComponent>(back);
+	bBtn.normalColor = { 0.3f, 0.3f, 0.3f, 0.8f };
+	bBtn.hoverColor = { 0.5f, 0.5f, 0.5f, 0.9f };
+	bBtn.pressedColor = { 0.2f, 0.2f, 0.2f, 1.0f };
+	auto& bTxt = registry_.emplace<UITextComponent>(back);
+	bTxt.text = "Back to Title";
+	bTxt.fontSize = 32.0f;
+	bTxt.color = { 1.0f, 1.0f, 1.0f, 1.0f };
+}
+
+void GameScene::DestroyPauseMenu() {
+	const auto& pauseUIs = GetEntitiesByTag(TagType::PauseUI);
+	for (auto e : pauseUIs) {
+		if (registry_.valid(e)) {
+			DestroyObject(static_cast<uint32_t>(e));
+		}
+	}
 }
 
 } // namespace Game

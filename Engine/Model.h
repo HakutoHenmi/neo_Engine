@@ -101,8 +101,8 @@ struct BVHNode {
 // アニメーション全体
 struct Animation {
 	std::string name;
-	float duration;                                      // 全体の長さ(単位: Tick)
-	float ticksPerSecond;                                // 1秒あたりのTick数
+	float duration = 0.0f;                                      // 全体の長さ(単位: Tick)
+	float ticksPerSecond = 0.0f;                                // 1秒間のTick数
 	std::map<std::string, NodeAnimation> nodeAnimations; // ノード名 -> アニメーション
 };
 

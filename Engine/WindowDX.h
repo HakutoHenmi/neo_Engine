@@ -78,7 +78,7 @@ private:
 	Microsoft::WRL::ComPtr<IDXGIFactory7> factory_;
 	Microsoft::WRL::ComPtr<ID3D12Device> dev_;
 	Microsoft::WRL::ComPtr<ID3D12CommandQueue> que_;
-	Microsoft::WRL::ComPtr<ID3D12CommandAllocator> alloc_;
+	Microsoft::WRL::ComPtr<ID3D12CommandAllocator> alloc_[kBackBufferCount];
 	Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> list_;
 	Microsoft::WRL::ComPtr<IDXGISwapChain4> swap_;
 
@@ -91,7 +91,8 @@ private:
 	Microsoft::WRL::ComPtr<ID3D12Resource> depth_;
 
 	Microsoft::WRL::ComPtr<ID3D12Fence> fence_;
-	UINT64 fenceVal_ = 0;
+	UINT64 fenceVals_[kBackBufferCount] = {0};
+	UINT64 currentFenceVal_ = 0;
 	HANDLE fev_ = nullptr;
 
 	UINT rtvInc_ = 0;

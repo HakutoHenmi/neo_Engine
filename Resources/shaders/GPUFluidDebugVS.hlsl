@@ -24,6 +24,13 @@ VSOut main(uint vId : SV_VertexID, uint instanceID : SV_InstanceID) {
     VSOut o;
     Particle p = Particles[instanceID];
     
+    // ★追加: 非アクティブなパーティクルは頂点を縮退させてデバッグ描画を完全スキップ
+    if (p.color.a < 0.01f || p.position.y < -500.0f) {
+        o.svpos = float4(0, 0, 0, 0);
+        o.color = float4(0, 0, 0, 0);
+        return o;
+    }
+    
     float3 pos = p.position;
     float speed = length(p.velocity);
     

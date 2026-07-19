@@ -3,7 +3,9 @@
 #include <chrono>
 #include "JobSystem.h"
 #include "Time/TimeManager.h" // ★追加
-#include "SharedMemoryProfiler.h"
+#include "NetworkProfiler.h"
+#include <psapi.h> // ★追加: メモリ使用量取得用
+#pragma comment(lib, "psapi.lib")
 
 namespace Engine {
 
@@ -15,8 +17,8 @@ bool App::Initialize(HINSTANCE hInst, int cmdShow) {
 	// Job Systemの初期化
 	JobSystem::Initialize();
 
-	// 共有メモリプロファイラの初期化
-	SharedMemoryProfiler::GetInstance().Initialize();
+	// ネットワークプロファイラの初期化
+	NetworkProfiler::GetInstance().Initialize(8080);
 
 	if (!renderer_.Initialize(&dx_))
 		return false;
@@ -84,7 +86,7 @@ void App::Run() {
 		frameCount++;
 		timeElapsed += dt;
 		if (timeElapsed >= 1.0f) {
-			SharedMemoryProfiler::GetInstance().SetFPS((float)frameCount / timeElapsed);
+			NetworkProfiler::GetInstance().SetFPS((float)frameCount / timeElapsed);
 			frameCount = 0;
 			timeElapsed = 0.0f;
 		}
@@ -93,7 +95,7 @@ void App::Run() {
 		TimeManager::GetInstance().Update(dt);
 
 		// プロファイラにフレームタイムをセット
-		SharedMemoryProfiler::GetInstance().SetDeltaTime(dt);
+		NetworkProfiler::GetInstance().SetDeltaTime(dt);
 
 		dx_.BeginFrame();
 		const float clearColor[] = {0.1f, 0.25f, 0.5f, 1.0f};
@@ -103,7 +105,18 @@ void App::Run() {
 		imgui_.NewFrame(dx_);
 #endif
 
+		// ★追加: CPU Logic Timeの計測開始
+		auto logicStart = std::chrono::high_resolution_clock::now();
+
 		sceneManager_.Update();
+
+		auto logicEnd = std::chrono::high_resolution_clock::now();
+		float logicTimeMs = std::chrono::duration<float, std::milli>(logicEnd - logicStart).count();
+		NetworkProfiler::GetInstance().SetCpuLogicTime(logicTimeMs);
+
+		// ★追加: GPU Render Time (CPU側のコマンド構築〜Present完了まで) の計測開始
+		auto renderStart = std::chrono::high_resolution_clock::now();
+
 		sceneManager_.Draw();
 
 		renderer_.EndFrame();
@@ -123,11 +136,22 @@ void App::Run() {
 #endif
 		dx_.EndFrame();
 
+		auto renderEnd = std::chrono::high_resolution_clock::now();
+		float renderTimeMs = std::chrono::duration<float, std::milli>(renderEnd - renderStart).count();
+		NetworkProfiler::GetInstance().SetGpuRenderTime(renderTimeMs);
+
+		// ★追加: RAM使用量の取得
+		PROCESS_MEMORY_COUNTERS pmc;
+		if (GetProcessMemoryInfo(GetCurrentProcess(), &pmc, sizeof(pmc))) {
+			float ramMB = (float)pmc.WorkingSetSize / (1024.0f * 1024.0f);
+			NetworkProfiler::GetInstance().SetSystemRamUsage(ramMB);
+		}
+
 		// ★追加: 詳細な統計データをプロファイラへ送る
 		auto* renderer = Renderer::GetInstance();
 		if (renderer) {
-			SharedMemoryProfiler::GetInstance().SetDrawCalls(renderer->GetDrawCallCount());
-			SharedMemoryProfiler::GetInstance().SetParticleCount(renderer->GetParticleCount());
+			NetworkProfiler::GetInstance().SetDrawCalls(renderer->GetDrawCallCount());
+			NetworkProfiler::GetInstance().SetParticleCount(renderer->GetParticleCount());
 			
 			// 有効なライトの数を数える
 			uint32_t activeLights = 0;
@@ -136,14 +160,14 @@ void App::Run() {
 			for (int i = 0; i < Renderer::kMaxPointLights; ++i) if (lcb.pointLights[i].enabled) activeLights++;
 			for (int i = 0; i < Renderer::kMaxSpotLights; ++i) if (lcb.spotLights[i].enabled) activeLights++;
 			for (int i = 0; i < Renderer::kMaxAreaLights; ++i) if (lcb.areaLights[i].enabled) activeLights++;
-			SharedMemoryProfiler::GetInstance().SetLightCount(activeLights);
+			NetworkProfiler::GetInstance().SetLightCount(activeLights);
 
 			Vector3 pPos = renderer->GetPlayerPos();
-			SharedMemoryProfiler::GetInstance().SetPlayerPos(pPos.x, pPos.y, pPos.z);
+			NetworkProfiler::GetInstance().SetPlayerPos(pPos.x, pPos.y, pPos.z);
 		}
 
-		// プロファイラのデータを共有メモリに書き込む
-		SharedMemoryProfiler::GetInstance().CommitFrame();
+		// プロファイラのデータを更新
+		NetworkProfiler::GetInstance().CommitFrame();
 	}
 }
 
@@ -152,7 +176,7 @@ void App::Shutdown() {
 	// これにより、コンポーネント破棄時にオーディオやジョブシステムなどのサブシステムへ安全にアクセスできます
 	sceneManager_.Clear();
 
-	SharedMemoryProfiler::GetInstance().Shutdown();
+	NetworkProfiler::GetInstance().Shutdown();
 	JobSystem::Shutdown();
 #ifdef USE_IMGUI
 	imgui_.Shutdown();

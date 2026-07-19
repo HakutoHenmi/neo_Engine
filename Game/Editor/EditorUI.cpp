@@ -95,6 +95,12 @@ static std::vector<entt::entity> RestoreSceneFromJson(GameScene* scene, const js
 		
 		auto& hc = reg.get_or_emplace<HierarchyComponent>(entity);
 		uint32_t savedParentId = obj.value("parentId", (uint32_t)entt::null);
+		
+		// 過去のバグで parentId が 0 で保存されていた場合の救済措置
+		if (savedParentId == 0) {
+			savedParentId = static_cast<uint32_t>(entt::null);
+		}
+
 		if (savedParentId != (uint32_t)entt::null && idMap.find(savedParentId) != idMap.end()) {
 			hc.parentId = idMap[savedParentId];
 		} else {
@@ -240,6 +246,17 @@ static std::vector<entt::entity> RestoreSceneFromJson(GameScene* scene, const js
 					auto& c = reg.get_or_emplace<AnimatorComponent>(entity);
 					c.enabled = en; c.currentAnimation = comp.value("currentAnimation", ""); c.speed = comp.value("speed", 1.0f);
 					c.isPlaying = comp.value("isPlaying", false); c.loop = comp.value("loop", true);
+				} else if (type == "FluidEmitter") {
+					auto& c = reg.get_or_emplace<FluidEmitterComponent>(entity);
+					c.enabled = en;
+					c.emitCountPerFrame = comp.value("emitCountPerFrame", 80);
+					if (comp.contains("color") && comp["color"].size() >= 4) {
+						c.color = {comp["color"][0], comp["color"][1], comp["color"][2], comp["color"][3]};
+					}
+					if (comp.contains("velocity") && comp["velocity"].size() >= 3) {
+						c.velocity = {comp["velocity"][0], comp["velocity"][1], comp["velocity"][2]};
+					}
+					c.fluidType = comp.value("fluidType", 1.0f);
 				} else if (type == "ParticleEmitter") {
 					auto& c = reg.get_or_emplace<ParticleEmitterComponent>(entity);
 					c.enabled = en; c.assetPath = comp.value("assetPath", "");
@@ -553,7 +570,7 @@ static std::string SerializeEntity(entt::registry& registry, entt::entity entity
 	uint32_t id = static_cast<uint32_t>(entt::to_entity(entity)); // ★修正: バージョン情報を除外し、純粋なインデックスのみを保存する
 	ss << "      \"id\": " << id << ",\n";
 	
-	uint32_t parentId = 0;
+	uint32_t parentId = static_cast<uint32_t>(entt::null);
 	if (auto* hc = registry.try_get<HierarchyComponent>(entity)) {
 		if (registry.valid(hc->parentId)) {
 			parentId = static_cast<uint32_t>(entt::to_entity(hc->parentId));
@@ -719,6 +736,14 @@ static std::string SerializeEntity(entt::registry& registry, entt::entity entity
 		ss << ", \"uvAnimCols\": " << p.uvAnimCols << ", \"uvAnimRows\": " << p.uvAnimRows << ", \"uvAnimFps\": " << p.uvAnimFps;
 		
 		ss << "}";
+	}
+	if (auto* fec = registry.try_get<FluidEmitterComponent>(entity)) {
+		addComma();
+		ss << "        {\"type\": \"FluidEmitter\", \"enabled\": " << (fec->enabled ? "true" : "false")
+		   << ", \"emitCountPerFrame\": " << fec->emitCountPerFrame
+		   << ", \"color\": [" << fec->color.x << "," << fec->color.y << "," << fec->color.z << "," << fec->color.w << "]"
+		   << ", \"velocity\": [" << fec->velocity.x << "," << fec->velocity.y << "," << fec->velocity.z << "]"
+		   << ", \"fluidType\": " << fec->fluidType << "}";
 	}
 	if (auto* cp = registry.try_get<RectTransformComponent>(entity)) {
 		addComma();
@@ -2401,6 +2426,16 @@ void EditorUI::ShowInspector(GameScene* scene) {
 					if (ImGui::Button("Remove##PE")) registry.remove<ParticleEmitterComponent>(entity);
 				}
 			}
+			if (auto* fec = registry.try_get<FluidEmitterComponent>(entity)) {
+				if (ImGui::CollapsingHeader("FluidEmitter", ImGuiTreeNodeFlags_DefaultOpen)) {
+					ImGui::Checkbox("Enabled##FEC", &fec->enabled);
+					ImGui::DragInt("Emit Rate", &fec->emitCountPerFrame, 1, 0, 1000);
+					ImGui::ColorEdit4("Color", &fec->color.x);
+					ImGui::DragFloat3("Velocity", &fec->velocity.x, 0.1f);
+					ImGui::DragFloat("Fluid Type", &fec->fluidType, 0.1f, 0.0f, 1.0f);
+					if (ImGui::Button("Remove##FEC")) registry.remove<FluidEmitterComponent>(entity);
+				}
+			}
 			if (auto* pi = registry.try_get<PlayerInputComponent>(entity)) {
 				if (ImGui::CollapsingHeader("PlayerInput", ImGuiTreeNodeFlags_DefaultOpen)) {
 					ImGui::Checkbox("Enabled##PI", &pi->enabled);
@@ -2650,6 +2685,7 @@ void EditorUI::ShowInspector(GameScene* scene) {
 			if (ImGui::MenuItem("PointLight")) std::ignore = registry.get_or_emplace<PointLightComponent>(entity);
 			if (ImGui::MenuItem("SpotLight")) std::ignore = registry.get_or_emplace<SpotLightComponent>(entity);
 			if (ImGui::MenuItem("ParticleEmitter")) std::ignore = registry.get_or_emplace<ParticleEmitterComponent>(entity);
+			if (ImGui::MenuItem("FluidEmitter")) std::ignore = registry.get_or_emplace<FluidEmitterComponent>(entity);
 			if (ImGui::MenuItem("PlayerInput")) std::ignore = registry.get_or_emplace<PlayerInputComponent>(entity);
 			if (ImGui::MenuItem("CharacterMovement")) std::ignore = registry.get_or_emplace<CharacterMovementComponent>(entity);
 			if (ImGui::MenuItem("RectTransform")) std::ignore = registry.get_or_emplace<RectTransformComponent>(entity);
