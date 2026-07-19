@@ -72,8 +72,8 @@ void BossTestScript::Start(entt::entity entity, GameScene* scene) {
 	// ★追加: ボス本体にHealthComponentがない場合は追加する（WaveSystem等で生存カウントするため）
 	if (!registry.all_of<HealthComponent>(entity)) {
 		auto& hc = registry.emplace<HealthComponent>(entity);
-		hc.hp = 500.0f;
-		hc.maxHp = 500.0f;
+		hc.hp = 250.0f;
+		hc.maxHp = 250.0f;
 	}
 
 	// ★修正: ボス本体にHurtboxComponentを追加し、サイズを見た目のスケールに完全に一致させる

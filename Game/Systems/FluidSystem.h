@@ -107,6 +107,7 @@ public:
             fclose(fp);
         }
         if (!device) return false;
+        if (isInitialized_) return true; // ★追加: 二重初期化によるリソース解放・TDR(Device Removed)を防止
         device_ = device;
 
         // SSFR用テクスチャとヒープの生成 (Phase 1)

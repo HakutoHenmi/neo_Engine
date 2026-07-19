@@ -34,6 +34,9 @@ bool SceneManager::Change(const std::string& name, const SceneParameters& params
 		return false;
 	}
 
+	if (dx_) {
+		dx_->WaitIdle(); // ★追加: GPUがコマンドを実行し終わるのを待ってから現在のシーン（とそのリソース）を破棄する
+	}
 	current_ = it->second();
 	currentName_ = name;
 
@@ -76,6 +79,9 @@ void SceneManager::Draw() {
 }
 
 void SceneManager::Clear() {
+	if (dx_) {
+		dx_->WaitIdle(); // ★追加: 終了時等のクリア前にGPUの完了を待機
+	}
 	current_.reset();
 	currentName_.clear();
 	pendingNext_.clear();

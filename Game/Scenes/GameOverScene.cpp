@@ -24,7 +24,7 @@ void GameOverScene::Update() {
         if (auto* renderer = Engine::Renderer::GetInstance()) {
             renderer->SetPostEffect(""); // エフェクトをリセット
         }
-        Engine::SceneManager::GetInstance()->Change("Game");
+        Engine::SceneManager::GetInstance()->RequestChange("Game");
     }
 }
 
@@ -70,7 +70,7 @@ void GameOverScene::DrawUI() {
         if (auto* renderer = Engine::Renderer::GetInstance()) {
             renderer->SetPostEffect(""); // エフェクトをリセット
         }
-        Engine::SceneManager::GetInstance()->Change("Game");
+        Engine::SceneManager::GetInstance()->RequestChange("Game");
     }
     
     ImGui::PopStyleColor(3);

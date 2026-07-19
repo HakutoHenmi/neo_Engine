@@ -10,6 +10,7 @@ namespace Engine {
 GPUParticleSystem::~GPUParticleSystem() {}
 
 bool GPUParticleSystem::Initialize(ID3D12Device* device, uint32_t maxParticles) {
+    if (isInitialized_) return true; // ★追加: 二重初期化を防止
     maxParticles_ = maxParticles;
     if (!CreateBuffers(device)) return false;
     if (!CreatePipelines(device)) return false;

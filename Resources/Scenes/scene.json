@@ -6,23 +6,7 @@
     "noiseStrength": 0
   },
   "objects": [
-    {
-      "id": 56,
-      "parentId": 4294967295,
-      "name": "Boss",
-      "locked": false,
-      "translate": [0, 2, 15],
-      "rotate": [0, -1.63831, 0],
-      "scale": [3, 3, 3],
-      "components": [
-        {"type": "MeshRenderer", "enabled": true, "modelPath": "Resources/Models/cube/cube.obj", "texturePath": "", "shaderName": "Default", "color": [0.8,0.8,0.8,1], "uvTiling": [1,1], "uvOffset": [0,0], "reflectivity": 0, "useCubemap": true},
-        {"type": "Script", "enabled": true, "scripts": [{"path": "BossTestScript", "param": ""}]},
-        {"type": "Health", "enabled": true, "hp": 500, "maxHp": 500, "isDead": false},
-        {"type": "Tag", "enabled": true, "tag": "Enemy"},
-        {"type": "Hitbox", "enabled": true, "center": [0,2,2.5], "size": [4,4,4], "damage": 10, "isActive": false, "tag": "Enemy"},
-        {"type": "Hurtbox", "enabled": true, "center": [0,0,0], "size": [6,6,6], "damageMultiplier": 1, "tag": "Enemy"}
-      ]
-    },
+
     {
       "id": 55,
       "parentId": 4294967295,
@@ -707,7 +691,7 @@
       "components": [
         {"type": "MeshRenderer", "enabled": true, "modelPath": "Resources/Models/cube/cube.obj", "texturePath": "", "shaderName": "Default", "color": [0.8,0.8,0.8,1], "uvTiling": [1,1], "uvOffset": [0,0], "reflectivity": 0, "useCubemap": true},
         {"type": "Script", "enabled": true, "scripts": [{"path": "BossTestScript", "param": ""}]},
-        {"type": "Health", "enabled": true, "hp": 500, "maxHp": 500, "isDead": false},
+        {"type": "Health", "enabled": true, "hp": 250, "maxHp": 250, "isDead": false},
         {"type": "Tag", "enabled": true, "tag": "Enemy"},
         {"type": "Hitbox", "enabled": true, "center": [0,2,2.5], "size": [4,4,4], "damage": 10, "isActive": false, "tag": "Enemy"},
         {"type": "Hurtbox", "enabled": true, "center": [0,0,0], "size": [6,6,6], "damageMultiplier": 1, "tag": "Enemy"}
