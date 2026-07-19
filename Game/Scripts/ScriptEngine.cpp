@@ -1,5 +1,6 @@
 #include "ScriptEngine.h"
 #include "Scenes/GameScene.h"
+#include "BossTestScript.h"
 #include <iostream>
 #include <Windows.h> // OutputDebugStringA
 
@@ -16,7 +17,7 @@ ScriptEngine* ScriptEngine::GetInstance() {
 
 void ScriptEngine::Initialize() {
 	// 新しいスクリプトを作成したらここに登録してください
-	// 例: RegisterScript("MyScript", []() { return std::make_shared<MyScript>(); });
+	RegisterScript("BossTestScript", []() { return std::make_shared<BossTestScript>(); });
 }
 
 void ScriptEngine::Shutdown() {

@@ -55,7 +55,8 @@ enum class ComponentType {
 	Motion, // ★追加: モーションエディタ用
 	PlayerAction, // ★追加: プレイヤーアクション（攻撃・パリィ・回避）
 	BossAction,   // ★追加: ボス用アクションステートマシン
-	BodyPart      // ★追加: ボス部位破壊用
+	BodyPart,     // ★追加: ボス部位破壊用
+	FluidEmitter  // ★追加: 流体エミッター（水など）
 };
 struct Component { 
 	ComponentType type = ComponentType::MeshRenderer; 
@@ -170,7 +171,8 @@ enum class TagType : uint32_t {
 	Projectile,
 	Wall,
 	Default,
-	VFX
+	VFX,
+	PauseUI // ★追加
 };
 
 inline const char* TagToString(TagType tag) {
@@ -182,6 +184,7 @@ inline const char* TagToString(TagType tag) {
 	case TagType::Wall: return "Wall";
 	case TagType::VFX: return "VFX";
 	case TagType::Default: return "Default";
+	case TagType::PauseUI: return "PauseUI"; // ★追加
 	default: return "Untagged";
 	}
 }
@@ -194,6 +197,7 @@ inline TagType StringToTag(const std::string& s) {
 	if (s == "Wall") return TagType::Wall;
 	if (s == "VFX") return TagType::VFX;
 	if (s == "Default") return TagType::Default;
+	if (s == "PauseUI") return TagType::PauseUI; // ★追加
 	return TagType::Untagged;
 }
 
@@ -579,5 +583,15 @@ struct MotionComponent : public Component {
 // ★ EntityのIDそのものをラップする構造体（またはそのまま entt::entity を使う）
 using Entity = entt::entity;
 
+
+// ★追加: 流体エミッターコンポーネント
+struct FluidEmitterComponent : public Component {
+	int emitCountPerFrame = 400;
+	DirectX::XMFLOAT4 color = {0.2f, 0.8f, 1.0f, 1.0f}; // 湧き水の色
+	DirectX::XMFLOAT3 velocity = {0.0f, -5.0f, 0.0f};
+	float fluidType = 1.0f; // 0=プレイヤーコア, 1=水しぶき
+	
+	FluidEmitterComponent() { type = ComponentType::FluidEmitter; }
+};
 
 } // namespace Game

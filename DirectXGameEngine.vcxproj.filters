@@ -28,7 +28,7 @@
     <ClCompile Include="Engine\App.cpp">
       <Filter>Core</Filter>
     </ClCompile>
-    <ClCompile Include="Engine\SharedMemoryProfiler.cpp">
+    <ClCompile Include="Engine\NetworkProfiler.cpp">
       <Filter>Core</Filter>
     </ClCompile>
     <ClCompile Include="Engine\Audio.cpp">
@@ -103,7 +103,7 @@
     <ClInclude Include="Engine\App.h">
       <Filter>Core</Filter>
     </ClInclude>
-    <ClInclude Include="Engine\SharedMemoryProfiler.h">
+    <ClInclude Include="Engine\NetworkProfiler.h">
       <Filter>Core</Filter>
     </ClInclude>
     <ClInclude Include="Engine\Audio.h">

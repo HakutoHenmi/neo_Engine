@@ -1,0 +1,717 @@
+{
+  "settings": {
+    "postProcessEnabled": true,
+    "ambientColor": [0.4, 0.4, 0.45],
+    "vignette": 0,
+    "noiseStrength": 0
+  },
+  "objects": [
+    {
+      "id": 56,
+      "parentId": 4294967295,
+      "name": "Boss",
+      "locked": false,
+      "translate": [0, 2, 15],
+      "rotate": [0, -1.63831, 0],
+      "scale": [3, 3, 3],
+      "components": [
+        {"type": "MeshRenderer", "enabled": true, "modelPath": "Resources/Models/cube/cube.obj", "texturePath": "", "shaderName": "Default", "color": [0.8,0.8,0.8,1], "uvTiling": [1,1], "uvOffset": [0,0], "reflectivity": 0, "useCubemap": true},
+        {"type": "Script", "enabled": true, "scripts": [{"path": "BossTestScript", "param": ""}]},
+        {"type": "Health", "enabled": true, "hp": 500, "maxHp": 500, "isDead": false},
+        {"type": "Tag", "enabled": true, "tag": "Enemy"},
+        {"type": "Hitbox", "enabled": true, "center": [0,2,2.5], "size": [4,4,4], "damage": 10, "isActive": false, "tag": "Enemy"},
+        {"type": "Hurtbox", "enabled": true, "center": [0,0,0], "size": [6,6,6], "damageMultiplier": 1, "tag": "Enemy"}
+      ]
+    },
+    {
+      "id": 55,
+      "parentId": 4294967295,
+      "name": "ControlText_7",
+      "locked": false,
+      "translate": [20, 365, 0],
+      "rotate": [0, 0, 0],
+      "scale": [1, 1, 1],
+      "components": [
+        {"type": "UIText", "enabled": true, "text": "マウス : 視点移動", "fontSize": 24, "fontPath": "C:\\Windows\\Fonts\\msgothic.ttc", "color": [0.4,1,0.4,1]}
+      ]
+    },
+    {
+      "id": 54,
+      "parentId": 4294967295,
+      "name": "ControlText_6",
+      "locked": false,
+      "translate": [20, 330, 0],
+      "rotate": [0, 0, 0],
+      "scale": [1, 1, 1],
+      "components": [
+        {"type": "UIText", "enabled": true, "text": "中クリック : ロックオン", "fontSize": 24, "fontPath": "C:\\Windows\\Fonts\\msgothic.ttc", "color": [0.4,1,0.4,1]}
+      ]
+    },
+    {
+      "id": 53,
+      "parentId": 4294967295,
+      "name": "ControlText_5",
+      "locked": false,
+      "translate": [20, 295, 0],
+      "rotate": [0, 0, 0],
+      "scale": [1, 1, 1],
+      "components": [
+        {"type": "UIText", "enabled": true, "text": "右クリック : パリィ", "fontSize": 24, "fontPath": "C:\\Windows\\Fonts\\msgothic.ttc", "color": [0.4,1,0.4,1]}
+      ]
+    },
+    {
+      "id": 52,
+      "parentId": 4294967295,
+      "name": "ControlText_4",
+      "locked": false,
+      "translate": [20, 260, 0],
+      "rotate": [0, 0, 0],
+      "scale": [1, 1, 1],
+      "components": [
+        {"type": "UIText", "enabled": true, "text": "左クリック : 攻撃(大剣は長押しで溜め)", "fontSize": 24, "fontPath": "C:\\Windows\\Fonts\\msgothic.ttc", "color": [0.4,1,0.4,1]}
+      ]
+    },
+    {
+      "id": 51,
+      "parentId": 4294967295,
+      "name": "ControlText_3",
+      "locked": false,
+      "translate": [20, 225, 0],
+      "rotate": [0, 0, 0],
+      "scale": [1, 1, 1],
+      "components": [
+        {"type": "UIText", "enabled": true, "text": "Shift : 回避", "fontSize": 24, "fontPath": "C:\\Windows\\Fonts\\msgothic.ttc", "color": [0.4,1,0.4,1]}
+      ]
+    },
+    {
+      "id": 50,
+      "parentId": 4294967295,
+      "name": "ControlText_2",
+      "locked": false,
+      "translate": [20, 190, 0],
+      "rotate": [0, 0, 0],
+      "scale": [1, 1, 1],
+      "components": [
+        {"type": "UIText", "enabled": true, "text": "Space : ジャンプ", "fontSize": 24, "fontPath": "C:\\Windows\\Fonts\\msgothic.ttc", "color": [0.4,1,0.4,1]}
+      ]
+    },
+    {
+      "id": 49,
+      "parentId": 4294967295,
+      "name": "ControlText_1",
+      "locked": false,
+      "translate": [20, 155, 0],
+      "rotate": [0, 0, 0],
+      "scale": [1, 1, 1],
+      "components": [
+        {"type": "UIText", "enabled": true, "text": "W, A, S, D : 移動", "fontSize": 24, "fontPath": "C:\\Windows\\Fonts\\msgothic.ttc", "color": [0.4,1,0.4,1]}
+      ]
+    },
+    {
+      "id": 48,
+      "parentId": 4294967295,
+      "name": "ControlText_0",
+      "locked": false,
+      "translate": [20, 120, 0],
+      "rotate": [0, 0, 0],
+      "scale": [1, 1, 1],
+      "components": [
+        {"type": "UIText", "enabled": true, "text": "【操作説明】", "fontSize": 28, "fontPath": "C:\\Windows\\Fonts\\msgothic.ttc", "color": [0.6,1,0.4,1]}
+      ]
+    },
+    {
+      "id": 47,
+      "parentId": 4294967295,
+      "name": "ControlText_4",
+      "locked": false,
+      "translate": [20, 260, 0],
+      "rotate": [0, 0, 0],
+      "scale": [1, 1, 1],
+      "components": [
+        {"type": "UIText", "enabled": true, "text": "左クリック : 攻撃(大剣は長押しで溜め)", "fontSize": 24, "fontPath": "C:\\Windows\\Fonts\\msgothic.ttc", "color": [0.4,1,0.4,1]}
+      ]
+    },
+    {
+      "id": 46,
+      "parentId": 4294967295,
+      "name": "ControlText_3",
+      "locked": false,
+      "translate": [20, 225, 0],
+      "rotate": [0, 0, 0],
+      "scale": [1, 1, 1],
+      "components": [
+        {"type": "UIText", "enabled": true, "text": "Shift : 回避", "fontSize": 24, "fontPath": "C:\\Windows\\Fonts\\msgothic.ttc", "color": [0.4,1,0.4,1]}
+      ]
+    },
+    {
+      "id": 45,
+      "parentId": 4294967295,
+      "name": "ControlText_2",
+      "locked": false,
+      "translate": [20, 190, 0],
+      "rotate": [0, 0, 0],
+      "scale": [1, 1, 1],
+      "components": [
+        {"type": "UIText", "enabled": true, "text": "Space : ジャンプ", "fontSize": 24, "fontPath": "C:\\Windows\\Fonts\\msgothic.ttc", "color": [0.4,1,0.4,1]}
+      ]
+    },
+    {
+      "id": 44,
+      "parentId": 4294967295,
+      "name": "ControlText_1",
+      "locked": false,
+      "translate": [20, 155, 0],
+      "rotate": [0, 0, 0],
+      "scale": [1, 1, 1],
+      "components": [
+        {"type": "UIText", "enabled": true, "text": "W, A, S, D : 移動", "fontSize": 24, "fontPath": "C:\\Windows\\Fonts\\msgothic.ttc", "color": [0.4,1,0.4,1]}
+      ]
+    },
+    {
+      "id": 43,
+      "parentId": 4294967295,
+      "name": "ControlText_0",
+      "locked": false,
+      "translate": [20, 120, 0],
+      "rotate": [0, 0, 0],
+      "scale": [1, 1, 1],
+      "components": [
+        {"type": "UIText", "enabled": true, "text": "【操作説明】", "fontSize": 28, "fontPath": "C:\\Windows\\Fonts\\msgothic.ttc", "color": [0.6,1,0.4,1]}
+      ]
+    },
+    {
+      "id": 42,
+      "parentId": 4294967295,
+      "name": "GameManager",
+      "locked": false,
+      "translate": [0, 0, 0],
+      "rotate": [0, 0, 0],
+      "scale": [1, 1, 1],
+      "components": [
+        {"type": "Script", "enabled": true, "scripts": [{"path": "GameManagerScript", "param": "{\"clearColor\":[1.0,0.800000011920929,0.20000000298023224,1.0],\"clearText\":\"STAGE CLEAR!\",\"clearTextScale\":3.0,\"defeatColor\":[1.0,0.10000000149011612,0.10000000149011612,1.0],\"defeatText\":\"YOU DIED\",\"retryText\":\"Press [ R ] to Retry\",\"textScale\":6.0}"}]}
+      ]
+    },
+    {
+      "id": 41,
+      "parentId": 4294967295,
+      "name": "ControlText_6",
+      "locked": false,
+      "translate": [20, 330, 0],
+      "rotate": [0, 0, 0],
+      "scale": [1, 1, 1],
+      "components": [
+        {"type": "UIText", "enabled": true, "text": "中クリック : ロックオン", "fontSize": 24, "fontPath": "C:\\Windows\\Fonts\\msgothic.ttc", "color": [0.4,1,0.4,1]}
+      ]
+    },
+    {
+      "id": 40,
+      "parentId": 4294967295,
+      "name": "ControlText_7",
+      "locked": false,
+      "translate": [20, 365, 0],
+      "rotate": [0, 0, 0],
+      "scale": [1, 1, 1],
+      "components": [
+        {"type": "UIText", "enabled": true, "text": "マウス : 視点移動", "fontSize": 24, "fontPath": "C:\\Windows\\Fonts\\msgothic.ttc", "color": [0.4,1,0.4,1]}
+      ]
+    },
+    {
+      "id": 39,
+      "parentId": 4294967295,
+      "name": "ControlText_6",
+      "locked": false,
+      "translate": [20, 330, 0],
+      "rotate": [0, 0, 0],
+      "scale": [1, 1, 1],
+      "components": [
+        {"type": "UIText", "enabled": true, "text": "中クリック : ロックオン", "fontSize": 24, "fontPath": "C:\\Windows\\Fonts\\msgothic.ttc", "color": [0.4,1,0.4,1]}
+      ]
+    },
+    {
+      "id": 38,
+      "parentId": 4294967295,
+      "name": "ControlText_5",
+      "locked": false,
+      "translate": [20, 295, 0],
+      "rotate": [0, 0, 0],
+      "scale": [1, 1, 1],
+      "components": [
+        {"type": "UIText", "enabled": true, "text": "右クリック : パリィ", "fontSize": 24, "fontPath": "C:\\Windows\\Fonts\\msgothic.ttc", "color": [0.4,1,0.4,1]}
+      ]
+    },
+    {
+      "id": 37,
+      "parentId": 4294967295,
+      "name": "ControlText_4",
+      "locked": false,
+      "translate": [20, 260, 0],
+      "rotate": [0, 0, 0],
+      "scale": [1, 1, 1],
+      "components": [
+        {"type": "UIText", "enabled": true, "text": "左クリック : 攻撃(大剣は長押しで溜め)", "fontSize": 24, "fontPath": "C:\\Windows\\Fonts\\msgothic.ttc", "color": [0.4,1,0.4,1]}
+      ]
+    },
+    {
+      "id": 36,
+      "parentId": 4294967295,
+      "name": "ControlText_3",
+      "locked": false,
+      "translate": [20, 225, 0],
+      "rotate": [0, 0, 0],
+      "scale": [1, 1, 1],
+      "components": [
+        {"type": "UIText", "enabled": true, "text": "Shift : 回避", "fontSize": 24, "fontPath": "C:\\Windows\\Fonts\\msgothic.ttc", "color": [0.4,1,0.4,1]}
+      ]
+    },
+    {
+      "id": 35,
+      "parentId": 4294967295,
+      "name": "ControlText_2",
+      "locked": false,
+      "translate": [20, 190, 0],
+      "rotate": [0, 0, 0],
+      "scale": [1, 1, 1],
+      "components": [
+        {"type": "UIText", "enabled": true, "text": "Space : ジャンプ", "fontSize": 24, "fontPath": "C:\\Windows\\Fonts\\msgothic.ttc", "color": [0.4,1,0.4,1]}
+      ]
+    },
+    {
+      "id": 34,
+      "parentId": 4294967295,
+      "name": "ControlText_1",
+      "locked": false,
+      "translate": [20, 155, 0],
+      "rotate": [0, 0, 0],
+      "scale": [1, 1, 1],
+      "components": [
+        {"type": "UIText", "enabled": true, "text": "W, A, S, D : 移動", "fontSize": 24, "fontPath": "C:\\Windows\\Fonts\\msgothic.ttc", "color": [0.4,1,0.4,1]}
+      ]
+    },
+    {
+      "id": 33,
+      "parentId": 4294967295,
+      "name": "ControlText_0",
+      "locked": false,
+      "translate": [20, 120, 0],
+      "rotate": [0, 0, 0],
+      "scale": [1, 1, 1],
+      "components": [
+        {"type": "UIText", "enabled": true, "text": "【操作説明】", "fontSize": 28, "fontPath": "C:\\Windows\\Fonts\\msgothic.ttc", "color": [0.6,1,0.4,1]}
+      ]
+    },
+    {
+      "id": 32,
+      "parentId": 4294967295,
+      "name": "ControlText_7",
+      "locked": false,
+      "translate": [20, 365, 0],
+      "rotate": [0, 0, 0],
+      "scale": [1, 1, 1],
+      "components": [
+        {"type": "UIText", "enabled": true, "text": "マウス : 視点移動", "fontSize": 24, "fontPath": "C:\\Windows\\Fonts\\msgothic.ttc", "color": [0.4,1,0.4,1]}
+      ]
+    },
+    {
+      "id": 31,
+      "parentId": 4294967295,
+      "name": "ControlText_6",
+      "locked": false,
+      "translate": [20, 330, 0],
+      "rotate": [0, 0, 0],
+      "scale": [1, 1, 1],
+      "components": [
+        {"type": "UIText", "enabled": true, "text": "中クリック : ロックオン", "fontSize": 24, "fontPath": "C:\\Windows\\Fonts\\msgothic.ttc", "color": [0.4,1,0.4,1]}
+      ]
+    },
+    {
+      "id": 30,
+      "parentId": 4294967295,
+      "name": "ControlText_5",
+      "locked": false,
+      "translate": [20, 295, 0],
+      "rotate": [0, 0, 0],
+      "scale": [1, 1, 1],
+      "components": [
+        {"type": "UIText", "enabled": true, "text": "右クリック : パリィ", "fontSize": 24, "fontPath": "C:\\Windows\\Fonts\\msgothic.ttc", "color": [0.4,1,0.4,1]}
+      ]
+    },
+    {
+      "id": 29,
+      "parentId": 4294967295,
+      "name": "ControlText_4",
+      "locked": false,
+      "translate": [20, 260, 0],
+      "rotate": [0, 0, 0],
+      "scale": [1, 1, 1],
+      "components": [
+        {"type": "UIText", "enabled": true, "text": "左クリック : 攻撃(大剣は長押しで溜め)", "fontSize": 24, "fontPath": "C:\\Windows\\Fonts\\msgothic.ttc", "color": [0.4,1,0.4,1]}
+      ]
+    },
+    {
+      "id": 28,
+      "parentId": 4294967295,
+      "name": "ControlText_3",
+      "locked": false,
+      "translate": [20, 225, 0],
+      "rotate": [0, 0, 0],
+      "scale": [1, 1, 1],
+      "components": [
+        {"type": "UIText", "enabled": true, "text": "Shift : 回避", "fontSize": 24, "fontPath": "C:\\Windows\\Fonts\\msgothic.ttc", "color": [0.4,1,0.4,1]}
+      ]
+    },
+    {
+      "id": 27,
+      "parentId": 4294967295,
+      "name": "ControlText_2",
+      "locked": false,
+      "translate": [20, 190, 0],
+      "rotate": [0, 0, 0],
+      "scale": [1, 1, 1],
+      "components": [
+        {"type": "UIText", "enabled": true, "text": "Space : ジャンプ", "fontSize": 24, "fontPath": "C:\\Windows\\Fonts\\msgothic.ttc", "color": [0.4,1,0.4,1]}
+      ]
+    },
+    {
+      "id": 26,
+      "parentId": 4294967295,
+      "name": "ControlText_1",
+      "locked": false,
+      "translate": [20, 155, 0],
+      "rotate": [0, 0, 0],
+      "scale": [1, 1, 1],
+      "components": [
+        {"type": "UIText", "enabled": true, "text": "W, A, S, D : 移動", "fontSize": 24, "fontPath": "C:\\Windows\\Fonts\\msgothic.ttc", "color": [0.4,1,0.4,1]}
+      ]
+    },
+    {
+      "id": 25,
+      "parentId": 4294967295,
+      "name": "ControlText_0",
+      "locked": false,
+      "translate": [20, 120, 0],
+      "rotate": [0, 0, 0],
+      "scale": [1, 1, 1],
+      "components": [
+        {"type": "UIText", "enabled": true, "text": "【操作説明】", "fontSize": 28, "fontPath": "C:\\Windows\\Fonts\\msgothic.ttc", "color": [0.6,1,0.4,1]}
+      ]
+    },
+    {
+      "id": 24,
+      "parentId": 4294967295,
+      "name": "Player",
+      "locked": false,
+      "translate": [-29.838, 0.375948, 16.7807],
+      "rotate": [0, 0.16144, 0],
+      "scale": [1.2481, 0.751897, 1.2481],
+      "components": [
+        {"type": "MeshRenderer", "enabled": false, "modelPath": "Resources/Models/player_ball/ball.obj", "texturePath": "", "shaderName": "Slime", "color": [0.4,0.8,0.1,0.8], "uvTiling": [1,1], "uvOffset": [0,0], "reflectivity": 1, "useCubemap": true},
+        {"type": "BoxCollider", "enabled": true, "center": [0,0,0], "size": [1.5,1.5,1.5], "isTrigger": false},
+        {"type": "Rigidbody", "enabled": true, "velocity": [0,0,0], "useGravity": true, "isKinematic": true},
+        {"type": "Health", "enabled": true, "hp": 100, "maxHp": 100, "isDead": false},
+        {"type": "Tag", "enabled": true, "tag": "Player"},
+        {"type": "PlayerInput", "enabled": true},
+        {"type": "CharacterMovement", "enabled": true, "speed": 8, "jumpPower": 10, "gravity": 9.8, "heightOffset": 0.375948},
+        {"type": "CameraTarget", "enabled": true, "distance": 12, "height": 2.5, "smoothSpeed": 8},
+        {"type": "Hitbox", "enabled": true, "center": [0,0,0], "size": [1.5,1.5,4], "damage": 15, "isActive": false, "tag": "Player"},
+        {"type": "Hurtbox", "enabled": true, "center": [0,0,0], "size": [2,2,2], "damageMultiplier": 1, "tag": "Player"},
+        {"type": "PlayerAction", "enabled": true, "dodgeDuration": 0.4, "dodgeSpeed": 15}
+      ]
+    },
+    {
+      "id": 23,
+      "parentId": 4294967295,
+      "name": "CrystalForest_Sky",
+      "locked": false,
+      "translate": [0, 0, 0],
+      "rotate": [0, 0, 0],
+      "scale": [10, 10, 10],
+      "components": [
+        {"type": "MeshRenderer", "enabled": true, "modelPath": "Resources/Models/Stages/map/CrystalForest_01_Sky.glb", "texturePath": "", "shaderName": "Default", "color": [1,1,1,1], "uvTiling": [1,1], "uvOffset": [0,0], "reflectivity": 0, "useCubemap": true}
+      ]
+    },
+    {
+      "id": 22,
+      "parentId": 4294967295,
+      "name": "CrystalForest_Main",
+      "locked": true,
+      "translate": [0, 0, 0],
+      "rotate": [0, 0, 0],
+      "scale": [10, 10, 10],
+      "components": [
+        {"type": "MeshRenderer", "enabled": true, "modelPath": "Resources/Models/Stages/map/CrystalForest_02_Main.glb", "texturePath": "", "shaderName": "Default", "color": [1,1,1,1], "uvTiling": [1,1], "uvOffset": [0,0], "reflectivity": 0, "useCubemap": true},
+        {"type": "GpuMeshCollider", "enabled": true, "meshPath": "Resources/Models/Stages/map/CrystalForest_02_Main.glb", "isTrigger": false}
+      ]
+    },
+    {
+      "id": 21,
+      "parentId": 4294967295,
+      "name": "Sun",
+      "locked": false,
+      "translate": [0, 10, 0],
+      "rotate": [0.785398, 0.523599, 0],
+      "scale": [1, 1, 1],
+      "components": [
+        {"type": "DirectionalLight", "enabled": true, "color": [1,1,1], "intensity": 1}
+      ]
+    },
+    {
+      "id": 20,
+      "parentId": 4294967295,
+      "name": "ControlText_7",
+      "locked": false,
+      "translate": [20, 365, 0],
+      "rotate": [0, 0, 0],
+      "scale": [1, 1, 1],
+      "components": [
+        {"type": "UIText", "enabled": true, "text": "マウス : 視点移動", "fontSize": 24, "fontPath": "C:\\Windows\\Fonts\\msgothic.ttc", "color": [0.4,1,0.4,1]}
+      ]
+    },
+    {
+      "id": 19,
+      "parentId": 4294967295,
+      "name": "Empty",
+      "locked": false,
+      "translate": [-38.1818, 14.1396, -19.6217],
+      "rotate": [0, 0.21692, 0],
+      "scale": [1, 1, 1],
+      "components": [
+        {"type": "FluidEmitter", "enabled": true, "emitCountPerFrame": 40, "color": [0.2,0.8,1,1], "velocity": [0,-5,0], "fluidType": 1}
+      ]
+    },
+    {
+      "id": 18,
+      "parentId": 4294967295,
+      "name": "Cube",
+      "locked": false,
+      "translate": [-41.0098, 8.94795, -24.1688],
+      "rotate": [0, 0, 0],
+      "scale": [6, 1, 6],
+      "components": [
+        {"type": "MeshRenderer", "enabled": true, "modelPath": "Resources/Models/cube/cube.obj", "texturePath": "Resources/Textures/white1x1.png", "shaderName": "Default", "color": [1,1,1,1], "uvTiling": [1,1], "uvOffset": [0,0], "reflectivity": 0, "useCubemap": true},
+        {"type": "BoxCollider", "enabled": true, "center": [0,0,0], "size": [2,2,2], "isTrigger": false},
+        {"type": "Hitbox", "enabled": true, "center": [0,0,0], "size": [2,2,2], "damage": 10, "isActive": false, "tag": "Default"}
+      ]
+    },
+    {
+      "id": 17,
+      "parentId": 4294967295,
+      "name": "ControlText_0",
+      "locked": false,
+      "translate": [20, 120, 0],
+      "rotate": [0, 0, 0],
+      "scale": [1, 1, 1],
+      "components": [
+        {"type": "UIText", "enabled": true, "text": "【操作説明】", "fontSize": 28, "fontPath": "C:\\Windows\\Fonts\\msgothic.ttc", "color": [0.6,1,0.4,1]}
+      ]
+    },
+    {
+      "id": 16,
+      "parentId": 4294967295,
+      "name": "ControlText_1",
+      "locked": false,
+      "translate": [20, 155, 0],
+      "rotate": [0, 0, 0],
+      "scale": [1, 1, 1],
+      "components": [
+        {"type": "UIText", "enabled": true, "text": "W, A, S, D : 移動", "fontSize": 24, "fontPath": "C:\\Windows\\Fonts\\msgothic.ttc", "color": [0.4,1,0.4,1]}
+      ]
+    },
+    {
+      "id": 15,
+      "parentId": 4294967295,
+      "name": "ControlText_2",
+      "locked": false,
+      "translate": [20, 190, 0],
+      "rotate": [0, 0, 0],
+      "scale": [1, 1, 1],
+      "components": [
+        {"type": "UIText", "enabled": true, "text": "Space : ジャンプ", "fontSize": 24, "fontPath": "C:\\Windows\\Fonts\\msgothic.ttc", "color": [0.4,1,0.4,1]}
+      ]
+    },
+    {
+      "id": 14,
+      "parentId": 4294967295,
+      "name": "ControlText_3",
+      "locked": false,
+      "translate": [20, 225, 0],
+      "rotate": [0, 0, 0],
+      "scale": [1, 1, 1],
+      "components": [
+        {"type": "UIText", "enabled": true, "text": "Shift : 回避", "fontSize": 24, "fontPath": "C:\\Windows\\Fonts\\msgothic.ttc", "color": [0.4,1,0.4,1]}
+      ]
+    },
+    {
+      "id": 13,
+      "parentId": 4294967295,
+      "name": "ControlText_4",
+      "locked": false,
+      "translate": [20, 260, 0],
+      "rotate": [0, 0, 0],
+      "scale": [1, 1, 1],
+      "components": [
+        {"type": "UIText", "enabled": true, "text": "左クリック : 攻撃(大剣は長押しで溜め)", "fontSize": 24, "fontPath": "C:\\Windows\\Fonts\\msgothic.ttc", "color": [0.4,1,0.4,1]}
+      ]
+    },
+    {
+      "id": 12,
+      "parentId": 4294967295,
+      "name": "ControlText_5",
+      "locked": false,
+      "translate": [20, 295, 0],
+      "rotate": [0, 0, 0],
+      "scale": [1, 1, 1],
+      "components": [
+        {"type": "UIText", "enabled": true, "text": "右クリック : パリィ", "fontSize": 24, "fontPath": "C:\\Windows\\Fonts\\msgothic.ttc", "color": [0.4,1,0.4,1]}
+      ]
+    },
+    {
+      "id": 11,
+      "parentId": 4294967295,
+      "name": "ControlText_6",
+      "locked": false,
+      "translate": [20, 330, 0],
+      "rotate": [0, 0, 0],
+      "scale": [1, 1, 1],
+      "components": [
+        {"type": "UIText", "enabled": true, "text": "中クリック : ロックオン", "fontSize": 24, "fontPath": "C:\\Windows\\Fonts\\msgothic.ttc", "color": [0.4,1,0.4,1]}
+      ]
+    },
+    {
+      "id": 10,
+      "parentId": 4294967295,
+      "name": "ControlText_7",
+      "locked": false,
+      "translate": [20, 365, 0],
+      "rotate": [0, 0, 0],
+      "scale": [1, 1, 1],
+      "components": [
+        {"type": "UIText", "enabled": true, "text": "マウス : 視点移動", "fontSize": 24, "fontPath": "C:\\Windows\\Fonts\\msgothic.ttc", "color": [0.4,1,0.4,1]}
+      ]
+    },
+    {
+      "id": 9,
+      "parentId": 4294967295,
+      "name": "ControlText_5",
+      "locked": false,
+      "translate": [20, 295, 0],
+      "rotate": [0, 0, 0],
+      "scale": [1, 1, 1],
+      "components": [
+        {"type": "UIText", "enabled": true, "text": "右クリック : パリィ", "fontSize": 24, "fontPath": "C:\\Windows\\Fonts\\msgothic.ttc", "color": [0.4,1,0.4,1]}
+      ]
+    },
+    {
+      "id": 8,
+      "parentId": 4294967295,
+      "name": "ControlText_0",
+      "locked": false,
+      "translate": [20, 120, 0],
+      "rotate": [0, 0, 0],
+      "scale": [1, 1, 1],
+      "components": [
+        {"type": "UIText", "enabled": true, "text": "【操作説明】", "fontSize": 28, "fontPath": "C:\\Windows\\Fonts\\msgothic.ttc", "color": [0.6,1,0.4,1]}
+      ]
+    },
+    {
+      "id": 7,
+      "parentId": 4294967295,
+      "name": "ControlText_1",
+      "locked": false,
+      "translate": [20, 155, 0],
+      "rotate": [0, 0, 0],
+      "scale": [1, 1, 1],
+      "components": [
+        {"type": "UIText", "enabled": true, "text": "W, A, S, D : 移動", "fontSize": 24, "fontPath": "C:\\Windows\\Fonts\\msgothic.ttc", "color": [0.4,1,0.4,1]}
+      ]
+    },
+    {
+      "id": 6,
+      "parentId": 4294967295,
+      "name": "ControlText_2",
+      "locked": false,
+      "translate": [20, 190, 0],
+      "rotate": [0, 0, 0],
+      "scale": [1, 1, 1],
+      "components": [
+        {"type": "UIText", "enabled": true, "text": "Space : ジャンプ", "fontSize": 24, "fontPath": "C:\\Windows\\Fonts\\msgothic.ttc", "color": [0.4,1,0.4,1]}
+      ]
+    },
+    {
+      "id": 5,
+      "parentId": 4294967295,
+      "name": "ControlText_3",
+      "locked": false,
+      "translate": [20, 225, 0],
+      "rotate": [0, 0, 0],
+      "scale": [1, 1, 1],
+      "components": [
+        {"type": "UIText", "enabled": true, "text": "Shift : 回避", "fontSize": 24, "fontPath": "C:\\Windows\\Fonts\\msgothic.ttc", "color": [0.4,1,0.4,1]}
+      ]
+    },
+    {
+      "id": 4,
+      "parentId": 4294967295,
+      "name": "ControlText_4",
+      "locked": false,
+      "translate": [20, 260, 0],
+      "rotate": [0, 0, 0],
+      "scale": [1, 1, 1],
+      "components": [
+        {"type": "UIText", "enabled": true, "text": "左クリック : 攻撃(大剣は長押しで溜め)", "fontSize": 24, "fontPath": "C:\\Windows\\Fonts\\msgothic.ttc", "color": [0.4,1,0.4,1]}
+      ]
+    },
+    {
+      "id": 3,
+      "parentId": 4294967295,
+      "name": "ControlText_5",
+      "locked": false,
+      "translate": [20, 295, 0],
+      "rotate": [0, 0, 0],
+      "scale": [1, 1, 1],
+      "components": [
+        {"type": "UIText", "enabled": true, "text": "右クリック : パリィ", "fontSize": 24, "fontPath": "C:\\Windows\\Fonts\\msgothic.ttc", "color": [0.4,1,0.4,1]}
+      ]
+    },
+    {
+      "id": 2,
+      "parentId": 4294967295,
+      "name": "ControlText_6",
+      "locked": false,
+      "translate": [20, 330, 0],
+      "rotate": [0, 0, 0],
+      "scale": [1, 1, 1],
+      "components": [
+        {"type": "UIText", "enabled": true, "text": "中クリック : ロックオン", "fontSize": 24, "fontPath": "C:\\Windows\\Fonts\\msgothic.ttc", "color": [0.4,1,0.4,1]}
+      ]
+    },
+    {
+      "id": 1,
+      "parentId": 4294967295,
+      "name": "ControlText_7",
+      "locked": false,
+      "translate": [20, 365, 0],
+      "rotate": [0, 0, 0],
+      "scale": [1, 1, 1],
+      "components": [
+        {"type": "UIText", "enabled": true, "text": "マウス : 視点移動", "fontSize": 24, "fontPath": "C:\\Windows\\Fonts\\msgothic.ttc", "color": [0.4,1,0.4,1]}
+      ]
+    },
+    {
+      "id": 0,
+      "parentId": 4294967295,
+      "name": "Boss",
+      "locked": false,
+      "translate": [0, 2, 15],
+      "rotate": [0, -1.74476, 0],
+      "scale": [3, 3, 3],
+      "components": [
+        {"type": "MeshRenderer", "enabled": true, "modelPath": "Resources/Models/cube/cube.obj", "texturePath": "", "shaderName": "Default", "color": [0.8,0.8,0.8,1], "uvTiling": [1,1], "uvOffset": [0,0], "reflectivity": 0, "useCubemap": true},
+        {"type": "Script", "enabled": true, "scripts": [{"path": "BossTestScript", "param": ""}]},
+        {"type": "Health", "enabled": true, "hp": 500, "maxHp": 500, "isDead": false},
+        {"type": "Tag", "enabled": true, "tag": "Enemy"},
+        {"type": "Hitbox", "enabled": true, "center": [0,2,2.5], "size": [4,4,4], "damage": 10, "isActive": false, "tag": "Enemy"},
+        {"type": "Hurtbox", "enabled": true, "center": [0,0,0], "size": [6,6,6], "damageMultiplier": 1, "tag": "Enemy"}
+      ]
+    }
+  ]
+}

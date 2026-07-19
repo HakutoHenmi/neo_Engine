@@ -44,6 +44,10 @@ public:
 	bool GetIsPlaying() const { return isPlaying_; }
 	bool IsPlaying() const { return isPlaying_; } // Alias for backward compatibility
 	void SetIsPlaying(bool play);
+
+	void CreatePauseMenu();  // ★追加
+	void DestroyPauseMenu(); // ★追加
+
 	Engine::Renderer* GetRenderer() const { return renderer_; }
 	Engine::Matrix4x4 GetWorldMatrix(int index) const; 
 	Engine::Matrix4x4 GetWorldMatrixRecursive(entt::entity entity, int depth) const;
@@ -102,6 +106,7 @@ private:
     entt::entity selectedEntity_ = entt::null;
 
     bool isPlaying_ = false;
+    bool isPaused_ = false; // ★追加: ポーズ状態
     entt::registry pendingSpawns_;
     std::vector<entt::entity> pendingDestroys_;
     std::mutex spawnMutex_; // ★追加: マルチスレッドから安全にスポーン・破棄登録を行えるようにする
@@ -123,6 +128,10 @@ private:
 
 	std::string sceneSnapshot_; // ★追加: Play開始時のシリアライズ文字列
 	std::string initialSceneSnapshot_; // ★追加: 起動（JSONロード）直後の状態
+
+	// Editor camera state
+	DirectX::XMFLOAT3 editorCameraPos_{0, 2, -5};
+	DirectX::XMFLOAT3 editorCameraRot_{0.2f, 0, 0};
 
     // ★ ECS風Systemリスト
     std::vector<std::unique_ptr<ISystem>> systems_;

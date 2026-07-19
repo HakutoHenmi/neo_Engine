@@ -584,7 +584,7 @@ private:
     Microsoft::WRL::ComPtr<ID3D12Resource> cbRenderUploadBuffer_;
     FluidRenderConstants* cbRenderMapped_ = nullptr;
 
-    uint32_t numParticles_ = 6144; // 数を増やして粒を細かくする。探索半径を狭めることで重さは回避する
+    uint32_t numParticles_ = 2048; // ★修正: O(N^2)の重い計算を避けるためパーティクル数を削減（6144 -> 2048）
     bool isInitialized_ = false;
     bool firstFrame_ = true;
     bool resetRequested_ = false;

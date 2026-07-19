@@ -90,61 +90,61 @@ float bubbles3D(float3 wPos, float time) {
     return res;
 }
 
-// ---------------------------------------------------------
-// ブラー関数（強力なガウシアン）
-// ---------------------------------------------------------
-float4 GetBlurredColor(Texture2D<float4> texObj, SamplerState smpObj, float2 uv, float2 texelSize, float spread) {
-    float4 c = float4(0, 0, 0, 0);
-    float wSum = 0.0;
-    // 9x9 で極めて強力にブラーをかける（凸凹を完全に溶かして滑らかにする）
-    for(int y = -4; y <= 4; ++y) {
-        for(int x = -4; x <= 4; ++x) {
-            float w = exp(-float(x * x + y * y) / 10.0);
-            c += texObj.SampleLevel(smpObj, uv + float2(x, y) * texelSize * spread, 0) * w;
-            wSum += w;
-        }
-    }
-    return c / wSum;
-}
-
 float4 main(PSIn input) : SV_TARGET
 {
     float w, h;
     depthTex.GetDimensions(w, h);
     float2 texelSize = float2(1.0 / w, 1.0 / h);
 
-    // アウトラインと表面全体のギザギザを完全になくすため、中心色もブラーをかけたものを使う
-    // ★サンプリングの飛ばしすぎによるドット化（ブロック状のジャギー）を防ぐため、spread は 1.5 に抑えます
-    float4 color = GetBlurredColor(tex, smp, input.uv, texelSize, 1.5);
+    float4 color = float4(0, 0, 0, 0);
+    float dx_analytic = 0.0;
+    float dy_analytic = 0.0;
+    float wSum = 0.0;
+    float spread = 3.5;
+
+    // ★究極の最適化: 色のブラーと法線（勾配）の計算を1つのループ(25回)で同時に行う
+    // ガウシアン関数の微分を解析的に計算することで、追加の100回のテクスチャサンプリングを完全に排除します。
+    for(int y = -2; y <= 2; ++y) {
+        for(int x = -2; x <= 2; ++x) {
+            float w = exp(-float(x * x + y * y) / 4.0);
+            float4 samp = tex.SampleLevel(smp, input.uv + float2(x, y) * texelSize * spread, 0);
+            
+            color += samp * w;
+            wSum += w;
+            
+            // 解析的勾配 (Analytical Gradient)
+            // ガウス関数 W(x) = exp(-x^2 / 2σ^2) の微分は -x/σ^2 * W(x)
+            // 今回は 2σ^2 = 4.0 なので σ^2 = 2.0
+            dx_analytic += (float(x) / 2.0) * w * samp.a;
+            dy_analytic += (float(y) / 2.0) * w * samp.a;
+        }
+    }
+    color /= wSum;
+    dx_analytic /= wSum;
+    dy_analytic /= wSum;
     
-    // 完全に透明なら破棄
-    if (color.a < 0.001) {
+    // アルファブレンド済み色から本来の平均色を逆算
+    float3 avgColor = color.rgb / max(color.a, 0.0001);
+    
+    // 青系（水）か緑系（スライム）かを判定
+    float isWaterThreshold = smoothstep(0.0, 0.2, avgColor.b - avgColor.g);
+    
+    // 水の場合は閾値を高くし、単独で飛んでいる極小の粒（アルファが低い）を強制的に消去する
+    // スライムは今まで通り 0.08
+    float threshold = lerp(0.08, 0.25, isWaterThreshold);
+    
+    // 完全に透明、または閾値以下の「はぐれた水滴」はピクセルシェーダーを打ち切って完全に非表示にする
+    if (color.a < threshold) {
         discard;
     }
 
-    // ★重要: パーティクルとアウトラインの間の「透明な空間」を無くすため、
-    // 閾値を引き上げることで、枠がパーティクルの中心（矢印）にさらに密着します。
-    // スプラッシュ(0.1)がギリギリ消えない 0.08 に設定します。
-    float threshold = 0.08;
-
-    // 滑らかさを保ちつつ、透明な枠を極限まで薄く（細く）するためのシャープなグラデーション幅
+    // 境界を滑らかにフェードさせる
     float alphaEdge = smoothstep(threshold, threshold + 0.03, color.a);
     
-    // 周辺のアルファ（密度）をサンプリングして、滑らかな勾配を計算する
-    // ★斜めから見たときの法線のギザギザ（ジャギー）を完全に解消するため、
-    // 法線計算用のサンプリングも「ブラーがかかった滑らかなアルファ」を使用する！
-    float2 offX_a = float2(texelSize.x * 4.0, 0.0);
-    float2 offY_a = float2(0.0, texelSize.y * 4.0);
-    
-    // サンプリング間隔を広げすぎると斜めから見たときに破綻するため、適度な距離(4.0)に戻す
-    float a1 = GetBlurredColor(tex, smp, input.uv + offX_a, texelSize, 1.5).a; // Right
-    float a2 = GetBlurredColor(tex, smp, input.uv - offX_a, texelSize, 1.5).a; // Left
-    float a3 = GetBlurredColor(tex, smp, input.uv + offY_a, texelSize, 1.5).a; // Bottom
-    float a4 = GetBlurredColor(tex, smp, input.uv - offY_a, texelSize, 1.5).a; // Top
-    
     // 勾配ベクトルの計算
-    float dx = (a2 - a1);
-    float dy = (a3 - a4);
+    // 解析的勾配のスケールを下げ、斜め視点での法線の乱れ（ギザギザ）を抑える
+    float dx = -dx_analytic * 8.0;
+    float dy = -dy_analytic * 8.0;
     
     // 【球面法線の正確な復元】
     // スライムの表面を「完璧なドーム状（半球）」にするため、勾配からXY成分を作り、
@@ -165,9 +165,9 @@ float4 main(PSIn input) : SV_TARGET
     // 深度バッファは背景の箱や床の段差を拾って破綻するため使用しません。
     // 代わりに、中心の平坦な領域でも「はるか遠くのフチ」をサンプリングすることで、
     // 自分がスライムのどの位置にいるか（大局的な丸み）を確実に推定します。
-    // ★斜めから見たときに距離が遠すぎると背景を拾ってギザギザになるため、20.0 -> 12.0 に縮小します
-    float2 offX_far = float2(texelSize.x * 12.0, 0.0);
-    float2 offY_far = float2(0.0, texelSize.y * 12.0);
+    // ★斜め視点でのY軸の潰れによる背景拾い（ギザギザ）を完全に防ぐため、4.0まで縮小
+    float2 offX_far = float2(texelSize.x * 4.0, 0.0);
+    float2 offY_far = float2(0.0, texelSize.y * 4.0);
     float aRight = tex.SampleLevel(smp, input.uv + offX_far, 0).a;
     float aLeft  = tex.SampleLevel(smp, input.uv - offX_far, 0).a;
     float aBottom = tex.SampleLevel(smp, input.uv + offY_far, 0).a;
@@ -196,9 +196,10 @@ float4 main(PSIn input) : SV_TARGET
     // --- 表面の波のディテール（揺らぎ） ---
     // 時間とUV座標を利用して法線を少し歪ませる
     float time = gTime * 2.0;
-    // 波の強さを抑える（強すぎると光の反射が潰れてしまうため）
-    float waveX = sin(input.uv.x * 30.0 + time) * cos(input.uv.y * 20.0 - time) * 0.015;
-    float waveY = cos(input.uv.x * 25.0 - time) * sin(input.uv.y * 35.0 + time) * 0.015;
+    // フチのギザギザや輝度ノイズを防ぐため、フチ(color.a < 0.5)では波を無効化し、全体の波強度も0.02に抑える
+    float waveIntensity = smoothstep(0.3, 0.8, color.a) * 0.02;
+    float waveX = sin(input.uv.x * 40.0 + time * 1.5) * cos(input.uv.y * 30.0 - time) * waveIntensity;
+    float waveY = cos(input.uv.x * 35.0 - time) * sin(input.uv.y * 45.0 + time * 1.5) * waveIntensity;
     normal = normalize(normal + float3(waveX, waveY, 0.0));
 
     // --- ライティングと反射の計算 ---
@@ -216,14 +217,14 @@ float4 main(PSIn input) : SV_TARGET
     // スペキュラ（ハイライト） - 太陽や強い光源の反射
     float3 halfVector = normalize(lightDir + viewDir);
     float NdotH = max(dot(normal, halfVector), 0.0);
-    // 内側が白飛びしないよう、ハイライトをさらにシャープ（鋭く）にして水滴感を出します
-    float specularSoft = pow(NdotH, 64.0) * 0.8;
-    float specularHard = pow(NdotH, 256.0) * 2.0; 
+    // 水面らしさを出すため、ハイライトをさらに鋭く・強烈に光らせる
+    float specularSoft = pow(NdotH, 64.0) * 1.2;
+    float specularHard = pow(NdotH, 256.0) * 4.0; 
     float3 specColor = float3(1.0, 1.0, 1.0) * (specularSoft + specularHard);
     
     // 環境反射 (疑似Skybox) 
     // 入力カラー(avgColor)ベースで動的に環境光を生成し、水とスライムで別々の反射色にする
-    float3 avgColor = color.rgb / max(color.a, 0.0001);
+    // (avgColor は上部ですでに計算済み)
     float skyFactor = smoothstep(0.0, 1.0, normal.y); // 上を向いている部分だけ空を反射
     float3 skyColor = saturate(avgColor * 1.2 + float3(0.02, 0.02, 0.02));     // 空色
     float3 groundColor = saturate(avgColor * 0.5);  // 地面色
@@ -239,8 +240,9 @@ float4 main(PSIn input) : SV_TARGET
     float apparentThickness = NdotV;
     
     // avgColor から動的に縁と中央の色を作る
-    float3 shallowColor = saturate(avgColor * 1.25); // 縁の明るい色
-    float3 deepColor = saturate(avgColor * 0.625);   // 中央の濃い色
+    // 水の透明感を出すため、ベースカラー全体を明るくする
+    float3 shallowColor = saturate(avgColor * 1.5); // 縁の明るい色
+    float3 deepColor = saturate(avgColor * 0.8);   // 中央の濃い色
     float3 waterBaseColor = lerp(shallowColor, deepColor, apparentThickness);
     
     // --- 奥行きと水感を出すパターン（コースティクスと気泡） ---
@@ -266,8 +268,11 @@ float4 main(PSIn input) : SV_TARGET
     float bubblePattern = bubbles3D(worldPos, time * 0.8);
     float3 bubbleColor = saturate(avgColor * 2.0) * bubblePattern * 1.5;
     
-    // ベースカラーに水感のディテールを合成
-    waterBaseColor += causticColor * apparentThickness;
+    // 青系の色（水）の場合にのみ、波紋や泡を強く発生させる判定
+    float isWater = smoothstep(0.0, 0.2, avgColor.b - avgColor.g); 
+
+    // ベースカラーに水感のディテールを合成 (コースティクス模様は水のみに適用し、スライム表面の波波模様を防ぐ)
+    waterBaseColor += causticColor * apparentThickness * isWater;
     waterBaseColor += bubbleColor * apparentThickness;
     
     // 内部発光 (Subsurface Scattering っぽさ)
@@ -275,7 +280,21 @@ float4 main(PSIn input) : SV_TARGET
     float backLight = pow(max(dot(viewDir, -lightDir), 0.0), 2.0);
     float3 sssColor = shallowColor * backLight * (1.0 - apparentThickness) * 1.0;
     
+    // --- 白波（フォーム）の追加 --- 
+    
+    // フチの白波（閾値に近い薄い部分）
+    float edgeFoam = 1.0 - smoothstep(threshold, threshold + 0.15, color.a);
+    // 波の頂点の白波（法線が上を向いていない＝波立っている部分）
+    float waveFoam = smoothstep(0.9, 1.0, 1.0 - abs(normal.z));
+    
+    float totalFoam = saturate(edgeFoam * 0.8 + waveFoam * 1.5) * isWater;
+    
+    // フォーム部分を白く発光させる
+    waterBaseColor = lerp(waterBaseColor, float3(1.2, 1.3, 1.5), totalFoam);
+    
     float3 scatterColor = waterBaseColor * (NdotL * 0.4 + 0.6) + sssColor;
+    // フォーム部分はハイライトも乱反射して白くなる
+    scatterColor += float3(1.0, 1.0, 1.0) * totalFoam * 0.5;
     
     // --- 通常のアルファブレンド合成 ---
     // カメラに向いている（中央・深い）ほど透明で、フチに向かうほど不透明になる表現

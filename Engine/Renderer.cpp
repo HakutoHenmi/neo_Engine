@@ -4090,9 +4090,14 @@ void Renderer::EndLiquidPass() {
 }
 // ★追加: GPU流体パーティクルシステム
 void Renderer::InitGPUFluid() {
-	CD3DX12_ROOT_PARAMETER computeParams[2]{};
-	computeParams[0].InitAsConstants(32, 0); 
-	computeParams[1].InitAsUnorderedAccessView(0); 
+	CD3DX12_ROOT_PARAMETER computeParams[7]{};
+	computeParams[0].InitAsConstants(34, 0); 
+	computeParams[1].InitAsUnorderedAccessView(0); // u0 (Particles)
+	computeParams[2].InitAsUnorderedAccessView(1); // u1 (GridCount)
+	computeParams[3].InitAsUnorderedAccessView(2); // u2 (GridOffset)
+	computeParams[4].InitAsUnorderedAccessView(3); // u3 (SortedParticles)
+	computeParams[5].InitAsUnorderedAccessView(4); // u4 (OriginalIndices)
+	computeParams[6].InitAsShaderResourceView(0);  // t0 (AABBs)
 
 	CD3DX12_ROOT_SIGNATURE_DESC rsDescCompute;
 	rsDescCompute.Init(_countof(computeParams), computeParams, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_NONE);
@@ -4102,21 +4107,49 @@ void Renderer::InitGPUFluid() {
 	dev_->CreateRootSignature(0, sigCompute->GetBufferPointer(), sigCompute->GetBufferSize(), IID_PPV_ARGS(&rootSigFluid_));
 
 	auto csEmit = CompileShaderFromFile(L"Resources/shaders/FluidSimCS.hlsl", "Emit", "cs_5_0");
+	auto csInit = CompileShaderFromFile(L"Resources/shaders/FluidSimCS.hlsl", "InitParticles", "cs_5_0");
+	auto csClearOriginal = CompileShaderFromFile(L"Resources/shaders/FluidSimCS.hlsl", "ClearOriginalIndices", "cs_5_0");
+	auto csClearCount = CompileShaderFromFile(L"Resources/shaders/FluidSimCS.hlsl", "ClearGridCount", "cs_5_0");
+	auto csCount = CompileShaderFromFile(L"Resources/shaders/FluidSimCS.hlsl", "CountParticles", "cs_5_0");
+	auto csPrefixSum = CompileShaderFromFile(L"Resources/shaders/FluidSimCS.hlsl", "PrefixSum", "cs_5_0");
+	auto csSort = CompileShaderFromFile(L"Resources/shaders/FluidSimCS.hlsl", "SortParticles", "cs_5_0");
 	auto csDensity = CompileShaderFromFile(L"Resources/shaders/FluidSimCS.hlsl", "CalcDensity", "cs_5_0");
 	auto csForce = CompileShaderFromFile(L"Resources/shaders/FluidSimCS.hlsl", "CalcForce", "cs_5_0");
+	auto csWriteBack = CompileShaderFromFile(L"Resources/shaders/FluidSimCS.hlsl", "WriteBack", "cs_5_0");
 	
-	if (csEmit && csDensity && csForce) {
+	if (csEmit && csInit && csClearOriginal && csClearCount && csCount && csPrefixSum && csSort && csDensity && csForce && csWriteBack) {
 		D3D12_COMPUTE_PIPELINE_STATE_DESC psoDesc{};
 		psoDesc.pRootSignature = rootSigFluid_.Get();
 		
 		psoDesc.CS = { csEmit->GetBufferPointer(), csEmit->GetBufferSize() };
 		dev_->CreateComputePipelineState(&psoDesc, IID_PPV_ARGS(&psoFluidEmit_));
+
+		psoDesc.CS = { csInit->GetBufferPointer(), csInit->GetBufferSize() };
+		dev_->CreateComputePipelineState(&psoDesc, IID_PPV_ARGS(&psoFluidInit_));
+
+		psoDesc.CS = { csClearOriginal->GetBufferPointer(), csClearOriginal->GetBufferSize() };
+		dev_->CreateComputePipelineState(&psoDesc, IID_PPV_ARGS(&psoFluidClearOriginal_));
+		
+		psoDesc.CS = { csClearCount->GetBufferPointer(), csClearCount->GetBufferSize() };
+		dev_->CreateComputePipelineState(&psoDesc, IID_PPV_ARGS(&psoFluidClearCount_));
+
+		psoDesc.CS = { csCount->GetBufferPointer(), csCount->GetBufferSize() };
+		dev_->CreateComputePipelineState(&psoDesc, IID_PPV_ARGS(&psoFluidCount_));
+		
+		psoDesc.CS = { csPrefixSum->GetBufferPointer(), csPrefixSum->GetBufferSize() };
+		dev_->CreateComputePipelineState(&psoDesc, IID_PPV_ARGS(&psoFluidPrefixSum_));
+		
+		psoDesc.CS = { csSort->GetBufferPointer(), csSort->GetBufferSize() };
+		dev_->CreateComputePipelineState(&psoDesc, IID_PPV_ARGS(&psoFluidSort_));
 		
 		psoDesc.CS = { csDensity->GetBufferPointer(), csDensity->GetBufferSize() };
 		dev_->CreateComputePipelineState(&psoDesc, IID_PPV_ARGS(&psoFluidDensity_));
 
 		psoDesc.CS = { csForce->GetBufferPointer(), csForce->GetBufferSize() };
 		dev_->CreateComputePipelineState(&psoDesc, IID_PPV_ARGS(&psoFluidForce_));
+		
+		psoDesc.CS = { csWriteBack->GetBufferPointer(), csWriteBack->GetBufferSize() };
+		dev_->CreateComputePipelineState(&psoDesc, IID_PPV_ARGS(&psoFluidWriteBack_));
 	}
 
 	auto vsBlob = CompileShaderFromFile(L"Resources/shaders/GPUFluidVS.hlsl", "main", "vs_5_0");
@@ -4196,8 +4229,30 @@ void Renderer::InitGPUFluid() {
 
 	uint32_t bufferSize = gpuFluidMaxParticles_ * sizeof(GPUFluidParticle);
 	auto heapProps = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
+	
 	auto resDesc = CD3DX12_RESOURCE_DESC::Buffer(bufferSize, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
 	dev_->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &resDesc, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr, IID_PPV_ARGS(&gpuFluidBuffer_));
+
+	// GridCountBuffer (65536 cells)
+	auto countDesc = CD3DX12_RESOURCE_DESC::Buffer(65536 * sizeof(uint32_t), D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
+	dev_->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &countDesc, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr, IID_PPV_ARGS(&gpuFluidGridCountBuffer_));
+
+	// GridOffsetBuffer (65536 cells)
+	auto offsetDesc = CD3DX12_RESOURCE_DESC::Buffer(65536 * sizeof(uint32_t), D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
+	dev_->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &offsetDesc, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr, IID_PPV_ARGS(&gpuFluidGridOffsetBuffer_));
+	
+	// SortedParticlesBuffer
+	auto sortedDesc = CD3DX12_RESOURCE_DESC::Buffer(gpuFluidMaxParticles_ * sizeof(GPUFluidParticle), D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
+	dev_->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &sortedDesc, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr, IID_PPV_ARGS(&gpuFluidSortedParticlesBuffer_));
+	
+	// OriginalIndicesBuffer
+	auto origDesc = CD3DX12_RESOURCE_DESC::Buffer(gpuFluidMaxParticles_ * sizeof(uint32_t), D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
+	dev_->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &origDesc, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr, IID_PPV_ARGS(&gpuFluidOriginalIndicesBuffer_));
+
+	// ★追加: AABB用バッファ
+	auto hpAABB = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
+	auto aabbDesc = CD3DX12_RESOURCE_DESC::Buffer(sizeof(FluidAABB) * 128); // 最大128個まで対応
+	dev_->CreateCommittedResource(&hpAABB, D3D12_HEAP_FLAG_NONE, &aabbDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&gpuFluidAABBBuffer_));
 
 	isGPUFluidReady_ = true;
 }
@@ -4212,6 +4267,17 @@ void Renderer::SetGPUFluidCore(const Vector3& pos, float attraction, const Vecto
 void Renderer::UpdateGPUFluid(float dt) {
 	if (!isGPUFluidReady_ || !psoFluidDensity_ || !psoFluidForce_ || !gpuFluidBuffer_) return;
 	
+	// AABBバッファの更新
+	if (gpuFluidAABBBuffer_) {
+		void* mapped = nullptr;
+		gpuFluidAABBBuffer_->Map(0, nullptr, &mapped);
+		if (!gpuFluidAABBs_.empty()) {
+			size_t copyCount = gpuFluidAABBs_.size() > 128 ? 128 : gpuFluidAABBs_.size();
+			memcpy(mapped, gpuFluidAABBs_.data(), sizeof(FluidAABB) * copyCount);
+		}
+		gpuFluidAABBBuffer_->Unmap(0, nullptr);
+	}
+	
 	struct CB { 
 		float dt; uint32_t emitCursor; uint32_t emitCount; uint32_t maxParticles; 
 		Vector3 emitPos; float emitType; 
@@ -4221,6 +4287,7 @@ void Renderer::UpdateGPUFluid(float dt) {
 		uint32_t emitEndIndex; Vector3 pad3;
 		Vector3 coreScale; float pad4;
 		Vector3 coreForward; float pad5;
+		uint32_t aabbCount; Vector3 pad6;
 	} cb;
 	cb.dt = dt; cb.emitCursor = 0; cb.emitCount = 0; cb.maxParticles = gpuFluidMaxParticles_;
 	cb.emitPos = {0,0,0}; cb.emitType = 0.0f; cb.emitDir = {0,0,0}; cb.emitStartIndex = 0; cb.emitColor = {0,0,0,0};
@@ -4228,27 +4295,85 @@ void Renderer::UpdateGPUFluid(float dt) {
 	cb.emitEndIndex = gpuFluidMaxParticles_; cb.pad3 = {0,0,0};
 	cb.coreScale = gpuFluidCoreScale_; cb.pad4 = 0.0f;
 	cb.coreForward = gpuFluidCoreForward_; cb.pad5 = 0.0f;
+	cb.aabbCount = (uint32_t)(gpuFluidAABBs_.size() > 128 ? 128 : gpuFluidAABBs_.size());
+	cb.pad6 = {0,0,0};
 	
 	list_->SetComputeRootSignature(rootSigFluid_.Get());
-	list_->SetComputeRoot32BitConstants(0, 32, &cb, 0);
+	list_->SetComputeRoot32BitConstants(0, 34, &cb, 0);
 	list_->SetComputeRootUnorderedAccessView(1, gpuFluidBuffer_->GetGPUVirtualAddress());
+	list_->SetComputeRootUnorderedAccessView(2, gpuFluidGridCountBuffer_->GetGPUVirtualAddress());
+	list_->SetComputeRootUnorderedAccessView(3, gpuFluidGridOffsetBuffer_->GetGPUVirtualAddress());
+	list_->SetComputeRootUnorderedAccessView(4, gpuFluidSortedParticlesBuffer_->GetGPUVirtualAddress());
+	list_->SetComputeRootUnorderedAccessView(5, gpuFluidOriginalIndicesBuffer_->GetGPUVirtualAddress());
+	if (gpuFluidAABBBuffer_) list_->SetComputeRootShaderResourceView(6, gpuFluidAABBBuffer_->GetGPUVirtualAddress());
 
-	uint32_t threadGroups = (gpuFluidMaxParticles_ + 255) / 256;
+	uint32_t threadGroups = (gpuFluidMaxParticles_ + 63) / 64;
+	uint32_t gridGroups = (65536 + 63) / 64;
+
+	// ★追加: 最初のフレームでバッファを確実にクリアする
+	if (!isGPUFluidInitialized_ && psoFluidInit_) {
+		list_->SetPipelineState(psoFluidInit_.Get());
+		list_->Dispatch(threadGroups, 1, 1);
+		auto bInit = CD3DX12_RESOURCE_BARRIER::UAV(gpuFluidBuffer_.Get());
+		list_->ResourceBarrier(1, &bInit);
+		isGPUFluidInitialized_ = true;
+	}
+
+	// Pass 0.0: Clear Original Indices
+	list_->SetPipelineState(psoFluidClearOriginal_.Get());
+	list_->Dispatch(threadGroups, 1, 1);
+
+	// Pass 0.1: Clear Grid Count
+	list_->SetPipelineState(psoFluidClearCount_.Get());
+	list_->Dispatch(gridGroups, 1, 1);
+
+	D3D12_RESOURCE_BARRIER bClear[2] = {
+		CD3DX12_RESOURCE_BARRIER::UAV(gpuFluidOriginalIndicesBuffer_.Get()),
+		CD3DX12_RESOURCE_BARRIER::UAV(gpuFluidGridCountBuffer_.Get())
+	};
+	list_->ResourceBarrier(2, bClear);
+
+	// Pass 0.2: Count Particles
+	list_->SetPipelineState(psoFluidCount_.Get());
+	list_->Dispatch(threadGroups, 1, 1);
+	auto bCount = CD3DX12_RESOURCE_BARRIER::UAV(gpuFluidGridCountBuffer_.Get());
+	list_->ResourceBarrier(1, &bCount);
+
+	// Pass 0.3: Prefix Sum
+	list_->SetPipelineState(psoFluidPrefixSum_.Get());
+	list_->Dispatch(1, 1, 1);
+	D3D12_RESOURCE_BARRIER bPrefixSum[2] = {
+		CD3DX12_RESOURCE_BARRIER::UAV(gpuFluidGridCountBuffer_.Get()),
+		CD3DX12_RESOURCE_BARRIER::UAV(gpuFluidGridOffsetBuffer_.Get())
+	};
+	list_->ResourceBarrier(2, bPrefixSum);
+
+	// Pass 0.4: Sort Particles
+	list_->SetPipelineState(psoFluidSort_.Get());
+	list_->Dispatch(threadGroups, 1, 1);
+	D3D12_RESOURCE_BARRIER bSort[2] = {
+		CD3DX12_RESOURCE_BARRIER::UAV(gpuFluidSortedParticlesBuffer_.Get()),
+		CD3DX12_RESOURCE_BARRIER::UAV(gpuFluidOriginalIndicesBuffer_.Get())
+	};
+	list_->ResourceBarrier(2, bSort);
 
 	// Pass 1: Density
 	list_->SetPipelineState(psoFluidDensity_.Get());
 	list_->Dispatch(threadGroups, 1, 1);
-
-	// Barrier to ensure Density is written before Force reads it
-	auto barrier = CD3DX12_RESOURCE_BARRIER::UAV(gpuFluidBuffer_.Get());
-	list_->ResourceBarrier(1, &barrier);
+	auto bDensity = CD3DX12_RESOURCE_BARRIER::UAV(gpuFluidSortedParticlesBuffer_.Get());
+	list_->ResourceBarrier(1, &bDensity);
 
 	// Pass 2: Force & Integrate
 	list_->SetPipelineState(psoFluidForce_.Get());
 	list_->Dispatch(threadGroups, 1, 1);
-	
-	// Another barrier after write
-	list_->ResourceBarrier(1, &barrier);
+	auto bForce = CD3DX12_RESOURCE_BARRIER::UAV(gpuFluidSortedParticlesBuffer_.Get());
+	list_->ResourceBarrier(1, &bForce);
+
+	// Pass 3: WriteBack
+	list_->SetPipelineState(psoFluidWriteBack_.Get());
+	list_->Dispatch(threadGroups, 1, 1);
+	auto bWriteBack = CD3DX12_RESOURCE_BARRIER::UAV(gpuFluidBuffer_.Get());
+	list_->ResourceBarrier(1, &bWriteBack);
 }
 
 void Renderer::EmitGPUFluid(const Vector3& pos, const Vector3& velocityDir, const Vector4& color, int count, float type) {
@@ -4285,7 +4410,12 @@ void Renderer::EmitGPUFluid(const Vector3& pos, const Vector3& velocityDir, cons
 	
 	list_->SetComputeRoot32BitConstants(0, 32, &cb, 0);
 	list_->SetComputeRootUnorderedAccessView(1, gpuFluidBuffer_->GetGPUVirtualAddress());
-	uint32_t threadGroups = (gpuFluidMaxParticles_ + 255) / 256; 
+	list_->SetComputeRootUnorderedAccessView(2, gpuFluidGridCountBuffer_->GetGPUVirtualAddress());
+	list_->SetComputeRootUnorderedAccessView(3, gpuFluidGridOffsetBuffer_->GetGPUVirtualAddress());
+	list_->SetComputeRootUnorderedAccessView(4, gpuFluidSortedParticlesBuffer_->GetGPUVirtualAddress());
+	list_->SetComputeRootUnorderedAccessView(5, gpuFluidOriginalIndicesBuffer_->GetGPUVirtualAddress());
+	
+	uint32_t threadGroups = (gpuFluidMaxParticles_ + 255) / 256;
 	list_->Dispatch(threadGroups, 1, 1);
 	
 	auto barrier = CD3DX12_RESOURCE_BARRIER::UAV(gpuFluidBuffer_.Get());

@@ -105,8 +105,8 @@ bool WindowDX::Initialize(HINSTANCE hInst, int cmdShow, HWND& outHwnd) {
 }
 
 void WindowDX::BeginFrame() {
-	alloc_->Reset();
-	list_->Reset(alloc_.Get(), nullptr);
+	alloc_[fi_]->Reset();
+	list_->Reset(alloc_[fi_].Get(), nullptr);
 }
 
 void WindowDX::EndFrame() {
@@ -121,30 +121,23 @@ void WindowDX::EndFrame() {
 	ID3D12CommandList* lists[] = {list_.Get()};
 	que_->ExecuteCommandLists(1, lists);
 
-	// ★修正ポイント1: VSyncをOFFにする (1,0 -> 0,0)
-	// CPU側でWaitを行うため、GPU側(Present)での待機を無効化して競合を防ぎます。
+	// ★修正: VSyncをOFFにし、GPU限界のフレームレートを計測できるようにする
 	swap_->Present(0, 0);
 
-	WaitGPU();
+	// CPUとGPUの並列化（フレームリソース同期）
+	// 今投下したコマンドの完了を示すフェンス値を設定
+	const UINT64 currentFenceValue = currentFenceVal_ + 1;
+	que_->Signal(fence_.Get(), currentFenceValue);
+	fenceVals_[fi_] = currentFenceValue;
+	currentFenceVal_ = currentFenceValue;
 
+	// 次のフレームインデックスを取得
 	fi_ = swap_->GetCurrentBackBufferIndex();
 
-	// 60FPS固定ロジック (1,000,000us / 60fps = 16666.6us)
-	constexpr long long kMinFrameTime = 1000000 / 60;
-
-	// ★修正ポイント2: スリープを使わず、Busy Wait (空ループ) のみに変更
-	// OSのスリープ精度によるカクつきを完全に排除します。
-	while (true) {
-		auto now = std::chrono::steady_clock::now();
-		auto duration = std::chrono::duration_cast<std::chrono::microseconds>(now - lastFrameTime_).count();
-
-		if (duration >= kMinFrameTime) {
-			lastFrameTime_ = now;
-			break;
-		}
-
-		// CPUリソースを過剰に占有しすぎないよう、ごく短いYieldを入れる（お好みで外してもOK）
-		// std::this_thread::yield();
+	// 次に使うバックバッファのGPU処理が終わっているか待機（最大 N-1 フレーム分 CPUが先行できる）
+	if (fence_->GetCompletedValue() < fenceVals_[fi_]) {
+		fence_->SetEventOnCompletion(fenceVals_[fi_], fev_);
+		WaitForSingleObject(fev_, INFINITE);
 	}
 }
 
@@ -152,11 +145,11 @@ void WindowDX::WaitGPU() {
 	if (!que_ || !fence_)
 		return;
 
-	fenceVal_++;
-	que_->Signal(fence_.Get(), fenceVal_);
+	currentFenceVal_++;
+	que_->Signal(fence_.Get(), currentFenceVal_);
 
-	if (fence_->GetCompletedValue() < fenceVal_) {
-		fence_->SetEventOnCompletion(fenceVal_, fev_);
+	if (fence_->GetCompletedValue() < currentFenceVal_) {
+		fence_->SetEventOnCompletion(currentFenceVal_, fev_);
 		WaitForSingleObject(fev_, INFINITE);
 	}
 }
@@ -212,7 +205,7 @@ void WindowDX::Shutdown() {
 	rtvH_.Reset();
 
 	list_.Reset();
-	alloc_.Reset();
+	for (auto& a : alloc_) a.Reset();
 	que_.Reset();
 	swap_.Reset();
 	fence_.Reset();
@@ -378,13 +371,15 @@ bool WindowDX::CreateRTVDSV_() {
 }
 
 bool WindowDX::CreateCommand_() {
-	if (FAILED(dev_->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&alloc_))))
-		return false;
+	for (UINT i = 0; i < kBackBufferCount; ++i) {
+		if (FAILED(dev_->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&alloc_[i]))))
+			return false;
+	}
 	D3D12_COMMAND_QUEUE_DESC qd{};
 	qd.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
 	if (FAILED(dev_->CreateCommandQueue(&qd, IID_PPV_ARGS(&que_))))
 		return false;
-	if (FAILED(dev_->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, alloc_.Get(), nullptr, IID_PPV_ARGS(&list_))))
+	if (FAILED(dev_->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, alloc_[0].Get(), nullptr, IID_PPV_ARGS(&list_))))
 		return false;
 	list_->Close();
 	return true;

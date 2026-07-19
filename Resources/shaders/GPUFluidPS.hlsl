@@ -35,8 +35,10 @@ PSOut main(float4 svpos:SV_POSITION, float2 uv:TEXCOORD0, float viewZ:TEXCOORD1,
     } else {
         // カエルの卵のように黒く濁らないよう、元の明るい色をそのまま使う
         outColor.rgb = color.rgb;
-        // メタボール合成で確実に融合（液状化）するようにアルファの蓄積量を大幅に増やす
-        outColor.a = alpha * 0.6f; 
+        // ★はぐれた水滴を完全に消すため、1粒のアルファをさらに下げます（0.07）。
+        // メタボールの閾値（0.08）を下回るため、2粒以上重ならないと描画されず、
+        // 完全に1枚の水たまりだけが残るようになります。
+        outColor.a = alpha * 0.07f; 
     }
     
     // 加算ブレンド(ONE)で正しく色を乗せるための事前乗算アルファ (Premultiplied Alpha)

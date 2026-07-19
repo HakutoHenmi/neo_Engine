@@ -240,6 +240,7 @@ public:
 	void SetCamera(const Camera& camera);
 
 	void SetAmbientColor(const Vector3& color);
+	Vector3 GetAmbientColor() const { return lightCB_.ambientColor; }
 	void SetDirectionalLight(const Vector3& dir, const Vector3& color, bool enabled = true);
 	void SetPointLight(int index, const Vector3& pos, const Vector3& color, float range, const Vector3& atten = {1.0f, 0.1f, 0.01f}, bool enabled = true);
 	void SetSpotLight(
@@ -304,16 +305,29 @@ public:
 	};
 
 	Microsoft::WRL::ComPtr<ID3D12RootSignature> rootSigFluid_;
+	Microsoft::WRL::ComPtr<ID3D12Resource> gpuFluidBuffer_;
+	Microsoft::WRL::ComPtr<ID3D12Resource> gpuFluidGridCountBuffer_;
+	Microsoft::WRL::ComPtr<ID3D12Resource> gpuFluidGridOffsetBuffer_;
+	Microsoft::WRL::ComPtr<ID3D12Resource> gpuFluidSortedParticlesBuffer_;
+	Microsoft::WRL::ComPtr<ID3D12Resource> gpuFluidOriginalIndicesBuffer_;
+	
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> psoFluidEmit_;
+	Microsoft::WRL::ComPtr<ID3D12PipelineState> psoFluidInit_;
+	Microsoft::WRL::ComPtr<ID3D12PipelineState> psoFluidClearOriginal_;
+	Microsoft::WRL::ComPtr<ID3D12PipelineState> psoFluidClearCount_;
+	Microsoft::WRL::ComPtr<ID3D12PipelineState> psoFluidCount_;
+	Microsoft::WRL::ComPtr<ID3D12PipelineState> psoFluidPrefixSum_;
+	Microsoft::WRL::ComPtr<ID3D12PipelineState> psoFluidSort_;
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> psoFluidDensity_;
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> psoFluidForce_;
+	Microsoft::WRL::ComPtr<ID3D12PipelineState> psoFluidWriteBack_;
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> psoFluidRender_; 
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> psoFluidDebug_; 
-	Microsoft::WRL::ComPtr<ID3D12Resource> gpuFluidBuffer_;
-	uint32_t gpuFluidMaxParticles_ = 8192; // O(N^2)なので負荷を考慮して調整
+	uint32_t gpuFluidMaxParticles_ = 120000; // O(N)空間グリッド導入により大幅に増量
 	uint32_t gpuFluidEmitCursorPlayer_ = 0;
 	uint32_t gpuFluidEmitCursorSplash_ = 2000;
 	bool isGPUFluidReady_ = false;
+	bool isGPUFluidInitialized_ = false;
 
 	void InitGPUFluid();
 	void UpdateGPUFluid(float dt);
@@ -327,7 +341,16 @@ public:
 	Vector3 gpuFluidCoreScale_ = {1.0f, 1.0f, 1.0f};
 	Vector3 gpuFluidCoreForward_ = {0.0f, 0.0f, 1.0f};
 	
-	// ★追加: 矢印（デバッグベクトル）表示フラグ
+	// ★追加: 流体シミュレーション用のAABBコリジョン
+	struct FluidAABB {
+		Vector3 min; float pad0;
+		Vector3 max; float pad1;
+	};
+	void SetFluidAABBs(const std::vector<FluidAABB>& aabbs) { gpuFluidAABBs_ = aabbs; }
+	std::vector<FluidAABB> gpuFluidAABBs_;
+	Microsoft::WRL::ComPtr<ID3D12Resource> gpuFluidAABBBuffer_;
+	
+	// 追加: デバッグベクトル表示フラグ
 	bool drawFluidDebugArrows_ = false;
 	void SetDrawFluidDebugArrows(bool b) { drawFluidDebugArrows_ = b; }
 	bool GetDrawFluidDebugArrows() const { return drawFluidDebugArrows_; }
