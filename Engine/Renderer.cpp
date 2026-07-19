@@ -566,11 +566,11 @@ void Renderer::FlushDrawCalls() {
 		if (dc.shaderName != "EnhancedTerrain") {
 			if (dc.isSkinned) {
 				struct CBBone { Matrix4x4 bones[128]; };
-				CBBone boneData{};
+				auto boneData = std::make_unique<CBBone>();
 				size_t count = (std::min)(dc.bones.size(), size_t(128));
-				std::memcpy(boneData.bones, dc.bones.data(), count * sizeof(Matrix4x4));
+				std::memcpy(boneData->bones, dc.bones.data(), count * sizeof(Matrix4x4));
 				uint32_t bOff = upload_[fi].Allocate(sizeof(CBBone), 256);
-				std::memcpy(upload_[fi].mapped + bOff, &boneData, sizeof(CBBone));
+				std::memcpy(upload_[fi].mapped + bOff, boneData.get(), sizeof(CBBone));
 				list_->SetGraphicsRootConstantBufferView(4, upload_[fi].buffer->GetGPUVirtualAddress() + bOff);
 			} else {
 				list_->SetGraphicsRootConstantBufferView(4, upload_[fi].buffer->GetGPUVirtualAddress() + oOff);
@@ -614,6 +614,7 @@ void Renderer::FlushDrawCalls() {
 			if (defaultShaderName == "ParticleInstanced") {
 				if (sName == "Particle") sName = "ParticleInstanced";
 				else if (sName == "ParticleAdditive") sName = "ParticleAdditiveInstanced";
+				else if (sName == "SoftParticleAdditive") sName = "SoftParticleAdditiveInstanced";
 				else if (sName == "ProceduralSmoke") sName = "ProceduralSmokeInstanced";
 				else if (sName == "ProceduralSmokeAdditive") sName = "ProceduralSmokeAdditiveInstanced";
 			}
@@ -829,11 +830,11 @@ void Renderer::FlushDrawCalls() {
 		if (dc.shaderName != "EnhancedTerrain") {
 			if (dc.isSkinned) {
 				struct CBBone { Matrix4x4 bones[128]; };
-				CBBone boneData{};
+				auto boneData = std::make_unique<CBBone>();
 				size_t count = (std::min)(dc.bones.size(), size_t(128));
-				std::memcpy(boneData.bones, dc.bones.data(), count * sizeof(Matrix4x4));
+				std::memcpy(boneData->bones, dc.bones.data(), count * sizeof(Matrix4x4));
 				uint32_t bOff = upload_[fi].Allocate(sizeof(CBBone), 256);
-				std::memcpy(upload_[fi].mapped + bOff, &boneData, sizeof(CBBone));
+				std::memcpy(upload_[fi].mapped + bOff, boneData.get(), sizeof(CBBone));
 				list_->SetGraphicsRootConstantBufferView(4, upload_[fi].buffer->GetGPUVirtualAddress() + bOff);
 			} else {
 				list_->SetGraphicsRootConstantBufferView(4, upload_[fi].buffer->GetGPUVirtualAddress() + oOff);
@@ -1617,6 +1618,12 @@ bool Renderer::InitPipelines() {
 	// パーティクル 加算 インスタンス描画
 	if (vsPartInst && psPart) {
 		CreatePSO_Transparent("ParticleAdditiveInstanced", vsPartInst.Get(), psPart.Get(), true);
+	}
+
+	// ソフトパーティクル 加算 インスタンス描画
+	auto psSoftPart = CompileShaderFromFile(L"Resources/shaders/SoftParticlePS.hlsl", "main", "ps_5_0");
+	if (vsPartInst && psSoftPart) {
+		CreatePSO_Transparent("SoftParticleAdditiveInstanced", vsPartInst.Get(), psSoftPart.Get(), true);
 	}
 
 	// ★追加: プロシージャル煙パーティクル (FBMノイズベース)

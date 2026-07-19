@@ -214,6 +214,15 @@ enum class WeaponType {
 	MultiBlades    // 浮遊機巧剣（ファンネルソード）
 };
 
+// ★追加: 缶のタイプ
+enum class CanType : uint32_t {
+	None = 0,
+	Fire,
+	Water,
+	Thunder
+};
+
+
 // ★追加: プレイヤーの武器管理
 struct PlayerWeaponComponent : public Component {
 	WeaponType currentWeapon = WeaponType::Greatsword;
@@ -232,6 +241,9 @@ struct PlayerInputComponent : public Component {
 	float cameraPitch = 0.0f;
 	
 	entt::entity lockedEnemy = entt::null; // ★追加: ロックオン中の敵エンティティ
+
+	bool isRadialMenuOpen = false; // ★追加: ラジアルメニュー開閉
+	CanType selectedCan = CanType::None; // ★追加: 選択中の缶
 
 	PlayerInputComponent() { type = ComponentType::PlayerInput; }
 };
