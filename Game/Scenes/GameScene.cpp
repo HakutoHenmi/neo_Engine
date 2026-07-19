@@ -60,6 +60,9 @@ GameScene::~GameScene() {
     registry_.on_destroy<TagComponent>().disconnect<&GameScene::OnTagRemoved>(this);
     registry_.on_destroy<ScriptComponent>().disconnect<&GameScene::OnScriptDestroyed>(this);
     systems_.clear();
+
+    Engine::NetworkProfiler::GetInstance().SetParameterUpdateCallback(nullptr);
+    Engine::NetworkProfiler::GetInstance().SetParameterGetCallback(nullptr);
 }
 
 void GameScene::Initialize(Engine::WindowDX* dx, const Engine::SceneParameters& params) {
@@ -295,22 +298,7 @@ void GameScene::Initialize(Engine::WindowDX* dx, const Engine::SceneParameters& 
 		tagCache_[tag].push_back(entity);
 	}
 
-	// ★追加: ボスが存在しない場合は、ここで動的に生成する
-	if (registry_.view<BossActionComponent>().empty()) {
-		auto boss = registry_.create();
-		registry_.emplace<NameComponent>(boss, "Boss");
-		registry_.emplace<TransformComponent>(boss, DirectX::XMFLOAT3{0, 2.0f, 15.0f}, DirectX::XMFLOAT3{0, 0, 0}, DirectX::XMFLOAT3{3.0f, 3.0f, 3.0f});
-		
-		auto& mrBoss = registry_.emplace<MeshRendererComponent>(boss);
-		mrBoss.modelPath = "Resources/Models/cube/cube.obj";
-		mrBoss.modelHandle = renderer_->LoadObjMesh(mrBoss.modelPath);
-		mrBoss.color = {0.8f, 0.8f, 0.8f, 1.0f};
 
-		registry_.emplace<TagComponent>(boss).tag = TagType::Enemy;
-		
-		auto& scBoss = registry_.emplace<ScriptComponent>(boss);
-		scBoss.scripts.push_back({"BossTestScript", "{}", std::make_shared<BossTestScript>(), false});
-	}
 
 	// ★追加: WebProfilerの双方向通信パラメータのコールバック登録
 	Engine::NetworkProfiler::GetInstance().SetParameterUpdateCallback([this](const std::string& target, const std::string& prop, float val) {
@@ -422,7 +410,8 @@ void GameScene::Update() {
 						} else if (name == "TitleButton") {
 							isPaused_ = false;
 							ShowCursor(FALSE);
-							DestroyPauseMenu();
+							// シーン破棄前にUIを個別に削除すると、次フレームのClearScene()と競合するリスクがあるため
+							// DestroyPauseMenu() は呼ばずにそのままシーン遷移をリクエストする
 							Engine::SceneManager::GetInstance()->RequestChange("Title");
 							break;
 						}

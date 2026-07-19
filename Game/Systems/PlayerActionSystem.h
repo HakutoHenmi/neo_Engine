@@ -400,7 +400,7 @@ public:
 					// ★修正: 最も水が伸びる瞬間(0.08秒)から縮む途中までしっかり判定を残す
 					hb.isActive = (pa.stateTimer >= 0.05f && pa.stateTimer <= 0.3f);
 					if (!wasActive && hb.isActive) hb.hitTargets.clear();
-					hb.damage = 15.0f;
+					hb.damage = 30.0f; // ダメージ上昇
 					// ★修正: 当たり判定(Hitbox)を、プレイヤーの根本から先端までカバーするように設定
 					hb.size = {1.5f, 1.5f, tc.scale.z * 1.5f}; // サイズを伸ばす
 					hb.center.z = tc.scale.z * 0.75f; // サイズの半分だけ前方にシフト
@@ -464,7 +464,7 @@ public:
 				
 				auto& hb = registry.emplace<HitboxComponent>(proj);
 				hb.isActive = true;
-				hb.damage = 15.0f;
+				hb.damage = 30.0f; // ダメージ上昇
 				hb.tag = TagType::Player;
 				hb.size = { 3.0f, 3.0f, 10.0f }; // ヒットボックスも特大化
 				hb.isProjectile = true; // ★追加

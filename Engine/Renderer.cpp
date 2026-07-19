@@ -4415,7 +4415,7 @@ void Renderer::EmitGPUFluid(const Vector3& pos, const Vector3& velocityDir, cons
 	list_->SetComputeRootUnorderedAccessView(4, gpuFluidSortedParticlesBuffer_->GetGPUVirtualAddress());
 	list_->SetComputeRootUnorderedAccessView(5, gpuFluidOriginalIndicesBuffer_->GetGPUVirtualAddress());
 	
-	uint32_t threadGroups = (gpuFluidMaxParticles_ + 255) / 256;
+	uint32_t threadGroups = (gpuFluidMaxParticles_ + 63) / 64;
 	list_->Dispatch(threadGroups, 1, 1);
 	
 	auto barrier = CD3DX12_RESOURCE_BARRIER::UAV(gpuFluidBuffer_.Get());
