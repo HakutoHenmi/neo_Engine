@@ -14,7 +14,8 @@ enum class PlayerActionState : uint32_t {
 	Charging,     // 溜め中
 	Shoot,        // 発射アクション
 	SpikeExplosion, // ★追加: トゲトゲ大爆発
-	FireBreath    // ★追加: 炎の缶の攻撃
+	FireBreath,   // ★追加: 炎の缶の攻撃
+	DecoyWarp     // ★追加: デコイワープ（弧を描いて移動）
 };
 
 struct PlayerActionComponent : public Component {
@@ -36,6 +37,9 @@ struct PlayerActionComponent : public Component {
 	entt::entity canEntity = entt::null; // ★追加: 缶のエンティティID
 	float canDropProgress = 1.0f; // ★追加: 0.0 -> 1.0 (落ちてくるアニメーション用)
 	bool prevRadialMenuOpen = false; // ★追加: 前回のラジアルメニュー開閉状態
+
+	DirectX::XMFLOAT3 warpStartPos = {0,0,0}; // ★追加: ワープ開始位置
+	DirectX::XMFLOAT3 warpEndPos = {0,0,0};   // ★追加: ワープ終了位置
 
 	bool enabled = true;
 	PlayerActionComponent() { type = ComponentType::PlayerAction; }
@@ -122,10 +126,85 @@ public:
 			bool attackPressed = attackInput && !prevAttack_;
 			prevAttack_ = attackInput;
 
-			// 右クリックでハンマー攻撃
+			// 右クリックでハンマー攻撃（またはデコイ発動）
 			bool hammerInput = (GetAsyncKeyState(VK_RBUTTON) & 0x8000) != 0;
 			bool hammerPressed = hammerInput && !prevHammer_;
 			prevHammer_ = hammerInput;
+
+			// ★追加: デコイワープ処理 (黄色の缶選択時)
+			if (hammerPressed && pa.currentCan == CanType::Thunder) {
+				hammerPressed = false; // ハンマー攻撃には派生させない
+				
+				// ★追加: デコイは1個しか出せないようにチェック
+				bool hasDecoy = false;
+				for (auto e : registry.view<TagComponent>()) {
+					if (registry.get<TagComponent>(e).tag == TagType::Player && !registry.all_of<PlayerInputComponent>(e)) {
+						hasDecoy = true;
+						break;
+					}
+				}
+
+				if (!hasDecoy) {
+					entt::entity targetEnemy = pi.lockedEnemy;
+					// ロックオンがない場合は一番近い敵を探す
+					if (targetEnemy == entt::null || !registry.valid(targetEnemy)) {
+						float minDist = 999999.0f;
+						for (auto e : registry.view<TagComponent, TransformComponent>()) {
+							if (registry.get<TagComponent>(e).tag == TagType::Enemy) {
+								auto& eTc = registry.get<TransformComponent>(e);
+								float dx = eTc.translate.x - tc.translate.x;
+								float dy = eTc.translate.y - tc.translate.y;
+								float dz = eTc.translate.z - tc.translate.z;
+								float dist = dx*dx + dy*dy + dz*dz;
+								if (dist < minDist) {
+									minDist = dist;
+									targetEnemy = e;
+								}
+							}
+						}
+					}
+
+					if (targetEnemy != entt::null && registry.valid(targetEnemy)) {
+						auto& bossTc = registry.get<TransformComponent>(targetEnemy);
+						
+						// 1. デコイ（分身）の生成を予約
+						pendingDecoys_.push_back({ tc.translate, tc.rotate, tc.scale });
+
+						// 2. プレイヤーのワープ設定
+						float dx = bossTc.translate.x - tc.translate.x;
+						float dz = bossTc.translate.z - tc.translate.z;
+						float len = std::sqrt(dx*dx + dz*dz);
+						if (len > 0.001f) {
+							dx /= len; dz /= len;
+						} else {
+							dx = 0; dz = 1;
+						}
+
+						// ワープ元エフェクト
+						pendingWarpEffects_.push_back(tc.translate);
+
+						// ボスの反対側（ボスからさらに奥へ大きく飛び越す）
+						float warpDist = 12.0f;
+						pa.warpStartPos = tc.translate;
+						pa.warpEndPos.x = bossTc.translate.x + dx * warpDist;
+						pa.warpEndPos.y = tc.translate.y; // 高さはそのままか床
+						pa.warpEndPos.z = bossTc.translate.z + dz * warpDist;
+						
+						// プレイヤーをボスの方に向かせる
+						tc.rotate.y = std::atan2(-dx, -dz);
+						
+						// 少し無敵を付与
+						if (auto* hc = registry.try_get<HealthComponent>(entity)) {
+							hc->invincibleTime = 0.8f; // ワープ中〜着地後少し無敵
+						}
+						// デコイワープステートへ移行 (1.0秒で大きくボスを飛び越える)
+						if (auto* cm = registry.try_get<CharacterMovementComponent>(entity)) {
+							cm->enabled = false; // ★追加: ワープ中は物理挙動(重力や地面スナップ)を無効化する
+						}
+						TransitionTo(pa, PlayerActionState::DecoyWarp, 1.0f);
+					}
+				}
+			}
 
 			// Shift長押しで液状化
 			bool liquefyInput = (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0;
@@ -427,6 +506,39 @@ public:
 					TransitionTo(pa, PlayerActionState::Idle, 0.0f);
 				}
 				break;
+
+			case PlayerActionState::DecoyWarp:
+			{
+				float progress = pa.stateTimer / pa.stateDuration;
+				progress = std::clamp(progress, 0.0f, 1.0f);
+				
+				// 弧を描くジャンプ (XとZは線形補間、Yは放物線)
+				tc.translate.x = std::lerp(pa.warpStartPos.x, pa.warpEndPos.x, progress);
+				tc.translate.z = std::lerp(pa.warpStartPos.z, pa.warpEndPos.z, progress);
+				
+				// 放物線の高さ (ボスを飛び越えるため高めに設定)
+				float jumpHeight = 12.0f;
+				float parabola = 4.0f * progress * (1.0f - progress); // 0 -> 1 -> 0
+				tc.translate.y = std::lerp(pa.warpStartPos.y, pa.warpEndPos.y, progress) + (parabola * jumpHeight);
+
+				// ジャンプ中のスライムの変形 (伸びる)
+				tc.scale.x = 0.8f;
+				tc.scale.y = 1.5f;
+				tc.scale.z = 0.8f;
+
+				if (pa.stateTimer >= pa.stateDuration) {
+					// 着地時にエフェクト発生
+					pendingWarpEffects_.push_back(tc.translate);
+					// カメラシェイク
+					if (ctx.camera) ctx.camera->StartShake(0.2f, 0.3f);
+					
+					if (auto* cm = registry.try_get<CharacterMovementComponent>(entity)) {
+						cm->enabled = true; // ★追加: 着地したら物理挙動を元に戻す
+					}
+					TransitionTo(pa, PlayerActionState::Idle, 0.0f);
+				}
+				break;
+			}
 			}
 
 			// ★追加: 水量（HP）による全体スケールの適用
@@ -655,6 +767,70 @@ public:
 		}
 		pendingFireBreaths_.clear();
 
+		// ★追加: デコイの遅延生成
+		for (const auto& decoy : pendingDecoys_) {
+			if (ctx.scene) {
+				entt::entity d = ctx.scene->CreateEntity("Decoy");
+				auto& dtc = registry.get<TransformComponent>(d);
+				dtc.translate = decoy.pos;
+				dtc.rotate = decoy.rot;
+				dtc.scale = decoy.scale;
+
+				// デコイの見た目（1回だけ大量に流体パーティクルを放出する。毎フレーム出すと重くなるため）
+				if (ctx.renderer) {
+					Engine::Vector4 decoyColor = { 1.0f, 0.9f, 0.1f, 1.0f }; // 黄色
+					// type = 2.0f として放出し、デコイ用の引力コアに集まるようにする
+					ctx.renderer->EmitGPUFluid({ decoy.pos.x, decoy.pos.y + 1.0f, decoy.pos.z }, { 0, -2, 0 }, decoyColor, 2000, 2.0f);
+				}
+				// 敵に狙わせるために Player タグをつける
+				registry.emplace<TagComponent>(d, TagType::Player);
+				
+				// デコイが無敵で数秒耐えるようにする
+				auto& hc = registry.emplace<HealthComponent>(d);
+				hc.hp = 9999.0f;
+				hc.maxHp = 9999.0f;
+				
+				// 5秒で自動消滅
+				registry.emplace<AutoDestroyComponent>(d).timer = 5.0f;
+
+				// デコイオーラエフェクト
+				auto& pe = registry.emplace<ParticleEmitterComponent>(d);
+				pe.emitter.params.name = "DecoyAura";
+				pe.emitter.params.emitRate = 40;
+				pe.emitter.params.lifeTime = 0.6f;
+				pe.emitter.params.startColor = { 1.0f, 0.9f, 0.2f, 0.8f };
+				pe.emitter.params.endColor = { 1.0f, 1.0f, 0.0f, 0.0f };
+				pe.emitter.params.startSize = { 1.5f, 1.5f, 1.5f };
+				pe.emitter.params.endSize = { 0.1f, 0.1f, 0.1f };
+				pe.emitter.params.isAdditive = true;
+				pe.emitter.params.texturePath = "Resources/Textures/ball.png";
+			}
+		}
+		pendingDecoys_.clear();
+
+		// ★追加: ワープエフェクトの遅延生成
+		for (const auto& wPos : pendingWarpEffects_) {
+			if (ctx.scene) {
+				entt::entity m = ctx.scene->CreateEntity("WarpEffect");
+				auto& mtc = registry.get<TransformComponent>(m);
+				mtc.translate = wPos;
+				
+				auto& pe = registry.emplace<ParticleEmitterComponent>(m);
+				pe.emitter.params.name = "WarpSparks";
+				pe.emitter.params.emitRate = 0;       
+				pe.emitter.params.burstCount = 50;    
+				pe.emitter.params.lifeTime = 0.5f;
+				pe.emitter.params.startColor = { 1.0f, 0.9f, 0.2f, 1.0f };
+				pe.emitter.params.endColor = { 1.0f, 1.0f, 1.0f, 0.0f };
+				pe.emitter.params.startSize = { 0.3f, 0.3f, 0.3f };
+				pe.emitter.params.endSize = { 1.5f, 1.5f, 1.5f };
+				pe.emitter.params.velocityVariance = { 5.0f, 5.0f, 5.0f };
+				pe.emitter.params.isAdditive = true;
+				registry.emplace<AutoDestroyComponent>(m).timer = 0.6f;
+			}
+		}
+		pendingWarpEffects_.clear();
+
 		// ★追加: 遅延させていた缶の切り替え処理を実行 (イテレータ無効化対策)
 		for (const auto& change : pendingCanChanges_) {
 			if (registry.valid(change.playerEntity) && registry.all_of<PlayerActionComponent, TransformComponent>(change.playerEntity)) {
@@ -705,6 +881,15 @@ private:
 		DirectX::XMFLOAT3 pos;
 	};
 	std::vector<ExplosionSpawnData> pendingExplosions_;
+
+	// ★追加: デコイ生成データ
+	struct DecoySpawnData {
+		DirectX::XMFLOAT3 pos;
+		DirectX::XMFLOAT3 rot;
+		DirectX::XMFLOAT3 scale;
+	};
+	std::vector<DecoySpawnData> pendingDecoys_;
+	std::vector<DirectX::XMFLOAT3> pendingWarpEffects_;
 
 	struct PendingCanChange {
 		entt::entity playerEntity;

@@ -689,7 +689,7 @@
       "rotate": [0, -1.74476, 0],
       "scale": [3, 3, 3],
       "components": [
-        {"type": "MeshRenderer", "enabled": true, "modelPath": "Resources/Models/cube/cube.obj", "texturePath": "", "shaderName": "Default", "color": [0.8,0.8,0.8,1], "uvTiling": [1,1], "uvOffset": [0,0], "reflectivity": 0, "useCubemap": true},
+        {"type": "MeshRenderer", "enabled": true, "modelPath": "Resources/Models/Animation/Boss/attack1.fbx", "texturePath": "", "shaderName": "Default", "color": [0.8,0.8,0.8,1], "uvTiling": [1,1], "uvOffset": [0,0], "reflectivity": 0, "useCubemap": true},
         {"type": "Script", "enabled": true, "scripts": [{"path": "BossTestScript", "param": ""}]},
         {"type": "Health", "enabled": true, "hp": 250, "maxHp": 250, "isDead": false},
         {"type": "Tag", "enabled": true, "tag": "Enemy"},

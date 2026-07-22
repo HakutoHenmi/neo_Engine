@@ -30,6 +30,11 @@ cbuffer CBCompute : register(b0) {
     float3 coreScale; float pad4;
     float3 coreForward; float pad5;
     uint aabbCount; float3 pad6; // ★追加
+    
+    // ★追加: デコイ用
+    float3 decoyPos; float decoyAttraction;
+    float3 decoyScale; float pad7;
+    float3 decoyForward; float pad8;
 }
 
 // 疑似乱数ジェネレーター
@@ -64,14 +69,23 @@ void Emit(uint3 DTid : SV_DispatchThreadID) {
             float ry = (hash(i * 456) - 0.5f) * 2.0f;
             float rz = (hash(i * 789) - 0.5f) * 2.0f;
             
+            bool isSlime = (emitType < 0.5f || (emitType > 1.5f && emitType < 2.5f));
+            
             // ★位置をばらけさせる (超重要: 同一座標に重なると圧力が爆発する)
-            float offsetScale = (emitType < 0.5f) ? 1.5f : 0.4f;
-            float3 localOffset = float3(rx, ry, rz) * offsetScale;
+            float3 randVec = float3(rx, ry, rz);
+            if (isSlime && length(randVec) > 0.01f) {
+                // スライムの場合は綺麗な球体状に配置する（記憶する形状を丸くするため）
+                float rDist = pow(hash(i * 999), 0.3333f);
+                randVec = normalize(randVec) * rDist;
+            }
+            
+            float offsetScale = isSlime ? 1.5f : 0.4f;
+            float3 localOffset = randVec * offsetScale;
             p.position = emitPos + localOffset;
             
             // 速度もランダムに
-            float velScale = (emitType < 0.5f) ? 5.0f : 2.0f;
-            p.velocity = emitDir * 5.0f + float3(rx, abs(ry) + 0.2f, rz) * velScale;
+            float velScale = isSlime ? 5.0f : 2.0f;
+            p.velocity = emitDir * 5.0f + randVec * velScale;
             p.color = emitColor;
             p.type = emitType;
             
@@ -79,7 +93,7 @@ void Emit(uint3 DTid : SV_DispatchThreadID) {
             p.density = 1.0f;
             p.pressure = 0.0f;
             
-            if (emitType < 0.5f) {
+            if (isSlime) {
                 // スライムの場合: 初期ローカル座標を記憶して Shape Matching（形状維持）の目標にする
                 p.pad = localOffset; 
             } else {
@@ -362,15 +376,31 @@ void CalcForce(uint3 DTid : SV_DispatchThreadID) {
     // 加速度
     float3 force = forcePressure + forceViscosity;
     
-    // ★追加: プレイヤーのコアへ引っ張る力 (スライムの形を保つ)
-    // type == 0.0f（スライム自身）のみ適用。水しぶき(type == 1.0f)は自由落下する
-    if (coreAttraction > 0.0f && pi.type < 0.5f) {
-        float3 toCore = corePos - pi.position;
+    // ★追加: プレイヤーまたはデコイのコアへ引っ張る力 (スライムの形を保つ)
+    float currentAttraction = 0.0f;
+    float3 currentCorePos = float3(0,0,0);
+    float3 currentCoreScale = float3(1,1,1);
+    float3 currentCoreForward = float3(0,0,1);
+
+    if (pi.type < 0.5f && coreAttraction > 0.0f) {
+        currentAttraction = coreAttraction;
+        currentCorePos = corePos;
+        currentCoreScale = coreScale;
+        currentCoreForward = coreForward;
+    } else if (pi.type > 1.5f && pi.type < 2.5f && decoyAttraction > 0.0f) {
+        currentAttraction = decoyAttraction;
+        currentCorePos = decoyPos;
+        currentCoreScale = decoyScale;
+        currentCoreForward = decoyForward;
+    }
+
+    if (currentAttraction > 0.0f) {
+        float3 toCore = currentCorePos - pi.position;
         float distToCore = length(toCore);
         
         if (distToCore > 0.001f) {
             // 前方ベクトルと上ベクトルからローカル座標系を作成
-            float3 forwardDir = normalize(coreForward);
+            float3 forwardDir = normalize(currentCoreForward);
             float3 upDir = float3(0, 1, 0);
             if (abs(forwardDir.y) > 0.99f) {
                 upDir = float3(0, 0, 1);
@@ -379,43 +409,39 @@ void CalcForce(uint3 DTid : SV_DispatchThreadID) {
             upDir = normalize(cross(forwardDir, rightDir));
 
             // ★Shape Matching (目標位置への追従)
-            // 記憶しておいた初期ローカル座標 (pi.pad) に現在のスケールを適用
-            float3 localTarget = pi.pad * coreScale;
+            float3 localTarget = pi.pad * currentCoreScale;
             
             // ★追加: 攻撃時に「とんがらせて」「前方に突き出す」変形
-            if (coreScale.z > 2.0f) {
+            // デコイは攻撃モーションをとらないので変形させない
+            if (currentCoreScale.z > 2.0f && pi.type < 0.5f) {
                 // 1. 後ろはそのまま残し、前半分だけを大きく前に伸ばす
                 if (pi.pad.z > 0.0f) {
-                    localTarget.z = pi.pad.z * coreScale.z; // 前方は鋭く伸びる
+                    localTarget.z = pi.pad.z * currentCoreScale.z; // 前方は鋭く伸びる
                 } else {
                     localTarget.z = pi.pad.z * 1.5f; // 後方はプレイヤーの足元に留まる
                 }
                 
                 // 2. 先端をとんがらせる（テーパリング）
-                // 前方(z > -0.5)に行くほど、xとyを細くして円錐(針)のようにする
                 if (pi.pad.z > -0.5f) {
-                    // -0.5(根元) ～ 1.5(先端) を 0.0 ～ 1.0 に正規化
                     float normalizedZ = saturate((pi.pad.z + 0.5f) / 2.0f);
-                    // 先端に行くほど 0.01(極細) に近づく係数
                     float taper = lerp(1.0f, 0.01f, normalizedZ);
                     localTarget.x *= taper;
                     localTarget.y *= taper;
                 }
             }
             // コアの向きと位置を適用してワールドでの「あるべき目標位置」を算出
-            float3 targetWorld = corePos + rightDir * localTarget.x + upDir * localTarget.y + forwardDir * localTarget.z;
+            float3 targetWorld = currentCorePos + rightDir * localTarget.x + upDir * localTarget.y + forwardDir * localTarget.z;
             
-            // 目標位置へ向かうベクトル（これが変形時に「外側」を向く力になり、移動時には前方に引っ張る力になる！）
+            // 目標位置へ向かうベクトル
             float3 toTarget = targetWorld - pi.position;
             
             // バネの力で目標位置へ引き寄せる
-            // スケールが小さい軸（潰れる方向）ほどバネ力を強くして形状を保ちつつ、
-            // 伸びる方向（スケールが大きい軸）のバネ力も弱めすぎないように最低1.0を保証する。
+            // 重力や圧力に負けてペタンコになるのを防ぐため、引力を強化（特にY軸方向を強くする）
             float3 localPullStrength = float3(
-                max(1.0f, 1.0f / max(coreScale.x, 0.1f)),
-                max(1.0f, 1.0f / max(coreScale.y, 0.1f)),
-                max(1.0f, 1.0f / max(coreScale.z, 0.1f))
-            ) * (coreAttraction * PARTICLE_MASS * 1.5f);
+                max(1.0f, 1.0f / max(currentCoreScale.x, 0.1f)) * 3.0f,
+                max(1.0f, 1.0f / max(currentCoreScale.y, 0.1f)) * 6.0f, // Y軸の復元力をさらに倍増
+                max(1.0f, 1.0f / max(currentCoreScale.z, 0.1f)) * 3.0f
+            ) * (currentAttraction * PARTICLE_MASS);
             
             // toTarget をローカル座標に変換して、各軸ごとに強さを適用
             float3 toTargetLocal = float3(dot(toTarget, rightDir), dot(toTarget, upDir), dot(toTarget, forwardDir));
@@ -425,17 +451,15 @@ void CalcForce(uint3 DTid : SV_DispatchThreadID) {
             float3 springForce = rightDir * springForceLocal.x + upDir * springForceLocal.y + forwardDir * springForceLocal.z;
             
             // 2. 床に潰れるのを防ぐ上向きの持ち上げ（重力相殺）
-            if (pi.position.y < corePos.y) {
+            if (pi.position.y < currentCorePos.y) {
                 springForce.y += 20.0f * PARTICLE_MASS;
             }
             
-            // 複雑な押し戻しバネは削除し、強制クランプに委ねる
             force += springForce;
         }
         
         // ★ダンピング（超重要：振動を抑えて静止させる）
-        // コアに引かれている間は速度を強制的に減衰させることで、プルプル荒ぶるのをピタッと止める
-        force -= pi.velocity * (coreAttraction * 0.15f);
+        force -= pi.velocity * (currentAttraction * 0.15f);
     }
     
     float3 acceleration = force / pi.density;
@@ -461,19 +485,17 @@ void CalcForce(uint3 DTid : SV_DispatchThreadID) {
     pi.position += pi.velocity * dt;
     
     // ★追加: 形状の強制クランプ（水風船アプローチ）
-    // 力学的なバネで柔らかく形を作るのは破綻しやすいため、
-    // 計算の最後に「指定したスケールの楕円体からはみ出したら物理的に表面に戻す」確実なバリアを張る。
-    if (coreAttraction > 0.0f && pi.type < 0.5f) {
-        float3 toCoreClamp = pi.position - corePos;
+    if (currentAttraction > 0.0f) {
+        float3 toCoreClamp = pi.position - currentCorePos;
         
-        float3 forwardDir = normalize(coreForward);
+        float3 forwardDir = normalize(currentCoreForward);
         float3 upDir = float3(0, 1, 0);
         if (abs(forwardDir.y) > 0.99f) upDir = float3(0, 0, 1);
         float3 rightDir = normalize(cross(upDir, forwardDir));
         upDir = normalize(cross(forwardDir, rightDir));
         
         float3 localToCoreC = float3(dot(toCoreClamp, rightDir), dot(toCoreClamp, upDir), dot(toCoreClamp, forwardDir));
-        float3 scaledToCoreC = localToCoreC / max(coreScale, float3(0.01f, 0.01f, 0.01f));
+        float3 scaledToCoreC = localToCoreC / max(currentCoreScale, float3(0.01f, 0.01f, 0.01f));
         float distC = length(scaledToCoreC);
         
         float maxRadiusC = 1.2f; // 基本の半径
@@ -481,11 +503,10 @@ void CalcForce(uint3 DTid : SV_DispatchThreadID) {
         // もし楕円体からはみ出していたら、強制的に表面に引き戻す
         if (distC > maxRadiusC) {
             float3 surfaceLocal = (scaledToCoreC / distC) * maxRadiusC; // 半径1.2の表面のローカル座標
-            float3 targetLocal = surfaceLocal * coreScale; // スケールを戻してワールドでの相対座標へ
-            float3 targetWorld = corePos + rightDir * targetLocal.x + upDir * targetLocal.y + forwardDir * targetLocal.z;
+            float3 targetLocal = surfaceLocal * currentCoreScale; // スケールを戻してワールドでの相対座標へ
+            float3 targetWorld = currentCorePos + rightDir * targetLocal.x + upDir * targetLocal.y + forwardDir * targetLocal.z;
             
             // はみ出し防止のセーフティーネット（常に柔らかくクランプ）
-            // 強制的な引き戻しをなくし、物理的なバネ力による滑らかな変形を優先する
             float lerpFactor = saturate(10.0f * dt); 
             pi.position = lerp(pi.position, targetWorld, lerpFactor);
         }
@@ -502,7 +523,7 @@ void CalcForce(uint3 DTid : SV_DispatchThreadID) {
         pi.velocity.z *= friction;
         
         // ★水飛沫は地面に付いて少ししたら消えるようにする
-        if (pi.type > 0.5f) {
+        if (pi.type > 0.5f && pi.type < 1.5f) { // ★修正: デコイ(2.0f)は消えないようにする
             pi.pad.x += dt;
             if (pi.pad.x > 3.5f) { // 地面に触れてから消滅するまでの時間を延長(1.5->3.5)
                 pi.position.y = -1000.0f;
@@ -510,7 +531,7 @@ void CalcForce(uint3 DTid : SV_DispatchThreadID) {
         }
     } else {
         // バウンドして宙に浮いてもタイマーを継続
-        if (pi.type > 0.5f && pi.pad.x > 0.0f) {
+        if (pi.type > 0.5f && pi.type < 1.5f && pi.pad.x > 0.0f) { // ★修正: デコイは消えないようにする
             pi.pad.x += dt;
             if (pi.pad.x > 3.5f) { // こちらも同様に延長
                 pi.position.y = -1000.0f;
@@ -545,7 +566,7 @@ void CalcForce(uint3 DTid : SV_DispatchThreadID) {
                 pi.velocity.y *= -0.3f;
                 pi.velocity.x *= friction;
                 pi.velocity.z *= friction;
-                if (pi.type > 0.5f) { pi.pad.x += dt; }
+                if (pi.type > 0.5f && pi.type < 1.5f) { pi.pad.x += dt; }
             } else if (minDist == dBottom) {
                 pi.position.y = bmin.y - pRadius;
                 pi.velocity.y *= -0.3f;
@@ -572,6 +593,14 @@ void CalcForce(uint3 DTid : SV_DispatchThreadID) {
                 pi.velocity.x *= friction;
                 pi.velocity.y *= friction;
             }
+        }
+    }
+    
+    // ★追加: 液状化したデコイ（引力がなくなったデコイ）の消滅処理
+    if (pi.type > 1.5f && pi.type < 2.5f && decoyAttraction <= 0.01f) {
+        pi.color.a -= dt * 0.5f; // 約2秒かけてじわじわ消える
+        if (pi.color.a <= 0.01f) {
+            pi.position.y = -1000.0f;
         }
     }
     

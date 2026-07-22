@@ -1,8 +1,12 @@
 #include "BossTestScript.h"
 #include "ScriptEngine.h"
 #include "../Engine/Renderer.h"
+#include "../Engine/Model.h"
 #include <cmath>
+#include <fstream>
+#include "../Engine/ThirdParty/nlohmann/json.hpp"
 
+using json = nlohmann::json;
 namespace Game {
 
 REGISTER_SCRIPT(BossTestScript);
@@ -17,48 +21,65 @@ void BossTestScript::Start(entt::entity entity, GameScene* scene) {
 	auto& boss = registry.get<BossActionComponent>(entity);
 	
 	if (boss.patterns.empty()) {
-		// パターン1: 突進攻撃
-		BossActionPattern thrust;
-		thrust.name = "Thrust";
-		thrust.type = BossAttackType::Thrust;
-		thrust.windUpDuration = 1.0f;
-		thrust.activeDuration = 0.5f;
-		thrust.recoveryDuration = 1.5f;
-		thrust.range = 7.0f;
-		thrust.damage = 40.0f;
-		thrust.thrustForce = 15.0f;
-		boss.patterns.push_back(thrust);
-
-		// パターン2: 大回転尻尾なぎ払い
-		BossActionPattern tailSpin;
-		tailSpin.name = "TailSpin";
-		tailSpin.type = BossAttackType::TailSpin;
-		tailSpin.windUpDuration = 1.2f;
-		tailSpin.activeDuration = 0.6f;
-		tailSpin.recoveryDuration = 2.0f;
-		tailSpin.range = 5.0f;
-		tailSpin.damage = 50.0f;
-		tailSpin.thrustForce = 0.0f; // 回転なので前進しない
-		boss.patterns.push_back(tailSpin);
-
-		// パターン3: 飛びかかりプレス（衝撃波）
-		BossActionPattern jumpPress;
-		jumpPress.name = "JumpPress";
-		jumpPress.type = BossAttackType::JumpPress;
-		jumpPress.windUpDuration = 1.5f; // 長い予備動作
-		jumpPress.activeDuration = 0.8f; // ジャンプ時間
-		jumpPress.recoveryDuration = 2.5f; // 大きな隙
-		jumpPress.range = 10.0f; // 遠くからでも飛んでくる
-		jumpPress.damage = 60.0f;
-		jumpPress.thrustForce = 12.0f; // ジャンプの前進力
-		boss.patterns.push_back(jumpPress);
+		std::ifstream file("Resources/Scripts/boss_patterns.json");
+		if (file.is_open()) {
+			json j;
+			file >> j;
+			for (const auto& p : j["patterns"]) {
+				BossActionPattern pattern;
+				pattern.name = p.value("name", "Unknown");
+				std::string typeStr = p.value("type", "Thrust");
+				if (typeStr == "Thrust") pattern.type = BossAttackType::Thrust;
+				else if (typeStr == "TailSpin") pattern.type = BossAttackType::TailSpin;
+				else if (typeStr == "JumpPress") pattern.type = BossAttackType::JumpPress;
+				else if (typeStr == "Punch") pattern.type = BossAttackType::Punch;
+				
+				pattern.windUpDuration = p.value("windUpDuration", 1.0f);
+				pattern.activeDuration = p.value("activeDuration", 0.5f);
+				pattern.recoveryDuration = p.value("recoveryDuration", 1.5f);
+				pattern.range = p.value("range", 5.0f);
+				pattern.damage = p.value("damage", 30.0f);
+				pattern.thrustForce = p.value("thrustForce", 0.0f);
+				boss.patterns.push_back(pattern);
+			}
+		}
 	}
+	
+	// 振り向く速度を下げて、アニメーションのターンと違和感がないようにする
+	boss.rotationSpeed = 1.5f;
 
 	// 初期スケールを保存しておく
 	if (registry.all_of<TransformComponent>(entity)) {
-		originalScale_ = registry.get<TransformComponent>(entity).scale;
+		auto& bTc = registry.get<TransformComponent>(entity);
+		// アニメーション再生時のスケール崩壊対策として、モデル全体のスケールを大幅に縮小（さらに小さく調整）
+		bTc.scale.x *= 0.005f;
+		bTc.scale.y *= 0.005f;
+		bTc.scale.z *= 0.005f;
+		originalScale_ = bTc.scale;
 	}
 
+	// ★追加: 物理演算コンポーネント（重力と床判定）
+	if (!registry.all_of<RigidbodyComponent>(entity)) {
+		auto& rb = registry.emplace<RigidbodyComponent>(entity);
+		rb.useGravity = true;
+		rb.isKinematic = true; // ガクガク防止のためキネマティックにする（物理挙動は自前で行うかCMSに任せる）
+	}
+	if (!registry.all_of<BoxColliderComponent>(entity)) {
+		auto& bc = registry.emplace<BoxColliderComponent>(entity);
+		// BoxColliderはスケール倍されるため、ローカル空間では2x2x2程度にしておく
+		bc.size = {2.0f, 2.0f, 2.0f};
+		bc.center = {0, 1.0f, 0};
+	}
+	if (!registry.all_of<CharacterMovementComponent>(entity)) {
+		auto& cm = registry.emplace<CharacterMovementComponent>(entity);
+		cm.heightOffset = 0.0f; // ボスは足元原点
+		cm.gravity = 40.0f;     // 巨体なので速く落ちる
+	}
+
+	// ★追加: アニメーションコンポーネントの追加
+	if (!registry.all_of<AnimatorComponent>(entity)) {
+		registry.emplace<AnimatorComponent>(entity);
+	}
 
 	// 2. ヒットボックス（攻撃判定）の準備
 	if (!registry.all_of<HitboxComponent>(entity)) {
@@ -79,6 +100,18 @@ void BossTestScript::Start(entt::entity entity, GameScene* scene) {
 	// ★修正: ボス本体にHurtboxComponentを追加し、サイズを見た目のスケールに完全に一致させる
 	if (!registry.all_of<HurtboxComponent>(entity)) {
 		registry.emplace<HurtboxComponent>(entity);
+	}
+	
+	// ★追加: ボスのMeshRendererComponentを取得して、追加のアニメーションを読み込む
+	if (registry.all_of<MeshRendererComponent>(entity)) {
+		auto& bossMr = registry.get<MeshRendererComponent>(entity);
+		if (auto* renderer = Engine::Renderer::GetInstance()) {
+			renderer->LoadAdditionalAnimation(bossMr.modelHandle, "Resources/Models/Animation/Boss/Mutant Idle.fbx");
+			renderer->LoadAdditionalAnimation(bossMr.modelHandle, "Resources/Models/Animation/Boss/Mutant Walking.fbx");
+			renderer->LoadAdditionalAnimation(bossMr.modelHandle, "Resources/Models/Animation/Boss/Mutant Left Turn 45.fbx");
+			renderer->LoadAdditionalAnimation(bossMr.modelHandle, "Resources/Models/Animation/Boss/Mutant Right Turn 45.fbx");
+			renderer->LoadAdditionalAnimation(bossMr.modelHandle, "Resources/Models/Animation/Boss/Mutant Dying.fbx");
+		}
 	}
 	auto& hr = registry.get<HurtboxComponent>(entity);
 	// cube.obj はベースが 2x2x2 なので、スケール値に2をかけると見た目とピッタリ一致する
@@ -136,36 +169,107 @@ void BossTestScript::Update(entt::entity entity, GameScene* scene, float /*dt*/)
 	if (registry.all_of<MeshRendererComponent>(entity)) {
 		auto& mr = registry.get<MeshRendererComponent>(entity);
 		
-		// アニメーターがある場合はアニメーション名を設定、ない場合はプロシージャル変形
 		bool hasAnimator = registry.all_of<AnimatorComponent>(entity);
 		auto* anim = hasAnimator ? &registry.get<AnimatorComponent>(entity) : nullptr;
+		if (anim) {
+			anim->isPlaying = true; // ★追加: 再生状態をオンにする
+			anim->drawSkeleton = true; // ★追加: スケルトンを描画してデバッグ
+		}
 		
+		auto getAnimName = [&](const std::string& prefix, const std::string& fallback) -> std::string {
+			if (auto* renderer = Engine::Renderer::GetInstance()) {
+				if (auto* m = renderer->GetModel(mr.modelHandle)) {
+					const auto& anims = m->GetData().animations;
+					for (const auto& a : anims) {
+						OutputDebugStringA(("[BossAnim] Available: " + a.name + "\n").c_str());
+						if ((a.name.find(prefix + "_") == 0 || a.name.find(prefix) == 0) && a.name.find("mixamo.com") != std::string::npos) {
+							return a.name;
+						}
+					}
+					// Fallback to any animation with the prefix
+					for (const auto& a : anims) {
+						if (a.name.find(prefix + "_") == 0 || a.name.find(prefix) == 0) {
+							return a.name;
+						}
+					}
+					// If not found, return the first animation as a desperate fallback if available
+					if (!anims.empty()) return anims[0].name;
+				}
+			}
+			return fallback;
+		};
+
+		bool stateChanged = (prevBossState_ != boss.state);
+		auto playAnim = [&](const std::string& animPrefix, bool loop, float speed) {
+			if (!anim) return;
+			std::string targetName = getAnimName(animPrefix, animPrefix);
+			
+			bool forceRestart = false;
+			// 攻撃開始時(WindUp)や、待機・移動への移行時はアニメーションを最初から再生し直す
+			if (stateChanged && (boss.state == BossState::WindUp || boss.state == BossState::Idle || boss.state == BossState::Chase || boss.state == BossState::Stunned)) {
+				forceRestart = true;
+			}
+			
+			// If playing attack animation, we don't want it to loop
+			if (animPrefix == "attack1") loop = false;
+
+			if (!targetName.empty()) {
+				if (anim->currentAnimation != targetName || forceRestart) {
+					// 補間（クロスフェード）用ステートの保存
+					if (anim->currentAnimation != targetName && !anim->currentAnimation.empty()) {
+						anim->prevAnimation = anim->currentAnimation;
+						anim->prevTime = anim->time;
+						anim->prevLoop = anim->loop;
+						anim->crossfadeDuration = 0.2f; // 0.2秒かけて補間
+						anim->crossfadeTimer = 0.2f;
+					} else if (forceRestart) {
+						anim->crossfadeTimer = 0.0f; // 同じアニメーションの再スタート時は補間しない
+					}
+
+					anim->currentAnimation = targetName;
+					anim->time = 0.0f;
+					anim->isPlaying = true;
+				}
+				anim->loop = loop;
+				anim->speed = speed;
+			}
+		};
+
+
 		switch (boss.state) {
 		case BossState::Idle:
 			mr.color = {0.8f, 0.8f, 0.8f, 1.0f}; // グレー
-			if (anim) anim->currentAnimation = "Idle";
-			else bTc.scale = originalScale_;
+			if (anim) {
+				if (boss.turnDirection > 0.05f) {
+					playAnim("Mutant Right Turn 45", true, 1.0f);
+				} else if (boss.turnDirection < -0.05f) {
+					playAnim("Mutant Left Turn 45", true, 1.0f);
+				} else {
+					playAnim("Mutant Idle", true, 1.0f);
+				}
+			} else {
+				bTc.scale = originalScale_;
+			}
 			break;
 		case BossState::Chase:
 			mr.color = {1.0f, 0.5f, 0.0f, 1.0f}; // オレンジ（接近中）
 			if (anim) {
-				anim->currentAnimation = "Walk";
+				playAnim("Mutant Walking", true, 0.4f); // 速度を遅く調整
 			} else {
-				// 歩くような上下運動
-				bTc.translate.y = 1.0f + std::abs(std::sin(boss.stateTimer * 10.0f)) * 0.5f;
+				// 歩くようなスケール運動
+				bTc.scale.y = originalScale_.y + std::abs(std::sin(boss.stateTimer * 10.0f)) * 0.2f;
 			}
 			break;
 		case BossState::WindUp:
 			mr.color = {1.0f, 0.0f, 0.0f, 1.0f}; // 赤（予備動作・危険）
 			if (anim) {
-				anim->currentAnimation = "Attack_WindUp"; // 攻撃モーションの準備部分
+				// 攻撃はループさせず、速度をさらに遅くしてタイミングを合わせる
+				playAnim("attack1", false, 0.4f); // search for "attack1_..." 
 			} else {
 				if (attackType == BossAttackType::Thrust) {
-					// 突進の予備動作：力を溜めるように横に広がり縦に縮む
 					bTc.scale.x = originalScale_.x * 1.5f;
 					bTc.scale.y = originalScale_.y * 0.5f;
 					bTc.scale.z = originalScale_.z * 1.5f;
-					bTc.translate.y = 1.0f;
 				} else if (attackType == BossAttackType::TailSpin) {
 					// 尻尾なぎ払いの予備動作：身体をひねる（Y軸に少し回転）
 					bTc.rotate.y += 0.05f; // ジリジリと回転を溜める
@@ -175,13 +279,19 @@ void BossTestScript::Update(entt::entity entity, GameScene* scene, float /*dt*/)
 					bTc.scale.y = originalScale_.y * 1.8f;
 					bTc.scale.x = originalScale_.x * 0.7f;
 					bTc.scale.z = originalScale_.z * 0.7f;
+				} else if (attackType == BossAttackType::Punch) {
+					// パンチ予備動作
+					bTc.scale.x = originalScale_.x * 1.2f;
+					bTc.scale.y = originalScale_.y * 0.9f;
+					bTc.scale.z = originalScale_.z * 1.2f;
 				}
 			}
 			break;
 		case BossState::Attack:
 			mr.color = {1.0f, 1.0f, 1.0f, 1.0f}; // 白（攻撃中）
 			if (anim) {
-				anim->currentAnimation = "Attack";
+				// Attackステート中もWindUpと同じアニメーションを継続(forceRestartされない)
+				playAnim("attack1", false, 0.4f); // search for "attack1_..."
 			} else {
 				if (attackType == BossAttackType::Thrust) {
 					// 突進：縦に細長く伸びて前方に飛ぶ
@@ -195,19 +305,29 @@ void BossTestScript::Update(entt::entity entity, GameScene* scene, float /*dt*/)
 					bTc.scale.z = originalScale_.z * 1.2f; // 遠心力で広がる
 				} else if (attackType == BossAttackType::JumpPress) {
 					// ジャンププレス：空中に飛び上がり、落下する
-					// activeDuration中に放物線を描く
-					float t = boss.stateTimer / boss.patterns[boss.currentPatternIndex].activeDuration;
-					// 0->1 の時間で、sin(t*pi) によってジャンプ弧を描く
-					float jumpHeight = 8.0f;
-					bTc.translate.y = 1.5f + std::sin(t * DirectX::XM_PI) * jumpHeight;
+					// CharacterMovementComponentに任せてジャンプさせる
+					if (registry.all_of<CharacterMovementComponent>(entity)) {
+						auto& cm = registry.get<CharacterMovementComponent>(entity);
+						auto& rb = registry.get<RigidbodyComponent>(entity);
+						// タイマーが始まった直後だけジャンプの初速を与える
+						if (boss.stateTimer < 0.1f && cm.isGrounded) {
+							rb.velocity.y = 25.0f;
+							cm.isGrounded = false;
+						}
+					}
 					bTc.scale = originalScale_; // サイズは元に戻る
+				} else if (attackType == BossAttackType::Punch) {
+					// パンチ：前方に飛び出す
+					bTc.scale.x = originalScale_.x * 1.5f;
+					bTc.scale.y = originalScale_.y * 1.5f;
+					bTc.scale.z = originalScale_.z * 1.5f;
 				}
 			}
 			break;
 		case BossState::Cooldown:
 			mr.color = {0.2f, 0.2f, 0.8f, 1.0f}; // 青（硬直・隙）
 			if (anim) {
-				anim->currentAnimation = "Idle"; // 隙はIdleなどで代用
+				playAnim("Mutant Idle", true, 1.0f); // search for "Mutant Idle_..."
 			} else {
 				bTc.scale = originalScale_;
 			}
@@ -216,10 +336,25 @@ void BossTestScript::Update(entt::entity entity, GameScene* scene, float /*dt*/)
 		case BossState::Down:
 			mr.color = {0.0f, 0.5f, 1.0f, 1.0f}; // 水色（スタン・ダウン）
 			if (anim) {
-				anim->currentAnimation = "Down";
+				playAnim("Mutant Idle", false, 1.0f); // ダウンモーションがないのでIdle
 			} else {
 				// 倒れる（横に90度回転）
 				bTc.rotate.x = DirectX::XM_PIDIV2;
+			}
+			break;
+		case BossState::Dead:
+			mr.color = {0.3f, 0.3f, 0.3f, 1.0f}; // 黒/グレー
+			if (anim) {
+				playAnim("Mutant Dying", false, 0.5f); // 速度を遅くして、倒れるまでの時間を稼ぐ
+			}
+			
+			// 死亡アニメーションが終わる頃（速度半減なので約6秒）で消滅させる
+			if (boss.stateTimer >= 6.0f) {
+				if (registry.valid(tailEntity_)) {
+					registry.destroy(tailEntity_);
+				}
+				registry.emplace_or_replace<AutoDestroyComponent>(entity).timer = 0.0f; // 次のフレームで削除
+				return;
 			}
 			break;
 		}
@@ -287,6 +422,10 @@ void BossTestScript::Update(entt::entity entity, GameScene* scene, float /*dt*/)
 				// ジャンプ中：本体の見た目に完全に一致
 				hb.size = {bTc.scale.x * 2.0f, bTc.scale.y * 2.0f, bTc.scale.z * 2.0f};
 				hb.center = {0, 0, 0};
+			} else if (attackType == BossAttackType::Punch) {
+				// パンチ：前方に判定
+				hb.size = {bTc.scale.x * 3.0f, bTc.scale.y * 2.0f, bTc.scale.z * 3.0f};
+				hb.center = {0, 0, 2.0f};
 			}
 		}
 	}

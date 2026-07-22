@@ -2362,6 +2362,14 @@ Model* Renderer::GetModel(MeshHandle handle) {
 	return models_[handle].get();
 }
 
+bool Renderer::LoadAdditionalAnimation(MeshHandle handle, const std::string& animPath) {
+    Model* model = GetModel(handle);
+    if (!model) return false;
+    
+    std::string unifiedPath = PathUtils::GetUnifiedPath(animPath);
+    return model->LoadAdditionalAnimation(unifiedPath);
+}
+
 void Renderer::DrawMesh(MeshHandle meshH, TextureHandle texH, const Transform& tr, const Vector4& mulColor, const std::string& shaderName, float reflectivity, bool useCubemap) {
 	DrawMesh(meshH, texH, tr.ToMatrix(), mulColor, shaderName, reflectivity, useCubemap);
 }
@@ -4098,7 +4106,8 @@ void Renderer::EndLiquidPass() {
 // ★追加: GPU流体パーティクルシステム
 void Renderer::InitGPUFluid() {
 	CD3DX12_ROOT_PARAMETER computeParams[7]{};
-	computeParams[0].InitAsConstants(34, 0); 
+	// ★追加: 48 DWordsに変更 (デコイ情報など含め12x4=48)
+	computeParams[0].InitAsConstants(48, 0); 
 	computeParams[1].InitAsUnorderedAccessView(0); // u0 (Particles)
 	computeParams[2].InitAsUnorderedAccessView(1); // u1 (GridCount)
 	computeParams[3].InitAsUnorderedAccessView(2); // u2 (GridOffset)
@@ -4271,6 +4280,14 @@ void Renderer::SetGPUFluidCore(const Vector3& pos, float attraction, const Vecto
 	gpuFluidCoreForward_ = forward;
 }
 
+// ★追加: デコイ用コア情報の設定
+void Renderer::SetGPUFluidDecoy(const Vector3& pos, float attraction, const Vector3& scale, const Vector3& forward) {
+	gpuFluidDecoyPos_ = pos;
+	gpuFluidDecoyAttraction_ = attraction;
+	gpuFluidDecoyScale_ = scale;
+	gpuFluidDecoyForward_ = forward;
+}
+
 void Renderer::UpdateGPUFluid(float dt) {
 	if (!isGPUFluidReady_ || !psoFluidDensity_ || !psoFluidForce_ || !gpuFluidBuffer_) return;
 	
@@ -4295,6 +4312,11 @@ void Renderer::UpdateGPUFluid(float dt) {
 		Vector3 coreScale; float pad4;
 		Vector3 coreForward; float pad5;
 		uint32_t aabbCount; Vector3 pad6;
+		
+		// ★追加: デコイ用
+		Vector3 decoyPos; float decoyAttraction;
+		Vector3 decoyScale; float pad7;
+		Vector3 decoyForward; float pad8;
 	} cb;
 	cb.dt = dt; cb.emitCursor = 0; cb.emitCount = 0; cb.maxParticles = gpuFluidMaxParticles_;
 	cb.emitPos = {0,0,0}; cb.emitType = 0.0f; cb.emitDir = {0,0,0}; cb.emitStartIndex = 0; cb.emitColor = {0,0,0,0};
@@ -4304,9 +4326,13 @@ void Renderer::UpdateGPUFluid(float dt) {
 	cb.coreForward = gpuFluidCoreForward_; cb.pad5 = 0.0f;
 	cb.aabbCount = (uint32_t)(gpuFluidAABBs_.size() > 128 ? 128 : gpuFluidAABBs_.size());
 	cb.pad6 = {0,0,0};
+	cb.decoyPos = gpuFluidDecoyPos_; cb.decoyAttraction = gpuFluidDecoyAttraction_;
+	cb.decoyScale = gpuFluidDecoyScale_; cb.pad7 = 0.0f;
+	cb.decoyForward = gpuFluidDecoyForward_; cb.pad8 = 0.0f;
 	
 	list_->SetComputeRootSignature(rootSigFluid_.Get());
-	list_->SetComputeRoot32BitConstants(0, 34, &cb, 0);
+	// ★追加: CBサイズを 48 DWords に更新
+	list_->SetComputeRoot32BitConstants(0, 48, &cb, 0);
 	list_->SetComputeRootUnorderedAccessView(1, gpuFluidBuffer_->GetGPUVirtualAddress());
 	list_->SetComputeRootUnorderedAccessView(2, gpuFluidGridCountBuffer_->GetGPUVirtualAddress());
 	list_->SetComputeRootUnorderedAccessView(3, gpuFluidGridOffsetBuffer_->GetGPUVirtualAddress());
@@ -4396,13 +4422,19 @@ void Renderer::EmitGPUFluid(const Vector3& pos, const Vector3& velocityDir, cons
 		uint32_t emitEndIndex; Vector3 pad3;
 		Vector3 coreScale; float pad4;
 		Vector3 coreForward; float pad5;
+		uint32_t aabbCount; Vector3 pad6;
+		
+		// ★追加: デコイ用
+		Vector3 decoyPos; float decoyAttraction;
+		Vector3 decoyScale; float pad7;
+		Vector3 decoyForward; float pad8;
 	} cb;
 	
 	uint32_t startIndex = 0;
 	uint32_t endIndex = 2000;
 	uint32_t* cursorPtr = &gpuFluidEmitCursorPlayer_;
 	
-	if (type > 0.5f) { // Splash
+	if (type > 0.5f) { // Splash or Decoy
 		startIndex = 2000;
 		endIndex = gpuFluidMaxParticles_;
 		cursorPtr = &gpuFluidEmitCursorSplash_;
@@ -4414,8 +4446,13 @@ void Renderer::EmitGPUFluid(const Vector3& pos, const Vector3& velocityDir, cons
 	cb.emitEndIndex = endIndex; cb.pad3 = {0,0,0};
 	cb.coreScale = gpuFluidCoreScale_; cb.pad4 = 0.0f;
 	cb.coreForward = gpuFluidCoreForward_; cb.pad5 = 0.0f;
+	cb.aabbCount = 0; cb.pad6 = {0,0,0};
+	cb.decoyPos = gpuFluidDecoyPos_; cb.decoyAttraction = gpuFluidDecoyAttraction_;
+	cb.decoyScale = gpuFluidDecoyScale_; cb.pad7 = 0.0f;
+	cb.decoyForward = gpuFluidDecoyForward_; cb.pad8 = 0.0f;
 	
-	list_->SetComputeRoot32BitConstants(0, 32, &cb, 0);
+	// ★追加: CBサイズを変更したので48DWordsに変更
+	list_->SetComputeRoot32BitConstants(0, 48, &cb, 0);
 	list_->SetComputeRootUnorderedAccessView(1, gpuFluidBuffer_->GetGPUVirtualAddress());
 	list_->SetComputeRootUnorderedAccessView(2, gpuFluidGridCountBuffer_->GetGPUVirtualAddress());
 	list_->SetComputeRootUnorderedAccessView(3, gpuFluidGridOffsetBuffer_->GetGPUVirtualAddress());

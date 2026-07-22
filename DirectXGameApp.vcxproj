@@ -82,7 +82,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>_WINDOWS;_DEBUG;USE_IMGUI;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>$(SolutionDir)externals\DirectXTex\DirectXTex;$(ProjectDir)externals\DirectXTex;$(SolutionDir)externals\DirectXTex\Include;$(ProjectDir)externals\assimp\include;$(ProjectDir)externals\imgui;$(ProjectDir)Engine;$(ProjectDir)Game;$(ProjectDir)Game\Scenes;$(ProjectDir)Game\Editor;$(ProjectDir)Engine\ThirdParty;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)externals\DirectXTex\DirectXTex;$(ProjectDir)externals\DirectXTex;$(SolutionDir)externals\DirectXTex\Include;$(ProjectDir)externals\assimp\include;$(ProjectDir)externals\imgui;$(ProjectDir)externals\ufbx;$(ProjectDir)Engine;$(ProjectDir)Game;$(ProjectDir)Game\Scenes;$(ProjectDir)Game\Editor;$(ProjectDir)Engine\ThirdParty;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <AdditionalOptions>/utf-8 /wd4865 %(AdditionalOptions)</AdditionalOptions>
@@ -115,7 +115,7 @@ exit /b 0
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>_WINDOWS;NDEBUG;USE_IMGUI;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>$(SolutionDir)externals\DirectXTex\DirectXTex;$(ProjectDir)externals\DirectXTex;$(SolutionDir)externals\DirectXTex\Include;$(ProjectDir)externals\assimp\include;$(ProjectDir)externals\imgui;$(ProjectDir)Engine;$(ProjectDir)Game;$(ProjectDir)Game\Scenes;$(ProjectDir)Game\Editor;$(ProjectDir)Engine\ThirdParty;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)externals\DirectXTex\DirectXTex;$(ProjectDir)externals\DirectXTex;$(SolutionDir)externals\DirectXTex\Include;$(ProjectDir)externals\assimp\include;$(ProjectDir)externals\imgui;$(ProjectDir)externals\ufbx;$(ProjectDir)Engine;$(ProjectDir)Game;$(ProjectDir)Game\Scenes;$(ProjectDir)Game\Editor;$(ProjectDir)Engine\ThirdParty;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
       <Optimization>MinSpace</Optimization>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
@@ -151,7 +151,7 @@ exit /b 0
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>_WINDOWS;USE_IMGUI;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>$(SolutionDir)externals\DirectXTex\DirectXTex;$(ProjectDir)externals\DirectXTex;$(SolutionDir)externals\DirectXTex\Include;$(ProjectDir)externals\assimp\include;$(ProjectDir)externals\imgui;$(ProjectDir)Engine;$(ProjectDir)Game;$(ProjectDir)Game\Scenes;$(ProjectDir)Game\Editor;$(ProjectDir)Engine\ThirdParty;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)externals\DirectXTex\DirectXTex;$(ProjectDir)externals\DirectXTex;$(SolutionDir)externals\DirectXTex\Include;$(ProjectDir)externals\assimp\include;$(ProjectDir)externals\imgui;$(ProjectDir)externals\ufbx;$(ProjectDir)Engine;$(ProjectDir)Game;$(ProjectDir)Game\Scenes;$(ProjectDir)Game\Editor;$(ProjectDir)Engine\ThirdParty;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
       <Optimization>Disabled</Optimization>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>

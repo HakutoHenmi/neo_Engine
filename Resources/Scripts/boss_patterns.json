@@ -1,0 +1,24 @@
+{
+  "patterns": [
+    {
+      "name": "Punch1",
+      "type": "Punch",
+      "windUpDuration": 0.8,
+      "activeDuration": 0.5,
+      "recoveryDuration": 1.5,
+      "range": 3.0,
+      "damage": 30.0,
+      "thrustForce": 0.0
+    },
+    {
+      "name": "Punch2",
+      "type": "Punch",
+      "windUpDuration": 1.2,
+      "activeDuration": 0.6,
+      "recoveryDuration": 2.0,
+      "range": 5.0,
+      "damage": 45.0,
+      "thrustForce": 5.0
+    }
+  ]
+}
