@@ -81,24 +81,39 @@ public:
 				}
 
 				if (isEnemy && registry.all_of<MeshRendererComponent>(entity)) {
-					auto& mr = registry.get<MeshRendererComponent>(entity);
-					if (mr.shaderName != "Dissolve") {
-						mr.shaderName = "Dissolve";
-						mr.color.w = 1.0f; // ディゾルブ開始は不透明から
-
-						if (!registry.all_of<AutoDestroyComponent>(entity)) {
-							registry.emplace<AutoDestroyComponent>(entity).timer = 1.5f; // 1.5秒かけて消滅
+					if (registry.all_of<BossActionComponent>(entity)) {
+						// ボスの場合は専用の死亡ステートに移行する（BossTestScript側でアニメーションを再生して消去する）
+						auto& boss = registry.get<BossActionComponent>(entity);
+						if (boss.state != BossState::Dead) {
+							boss.state = BossState::Dead;
+							boss.stateTimer = 0.0f;
+							
+							if (registry.all_of<HurtboxComponent>(entity)) registry.get<HurtboxComponent>(entity).enabled = false;
+							if (registry.all_of<HitboxComponent>(entity)) registry.get<HitboxComponent>(entity).isActive = false;
+							if (registry.all_of<BoxColliderComponent>(entity)) registry.get<BoxColliderComponent>(entity).enabled = false;
+							
+							hc.enabled = false;
 						}
+					} else {
+						auto& mr = registry.get<MeshRendererComponent>(entity);
+						if (mr.shaderName != "Dissolve") {
+							mr.shaderName = "Dissolve";
+							mr.color.w = 1.0f; // ディゾルブ開始は不透明から
 
-						// 攻撃・被弾判定の無効化
-						if (registry.all_of<HurtboxComponent>(entity)) registry.get<HurtboxComponent>(entity).enabled = false;
-						if (registry.all_of<HitboxComponent>(entity)) registry.get<HitboxComponent>(entity).isActive = false;
-						if (registry.all_of<BoxColliderComponent>(entity)) registry.get<BoxColliderComponent>(entity).enabled = false;
-						
-						// AI更新停止
-						if (registry.all_of<EnemyAIComponent>(entity)) registry.get<EnemyAIComponent>(entity).enabled = false;
+							if (!registry.all_of<AutoDestroyComponent>(entity)) {
+								registry.emplace<AutoDestroyComponent>(entity).timer = 1.5f; // 1.5秒かけて消滅
+							}
 
-						hc.enabled = false; // 以降のダメージ処理を止める（isDeadはfalseのまま残す）
+							// 攻撃・被弾判定の無効化
+							if (registry.all_of<HurtboxComponent>(entity)) registry.get<HurtboxComponent>(entity).enabled = false;
+							if (registry.all_of<HitboxComponent>(entity)) registry.get<HitboxComponent>(entity).isActive = false;
+							if (registry.all_of<BoxColliderComponent>(entity)) registry.get<BoxColliderComponent>(entity).enabled = false;
+							
+							// AI更新停止
+							if (registry.all_of<EnemyAIComponent>(entity)) registry.get<EnemyAIComponent>(entity).enabled = false;
+
+							hc.enabled = false; // 以降のダメージ処理を止める（isDeadはfalseのまま残す）
+						}
 					}
 				} else {
 					hc.isDead = true;

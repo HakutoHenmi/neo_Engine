@@ -22,6 +22,9 @@
     <ClCompile Include="externals\imgui\imgui_widgets.cpp">
       <Filter>ImGui</Filter>
     </ClCompile>
+    <ClCompile Include="externals\ufbx\ufbx.c">
+      <Filter>externals</Filter>
+    </ClCompile>
     <ClCompile Include="Engine\ImGuiLayer.cpp">
       <Filter>ImGui</Filter>
     </ClCompile>
@@ -169,6 +172,9 @@
     <ClInclude Include="externals\imgui\imstb_truetype.h">
       <Filter>ImGui</Filter>
     </ClInclude>
+    <ClInclude Include="externals\ufbx\ufbx.h">
+      <Filter>externals</Filter>
+    </ClInclude>
     <ClInclude Include="Engine\Components.h">
       <Filter>ECS</Filter>
     </ClInclude>
@@ -213,6 +219,9 @@
   <ItemGroup>
     <Filter Include="ImGui">
       <UniqueIdentifier>{dc0eacd7-7097-43ab-8aee-562b48818bbd}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="externals">
+      <UniqueIdentifier>{b1f5e8f3-a123-4567-89ab-cdef01234567}</UniqueIdentifier>
     </Filter>
     <Filter Include="Core">
       <UniqueIdentifier>{06a6da6e-0571-4b8d-8fc5-decf0a6bb5b2}</UniqueIdentifier>

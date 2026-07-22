@@ -21,6 +21,16 @@ VSOut main(VSIn v) {
         gBones[v.indices.z] * v.weights.z +
         gBones[v.indices.w] * v.weights.w;
 
+    float weightSum = v.weights.x + v.weights.y + v.weights.z + v.weights.w;
+    if (weightSum < 0.001f) {
+        skinMat = float4x4(
+            1, 0, 0, 0,
+            0, 1, 0, 0,
+            0, 0, 1, 0,
+            0, 0, 0, 1
+        );
+    }
+
     float4 localPos = v.pos;
     float4 skinnedPos = mul(localPos, skinMat);
     float4 localNrm = float4(v.nrm, 0.0f);

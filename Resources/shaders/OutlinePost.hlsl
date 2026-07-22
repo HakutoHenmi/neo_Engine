@@ -46,7 +46,8 @@ float4 main(PSIn i) : SV_TARGET
                     - luML + 8.0 * luMC - luMR
                     - luBL - luBC - luBR;
 
-    float edge = saturate(abs(laplacian));
+    float edge = abs(laplacian);
+    edge = smoothstep(0.4, 0.8, edge); // 閾値を設けてテクスチャの微小な模様を無視する
 
     // gDistortion でエッジ強度を制御
     float strength = max(1.0, 1.0 + gDistortion * 5.0);

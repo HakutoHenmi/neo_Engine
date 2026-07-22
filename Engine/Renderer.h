@@ -254,6 +254,7 @@ public:
 
 	TextureHandle LoadTexture2D(const std::string& filePath, bool sRGB = true);
 	MeshHandle LoadObjMesh(const std::string& objFilePath);
+	bool LoadAdditionalAnimation(MeshHandle handle, const std::string& animPath);
 
 	// ★追加: キューブマップ読み込み (DDS) と Skybox 設定
 	TextureHandle LoadCubeMap(const std::string& ddsPath);
@@ -335,11 +336,18 @@ public:
 	void DrawGPUFluid(TextureHandle texture);
 	void DrawGPUFluidDebug();
 	void SetGPUFluidCore(const Vector3& pos, float attraction, const Vector3& scale = {1.0f, 1.0f, 1.0f}, const Vector3& forward = {0.0f, 0.0f, 1.0f});
+	void SetGPUFluidDecoy(const Vector3& pos, float attraction, const Vector3& scale = {1.0f, 1.0f, 1.0f}, const Vector3& forward = {0.0f, 0.0f, 1.0f}); // ★追加: デコイ用コア情報設定
 
 	Vector3 gpuFluidCorePos_ = {0,0,0};
 	float gpuFluidCoreAttraction_ = 0.0f;
 	Vector3 gpuFluidCoreScale_ = {1.0f, 1.0f, 1.0f};
 	Vector3 gpuFluidCoreForward_ = {0.0f, 0.0f, 1.0f};
+
+	// ★追加: デコイ用コア情報
+	Vector3 gpuFluidDecoyPos_ = {0,0,0};
+	float gpuFluidDecoyAttraction_ = 0.0f;
+	Vector3 gpuFluidDecoyScale_ = {1.0f, 1.0f, 1.0f};
+	Vector3 gpuFluidDecoyForward_ = {0.0f, 0.0f, 1.0f};
 	
 	// ★追加: 流体シミュレーション用のAABBコリジョン
 	struct FluidAABB {

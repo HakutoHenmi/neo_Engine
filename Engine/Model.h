@@ -135,6 +135,8 @@ class Model {
 public:
 	// ファイル読み込み
 	bool Load(ID3D12Device* device, ID3D12GraphicsCommandList* cmd, const std::string& objPath);
+	bool LoadWithUFBX(ID3D12Device* device, ID3D12GraphicsCommandList* cmd, const std::string& objPath);
+	bool LoadAdditionalAnimation(const std::string& animPath);
 
 	// 動的メッシュ初期化 (新規追加)
 	void InitializeDynamic(ID3D12Device* device, const std::vector<VertexData>& vertices, const std::vector<uint32_t>& indices);
@@ -178,7 +180,7 @@ public:
 	// time: 現在のアニメーション時刻(Tick)
 	// outPalette: 計算結果のボーン行列書き込み先
 	// debugLines: デバッグ用のスケルトン描画ライン出力先（任意）
-	void UpdateSkeleton(const Node& node, const Matrix4x4& parentTransform, const Animation& animation, float time, std::vector<Matrix4x4>& outPalette, std::vector<std::pair<Vector3, Vector3>>* debugLines = nullptr);
+	void UpdateSkeleton(const Node& node, const Matrix4x4& parentTransform, const Animation& animation, float time, const Animation* prevAnimation, float prevTime, float blendFactor, std::vector<Matrix4x4>& outPalette, std::vector<std::pair<Vector3, Vector3>>* debugLines = nullptr);
 
 	// BVH構築
 	void BuildBVH();

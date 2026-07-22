@@ -160,6 +160,13 @@ struct AnimatorComponent : public Component {
 	bool isPlaying = false;
 	bool loop = true;
 	bool drawSkeleton = false; // ★追加: デバッグ用スケルトン表示
+	
+	std::string prevAnimation;
+	float prevTime = 0.0f;
+	bool prevLoop = true;
+	float crossfadeTimer = 0.0f;
+	float crossfadeDuration = 0.0f;
+	
 	AnimatorComponent() { type = ComponentType::Animator; }
 };
 
@@ -481,7 +488,8 @@ struct AutoDestroyComponent : public Component {
 enum class BossAttackType {
 	Thrust,       // 突進（デフォルト）
 	TailSpin,     // 尻尾なぎ払い（大回転）
-	JumpPress     // 飛びかかりプレス（衝撃波）
+	JumpPress,    // 飛びかかりプレス（衝撃波）
+	Punch         // ★追加: パンチ
 };
 
 // ★追加: ボス専用アクションステートマシン用
@@ -510,6 +518,7 @@ struct BossActionComponent : public Component {
 	
 	int currentPatternIndex = -1;
 	std::vector<BossActionPattern> patterns;
+	float turnDirection = 0.0f;
 	
 	BossActionComponent() { type = ComponentType::BossAction; }
 };

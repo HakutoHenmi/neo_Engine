@@ -38,10 +38,11 @@ public:
 			float targetAngle = std::atan2(dx, dz);
 
 			boss.stateTimer += ctx.dt;
+			boss.turnDirection = 0.0f;
 
 			switch (boss.state) {
 			case BossState::Idle:
-				SmoothRotate(tc, targetAngle, boss.rotationSpeed, ctx.dt);
+				SmoothRotate(tc, targetAngle, boss.rotationSpeed, ctx.dt, boss);
 				if (boss.stateTimer > 1.0f) { // 待機時間
 					// アタックパターンを選ぶ (距離ベースなどのロジックを入れる)
 					if (!boss.patterns.empty()) {
@@ -58,7 +59,7 @@ public:
 				break;
 
 			case BossState::Chase:
-				SmoothRotate(tc, targetAngle, boss.rotationSpeed, ctx.dt);
+				SmoothRotate(tc, targetAngle, boss.rotationSpeed, ctx.dt, boss);
 				if (dist > 0.5f) {
 					float nx = dx / dist;
 					float nz = dz / dist;
@@ -74,7 +75,7 @@ public:
 				break;
 
 			case BossState::WindUp:
-				SmoothRotate(tc, targetAngle, boss.rotationSpeed * 0.3f, ctx.dt);
+				SmoothRotate(tc, targetAngle, boss.rotationSpeed * 0.3f, ctx.dt, boss);
 				if (boss.currentPatternIndex >= 0) {
 					auto& p = boss.patterns[boss.currentPatternIndex];
 					if (boss.stateTimer >= p.windUpDuration) {
@@ -92,10 +93,12 @@ public:
 			case BossState::Attack:
 				if (boss.currentPatternIndex >= 0) {
 					auto& p = boss.patterns[boss.currentPatternIndex];
-					// 前進力
-					float facing = tc.rotate.y;
-					tc.translate.x += std::sin(facing) * p.thrustForce * ctx.dt;
-					tc.translate.z += std::cos(facing) * p.thrustForce * ctx.dt;
+					// 前進力（攻撃の前半だけ前進させることで、攻撃後の不自然な滑りを防止）
+					if (boss.stateTimer < p.activeDuration * 0.5f) {
+						float facing = tc.rotate.y;
+						tc.translate.x += std::sin(facing) * p.thrustForce * ctx.dt;
+						tc.translate.z += std::cos(facing) * p.thrustForce * ctx.dt;
+					}
 
 					if (boss.stateTimer >= p.activeDuration) {
 						TransitionTo(boss, BossState::Cooldown);
@@ -157,10 +160,11 @@ private:
 		boss.stateTimer = 0.0f;
 	}
 
-	void SmoothRotate(TransformComponent& tc, float targetAngle, float speed, float dt) {
+	void SmoothRotate(TransformComponent& tc, float targetAngle, float speed, float dt, BossActionComponent& boss) {
 		float diff = targetAngle - tc.rotate.y;
 		while (diff >  DirectX::XM_PI) diff -= DirectX::XM_2PI;
 		while (diff < -DirectX::XM_PI) diff += DirectX::XM_2PI;
+		boss.turnDirection = diff;
 		tc.rotate.y += diff * std::min(1.0f, speed * dt);
 	}
 

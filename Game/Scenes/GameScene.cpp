@@ -485,6 +485,12 @@ void GameScene::Update() {
 
 				if (anim.enabled && anim.isPlaying) {
 					anim.time += dt * 60.0f * anim.speed;
+					if (anim.crossfadeTimer > 0.0f) {
+						anim.crossfadeTimer -= dt;
+						if (anim.crossfadeTimer < 0.0f) anim.crossfadeTimer = 0.0f;
+						anim.prevTime += dt * 60.0f * anim.speed;
+					}
+
 					auto* m = renderer_->GetModel(meshWrapper.modelHandle);
 					if (m) {
 						const auto& data = m->GetData();
@@ -498,7 +504,12 @@ void GameScene::Update() {
 										anim.isPlaying = false;
 									}
 								}
-								break;
+							}
+							if (anim.crossfadeTimer > 0.0f && a.name == anim.prevAnimation) {
+								if (anim.prevTime > a.duration) {
+									if (anim.prevLoop) anim.prevTime = std::fmod(anim.prevTime, a.duration);
+									else anim.prevTime = a.duration;
+								}
 							}
 						}
 					}
@@ -1000,17 +1011,50 @@ void GameScene::Draw() {
 				// アクション状態に応じて引力を変える（回避中は引力を弱めて散らばらせるなど）
 				float attraction = isLiquidated ? 10.0f : 80.0f;
 				
-				// ★追加: 右クリック中は引力を完全にゼロにし、自由な液体として広がらせる
-				if ((GetAsyncKeyState(VK_RBUTTON) & 0x8000) != 0) {
-					attraction = 0.0f;
-				}
-				
 				Engine::Vector3 targetCore = {corePos.x, corePos.y + 0.8f, corePos.z};
 				auto& playerTc = registry_.get<TransformComponent>(playerEntity);
 				Engine::Matrix4x4 mat = playerTc.GetTransform().ToMatrix();
 				Engine::Vector3 forward = {mat.m[2][0], mat.m[2][1], mat.m[2][2]};
 				Engine::Vector3 scaleVec = {blobRadii.x, blobRadii.y, blobRadii.z};
 				renderer_->SetGPUFluidCore(targetCore, attraction, scaleVec, forward);
+
+				// ★追加: デコイコアの設定
+				bool decoyFound = false;
+				auto decoyView = registry_.view<TagComponent, TransformComponent, NameComponent>();
+				for (auto e : decoyView) {
+					if (decoyView.get<TagComponent>(e).tag == TagType::Player && 
+						decoyView.get<NameComponent>(e).name == "Decoy") {
+						
+						auto& dtc = decoyView.get<TransformComponent>(e);
+						
+						// デコイの呼吸アニメーション
+						float timeLived = 5.0f;
+						if (registry_.all_of<AutoDestroyComponent>(e)) {
+							timeLived = 5.0f - registry_.get<AutoDestroyComponent>(e).timer;
+						}
+						float breathe = std::sin(timeLived * 3.0f);
+						
+						// 幅は自機より少し小さめだが、高さ(厚み)は自機と同じにしてペタンコを防ぐ
+						dtc.scale.x = 0.9f + breathe * 0.05f;
+						dtc.scale.y = 0.8f - breathe * 0.05f; // 自機(0.8)と同じ高さ
+						dtc.scale.z = 0.9f + breathe * 0.05f;
+
+						// コアの位置もしっかり持ち上げる（地面に潰されないように）
+						Engine::Vector3 targetDecoyCore = {dtc.translate.x, dtc.translate.y + 0.8f, dtc.translate.z};
+						Engine::Matrix4x4 dMat = dtc.GetTransform().ToMatrix();
+						Engine::Vector3 dForward = {dMat.m[2][0], dMat.m[2][1], dMat.m[2][2]};
+						Engine::Vector3 dScale = {dtc.scale.x, dtc.scale.y, dtc.scale.z};
+						// デコイはプレイヤーの状態(液状化など)に関係なく常に形を保つ
+						float decoyAttraction = 80.0f;
+						renderer_->SetGPUFluidDecoy(targetDecoyCore, decoyAttraction, dScale, dForward);
+						decoyFound = true;
+						break;
+					}
+				}
+				if (!decoyFound) {
+					// デコイがいない場合は引力をゼロにしておく
+					renderer_->SetGPUFluidDecoy({0,-1000,0}, 0.0f, {1,1,1}, {0,0,1});
+				}
 
 				// ★追加: 流体シミュレーション用のAABBコリジョンを収集してレンダラーに送る
 				std::vector<Engine::Renderer::FluidAABB> fluidAABBs;
@@ -1022,10 +1066,16 @@ void GameScene::Draw() {
 					// トリガーは当たり判定にしない
 					if (bc.isTrigger) continue;
 					
-					// ★追加: プレイヤー自身の BoxCollider はスライム(流体)と衝突させない（弾き飛ばされて挙動がおかしくなるのを防ぐ）
-					if (registry_.all_of<TagComponent>(entity) && registry_.get<TagComponent>(entity).tag == TagType::Player) {
-						continue;
+					// ★変更: 地形(Wall, Default)のみを流体の障害物として扱う
+					bool isStaticObstacle = false;
+					if (registry_.all_of<TagComponent>(entity)) {
+						auto tag = registry_.get<TagComponent>(entity).tag;
+						if (tag == TagType::Wall || tag == TagType::Default) {
+							isStaticObstacle = true;
+						}
 					}
+					
+					if (!isStaticObstacle) continue;
 					
 					Engine::Vector3 scale = {tc.scale.x * bc.size.x, tc.scale.y * bc.size.y, tc.scale.z * bc.size.z};
 					// 簡易的なワールド座標（回転を無視したAABB）
@@ -1179,8 +1229,20 @@ void GameScene::Draw() {
 								for (auto& b : bonePalette)
 									b = Engine::Matrix4x4::Identity();
 
+								const Engine::Animation* prevAnim = nullptr;
+								float blendFactor = 0.0f;
+								if (anim.crossfadeTimer > 0.0f && anim.crossfadeDuration > 0.0f) {
+									for (const auto& a : data.animations) {
+										if (a.name == anim.prevAnimation) {
+											prevAnim = &a;
+											break;
+										}
+									}
+									blendFactor = 1.0f - (anim.crossfadeTimer / anim.crossfadeDuration);
+								}
+
 								std::vector<std::pair<Engine::Vector3, Engine::Vector3>> debugLines;
-								m->UpdateSkeleton(data.rootNode, Engine::Matrix4x4::Identity(), *currAnim, anim.time, bonePalette, anim.drawSkeleton ? &debugLines : nullptr);
+								m->UpdateSkeleton(data.rootNode, Engine::Matrix4x4::Identity(), *currAnim, anim.time, prevAnim, anim.prevTime, blendFactor, bonePalette, anim.drawSkeleton ? &debugLines : nullptr);
 								hasAnim = true;
 
 								if (anim.drawSkeleton) {
