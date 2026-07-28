@@ -316,11 +316,27 @@ void Renderer::Shutdown() {
 }
 
 void Renderer::WaitGPU() {
-	if (window_)
-		window_->WaitIdle();
+	if (!dev_ || !queue_) return;
+
+	// ★修正: window_->WaitIdle() を呼ぶとメインループのフェンス番号が狂い、
+	// アセットの非同期ロードやUpdate中のコマンド実行時に Device Removed (0x887A0006) が発生するため、
+	// 一時的なフェンスを作成して待機するように変更します。
+	Microsoft::WRL::ComPtr<ID3D12Fence> tempFence;
+	if (FAILED(dev_->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&tempFence)))) return;
+
+	HANDLE tempEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
+	if (!tempEvent) return;
+
+	queue_->Signal(tempFence.Get(), 1);
+	if (tempFence->GetCompletedValue() < 1) {
+		tempFence->SetEventOnCompletion(1, tempEvent);
+		WaitForSingleObject(tempEvent, INFINITE);
+	}
+	CloseHandle(tempEvent);
 }
 
 void Renderer::BeginFrame(const float clearColorRGBA[4]) {
+	(void)clearColorRGBA;
 	ID3D12DescriptorHeap* heaps[] = {srvHeap_};
 	list_->SetDescriptorHeaps(1, heaps);
 
@@ -364,21 +380,6 @@ void Renderer::BeginFrame(const float clearColorRGBA[4]) {
 			cbLightAddr_ = upload_[fi].buffer->GetGPUVirtualAddress() + off;
 		}
 	}
-
-	// ★修正: 常に ppSceneColor_ (Render To Texture) に描画するように変更する
-	// これにより、後続のEndFrameでPostProcessやコピーパスを経て finalSceneColor_ に焼き付けられる
-	if (ppSceneState_ != D3D12_RESOURCE_STATE_RENDER_TARGET) {
-		auto b = CD3DX12_RESOURCE_BARRIER::Transition(ppSceneColor_.Get(), ppSceneState_, D3D12_RESOURCE_STATE_RENDER_TARGET);
-		list_->ResourceBarrier(1, &b);
-		ppSceneState_ = D3D12_RESOURCE_STATE_RENDER_TARGET;
-	}
-
-	auto rtv = ppRtv_;
-	auto dsv = window_->DSV_CPU(0);
-	list_->OMSetRenderTargets(1, &rtv, FALSE, &dsv);
-
-	list_->ClearRenderTargetView(rtv, clearColorRGBA, 0, nullptr);
-	list_->ClearDepthStencilView(dsv, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
 
 	// GameSceneの描画時は常に画面全体(1920x1080)のViewportを使用する
 	D3D12_VIEWPORT fullVP = { 0.0f, 0.0f, static_cast<float>(window_->kW), static_cast<float>(window_->kH), 0.0f, 1.0f };
@@ -561,6 +562,11 @@ void Renderer::FlushDrawCalls() {
 			if (dc.shaderName == "EnhancedTerrain") {
 				list_->SetGraphicsRootShaderResourceView(5, gpuAddr);
 			}
+			
+			// ★追加: 通常の描画でも、InstanceData SRV (Slot 6) が未バインドにならないようダミーアドレスを設定
+			if (dc.shaderName != "EnhancedTerrain") {
+				list_->SetGraphicsRootShaderResourceView(6, gpuAddr);
+			}
 		}
 		
 		if (dc.shaderName != "EnhancedTerrain") {
@@ -704,16 +710,19 @@ void Renderer::FlushDrawCalls() {
 	flushInstanced(instancedParticleDrawCalls_, "ParticleInstanced");
 
 	// ★追加: GPU流体更新
-	UpdateGPUFluid(1.0f / 60.0f);
+	const bool hasGpuFluidParticles = isGPUFluidReady_ && gpuFluidActiveParticleCount_ > 0;
+	if (hasGpuFluidParticles) {
+		UpdateGPUFluid(1.0f / 60.0f);
+	}
 
 
 	// ★追加: 液体パーティクルのパス (メタボール)
-	if (!liquidParticleDrawCalls_.empty() || isGPUFluidReady_) {
+	if (!liquidParticleDrawCalls_.empty() || hasGpuFluidParticles) {
 		BeginLiquidPass();
 		if (!liquidParticleDrawCalls_.empty()) {
 			flushInstanced(liquidParticleDrawCalls_, "ParticleInstanced");
 		}
-		if (isGPUFluidReady_) {
+		if (hasGpuFluidParticles) {
 			DrawGPUFluid(LoadTexture2D("Resources/Textures/ball.png"));
 		}
 		EndLiquidPass();
@@ -860,7 +869,33 @@ void Renderer::FlushDrawCalls() {
 void Renderer::EndFrame() {
 	const uint32_t fi = window_->FrameIndex();
 
+	static int dbgFrameCounter = 0;
+	if (dbgFrameCounter++ < 5) { // 最初の数フレームだけログ出力
+		std::string s = "[RendererDebug] Frame " + std::to_string(dbgFrameCounter) + ":\n";
+		s += "  CameraPos=(" + std::to_string(cbFrame_.cameraPos.x) + ", " + std::to_string(cbFrame_.cameraPos.y) + ", " + std::to_string(cbFrame_.cameraPos.z) + ")\n";
+		s += "  DrawCalls=" + std::to_string(drawCalls_.size()) + ", InstancedDrawCalls=" + std::to_string(instancedDrawCalls_.size()) + "\n";
+		s += "  PostProcess Enabled=" + std::to_string(framePPEnabled_) + "\n";
+		bool hasPso = psoPP_ ? true : false;
+		s += "  psoPP_ exists=" + std::to_string(hasPso) + "\n";
+		
+		OutputDebugStringA(s.c_str());
+		FILE* f = nullptr;
+		fopen_s(&f, "C:\\Users\\k024g\\source\\repos\\neo_Engine\\black_screen_log.txt", "a");
+		if (f) { fputs(s.c_str(), f); fclose(f); }
+	}
+
+
 	// ====== 0. シャドウ行列の計算 ======
+	// ★追加: cbFrameAddr_ が 0 の場合、ダミーの CBFrame を割り当てる (Device Removed対策)
+	if (cbFrameAddr_ == 0) {
+		CBFrame dummyCb{};
+		uint32_t dummyOff = upload_[fi].Allocate(sizeof(CBFrame), 256);
+		if (dummyOff != UINT32_MAX) {
+			std::memcpy(upload_[fi].mapped + dummyOff, &dummyCb, sizeof(CBFrame));
+			cbFrameAddr_ = upload_[fi].buffer->GetGPUVirtualAddress() + dummyOff;
+		}
+	}
+
 	Matrix4x4 lightVP = Matrix4x4::Identity();
 	if (lightCB_.dirLights[0].enabled) {
 		Vector3 ldir = lightCB_.dirLights[0].direction;
@@ -920,6 +955,9 @@ void Renderer::EndFrame() {
 			uint32_t oOff = upload_[fi].Allocate(sizeof(CBObj), 256);
 			std::memcpy(upload_[fi].mapped + oOff, &objCb, sizeof(CBObj));
 			list_->SetGraphicsRootConstantBufferView(1, upload_[fi].buffer->GetGPUVirtualAddress() + oOff);
+			
+			// ★追加: 未バインドによるDevice Removed防止 (InstanceData SRV)
+			list_->SetGraphicsRootShaderResourceView(6, upload_[fi].buffer->GetGPUVirtualAddress() + oOff);
 
 			if (dc.isSkinned) {
 				struct CBBone { Matrix4x4 bones[128]; };
@@ -1149,13 +1187,19 @@ void Renderer::EndFrame() {
 			std::memcpy(upload_[fi].mapped + off, &cb, sizeof(CBPost));
 			const D3D12_GPU_VIRTUAL_ADDRESS cbAddr = upload_[fi].buffer->GetGPUVirtualAddress() + off;
 			list_->SetGraphicsRootConstantBufferView(0, cbAddr);
+		} else {
+			// ★修正: アロケーション失敗時は cbFrameAddr_ を代用してバインド漏れ（Device Removed）を防ぐ
+			list_->SetGraphicsRootConstantBufferView(0, cbFrameAddr_);
 		}
+	} else {
+		// cbFrameAddr_ は上で必ず有効な値になっているはず
+		list_->SetGraphicsRootConstantBufferView(0, cbFrameAddr_);
 	}
 
 	list_->SetGraphicsRootDescriptorTable(1, ppSrvGpu_);
-	// ★追加: 和風テクスチャのバインド (t1, t2)
-	list_->SetGraphicsRootDescriptorTable(2, GetTextureSrvGpu(sumiEPaperTex_));
-	list_->SetGraphicsRootDescriptorTable(3, GetTextureSrvGpu(sumiEVignetteTex_));
+	// ★修正: 未初期化(0)の場合はダミーとして ppSrvGpu_ をバインドし、無効なSRVやTextureCubeがバインドされてDevice Hung(0x887A0006)になるのを防ぐ
+	list_->SetGraphicsRootDescriptorTable(2, sumiEPaperTex_ ? GetTextureSrvGpu(sumiEPaperTex_) : ppSrvGpu_);
+	list_->SetGraphicsRootDescriptorTable(3, sumiEVignetteTex_ ? GetTextureSrvGpu(sumiEVignetteTex_) : ppSrvGpu_);
 	// ★修正: 深度バッファを t3 にバインド (法線バッファは廃止)
 	list_->SetGraphicsRootDescriptorTable(4, ppDepthSrvGpu_);
 
@@ -1188,7 +1232,15 @@ void Renderer::EndFrame() {
 
 	list_->SetPipelineState(psoCopy_.Get());
 	list_->SetGraphicsRootSignature(rootSigPP_.Get());
+	// ★修正: cbFrameAddr_ は上で必ず有効な値になっているはずなのでそのままバインド
+	list_->SetGraphicsRootConstantBufferView(0, cbFrameAddr_);
 	list_->SetGraphicsRootDescriptorTable(1, finalSrvGpu_);
+	
+	// ★追加: 未バインドによるDevice Removed防止 (t1, t2, t3)
+	list_->SetGraphicsRootDescriptorTable(2, textures_[0].srvGpu);
+	list_->SetGraphicsRootDescriptorTable(3, textures_[0].srvGpu);
+	list_->SetGraphicsRootDescriptorTable(4, textures_[0].srvGpu);
+	
 	list_->DrawInstanced(3, 1, 0, 0);
 }
 
@@ -1660,8 +1712,32 @@ cbuffer CBFrame : register(b0) { row_major float4x4 gView; row_major float4x4 gP
 cbuffer CBObj : register(b1) { row_major float4x4 gWorld; float4 gColor; };
 cbuffer CBBone : register(b3) { row_major float4x4 gBones[128]; };
 struct VSIn { float4 pos : POSITION; float2 uv : TEXCOORD0; float3 nrm : NORMAL; float4 weights : WEIGHTS; uint4 indices : BONES; };
-float4 main(VSIn v) : SV_POSITION { 
-    float4x4 skinMat = gBones[v.indices.x] * v.weights.x + gBones[v.indices.y] * v.weights.y + gBones[v.indices.z] * v.weights.z + gBones[v.indices.w] * v.weights.w;
+static const uint kMaxSkinBones = 128;
+float4x4 IdentityMatrix() {
+    return float4x4(
+        1, 0, 0, 0,
+        0, 1, 0, 0,
+        0, 0, 1, 0,
+        0, 0, 0, 1);
+}
+void AccumulateBone(inout float4x4 skinMat, inout float validWeight, uint index, float weight) {
+    if (weight > 0.0001f && index < kMaxSkinBones) {
+        skinMat += gBones[index] * weight;
+        validWeight += weight;
+    }
+}
+float4 main(VSIn v) : SV_POSITION {
+    float4x4 skinMat = IdentityMatrix() * 0.0f;
+    float weightSum = 0.0f;
+    AccumulateBone(skinMat, weightSum, v.indices.x, v.weights.x);
+    AccumulateBone(skinMat, weightSum, v.indices.y, v.weights.y);
+    AccumulateBone(skinMat, weightSum, v.indices.z, v.weights.z);
+    AccumulateBone(skinMat, weightSum, v.indices.w, v.weights.w);
+    if (weightSum < 0.001f) {
+        skinMat = IdentityMatrix();
+    } else {
+        skinMat *= rcp(weightSum);
+    }
     float4 skinnedPos = mul(v.pos, skinMat);
     return mul(mul(skinnedPos, gWorld), gViewProj); 
 }
@@ -2864,6 +2940,16 @@ void Renderer::FlushLines() {
 		list_->SetPipelineState(pipeline);
 		list_->SetGraphicsRootSignature(rootSig3D_.Get());
 		list_->SetGraphicsRootConstantBufferView(0, cbFrameAddr_);
+		
+		// ★追加: 未バインドによるDevice Removed防止 (b1, b2, t0, b3, t1, t2, t3)
+		list_->SetGraphicsRootConstantBufferView(1, cbFrameAddr_);
+		list_->SetGraphicsRootConstantBufferView(2, cbFrameAddr_);
+		list_->SetGraphicsRootDescriptorTable(3, textures_[0].srvGpu);
+		list_->SetGraphicsRootConstantBufferView(4, cbFrameAddr_);
+		list_->SetGraphicsRootDescriptorTable(5, textures_[0].srvGpu);
+		list_->SetGraphicsRootShaderResourceView(6, upload_[fi].buffer->GetGPUVirtualAddress());
+		list_->SetGraphicsRootDescriptorTable(7, textures_[0].srvGpu);
+
 		list_->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_LINELIST);
 
 		D3D12_VERTEX_BUFFER_VIEW vbv{};
@@ -3082,6 +3168,46 @@ float4 main(float4 svpos:SV_POSITION, float2 uv:TEXCOORD0) : SV_TARGET {
 			Microsoft::WRL::ComPtr<ID3D12PipelineState> psoOutlinePost;
 			if (SUCCEEDED(dev_->CreateGraphicsPipelineState(&pso, IID_PPV_ARGS(&psoOutlinePost)))) {
 				pipelines_["OutlinePost"] = psoOutlinePost;
+			}
+		}
+
+		// ★追加: DepthBasedOutline ポストエフェクト
+		auto psDepthOutline = CompileShaderFromFile(L"Resources/shaders/DepthBasedOutline.hlsl", "main", "ps_5_0");
+		if (psDepthOutline) {
+			pso.PS = { psDepthOutline->GetBufferPointer(), psDepthOutline->GetBufferSize() };
+			Microsoft::WRL::ComPtr<ID3D12PipelineState> psoDepthOutline;
+			if (SUCCEEDED(dev_->CreateGraphicsPipelineState(&pso, IID_PPV_ARGS(&psoDepthOutline)))) {
+				pipelines_["DepthBasedOutline"] = psoDepthOutline;
+			}
+		}
+
+		// ★追加: Vignetting ポストエフェクト
+		auto psVignetting = CompileShaderFromFile(L"Resources/shaders/Vignetting.hlsl", "main", "ps_5_0");
+		if (psVignetting) {
+			pso.PS = { psVignetting->GetBufferPointer(), psVignetting->GetBufferSize() };
+			Microsoft::WRL::ComPtr<ID3D12PipelineState> psoVignetting;
+			if (SUCCEEDED(dev_->CreateGraphicsPipelineState(&pso, IID_PPV_ARGS(&psoVignetting)))) {
+				pipelines_["Vignetting"] = psoVignetting;
+			}
+		}
+
+		// ★追加: BoxFilter ポストエフェクト
+		auto psBoxFilter = CompileShaderFromFile(L"Resources/shaders/BoxFilter.hlsl", "main", "ps_5_0");
+		if (psBoxFilter) {
+			pso.PS = { psBoxFilter->GetBufferPointer(), psBoxFilter->GetBufferSize() };
+			Microsoft::WRL::ComPtr<ID3D12PipelineState> psoBoxFilter;
+			if (SUCCEEDED(dev_->CreateGraphicsPipelineState(&pso, IID_PPV_ARGS(&psoBoxFilter)))) {
+				pipelines_["BoxFilter"] = psoBoxFilter;
+			}
+		}
+
+		// ★追加: Dissolve ポストエフェクト
+		auto psDissolve = CompileShaderFromFile(L"Resources/shaders/Dissolve.hlsl", "main", "ps_5_0");
+		if (psDissolve) {
+			pso.PS = { psDissolve->GetBufferPointer(), psDissolve->GetBufferSize() };
+			Microsoft::WRL::ComPtr<ID3D12PipelineState> psoDissolve;
+			if (SUCCEEDED(dev_->CreateGraphicsPipelineState(&pso, IID_PPV_ARGS(&psoDissolve)))) {
+				pipelines_["Dissolve"] = psoDissolve;
 			}
 		}
 
@@ -3306,11 +3432,11 @@ float4 main(float4 svpos:SV_POSITION, float2 uv:TEXCOORD0) : SV_TARGET {
 }
 
 void Renderer::SetPostEffect(const std::string& name) {
-	// 空文字の場合はデフォルト（CRT）に戻す
-	if (name.empty()) {
-		if (psoPPDefault_) {
-			psoPP_ = psoPPDefault_;
-			ppEnabled_ = true;
+	// 空文字または "Default" の場合はパススルー（コピー）にする
+	if (name.empty() || name == "Default") {
+		if (psoCopy_) {
+			psoPP_ = psoCopy_;
+			ppEnabled_ = false; // ★修正: メモリ不足によるバインド漏れ（Device Removed）を防ぐため false に
 		}
 		return;
 	}
@@ -3515,6 +3641,19 @@ void Renderer::DispatchCollision(MeshHandle /*meshA*/, uint32_t meshBHandle, con
 
 	req.numBvhNodes = modelB->GetBvhNodeCount();
 	req.meshB = meshBHandle;
+	req.vertexCount = modelB->GetVertexCount();
+	req.indexCount = modelB->GetIndexCount();
+	req.bvhIndexCount = static_cast<uint32_t>(modelB->GetData().bvhIndices.size());
+	if (req.numBvhNodes == 0 ||
+		req.vertexCount == 0 ||
+		req.indexCount == 0 ||
+		req.bvhIndexCount == 0 ||
+		modelB->GetBvhNodeBufferAddr() == 0 ||
+		modelB->GetBvhIndexBufferAddr() == 0 ||
+		modelB->GetVertexBufferAddr() == 0 ||
+		modelB->GetIndexBufferAddr() == 0) {
+		return;
+	}
 
 	collisionRequests_.push_back(req);
 }
@@ -3593,7 +3732,14 @@ void Renderer::EndCollisionCheck() {
 			count++;
 		}
 		auto* model = GetModel(meshHandle);
-		if (model && model->GetBvhNodeCount() > 0 && model->GetBvhNodeBufferAddr() != 0) {
+		if (model &&
+			model->GetBvhNodeCount() > 0 &&
+			model->GetVertexCount() > 0 &&
+			model->GetIndexCount() > 0 &&
+			model->GetBvhNodeBufferAddr() != 0 &&
+			model->GetBvhIndexBufferAddr() != 0 &&
+			model->GetVertexBufferAddr() != 0 &&
+			model->GetIndexBufferAddr() != 0) {
 			collisionList_->SetComputeRoot32BitConstant(0, count, 0);
 			collisionList_->SetComputeRootShaderResourceView(1, collisionRequestBuffer_->GetGPUVirtualAddress() + currentStart * sizeof(CollisionRequest));
 			collisionList_->SetComputeRootShaderResourceView(2, model->GetBvhNodeBufferAddr());
@@ -3616,7 +3762,7 @@ void Renderer::EndCollisionCheck() {
 	collisionList_->Close();
 	ID3D12CommandList* ppLists[] = {collisionList_.Get()};
 	queue_->ExecuteCommandLists(1, ppLists);
-	// WaitGPU(); // ★削除: CPU停止によるTDRを回避。結果は次フレーム以降に整合することになるが、生存性は向上する。
+	WaitGPU(); // ★修正: CPU停止によるTDRを回避しようとしたが、これがないと次フレームでの collisionAlloc_->Reset() 時に GPU がまだ実行中で Device Removed (0x887A0006) になるため戻す。
 
 	// 8. リクエストリストをクリア (重要: 漏れると毎フレーム蓄積する)
 	collisionRequests_.clear();
@@ -4098,6 +4244,9 @@ void Renderer::EndLiquidPass() {
 		list_->SetGraphicsRootDescriptorTable(1, liquidSrv_);
 		// t1: liquidDepthSrv_ (深度) 
 		list_->SetGraphicsRootDescriptorTable(2, liquidDepthSrv_);
+		// ★追加: 未バインドによるDevice Removed防止 (t2, t3)
+		list_->SetGraphicsRootDescriptorTable(3, textures_[0].srvGpu);
+		list_->SetGraphicsRootDescriptorTable(4, textures_[0].srvGpu);
 
 		list_->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 		list_->DrawInstanced(3, 1, 0, 0);
@@ -4318,7 +4467,10 @@ void Renderer::UpdateGPUFluid(float dt) {
 		Vector3 decoyScale; float pad7;
 		Vector3 decoyForward; float pad8;
 	} cb;
-	cb.dt = dt; cb.emitCursor = 0; cb.emitCount = 0; cb.maxParticles = gpuFluidMaxParticles_;
+	const uint32_t simulationCount = (std::min)(gpuFluidActiveParticleCount_, gpuFluidMaxParticles_);
+	if (simulationCount == 0 && isGPUFluidInitialized_) return;
+
+	cb.dt = dt; cb.emitCursor = 0; cb.emitCount = 0; cb.maxParticles = simulationCount > 0 ? simulationCount : gpuFluidMaxParticles_;
 	cb.emitPos = {0,0,0}; cb.emitType = 0.0f; cb.emitDir = {0,0,0}; cb.emitStartIndex = 0; cb.emitColor = {0,0,0,0};
 	cb.corePos = gpuFluidCorePos_; cb.coreAttraction = gpuFluidCoreAttraction_;
 	cb.emitEndIndex = gpuFluidMaxParticles_; cb.pad3 = {0,0,0};
@@ -4340,7 +4492,7 @@ void Renderer::UpdateGPUFluid(float dt) {
 	list_->SetComputeRootUnorderedAccessView(5, gpuFluidOriginalIndicesBuffer_->GetGPUVirtualAddress());
 	if (gpuFluidAABBBuffer_) list_->SetComputeRootShaderResourceView(6, gpuFluidAABBBuffer_->GetGPUVirtualAddress());
 
-	uint32_t threadGroups = (gpuFluidMaxParticles_ + 63) / 64;
+	uint32_t threadGroups = ((simulationCount > 0 ? simulationCount : gpuFluidMaxParticles_) + 63) / 64;
 	uint32_t gridGroups = (65536 + 63) / 64;
 
 	// ★追加: 最初のフレームでバッファを確実にクリアする
@@ -4351,6 +4503,7 @@ void Renderer::UpdateGPUFluid(float dt) {
 		list_->ResourceBarrier(1, &bInit);
 		isGPUFluidInitialized_ = true;
 	}
+	if (simulationCount == 0) return;
 
 	// Pass 0.0: Clear Original Indices
 	list_->SetPipelineState(psoFluidClearOriginal_.Get());
@@ -4411,6 +4564,37 @@ void Renderer::UpdateGPUFluid(float dt) {
 
 void Renderer::EmitGPUFluid(const Vector3& pos, const Vector3& velocityDir, const Vector4& color, int count, float type) {
 	if (!isGPUFluidReady_ || !psoFluidEmit_ || !gpuFluidBuffer_) return;
+	if (count <= 0) return;
+	if (!isGPUFluidInitialized_ && psoFluidInit_) {
+		list_->SetComputeRootSignature(rootSigFluid_.Get());
+		struct InitCB {
+			float dt; uint32_t emitCursor; uint32_t emitCount; uint32_t maxParticles;
+			Vector3 emitPos; float emitType;
+			Vector3 emitDir; uint32_t emitStartIndex;
+			Vector4 emitColor;
+			Vector3 corePos; float coreAttraction;
+			uint32_t emitEndIndex; Vector3 pad3;
+			Vector3 coreScale; float pad4;
+			Vector3 coreForward; float pad5;
+			uint32_t aabbCount; Vector3 pad6;
+			Vector3 decoyPos; float decoyAttraction;
+			Vector3 decoyScale; float pad7;
+			Vector3 decoyForward; float pad8;
+		} initCb{};
+		initCb.maxParticles = gpuFluidMaxParticles_;
+		list_->SetComputeRoot32BitConstants(0, 48, &initCb, 0);
+		list_->SetComputeRootUnorderedAccessView(1, gpuFluidBuffer_->GetGPUVirtualAddress());
+		list_->SetComputeRootUnorderedAccessView(2, gpuFluidGridCountBuffer_->GetGPUVirtualAddress());
+		list_->SetComputeRootUnorderedAccessView(3, gpuFluidGridOffsetBuffer_->GetGPUVirtualAddress());
+		list_->SetComputeRootUnorderedAccessView(4, gpuFluidSortedParticlesBuffer_->GetGPUVirtualAddress());
+		list_->SetComputeRootUnorderedAccessView(5, gpuFluidOriginalIndicesBuffer_->GetGPUVirtualAddress());
+		if (gpuFluidAABBBuffer_) list_->SetComputeRootShaderResourceView(6, gpuFluidAABBBuffer_->GetGPUVirtualAddress());
+		list_->SetPipelineState(psoFluidInit_.Get());
+		list_->Dispatch((gpuFluidMaxParticles_ + 63) / 64, 1, 1);
+		auto initBarrier = CD3DX12_RESOURCE_BARRIER::UAV(gpuFluidBuffer_.Get());
+		list_->ResourceBarrier(1, &initBarrier);
+		isGPUFluidInitialized_ = true;
+	}
 	list_->SetPipelineState(psoFluidEmit_.Get());
 	list_->SetComputeRootSignature(rootSigFluid_.Get());
 	struct CB { 
@@ -4439,8 +4623,11 @@ void Renderer::EmitGPUFluid(const Vector3& pos, const Vector3& velocityDir, cons
 		endIndex = gpuFluidMaxParticles_;
 		cursorPtr = &gpuFluidEmitCursorSplash_;
 	}
+	uint32_t rangeSize = endIndex - startIndex;
+	if (rangeSize == 0) return;
+	uint32_t emitCount = (std::min)(static_cast<uint32_t>(count), rangeSize);
 	
-	cb.dt = 0.0f; cb.emitCursor = *cursorPtr; cb.emitCount = count; cb.maxParticles = gpuFluidMaxParticles_;
+	cb.dt = 0.0f; cb.emitCursor = *cursorPtr; cb.emitCount = emitCount; cb.maxParticles = gpuFluidMaxParticles_;
 	cb.emitPos = pos; cb.emitType = type; cb.emitDir = velocityDir; cb.emitStartIndex = startIndex; cb.emitColor = color;
 	cb.corePos = gpuFluidCorePos_; cb.coreAttraction = gpuFluidCoreAttraction_;
 	cb.emitEndIndex = endIndex; cb.pad3 = {0,0,0};
@@ -4458,29 +4645,52 @@ void Renderer::EmitGPUFluid(const Vector3& pos, const Vector3& velocityDir, cons
 	list_->SetComputeRootUnorderedAccessView(3, gpuFluidGridOffsetBuffer_->GetGPUVirtualAddress());
 	list_->SetComputeRootUnorderedAccessView(4, gpuFluidSortedParticlesBuffer_->GetGPUVirtualAddress());
 	list_->SetComputeRootUnorderedAccessView(5, gpuFluidOriginalIndicesBuffer_->GetGPUVirtualAddress());
+	if (gpuFluidAABBBuffer_) list_->SetComputeRootShaderResourceView(6, gpuFluidAABBBuffer_->GetGPUVirtualAddress());
 	
-	uint32_t threadGroups = (gpuFluidMaxParticles_ + 63) / 64;
+	uint32_t threadGroups = (emitCount + 63) / 64;
 	list_->Dispatch(threadGroups, 1, 1);
 	
 	auto barrier = CD3DX12_RESOURCE_BARRIER::UAV(gpuFluidBuffer_.Get());
 	list_->ResourceBarrier(1, &barrier);
 	
-	uint32_t size = endIndex - startIndex;
-	*cursorPtr = startIndex + ((*cursorPtr - startIndex + count) % size);
+	*cursorPtr = startIndex + ((*cursorPtr - startIndex + emitCount) % rangeSize);
+	if (type > 0.5f) {
+		gpuFluidActiveParticleCount_ = (std::min)(gpuFluidMaxParticles_, (std::max)(gpuFluidActiveParticleCount_, *cursorPtr));
+	} else {
+		gpuFluidActiveParticleCount_ = (std::max)(gpuFluidActiveParticleCount_, (std::min)(endIndex, startIndex + emitCount));
+	}
 }
 
 void Renderer::DrawGPUFluid(TextureHandle texture) {
 	if (!isGPUFluidReady_ || !psoFluidRender_ || !gpuFluidBuffer_) return;
+	uint32_t drawCount = (std::min)(gpuFluidActiveParticleCount_, gpuFluidMaxParticles_);
+	if (drawCount == 0) return;
 	list_->SetPipelineState(psoFluidRender_.Get());
 	list_->SetGraphicsRootSignature(rootSig3D_.Get());
 	list_->SetGraphicsRootConstantBufferView(0, cbFrameAddr_);
+	
+	// ★追加: 未バインドによるDevice Removed防止 (CBV)
+	list_->SetGraphicsRootConstantBufferView(1, cbLightAddr_);
+	list_->SetGraphicsRootConstantBufferView(2, cbLightAddr_);
+	list_->SetGraphicsRootConstantBufferView(4, cbLightAddr_);
+	
 	list_->SetGraphicsRootDescriptorTable(3, GetTextureSrvGpu(texture));
+	
+	// ★追加: 未バインドによるDevice Removed防止 (ShadowMap)
+	if (shadowSrv_.ptr != 0) list_->SetGraphicsRootDescriptorTable(5, shadowSrv_);
+	else list_->SetGraphicsRootDescriptorTable(5, textures_[0].srvGpu);
+	
 	auto b1 = CD3DX12_RESOURCE_BARRIER::Transition(gpuFluidBuffer_.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
 	list_->ResourceBarrier(1, &b1);
 	list_->SetGraphicsRootShaderResourceView(6, gpuFluidBuffer_->GetGPUVirtualAddress());
+
+	// ★追加: 未バインドによるDevice Removed防止 (EnvMap)
+	if (envMapSrvGpu_.ptr != 0) list_->SetGraphicsRootDescriptorTable(7, envMapSrvGpu_);
+	else list_->SetGraphicsRootDescriptorTable(7, textures_[0].srvGpu);
+
     list_->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     // 外部モデルに依存せず、頂点シェーダー内で直接ビルボードを生成するため頂点バッファはセットしない
-    list_->DrawInstanced(6, gpuFluidMaxParticles_, 0, 0);
+    list_->DrawInstanced(6, drawCount, 0, 0);
 	auto b2 = CD3DX12_RESOURCE_BARRIER::Transition(gpuFluidBuffer_.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 	list_->ResourceBarrier(1, &b2);
 }
@@ -4491,6 +4701,18 @@ void Renderer::DrawGPUFluidDebug() {
 	list_->SetPipelineState(psoFluidDebug_.Get());
 	list_->SetGraphicsRootSignature(rootSig3D_.Get());
 	list_->SetGraphicsRootConstantBufferView(0, cbFrameAddr_);
+	
+	// ★追加: 未バインドによるDevice Removed防止 (CBV)
+	list_->SetGraphicsRootConstantBufferView(1, cbLightAddr_);
+	list_->SetGraphicsRootConstantBufferView(2, cbLightAddr_);
+	list_->SetGraphicsRootConstantBufferView(4, cbLightAddr_);
+	
+	// ★追加: 未バインドによるDevice Removed防止 (Texture, ShadowMap, EnvMap)
+	list_->SetGraphicsRootDescriptorTable(3, textures_[0].srvGpu);
+	if (shadowSrv_.ptr != 0) list_->SetGraphicsRootDescriptorTable(5, shadowSrv_);
+	else list_->SetGraphicsRootDescriptorTable(5, textures_[0].srvGpu);
+	if (envMapSrvGpu_.ptr != 0) list_->SetGraphicsRootDescriptorTable(7, envMapSrvGpu_);
+	else list_->SetGraphicsRootDescriptorTable(7, textures_[0].srvGpu);
 	
 	auto b1 = CD3DX12_RESOURCE_BARRIER::Transition(gpuFluidBuffer_.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
 	list_->ResourceBarrier(1, &b1);

@@ -13,6 +13,8 @@
 #include <algorithm>
 #include <filesystem>
 
+void LogFileMain(const char* msg);
+
 namespace Game {
 
 // ============================================================
@@ -46,12 +48,11 @@ void TitleScene::DrawMeshAt(uint32_t mesh, uint32_t tex,
 // Initialize
 // ============================================================
 void TitleScene::Initialize(Engine::WindowDX* dx, const Engine::SceneParameters& /*params*/) {
+    LogFileMain("    TitleScene::Initialize 1");
     dx_ = dx;
     renderer_ = Engine::Renderer::GetInstance();
     lastTime_ = std::chrono::steady_clock::now();
 
-    // --- カメラ初期化 ---
-    // プレイヤーが画面中央を塞がないよう、カメラを少し右（X=0）に配置
     camStartPos_ = { 0.0f, 0.8f, -2.5f };
     camera_.Initialize();
     currentFov_ = camStartFov_;
@@ -60,21 +61,19 @@ void TitleScene::Initialize(Engine::WindowDX* dx, const Engine::SceneParameters&
     camera_.SetPosition(camStartPos_);
     camera_.LookAt(camStartTarget_, { 0, 1, 0 });
 
-    // --- ライティング ---
-    renderer_->SetAmbientColor({ 0.15f, 0.15f, 0.2f }); // 暗めの雰囲気
+    renderer_->SetAmbientColor({ 0.15f, 0.15f, 0.2f });
     renderer_->SetDirectionalLight(
-        { 0.3f, -0.8f, 0.5f },   // direction
-        { 0.6f, 0.6f, 0.7f },    // color (月光風)
+        { 0.3f, -0.8f, 0.5f },
+        { 0.6f, 0.6f, 0.7f },
         true
     );
 
-    // --- モデルのロード ---
+    LogFileMain("    TitleScene::Initialize 2 (Loading models)");
     groundMesh_ = renderer_->LoadObjMesh("Resources/Models/plane.obj");
     groundTex_  = renderer_->LoadTexture2D("Resources/Textures/white1x1.png");
     cubeMesh_   = renderer_->LoadObjMesh("Resources/Models/cube/cube.obj");
     cubeTex_    = renderer_->LoadTexture2D("Resources/Textures/white1x1.png");
 
-    // タイトルモデル（存在する場合）
     try {
         namespace fs = std::filesystem;
         if (fs::exists("Resources/Models/TitleParts/title.obj")) {
@@ -87,7 +86,7 @@ void TitleScene::Initialize(Engine::WindowDX* dx, const Engine::SceneParameters&
         }
     } catch (...) {}
 
-    // --- Skybox ---
+    LogFileMain("    TitleScene::Initialize 3 (Skybox)");
     try {
         namespace fs = std::filesystem;
         for (const auto& entry : fs::directory_iterator("Resources/Textures")) {
@@ -103,7 +102,7 @@ void TitleScene::Initialize(Engine::WindowDX* dx, const Engine::SceneParameters&
         }
     } catch (...) {}
 
-    // --- ポストプロセス ---
+    LogFileMain("    TitleScene::Initialize 4 (PostProcess)");
     renderer_->SetPostProcessEnabled(true);
     auto paper = renderer_->LoadTexture2D("Resources/Textures/paper.png");
     auto vignetteTex = renderer_->LoadTexture2D("Resources/Textures/vignette.png");
@@ -118,12 +117,12 @@ void TitleScene::Initialize(Engine::WindowDX* dx, const Engine::SceneParameters&
     renderer_->SetPostProcessParams(pp);
     renderer_->SetPostEffect("Rich");
 
-    // --- フェーズ初期化 ---
     phase_ = Phase::Idle;
     phaseTimer_ = 0.0f;
     totalTime_ = 0.0f;
     uiAlpha_ = 1.0f;
     inkAlpha_ = 0.0f;
+    LogFileMain("    TitleScene::Initialize Complete");
 }
 
 // ============================================================
@@ -216,7 +215,7 @@ void TitleScene::Update() {
     }
     // --------------------------------------------------
     case Phase::GameStart: {
-        Engine::SceneManager::GetInstance()->RequestChange("Game");
+        Engine::SceneManager::GetInstance()->RequestChange("Select");
         phase_ = Phase::Idle; // 再呼び出し防止
         return;
     }

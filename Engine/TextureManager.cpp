@@ -2,6 +2,8 @@
 #include <cassert>
 #include <d3dx12.h>
 #include <filesystem>
+#include "NetworkProfiler.h"
+#include "PathUtils.h"
 
 #pragma comment(lib, "DirectXTex.lib")
 
@@ -35,8 +37,9 @@ void TextureManager::Initialize(WindowDX* dx, Renderer* renderer) {
 
 void TextureManager::Shutdown() {
 	// GPU参照中に解放しない
-	if (dx_)
-		dx_->WaitIdle();
+	if (auto* renderer = Renderer::GetInstance()) {
+		renderer->WaitGPU();
+	}
 
 	textures_.clear();
 	pathToIndex_.clear();
@@ -136,6 +139,11 @@ TextureHandle TextureManager::Load(const std::wstring& relPath) {
 	const int newIndex = (int)textures_.size();
 	textures_.push_back(td);
 	pathToIndex_[relPath] = newIndex;
+    
+	std::string nameStr = PathUtils::ToUTF8(relPath);
+	float sizeMB = (float)upSize / (1024.0f * 1024.0f);
+	std::string detailsStr = std::to_string(meta.width) + "x" + std::to_string(meta.height);
+	NetworkProfiler::GetInstance().RegisterAsset(nameStr, "Texture", sizeMB, detailsStr);
 
 	handle.index = newIndex;
 	return handle;

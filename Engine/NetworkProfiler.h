@@ -5,6 +5,7 @@
 #include <memory>
 #include <mutex>
 #include <functional>
+#include <vector>
 
 namespace httplib {
     class Server;
@@ -27,6 +28,15 @@ struct ProfilerData {
     float systemRamUsageMB;
     float videoRamUsageMB;
     std::string eventMarker;
+};
+
+struct AssetInfo {
+    std::string name;
+    std::string type;
+    float sizeMB;
+    std::string details;
+    int refCount;
+    std::string status;
 };
 
 class NetworkProfiler {
@@ -63,6 +73,24 @@ public:
         return data_; 
     }
 
+    // Asset tracking
+    void RegisterAsset(const std::string& name, const std::string& type, float sizeMB, const std::string& details) {
+        std::lock_guard<std::mutex> lock(assetMutex_);
+        AssetInfo info;
+        info.name = name;
+        info.type = type;
+        info.sizeMB = sizeMB;
+        info.details = details;
+        info.refCount = 1;
+        info.status = "loaded";
+        registeredAssets_.push_back(info);
+    }
+
+    std::vector<AssetInfo> GetAssets() {
+        std::lock_guard<std::mutex> lock(assetMutex_);
+        return registeredAssets_;
+    }
+
     using ParameterUpdateCallback = std::function<void(const std::string& target, const std::string& property, float value)>;
     using ParameterGetCallback = std::function<std::string()>; // Returns JSON string of current parameters
 
@@ -84,6 +112,9 @@ private:
 
     ProfilerData data_ = {};
     std::mutex dataMutex_;
+
+    std::vector<AssetInfo> registeredAssets_;
+    std::mutex assetMutex_;
 
     ParameterUpdateCallback paramUpdateCb_;
     ParameterGetCallback paramGetCb_;

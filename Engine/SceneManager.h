@@ -32,6 +32,7 @@ public:
 	bool Change(const std::string& name, const SceneParameters& params = {});
 	void RequestChange(const std::string& name, const SceneParameters& params = {});
 
+	void ProcessPendingChange(); // ★追加: BeginFrame前にシーン切り替えを処理する
 	void Update();
 	void Draw();
 

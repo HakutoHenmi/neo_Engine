@@ -17,7 +17,11 @@ struct CollisionRequest {
     uint resultIndex;
     uint numBvhNodes;
     uint meshB; 
+    uint vertexCount;
+    uint indexCount;
+    uint bvhIndexCount;
     uint _pad5;
+    uint _pad6;
 };
 
 struct ContactInfo {
@@ -129,7 +133,7 @@ void main(uint3 dtid : SV_DispatchThreadID) {
     if (pairIdx >= g_NumRequests) return;
     
     CollisionRequest req = g_Requests[pairIdx];
-    if (req.numBvhNodes == 0) return;
+    if (req.numBvhNodes == 0 || req.vertexCount == 0 || req.indexCount < 3 || req.bvhIndexCount == 0) return;
     
     float3 obbCenter = req.obbCenter;
     float3 obbExtents = req.obbExtents;
@@ -162,10 +166,14 @@ void main(uint3 dtid : SV_DispatchThreadID) {
             if (left < 0) {
                 // Leaf: Iterate triangles
                 for (uint i = 0; i < triCount; ++i) {
+                    if (firstTri + i >= req.bvhIndexCount) break;
                     uint triIdx = g_BvhIndices.Load((firstTri + i) * 4);
-                    uint vIdx0 = g_ModelIndices.Load((triIdx * 3 + 0) * 4);
-                    uint vIdx1 = g_ModelIndices.Load((triIdx * 3 + 1) * 4);
-                    uint vIdx2 = g_ModelIndices.Load((triIdx * 3 + 2) * 4);
+                    uint baseIndex = triIdx * 3;
+                    if (baseIndex + 2 >= req.indexCount) continue;
+                    uint vIdx0 = g_ModelIndices.Load((baseIndex + 0) * 4);
+                    uint vIdx1 = g_ModelIndices.Load((baseIndex + 1) * 4);
+                    uint vIdx2 = g_ModelIndices.Load((baseIndex + 2) * 4);
+                    if (vIdx0 >= req.vertexCount || vIdx1 >= req.vertexCount || vIdx2 >= req.vertexCount) continue;
 
                     float3 v0 = GetVertexPos(vIdx0);
                     float3 v1 = GetVertexPos(vIdx1);

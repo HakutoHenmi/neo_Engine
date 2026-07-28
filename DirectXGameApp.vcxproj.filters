@@ -51,6 +51,8 @@
     <ClCompile Include="Game\Scripts\BossTestScript.cpp">
       <Filter>Scripts</Filter>
     </ClCompile>
+    <ClCompile Include="Game\Scenes\AssignmentScene.cpp" />
+    <ClCompile Include="Game\Scenes\SelectScene.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Game\Scenes\TitleScene.h">
@@ -98,9 +100,6 @@
     <ClInclude Include="Game\Systems\CleanupSystem.h">
       <Filter>Systems</Filter>
     </ClInclude>
-    <ClInclude Include="Game\Systems\CombatSystem.h">
-      <Filter>Systems</Filter>
-    </ClInclude>
     <ClInclude Include="Game\Systems\HealthSystem.h">
       <Filter>Systems</Filter>
     </ClInclude>
@@ -138,6 +137,9 @@
     <ClInclude Include="Game\Scripts\BossTestScript.h">
       <Filter>Scripts</Filter>
     </ClInclude>
+    <ClInclude Include="Game\Systems\MotionSystem.h" />
+    <ClInclude Include="Game\Scenes\AssignmentScene.h" />
+    <ClInclude Include="Game\Scenes\SelectScene.h" />
   </ItemGroup>
   <ItemGroup>
     <Filter Include="Scenes">

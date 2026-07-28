@@ -8,6 +8,7 @@
 #include <filesystem>
 #include <shellapi.h>
 #include <string>
+#include <vector>
 
 #pragma comment(lib, "d3d12.lib")
 #pragma comment(lib, "dxgi.lib")
@@ -19,6 +20,68 @@ namespace Engine {
 
 // 静的変数の実体定義（初期値は "Resources"）
 std::string WindowDX::s_DropDirectory = "Resources";
+
+static void AppendDebugLog(const char* text) {
+	OutputDebugStringA(text);
+	FILE* f = nullptr;
+	fopen_s(&f, "C:\\Users\\k024g\\source\\repos\\neo_Engine\\d3d12_validation_log.txt", "a");
+	if (f) {
+		fputs(text, f);
+		fclose(f);
+	}
+}
+
+static const char* SeverityName(D3D12_MESSAGE_SEVERITY severity) {
+	switch (severity) {
+	case D3D12_MESSAGE_SEVERITY_CORRUPTION: return "CORRUPTION";
+	case D3D12_MESSAGE_SEVERITY_ERROR: return "ERROR";
+	case D3D12_MESSAGE_SEVERITY_WARNING: return "WARNING";
+	case D3D12_MESSAGE_SEVERITY_INFO: return "INFO";
+	case D3D12_MESSAGE_SEVERITY_MESSAGE: return "MESSAGE";
+	default: return "UNKNOWN";
+	}
+}
+
+static void DumpD3D12InfoQueue(ID3D12Device* device, const char* phase) {
+#ifdef _DEBUG
+	if (!device) return;
+
+	Microsoft::WRL::ComPtr<ID3D12InfoQueue> infoQueue;
+	if (FAILED(device->QueryInterface(IID_PPV_ARGS(&infoQueue)))) return;
+
+	const UINT64 count = infoQueue->GetNumStoredMessagesAllowedByRetrievalFilter();
+	if (count == 0) return;
+
+	char header[256];
+	sprintf_s(header, "[D3D12InfoQueue] %s: %llu message(s)\n", phase, count);
+	AppendDebugLog(header);
+
+	for (UINT64 i = 0; i < count; ++i) {
+		SIZE_T messageLength = 0;
+		if (FAILED(infoQueue->GetMessage(i, nullptr, &messageLength)) || messageLength == 0) {
+			continue;
+		}
+
+		std::vector<char> storage(messageLength);
+		auto* message = reinterpret_cast<D3D12_MESSAGE*>(storage.data());
+		if (FAILED(infoQueue->GetMessage(i, message, &messageLength))) {
+			continue;
+		}
+
+		char line[2048];
+		sprintf_s(line, "[D3D12][%s][ID %u] %s\n",
+			SeverityName(message->Severity),
+			static_cast<unsigned>(message->ID),
+			message->pDescription ? message->pDescription : "");
+		AppendDebugLog(line);
+	}
+
+	infoQueue->ClearStoredMessages();
+#else
+	(void)device;
+	(void)phase;
+#endif
+}
 
 static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wp, LPARAM lp) {
 	if (ImGui_ImplWin32_WndProcHandler(hWnd, msg, wp, lp)) {
@@ -115,14 +178,32 @@ void WindowDX::EndFrame() {
 	list_->ResourceBarrier(1, &barrier);
 
 	HRESULT hr = list_->Close();
-	(void)hr;
-	assert(SUCCEEDED(hr));
+	if (FAILED(hr)) {
+		OutputDebugStringA("[WindowDX] ERROR: CommandList->Close() failed!\n");
+	}
 
 	ID3D12CommandList* lists[] = {list_.Get()};
 	que_->ExecuteCommandLists(1, lists);
+	DumpD3D12InfoQueue(dev_.Get(), "After ExecuteCommandLists");
 
 	// ★修正: VSyncをOFFにし、GPU限界のフレームレートを計測できるようにする
-	swap_->Present(0, 0);
+	HRESULT hrPresent = swap_->Present(0, 0);
+	if (FAILED(hrPresent)) {
+		DumpD3D12InfoQueue(dev_.Get(), "Present failed");
+		char buf[256];
+		sprintf_s(buf, "[WindowDX] ERROR: Present() failed! HRESULT=0x%08X\n", (unsigned)hrPresent);
+		OutputDebugStringA(buf);
+		// ファイルにも書く
+		FILE* f = nullptr;
+		fopen_s(&f, "C:\\Users\\k024g\\source\\repos\\neo_Engine\\error_log.txt", "a");
+		if (f) { fputs(buf, f); fclose(f); }
+		if (hrPresent == DXGI_ERROR_DEVICE_REMOVED || hrPresent == DXGI_ERROR_DEVICE_RESET) {
+			HRESULT reason = dev_->GetDeviceRemovedReason();
+			sprintf_s(buf, "[WindowDX] Device removed reason: 0x%08X\n", (unsigned)reason);
+			OutputDebugStringA(buf);
+			if (f) { fopen_s(&f, "C:\\Users\\k024g\\source\\repos\\neo_Engine\\error_log.txt", "a"); if (f) { fputs(buf, f); fclose(f); } }
+		}
+	}
 
 	// CPUとGPUの並列化（フレームリソース同期）
 	// 今投下したコマンドの完了を示すフェンス値を設定
@@ -271,17 +352,35 @@ bool WindowDX::InitWindow_(HINSTANCE hInst, int cmdShow, HWND& outHwnd) {
 bool WindowDX::InitDX_() {
 #ifdef _DEBUG
 	{
-		Microsoft::WRL::ComPtr<ID3D12Debug> debug;
+		Microsoft::WRL::ComPtr<ID3D12Debug1> debug;
 		if (SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(&debug)))) {
 			debug->EnableDebugLayer();
+			debug->SetEnableGPUBasedValidation(true);
+			AppendDebugLog("[D3D12] Debug layer + GPU-based validation enabled.\n");
 		}
 	}
 #endif
 
-	if (FAILED(CreateDXGIFactory2(0, IID_PPV_ARGS(&factory_))))
+	UINT factoryFlags = 0;
+#ifdef _DEBUG
+	factoryFlags |= DXGI_CREATE_FACTORY_DEBUG;
+#endif
+	if (FAILED(CreateDXGIFactory2(factoryFlags, IID_PPV_ARGS(&factory_))))
 		return false;
 	if (FAILED(D3D12CreateDevice(nullptr, D3D_FEATURE_LEVEL_12_0, IID_PPV_ARGS(&dev_))))
 		return false;
+
+#ifdef _DEBUG
+	{
+		Microsoft::WRL::ComPtr<ID3D12InfoQueue> infoQueue;
+		if (SUCCEEDED(dev_->QueryInterface(IID_PPV_ARGS(&infoQueue)))) {
+			infoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_CORRUPTION, FALSE);
+			infoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_ERROR, FALSE);
+			infoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_WARNING, FALSE);
+			infoQueue->ClearStoredMessages();
+		}
+	}
+#endif
 
 	if (!CreateCommand_())
 		return false;

@@ -12,6 +12,7 @@
 
 #include "d3dx12.h"
 #include <DirectXTex.h>
+#include "NetworkProfiler.h"
 
 // Assimp Includes
 #include <assimp/Importer.hpp>
@@ -191,6 +192,22 @@ ComPtr<ID3D12Resource> Model::CreateBufferResource(ID3D12Device* device, size_t 
 	return res;
 }
 
+ComPtr<ID3D12Resource> Model::CreateUAVBufferResource(ID3D12Device* device, size_t sizeInBytes) {
+	D3D12_HEAP_PROPERTIES hp{D3D12_HEAP_TYPE_DEFAULT};
+	D3D12_RESOURCE_DESC rd{
+	    D3D12_RESOURCE_DIMENSION_BUFFER, 0, (UINT64)sizeInBytes, 1, 1, 1, DXGI_FORMAT_UNKNOWN, {1, 0},
+               D3D12_TEXTURE_LAYOUT_ROW_MAJOR, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS
+    };
+	ComPtr<ID3D12Resource> res;
+	ID3D12Device* pDev = device;
+	if (!pDev && Renderer::GetInstance()) pDev = Renderer::GetInstance()->GetDevice(); 
+	
+	if (pDev) {
+		pDev->CreateCommittedResource(&hp, D3D12_HEAP_FLAG_NONE, &rd, D3D12_RESOURCE_STATE_COMMON, nullptr, IID_PPV_ARGS(&res));
+	}
+	return res;
+}
+
 ComPtr<ID3D12Resource> Model::CreateTextureResource(ID3D12Device* device, const DirectX::TexMetadata& m) {
 	D3D12_RESOURCE_DESC rd{
 	    D3D12_RESOURCE_DIMENSION(m.dimension), 0, (UINT64)m.width, (UINT)m.height, (UINT16)m.arraySize, (UINT16)m.mipLevels, m.format, {1, 0},
@@ -213,6 +230,8 @@ ComPtr<ID3D12Resource> Model::UploadTextureData(ID3D12Resource* tex, const Direc
 	cmd->ResourceBarrier(1, &b);
 	return inter;
 }
+
+static void NormalizeSkinWeights(ModelData& modelData);
 
 bool Model::Load(ID3D12Device* device, ID3D12GraphicsCommandList* cmd, const std::string& objPath) {
 	if (objPath.length() >= 4) {
@@ -273,12 +292,18 @@ bool Model::Load(ID3D12Device* device, ID3D12GraphicsCommandList* cmd, const std
 				std::string bName = bone->mName.C_Str();
 				int bIdx = 0;
 				if (data_.boneMapping.find(bName) == data_.boneMapping.end()) {
+					if (data_.bones.size() >= kMaxBones) {
+						continue;
+					}
 					bIdx = (int)data_.bones.size();
 					// AiToMat4でX反転処理済み
 					data_.bones.push_back({bName, AiToMat4(bone->mOffsetMatrix), bIdx});
 					data_.boneMapping[bName] = bIdx;
 				} else
 					bIdx = data_.boneMapping[bName];
+				if (bIdx < 0 || bIdx >= kMaxBones) {
+					continue;
+				}
 				for (unsigned int j = 0; j < bone->mNumWeights; ++j) {
 					VertexData& v = data_.vertices[vertexOffset + bone->mWeights[j].mVertexId];
 					for (int k = 0; k < 4; ++k) {
@@ -369,28 +394,49 @@ bool Model::Load(ID3D12Device* device, ID3D12GraphicsCommandList* cmd, const std
 	for (auto& sub : data_.subsets) {
 		if (sub.materialIndex >= 0 && sub.materialIndex < materialToTexIdx.size()) {
 			sub.materialIndex = materialToTexIdx[sub.materialIndex];
-		} else {
-			sub.materialIndex = -1;
 		}
+		// Do not set to -1, allow manual SRV injection
 	}
 	// ★★★ 修正終わり ★★★
 
+	bool hasBones = !data_.bones.empty();
+	NormalizeSkinWeights(data_);
 	vb_ = CreateBufferResource(device, sizeof(VertexData) * data_.vertices.size());
-	void* vmap;
-	vb_->Map(0, nullptr, &vmap);
+	if (!vb_) return false;
+
+	if (hasBones) {
+		skinnedVb_ = CreateUAVBufferResource(device, sizeof(VertexData) * data_.vertices.size());
+		if (!skinnedVb_) return false;
+	}
+
+	void* vmap = nullptr;
+	if (FAILED(vb_->Map(0, nullptr, &vmap))) return false;
 	std::memcpy(vmap, data_.vertices.data(), sizeof(VertexData) * data_.vertices.size());
 	vb_->Unmap(0, nullptr);
 	vbv_ = {vb_->GetGPUVirtualAddress(), (UINT)(sizeof(VertexData) * data_.vertices.size()), sizeof(VertexData)};
-	ib_ = CreateBufferResource(device, sizeof(uint32_t) * data_.indices.size());
-	void* imap;
-	ib_->Map(0, nullptr, &imap);
-	std::memcpy(imap, data_.indices.data(), sizeof(uint32_t) * data_.indices.size());
-	ib_->Unmap(0, nullptr);
-	ibv_ = {ib_->GetGPUVirtualAddress(), (UINT)(sizeof(uint32_t) * data_.indices.size()), DXGI_FORMAT_R32_UINT};
+
+	if (hasBones && skinnedVb_) {
+		skinnedVbv_ = {skinnedVb_->GetGPUVirtualAddress(), (UINT)(sizeof(VertexData) * data_.vertices.size()), sizeof(VertexData)};
+	}
+
+	if (data_.indices.size() > 0) {
+		ib_ = CreateBufferResource(device, sizeof(uint32_t) * data_.indices.size());
+		if (!ib_) return false;
+
+		void* imap = nullptr;
+		if (FAILED(ib_->Map(0, nullptr, &imap))) return false;
+		std::memcpy(imap, data_.indices.data(), sizeof(uint32_t) * data_.indices.size());
+		ib_->Unmap(0, nullptr);
+		ibv_ = {ib_->GetGPUVirtualAddress(), (UINT)(sizeof(uint32_t) * data_.indices.size()), DXGI_FORMAT_R32_UINT};
+	}
 	indexCount_ = (uint32_t)data_.indices.size();
 
 	// BVH構築
 	BuildBVH();
+
+	float sizeMB = (sizeof(VertexData) * data_.vertices.size() + sizeof(uint32_t) * data_.indices.size()) / (1024.0f * 1024.0f);
+	std::string detailsStr = std::to_string(data_.vertices.size() / 3) + " Triangles / " + std::to_string(data_.materials.size()) + " Mats";
+	NetworkProfiler::GetInstance().RegisterAsset(objPath, "Mesh", sizeMB, detailsStr);
 
 	return true;
 }
@@ -416,6 +462,25 @@ static std::string SanitizeNodeName(const std::string& name) {
         res = res.substr(10);
     }
     return res;
+}
+
+static void NormalizeSkinWeights(ModelData& modelData) {
+	for (auto& v : modelData.vertices) {
+		float sum = 0.0f;
+		for (int i = 0; i < 4; ++i) {
+			if (v.boneIndices[i] >= kMaxBones) {
+				v.boneIndices[i] = 0;
+				v.boneWeights[i] = 0.0f;
+			}
+			sum += v.boneWeights[i];
+		}
+		if (sum > 0.0001f) {
+			const float inv = 1.0f / sum;
+			for (float& weight : v.boneWeights) {
+				weight *= inv;
+			}
+		}
+	}
 }
 
 static void ReadNodeHierarchyUfbx(Node& node, const ufbx_node* src) {
@@ -607,11 +672,17 @@ bool Model::LoadWithUFBX(ID3D12Device* device, ID3D12GraphicsCommandList* cmd, c
                                 bName = SanitizeNodeName(bName);
                                 int bIdx = 0;
                                 if (data_.boneMapping.find(bName) == data_.boneMapping.end()) {
+                                    if (data_.bones.size() >= kMaxBones) {
+                                        continue;
+                                    }
                                     bIdx = (int)data_.bones.size();
                                     data_.bones.push_back({bName, UfbxToMat4(cluster->geometry_to_bone), bIdx});
                                     data_.boneMapping[bName] = bIdx;
                                 } else {
                                     bIdx = data_.boneMapping[bName];
+                                }
+                                if (bIdx < 0 || bIdx >= kMaxBones) {
+                                    continue;
                                 }
                                 
                                 v.boneWeights[weightCount] = (float)skin_weight.weight;
@@ -694,29 +765,43 @@ bool Model::LoadWithUFBX(ID3D12Device* device, ID3D12GraphicsCommandList* cmd, c
     for (auto& sub : data_.subsets) {
         if (sub.materialIndex >= 0 && sub.materialIndex < materialToTexIdx.size()) {
             sub.materialIndex = materialToTexIdx[sub.materialIndex];
-        } else {
-            sub.materialIndex = -1;
         }
+        // Do not set to -1, allow manual SRV injection
     }
+
+    NormalizeSkinWeights(data_);
 
     ufbx_free_scene(scene);
 
     vb_ = CreateBufferResource(device, sizeof(VertexData) * data_.vertices.size());
-    void* vmap;
-    vb_->Map(0, nullptr, &vmap);
+    skinnedVb_ = CreateUAVBufferResource(device, sizeof(VertexData) * data_.vertices.size());
+    if (!vb_ || !skinnedVb_) return false;
+
+    void* vmap = nullptr;
+    if (FAILED(vb_->Map(0, nullptr, &vmap))) return false;
     std::memcpy(vmap, data_.vertices.data(), sizeof(VertexData) * data_.vertices.size());
     vb_->Unmap(0, nullptr);
     vbv_ = {vb_->GetGPUVirtualAddress(), (UINT)(sizeof(VertexData) * data_.vertices.size()), sizeof(VertexData)};
-    
-    ib_ = CreateBufferResource(device, sizeof(uint32_t) * data_.indices.size());
-    void* imap;
-    ib_->Map(0, nullptr, &imap);
-    std::memcpy(imap, data_.indices.data(), sizeof(uint32_t) * data_.indices.size());
-    ib_->Unmap(0, nullptr);
-    ibv_ = {ib_->GetGPUVirtualAddress(), (UINT)(sizeof(uint32_t) * data_.indices.size()), DXGI_FORMAT_R32_UINT};
+    skinnedVbv_ = {skinnedVb_->GetGPUVirtualAddress(), (UINT)(sizeof(VertexData) * data_.vertices.size()), sizeof(VertexData)};
+
+    if (data_.indices.size() > 0) {
+        ib_ = CreateBufferResource(device, sizeof(uint32_t) * data_.indices.size());
+        if (!ib_) return false;
+
+        void* imap = nullptr;
+        if (FAILED(ib_->Map(0, nullptr, &imap))) return false;
+        std::memcpy(imap, data_.indices.data(), sizeof(uint32_t) * data_.indices.size());
+        ib_->Unmap(0, nullptr);
+        ibv_ = {ib_->GetGPUVirtualAddress(), (UINT)(sizeof(uint32_t) * data_.indices.size()), DXGI_FORMAT_R32_UINT};
+    }
     indexCount_ = (uint32_t)data_.indices.size();
 
     BuildBVH();
+
+    float sizeMB = (sizeof(VertexData) * data_.vertices.size() + sizeof(uint32_t) * data_.indices.size()) / (1024.0f * 1024.0f);
+    std::string detailsStr = std::to_string(data_.vertices.size() / 3) + " Triangles / " + std::to_string(data_.materials.size()) + " Mats";
+    NetworkProfiler::GetInstance().RegisterAsset(objPath, "Mesh", sizeMB, detailsStr);
+
     return true;
 }
 
@@ -750,15 +835,24 @@ void Model::InitializeDynamic(ID3D12Device* device, const std::vector<VertexData
 	data_.indices = indices;
 
 	vb_ = CreateBufferResource(device, sizeof(VertexData) * vertices.size());
-	UpdateVertices(vertices);
-	vbv_ = {vb_->GetGPUVirtualAddress(), (UINT)(sizeof(VertexData) * vertices.size()), sizeof(VertexData)};
+	skinnedVb_ = CreateUAVBufferResource(device, sizeof(VertexData) * vertices.size());
+	if (vb_ && skinnedVb_) {
+		UpdateVertices(vertices);
+		vbv_ = {vb_->GetGPUVirtualAddress(), (UINT)(sizeof(VertexData) * vertices.size()), sizeof(VertexData)};
+		skinnedVbv_ = {skinnedVb_->GetGPUVirtualAddress(), (UINT)(sizeof(VertexData) * vertices.size()), sizeof(VertexData)};
+	}
 
-	ib_ = CreateBufferResource(device, sizeof(uint32_t) * indices.size());
-	void* imap;
-	ib_->Map(0, nullptr, &imap);
-	std::memcpy(imap, indices.data(), sizeof(uint32_t) * indices.size());
-	ib_->Unmap(0, nullptr);
-	ibv_ = {ib_->GetGPUVirtualAddress(), (UINT)(sizeof(uint32_t) * indices.size()), DXGI_FORMAT_R32_UINT};
+	if (indices.size() > 0) {
+		ib_ = CreateBufferResource(device, sizeof(uint32_t) * indices.size());
+		if (ib_) {
+			void* imap = nullptr;
+			if (SUCCEEDED(ib_->Map(0, nullptr, &imap))) {
+				std::memcpy(imap, indices.data(), sizeof(uint32_t) * indices.size());
+				ib_->Unmap(0, nullptr);
+			}
+			ibv_ = {ib_->GetGPUVirtualAddress(), (UINT)(sizeof(uint32_t) * indices.size()), DXGI_FORMAT_R32_UINT};
+		}
+	}
 	indexCount_ = (uint32_t)indices.size();
 	
 	// 動的メッシュにおけるBVH構築（地形追従などの必要性があれば追加可能）
@@ -766,12 +860,13 @@ void Model::InitializeDynamic(ID3D12Device* device, const std::vector<VertexData
 }
 
 void Model::UpdateVertices(const std::vector<VertexData>& vertices) {
-	if (vertices.size() != data_.vertices.size()) return; // 頂点数は固定前提
+	if (vertices.size() != data_.vertices.size() || !vb_) return; // 頂点数は固定前提
 	data_.vertices = vertices;
-	void* vmap;
-	vb_->Map(0, nullptr, &vmap);
-	std::memcpy(vmap, vertices.data(), sizeof(VertexData) * vertices.size());
-	vb_->Unmap(0, nullptr);
+	void* vmap = nullptr;
+	if (SUCCEEDED(vb_->Map(0, nullptr, &vmap))) {
+		std::memcpy(vmap, vertices.data(), sizeof(VertexData) * vertices.size());
+		vb_->Unmap(0, nullptr);
+	}
 }
 
 void Model::CreateSrvs(ID3D12Device* device, ID3D12DescriptorHeap* srvHeap, ID3D12DescriptorHeap* srvHeapMaster, UINT descriptorSize, const std::vector<uint32_t>& heapIndices) {
@@ -794,8 +889,8 @@ void Model::CreateSrvs(ID3D12Device* device, ID3D12DescriptorHeap* srvHeap, ID3D
 	}
 }
 
-void Model::Draw(ID3D12GraphicsCommandList* cmd, UINT rootSrvParamIndex, bool useModelTextures) {
-	cmd->IASetVertexBuffers(0, 1, &vbv_);
+void Model::Draw(ID3D12GraphicsCommandList* cmd, UINT rootSrvParamIndex, bool useModelTextures, bool useSkinnedVb) {
+	cmd->IASetVertexBuffers(0, 1, useSkinnedVb && skinnedVb_ ? &skinnedVbv_ : &vbv_);
 	cmd->IASetIndexBuffer(&ibv_);
 	cmd->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 	
@@ -811,8 +906,8 @@ void Model::Draw(ID3D12GraphicsCommandList* cmd, UINT rootSrvParamIndex, bool us
 	}
 }
 
-void Model::DrawInstanced(ID3D12GraphicsCommandList* cmd, UINT instanceCount, UINT rootSrvParamIndex, bool useModelTextures) {
-	cmd->IASetVertexBuffers(0, 1, &vbv_);
+void Model::DrawInstanced(ID3D12GraphicsCommandList* cmd, UINT instanceCount, UINT rootSrvParamIndex, bool useModelTextures, bool useSkinnedVb) {
+	cmd->IASetVertexBuffers(0, 1, useSkinnedVb && skinnedVb_ ? &skinnedVbv_ : &vbv_);
 	cmd->IASetIndexBuffer(&ibv_);
 	cmd->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 	
@@ -852,16 +947,22 @@ void Model::BuildBVH() {
 		// ※本来は専用のUPLOAD→DEFAULT遷移が必要だが、このエンジンのCreateBufferResourceは
 		// UPLOADヒープで作られているため、そのままMapしてコピーする。
 		vbBvhNodes_ = CreateBufferResource(nullptr, data_.bvhNodes.size() * sizeof(BVHNode));
-		void* nodePtr = nullptr;
-		vbBvhNodes_->Map(0, nullptr, &nodePtr);
-		std::memcpy(nodePtr, data_.bvhNodes.data(), data_.bvhNodes.size() * sizeof(BVHNode));
-		vbBvhNodes_->Unmap(0, nullptr);
+		if (vbBvhNodes_) {
+			void* nodePtr = nullptr;
+			if (SUCCEEDED(vbBvhNodes_->Map(0, nullptr, &nodePtr))) {
+				std::memcpy(nodePtr, data_.bvhNodes.data(), data_.bvhNodes.size() * sizeof(BVHNode));
+				vbBvhNodes_->Unmap(0, nullptr);
+			}
+		}
 
 		vbBvhIndices_ = CreateBufferResource(nullptr, data_.bvhIndices.size() * sizeof(uint32_t));
-		void* indexPtr = nullptr;
-		vbBvhIndices_->Map(0, nullptr, &indexPtr);
-		std::memcpy(indexPtr, data_.bvhIndices.data(), data_.bvhIndices.size() * sizeof(uint32_t));
-		vbBvhIndices_->Unmap(0, nullptr);
+		if (vbBvhIndices_) {
+			void* indexPtr = nullptr;
+			if (SUCCEEDED(vbBvhIndices_->Map(0, nullptr, &indexPtr))) {
+				std::memcpy(indexPtr, data_.bvhIndices.data(), data_.bvhIndices.size() * sizeof(uint32_t));
+				vbBvhIndices_->Unmap(0, nullptr);
+			}
+		}
 	}
 }
 
@@ -1054,7 +1155,7 @@ bool Model::RayCast(const DirectX::XMVECTOR& rayOrig, const DirectX::XMVECTOR& r
 	return false;
 }
 
-void Model::UpdateSkeleton(const Node& node, const Matrix4x4& parentMatrix, const Animation& animation, float time, const Animation* prevAnimation, float prevTime, float blendFactor, std::vector<Matrix4x4>& skeletonParams, std::vector<std::pair<Vector3, Vector3>>* debugLines) {
+void Model::UpdateSkeleton(const Node& node, const Matrix4x4& parentMatrix, const Animation& animation, float time, const Animation* prevAnimation, float prevTime, float blendFactor, std::vector<Matrix4x4>& skeletonParams, std::vector<DebugBone>* debugBones) {
 	Matrix4x4 localTransform = node.localMatrix;
 
 	Vector3 trans = node.transform.translate;
@@ -1112,11 +1213,10 @@ void Model::UpdateSkeleton(const Node& node, const Matrix4x4& parentMatrix, cons
 	DirectX::XMMATRIX parentMat = DirectX::XMLoadFloat4x4(reinterpret_cast<const DirectX::XMFLOAT4X4*>(&parentMatrix));
 	Matrix4x4 globalTransform = XMToM4(localMat * parentMat);
 
-	if (debugLines) {
+	if (debugBones) {
 		Vector3 pParent = { parentMatrix.m[3][0], parentMatrix.m[3][1], parentMatrix.m[3][2] };
-		Vector3 pCurrent = { globalTransform.m[3][0], globalTransform.m[3][1], globalTransform.m[3][2] };
 		if (node.name != "RootNode") {
-			debugLines->push_back({ pParent, pCurrent });
+			debugBones->push_back({ node.name, globalTransform, pParent });
 		}
 	}
 
@@ -1131,7 +1231,7 @@ void Model::UpdateSkeleton(const Node& node, const Matrix4x4& parentMatrix, cons
 	}
 
 	for (const Node& child : node.children) {
-		UpdateSkeleton(child, globalTransform, animation, time, prevAnimation, prevTime, blendFactor, skeletonParams, debugLines);
+		UpdateSkeleton(child, globalTransform, animation, time, prevAnimation, prevTime, blendFactor, skeletonParams, debugBones);
 	}
 }
 

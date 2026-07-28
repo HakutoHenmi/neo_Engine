@@ -49,19 +49,15 @@ float hash(uint n) {
 // ==========================================
 [numthreads(64, 1, 1)]
 void Emit(uint3 DTid : SV_DispatchThreadID) {
-    uint i = DTid.x;
-    if (i >= maxParticles) return;
+    uint localIndex = DTid.x;
+    if (localIndex >= emitCount) return;
     
     if (emitCount > 0) {
-        bool shouldEmit = false;
-        if (emitCursor + emitCount <= emitEndIndex) {
-            shouldEmit = (i >= emitCursor && i < emitCursor + emitCount);
-        } else {
-            uint overflow = emitStartIndex + ((emitCursor + emitCount) - emitEndIndex);
-            shouldEmit = (i >= emitCursor && i < emitEndIndex) || (i >= emitStartIndex && i < overflow);
-        }
+        uint range = emitEndIndex - emitStartIndex;
+        if (range == 0) return;
         
-        if (shouldEmit) {
+        uint i = emitStartIndex + ((emitCursor - emitStartIndex + localIndex) % range);
+        if (i < maxParticles) {
             Particle p = Particles[i];
             
             // 乱数で散らす (-1.0 ～ 1.0)
@@ -145,8 +141,17 @@ uint GetGridHash(int3 cell) {
 void InitParticles(uint3 DTid : SV_DispatchThreadID) {
     uint i = DTid.x;
     if (i >= maxParticles) return;
-    Particles[i].color = float4(0, 0, 0, 0);
-    Particles[i].position = float3(0, -1000.0f, 0);
+    
+    Particles[i].position = float3(0, -1000.0f, 0); // 初期は画面外の遠くへ
+    Particles[i].density = 0.01f;
+    Particles[i].velocity = float3(0,0,0);
+    Particles[i].pressure = 0.0f;
+    Particles[i].color = float4(1,1,1,0); // a=0で非アクティブ扱い
+    Particles[i].type = 0.0f;
+    Particles[i].pad = float3(0,0,0);
+    
+    // ★追加: ゴーストパーティクルの計算を防ぐため、ソート先バッファも安全な値で初期化
+    SortedParticles[i] = Particles[i];
 }
 
 // ==========================================
@@ -246,6 +251,7 @@ void SortParticles(uint3 DTid : SV_DispatchThreadID) {
     InterlockedAdd(GridCount[gHash], 1, localOffset);
     
     uint destIdx = GridOffset[gHash] + localOffset;
+    if (destIdx >= maxParticles) return;
     SortedParticles[destIdx] = p;
     OriginalIndices[destIdx] = i;
 }
@@ -280,10 +286,12 @@ void CalcDensity(uint3 DTid : SV_DispatchThreadID) {
             for (int x = -1; x <= 1; ++x) {
                 uint gHash = GetGridHash(cell + int3(x, y, z));
                 uint startIdx = GridOffset[gHash];
+                if (startIdx >= maxParticles) continue;
                 uint count = min(GridCount[gHash], 80U); // ★密集時のO(N^2)計算爆発を防ぐため最大80個に制限
                 
                 for(uint k = 0; k < count; k++) {
                     uint j = startIdx + k;
+                    if (j >= maxParticles) break;
                     if (SortedParticles[j].position.y >= -500.0f) {
                         float3 diff = pos_i - SortedParticles[j].position;
                         float r2 = dot(diff, diff);
@@ -331,10 +339,12 @@ void CalcForce(uint3 DTid : SV_DispatchThreadID) {
             for (int x = -1; x <= 1; ++x) {
                 uint gHash = GetGridHash(cell + int3(x, y, z));
                 uint startIdx = GridOffset[gHash];
+                if (startIdx >= maxParticles) continue;
                 uint count = min(GridCount[gHash], 80U); // ★密集時のO(N^2)計算爆発を防ぐため最大80個に制限
                 
                 for(uint k = 0; k < count; k++) {
                     uint j = startIdx + k;
+                    if (j >= maxParticles) break;
                     if (i != j) {
                         Particle pj = SortedParticles[j];
                         if (pj.position.y >= -500.0f) {
@@ -540,7 +550,8 @@ void CalcForce(uint3 DTid : SV_DispatchThreadID) {
     }
     
     // ★追加: 自由配置されたAABB（Cube等）との衝突判定
-    for (uint k = 0; k < aabbCount; ++k) {
+    uint safeAABBCount = min(aabbCount, 128U);
+    for (uint k = 0; k < safeAABBCount; ++k) {
         float3 bmin = AABBs[k].min;
         float3 bmax = AABBs[k].max;
         
@@ -617,7 +628,7 @@ void WriteBack(uint3 DTid : SV_DispatchThreadID) {
     if (i >= maxParticles) return;
     
     uint origIdx = OriginalIndices[i];
-    if (origIdx != 0xFFFFFFFF) {
+    if (origIdx != 0xFFFFFFFF && origIdx < maxParticles) {
         Particles[origIdx] = SortedParticles[i];
     }
 }

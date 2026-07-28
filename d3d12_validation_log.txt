@@ -1,0 +1,11 @@
+[D3D12] Debug layer + GPU-based validation enabled.
+[D3D12InfoQueue] After ExecuteCommandLists: 5 message(s)
+[D3D12][WARNING][ID 1328] ID3D12Device::CreateCommittedResource: Ignoring InitialState D3D12_RESOURCE_STATE_UNORDERED_ACCESS. Buffers are effectively created in state D3D12_RESOURCE_STATE_COMMON.
+[D3D12][WARNING][ID 1328] ID3D12Device::CreateCommittedResource: Ignoring InitialState D3D12_RESOURCE_STATE_UNORDERED_ACCESS. Buffers are effectively created in state D3D12_RESOURCE_STATE_COMMON.
+[D3D12][WARNING][ID 1328] ID3D12Device::CreateCommittedResource: Ignoring InitialState D3D12_RESOURCE_STATE_UNORDERED_ACCESS. Buffers are effectively created in state D3D12_RESOURCE_STATE_COMMON.
+[D3D12][WARNING][ID 1328] ID3D12Device::CreateCommittedResource: Ignoring InitialState D3D12_RESOURCE_STATE_UNORDERED_ACCESS. Buffers are effectively created in state D3D12_RESOURCE_STATE_COMMON.
+[D3D12][WARNING][ID 1328] ID3D12Device::CreateCommittedResource: Ignoring InitialState D3D12_RESOURCE_STATE_UNORDERED_ACCESS. Buffers are effectively created in state D3D12_RESOURCE_STATE_COMMON.
+[D3D12InfoQueue] After ExecuteCommandLists: 3 message(s)
+[D3D12][WARNING][ID 1328] ID3D12Device::CreateCommittedResource: Ignoring InitialState D3D12_RESOURCE_STATE_COPY_DEST. Buffers are effectively created in state D3D12_RESOURCE_STATE_COMMON.
+[D3D12][WARNING][ID 1328] ID3D12Device::CreateCommittedResource: Ignoring InitialState D3D12_RESOURCE_STATE_UNORDERED_ACCESS. Buffers are effectively created in state D3D12_RESOURCE_STATE_COMMON.
+[D3D12][WARNING][ID 1328] ID3D12Device::CreateCommittedResource: Ignoring InitialState D3D12_RESOURCE_STATE_GENERIC_READ. Buffers are effectively created in state D3D12_RESOURCE_STATE_COMMON.

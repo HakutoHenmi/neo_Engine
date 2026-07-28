@@ -3,9 +3,10 @@ struct Particle {
     float life;
     float3 velocity;
     float age;
-    float4 color;
+    float4 colorStart;
+    float4 colorEnd;
     float3 scale;
-    float pad;
+    uint particleType;
 };
 
 cbuffer cbSystem : register(b0) {
@@ -20,6 +21,9 @@ struct VSOut {
     float4 pos : SV_POSITION;
     float4 color : COLOR;
     float2 uv : TEXCOORD;
+    float3 worldPos : WORLDPOS;
+    float3 normal : NORMAL;
+    uint particleType : TYPE;
 };
 
 VSOut main(uint vId : SV_VertexID, uint instId : SV_InstanceID) {
@@ -27,32 +31,52 @@ VSOut main(uint vId : SV_VertexID, uint instId : SV_InstanceID) {
     
     Particle p = g_ParticlePool[instId];
     
-    // 簡単なビルボードの頂点計算(vId 0~5 でQuadを生成)
+    // Quad vertices (-0.5 to 0.5)
     float2 uvs[6] = { float2(0,0), float2(1,0), float2(0,1), float2(0,1), float2(1,0), float2(1,1) };
-    float2 offsets[6] = { float2(-1,1), float2(1,1), float2(-1,-1), float2(-1,-1), float2(1,1), float2(1,-1) };
+    float2 offsets[6] = { float2(-0.5,0.5), float2(0.5,0.5), float2(-0.5,-0.5), float2(-0.5,-0.5), float2(0.5,0.5), float2(0.5,-0.5) };
     
-    float3 right = float3(1, 0, 0);
-    float3 up = float3(0, 1, 0);
+    float2 offset = offsets[vId] * p.scale.xy;
     
-    if (useBillboard > 0) {
-        // カメラに向けるビルボード計算
-        float3 look = normalize(camPos - p.position);
-        float3 worldUp = float3(0, 1, 0);
+    float3 worldPos = p.position;
+    float3 normal = float3(0, 0, -1);
+    
+    if (useBillboard == 1) {
+        float3 toCam = normalize(camPos - p.position);
+        float3 up = float3(0, 1, 0);
+        float3 right = float3(1, 0, 0);
         
-        // 真上や真下を向いている場合の対策
-        if (abs(look.y) > 0.999) {
-            worldUp = float3(0, 0, 1);
+        if (p.particleType == 1 && dot(p.velocity, p.velocity) > 0.001f) {
+            // Trail: Stretch along velocity
+            float3 velNorm = normalize(p.velocity);
+            up = velNorm;
+            right = normalize(cross(up, toCam));
+            
+            // Stretch the offset Y based on speed
+            float speed = length(p.velocity);
+            offset.y *= (1.0f + speed * 0.1f); // Stretch multiplier
+        } else {
+            // Normal Billboard
+            right = normalize(cross(up, toCam));
+            up = cross(toCam, right);
         }
         
-        right = normalize(cross(worldUp, look));
-        up = cross(look, right);
+        worldPos += right * offset.x + up * offset.y;
+        normal = toCam;
+    } else {
+        // Flat (X-Y plane)
+        worldPos.x += offset.x;
+        worldPos.y += offset.y;
     }
     
-    float3 worldPos = p.position + right * offsets[vId].x * p.scale.x + up * offsets[vId].y * p.scale.y;
-    
     o.pos = mul(float4(worldPos, 1.0), viewProj);
-    o.color = p.color;
+    
+    float t = saturate(p.age / p.life);
+    o.color = lerp(p.colorStart, p.colorEnd, t);
+    
     o.uv = uvs[vId];
+    o.worldPos = worldPos;
+    o.normal = normal;
+    o.particleType = p.particleType;
     
     return o;
 }

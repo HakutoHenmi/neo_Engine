@@ -1,6 +1,9 @@
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
+#pragma warning(push)
+#pragma warning(disable: 4127)
 #include "../externals/httplib/httplib.h"
+#pragma warning(pop)
 #include "../externals/nlohmann/json.hpp"
 
 #include "NetworkProfiler.h"
@@ -8,7 +11,13 @@
 
 #pragma comment(lib, "ws2_32.lib")
 
+
+
+#include <string>
+
 namespace Engine {
+
+
 
 bool NetworkProfiler::Initialize(int port) {
     if (isRunning_) return false;
@@ -89,6 +98,33 @@ bool NetworkProfiler::Initialize(int port) {
             res.set_content("{\"status\":\"error\", \"message\":\"Invalid JSON\"}", "application/json");
         }
     });
+
+    // Endpoint: Get Assets
+    server_->Get("/api/assets", [this, set_cors_headers](const httplib::Request& req, httplib::Response& res) {
+        (void)req;
+        set_cors_headers(res);
+        
+        auto assets = GetAssets();
+        nlohmann::json j = nlohmann::json::array();
+        for (const auto& a : assets) {
+            nlohmann::json obj;
+            obj["name"] = a.name;
+            obj["type"] = a.type;
+            obj["size"] = a.sizeMB;
+            
+            char sizeBuf[32];
+            snprintf(sizeBuf, sizeof(sizeBuf), "%.1f MB", a.sizeMB);
+            obj["sizeStr"] = std::string(sizeBuf);
+            
+            obj["details"] = a.details;
+            obj["refCount"] = a.refCount;
+            obj["status"] = a.status;
+            j.push_back(obj);
+        }
+        res.set_content(j.dump(), "application/json");
+    });
+
+
 
     // Start server in background thread
     serverThread_ = std::make_unique<std::thread>(&NetworkProfiler::ServerThreadRun, this);

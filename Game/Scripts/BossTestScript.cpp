@@ -173,7 +173,7 @@ void BossTestScript::Update(entt::entity entity, GameScene* scene, float /*dt*/)
 		auto* anim = hasAnimator ? &registry.get<AnimatorComponent>(entity) : nullptr;
 		if (anim) {
 			anim->isPlaying = true; // ★追加: 再生状態をオンにする
-			anim->drawSkeleton = true; // ★追加: スケルトンを描画してデバッグ
+			anim->drawSkeleton = false;
 		}
 		
 		auto getAnimName = [&](const std::string& prefix, const std::string& fallback) -> std::string {
@@ -181,7 +181,6 @@ void BossTestScript::Update(entt::entity entity, GameScene* scene, float /*dt*/)
 				if (auto* m = renderer->GetModel(mr.modelHandle)) {
 					const auto& anims = m->GetData().animations;
 					for (const auto& a : anims) {
-						OutputDebugStringA(("[BossAnim] Available: " + a.name + "\n").c_str());
 						if ((a.name.find(prefix + "_") == 0 || a.name.find(prefix) == 0) && a.name.find("mixamo.com") != std::string::npos) {
 							return a.name;
 						}

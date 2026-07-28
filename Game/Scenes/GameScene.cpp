@@ -68,6 +68,20 @@ GameScene::~GameScene() {
 void GameScene::Initialize(Engine::WindowDX* dx, const Engine::SceneParameters& params) {
 	dx_ = dx;
 	renderer_ = Engine::Renderer::GetInstance();
+
+	// ★追加: テストシーン等で変更されたポストプロセスをリセット
+	if (renderer_) {
+		auto ppParams = renderer_->GetPostProcessParams();
+		ppParams.noiseStrength = 0.0f;
+		ppParams.distortion = 0.0f;
+		ppParams.chromaShift = 0.0f;
+		ppParams.vignette = 0.0f;
+		ppParams.scanline = 0.0f;
+		ppParams.san = 0.0f;
+		renderer_->SetPostProcessParams(ppParams);
+		renderer_->SetPostEffect("Default");
+	}
+
 	eventSystem_.Clear();
 	playTime_ = 0.0f;
 	camera_.Initialize();
@@ -172,7 +186,6 @@ void GameScene::Initialize(Engine::WindowDX* dx, const Engine::SceneParameters& 
 		auto& pac = registry_.emplace<PlayerActionComponent>(player);
 		pac.dodgeDuration = 0.4f; pac.dodgeSpeed = 15.0f;
 	}
-
 
 	Game::FluidSystem::GetInstance()->Initialize(renderer_->GetDevice());
 
@@ -936,10 +949,9 @@ void GameScene::Draw() {
 	// ★追加: エディター上で自由に配置・変更できる流体エミッターの処理 (プレイヤーの存在や非表示に依存しないよう外側に配置)
 	{
 		auto emitterView = registry_.view<TransformComponent, FluidEmitterComponent>();
-		for (auto e : emitterView) {
-			auto& tc = emitterView.get<TransformComponent>(e);
-			auto& fec = emitterView.get<FluidEmitterComponent>(e);
-			if (!fec.enabled || fec.emitCountPerFrame <= 0) continue;
+		emitterView.each([&](entt::entity e, TransformComponent& tc, FluidEmitterComponent& fec) {
+			(void)e;
+			if (!fec.enabled || fec.emitCountPerFrame <= 0) return;
 
 			Engine::Vector3 pos = { tc.translate.x, tc.translate.y, tc.translate.z };
 			Engine::Vector3 vel = { fec.velocity.x, fec.velocity.y, fec.velocity.z };
@@ -964,7 +976,7 @@ void GameScene::Draw() {
 					}
 				}
 			}
-		}
+		});
 	}
 
 	if (registry_.valid(playerEntity) && registry_.all_of<MeshRendererComponent>(playerEntity)) {
@@ -1021,11 +1033,9 @@ void GameScene::Draw() {
 				// ★追加: デコイコアの設定
 				bool decoyFound = false;
 				auto decoyView = registry_.view<TagComponent, TransformComponent, NameComponent>();
-				for (auto e : decoyView) {
-					if (decoyView.get<TagComponent>(e).tag == TagType::Player && 
-						decoyView.get<NameComponent>(e).name == "Decoy") {
-						
-						auto& dtc = decoyView.get<TransformComponent>(e);
+				decoyView.each([&](entt::entity e, TagComponent& tagComp, TransformComponent& dtc, NameComponent& nc) {
+					if (decoyFound) return;
+					if (tagComp.tag == TagType::Player && nc.name == "Decoy") {
 						
 						// デコイの呼吸アニメーション
 						float timeLived = 5.0f;
@@ -1048,9 +1058,8 @@ void GameScene::Draw() {
 						float decoyAttraction = 80.0f;
 						renderer_->SetGPUFluidDecoy(targetDecoyCore, decoyAttraction, dScale, dForward);
 						decoyFound = true;
-						break;
 					}
-				}
+				});
 				if (!decoyFound) {
 					// デコイがいない場合は引力をゼロにしておく
 					renderer_->SetGPUFluidDecoy({0,-1000,0}, 0.0f, {1,1,1}, {0,0,1});
@@ -1059,12 +1068,9 @@ void GameScene::Draw() {
 				// ★追加: 流体シミュレーション用のAABBコリジョンを収集してレンダラーに送る
 				std::vector<Engine::Renderer::FluidAABB> fluidAABBs;
 				auto aabbView = registry_.view<TransformComponent, BoxColliderComponent>();
-				for (auto entity : aabbView) {
-					auto& tc = aabbView.get<TransformComponent>(entity);
-					auto& bc = aabbView.get<BoxColliderComponent>(entity);
-					
+				aabbView.each([&](entt::entity entity, TransformComponent& tc, BoxColliderComponent& bc) {
 					// トリガーは当たり判定にしない
-					if (bc.isTrigger) continue;
+					if (bc.isTrigger) return;
 					
 					// ★変更: 地形(Wall, Default)のみを流体の障害物として扱う
 					bool isStaticObstacle = false;
@@ -1075,7 +1081,7 @@ void GameScene::Draw() {
 						}
 					}
 					
-					if (!isStaticObstacle) continue;
+					if (!isStaticObstacle) return;
 					
 					Engine::Vector3 scale = {tc.scale.x * bc.size.x, tc.scale.y * bc.size.y, tc.scale.z * bc.size.z};
 					// 簡易的なワールド座標（回転を無視したAABB）
@@ -1091,7 +1097,7 @@ void GameScene::Draw() {
 					aabb.max = {pos.x + scale.x * 0.5f, pos.y + scale.y * 0.5f, pos.z + scale.z * 0.5f};
 					aabb.pad1 = 0.0f;
 					fluidAABBs.push_back(aabb);
-				}
+				});
 				renderer_->SetFluidAABBs(fluidAABBs);
 			}
 			// ----------------------------------------
@@ -1241,16 +1247,17 @@ void GameScene::Draw() {
 									blendFactor = 1.0f - (anim.crossfadeTimer / anim.crossfadeDuration);
 								}
 
-								std::vector<std::pair<Engine::Vector3, Engine::Vector3>> debugLines;
-								m->UpdateSkeleton(data.rootNode, Engine::Matrix4x4::Identity(), *currAnim, anim.time, prevAnim, anim.prevTime, blendFactor, bonePalette, anim.drawSkeleton ? &debugLines : nullptr);
+								std::vector<Engine::Model::DebugBone> debugBones;
+								m->UpdateSkeleton(data.rootNode, Engine::Matrix4x4::Identity(), *currAnim, anim.time, prevAnim, anim.prevTime, blendFactor, bonePalette, anim.drawSkeleton ? &debugBones : nullptr);
 								hasAnim = true;
 
 								if (anim.drawSkeleton) {
 									Engine::Matrix4x4 world = this->GetWorldMatrix(static_cast<int>(entity));
 									DirectX::XMMATRIX w = DirectX::XMLoadFloat4x4(reinterpret_cast<const DirectX::XMFLOAT4X4*>(&world));
-									for (const auto& line : debugLines) {
-										DirectX::XMVECTOR p1 = DirectX::XMVectorSet(line.first.x, line.first.y, line.first.z, 1.0f);
-										DirectX::XMVECTOR p2 = DirectX::XMVectorSet(line.second.x, line.second.y, line.second.z, 1.0f);
+									for (const auto& bone : debugBones) {
+										DirectX::XMVECTOR p1 = DirectX::XMVectorSet(bone.parentPos.x, bone.parentPos.y, bone.parentPos.z, 1.0f);
+										Engine::Vector3 bPos = {bone.globalMatrix.m[3][0], bone.globalMatrix.m[3][1], bone.globalMatrix.m[3][2]};
+										DirectX::XMVECTOR p2 = DirectX::XMVectorSet(bPos.x, bPos.y, bPos.z, 1.0f);
 										p1 = DirectX::XMVector3TransformCoord(p1, w);
 										p2 = DirectX::XMVector3TransformCoord(p2, w);
 										Engine::Vector3 wp1, wp2;
@@ -1343,6 +1350,29 @@ void GameScene::Draw() {
 
 extern GizmoMode currentGizmoMode;
 void GameScene::DrawUI() {
+	if (!renderer_) return;
+
+	// ポストエフェクトのキーボード切り替え
+	static std::string currentPostEffect = "Default";
+	if (Engine::Input::GetInstance()->Trigger(0x02)) currentPostEffect = "Default"; // DIK_1
+	if (Engine::Input::GetInstance()->Trigger(0x03)) currentPostEffect = "Smoothing"; // DIK_2
+	if (Engine::Input::GetInstance()->Trigger(0x04)) currentPostEffect = "GaussianFilter"; // DIK_3
+	if (Engine::Input::GetInstance()->Trigger(0x05)) currentPostEffect = "OutlinePost"; // DIK_4
+	if (Engine::Input::GetInstance()->Trigger(0x06)) currentPostEffect = "Bloom"; // DIK_5
+	if (Engine::Input::GetInstance()->Trigger(0x07)) currentPostEffect = "DepthOfField"; // DIK_6
+	if (Engine::Input::GetInstance()->Trigger(0x08)) currentPostEffect = "Vignette"; // DIK_7
+	if (Engine::Input::GetInstance()->Trigger(0x09)) currentPostEffect = "CRT"; // DIK_8
+	if (Engine::Input::GetInstance()->Trigger(0x0A)) currentPostEffect = "Glitch"; // DIK_9
+
+	if (Engine::Input::GetInstance()->Trigger(0x02) || Engine::Input::GetInstance()->Trigger(0x03) || Engine::Input::GetInstance()->Trigger(0x04) ||
+		Engine::Input::GetInstance()->Trigger(0x05) || Engine::Input::GetInstance()->Trigger(0x06) || Engine::Input::GetInstance()->Trigger(0x07) ||
+		Engine::Input::GetInstance()->Trigger(0x08) || Engine::Input::GetInstance()->Trigger(0x09) || Engine::Input::GetInstance()->Trigger(0x0A)) {
+		renderer_->SetPostEffect(currentPostEffect);
+	}
+
+	std::string text = "Current PostEffect: " + currentPostEffect + "\nPress 1-9 to change.";
+	renderer_->DrawString(text, 10.0f, 10.0f, 1.0f, {1.0f, 1.0f, 1.0f, 1.0f});
+
 	if (!isPlaying_)
 		return;
 	for (auto& sys : systems_) {

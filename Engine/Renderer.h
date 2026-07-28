@@ -61,7 +61,11 @@ public:
 		uint32_t resultIndex;
 		uint32_t numBvhNodes;
 		uint32_t meshB; // グルーピング用
+		uint32_t vertexCount;
+		uint32_t indexCount;
+		uint32_t bvhIndexCount;
 		uint32_t _pad5;
+		uint32_t _pad6;
 	};
 
 	// --- ライト構造体 ---
@@ -169,6 +173,8 @@ public:
 	bool Initialize(WindowDX* window);
 	void Shutdown();
 
+	void WaitGPU(); // ★追加: 外部から安全な同期処理を呼べるようにする
+
 	ID3D12Device* GetDevice() const { return dev_; }
 	ID3D12GraphicsCommandList* GetCommandList() const { return list_; }
 	static Renderer* GetInstance() { return instance_; }
@@ -241,6 +247,7 @@ public:
 
 	void SetAmbientColor(const Vector3& color);
 	Vector3 GetAmbientColor() const { return lightCB_.ambientColor; }
+	D3D12_GPU_VIRTUAL_ADDRESS GetLightCBAddr() const { return cbLightAddr_; }
 	void SetDirectionalLight(const Vector3& dir, const Vector3& color, bool enabled = true);
 	void SetPointLight(int index, const Vector3& pos, const Vector3& color, float range, const Vector3& atten = {1.0f, 0.1f, 0.01f}, bool enabled = true);
 	void SetSpotLight(
@@ -327,6 +334,7 @@ public:
 	uint32_t gpuFluidMaxParticles_ = 120000; // O(N)空間グリッド導入により大幅に増量
 	uint32_t gpuFluidEmitCursorPlayer_ = 0;
 	uint32_t gpuFluidEmitCursorSplash_ = 2000;
+	uint32_t gpuFluidActiveParticleCount_ = 0;
 	bool isGPUFluidReady_ = false;
 	bool isGPUFluidInitialized_ = false;
 
@@ -358,6 +366,9 @@ public:
 	std::vector<FluidAABB> gpuFluidAABBs_;
 	Microsoft::WRL::ComPtr<ID3D12Resource> gpuFluidAABBBuffer_;
 	
+	// ★追加: Compute Shader Skinning
+	void ComputeSkinning(Model* model, const std::vector<Matrix4x4>& skeletonParams);
+
 	// 追加: デバッグベクトル表示フラグ
 	bool drawFluidDebugArrows_ = false;
 	void SetDrawFluidDebugArrows(bool b) { drawFluidDebugArrows_ = b; }
@@ -492,8 +503,9 @@ private:
 		std::vector<Matrix4x4> bones;
 		bool isParticle = false;
 		Vector4 uvScaleOffset;
-		float reflectivity = 0.0f; // ★追加: 環境マップ反射率
-		bool useCubemap = false; // ★追加: キューブマップ使用フラグ
+		float reflectivity = 0.5f;
+		bool useCubemap = false;
+		bool useSkinnedVb = false; // ☁️追加: ComputeShaderでスキン済みの場合
 	};
 
 	struct InstanceData {
@@ -544,8 +556,6 @@ private:
 	void InitSkyboxMesh();
 	bool InitSkyboxPipeline();
 
-	void WaitGPU();
-
 private:
 	static Renderer* instance_;
 
@@ -575,8 +585,10 @@ private:
 	Microsoft::WRL::ComPtr<ID3D12RootSignature> rootSigDistortion_; // ★追加
 	Microsoft::WRL::ComPtr<ID3D12RootSignature> rootSigPP_;
 
-	// ★追加: コンピュート用
+	// ☁️追加: コンピュート用
 	Microsoft::WRL::ComPtr<ID3D12RootSignature> rootSigCompute_;
+	Microsoft::WRL::ComPtr<ID3D12RootSignature> rootSigSkinningCS_;
+	Microsoft::WRL::ComPtr<ID3D12PipelineState> psoSkinningCS_;
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> psoCollision_;
 	Microsoft::WRL::ComPtr<ID3D12Resource> collisionResultBuffer_;
 	Microsoft::WRL::ComPtr<ID3D12Resource> collisionReadbackBuffer_;

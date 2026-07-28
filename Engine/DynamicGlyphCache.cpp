@@ -168,13 +168,15 @@ void DynamicGlyphCache::UploadAtlasRegion(uint32_t x, uint32_t y, uint32_t w, ui
 	Microsoft::WRL::ComPtr<ID3D12Resource> uploadBuf;
 	CD3DX12_HEAP_PROPERTIES heapUpload(D3D12_HEAP_TYPE_UPLOAD);
 	CD3DX12_RESOURCE_DESC bufDesc = CD3DX12_RESOURCE_DESC::Buffer(uploadSize);
-	dev->CreateCommittedResource(&heapUpload, D3D12_HEAP_FLAG_NONE, &bufDesc,
+	HRESULT hr = dev->CreateCommittedResource(&heapUpload, D3D12_HEAP_FLAG_NONE, &bufDesc,
 	                             D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
 	                             IID_PPV_ARGS(&uploadBuf));
+	if (FAILED(hr)) return;
 
 	// アップロードバッファにデータをコピー
 	uint8_t* mapped = nullptr;
-	uploadBuf->Map(0, nullptr, reinterpret_cast<void**>(&mapped));
+	hr = uploadBuf->Map(0, nullptr, reinterpret_cast<void**>(&mapped));
+	if (FAILED(hr)) return;
 	for (uint32_t row = 0; row < h; ++row) {
 		std::memcpy(mapped + row * rowPitch, data + row * w, w);
 	}
@@ -183,8 +185,10 @@ void DynamicGlyphCache::UploadAtlasRegion(uint32_t x, uint32_t y, uint32_t w, ui
 	// コマンドリストを作成して転送
 	Microsoft::WRL::ComPtr<ID3D12CommandAllocator> alloc;
 	Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> cmd;
-	dev->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&alloc));
-	dev->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, alloc.Get(), nullptr, IID_PPV_ARGS(&cmd));
+	hr = dev->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&alloc));
+	if (FAILED(hr)) return;
+	hr = dev->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, alloc.Get(), nullptr, IID_PPV_ARGS(&cmd));
+	if (FAILED(hr)) return;
 
 	// バリア: SRV → COPY_DEST
 	auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(
@@ -229,12 +233,14 @@ void DynamicGlyphCache::UploadAtlasRegion(uint32_t x, uint32_t y, uint32_t w, ui
 	Microsoft::WRL::ComPtr<ID3D12Fence> fence;
 	dev->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&fence));
 	HANDLE ev = CreateEvent(nullptr, FALSE, FALSE, nullptr);
-	queue->Signal(fence.Get(), 1);
-	if (fence->GetCompletedValue() < 1) {
-		fence->SetEventOnCompletion(1, ev);
-		WaitForSingleObject(ev, INFINITE);
+	if (ev) {
+		queue->Signal(fence.Get(), 1);
+		if (fence->GetCompletedValue() < 1) {
+			fence->SetEventOnCompletion(1, ev);
+			WaitForSingleObject(ev, INFINITE);
+		}
+		CloseHandle(ev);
 	}
-	CloseHandle(ev);
 }
 
 } // namespace Engine
