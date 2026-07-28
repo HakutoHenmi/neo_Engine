@@ -25,19 +25,19 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
-    <PlatformToolset>v145</PlatformToolset>
+    <PlatformToolset>v143</PlatformToolset>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
-    <PlatformToolset>v145</PlatformToolset>
+    <PlatformToolset>v143</PlatformToolset>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Development|x64'" Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
-    <PlatformToolset>v145</PlatformToolset>
+    <PlatformToolset>v143</PlatformToolset>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
@@ -78,6 +78,7 @@
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
+      <AdditionalOptions>/bigobj %(AdditionalOptions)</AdditionalOptions>
       <WarningLevel>Level4</WarningLevel>
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>_WINDOWS;_DEBUG;USE_IMGUI;%(PreprocessorDefinitions)</PreprocessorDefinitions>
@@ -109,6 +110,7 @@ exit /b 0
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
+      <AdditionalOptions>/bigobj %(AdditionalOptions)</AdditionalOptions>
       <WarningLevel>Level4</WarningLevel>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
@@ -145,6 +147,7 @@ exit /b 0
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Development|x64'">
     <ClCompile>
+      <AdditionalOptions>/bigobj %(AdditionalOptions)</AdditionalOptions>
       <WarningLevel>Level4</WarningLevel>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
@@ -186,8 +189,10 @@ exit /b 0
     <ClCompile Include="Game\Editor\PipeEditor.cpp" />
     <ClCompile Include="Game\Editor\EnemySpawnerEditor.cpp" />
     <ClCompile Include="Game\main.cpp" />
+    <ClCompile Include="Game\Scenes\AssignmentScene.cpp" />
     <ClCompile Include="Game\Scenes\GameScene.cpp" />
     <ClCompile Include="Game\Scenes\GameOverScene.cpp" />
+    <ClCompile Include="Game\Scenes\SelectScene.cpp" />
     <ClCompile Include="Game\Scenes\TitleScene.cpp" />
     <ClCompile Include="Game\Scripts\BaseScript.cpp" />
     <ClCompile Include="Game\Scripts\ScriptEngine.cpp" />
@@ -205,8 +210,10 @@ exit /b 0
     <ClInclude Include="Game\Editor\EditorUI.h" />
     <ClInclude Include="Game\Editor\PipeEditor.h" />
     <ClInclude Include="Game\Editor\EnemySpawnerEditor.h" />
+    <ClInclude Include="Game\Scenes\AssignmentScene.h" />
     <ClInclude Include="Game\Scenes\GameScene.h" />
     <ClInclude Include="Game\Scenes\GameOverScene.h" />
+    <ClInclude Include="Game\Scenes\SelectScene.h" />
     <ClInclude Include="Game\Scenes\TitleScene.h" />
     <ClInclude Include="Game\ObjectTypes.h" />
     <ClInclude Include="Game\Scripts\BaseScript.h" />

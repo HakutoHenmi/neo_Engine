@@ -19,12 +19,27 @@ bool GPUParticleSystem::Initialize(ID3D12Device* device, uint32_t maxParticles) 
     return true;
 }
 
+#include <cstdio>
+
+static void LogFileGPU(const char* msg) {
+	FILE* f = nullptr;
+	fopen_s(&f, "C:\\Users\\k024g\\source\\repos\\neo_Engine\\error_log.txt", "a");
+	if (f) {
+		fputs(msg, f);
+		fputc('\n', f);
+		fclose(f);
+	}
+}
+
 static Microsoft::WRL::ComPtr<ID3DBlob> CompileShaderFromPath(const wchar_t* filename, const char* entrypoint, const char* target) {
     Microsoft::WRL::ComPtr<ID3DBlob> blob, err;
     HRESULT hr = D3DCompileFromFile(filename, nullptr, D3D_COMPILE_STANDARD_FILE_INCLUDE, entrypoint, target,
-        D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION, 0, &blob, &err);
+        D3DCOMPILE_DEBUG, 0, &blob, &err);
     if (FAILED(hr)) {
-        if (err) OutputDebugStringA((char*)err->GetBufferPointer());
+        if (err) {
+            OutputDebugStringA((char*)err->GetBufferPointer());
+            LogFileGPU((char*)err->GetBufferPointer());
+        }
         return nullptr;
     }
     return blob;
@@ -43,11 +58,13 @@ bool GPUParticleSystem::CreateBuffers(ID3D12Device* device) {
 
 bool GPUParticleSystem::CreatePipelines(ID3D12Device* device) {
     // === コンピュート用 Root Signature ===
-    // Root[0]: 32bit Constants (b0) - 12 DWORDs
+    // Root[0]: 32bit Constants (b0) - 32 DWORDs
     // Root[1]: UAV (u0) - ParticlePool
-    CD3DX12_ROOT_PARAMETER cParams[2];
-    cParams[0].InitAsConstants(12, 0); // b0
-    cParams[1].InitAsUnorderedAccessView(0); // u0 - ルートUAV
+    // Root[2]: SRV (t0) - MeshVertices (Optional)
+    CD3DX12_ROOT_PARAMETER cParams[3];
+    cParams[0].InitAsConstants(32, 0); // b0
+    cParams[1].InitAsUnorderedAccessView(0); // u0
+    cParams[2].InitAsShaderResourceView(0); // t0
 
     CD3DX12_ROOT_SIGNATURE_DESC cSigDesc(_countof(cParams), cParams, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_NONE);
     Microsoft::WRL::ComPtr<ID3DBlob> cSig, cErr;
@@ -72,11 +89,13 @@ bool GPUParticleSystem::CreatePipelines(ID3D12Device* device) {
     if (FAILED(device->CreateComputePipelineState(&cpsd, IID_PPV_ARGS(&updatePSO_)))) return false;
 
     // === グラフィックス用 Root Signature ===
-    // Root[0]: 32bit Constants (b0) - 20 DWORDs (ViewProj 16 + CamPos 3 + pad 1)
+    // Root[0]: 32bit Constants (b0) - 20 DWORDs (ViewProj 16 + CamPos 3 + useBillboard 1)
     // Root[1]: SRV (t0) - ParticlePool (ルートSRV)
-    CD3DX12_ROOT_PARAMETER gParams[2];
+    // Root[2]: CBV (b1) - LightCB
+    CD3DX12_ROOT_PARAMETER gParams[3];
     gParams[0].InitAsConstants(20, 0); // b0
     gParams[1].InitAsShaderResourceView(0); // t0 - ルートSRV
+    gParams[2].InitAsConstantBufferView(1); // b1 - LightCB
 
     CD3DX12_ROOT_SIGNATURE_DESC gSigDesc(_countof(gParams), gParams, 0, nullptr,
         D3D12_ROOT_SIGNATURE_FLAG_NONE); // IAは使わない (頂点なし)
@@ -126,7 +145,7 @@ bool GPUParticleSystem::CreatePipelines(ID3D12Device* device) {
     return true;
 }
 
-void GPUParticleSystem::Update(ID3D12GraphicsCommandList* cmd, float dt, const GPUParticleEmitterData& emitterData) {
+void GPUParticleSystem::Update(ID3D12GraphicsCommandList* cmd, float dt, const std::vector<GPUParticleEmitterData>& emitters) {
     if (!isInitialized_ || !cmd || !updatePSO_ || !emitPSO_) return;
 
     static float totalTime = 0.0f;
@@ -139,52 +158,107 @@ void GPUParticleSystem::Update(ID3D12GraphicsCommandList* cmd, float dt, const G
         currentState_ = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
     }
 
-    // ヒープ切り替え不要！ルートディスクリプタを使用
     cmd->SetComputeRootSignature(computeRootSig_.Get());
 
-    uint32_t emitCount = (uint32_t)(emitterData.emitRate * dt * 10.0f);
-    if (emitCount == 0 && emitterData.emitRate > 0) emitCount = 1;
-
-    uint32_t constants[12];
-    memcpy(&constants[0], &dt, 4);
-    memcpy(&constants[1], &totalTime, 4);
-    constants[2] = maxParticles_;
-    constants[3] = emitCount;
-    memcpy(&constants[4], &emitterData.emitPos, 12);
-    memcpy(&constants[7], &emitterData.emitRate, 4);
-    memcpy(&constants[8], &emitterData.emitVel, 12);
-    memcpy(&constants[11], &emitterData.emitLife, 4);
-
-    cmd->SetComputeRoot32BitConstants(0, 12, constants, 0);
+    // Prepare Update Constants
+    uint32_t updateConstants[32] = {};
+    memcpy(&updateConstants[0], &dt, 4);
+    memcpy(&updateConstants[1], &totalTime, 4);
+    updateConstants[2] = maxParticles_;
+    if (!emitters.empty()) {
+        const auto& ed = emitters[0];
+        updateConstants[24] = ed.fieldType;
+        memcpy(&updateConstants[25], &ed.fieldPos, 12);
+        memcpy(&updateConstants[28], &ed.fieldParams, 16);
+    }
+    
+    // Bind Constants and UAV (needed for InitCS and UpdateCS)
+    cmd->SetComputeRoot32BitConstants(0, 32, updateConstants, 0);
     cmd->SetComputeRootUnorderedAccessView(1, particleBuffer_->GetGPUVirtualAddress());
+    cmd->SetComputeRootShaderResourceView(2, meshVBAddr_ != 0 ? meshVBAddr_ : particleBuffer_->GetGPUVirtualAddress());
 
-    // 初回のみ InitCS をディスパッチ（全パーティクルを life=-1 に初期化）
+    // --- 1. InitCS (初回のみ) ---
     if (!initDone_ && initPSO_) {
         cmd->SetPipelineState(initPSO_.Get());
         cmd->Dispatch((maxParticles_ + 255) / 256, 1, 1);
         initDone_ = true;
-
         auto uavBarrier = CD3DX12_RESOURCE_BARRIER::UAV(particleBuffer_.Get());
         cmd->ResourceBarrier(1, &uavBarrier);
     }
 
-    // Dispatch Update
+    // --- 2. UpdateCS ---
+    // 1thread = 4 particles, so dispatch maxParticles / 4 / 256
+    uint32_t dispatchGroups = (maxParticles_ + (256 * 4) - 1) / (256 * 4);
     cmd->SetPipelineState(updatePSO_.Get());
-    cmd->Dispatch((maxParticles_ + 255) / 256, 1, 1);
+    cmd->Dispatch(dispatchGroups, 1, 1);
 
-    // UAV Barrier between Update and Emit
     auto uavBarrier = CD3DX12_RESOURCE_BARRIER::UAV(particleBuffer_.Get());
     cmd->ResourceBarrier(1, &uavBarrier);
 
-    // Dispatch Emit
-    if (emitCount > 0) {
-        cmd->SetPipelineState(emitPSO_.Get());
-        cmd->Dispatch((emitCount + 63) / 64, 1, 1);
+    // --- 3. EmitCS (エミッターごとに実行) ---
+    cmd->SetPipelineState(emitPSO_.Get());
+    
+    for (const auto& ed : emitters) {
+        uint32_t emitCount = (uint32_t)(ed.emitRate * dt * 10.0f);
+        if (emitCount == 0 && ed.emitRate > 0) emitCount = 1;
+
+        if (emitCount > 0) {
+            uint32_t emitConstants[32] = {};
+            memcpy(&emitConstants[0], &dt, 4);
+            memcpy(&emitConstants[1], &totalTime, 4);
+            emitConstants[2] = maxParticles_;
+            emitConstants[3] = emitCount;
+            memcpy(&emitConstants[4], &ed.emitPos, 12);
+            memcpy(&emitConstants[7], &ed.emitRate, 4);
+            memcpy(&emitConstants[8], &ed.emitVel, 12);
+            memcpy(&emitConstants[11], &ed.emitLife, 4);
+            
+            const bool canUseMeshEmitter = (ed.emitterShape == 3 && meshVBAddr_ != 0 && meshVertexCount_ > 0);
+            emitConstants[12] = canUseMeshEmitter ? 3 : ed.emitterShape;
+            if (ed.emitterShape == 3 && !canUseMeshEmitter) {
+                emitConstants[12] = 0;
+            }
+            
+            // If mesh emitter, override extents.x with vertex count
+            DirectX::XMFLOAT3 extents = ed.emitterExtents;
+            if (canUseMeshEmitter) {
+                memcpy(&extents.x, &meshVertexCount_, 4);
+            }
+            memcpy(&emitConstants[13], &extents, 12);
+            
+            memcpy(&emitConstants[16], &ed.colorStart, 16);
+            memcpy(&emitConstants[20], &ed.colorEnd, 16);
+            
+            // Add particle type
+            emitConstants[24] = ed.particleType;
+            
+            // Random offset per emitter based on position to avoid pattern
+            float rOff = ed.emitPos.x * 10.0f + ed.emitPos.y;
+            memcpy(&emitConstants[25], &rOff, 4); // Use fieldPos.x as random seed offset
+
+            cmd->SetComputeRoot32BitConstants(0, 32, emitConstants, 0);
+            cmd->Dispatch((emitCount + 63) / 64, 1, 1);
+            
+            cmd->ResourceBarrier(1, &uavBarrier);
+        }
     }
 }
 
+void GPUParticleSystem::SetEmitterMesh(D3D12_GPU_VIRTUAL_ADDRESS meshVBAddr, uint32_t vertexCount, uint32_t stride) {
+    meshVBAddr_ = meshVBAddr;
+    meshVertexCount_ = vertexCount;
+    meshVertexStride_ = stride;
+}
+
 void GPUParticleSystem::Draw(ID3D12GraphicsCommandList* cmd, const Matrix4x4& viewProj, const DirectX::XMFLOAT3& camPos, bool useBillboard) {
-    if (!isInitialized_ || !cmd || !drawPSO_) return;
+    if (!isInitialized_ || !cmd || !drawPSO_) {
+        OutputDebugStringA("GPUParticleSystem::Draw ABORTED: Not initialized or missing PSO\n");
+        return;
+    }
+    
+    char dbgMsg[256];
+    sprintf_s(dbgMsg, "GPUParticleSystem::Draw executing with %u particles!\n", maxParticles_);
+    OutputDebugStringA(dbgMsg);
 
     // 状態遷移: UAV -> SRV (頂点シェーダーから読むので NON_PIXEL_SHADER_RESOURCE | PIXEL_SHADER_RESOURCE)
     if (currentState_ != (D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE)) {
@@ -193,7 +267,6 @@ void GPUParticleSystem::Draw(ID3D12GraphicsCommandList* cmd, const Matrix4x4& vi
         currentState_ = (D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
     }
 
-    // ヒープ切り替え不要！ルートディスクリプタを使用
     cmd->SetPipelineState(drawPSO_.Get());
     cmd->SetGraphicsRootSignature(graphicsRootSig_.Get());
 
@@ -205,6 +278,9 @@ void GPUParticleSystem::Draw(ID3D12GraphicsCommandList* cmd, const Matrix4x4& vi
 
     // ルートSRVでバッファを直接バインド
     cmd->SetGraphicsRootShaderResourceView(1, particleBuffer_->GetGPUVirtualAddress());
+
+    // LightCB
+    cmd->SetGraphicsRootConstantBufferView(2, Renderer::GetInstance()->GetLightCBAddr());
 
     cmd->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     cmd->DrawInstanced(6, maxParticles_, 0, 0);

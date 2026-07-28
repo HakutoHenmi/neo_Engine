@@ -363,14 +363,17 @@ void WaterSurface::Draw(ID3D12GraphicsCommandList* cmd, const Camera& cam) {
 	cb.camPos = XMFLOAT4(camPos.x, camPos.y, camPos.z, 1.0f);
 
 	void* p = nullptr;
-	cbCommon_->Map(0, nullptr, &p);
-	memcpy(p, &cb, sizeof(cb));
-	cbCommon_->Unmap(0, nullptr);
+	if (SUCCEEDED(cbCommon_->Map(0, nullptr, &p)) && p) {
+		memcpy(p, &cb, sizeof(cb));
+		cbCommon_->Unmap(0, nullptr);
+	}
 
 	// ---- b1: 波パラメータ ----
-	cbWave_->Map(0, nullptr, &p);
-	memcpy(p, &waveParam_, sizeof(waveParam_));
-	cbWave_->Unmap(0, nullptr);
+	p = nullptr;
+	if (SUCCEEDED(cbWave_->Map(0, nullptr, &p)) && p) {
+		memcpy(p, &waveParam_, sizeof(waveParam_));
+		cbWave_->Unmap(0, nullptr);
+	}
 
 	cmd->SetPipelineState(pso_.Get());
 	cmd->SetGraphicsRootSignature(rs_.Get());
@@ -447,9 +450,10 @@ bool WaterSurface::createMesh_(WindowDX& dx) {
 		HR_CHECK(dx.Dev()->CreateCommittedResource(&hpU, D3D12_HEAP_FLAG_NONE, &rd, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&vb_)));
 
 		void* p = nullptr;
-		vb_->Map(0, nullptr, &p);
-		memcpy(p, verts.data(), sizeVB);
-		vb_->Unmap(0, nullptr);
+		if (SUCCEEDED(vb_->Map(0, nullptr, &p)) && p) {
+			memcpy(p, verts.data(), sizeVB);
+			vb_->Unmap(0, nullptr);
+		}
 
 		vbv_.BufferLocation = vb_->GetGPUVirtualAddress();
 		vbv_.SizeInBytes = static_cast<UINT>(sizeVB);
@@ -463,9 +467,10 @@ bool WaterSurface::createMesh_(WindowDX& dx) {
 		HR_CHECK(dx.Dev()->CreateCommittedResource(&hpU, D3D12_HEAP_FLAG_NONE, &rd, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&ib_)));
 
 		void* p = nullptr;
-		ib_->Map(0, nullptr, &p);
-		memcpy(p, indices.data(), sizeIB);
-		ib_->Unmap(0, nullptr);
+		if (SUCCEEDED(ib_->Map(0, nullptr, &p)) && p) {
+			memcpy(p, indices.data(), sizeIB);
+			ib_->Unmap(0, nullptr);
+		}
 
 		ibv_.BufferLocation = ib_->GetGPUVirtualAddress();
 		ibv_.SizeInBytes = static_cast<UINT>(sizeIB);

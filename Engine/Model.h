@@ -148,8 +148,8 @@ public:
 	void CreateSrvs(ID3D12Device* device, ID3D12DescriptorHeap* srvHeap, ID3D12DescriptorHeap* srvHeapMaster, UINT descriptorSize, const std::vector<uint32_t>& heapIndices);
 
 	// 描画
-	void Draw(ID3D12GraphicsCommandList* cmd, UINT rootSrvParamIndex = 3, bool useModelTextures = true);
-	void DrawInstanced(ID3D12GraphicsCommandList* cmd, UINT instanceCount, UINT rootSrvParamIndex = 3, bool useModelTextures = true);
+	void Draw(ID3D12GraphicsCommandList* cmd, UINT rootSrvParamIndex = 3, bool useModelTextures = true, bool useSkinnedVb = false);
+	void DrawInstanced(ID3D12GraphicsCommandList* cmd, UINT instanceCount, UINT rootSrvParamIndex = 3, bool useModelTextures = true, bool useSkinnedVb = false);
 
 	// ゲッター
 	const ModelData& GetData() const { return data_; }
@@ -157,13 +157,24 @@ public:
 	uint32_t GetIndexCount() const { return indexCount_; } // 追加
 
 	const D3D12_VERTEX_BUFFER_VIEW& GetVBV() const { return vbv_; }
+	const D3D12_VERTEX_BUFFER_VIEW& GetSkinnedVBV() const { return skinnedVbv_; } // ☁️追加
 	const D3D12_INDEX_BUFFER_VIEW& GetIBV() const { return ibv_; } // 追加
 	
-	bool HasTexture() const { return texs_.size() > 0; } // 変更
-	uint32_t GetTextureCount() const { return (uint32_t)texs_.size(); }
+	ID3D12Resource* GetSkinnedBuffer() const { return skinnedVb_.Get(); } // ☁️追加
+	
+	bool HasTexture() const { return texs_.size() > 0 || srvGpus_.size() > 0; } // 変更
+	uint32_t GetTextureCount() const { return (uint32_t)(texs_.size() > 0 ? texs_.size() : srvGpus_.size()); }
 	D3D12_GPU_DESCRIPTOR_HANDLE GetSrvGpu(int index = 0) const {
 		if (index >= 0 && index < srvGpus_.size()) return srvGpus_[index];
 		return D3D12_GPU_DESCRIPTOR_HANDLE{0};
+	}
+	void SetMaterialSrv(int index, D3D12_GPU_DESCRIPTOR_HANDLE srv) {
+		if (index >= 0) {
+			if (index >= srvGpus_.size()) {
+				srvGpus_.resize(index + 1, D3D12_GPU_DESCRIPTOR_HANDLE{0});
+			}
+			srvGpus_[index] = srv;
+		}
 	}
 
 	// ★追加: GPU用BVH・メッシュバッファ
@@ -176,11 +187,17 @@ public:
 	// アニメーション適用時の行列計算関数
 	// node: 現在処理中のノード
 	// parentTransform: 親ノードのワールド変換行列
+	struct DebugBone {
+		std::string name;
+		Matrix4x4 globalMatrix;
+		Vector3 parentPos;
+	};
+
 	// animation: 再生するアニメーションデータ
 	// time: 現在のアニメーション時刻(Tick)
 	// outPalette: 計算結果のボーン行列書き込み先
-	// debugLines: デバッグ用のスケルトン描画ライン出力先（任意）
-	void UpdateSkeleton(const Node& node, const Matrix4x4& parentTransform, const Animation& animation, float time, const Animation* prevAnimation, float prevTime, float blendFactor, std::vector<Matrix4x4>& outPalette, std::vector<std::pair<Vector3, Vector3>>* debugLines = nullptr);
+	// debugBones: デバッグ用のボーン情報出力（任意）
+	void UpdateSkeleton(const Node& node, const Matrix4x4& parentTransform, const Animation& animation, float time, const Animation* prevAnimation, float prevTime, float blendFactor, std::vector<Matrix4x4>& outPalette, std::vector<DebugBone>* debugBones = nullptr);
 
 	// BVH構築
 	void BuildBVH();
@@ -195,6 +212,7 @@ private:
 
 	// ------------ 低レベルユーティリティ ------------
 	static Microsoft::WRL::ComPtr<ID3D12Resource> CreateBufferResource(ID3D12Device* device, size_t sizeInBytes);
+	static Microsoft::WRL::ComPtr<ID3D12Resource> CreateUAVBufferResource(ID3D12Device* device, size_t sizeInBytes);
 	static Microsoft::WRL::ComPtr<ID3D12Resource> CreateTextureResource(ID3D12Device* device, const DirectX::TexMetadata& meta);
 	static Microsoft::WRL::ComPtr<ID3D12Resource> UploadTextureData(ID3D12Resource* texture, const DirectX::ScratchImage& mipImages, ID3D12Device* device, ID3D12GraphicsCommandList* cmd);
 
@@ -203,8 +221,10 @@ private:
 	ModelData data_{};
 
 	Microsoft::WRL::ComPtr<ID3D12Resource> vb_;
+	Microsoft::WRL::ComPtr<ID3D12Resource> skinnedVb_; // ☁️追加: Compute Shader用 UAV兼VB
 	Microsoft::WRL::ComPtr<ID3D12Resource> ib_; // 追加: インデックスバッファ
 	D3D12_VERTEX_BUFFER_VIEW vbv_{};
+	D3D12_VERTEX_BUFFER_VIEW skinnedVbv_{};
 	D3D12_INDEX_BUFFER_VIEW ibv_{}; // 追加
 	uint32_t indexCount_ = 0;       // 追加
 

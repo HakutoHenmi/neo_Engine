@@ -25,7 +25,7 @@ struct PSIn
 
 float4 main(PSIn i) : SV_TARGET
 {
-    float2 texelSize = float2(1.0 / 1280.0, 1.0 / 720.0) * gChromaShift;
+    float2 texelSize = float2(1.0 / 1280.0, 1.0 / 720.0);
 
     // 周囲8近傍の輝度を取得
     float luTL = Luminance(gScene.Sample(gSmp, i.uv + float2(-1, -1) * texelSize).rgb);

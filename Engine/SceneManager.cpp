@@ -1,5 +1,13 @@
 #include "SceneManager.h"
+#include "Renderer.h"
 #include <Windows.h> // OutputDebugStringA
+#include <cstdio>
+
+static void LogFileSM(const char* msg) {
+	FILE* f = nullptr;
+	fopen_s(&f, "C:\\Users\\k024g\\source\\repos\\neo_Engine\\error_log.txt", "a");
+	if (f) { fputs(msg, f); fputc('\n', f); fclose(f); }
+}
 
 namespace Engine {
 
@@ -34,8 +42,15 @@ bool SceneManager::Change(const std::string& name, const SceneParameters& params
 		return false;
 	}
 
+	std::string changeLog = "  SceneManager: Change to " + name;
+	LogFileSM(changeLog.c_str());
+
 	if (dx_) {
-		dx_->WaitIdle(); // ★追加: GPUがコマンドを実行し終わるのを待ってから現在のシーン（とそのリソース）を破棄する
+		// ★修正: dx_->WaitIdle() は WindowDX の fence_ を直接進めてしまい、描画フレームの同期を破壊するため、
+		// 代わりに一時フェンスで安全に待機する Renderer::WaitGPU() を使用します。
+		if (auto* renderer = Renderer::GetInstance()) {
+			renderer->WaitGPU();
+		}
 	}
 	current_ = it->second();
 	currentName_ = name;
@@ -55,18 +70,26 @@ void SceneManager::RequestChange(const std::string& name, const SceneParameters&
 	pendingParams_ = params;
 }
 
-void SceneManager::Update() {
+void SceneManager::ProcessPendingChange() {
 	if (!pendingNext_.empty()) {
+		LogFileSM("  SceneManager: Change pending scene (before BeginFrame)");
 		Change(pendingNext_, pendingParams_);
 	}
+}
+
+void SceneManager::Update() {
+	// ★修正: シーン切り替えはProcessPendingChange()に移動済み（BeginFrame前に呼ばれる）
 
 	if (current_) {
+		LogFileSM("  SceneManager: Update current scene");
 		current_->Update();
+		LogFileSM("  SceneManager: Update done");
 
 		if (current_->IsEnd()) {
 			const std::string next = current_->Next();
 			if (!next.empty()) {
-				Change(next);
+				// ★修正: 即時切り替えではなくリクエストにして次フレームのProcessPendingChangeで処理する
+				RequestChange(next);
 			}
 		}
 	}
@@ -74,13 +97,17 @@ void SceneManager::Update() {
 
 void SceneManager::Draw() {
 	if (current_) {
+		LogFileSM("  SceneManager: Draw current scene");
 		current_->Draw();
+		LogFileSM("  SceneManager: Draw done");
 	}
 }
 
 void SceneManager::Clear() {
 	if (dx_) {
-		dx_->WaitIdle(); // ★追加: 終了時等のクリア前にGPUの完了を待機
+		if (auto* renderer = Renderer::GetInstance()) {
+			renderer->WaitGPU();
+		}
 	}
 	current_.reset();
 	currentName_.clear();

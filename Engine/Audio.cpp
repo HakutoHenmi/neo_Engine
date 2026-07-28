@@ -4,6 +4,9 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <mfidl.h>
+#include <mfreadwrite.h>
+#include "NetworkProfiler.h"
 
 #pragma comment(lib, "xaudio2.lib")
 #pragma comment(lib, "mfplat.lib")
@@ -65,6 +68,11 @@ uint32_t Audio::Load(const std::string& path) {
 	SoundData newSound = {};
 	if (LoadViaMF(wpath, newSound)) {
 		soundDatas_.push_back(newSound);
+        
+		float sizeMB = (float)newSound.data.size() / (1024.0f * 1024.0f);
+		std::string detailsStr = std::to_string(newSound.wfx.nSamplesPerSec) + "Hz " + std::to_string(newSound.wfx.nChannels) + "ch PCM";
+		NetworkProfiler::GetInstance().RegisterAsset(path, "Audio", sizeMB, detailsStr);
+        
 		return (uint32_t)(soundDatas_.size() - 1);
 	}
 	return 0xFFFFFFFF; // エラー

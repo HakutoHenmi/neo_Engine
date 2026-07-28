@@ -26,7 +26,8 @@ void ParticleEditor::Update(float dt) {
 		ed.emitRate = targetEmitter->params.emitRate;
 		ed.emitVel = { targetEmitter->params.startVelocity.x, targetEmitter->params.startVelocity.y, targetEmitter->params.startVelocity.z };
 		ed.emitLife = targetEmitter->params.lifeTime;
-		gpuParticleSystem_.Update(Renderer::GetInstance()->GetCommandList(), dt, ed);
+		std::vector<GPUParticleEmitterData> emitters = { ed };
+		gpuParticleSystem_.Update(Renderer::GetInstance()->GetCommandList(), dt, emitters);
 	}
 
 	// ★変更: ImGui コンテキストがない場合は以降の入力をスキップ

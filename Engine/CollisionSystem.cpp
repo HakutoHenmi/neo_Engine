@@ -56,6 +56,7 @@ namespace ECS {
                 if (processedPairs.count({first, second})) continue;
                 processedPairs.insert({first, second});
 
+                /*
                 auto& renderA = m_coordinator->GetComponent<RenderComponent>(entityA);
                 auto& transformB = m_coordinator->GetComponent<TransformComponent>(entityB);
                 auto& renderB = m_coordinator->GetComponent<RenderComponent>(entityB);
@@ -74,6 +75,7 @@ namespace ECS {
                     renderB.meshHandle, engTrB,
                     pairIndex++
                 );
+                */
 
                 if (pairIndex >= 1024) break;
             }

@@ -1,6 +1,21 @@
-cbuffer CBFrame : register(b0) { row_major float4x4 gView; row_major float4x4 gProj; row_major float4x4 gViewProj; float3 gCamPos; float gTime; };
-cbuffer CBObj : register(b1) { row_major float4x4 gWorld; float4 gColor; };
-cbuffer CBBone : register(b3) { row_major float4x4 gBones[128]; };
+struct Vertex {
+    float4 pos;
+    float2 uv;
+    float3 nrm;
+    float4 weights;
+    uint4 indices;
+};
+
+StructuredBuffer<Vertex> gInVertices : register(t0);
+RWStructuredBuffer<Vertex> gOutVertices : register(u0);
+
+cbuffer CBBone : register(b0) {
+    row_major float4x4 gBones[128];
+};
+
+cbuffer CBCount : register(b1) {
+    uint gNumVertices;
+};
 
 static const uint kMaxSkinBones = 128;
 
@@ -22,19 +37,13 @@ void AccumulateBone(inout float4x4 skinMat, inout float validWeight, uint index,
     }
 }
 
-struct VSIn { 
-	float4 pos : POSITION; 
-	float2 uv : TEXCOORD0; 
-	float3 nrm : NORMAL; 
-	float4 weights : WEIGHTS; 
-	uint4 indices : BONES; 
-};
-struct VSOut { float4 svpos : SV_POSITION; float3 worldPos: TEXCOORD0; float3 normal : TEXCOORD1; float2 uv : TEXCOORD2; };
+[numthreads(256, 1, 1)]
+void main(uint3 DTid : SV_DispatchThreadID) {
+    uint id = DTid.x;
+    if (id >= gNumVertices) return;
 
-VSOut main(VSIn v) { 
-    VSOut o; 
-    
-    // スキニング行列の合成
+    Vertex v = gInVertices[id];
+
     float4x4 skinMat = IdentityMatrix() * 0.0f;
     float weightSum = 0.0f;
     AccumulateBone(skinMat, weightSum, v.indices.x, v.weights.x);
@@ -49,16 +58,12 @@ VSOut main(VSIn v) {
 
     float4 localPos = v.pos;
     float4 skinnedPos = mul(localPos, skinMat);
+    
     float4 localNrm = float4(v.nrm, 0.0f);
     float3 skinnedNrm = mul(localNrm, skinMat).xyz;
 
-    float4 wp = mul(skinnedPos, gWorld); 
-    o.worldPos = wp.xyz; 
-    float3 wn = mul(float4(skinnedNrm, 0), gWorld).xyz; 
-    o.normal = normalize(wn); 
-    
-    float4 vp = mul(wp, gView); 
-    o.svpos = mul(vp, gProj); 
-    o.uv = v.uv; 
-    return o; 
+    Vertex outV = v;
+    outV.pos = skinnedPos;
+    outV.nrm = normalize(skinnedNrm);
+    gOutVertices[id] = outV;
 }

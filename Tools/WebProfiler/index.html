@@ -23,6 +23,10 @@
                 <button class="tab-btn active" data-tab="dashboard">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg> Dashboard
                 </button>
+
+                <button class="tab-btn" data-tab="asset-audit">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg> Asset Audit
+                </button>
                 <button class="tab-btn" data-tab="ai-assistant">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M12 2a2 2 0 0 1 2 2c0 1.1-.9 2-2 2s-2-.9-2-2 .9-2 2-2zM19 8h-1.5c-1.2 0-2.3.8-2.8 1.9l-1.3 3.1H10.6L9.3 9.9C8.8 8.8 7.7 8 6.5 8H5c-1.1 0-2 .9-2 2v6c0 1.1.9 2 2 2h2v2c0 1.1.9 2 2 2h6c1.1 0 2-.9 2-2v-2h2c1.1 0 2-.9 2-2v-6c0-1.1-.9-2-2-2z"></path></svg> AI Assistant
                 </button>
@@ -110,6 +114,73 @@
                             </div>
                         </div>
 
+
+
+                        <!-- Asset & Memory Audit Tab -->
+                        <div id="tab-asset-audit" class="tab-content">
+                            <div class="asset-summary-grid">
+                                <div class="metric-card glass-card">
+                                    <h3>Total Assets</h3>
+                                    <div class="value" id="val-asset-count">148</div>
+                                </div>
+                                <div class="metric-card glass-card">
+                                    <h3>Total Memory</h3>
+                                    <div class="value" id="val-asset-total-mem">1,255 <span class="unit">MB</span></div>
+                                </div>
+                                <div class="metric-card glass-card">
+                                    <h3>Textures (VRAM)</h3>
+                                    <div class="value" id="val-texture-mem">840 <span class="unit">MB</span></div>
+                                </div>
+                                <div class="metric-card glass-card">
+                                    <h3>Meshes / Buffers</h3>
+                                    <div class="value" id="val-mesh-mem">295 <span class="unit">MB</span></div>
+                                </div>
+                            </div>
+
+                            <div class="asset-layout">
+                                <div class="asset-chart-card glass-card">
+                                    <div class="group-header">
+                                        <h3>Memory Breakdown</h3>
+                                    </div>
+                                    <div class="chart-wrapper">
+                                        <canvas id="assetMemoryChart"></canvas>
+                                    </div>
+                                </div>
+
+                                <div class="asset-table-card glass-card">
+                                    <div class="asset-table-header">
+                                        <div class="search-box">
+                                            <input type="text" id="asset-search" placeholder="Search assets by name or path..." class="glass-input">
+                                        </div>
+                                        <div class="btn-group" id="asset-type-filter">
+                                            <button class="btn-chip active" data-type="all">All</button>
+                                            <button class="btn-chip" data-type="Texture">Textures</button>
+                                            <button class="btn-chip" data-type="Mesh">Meshes</button>
+                                            <button class="btn-chip" data-type="Shader">Shaders</button>
+                                            <button class="btn-chip" data-type="Audio">Audio</button>
+                                        </div>
+                                    </div>
+                                    <div class="asset-table-wrapper">
+                                        <table class="asset-table">
+                                            <thead>
+                                                <tr>
+                                                    <th>Asset Name</th>
+                                                    <th>Type</th>
+                                                    <th>Memory Size</th>
+                                                    <th>Format / Details</th>
+                                                    <th>Ref Count</th>
+                                                    <th>Status</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="asset-table-body">
+                                                <!-- Dynamic Content -->
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
                         <!-- AI Assistant Tab -->
                         <div id="tab-ai-assistant" class="tab-content">
                             <div class="ai-layout">
@@ -158,72 +229,22 @@
                 <div class="pane-header">Inspector</div>
                 <div class="pane-content">
                     <div class="inspector-layout">
+                        <!-- Dynamic Entity Inspector (Rendered via JS) -->
+                        <div id="inspector-dynamic" class="inspector-panel">
+                            <!-- JS populate entity title & component panels here -->
+                        </div>
+
                         <!-- Default/Empty State -->
                         <div id="inspector-empty" class="inspector-panel" style="display: none; color: var(--text-muted); text-align: center; padding: 20px;">
                             No entity selected.
                         </div>
-
-                        <!-- Sun / Environment Settings -->
-                        <div id="inspector-Sun" class="inspector-panel" style="display: none;">
-                            <div class="settings-group glass-card">
-                                <div class="group-header">
-                                    <h3>Environment (Sun)</h3>
-                                </div>
-                                <div class="settings-body">
-                                    <div class="control-row">
-                                        <label>Ambient Light (R)</label>
-                                        <input type="range" id="amb-r" min="0" max="1" step="0.01" value="0.4">
-                                        <span class="val-display" id="amb-r-val">0.40</span>
-                                    </div>
-                                    <div class="control-row">
-                                        <label>Ambient Light (G)</label>
-                                        <input type="range" id="amb-g" min="0" max="1" step="0.01" value="0.4">
-                                        <span class="val-display" id="amb-g-val">0.40</span>
-                                    </div>
-                                    <div class="control-row">
-                                        <label>Ambient Light (B)</label>
-                                        <input type="range" id="amb-b" min="0" max="1" step="0.01" value="0.45">
-                                        <span class="val-display" id="amb-b-val">0.45</span>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Player Settings -->
-                        <div id="inspector-Player" class="inspector-panel">
-                            <div class="settings-group glass-card">
-                                <div class="group-header">
-                                    <h3>Player Actor</h3>
-                                </div>
-                                <div class="settings-body">
-                                    <div class="control-row">
-                                        <label>Movement Speed</label>
-                                        <input type="range" id="player-speed" min="5" max="30" step="0.5" value="15.0">
-                                        <span class="val-display" id="player-speed-val">15.0</span>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <!-- Generic Object Settings -->
-                        <div id="inspector-Generic" class="inspector-panel" style="display: none;">
-                            <div class="settings-group glass-card">
-                                <div class="group-header">
-                                    <h3 id="generic-inspector-title">Object</h3>
-                                </div>
-                                <div class="settings-body">
-                                    <div class="control-row">
-                                        <label style="color: var(--text-muted); font-style: italic;">Properties are locked or read-only for this static mesh.</label>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
                     </div>
                 </div>
             </div>
         </div>
     </div>
+
+
 
     <script src="app.js"></script>
 </body>

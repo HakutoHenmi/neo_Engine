@@ -137,6 +137,7 @@ public:
 
         currentParams_.time = renderer->GetPostProcessParams().time;
         renderer->SetPostProcessParams(currentParams_);
+        /*
         if (isDead) {
             renderer->SetPostEffect("Smoothing");
         } else if (isLowHealth) {
@@ -144,6 +145,7 @@ public:
         } else {
             renderer->SetPostEffect("OutlinePost");
         }
+        */
     }
 
     void Draw(entt::registry& /*registry*/, GameContext& /*ctx*/) override {}

@@ -160,7 +160,7 @@ public:
         std::wstring shaderPath = Engine::PathUtils::GetUnifiedPathW(L"Resources/Shaders/FluidSimCS.hlsl");
         Microsoft::WRL::ComPtr<ID3DBlob> csBlob, errBlob;
         UINT flags = D3DCOMPILE_ENABLE_STRICTNESS;
-        if (FAILED(D3DCompileFromFile(shaderPath.c_str(), nullptr, D3D_COMPILE_STANDARD_FILE_INCLUDE, "main", "cs_5_0", flags, 0, &csBlob, &errBlob))) {
+        if (FAILED(D3DCompileFromFile(shaderPath.c_str(), nullptr, D3D_COMPILE_STANDARD_FILE_INCLUDE, "Emit", "cs_5_0", flags, 0, &csBlob, &errBlob))) {
             if (errBlob) OutputDebugStringA((char*)errBlob->GetBufferPointer());
             return false;
         }
