@@ -1,5 +1,5 @@
 // Resources/shaders/RandomPost.hlsl
-// ポストエフェクト: ランダムノイズ
+// Damage glitch post effect. The original scene remains visible.
 #include "PostProcessCommon.hlsli"
 
 Texture2D gScene : register(t0);
@@ -20,32 +20,36 @@ cbuffer CBPost : register(b0)
 struct PSIn
 {
     float4 svpos : SV_POSITION;
-    float2 texcoord : TEXCOORD0; // スライドの input.texcoord に合わせる
+    float2 texcoord : TEXCOORD0;
 };
 
-// スライドで紹介されている、Seed値のみで乱数を決定するアルゴリズム
 float rand2dTo1d(float2 value)
 {
-    // 一般的な乱数生成アルゴリズムの実装例
     float2 smallValue = sin(value);
     float random = dot(smallValue, float2(12.9898, 78.233));
     random = frac(sin(random) * 143758.5453);
     return random;
 }
 
-// スライドの float32_t 等の型に合わせるためのエイリアス
-#define float32_t float
-#define float32_t4 float4
-
 float4 main(PSIn input) : SV_TARGET
 {
-    // --- 乱数を白黒で出力 ---
+    float2 uv = input.texcoord;
+    float3 sceneColor = gScene.Sample(gSmp, uv).rgb;
 
-    // 乱数生成。引数にtexcoordと時間（gTime）を渡して時間経過で動かす
-    float32_t random = rand2dTo1d(input.texcoord + gTime);
-    
-    // 色にする
-    float4 output_color = float32_t4(random, random, random, 1.0f);
-    
-    return output_color;
+    float intensity = saturate(gSan) * saturate(gNoiseStrength);
+    float lineSeed = rand2dTo1d(float2(floor(uv.y * 160.0), floor(gTime * 18.0)));
+    float jitter = (lineSeed - 0.5) * 0.006 * intensity;
+    float2 shiftedUv = saturate(uv + float2(jitter, 0.0));
+
+    float3 shifted = gScene.Sample(gSmp, shiftedUv).rgb;
+    float noise = rand2dTo1d(uv * float2(1280.0, 720.0) + floor(gTime * 30.0));
+    float speckle = (noise - 0.5) * 0.18 * intensity;
+    float scan = sin(uv.y * 720.0) * 0.5 + 0.5;
+
+    float3 glitch = shifted + speckle;
+    glitch += float3(0.12, -0.03, -0.04) * intensity * lineSeed;
+    glitch *= lerp(1.0, 0.92 + scan * 0.08, intensity);
+
+    float3 col = lerp(sceneColor, saturate(glitch), intensity);
+    return float4(Saturate3(col), 1.0f);
 }

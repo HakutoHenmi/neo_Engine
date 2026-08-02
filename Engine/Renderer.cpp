@@ -3232,6 +3232,15 @@ float4 main(float4 svpos:SV_POSITION, float2 uv:TEXCOORD0) : SV_TARGET {
 		}
 
 		// ★追加: PaperFrame ポストエフェクト（和紙ビネットブレンド）
+		auto psFlowingWater = CompileShaderFromFile(L"Resources/shaders/FlowingWaterPost.hlsl", "main", "ps_5_0");
+		if (psFlowingWater) {
+			pso.PS = { psFlowingWater->GetBufferPointer(), psFlowingWater->GetBufferSize() };
+			Microsoft::WRL::ComPtr<ID3D12PipelineState> psoFlowingWater;
+			if (SUCCEEDED(dev_->CreateGraphicsPipelineState(&pso, IID_PPV_ARGS(&psoFlowingWater)))) {
+				pipelines_["FlowingWaterPost"] = psoFlowingWater;
+			}
+		}
+
 		auto psPaperFrame = CompileShaderFromFile(L"Resources/shaders/PaperFramePost.hlsl", "main", "ps_5_0");
 		if (psPaperFrame) {
 			pso.PS = { psPaperFrame->GetBufferPointer(), psPaperFrame->GetBufferSize() };

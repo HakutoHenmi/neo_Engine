@@ -219,10 +219,11 @@ void GPUParticleSystem::Update(ID3D12GraphicsCommandList* cmd, float dt, const s
                 emitConstants[12] = 0;
             }
             
-            // If mesh emitter, override extents.x with vertex count
+            // Mesh emitters pass vertex count/stride through the bit pattern of extents.xy.
             DirectX::XMFLOAT3 extents = ed.emitterExtents;
             if (canUseMeshEmitter) {
                 memcpy(&extents.x, &meshVertexCount_, 4);
+                memcpy(&extents.y, &meshVertexStride_, 4);
             }
             memcpy(&emitConstants[13], &extents, 12);
             

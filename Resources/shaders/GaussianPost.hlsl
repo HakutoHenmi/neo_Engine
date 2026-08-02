@@ -36,6 +36,8 @@ static const float kernelSum = 256.0;
 
 float4 main(PSIn i) : SV_TARGET
 {
+    float3 sceneColor = gScene.Sample(gSmp, i.uv).rgb;
+    float intensity = saturate(gSan);
     float2 texelSize = float2(1.0 / 1280.0, 1.0 / 720.0);
 
     // gDistortion でぼかし強度を制御
@@ -74,5 +76,6 @@ float4 main(PSIn i) : SV_TARGET
     float2 d = i.uv - 0.5;
     col *= saturate(1.0 - dot(d, d) * (gVignette * 0.2));
 
+    col = lerp(sceneColor, saturate(col), intensity);
     return float4(saturate(col), 1.0);
 }
