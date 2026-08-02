@@ -26,6 +26,7 @@ struct PSIn
 float4 main(PSIn i) : SV_TARGET
 {
     float3 col = gScene.Sample(gSmp, i.uv).rgb;
+    float intensity = saturate(gSan);
 
     // 中心からの距離に基づいて暗くする
     float2 d = i.uv - 0.5;
@@ -33,7 +34,7 @@ float4 main(PSIn i) : SV_TARGET
     float strength = 1.5 + gVignette; 
     float vignette = saturate(1.0 - dot(d, d) * strength);
 
-    col *= vignette;
+    col *= lerp(1.0, vignette, intensity);
 
     return float4(Saturate3(col), 1.0);
 }

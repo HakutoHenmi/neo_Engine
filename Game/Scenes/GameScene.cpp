@@ -1355,22 +1355,28 @@ void GameScene::DrawUI() {
 	// ポストエフェクトのキーボード切り替え
 	static std::string currentPostEffect = "Default";
 	if (Engine::Input::GetInstance()->Trigger(0x02)) currentPostEffect = "Default"; // DIK_1
-	if (Engine::Input::GetInstance()->Trigger(0x03)) currentPostEffect = "Smoothing"; // DIK_2
-	if (Engine::Input::GetInstance()->Trigger(0x04)) currentPostEffect = "GaussianFilter"; // DIK_3
-	if (Engine::Input::GetInstance()->Trigger(0x05)) currentPostEffect = "OutlinePost"; // DIK_4
-	if (Engine::Input::GetInstance()->Trigger(0x06)) currentPostEffect = "Bloom"; // DIK_5
-	if (Engine::Input::GetInstance()->Trigger(0x07)) currentPostEffect = "DepthOfField"; // DIK_6
-	if (Engine::Input::GetInstance()->Trigger(0x08)) currentPostEffect = "Vignette"; // DIK_7
-	if (Engine::Input::GetInstance()->Trigger(0x09)) currentPostEffect = "CRT"; // DIK_8
-	if (Engine::Input::GetInstance()->Trigger(0x0A)) currentPostEffect = "Glitch"; // DIK_9
+	if (Engine::Input::GetInstance()->Trigger(0x03)) currentPostEffect = "FlowingWaterPost"; // DIK_2
+	if (Engine::Input::GetInstance()->Trigger(0x04)) currentPostEffect = "RadialBlur"; // DIK_3
+	if (Engine::Input::GetInstance()->Trigger(0x05)) currentPostEffect = "Vignetting"; // DIK_4
+	if (Engine::Input::GetInstance()->Trigger(0x06)) currentPostEffect = "OutlinePost"; // DIK_5
+	if (Engine::Input::GetInstance()->Trigger(0x07)) currentPostEffect = "GaussianFilter"; // DIK_6
+	if (Engine::Input::GetInstance()->Trigger(0x08)) currentPostEffect = "Grayscale"; // DIK_7
+	if (Engine::Input::GetInstance()->Trigger(0x09)) currentPostEffect = "BoxFilter"; // DIK_8
+	if (Engine::Input::GetInstance()->Trigger(0x0A)) currentPostEffect = "Random"; // DIK_9
 
 	if (Engine::Input::GetInstance()->Trigger(0x02) || Engine::Input::GetInstance()->Trigger(0x03) || Engine::Input::GetInstance()->Trigger(0x04) ||
 		Engine::Input::GetInstance()->Trigger(0x05) || Engine::Input::GetInstance()->Trigger(0x06) || Engine::Input::GetInstance()->Trigger(0x07) ||
 		Engine::Input::GetInstance()->Trigger(0x08) || Engine::Input::GetInstance()->Trigger(0x09) || Engine::Input::GetInstance()->Trigger(0x0A)) {
+		auto pp = renderer_->GetPostProcessParams();
+		pp.san = currentPostEffect == "Default" ? 0.0f : 0.85f;
+		pp.distortion = currentPostEffect == "FlowingWaterPost" ? 0.7f : pp.distortion;
+		pp.chromaShift = currentPostEffect == "FlowingWaterPost" ? 0.004f : pp.chromaShift;
+		pp.vignette = currentPostEffect == "Vignetting" ? 2.4f : pp.vignette;
+		renderer_->SetPostProcessParams(pp);
 		renderer_->SetPostEffect(currentPostEffect);
 	}
 
-	std::string text = "Current PostEffect: " + currentPostEffect + "\nPress 1-9 to change.";
+	std::string text = "PostEffect Debug: " + currentPostEffect + "\nAuto gameplay post effects are enabled. 2 = FlowingWater.";
 	renderer_->DrawString(text, 10.0f, 10.0f, 1.0f, {1.0f, 1.0f, 1.0f, 1.0f});
 
 	if (!isPlaying_)

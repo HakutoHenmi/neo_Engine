@@ -25,7 +25,7 @@ cbuffer cbSystem : register(b0) {
     float emitLife;
 
     uint emitterShape; // 0: Point, 1: Sphere, 2: Box, 3: Mesh
-    float3 emitterExtents; // x is used for meshVertexCount if shape is 3
+    float3 emitterExtents; // Mesh uses x:vertexCount bits, y:stride bits, z:scale
     
     float4 colorStart;
     float4 colorEnd;
@@ -40,6 +40,7 @@ cbuffer cbSystem : register(b0) {
 #define CB_FieldPos param25_27
 
 RWStructuredBuffer<Particle> g_ParticlePool : register(u0);
+ByteAddressBuffer g_EmitterMeshVertices : register(t0);
 
 // 簡易ハッシュ関数 (疑似乱数生成用)
 float hash(uint seed) {
@@ -90,8 +91,30 @@ void EmitCS(uint3 dtid : SV_DispatchThreadID) {
                 offset = dir * hash(seed + i * 23u) * emitterExtents.x;
             } else if (emitterShape == 2) { // Box
                 offset = float3(r1, r2, r3) * emitterExtents;
-            } else if (emitterShape == 3) { // Mesh fallback
-                offset = float3(r1, r2, r3) * 0.1;
+            } else if (emitterShape == 3) { // Mesh
+                uint meshVertexCount = asuint(emitterExtents.x);
+                uint meshVertexStride = asuint(emitterExtents.y);
+                float meshScale = max(emitterExtents.z, 0.001);
+                if (meshVertexCount > 0 && meshVertexStride >= 12) {
+                    uint vertexIndex = min((uint)(hash(seed + i * 29u) * meshVertexCount), meshVertexCount - 1);
+                    float3 meshPos = asfloat(g_EmitterMeshVertices.Load3(vertexIndex * meshVertexStride));
+
+                    float3 forward = emitVel;
+                    float forwardLenSq = dot(forward, forward);
+                    if (forwardLenSq < 0.001) {
+                        forward = float3(0, 1, 0);
+                    } else {
+                        forward *= rsqrt(forwardLenSq);
+                    }
+                    float3 worldUp = abs(forward.y) > 0.95 ? float3(1, 0, 0) : float3(0, 1, 0);
+                    float3 right = normalize(cross(worldUp, forward));
+                    float3 up = cross(forward, right);
+
+                    offset = (right * meshPos.x + forward * meshPos.y + up * meshPos.z) * meshScale;
+                    offset += float3(r1, r2, r3) * 0.03;
+                } else {
+                    offset = float3(r1, r2, r3) * 0.1;
+                }
             } else { // Point
                 offset = float3(r1, r2, r3) * 0.1;
             }

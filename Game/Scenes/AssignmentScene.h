@@ -9,6 +9,7 @@
 #include "GPUParticle.h"
 #include "../ObjectTypes.h"
 #include <string>
+#include <vector>
 
 namespace Game {
 
@@ -22,6 +23,18 @@ public:
     void DrawEditor() override;
 
 private:
+    struct PostEffectEvent {
+        std::string effect;
+        float timer = 0.0f;
+        float duration = 0.0f;
+        std::string reason;
+    };
+
+    void QueuePostEffect(const std::string& effect, float duration, const std::string& reason);
+    void UpdatePostEffects(float dt);
+    void UpdateEnemyCombat(float dt, bool attackPressed);
+    float DistanceXZ(const Engine::Vector3& a, const Engine::Vector3& b) const;
+
     Engine::WindowDX* dx_ = nullptr;
     Engine::Renderer* renderer_ = nullptr;
     Engine::Camera camera_;
@@ -29,6 +42,8 @@ private:
     // Models for assignment
     uint32_t mutantModelHandle_ = 0;
     std::shared_ptr<Engine::Model> mutantModel_;
+    uint32_t enemyCubeMesh_ = 0;
+    uint32_t enemyCubeTex_ = 0;
 
     // Sword and particles
     uint32_t swordMesh_ = 0;
@@ -63,8 +78,24 @@ private:
     // Default Tornado state
     Engine::Vector3 tornadoVel_ = {0.0f, 0.0f, 0.0f};
 
-    // Post effect tracking
+    // Simple gameplay target for post-effect assignment demo
+    Engine::Transform enemyTransform_;
+    int playerHp_ = 100;
+    int enemyHp_ = 60;
+    float enemyAttackCooldown_ = 1.5f;
+    float enemyAttackWindup_ = 0.0f;
+    float enemyHitFlash_ = 0.0f;
+    float playerHitFlash_ = 0.0f;
+    bool enemyAttackArmed_ = false;
+    bool enemyAware_ = false;
+    bool isGuarding_ = false;
+
+    // Post effect tracking. Short events use a queue; otherwise the current gameplay state chooses the effect.
     std::string currentEffect_ = "Default";
+    std::string previousEffect_ = "Default";
+    std::string currentEffectReason_ = "Normal gameplay";
+    float postEffectStrength_ = 0.0f;
+    std::vector<PostEffectEvent> postEffectQueue_;
 };
 
 } // namespace Game
