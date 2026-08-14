@@ -468,7 +468,7 @@ void Renderer::FlushDrawCalls() {
 
 	for (const auto& dc : drawCalls_) {
 		if (dc.shaderName == "Distortion") continue; // 空間のゆがみは EndFrame で別途描画
-		if (dc.shaderName == "Slime" || dc.shaderName == "SlimeNoFace" || dc.shaderName == "SlimeNoFaceNoDepth" || dc.shaderName == "Hologram" || dc.shaderName == "ForceField" || dc.shaderName == "Reflection" || dc.shaderName == "Particle" || dc.shaderName == "ParticleAdditive" || dc.isParticle) continue;
+		if (dc.shaderName == "Slime" || dc.shaderName == "SlimeNoFace" || dc.shaderName == "SlimeNoFaceNoDepth" || dc.shaderName == "Hologram" || dc.shaderName == "ForceField" || dc.shaderName == "Reflection" || dc.shaderName == "EnergyBeam" || dc.shaderName == "EnergyCylinder" || dc.shaderName == "Particle" || dc.shaderName == "ParticleAdditive" || dc.isParticle) continue;
 
 		auto* model = GetModel(dc.mesh);
 		if (!model) continue;
@@ -741,7 +741,7 @@ void Renderer::FlushDrawCalls() {
 
 	// --- 半透明オブジェクトの描画 (不透明オブジェクトの後に描画する) ---
 	for (const auto& dc : drawCalls_) {
-		if (dc.shaderName != "Slime" && dc.shaderName != "SlimeNoFace" && dc.shaderName != "SlimeNoFaceNoDepth" && dc.shaderName != "Hologram" && dc.shaderName != "ForceField" && dc.shaderName != "Reflection" && dc.shaderName != "Particle" && dc.shaderName != "ParticleAdditive" && !dc.isParticle) continue;
+		if (dc.shaderName != "Slime" && dc.shaderName != "SlimeNoFace" && dc.shaderName != "SlimeNoFaceNoDepth" && dc.shaderName != "Hologram" && dc.shaderName != "ForceField" && dc.shaderName != "Reflection" && dc.shaderName != "EnergyBeam" && dc.shaderName != "EnergyCylinder" && dc.shaderName != "Particle" && dc.shaderName != "ParticleAdditive" && !dc.isParticle) continue;
 
 		auto* model = GetModel(dc.mesh);
 		if (!model) continue;
@@ -1450,7 +1450,7 @@ bool Renderer::CreatePSO_Transparent(const std::string& name, ID3DBlob* vsBlob, 
 
 	// ラスタライザ（円柱が欠けるなら NONE に）
 	auto rast = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
-	rast.CullMode = D3D12_CULL_MODE_BACK;
+	rast.CullMode = D3D12_CULL_MODE_NONE; // 円柱の側面などがカリングされて見えない問題への対策
 	rast.FrontCounterClockwise = FALSE;
 	pso.RasterizerState = rast;
 
@@ -2194,7 +2194,8 @@ float4 main(PSIn i) : SV_TARGET { return i.color; }
 
 	// ★追加: リング、シリンダー用シェーダー
 	CreateShaderPipelineTransparent("BoostRing", L"Resources/shaders/BoostRingVS.hlsl", L"Resources/shaders/BoostRingPS.hlsl", true);
-	CreateShaderPipelineTransparent("EnergyCylinder", L"Resources/shaders/EnergyCylinderVS.hlsl", L"Resources/shaders/EnergyCylinderPS.hlsl", true);
+	CreateShaderPipelineTransparent("EnergyCylinder", L"Resources/shaders/EnergyCylinderVS.hlsl", L"Resources/shaders/EnergyCylinderPS.hlsl", true, false);
+	CreateShaderPipelineTransparent("EnergyBeam", L"Resources/shaders/EnergyCylinderVS.hlsl", L"Resources/shaders/EnergyBeamPS.hlsl", true, false);
 
 	// ★さらに未登録だったエフェクト群も追加登録 (JumpPadEnergyは加算、他は通常アルファブレンド)
 	CreateShaderPipelineTransparent("JumpPadEnergy", L"Resources/shaders/JumpPadEnergyVS.hlsl", L"Resources/shaders/JumpPadEnergyPS.hlsl", true);

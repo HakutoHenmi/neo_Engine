@@ -12,7 +12,7 @@ public:
 
 private:
     DirectX::XMFLOAT3 originalScale_ = {1.0f, 1.0f, 1.0f};
-    entt::entity tailEntity_ = entt::null;
+
     BossState prevBossState_ = BossState::Idle; // ★追加: 状態変化検出用
 };
 

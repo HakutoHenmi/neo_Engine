@@ -17,7 +17,7 @@
 | 項目 | 状態 | 内容 |
 | --- | --- | --- |
 | Skinningモデルの表示 | 実装済み | FBX の bone weight / bone index を読み込み、Vertex Shader でスキニングして表示 |
-| ComputeShaderによるSkinning | 未接続 | `SkinningCS.hlsl` と宣言はあるが、PSO作成・Dispatch・描画接続は未実装 |
+| ComputeShaderによるSkinning | 整理済み | 未接続だった Compute Shader skinning 用 shader は未使用リソースとして削除。現状は Vertex Shader skinning を使用 |
 | MultiMesh & MultiMaterial対応 | 実装済み | FBX/ufbx の material part ごとに subset を作り、subset 単位で texture SRV を切り替えて描画 |
 | Animation補間 | 実装済み | Idle / Walking / attack1 の切り替え時に translation / rotation / scale を補間 |
 | 骨のデバッグ表示 | 実装済み | bone line、local axis、bone name を 3D/2D で表示 |
@@ -44,16 +44,8 @@ FBX/ufbx から skinning 情報を読み込み、モデルの頂点に bone weig
 
 ## ComputeShaderによるSkinning
 
-現状は未完成です。
-`Resources/shaders/SkinningCS.hlsl`、`Renderer::ComputeSkinning()` の宣言、`rootSigSkinningCS_`、`psoSkinningCS_` のメンバはありますが、`Renderer.cpp` に以下が接続されていません。
-
-- SkinningCS 用 RootSignature 作成
-- SkinningCS 用 PSO 作成
-- 元頂点 buffer / bone palette / skinned vertex buffer の bind
-- `Dispatch()` による skinning 実行
-- `Model::GetSkinnedVBV()` を使った描画切り替え
-
-そのため、現在の課題提出で主張できるのは Vertex Shader skinning です。
+未接続だった Compute Shader skinning 用 shader は未使用リソース整理で削除しました。
+現在の skinning は `Resources/shaders/SkinningVS.hlsl` と `Resources/shaders/ToonSkinningVS.hlsl` の Vertex Shader 側で行っています。
 
 ## MultiMesh & MultiMaterial対応
 
@@ -245,7 +237,7 @@ PlayGame で GPU fluid player を出した時に device removed / freeze が起�
 
 ## 補足
 
-- `ComputeShaderによるSkinning` は未接続なので、提出時は未完成項目として扱います。
+- `ComputeShaderによるSkinning` 用の未接続 shader は削除済みです。提出時に主張する skinning は Vertex Shader skinning です。
 - `GPU Particle` は AssignmentScene で確認できます。
 - `GPU流体 / メタボール表現` は PlayGame 側の player 表現として確認できます。
 - `AssignmentScene` は課題要素の確認用、`GameScene` は実ゲーム用のシーンとして分けています。

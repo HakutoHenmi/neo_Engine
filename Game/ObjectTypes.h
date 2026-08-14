@@ -489,7 +489,8 @@ enum class BossAttackType {
 	Thrust,       // 突進（デフォルト）
 	TailSpin,     // 尻尾なぎ払い（大回転）
 	JumpPress,    // 飛びかかりプレス（衝撃波）
-	Punch         // ★追加: パンチ
+	Punch,        // ★追加: パンチ
+	BeamSweep     // ★追加: ビームスイープ
 };
 
 // ★追加: ボス専用アクションステートマシン用
@@ -505,7 +506,7 @@ struct BossActionPattern {
 };
 
 enum class BossState : uint32_t {
-	Idle = 0, Chase, WindUp, Attack, Cooldown, Stunned, Down, Dead
+	Idle = 0, Chase, WindUp, Attack, Cooldown, Stunned, Down, Dead, Run
 };
 
 struct BossActionComponent : public Component {
@@ -518,6 +519,7 @@ struct BossActionComponent : public Component {
 	
 	int currentPatternIndex = -1;
 	std::vector<BossActionPattern> patterns;
+	entt::entity currentBeamEntity = entt::null; // ビーム攻撃中に生成したエンティティ
 	float turnDirection = 0.0f;
 	
 	BossActionComponent() { type = ComponentType::BossAction; }

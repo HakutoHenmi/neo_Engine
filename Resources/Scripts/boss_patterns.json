@@ -19,6 +19,26 @@
       "range": 5.0,
       "damage": 45.0,
       "thrustForce": 5.0
+    },
+    {
+      "name": "JumpAttack",
+      "type": "JumpPress",
+      "windUpDuration": 1.5,
+      "activeDuration": 1.5,
+      "recoveryDuration": 2.0,
+      "range": 25.0,
+      "damage": 60.0,
+      "thrustForce": 40.0
+    },
+    {
+      "name": "BeamAttack",
+      "type": "BeamSweep",
+      "windUpDuration": 1.5,
+      "activeDuration": 2.0,
+      "recoveryDuration": 2.0,
+      "range": 50.0,
+      "damage": 50.0,
+      "thrustForce": 0.0
     }
   ]
 }

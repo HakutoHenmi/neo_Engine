@@ -386,7 +386,7 @@
       "locked": false,
       "translate": [-29.838, 0.375948, 16.7807],
       "rotate": [0, 0.16144, 0],
-      "scale": [1.2481, 0.751897, 1.2481],
+      "scale": [1.55, 1.08, 1.45],
       "components": [
         {"type": "MeshRenderer", "enabled": false, "modelPath": "Resources/Models/player_ball/ball.obj", "texturePath": "", "shaderName": "Slime", "color": [0.4,0.8,0.1,0.8], "uvTiling": [1,1], "uvOffset": [0,0], "reflectivity": 1, "useCubemap": true},
         {"type": "BoxCollider", "enabled": true, "center": [0,0,0], "size": [1.5,1.5,1.5], "isTrigger": false},
@@ -460,20 +460,6 @@
       "scale": [1, 1, 1],
       "components": [
         {"type": "FluidEmitter", "enabled": true, "emitCountPerFrame": 40, "color": [0.2,0.8,1,1], "velocity": [0,-5,0], "fluidType": 1}
-      ]
-    },
-    {
-      "id": 18,
-      "parentId": 4294967295,
-      "name": "Cube",
-      "locked": false,
-      "translate": [-41.0098, 8.94795, -24.1688],
-      "rotate": [0, 0, 0],
-      "scale": [6, 1, 6],
-      "components": [
-        {"type": "MeshRenderer", "enabled": true, "modelPath": "Resources/Models/cube/cube.obj", "texturePath": "Resources/Textures/white1x1.png", "shaderName": "Default", "color": [1,1,1,1], "uvTiling": [1,1], "uvOffset": [0,0], "reflectivity": 0, "useCubemap": true},
-        {"type": "BoxCollider", "enabled": true, "center": [0,0,0], "size": [2,2,2], "isTrigger": false},
-        {"type": "Hitbox", "enabled": true, "center": [0,0,0], "size": [2,2,2], "damage": 10, "isActive": false, "tag": "Default"}
       ]
     },
     {

@@ -1275,7 +1275,7 @@ void GameScene::Draw() {
 				if (hasAnim) {
 					renderer_->DrawSkinnedMesh(mr.modelHandle, mr.textureHandle, world, bonePalette, {color.x * mr.color.x, color.y * mr.color.y, color.z * mr.color.z, color.w * mr.color.w});
 				} else {
-					if (mr.shaderName == "Slime" || mr.shaderName == "SlimeNoFace" || mr.shaderName == "SlimeNoFaceNoDepth") {
+					if (mr.shaderName == "Slime" || mr.shaderName == "SlimeNoFace" || mr.shaderName == "SlimeNoFaceNoDepth" || mr.shaderName == "EnergyBeam" || mr.shaderName == "EnergyCylinder") {
 						// 半透明オブジェクトなので、不透明オブジェクトの背後にならないよう後で描画する
 						continue;
 					}
@@ -1315,7 +1315,7 @@ void GameScene::Draw() {
 		if (registry_.all_of<MeshRendererComponent>(entity)) {
 			auto& mr = registry_.get<MeshRendererComponent>(entity);
 			if (!mr.enabled) continue;
-			if (mr.shaderName == "Slime" || mr.shaderName == "SlimeNoFace" || mr.shaderName == "SlimeNoFaceNoDepth") {
+			if (mr.shaderName == "Slime" || mr.shaderName == "SlimeNoFace" || mr.shaderName == "SlimeNoFaceNoDepth" || mr.shaderName == "EnergyBeam" || mr.shaderName == "EnergyCylinder") {
 				Engine::Matrix4x4 world = this->GetWorldMatrix(static_cast<int>(entity));
 				Engine::Vector4 color = { 1.0f, 1.0f, 1.0f, 1.0f };
 				if (registry_.all_of<ColorComponent>(entity)) {
@@ -1375,9 +1375,6 @@ void GameScene::DrawUI() {
 		renderer_->SetPostProcessParams(pp);
 		renderer_->SetPostEffect(currentPostEffect);
 	}
-
-	std::string text = "PostEffect Debug: " + currentPostEffect + "\nAuto gameplay post effects are enabled. 2 = FlowingWater.";
-	renderer_->DrawString(text, 10.0f, 10.0f, 1.0f, {1.0f, 1.0f, 1.0f, 1.0f});
 
 	if (!isPlaying_)
 		return;

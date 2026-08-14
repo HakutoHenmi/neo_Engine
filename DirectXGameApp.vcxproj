@@ -499,8 +499,6 @@ exit /b 0
     <None Include="Resources\Textures\SignJumpPad.png" />
     <None Include="Resources\Textures\uvChecker.png" />
     <None Include="Resources\Textures\white1x1.png" />
-    <None Include="Resources\Textures\fonts\AppliMincho\LICENSE_OFL.txt" />
-    <None Include="Resources\Textures\fonts\AppliMincho\ReadMe.txt" />
     <None Include="Resources\Textures\fonts\Huninn\Huninn-Regular.ttf" />
     <None Include="Resources\Textures\fonts\Huninn\OFL.txt" />
     <None Include="Resources\Textures\fonts\Kiwi_Maru\KiwiMaru-Light.ttf" />

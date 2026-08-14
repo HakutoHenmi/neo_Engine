@@ -31,12 +31,14 @@ float4 main(VSOutput input) : SV_TARGET
     
     // ベースカラー
     float3 albedo = texcolor.rgb * color.rgb;
+    // ★修正: FBX等のマテリアルエラーで真っ黒(シルエット)になるのを防ぐため、最低限のベース色を保証する
+    albedo = max(albedo, float3(0.3, 0.3, 0.3));
 
     // ★追加: プロシージャル和紙マテリアルを適用 (ベースカラーと法線を調整)
     ApplyProceduralPaper(input.worldpos.xyz, albedo, N, 0.4, 0.8);
 
-    // アンビエント成分
-    float3 finalColor = albedo * ambientColor;
+    // アンビエント成分 (環境光も底上げして暗すぎる影を防ぐ)
+    float3 finalColor = albedo * max(ambientColor, float3(0.4, 0.4, 0.4));
 
     // Directional Lights
     for (int i = 0; i < MAX_DIR_LIGHTS; ++i)
@@ -44,7 +46,8 @@ float4 main(VSOutput input) : SV_TARGET
         if (dirLights[i].enabled != 0)
         {
             float3 L = normalize(-dirLights[i].direction);
-            float NdotL = saturate(dot(N, L));
+            // ★修正: ハーフランバートで背面が真っ暗になるのを防ぐ
+            float NdotL = saturate(dot(N, L) * 0.5 + 0.5);
             
             float3 H = normalize(L + V);
             float spec = pow(saturate(dot(N, H)), 32.0f); 
@@ -68,7 +71,7 @@ float4 main(VSOutput input) : SV_TARGET
                 float3 L = Lvec / max(d, 1e-5);
                 float att = AttenDist(pointLights[j].atten, d);
 
-                float NdotL = saturate(dot(N, L));
+                float NdotL = saturate(dot(N, L) * 0.5 + 0.5);
                 float3 H = normalize(L + V);
                 float spec = pow(saturate(dot(N, H)), 32.0f);
 
@@ -94,7 +97,7 @@ float4 main(VSOutput input) : SV_TARGET
                 float ang = smoothstep(spotLights[k].outerCos, spotLights[k].innerCos, cosAng);
                 float att = AttenDist(spotLights[k].atten, d);
 
-                float NdotL = saturate(dot(N, L));
+                float NdotL = saturate(dot(N, L) * 0.5 + 0.5);
                 float3 H = normalize(L + V);
                 float spec = pow(saturate(dot(N, H)), 32.0f);
 

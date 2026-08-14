@@ -267,9 +267,6 @@
     <Filter Include="Resources\Textures\fonts">
       <UniqueIdentifier>{94E95104-5676-4A38-B5C2-6DB22A11C07D}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Resources\Textures\fonts\AppliMincho">
-      <UniqueIdentifier>{48002714-034B-46D5-812A-9F6A77A7B16E}</UniqueIdentifier>
-    </Filter>
     <Filter Include="Resources\Textures\fonts\Huninn">
       <UniqueIdentifier>{F4DA2421-99E2-49D7-BD95-4CAC5CDECF6E}</UniqueIdentifier>
     </Filter>
@@ -1051,12 +1048,6 @@
     </None>
     <None Include="Resources\Textures\white1x1.png">
       <Filter>Resources\Textures</Filter>
-    </None>
-    <None Include="Resources\Textures\fonts\AppliMincho\LICENSE_OFL.txt">
-      <Filter>Resources\Textures\fonts\AppliMincho</Filter>
-    </None>
-    <None Include="Resources\Textures\fonts\AppliMincho\ReadMe.txt">
-      <Filter>Resources\Textures\fonts\AppliMincho</Filter>
     </None>
     <None Include="Resources\Textures\fonts\Huninn\Huninn-Regular.ttf">
       <Filter>Resources\Textures\fonts\Huninn</Filter>
