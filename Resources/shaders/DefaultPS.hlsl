@@ -36,6 +36,18 @@ float3 CalcAreaLight(AreaLight L, float3 wPos, float3 N, float3 V, float3 A) {
 	return BlinnPhong(lDir, V, N, L.color, A) * att;
 }
 
+float3 CalcIndirectLight(float3 albedo, float3 tint, float3 N, float3 V) {
+    float3 skyColor = float3(0.52f, 0.66f, 0.88f);
+    float3 groundColor = float3(0.22f, 0.25f, 0.29f);
+    float hemi = N.y * 0.5f + 0.5f;
+    float3 hemisphere = lerp(groundColor, skyColor, hemi);
+    float rim = pow(1.0f - saturate(dot(N, V)), 2.5f);
+    float luma = dot(albedo, float3(0.2126f, 0.7152f, 0.0722f));
+    float darkBoost = saturate((0.55f - luma) / 0.55f);
+    float3 fillBase = max(albedo, tint * 0.48f);
+    return albedo * hemisphere * 0.22f + fillBase * darkBoost * (0.42f + rim * 0.30f);
+}
+
 float CalcShadow(float3 worldPos) {
     float4 shadowPos = mul(float4(worldPos, 1.0f), gShadowMatrix);
     float3 projCoords = shadowPos.xyz / shadowPos.w;
@@ -63,9 +75,9 @@ float4 main(float4 svpos:SV_POSITION, float3 worldPos:TEXCOORD0, float3 normal:T
     // ApplyProceduralPaper(worldPos, albedo, N, 0.4, 0.8);
 
     float3 V = normalize(gCamPos - worldPos);
-    float3 finalColor = albedo * gAmbientColor;
+    float3 finalColor = albedo * gAmbientColor + CalcIndirectLight(albedo, gColor.rgb, N, V);
 
-    float shadowFactor = CalcShadow(worldPos);
+    float shadowFactor = max(CalcShadow(worldPos), 0.36f);
 
     for(int i=0; i<MAX_DIR; ++i) if(gDir[i].enabled) finalColor += BlinnPhong(normalize(-gDir[i].dir), V, N, gDir[i].color, albedo) * shadowFactor;
     for(int i=0; i<MAX_POINT; ++i) if(gPoint[i].enabled) { float3 Lv = gPoint[i].pos - worldPos; float d = length(Lv); if(d < gPoint[i].range) finalColor += BlinnPhong(normalize(Lv), V, N, gPoint[i].color, albedo) * GetAttenuation(gPoint[i].atten, d); }
