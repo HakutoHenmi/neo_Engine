@@ -288,9 +288,11 @@ void UISystem::DrawUI(entt::registry& registry, GameContext& ctx) {
         float hudX = 40.0f;
         float hudY = 40.0f;
         float hpRate = pHealth.hp / (pHealth.maxHp > 0 ? pHealth.maxHp : 1.0f);
+        float recoverableRate = (pHealth.hp + pHealth.recoverableFluid) / (pHealth.maxHp > 0 ? pHealth.maxHp : 1.0f);
         float barW = 200.0f;
         float barH = 20.0f;
         float curW = barW * std::clamp(hpRate, 0.0f, 1.0f);
+        float recoverableW = barW * std::clamp(recoverableRate, 0.0f, 1.0f);
 
         // 枠
         Engine::Renderer::SpriteDesc hudBorder;
@@ -307,18 +309,29 @@ void UISystem::DrawUI(entt::registry& registry, GameContext& ctx) {
         hudBg.color = {40.0f/255.0f, 40.0f/255.0f, 40.0f/255.0f, 200.0f/255.0f};
         hudBg.layer = 200;
         ctx.renderer->DrawSprite(0, hudBg);
+
+        if (recoverableW > curW + 0.5f) {
+            Engine::Renderer::SpriteDesc hudRecoverable;
+            hudRecoverable.x = hudX + curW;
+            hudRecoverable.y = hudY;
+            hudRecoverable.w = recoverableW - curW;
+            hudRecoverable.h = barH;
+            hudRecoverable.color = {120.0f/255.0f, 255.0f/255.0f, 90.0f/255.0f, 110.0f/255.0f};
+            hudRecoverable.layer = 201;
+            ctx.renderer->DrawSprite(0, hudRecoverable);
+        }
         
         // HP残量
         Engine::Renderer::SpriteDesc hudHp;
         hudHp.x = hudX; hudHp.y = hudY;
         hudHp.w = curW; hudHp.h = barH;
         hudHp.color = {50.0f/255.0f, 200.0f/255.0f, 150.0f/255.0f, 1.0f};
-        hudHp.layer = 201;
+        hudHp.layer = 202;
         ctx.renderer->DrawSprite(0, hudHp);
 
         // HPテキスト
         char hpText[32];
-        snprintf(hpText, sizeof(hpText), "PLAYER HP: %.0f / %.0f", pHealth.hp, pHealth.maxHp);
+        snprintf(hpText, sizeof(hpText), "PLAYER HP: %.0f / %.0f  +%.0f", pHealth.hp, pHealth.maxHp, pHealth.recoverableFluid);
         ctx.renderer->DrawString(hpText, hudX, hudY - 24.0f, 0.3f, {1.0f, 1.0f, 1.0f, 1.0f});
 
         // --- 4. ゲームオーバー（YOU DIED）画面 ---

@@ -804,6 +804,22 @@ static std::string SerializeEntity(entt::registry& registry, entt::entity entity
 	return ss.str();
 }
 
+static bool ShouldSkipRuntimeEntityOnSave(const std::string& name) {
+	if (name.rfind("ControlText_", 0) == 0) return true;
+	if (name == "PlayerCan") return true;
+	if (name == "PlayerProjectile") return true;
+	if (name == "MistEffect") return true;
+	if (name == "SodaGas") return true;
+	if (name == "FlameEffect") return true;
+	if (name == "FireHitbox") return true;
+	if (name == "ExplosionHitbox") return true;
+	if (name == "ExplosionEffectVisual") return true;
+	if (name == "Decoy") return true;
+	if (name == "WarpEffect") return true;
+	if (name == "LostFluidPickup") return true;
+	return false;
+}
+
 std::string EditorUI::SaveToMemory(GameScene* scene) {
 	if (!scene) return "";
 	std::stringstream ss;
@@ -821,7 +837,8 @@ std::string EditorUI::SaveToMemory(GameScene* scene) {
 	auto& registry = scene->GetRegistry();
 	auto view = registry.view<NameComponent>();
 	std::vector<entt::entity> sortedEntities;
-	view.each([&](entt::entity e, auto&) {
+	view.each([&](entt::entity e, const NameComponent& nc) {
+		if (ShouldSkipRuntimeEntityOnSave(nc.name)) return;
 		sortedEntities.push_back(e);
 	});
 	for (size_t i = 0; i < sortedEntities.size(); ++i) {

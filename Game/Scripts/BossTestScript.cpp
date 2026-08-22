@@ -52,10 +52,12 @@ void BossTestScript::Start(entt::entity entity, GameScene* scene) {
 	// 初期スケールを保存しておく
 	if (registry.all_of<TransformComponent>(entity)) {
 		auto& bTc = registry.get<TransformComponent>(entity);
-		// アニメーション再生時のスケール崩壊対策として、モデル全体のスケールを大幅に縮小（さらに小さく調整）
-		bTc.scale.x *= 0.005f;
-		bTc.scale.y *= 0.005f;
-		bTc.scale.z *= 0.005f;
+		// 実行後の縮小済みスケールをシーン保存しても、次回起動時に二重縮小しないようにする。
+		if (bTc.scale.x > 0.1f || bTc.scale.y > 0.1f || bTc.scale.z > 0.1f) {
+			bTc.scale.x *= 0.005f;
+			bTc.scale.y *= 0.005f;
+			bTc.scale.z *= 0.005f;
+		}
 		originalScale_ = bTc.scale;
 	}
 
@@ -150,32 +152,42 @@ void BossTestScript::Update(entt::entity entity, GameScene* scene, float /*dt*/)
 			anim->drawSkeleton = false;
 		}
 		
-		auto getAnimName = [&](const std::string& prefix, const std::string& fallback) -> std::string {
+		auto getAnimNameCached = [&](const std::string& prefix, const std::string& fallback) -> std::string {
+			auto it = animNameCache_.find(prefix);
+			if (it != animNameCache_.end()) {
+				return it->second;
+			}
+			std::string resolved = fallback;
 			if (auto* renderer = Engine::Renderer::GetInstance()) {
 				if (auto* m = renderer->GetModel(mr.modelHandle)) {
 					const auto& anims = m->GetData().animations;
 					for (const auto& a : anims) {
 						if ((a.name.find(prefix + "_") == 0 || a.name.find(prefix) == 0) && a.name.find("mixamo.com") != std::string::npos) {
-							return a.name;
+							resolved = a.name;
+							break;
 						}
 					}
-					// Fallback to any animation with the prefix
-					for (const auto& a : anims) {
-						if (a.name.find(prefix + "_") == 0 || a.name.find(prefix) == 0) {
-							return a.name;
+					if (resolved == fallback) {
+						for (const auto& a : anims) {
+							if (a.name.find(prefix + "_") == 0 || a.name.find(prefix) == 0) {
+								resolved = a.name;
+								break;
+							}
 						}
 					}
-					// If not found, return the first animation as a desperate fallback if available
-					if (!anims.empty()) return anims[0].name;
+					if (resolved == fallback && !anims.empty()) {
+						resolved = anims[0].name;
+					}
 				}
 			}
-			return fallback;
+			animNameCache_[prefix] = resolved;
+			return resolved;
 		};
 
 		bool stateChanged = (prevBossState_ != boss.state);
 		auto playAnim = [&](const std::string& animPrefix, bool loop, float speed) {
 			if (!anim) return;
-			std::string targetName = getAnimName(animPrefix, animPrefix);
+			std::string targetName = getAnimNameCached(animPrefix, animPrefix);
 			
 			bool forceRestart = false;
 			// 攻撃開始時(WindUp)や、待機・移動への移行時はアニメーションを最初から再生し直す

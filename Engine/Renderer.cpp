@@ -994,6 +994,11 @@ void Renderer::EndFrame() {
 			}
 		}
 
+		// ★追加: 流体の影を落とす
+		if (isGPUFluidReady_ && gpuFluidActiveParticleCount_ > 0) {
+			DrawGPUFluidShadow();
+		}
+
 		b = CD3DX12_RESOURCE_BARRIER::Transition(shadowMap_.Get(), D3D12_RESOURCE_STATE_DEPTH_WRITE, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
 		list_->ResourceBarrier(1, &b);
 	}
@@ -4282,6 +4287,9 @@ void Renderer::InitGPUFluid() {
 	dev_->CreateRootSignature(0, sigCompute->GetBufferPointer(), sigCompute->GetBufferSize(), IID_PPV_ARGS(&rootSigFluid_));
 
 	auto csEmit = CompileShaderFromFile(L"Resources/shaders/FluidSimCS.hlsl", "Emit", "cs_5_0");
+	auto csExtract = CompileShaderFromFile(L"Resources/shaders/FluidSimCS.hlsl", "ExtractLostFluid", "cs_5_0");
+	auto csSyncLostGroup = CompileShaderFromFile(L"Resources/shaders/FluidSimCS.hlsl", "SyncLostFluidGroup", "cs_5_0");
+	auto csAbsorbLostGroup = CompileShaderFromFile(L"Resources/shaders/FluidSimCS.hlsl", "AbsorbLostFluidGroup", "cs_5_0");
 	auto csInit = CompileShaderFromFile(L"Resources/shaders/FluidSimCS.hlsl", "InitParticles", "cs_5_0");
 	auto csClearOriginal = CompileShaderFromFile(L"Resources/shaders/FluidSimCS.hlsl", "ClearOriginalIndices", "cs_5_0");
 	auto csClearCount = CompileShaderFromFile(L"Resources/shaders/FluidSimCS.hlsl", "ClearGridCount", "cs_5_0");
@@ -4292,12 +4300,21 @@ void Renderer::InitGPUFluid() {
 	auto csForce = CompileShaderFromFile(L"Resources/shaders/FluidSimCS.hlsl", "CalcForce", "cs_5_0");
 	auto csWriteBack = CompileShaderFromFile(L"Resources/shaders/FluidSimCS.hlsl", "WriteBack", "cs_5_0");
 	
-	if (csEmit && csInit && csClearOriginal && csClearCount && csCount && csPrefixSum && csSort && csDensity && csForce && csWriteBack) {
+	if (csEmit && csExtract && csSyncLostGroup && csAbsorbLostGroup && csInit && csClearOriginal && csClearCount && csCount && csPrefixSum && csSort && csDensity && csForce && csWriteBack) {
 		D3D12_COMPUTE_PIPELINE_STATE_DESC psoDesc{};
 		psoDesc.pRootSignature = rootSigFluid_.Get();
 		
 		psoDesc.CS = { csEmit->GetBufferPointer(), csEmit->GetBufferSize() };
 		dev_->CreateComputePipelineState(&psoDesc, IID_PPV_ARGS(&psoFluidEmit_));
+
+		psoDesc.CS = { csExtract->GetBufferPointer(), csExtract->GetBufferSize() };
+		dev_->CreateComputePipelineState(&psoDesc, IID_PPV_ARGS(&psoFluidExtract_));
+
+		psoDesc.CS = { csSyncLostGroup->GetBufferPointer(), csSyncLostGroup->GetBufferSize() };
+		dev_->CreateComputePipelineState(&psoDesc, IID_PPV_ARGS(&psoFluidSyncLostGroup_));
+
+		psoDesc.CS = { csAbsorbLostGroup->GetBufferPointer(), csAbsorbLostGroup->GetBufferSize() };
+		dev_->CreateComputePipelineState(&psoDesc, IID_PPV_ARGS(&psoFluidAbsorbLostGroup_));
 
 		psoDesc.CS = { csInit->GetBufferPointer(), csInit->GetBufferSize() };
 		dev_->CreateComputePipelineState(&psoDesc, IID_PPV_ARGS(&psoFluidInit_));
@@ -4375,6 +4392,30 @@ void Renderer::InitGPUFluid() {
 		dev_->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&psoFluidRender_));
 	}
 
+	auto vsShadow = CompileShaderFromFile(L"Resources/shaders/GPUFluidShadowVS.hlsl", "main", "vs_5_0");
+	auto psShadow = CompileShaderFromFile(L"Resources/shaders/GPUFluidShadowPS.hlsl", "main", "ps_5_0");
+	if (vsShadow && psShadow) {
+		D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc{};
+		psoDesc.pRootSignature = rootSig3D_.Get();
+		psoDesc.VS = { vsShadow->GetBufferPointer(), vsShadow->GetBufferSize() };
+		psoDesc.PS = { psShadow->GetBufferPointer(), psShadow->GetBufferSize() };
+		D3D12_INPUT_ELEMENT_DESC layout[] = {
+			{"POSITION", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 0,  D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+			{"TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT,       0, 16, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+			{"NORMAL",   0, DXGI_FORMAT_R32G32B32_FLOAT,    0, 24, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+		};
+		psoDesc.InputLayout = { layout, _countof(layout) };
+		psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+		psoDesc.NumRenderTargets = 0; // デプスのみ書き込む
+		psoDesc.SampleDesc.Count = 1;
+		psoDesc.SampleMask = UINT_MAX;
+		psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
+		psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
+		psoDesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
+		psoDesc.DSVFormat = DXGI_FORMAT_D32_FLOAT;
+		dev_->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&psoGPUFluidShadow_));
+	}
+
 	auto vsDebug = CompileShaderFromFile(L"Resources/shaders/GPUFluidDebugVS.hlsl", "main", "vs_5_0");
 	auto psDebug = CompileShaderFromFile(L"Resources/shaders/GPUFluidDebugPS.hlsl", "main", "ps_5_0");
 	if (vsDebug && psDebug) {
@@ -4445,6 +4486,25 @@ void Renderer::SetGPUFluidDecoy(const Vector3& pos, float attraction, const Vect
 	gpuFluidDecoyAttraction_ = attraction;
 	gpuFluidDecoyScale_ = scale;
 	gpuFluidDecoyForward_ = forward;
+}
+
+void Renderer::ResetGPUFluid() {
+	gpuFluidEmitCursorPlayer_ = 0;
+	gpuFluidEmitCursorSplash_ = 2000;
+	gpuFluidExtractCursor_ = 0;
+	gpuFluidActiveParticleCount_ = 0;
+	isGPUFluidInitialized_ = false;
+	gpuFluidAABBs_.clear();
+
+	gpuFluidCorePos_ = {0.0f, -1000.0f, 0.0f};
+	gpuFluidCoreAttraction_ = 0.0f;
+	gpuFluidCoreScale_ = {1.0f, 1.0f, 1.0f};
+	gpuFluidCoreForward_ = {0.0f, 0.0f, 1.0f};
+
+	gpuFluidDecoyPos_ = {0.0f, -1000.0f, 0.0f};
+	gpuFluidDecoyAttraction_ = 0.0f;
+	gpuFluidDecoyScale_ = {1.0f, 1.0f, 1.0f};
+	gpuFluidDecoyForward_ = {0.0f, 0.0f, 1.0f};
 }
 
 void Renderer::UpdateGPUFluid(float dt) {
@@ -4627,10 +4687,11 @@ void Renderer::EmitGPUFluid(const Vector3& pos, const Vector3& velocityDir, cons
 	uint32_t startIndex = 0;
 	uint32_t endIndex = 2000;
 	uint32_t* cursorPtr = &gpuFluidEmitCursorPlayer_;
+	const uint32_t effectParticleEnd = (std::min)(gpuFluidMaxParticles_, 16000u);
 	
 	if (type > 0.5f) { // Splash or Decoy
 		startIndex = 2000;
-		endIndex = gpuFluidMaxParticles_;
+		endIndex = effectParticleEnd;
 		cursorPtr = &gpuFluidEmitCursorSplash_;
 	}
 	uint32_t rangeSize = endIndex - startIndex;
@@ -4665,10 +4726,203 @@ void Renderer::EmitGPUFluid(const Vector3& pos, const Vector3& velocityDir, cons
 	
 	*cursorPtr = startIndex + ((*cursorPtr - startIndex + emitCount) % rangeSize);
 	if (type > 0.5f) {
-		gpuFluidActiveParticleCount_ = (std::min)(gpuFluidMaxParticles_, (std::max)(gpuFluidActiveParticleCount_, *cursorPtr));
+		gpuFluidActiveParticleCount_ = (std::min)(effectParticleEnd, (std::max)(gpuFluidActiveParticleCount_, *cursorPtr));
 	} else {
 		gpuFluidActiveParticleCount_ = (std::max)(gpuFluidActiveParticleCount_, (std::min)(endIndex, startIndex + emitCount));
 	}
+}
+
+uint32_t Renderer::ExtractGPUFluidFromPlayer(const Vector3& pos, const Vector3& velocityDir, int count) {
+	if (!isGPUFluidReady_ || !psoFluidExtract_ || !gpuFluidBuffer_) return 0;
+	if (count <= 0) return 0;
+	if (!isGPUFluidInitialized_ && psoFluidInit_) {
+		list_->SetComputeRootSignature(rootSigFluid_.Get());
+		struct InitCB {
+			float dt; uint32_t emitCursor; uint32_t emitCount; uint32_t maxParticles;
+			Vector3 emitPos; float emitType;
+			Vector3 emitDir; uint32_t emitStartIndex;
+			Vector4 emitColor;
+			Vector3 corePos; float coreAttraction;
+			uint32_t emitEndIndex; Vector3 pad3;
+			Vector3 coreScale; float pad4;
+			Vector3 coreForward; float pad5;
+			uint32_t aabbCount; Vector3 pad6;
+			Vector3 decoyPos; float decoyAttraction;
+			Vector3 decoyScale; float pad7;
+			Vector3 decoyForward; float pad8;
+		} initCb{};
+		initCb.maxParticles = gpuFluidMaxParticles_;
+		list_->SetComputeRoot32BitConstants(0, 48, &initCb, 0);
+		list_->SetComputeRootUnorderedAccessView(1, gpuFluidBuffer_->GetGPUVirtualAddress());
+		list_->SetComputeRootUnorderedAccessView(2, gpuFluidGridCountBuffer_->GetGPUVirtualAddress());
+		list_->SetComputeRootUnorderedAccessView(3, gpuFluidGridOffsetBuffer_->GetGPUVirtualAddress());
+		list_->SetComputeRootUnorderedAccessView(4, gpuFluidSortedParticlesBuffer_->GetGPUVirtualAddress());
+		list_->SetComputeRootUnorderedAccessView(5, gpuFluidOriginalIndicesBuffer_->GetGPUVirtualAddress());
+		if (gpuFluidAABBBuffer_) list_->SetComputeRootShaderResourceView(6, gpuFluidAABBBuffer_->GetGPUVirtualAddress());
+		list_->SetPipelineState(psoFluidInit_.Get());
+		list_->Dispatch((gpuFluidMaxParticles_ + 63) / 64, 1, 1);
+		auto initBarrier = CD3DX12_RESOURCE_BARRIER::UAV(gpuFluidBuffer_.Get());
+		list_->ResourceBarrier(1, &initBarrier);
+		isGPUFluidInitialized_ = true;
+	}
+
+	const uint32_t startIndex = 0;
+	const uint32_t endIndex = 2000;
+	const uint32_t rangeSize = endIndex - startIndex;
+	const uint32_t extractCount = (std::min)(static_cast<uint32_t>(count), rangeSize);
+	if (gpuFluidExtractCursor_ + extractCount > endIndex) {
+		gpuFluidExtractCursor_ = startIndex;
+	}
+	const uint32_t firstGroupId = gpuFluidExtractCursor_ / 10;
+
+	struct CB {
+		float dt; uint32_t emitCursor; uint32_t emitCount; uint32_t maxParticles;
+		Vector3 emitPos; float emitType;
+		Vector3 emitDir; uint32_t emitStartIndex;
+		Vector4 emitColor;
+		Vector3 corePos; float coreAttraction;
+		uint32_t emitEndIndex; Vector3 pad3;
+		Vector3 coreScale; float pad4;
+		Vector3 coreForward; float pad5;
+		uint32_t aabbCount; Vector3 pad6;
+		Vector3 decoyPos; float decoyAttraction;
+		Vector3 decoyScale; float pad7;
+		Vector3 decoyForward; float pad8;
+	} cb{};
+
+	cb.dt = 0.0f;
+	cb.emitCursor = gpuFluidExtractCursor_;
+	cb.emitCount = extractCount;
+	cb.maxParticles = gpuFluidMaxParticles_;
+	cb.emitPos = pos;
+	cb.emitType = 3.0f;
+	cb.emitDir = velocityDir;
+	cb.emitStartIndex = startIndex;
+	cb.emitColor = {0.35f, 0.95f, 0.20f, 1.0f};
+	cb.corePos = gpuFluidCorePos_;
+	cb.coreAttraction = gpuFluidCoreAttraction_;
+	cb.emitEndIndex = endIndex;
+	cb.pad3 = {0, 0, 0};
+	cb.coreScale = gpuFluidCoreScale_;
+	cb.pad4 = 0.0f;
+	cb.coreForward = gpuFluidCoreForward_;
+	cb.pad5 = 0.0f;
+	cb.aabbCount = 0;
+	cb.pad6 = {0, 0, 0};
+	cb.decoyPos = gpuFluidDecoyPos_;
+	cb.decoyAttraction = gpuFluidDecoyAttraction_;
+	cb.decoyScale = gpuFluidDecoyScale_;
+	cb.pad7 = 0.0f;
+	cb.decoyForward = gpuFluidDecoyForward_;
+	cb.pad8 = 0.0f;
+
+	list_->SetPipelineState(psoFluidExtract_.Get());
+	list_->SetComputeRootSignature(rootSigFluid_.Get());
+	list_->SetComputeRoot32BitConstants(0, 48, &cb, 0);
+	list_->SetComputeRootUnorderedAccessView(1, gpuFluidBuffer_->GetGPUVirtualAddress());
+	list_->SetComputeRootUnorderedAccessView(2, gpuFluidGridCountBuffer_->GetGPUVirtualAddress());
+	list_->SetComputeRootUnorderedAccessView(3, gpuFluidGridOffsetBuffer_->GetGPUVirtualAddress());
+	list_->SetComputeRootUnorderedAccessView(4, gpuFluidSortedParticlesBuffer_->GetGPUVirtualAddress());
+	list_->SetComputeRootUnorderedAccessView(5, gpuFluidOriginalIndicesBuffer_->GetGPUVirtualAddress());
+	if (gpuFluidAABBBuffer_) list_->SetComputeRootShaderResourceView(6, gpuFluidAABBBuffer_->GetGPUVirtualAddress());
+
+	list_->Dispatch((extractCount + 63) / 64, 1, 1);
+
+	auto barrier = CD3DX12_RESOURCE_BARRIER::UAV(gpuFluidBuffer_.Get());
+	list_->ResourceBarrier(1, &barrier);
+
+	gpuFluidExtractCursor_ = startIndex + ((gpuFluidExtractCursor_ - startIndex + extractCount) % rangeSize);
+	gpuFluidActiveParticleCount_ = (std::max)(gpuFluidActiveParticleCount_, endIndex);
+	return firstGroupId;
+}
+
+void Renderer::SyncLostGPUFluidGroup(uint32_t groupId, const Vector3& pos) {
+	if (!isGPUFluidReady_ || !psoFluidSyncLostGroup_ || !gpuFluidBuffer_) return;
+
+	struct CB {
+		float dt; uint32_t emitCursor; uint32_t emitCount; uint32_t maxParticles;
+		Vector3 emitPos; float emitType;
+		Vector3 emitDir; uint32_t emitStartIndex;
+		Vector4 emitColor;
+		Vector3 corePos; float coreAttraction;
+		uint32_t emitEndIndex; Vector3 pad3;
+		Vector3 coreScale; float pad4;
+		Vector3 coreForward; float pad5;
+		uint32_t aabbCount; Vector3 pad6;
+		Vector3 decoyPos; float decoyAttraction;
+		Vector3 decoyScale; float pad7;
+		Vector3 decoyForward; float pad8;
+	} cb{};
+
+	cb.maxParticles = gpuFluidMaxParticles_;
+	cb.emitPos = pos;
+	cb.corePos = gpuFluidCorePos_;
+	cb.coreAttraction = gpuFluidCoreAttraction_;
+	cb.emitEndIndex = 2000;
+	cb.pad3 = {static_cast<float>(groupId), 0.0f, 0.0f};
+	cb.coreScale = gpuFluidCoreScale_;
+	cb.coreForward = gpuFluidCoreForward_;
+	cb.decoyPos = gpuFluidDecoyPos_;
+	cb.decoyScale = gpuFluidDecoyScale_;
+	cb.decoyForward = gpuFluidDecoyForward_;
+
+	list_->SetPipelineState(psoFluidSyncLostGroup_.Get());
+	list_->SetComputeRootSignature(rootSigFluid_.Get());
+	list_->SetComputeRoot32BitConstants(0, 48, &cb, 0);
+	list_->SetComputeRootUnorderedAccessView(1, gpuFluidBuffer_->GetGPUVirtualAddress());
+	list_->SetComputeRootUnorderedAccessView(2, gpuFluidGridCountBuffer_->GetGPUVirtualAddress());
+	list_->SetComputeRootUnorderedAccessView(3, gpuFluidGridOffsetBuffer_->GetGPUVirtualAddress());
+	list_->SetComputeRootUnorderedAccessView(4, gpuFluidSortedParticlesBuffer_->GetGPUVirtualAddress());
+	list_->SetComputeRootUnorderedAccessView(5, gpuFluidOriginalIndicesBuffer_->GetGPUVirtualAddress());
+	if (gpuFluidAABBBuffer_) list_->SetComputeRootShaderResourceView(6, gpuFluidAABBBuffer_->GetGPUVirtualAddress());
+	list_->Dispatch(1, 1, 1);
+
+	auto barrier = CD3DX12_RESOURCE_BARRIER::UAV(gpuFluidBuffer_.Get());
+	list_->ResourceBarrier(1, &barrier);
+}
+
+void Renderer::AbsorbLostGPUFluidGroup(uint32_t groupId) {
+	if (!isGPUFluidReady_ || !psoFluidAbsorbLostGroup_ || !gpuFluidBuffer_) return;
+
+	struct CB {
+		float dt; uint32_t emitCursor; uint32_t emitCount; uint32_t maxParticles;
+		Vector3 emitPos; float emitType;
+		Vector3 emitDir; uint32_t emitStartIndex;
+		Vector4 emitColor;
+		Vector3 corePos; float coreAttraction;
+		uint32_t emitEndIndex; Vector3 pad3;
+		Vector3 coreScale; float pad4;
+		Vector3 coreForward; float pad5;
+		uint32_t aabbCount; Vector3 pad6;
+		Vector3 decoyPos; float decoyAttraction;
+		Vector3 decoyScale; float pad7;
+		Vector3 decoyForward; float pad8;
+	} cb{};
+
+	cb.maxParticles = gpuFluidMaxParticles_;
+	cb.corePos = gpuFluidCorePos_;
+	cb.coreAttraction = gpuFluidCoreAttraction_;
+	cb.emitEndIndex = 2000;
+	cb.pad3 = {static_cast<float>(groupId), 0.0f, 0.0f};
+	cb.coreScale = gpuFluidCoreScale_;
+	cb.coreForward = gpuFluidCoreForward_;
+	cb.decoyPos = gpuFluidDecoyPos_;
+	cb.decoyScale = gpuFluidDecoyScale_;
+	cb.decoyForward = gpuFluidDecoyForward_;
+
+	list_->SetPipelineState(psoFluidAbsorbLostGroup_.Get());
+	list_->SetComputeRootSignature(rootSigFluid_.Get());
+	list_->SetComputeRoot32BitConstants(0, 48, &cb, 0);
+	list_->SetComputeRootUnorderedAccessView(1, gpuFluidBuffer_->GetGPUVirtualAddress());
+	list_->SetComputeRootUnorderedAccessView(2, gpuFluidGridCountBuffer_->GetGPUVirtualAddress());
+	list_->SetComputeRootUnorderedAccessView(3, gpuFluidGridOffsetBuffer_->GetGPUVirtualAddress());
+	list_->SetComputeRootUnorderedAccessView(4, gpuFluidSortedParticlesBuffer_->GetGPUVirtualAddress());
+	list_->SetComputeRootUnorderedAccessView(5, gpuFluidOriginalIndicesBuffer_->GetGPUVirtualAddress());
+	if (gpuFluidAABBBuffer_) list_->SetComputeRootShaderResourceView(6, gpuFluidAABBBuffer_->GetGPUVirtualAddress());
+	list_->Dispatch(1, 1, 1);
+
+	auto barrier = CD3DX12_RESOURCE_BARRIER::UAV(gpuFluidBuffer_.Get());
+	list_->ResourceBarrier(1, &barrier);
 }
 
 void Renderer::DrawGPUFluid(TextureHandle texture) {
@@ -4733,6 +4987,17 @@ void Renderer::DrawGPUFluidDebug() {
 	
 	auto b2 = CD3DX12_RESOURCE_BARRIER::Transition(gpuFluidBuffer_.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 	list_->ResourceBarrier(1, &b2);
+}
+void Renderer::DrawGPUFluidShadow() {
+	if (!isGPUFluidReady_ || !psoGPUFluidShadow_ || !gpuFluidBuffer_ || gpuFluidActiveParticleCount_ == 0) return;
+
+	list_->SetPipelineState(psoGPUFluidShadow_.Get());
+	list_->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+
+	list_->SetGraphicsRootShaderResourceView(6, gpuFluidBuffer_->GetGPUVirtualAddress());
+
+	const uint32_t simulationCount = (std::min)((std::min)(gpuFluidActiveParticleCount_, gpuFluidMaxParticles_), 12000u);
+	list_->DrawInstanced(6, simulationCount, 0, 0);
 }
 
 } // namespace Engine

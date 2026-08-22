@@ -23,10 +23,13 @@ PSOut main(float4 svpos:SV_POSITION, float2 uv:TEXCOORD0, float viewZ:TEXCOORD1,
     
     // メタボール合成用に、アルファ（密度）を蓄積する
     float4 outColor = color;
-    bool isSlime = (type < 0.5f || (type > 1.5f && type < 2.5f));
+    bool isPlayerSlime = (type < 0.5f);
+    bool isDecoySlime = (type > 1.5f && type < 2.5f);
+    bool isLostPlayerSlime = (type > 2.5f && type < 3.5f);
+    bool isSlime = (isPlayerSlime || isDecoySlime || isLostPlayerSlime);
     
     if (isSlime) {
-        if (type < 0.5f) {
+        if (isPlayerSlime || isLostPlayerSlime) {
             // プレイヤー：白飛びを防ぎつつ鮮やかなエメラルドグリーンにする
             outColor.r = 0.05f;
             outColor.g = 0.8f;
@@ -39,7 +42,7 @@ PSOut main(float4 svpos:SV_POSITION, float2 uv:TEXCOORD0, float viewZ:TEXCOORD1,
         }
         // ★重要: 密度が1.0に張り付いて巨大化する（透明な隙間ができる）のを防ぐため、
         // 1粒あたりの密度を下げて、複数重なった中心部分だけが濃くなるようにします。
-        outColor.a = alpha * 0.2f * color.a; 
+        outColor.a = alpha * (isLostPlayerSlime ? 0.55f : 0.2f) * color.a;
     } else {
         // カエルの卵のように黒く濁らないよう、元の明るい色をそのまま使う
         outColor.rgb = color.rgb;

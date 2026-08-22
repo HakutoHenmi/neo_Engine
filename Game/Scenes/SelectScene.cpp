@@ -15,6 +15,9 @@ void SelectScene::Initialize(Engine::WindowDX* dx, const Engine::SceneParameters
     dx_ = dx;
     renderer_ = Engine::Renderer::GetInstance();
     selectedIndex_ = 0;
+    
+    // カーソルを表示する
+    ShowCursor(TRUE);
 }
 
 void SelectScene::Update() {
@@ -38,45 +41,39 @@ void SelectScene::Update() {
         float normLY = std::fmaxf(-1, (float)state.Gamepad.sThumbLY / 32767);
         ly = (std::abs(normLY) < 0.2f ? 0.0f : normLY);
         
-        static bool prevA = false;
         bool currA = (state.Gamepad.wButtons & XINPUT_GAMEPAD_A) != 0;
-        if (currA && !prevA) aTrigger = true;
-        prevA = currA;
+        if (currA && !prevA_) aTrigger = true;
+        prevA_ = currA;
         
-        static bool prevUp = false;
         bool currUp = (state.Gamepad.wButtons & XINPUT_GAMEPAD_DPAD_UP) != 0;
-        if (currUp && !prevUp) {
+        if (currUp && !prevUp_) {
             selectedIndex_--;
             if (selectedIndex_ < 0) selectedIndex_ = 1;
         }
-        prevUp = currUp;
+        prevUp_ = currUp;
         
-        static bool prevDown = false;
         bool currDown = (state.Gamepad.wButtons & XINPUT_GAMEPAD_DPAD_DOWN) != 0;
-        if (currDown && !prevDown) {
+        if (currDown && !prevDown_) {
             selectedIndex_++;
             if (selectedIndex_ > 1) selectedIndex_ = 0;
         }
-        prevDown = currDown;
+        prevDown_ = currDown;
     }
     
-    static bool stickUp = false;
-    static bool stickDown = false;
-    
-    if (ly > 0.5f && !stickUp) {
+    if (ly > 0.5f && !stickUp_) {
         selectedIndex_--;
         if (selectedIndex_ < 0) selectedIndex_ = 1;
-        stickUp = true;
+        stickUp_ = true;
     } else if (ly <= 0.5f) {
-        stickUp = false;
+        stickUp_ = false;
     }
     
-    if (ly < -0.5f && !stickDown) {
+    if (ly < -0.5f && !stickDown_) {
         selectedIndex_++;
         if (selectedIndex_ > 1) selectedIndex_ = 0;
-        stickDown = true;
+        stickDown_ = true;
     } else if (ly >= -0.5f) {
-        stickDown = false;
+        stickDown_ = false;
     }
     
     // Select (Enter or Pad A)

@@ -268,6 +268,23 @@ void WindowDX::ToggleFullscreen() {
 	}
 }
 
+void WindowDX::SetCursorVisible(bool visible) {
+	CURSORINFO cursorInfo{};
+	cursorInfo.cbSize = sizeof(cursorInfo);
+	if (GetCursorInfo(&cursorInfo)) {
+		const bool isVisible = (cursorInfo.flags & CURSOR_SHOWING) != 0;
+		if (isVisible == visible) {
+			return;
+		}
+	}
+
+	if (visible) {
+		while (ShowCursor(TRUE) < 0) {}
+	} else {
+		while (ShowCursor(FALSE) >= 0) {}
+	}
+}
+
 void WindowDX::Shutdown() {
 	WaitGPU();
 

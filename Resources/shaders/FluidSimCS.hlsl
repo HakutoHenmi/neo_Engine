@@ -65,7 +65,8 @@ void Emit(uint3 DTid : SV_DispatchThreadID) {
             float ry = (hash(i * 456) - 0.5f) * 2.0f;
             float rz = (hash(i * 789) - 0.5f) * 2.0f;
             
-            bool isSlime = (emitType < 0.5f || (emitType > 1.5f && emitType < 2.5f));
+            bool isLostSlime = (emitType > 2.5f && emitType < 3.5f);
+            bool isSlime = (emitType < 0.5f || (emitType > 1.5f && emitType < 2.5f) || isLostSlime);
             
             // ★位置をばらけさせる (超重要: 同一座標に重なると圧力が爆発する)
             float3 randVec = float3(rx, ry, rz);
@@ -89,7 +90,9 @@ void Emit(uint3 DTid : SV_DispatchThreadID) {
             p.density = 1.0f;
             p.pressure = 0.0f;
             
-            if (isSlime) {
+            if (isLostSlime) {
+                p.pad = float3(0, 0, 0);
+            } else if (isSlime) {
                 // スライムの場合: 初期ローカル座標を記憶して Shape Matching（形状維持）の目標にする
                 p.pad = localOffset; 
             } else {
@@ -125,6 +128,107 @@ static const float VISC_COEFF = 45.0f / (PI * H_POWER_6);
 // ==========================================
 // 空間ハッシュグリッド用関数群
 // ==========================================
+[numthreads(64, 1, 1)]
+void ExtractLostFluid(uint3 DTid : SV_DispatchThreadID) {
+    uint localIndex = DTid.x;
+    if (localIndex >= emitCount) return;
+
+    uint range = emitEndIndex - emitStartIndex;
+    if (range == 0) return;
+
+    uint i = emitStartIndex + ((emitCursor - emitStartIndex + localIndex) % range);
+    if (i >= maxParticles) return;
+
+    Particle p = Particles[i];
+    if (p.color.a < 0.01f || p.position.y < -500.0f || p.type > 0.5f) return;
+
+    uint groupIndex = localIndex / 10;
+    uint memberIndex = localIndex - groupIndex * 10;
+
+    float groupCount = max(1.0f, ceil((float)emitCount / 10.0f));
+    float groupAngle = ((float)groupIndex / groupCount) * (PI * 2.0f) + (hash(groupIndex * 193 + 7) - 0.5f) * 0.75f;
+    float groupLift = 0.22f + hash(groupIndex * 271 + 11) * 0.32f;
+    float groupDist = 0.45f + hash(groupIndex * 313 + 17) * 0.35f;
+    float3 groupOut = normalize(float3(cos(groupAngle), groupLift, sin(groupAngle)));
+
+    float3 right = cross(float3(0.0f, 1.0f, 0.0f), groupOut);
+    if (length(right) < 0.01f) {
+        right = float3(1.0f, 0.0f, 0.0f);
+    } else {
+        right = normalize(right);
+    }
+    float3 tangent = normalize(cross(groupOut, right));
+
+    float memberAngle = ((float)memberIndex / 10.0f) * (PI * 2.0f) + hash(i * 37 + 5) * 0.55f;
+    float memberRadius = 0.10f + hash(i * 67 + 3) * 0.10f;
+    float3 memberOffset =
+        right * cos(memberAngle) * memberRadius +
+        tangent * sin(memberAngle) * memberRadius +
+        groupOut * ((hash(i * 97 + 23) - 0.5f) * 0.06f);
+
+    p.position = emitPos + groupOut * groupDist + memberOffset;
+    p.velocity = emitDir * 2.4f + groupOut * (7.5f + hash(groupIndex * 401 + 29) * 2.5f) + memberOffset * 3.0f;
+    p.color = emitColor;
+    p.type = 3.0f;
+    p.pad = float3(0, (float)(i / 10U), 0);
+    p.density = 1.0f;
+    p.pressure = 0.0f;
+
+    Particles[i] = p;
+}
+
+[numthreads(64, 1, 1)]
+void SyncLostFluidGroup(uint3 DTid : SV_DispatchThreadID) {
+    uint localIndex = DTid.x;
+    if (localIndex >= 10U) return;
+
+    uint groupId = (uint)(pad3.x + 0.5f);
+    uint i = groupId * 10U + localIndex;
+    if (i >= maxParticles) return;
+
+    Particle p = Particles[i];
+    if (!(p.type > 2.5f && p.type < 3.5f)) return;
+
+    float memberAngle = ((float)localIndex / 10.0f) * (PI * 2.0f) + hash(i * 37 + 5) * 0.35f;
+    float memberRadius = (localIndex < 6U) ? 0.18f : 0.10f;
+    float memberHeight = (localIndex < 6U) ? 0.02f : 0.18f;
+    float3 memberOffset = float3(cos(memberAngle) * memberRadius, memberHeight, sin(memberAngle) * memberRadius);
+
+    p.position = emitPos + memberOffset;
+    p.velocity = float3(0.0f, 0.0f, 0.0f);
+    p.pad.x = max(p.pad.x, 0.9f);
+    p.pad.y = (float)groupId;
+    p.color.a = 1.0f;
+
+    Particles[i] = p;
+}
+
+[numthreads(64, 1, 1)]
+void AbsorbLostFluidGroup(uint3 DTid : SV_DispatchThreadID) {
+    uint localIndex = DTid.x;
+    if (localIndex >= 10U) return;
+
+    uint groupId = (uint)(pad3.x + 0.5f);
+    uint i = groupId * 10U + localIndex;
+    if (i >= maxParticles) return;
+
+    Particle p = Particles[i];
+    if (!(p.type > 2.5f && p.type < 3.5f)) return;
+
+    float memberAngle = ((float)localIndex / 10.0f) * (PI * 2.0f);
+    float memberRadius = (localIndex < 6U) ? 0.18f : 0.10f;
+    float memberHeight = (localIndex < 6U) ? 0.02f : 0.18f;
+    float3 memberOffset = float3(cos(memberAngle) * memberRadius, memberHeight, sin(memberAngle) * memberRadius);
+
+    p.position = corePos + memberOffset;
+    p.velocity = float3(0.0f, 0.0f, 0.0f);
+    p.type = 0.0f;
+    p.color = float4(0.35f, 0.95f, 0.20f, 1.0f);
+    p.pad = p.position - corePos;
+
+    Particles[i] = p;
+}
+
 int3 GetCell(float3 pos) {
     return int3(floor(pos / SMOOTHING_RADIUS));
 }
@@ -311,7 +415,8 @@ void CalcDensity(uint3 DTid : SV_DispatchThreadID) {
     SortedParticles[i].density = density;
     
     // 圧力計算 (マイナスにならないようにmaxを取る)
-    float currentGasConstant = (SortedParticles[i].type < 0.5f) ? GAS_CONSTANT : (GAS_CONSTANT * 0.2f);
+    bool isSlimeType = (SortedParticles[i].type < 0.5f || (SortedParticles[i].type > 1.5f && SortedParticles[i].type < 2.5f) || (SortedParticles[i].type > 2.5f && SortedParticles[i].type < 3.5f));
+    float currentGasConstant = isSlimeType ? GAS_CONSTANT : (GAS_CONSTANT * 0.2f);
     SortedParticles[i].pressure = max(currentGasConstant * (density - REST_DENSITY), 0.0f);
 }
 
@@ -372,7 +477,8 @@ void CalcForce(uint3 DTid : SV_DispatchThreadID) {
                                 float pressureTerm = (pi.pressure + pj.pressure) * 0.5f * invDensity;
                                 forcePressure += dir * PARTICLE_MASS * pressureTerm * SPIKY_COEFF * w * w;
                                 
-                                float currentViscosity = (pi.type < 0.5f) ? VISCOSITY : 0.02f;
+                                bool isSlimeType = (pi.type < 0.5f || (pi.type > 1.5f && pi.type < 2.5f) || (pi.type > 2.5f && pi.type < 3.5f));
+                                float currentViscosity = isSlimeType ? VISCOSITY : 0.02f;
                                 float3 velDiff = pj.velocity - pi.velocity;
                                 forceViscosity += velDiff * PARTICLE_MASS * invDensity * currentViscosity * VISC_COEFF * w;
                             }
@@ -384,7 +490,46 @@ void CalcForce(uint3 DTid : SV_DispatchThreadID) {
     }
     
     // 加速度
+    bool isLostPlayerSlimeForCluster = (pi.type > 2.5f && pi.type < 3.5f);
+    if (isLostPlayerSlimeForCluster) {
+        forcePressure *= 0.0f;
+        forceViscosity *= 0.35f;
+    }
+
     float3 force = forcePressure + forceViscosity;
+
+    if (isLostPlayerSlimeForCluster) {
+        uint sourceIndex = OriginalIndices[i];
+        uint groupStart = (sourceIndex / 10U) * 10U;
+        float3 groupCenter = float3(0.0f, 0.0f, 0.0f);
+        uint groupMemberCount = 0U;
+
+        [unroll]
+        for (uint m = 0U; m < 10U; ++m) {
+            uint memberSource = groupStart + m;
+            if (memberSource >= emitEndIndex) break;
+
+            Particle gp = Particles[memberSource];
+            if (gp.type > 2.5f && gp.type < 3.5f && gp.position.y > -500.0f) {
+                groupCenter += gp.position;
+                groupMemberCount += 1U;
+            }
+        }
+
+        if (groupMemberCount > 0U) {
+            groupCenter /= (float)groupMemberCount;
+
+            uint memberIndex = sourceIndex - groupStart;
+            float memberAngle = ((float)memberIndex / 10.0f) * (PI * 2.0f);
+            float heightLayer = (memberIndex < 6U) ? 0.0f : 0.14f;
+            float radius = (memberIndex < 6U) ? 0.18f : 0.10f;
+            float3 targetOffset = float3(cos(memberAngle) * radius, heightLayer, sin(memberAngle) * radius);
+            float3 clusterTarget = groupCenter + targetOffset;
+
+            force += (clusterTarget - pi.position) * 180.0f;
+            force -= pi.velocity * 1.8f;
+        }
+    }
     
     // ★追加: プレイヤーまたはデコイのコアへ引っ張る力 (スライムの形を保つ)
     float currentAttraction = 0.0f;
@@ -420,6 +565,9 @@ void CalcForce(uint3 DTid : SV_DispatchThreadID) {
 
             // ★Shape Matching (目標位置への追従)
             float3 localTarget = pi.pad * currentCoreScale;
+            if (pi.type > 2.5f && pi.type < 3.5f) {
+                localTarget = float3(0.0f, 0.0f, 0.0f);
+            }
             
             // ★追加: 攻撃時に「とんがらせて」「前方に突き出す」変形
             // デコイは攻撃モーションをとらないので変形させない
@@ -523,7 +671,8 @@ void CalcForce(uint3 DTid : SV_DispatchThreadID) {
     }
     
     // 床や壁に触れた時の摩擦（水は滑りやすく、スライムは滑りにくく）
-    float friction = (pi.type < 0.5f) ? 0.6f : 0.98f;
+    bool isSlimeTypeForFriction = (pi.type < 0.5f || (pi.type > 1.5f && pi.type < 2.5f) || (pi.type > 2.5f && pi.type < 3.5f));
+    float friction = isSlimeTypeForFriction ? 0.6f : 0.98f;
     
     // コリジョン (簡易的な床バウンド)
     if (pi.position.y < 0.2f) {
@@ -616,6 +765,10 @@ void CalcForce(uint3 DTid : SV_DispatchThreadID) {
     }
     
     // 空間制限は削除（プレイヤーへの引力で十分なため）
+    if (pi.type > 2.5f && pi.type < 3.5f) {
+        pi.pad.x += dt;
+    }
+
     SortedParticles[i] = pi;
 }
 

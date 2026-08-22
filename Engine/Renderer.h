@@ -320,9 +320,13 @@ public:
 	Microsoft::WRL::ComPtr<ID3D12Resource> gpuFluidOriginalIndicesBuffer_;
 	
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> psoFluidEmit_;
+	Microsoft::WRL::ComPtr<ID3D12PipelineState> psoFluidExtract_;
+	Microsoft::WRL::ComPtr<ID3D12PipelineState> psoFluidSyncLostGroup_;
+	Microsoft::WRL::ComPtr<ID3D12PipelineState> psoFluidAbsorbLostGroup_;
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> psoFluidInit_;
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> psoFluidClearOriginal_;
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> psoFluidClearCount_;
+	Microsoft::WRL::ComPtr<ID3D12PipelineState> psoGPUFluidShadow_; // ★追加: シャドウパス用
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> psoFluidCount_;
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> psoFluidPrefixSum_;
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> psoFluidSort_;
@@ -331,17 +335,24 @@ public:
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> psoFluidWriteBack_;
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> psoFluidRender_; 
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> psoFluidDebug_; 
-	uint32_t gpuFluidMaxParticles_ = 120000; // O(N)空間グリッド導入により大幅に増量
+	uint32_t gpuFluidMaxParticles_ = 32000;
 	uint32_t gpuFluidEmitCursorPlayer_ = 0;
 	uint32_t gpuFluidEmitCursorSplash_ = 2000;
+	uint32_t gpuFluidExtractCursor_ = 0;
 	uint32_t gpuFluidActiveParticleCount_ = 0;
 	bool isGPUFluidReady_ = false;
 	bool isGPUFluidInitialized_ = false;
 
 	void InitGPUFluid();
 	void UpdateGPUFluid(float dt);
+	void ResetGPUFluid();
+	void ClearGPUFluid() { gpuFluidActiveParticleCount_ = 0; }
 	void EmitGPUFluid(const Vector3& pos, const Vector3& velocityDir, const Vector4& color, int count, float type = 0.0f);
+	uint32_t ExtractGPUFluidFromPlayer(const Vector3& pos, const Vector3& velocityDir, int count);
+	void SyncLostGPUFluidGroup(uint32_t groupId, const Vector3& pos);
+	void AbsorbLostGPUFluidGroup(uint32_t groupId);
 	void DrawGPUFluid(TextureHandle texture);
+	void DrawGPUFluidShadow(); // ★追加: シャドウパス描画用
 	void DrawGPUFluidDebug();
 	void SetGPUFluidCore(const Vector3& pos, float attraction, const Vector3& scale = {1.0f, 1.0f, 1.0f}, const Vector3& forward = {0.0f, 0.0f, 1.0f});
 	void SetGPUFluidDecoy(const Vector3& pos, float attraction, const Vector3& scale = {1.0f, 1.0f, 1.0f}, const Vector3& forward = {0.0f, 0.0f, 1.0f}); // ★追加: デコイ用コア情報設定

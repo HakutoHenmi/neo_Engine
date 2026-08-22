@@ -1008,9 +1008,6 @@ Running App...
   SceneManager: Draw current scene
   SceneManager: Draw done
   SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
   SceneManager: Update current scene
   SceneManager: Update done
   SceneManager: Draw current scene
@@ -1108,53 +1105,6 @@ Running App...
   SceneManager: Draw current scene
   SceneManager: Draw done
   SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
   SceneManager: Update current scene
   SceneManager: Update done
   SceneManager: Draw current scene
@@ -1979,69 +1929,6 @@ Running App...
   SceneManager: Update done
   SceneManager: Draw current scene
   SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
   SceneManager: Draw done
   SceneManager: Update current scene
   SceneManager: Update done
@@ -2786,6 +2673,8 @@ Running App...
   SceneManager: Update done
   SceneManager: Draw current scene
   SceneManager: Draw done
+  SceneManager: Change pending scene (before BeginFrame)
+  SceneManager: Change to Select
   SceneManager: Update current scene
   SceneManager: Update done
   SceneManager: Draw current scene
@@ -2867,41 +2756,6 @@ Running App...
   SceneManager: Draw current scene
   SceneManager: Draw done
   SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
   SceneManager: Update current scene
   SceneManager: Update done
   SceneManager: Draw current scene
@@ -4569,38 +4423,6 @@ Running App...
   SceneManager: Update done
   SceneManager: Draw current scene
   SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
 === Frame 1140 ===
   SceneManager: Update current scene
   SceneManager: Update done
@@ -4658,49 +4480,6 @@ Running App...
   SceneManager: Update done
   SceneManager: Draw current scene
   SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Change pending scene (before BeginFrame)
-  SceneManager: Change to Select
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
   SceneManager: Update done
   SceneManager: Draw current scene
   SceneManager: Draw done
@@ -5910,9 +5689,6 @@ Running App...
   SceneManager: Draw current scene
   SceneManager: Draw done
   SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
   SceneManager: Update current scene
   SceneManager: Update done
   SceneManager: Draw current scene
@@ -5939,77 +5715,6 @@ Running App...
   SceneManager: Draw done
   SceneManager: Update current scene
   SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
   SceneManager: Update done
   SceneManager: Draw current scene
   SceneManager: Draw done
@@ -6050,58 +5755,6 @@ Running App...
   SceneManager: Draw current scene
   SceneManager: Draw done
 === Frame 1500 ===
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
   SceneManager: Update current scene
   SceneManager: Update done
   SceneManager: Draw current scene
@@ -6419,6 +6072,8 @@ Running App...
   SceneManager: Update done
   SceneManager: Draw current scene
   SceneManager: Draw done
+  SceneManager: Change pending scene (before BeginFrame)
+  SceneManager: Change to Game
   SceneManager: Update current scene
   SceneManager: Update done
   SceneManager: Draw current scene
@@ -6532,18 +6187,6 @@ Running App...
   SceneManager: Draw current scene
   SceneManager: Draw done
 === Frame 1620 ===
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
   SceneManager: Update current scene
   SceneManager: Update done
   SceneManager: Draw current scene
@@ -6981,20 +6624,6 @@ Running App...
   SceneManager: Update done
   SceneManager: Draw current scene
   SceneManager: Draw done
-  SceneManager: Change pending scene (before BeginFrame)
-  SceneManager: Change to Game
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
   SceneManager: Update current scene
   SceneManager: Update done
   SceneManager: Draw current scene
@@ -7020,31 +6649,6 @@ Running App...
   SceneManager: Update done
   SceneManager: Draw current scene
   SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
   SceneManager: Update done
   SceneManager: Draw current scene
   SceneManager: Draw done
@@ -7485,18 +7089,6 @@ Running App...
   SceneManager: Update done
   SceneManager: Draw current scene
   SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
 === Frame 1860 ===
   SceneManager: Update current scene
   SceneManager: Update done
@@ -7607,17 +7199,6 @@ Running App...
   SceneManager: Draw current scene
   SceneManager: Draw done
   SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
   SceneManager: Update current scene
   SceneManager: Update done
   SceneManager: Draw current scene
@@ -7799,19 +7380,6 @@ Running App...
   SceneManager: Update done
   SceneManager: Draw current scene
   SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
   SceneManager: Update done
   SceneManager: Draw current scene
   SceneManager: Draw done
@@ -8152,27 +7720,6 @@ Running App...
   SceneManager: Update done
   SceneManager: Draw current scene
   SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
   SceneManager: Update done
   SceneManager: Draw current scene
   SceneManager: Draw done
@@ -8366,17 +7913,6 @@ Running App...
   SceneManager: Draw current scene
   SceneManager: Draw done
   SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
   SceneManager: Update current scene
   SceneManager: Update done
   SceneManager: Draw current scene
@@ -8543,13 +8079,6 @@ Running App...
   SceneManager: Draw current scene
   SceneManager: Draw done
   SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
   SceneManager: Update current scene
   SceneManager: Update done
   SceneManager: Draw current scene
@@ -8739,15 +8268,6 @@ Running App...
   SceneManager: Update done
   SceneManager: Draw current scene
   SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
   SceneManager: Update done
   SceneManager: Draw current scene
   SceneManager: Draw done
@@ -9117,25 +8637,6 @@ Running App...
   SceneManager: Draw current scene
   SceneManager: Draw done
   SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
   SceneManager: Update current scene
   SceneManager: Update done
   SceneManager: Draw current scene
@@ -9330,16 +8831,6 @@ Running App...
   SceneManager: Draw current scene
   SceneManager: Draw done
   SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
   SceneManager: Draw done
   SceneManager: Update current scene
   SceneManager: Update done
@@ -9511,16 +9002,6 @@ Running App...
   SceneManager: Draw current scene
   SceneManager: Draw done
   SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
   SceneManager: Draw done
   SceneManager: Update current scene
   SceneManager: Update done
@@ -9704,9 +9185,6 @@ Running App...
   SceneManager: Draw current scene
   SceneManager: Draw done
   SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
   SceneManager: Update current scene
   SceneManager: Update done
   SceneManager: Draw current scene
@@ -9864,17 +9342,6 @@ Running App...
   SceneManager: Draw current scene
   SceneManager: Draw done
   SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
   SceneManager: Update current scene
   SceneManager: Update done
   SceneManager: Draw current scene
@@ -9908,14 +9375,6 @@ Running App...
   SceneManager: Draw current scene
   SceneManager: Draw done
 === Frame 2460 ===
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
   SceneManager: Update current scene
   SceneManager: Update done
   SceneManager: Draw current scene
@@ -10381,27 +9840,7 @@ Running App...
   SceneManager: Update done
   SceneManager: Draw current scene
   SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
 === Frame 2580 ===
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
   SceneManager: Update current scene
   SceneManager: Update done
   SceneManager: Draw current scene
@@ -10863,27 +10302,7 @@ Running App...
   SceneManager: Update done
   SceneManager: Draw current scene
   SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
 === Frame 2700 ===
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
   SceneManager: Update current scene
   SceneManager: Update done
   SceneManager: Draw current scene
@@ -11337,35 +10756,8 @@ Running App...
   SceneManager: Update done
   SceneManager: Draw current scene
   SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
 === Frame 2820 ===
   SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
   SceneManager: Update current scene
   SceneManager: Update done
   SceneManager: Draw current scene
@@ -11728,13 +11120,6 @@ Running App...
   SceneManager: Draw current scene
   SceneManager: Draw done
   SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
   SceneManager: Update current scene
   SceneManager: Update done
   SceneManager: Draw current scene
@@ -11909,13 +11294,6 @@ Running App...
   SceneManager: Draw current scene
   SceneManager: Draw done
   SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
   SceneManager: Update current scene
   SceneManager: Update done
   SceneManager: Draw current scene
@@ -12150,29 +11528,6 @@ Running App...
   SceneManager: Draw current scene
   SceneManager: Draw done
   SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
   SceneManager: Update current scene
   SceneManager: Update done
   SceneManager: Draw current scene
@@ -12346,6 +11701,8 @@ Running App...
   SceneManager: Update done
   SceneManager: Draw current scene
   SceneManager: Draw done
+  SceneManager: Change pending scene (before BeginFrame)
+  SceneManager: Change to GameOver
   SceneManager: Update current scene
   SceneManager: Update done
   SceneManager: Draw current scene
@@ -13040,155 +12397,6 @@ Running App...
   SceneManager: Update done
   SceneManager: Draw current scene
   SceneManager: Draw done
-=== Frame 3240 ===
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
   SceneManager: Update current scene
   SceneManager: Update done
   SceneManager: Draw current scene
@@ -13379,55 +12587,6 @@ Running App...
   SceneManager: Draw current scene
   SceneManager: Draw done
   SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
   SceneManager: Draw current scene
   SceneManager: Draw done
   SceneManager: Update current scene
@@ -13675,8 +12834,6 @@ Running App...
   SceneManager: Update done
   SceneManager: Draw current scene
   SceneManager: Draw done
-  SceneManager: Change pending scene (before BeginFrame)
-  SceneManager: Change to GameOver
   SceneManager: Update current scene
   SceneManager: Update done
   SceneManager: Draw current scene
@@ -14878,98 +14035,6 @@ Running App...
   SceneManager: Update done
   SceneManager: Draw current scene
   SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
-  SceneManager: Update current scene
-  SceneManager: Update done
-  SceneManager: Draw current scene
-  SceneManager: Draw done
 === Frame 3720 ===
   SceneManager: Update current scene
   SceneManager: Update done
@@ -15336,8 +14401,6 @@ Running App...
   SceneManager: Update done
   SceneManager: Draw current scene
   SceneManager: Draw done
-  SceneManager: Change pending scene (before BeginFrame)
-  SceneManager: Change to Game
   SceneManager: Update current scene
   SceneManager: Update done
   SceneManager: Draw current scene
@@ -15760,6 +14823,906 @@ Running App...
   SceneManager: Update done
   SceneManager: Draw current scene
   SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+=== Frame 3960 ===
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+=== Frame 4020 ===
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+=== Frame 4080 ===
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+  SceneManager: Update current scene
+  SceneManager: Update done
+  SceneManager: Draw current scene
+  SceneManager: Draw done
+=== Frame 4140 ===
   SceneManager: Update current scene
   SceneManager: Update done
   SceneManager: Draw current scene

@@ -101,7 +101,21 @@ public:
 				}
 
 				// --- 通常ダメージ処理 ---
-				bool hitSuccess = ApplyDamage(registry, hrEntity, hb.damage * hr.damageMultiplier, ctx);
+				DirectX::XMFLOAT3 hitDir = {
+					hrWorldCenter.x - hbWorldCenter.x,
+					0.35f,
+					hrWorldCenter.z - hbWorldCenter.z
+				};
+				float hitDirLen = std::sqrt(hitDir.x * hitDir.x + hitDir.y * hitDir.y + hitDir.z * hitDir.z);
+				if (hitDirLen > 0.001f) {
+					hitDir.x /= hitDirLen;
+					hitDir.y /= hitDirLen;
+					hitDir.z /= hitDirLen;
+				} else {
+					hitDir = { std::sin(hbTc.rotate.y), 0.35f, std::cos(hbTc.rotate.y) };
+				}
+
+				bool hitSuccess = ApplyDamage(registry, hrEntity, hb.damage * hr.damageMultiplier, ctx, hrWorldCenter, hitDir, hbTag);
 
 				// 無敵時間などでダメージが適用されなかった場合は、履歴に残さず（後で当たるように）スキップ
 				if (!hitSuccess) continue;
@@ -201,7 +215,76 @@ private:
 
 	// パリィ機能は削除されました
 	// ダメージ適用 (成功したらtrue)
-	bool ApplyDamage(entt::registry& registry, entt::entity target, float damage, GameContext& ctx) {
+	void SpawnLostFluidPickups(entt::registry& registry, entt::entity owner, float amount,
+	                           const DirectX::XMFLOAT3& hitPos, const DirectX::XMFLOAT3& hitDir,
+	                           GameContext& ctx) {
+		if (amount <= 0.0f) return;
+
+		const int pickupCount = std::clamp(static_cast<int>(std::ceil(amount * 0.5f)), 1, 24);
+		const float hpPerPickup = amount / static_cast<float>(pickupCount);
+		auto hash01 = [](uint32_t n) {
+			n = (n << 13U) ^ n;
+			n = n * (n * n * 15731U + 789221U) + 1376312589U;
+			return static_cast<float>(n & 0x7fffffffU) / static_cast<float>(0x7fffffffU);
+		};
+		DirectX::XMFLOAT3 origin = hitPos;
+		if (registry.valid(owner) && registry.all_of<TransformComponent>(owner)) {
+			const auto& ownerTc = registry.get<TransformComponent>(owner);
+			origin = {ownerTc.translate.x, ownerTc.translate.y + 0.85f, ownerTc.translate.z};
+		}
+
+		uint32_t firstVisualGroupId = 0;
+		if (ctx.renderer) {
+			Engine::Vector3 pos = {origin.x, origin.y, origin.z};
+			Engine::Vector3 vel = {hitDir.x * 4.0f, 3.0f, hitDir.z * 4.0f};
+			firstVisualGroupId = ctx.renderer->ExtractGPUFluidFromPlayer(pos, vel, pickupCount * 10);
+		}
+
+		for (int i = 0; i < pickupCount; ++i) {
+			float t = static_cast<float>(i) / static_cast<float>(pickupCount);
+			float angle = t * 6.283185307f + (hash01(static_cast<uint32_t>(i) * 193U + 7U) - 0.5f) * 0.75f;
+			float lift = 0.22f + hash01(static_cast<uint32_t>(i) * 271U + 11U) * 0.32f;
+			float dist = 0.45f + hash01(static_cast<uint32_t>(i) * 313U + 17U) * 0.35f;
+			float outX = std::cos(angle);
+			float outY = lift;
+			float outZ = std::sin(angle);
+			float outLen = std::sqrt(outX * outX + outY * outY + outZ * outZ);
+			if (outLen > 0.001f) {
+				outX /= outLen;
+				outY /= outLen;
+				outZ /= outLen;
+			}
+
+			auto pickup = registry.create();
+			registry.emplace<NameComponent>(pickup, "LostFluidPickup");
+
+			auto& tc = registry.emplace<TransformComponent>(pickup);
+			tc.translate = {
+				origin.x + outX * dist,
+				origin.y + outY * dist,
+				origin.z + outZ * dist
+			};
+
+			auto& lf = registry.emplace<LostFluidPickupComponent>(pickup);
+			lf.owner = owner;
+			lf.hpRestore = hpPerPickup;
+			lf.staminaRestore = hpPerPickup * 0.75f;
+			lf.visualGroupId = firstVisualGroupId + static_cast<uint32_t>(i);
+			lf.velocity = {
+				hitDir.x * 2.4f + outX * (7.5f + hash01(static_cast<uint32_t>(i) * 401U + 29U) * 2.5f),
+				3.0f + outY * (7.5f + hash01(static_cast<uint32_t>(i) * 401U + 29U) * 2.5f),
+				hitDir.z * 2.4f + outZ * (7.5f + hash01(static_cast<uint32_t>(i) * 401U + 29U) * 2.5f)
+			};
+
+			registry.emplace<TagComponent>(pickup, TagType::VFX);
+		}
+	}
+
+	bool ApplyDamage(entt::registry& registry, entt::entity target, float damage, GameContext& ctx,
+	                 DirectX::XMFLOAT3 hitPos = {0.0f, 0.0f, 0.0f},
+	                 DirectX::XMFLOAT3 hitDir = {0.0f, 0.35f, 1.0f},
+	                 TagType attackerTag = TagType::Untagged) {
+		(void)attackerTag;
 		// --- ★追加: 部位破壊コンポーネント（BodyPart）がある場合 ---
 		if (registry.all_of<BodyPartComponent>(target)) {
 			auto& part = registry.get<BodyPartComponent>(target);
@@ -238,7 +321,7 @@ private:
 
 			// 親エンティティ（HealthComponent持ち）にダメージを伝播させる
 			if (registry.valid(part.parentEntity) && registry.all_of<HealthComponent>(part.parentEntity)) {
-				ApplyDamage(registry, part.parentEntity, damage * part.damageMultiplierToParent, ctx);
+				ApplyDamage(registry, part.parentEntity, damage * part.damageMultiplierToParent, ctx, hitPos, hitDir, attackerTag);
 			}
 			return true; // 部位自体の処理はここで終わり
 		}
@@ -250,14 +333,31 @@ private:
 		// 無敵時間中はダメージを受けない
 		if (hc.invincibleTime > 0.0f) return false;
 
+		bool isRealPlayer = registry.all_of<PlayerInputComponent>(target);
+		if (isRealPlayer && registry.all_of<PlayerActionComponent>(target)) {
+			auto& pa = registry.get<PlayerActionComponent>(target);
+			if (pa.state == PlayerActionState::Dodge) {
+				return false;
+			}
+		}
+
 		// サンドバッグモードかつ敵ならHPを減らさない
 		bool isEnemyBase = false;
 		if (registry.all_of<TagComponent>(target)) {
 			isEnemyBase = (registry.get<TagComponent>(target).tag == TagType::Enemy);
 		}
 		
+		float appliedDamage = 0.0f;
 		if (!(ctx.isSandbagMode && isEnemyBase)) {
-			hc.hp -= damage;
+			float beforeHp = hc.hp;
+			hc.hp = (std::max)(0.0f, hc.hp - damage);
+			appliedDamage = (std::max)(0.0f, beforeHp - hc.hp);
+		}
+
+		if (isRealPlayer && appliedDamage > 0.0f) {
+			float missingHp = (std::max)(0.0f, hc.maxHp - hc.hp);
+			hc.recoverableFluid = (std::min)(missingHp, hc.recoverableFluid + appliedDamage);
+			SpawnLostFluidPickups(registry, target, appliedDamage, hitPos, hitDir, ctx);
 		}
 		hc.hitFlashTimer = 0.1f; // ヒットフラッシュ演出
 		hc.hitStopTimer = 0.05f; // 被弾側の軽いヒットストップ
@@ -273,15 +373,9 @@ private:
 		// プレイヤーが被弾した場合、のけぞりステートへ
 		if (registry.all_of<PlayerActionComponent>(target)) {
 			auto& pa = registry.get<PlayerActionComponent>(target);
-			if (pa.state != PlayerActionState::Dodge) { // 回避中は被弾しない
-				pa.state = PlayerActionState::Stagger;
-				pa.stateTimer = 0.0f;
-				pa.stateDuration = 0.3f;
-			} else {
-                // 回避中のためダメージ無効
-                // (すでにinvincibleTimeで弾かれているはずだが、念のため)
-                return false;
-            }
+			pa.state = PlayerActionState::Stagger;
+			pa.stateTimer = 0.0f;
+			pa.stateDuration = 0.3f;
 		}
 
         return true;

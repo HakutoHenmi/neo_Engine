@@ -57,6 +57,7 @@ public:
 	HWND GetHwnd() const { return hwnd_; }
 	void ToggleFullscreen();
 	bool IsFullscreen() const { return isFullscreen_; }
+	static void SetCursorVisible(bool visible);
 
 private:
 	bool InitWindow_(HINSTANCE hInst, int cmdShow, HWND& outHwnd);
