@@ -9,10 +9,11 @@ namespace Game {
 void GameOverScene::Initialize(Engine::WindowDX* dx, const Engine::SceneParameters& /*params*/) {
     dx_ = dx;
     // マウスカーソルを表示する
-    ShowCursor(TRUE);
+    Engine::WindowDX::SetCursorVisible(true);
 
     // ゲームオーバー演出として、画面全体に平滑化（ぼかし）エフェクトを適用
     if (auto* renderer = Engine::Renderer::GetInstance()) {
+        renderer->ResetGPUFluid();
         renderer->SetPostEffect("Random");
     }
 }

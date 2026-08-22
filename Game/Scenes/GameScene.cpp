@@ -1,4 +1,4 @@
-#ifndef NOMINMAX
+﻿#ifndef NOMINMAX
 #define NOMINMAX
 #endif
 #include "./GameScene.h"
@@ -175,7 +175,7 @@ void GameScene::Initialize(Engine::WindowDX* dx, const Engine::SceneParameters& 
 		cmc.speed = 8.0f; cmc.jumpPower = 10.0f; cmc.gravity = 9.8f; cmc.heightOffset = 0.4f;
 		
 		auto& ctc = registry_.emplace<CameraTargetComponent>(player);
-		ctc.distance = 12.0f; ctc.height = 2.5f; ctc.smoothSpeed = 8.0f;
+		ctc.distance = 16.0f; ctc.height = 2.5f; ctc.smoothSpeed = 8.0f;
 		
 		auto& hbc = registry_.emplace<HitboxComponent>(player);
 		hbc.center = {0,0,1.5f}; hbc.size = {1.5f,1.5f,4.0f}; hbc.damage = 15; hbc.tag = TagType::Player;
@@ -426,7 +426,7 @@ void GameScene::Update() {
 							// シーン破棄前にUIを個別に削除すると、次フレームのClearScene()と競合するリスクがあるため
 							// DestroyPauseMenu() は呼ばずにそのままシーン遷移をリクエストする
 							Engine::SceneManager::GetInstance()->RequestChange("Title");
-							break;
+							return;
 						}
 					}
 				}
@@ -927,6 +927,7 @@ void GameScene::Draw() {
 	DirectX::XMFLOAT3 inputForce = { 0.0f, 0.0f, 0.0f };
 	bool isLiquidated = false;
 	bool hasPlayerSlime = false;
+	bool isPlayerDead = false;
 
 	const auto& playersForCore = GetEntitiesByTag(TagType::Player);
 	entt::entity playerEntity = entt::null;
@@ -943,6 +944,10 @@ void GameScene::Draw() {
 		}
 		if (registry_.all_of<PlayerActionComponent>(playerEntity)) {
 			isLiquidated = registry_.get<PlayerActionComponent>(playerEntity).state == PlayerActionState::Liquefy;
+		}
+		if (registry_.all_of<HealthComponent>(playerEntity)) {
+			const auto& hc = registry_.get<HealthComponent>(playerEntity);
+			isPlayerDead = hc.isDead || hc.hp <= 0.0f;
 		}
 	}
 
@@ -1021,7 +1026,7 @@ void GameScene::Draw() {
 				}
 				
 				// アクション状態に応じて引力を変える（回避中は引力を弱めて散らばらせるなど）
-				float attraction = isLiquidated ? 10.0f : 80.0f;
+				float attraction = isPlayerDead ? 0.0f : (isLiquidated ? 10.0f : 80.0f);
 				
 				Engine::Vector3 targetCore = {corePos.x, corePos.y + 0.8f, corePos.z};
 				auto& playerTc = registry_.get<TransformComponent>(playerEntity);
@@ -1882,6 +1887,10 @@ void GameScene::ClearScene() {
 	// 4. CPUスライム描画ロジックの非初期化
 	slimeCpuLogic_.initialized = false;
 	projectileCpuLogic_.initialized = false;
+
+	if (renderer_) {
+		renderer_->ClearGPUFluid();
+	}
 }
 
 void GameScene::CreatePauseMenu() {
@@ -1964,6 +1973,7 @@ void GameScene::DestroyPauseMenu() {
 
 
 // Dummy line to trigger rebuild
+
 
 
 

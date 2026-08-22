@@ -226,7 +226,8 @@ enum class CanType : uint32_t {
 	None = 0,
 	Fire,
 	Water,
-	Thunder
+	Thunder,
+	Soda
 };
 
 
@@ -366,6 +367,7 @@ struct HealthComponent : public Component {
 	float maxHp = 100.0f;            // 最大体力
 	float stamina = 100.0f;          // スタミナ
 	float maxStamina = 100.0f;       // 最大スタミナ
+	float recoverableFluid = 0.0f;   // 被弾で散った、回収可能な体液量
 	float invincibleTime = 0.0f;     // 残り無敵時間（ゼロ以上なら無敵）
 	bool isDead = false;             // 死亡フラグ
 
@@ -467,6 +469,21 @@ struct DamageNumberComponent : public Component {
 	DirectX::XMFLOAT3 color = {1.0f, 1.0f, 1.0f};
 	DirectX::XMFLOAT3 startPos = {0,0,0};
 	DamageNumberComponent() { type = static_cast<ComponentType>(999); } // enumは不要
+};
+
+struct LostFluidPickupComponent : public Component {
+	entt::entity owner = entt::null;
+	DirectX::XMFLOAT3 velocity = {0.0f, 0.0f, 0.0f};
+	float hpRestore = 1.0f;
+	float staminaRestore = 1.0f;
+	float lifetime = -1.0f;          // negative means it stays until collected or scene reset
+	float magnetDelay = 0.9f;
+	float magnetRadius = 6.5f;
+	float collectRadius = 3.0f;
+	float visualEmitTimer = 0.0f;
+	uint32_t visualGroupId = 0;
+
+	LostFluidPickupComponent() { type = static_cast<ComponentType>(999); }
 };
 
 // パリィの歪みエフェクト用コンポーネント（地面の衝撃波にも流用）
@@ -615,6 +632,12 @@ struct FluidEmitterComponent : public Component {
 	float fluidType = 1.0f; // 0=プレイヤーコア, 1=水しぶき
 	
 	FluidEmitterComponent() { type = ComponentType::FluidEmitter; }
+};
+
+// ★追加: プレイヤーの影（丸影）追従用
+struct PlayerShadowComponent : public Component {
+	entt::entity shadowEntity = entt::null;
+	PlayerShadowComponent() { type = static_cast<ComponentType>(999); }
 };
 
 } // namespace Game

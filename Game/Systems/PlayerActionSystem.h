@@ -1,5 +1,7 @@
 #pragma once
 #include "ISystem.h"
+#include <Windows.h>
+#include <algorithm>
 #include <cmath>
 
 namespace Game {
@@ -40,6 +42,12 @@ struct PlayerActionComponent : public Component {
 
 	DirectX::XMFLOAT3 warpStartPos = {0,0,0}; // ★追加: ワープ開始位置
 	DirectX::XMFLOAT3 warpEndPos = {0,0,0};   // ★追加: ワープ終了位置
+
+	float sodaGas = 100.0f;
+	float sodaAimTimer = 0.0f;
+	float sodaEmitTimer = 0.0f;
+	bool sodaAiming = false;
+	DirectX::XMFLOAT3 sodaDriftVelocity = {0.0f, 0.0f, 0.0f};
 
 	bool enabled = true;
 	PlayerActionComponent() { type = ComponentType::PlayerAction; }
@@ -122,6 +130,8 @@ public:
 			}
 
 
+			float targetCamOffset = 0.0f;
+
 			bool attackInput = pi.attackRequested; // 左クリック (PlayerInputSystem.h)
 			bool attackPressed = attackInput && !prevAttack_;
 			prevAttack_ = attackInput;
@@ -129,7 +139,17 @@ public:
 			// 右クリックでハンマー攻撃（またはデコイ発動）
 			bool hammerInput = (GetAsyncKeyState(VK_RBUTTON) & 0x8000) != 0;
 			bool hammerPressed = hammerInput && !prevHammer_;
+			bool hammerReleased = !hammerInput && prevHammer_;
 			prevHammer_ = hammerInput;
+
+			if (pa.currentCan == CanType::Soda) {
+				HandleSodaCan(registry, entity, pa, pi, tc, ctx, attackInput, hammerInput, hammerReleased, targetCamOffset);
+				attackPressed = false;
+				hammerPressed = false;
+			} else {
+				pa.sodaAiming = false;
+				pa.sodaAimTimer = 0.0f;
+			}
 
 			// ★追加: デコイワープ処理 (黄色の缶選択時)
 			if (hammerPressed && pa.currentCan == CanType::Thunder) {
@@ -208,8 +228,6 @@ public:
 
 			// Shift長押しで液状化
 			bool liquefyInput = (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0;
-
-			float targetCamOffset = 0.0f; // ★追加: カメラの一時的な距離オフセット
 
 			switch (pa.state) {
 			case PlayerActionState::Idle:
@@ -713,6 +731,32 @@ public:
 		}
 		pendingMists_.clear();
 
+		for (const auto& gas : pendingSodaGas_) {
+			if (ctx.scene) {
+				entt::entity g = ctx.scene->CreateEntity("SodaGas");
+				auto& gtc = registry.get<TransformComponent>(g);
+				gtc.translate = gas.pos;
+
+				auto& pe = registry.emplace<ParticleEmitterComponent>(g);
+				pe.emitter.params.name = "SodaGas";
+				pe.emitter.params.emitRate = 0;
+				pe.emitter.params.burstCount = static_cast<int>(std::clamp(18.0f * gas.intensity, 8.0f, 36.0f));
+				pe.emitter.params.lifeTime = 0.35f;
+				pe.emitter.params.startColor = { 0.75f, 1.0f, 0.95f, 0.7f };
+				pe.emitter.params.endColor = { 0.2f, 0.9f, 1.0f, 0.0f };
+				pe.emitter.params.startSize = { 0.18f, 0.18f, 0.18f };
+				pe.emitter.params.endSize = { 0.9f, 0.9f, 0.9f };
+				pe.emitter.params.startVelocity = { gas.dir.x * 8.0f, gas.dir.y * 8.0f, gas.dir.z * 8.0f };
+				pe.emitter.params.velocityVariance = { 1.5f, 1.0f, 1.5f };
+				pe.emitter.params.acceleration = { 0.0f, 1.0f, 0.0f };
+				pe.emitter.params.isAdditive = true;
+				pe.emitter.params.shaderName = "SoftParticleAdditive";
+				pe.emitter.params.texturePath = "Resources/Textures/ball.png";
+				registry.emplace<AutoDestroyComponent>(g).timer = 0.5f;
+			}
+		}
+		pendingSodaGas_.clear();
+
 		// --- 炎ブレスの遅延生成 (火炎放射エフェクト) ---
 		for (const auto& fire : pendingFireBreaths_) {
 			if (ctx.scene) {
@@ -854,6 +898,11 @@ public:
 			pa.stateTimer = 0.0f;
 			pa.hitStopTimer = 0.0f;
 			pa.dodgeCooldown = 0.0f;
+			pa.sodaGas = 100.0f;
+			pa.sodaAimTimer = 0.0f;
+			pa.sodaEmitTimer = 0.0f;
+			pa.sodaAiming = false;
+			pa.sodaDriftVelocity = {0.0f, 0.0f, 0.0f};
 		}
 	}
 
@@ -868,8 +917,16 @@ private:
 	struct MistSpawnData {
 		DirectX::XMFLOAT3 pos;
 		DirectX::XMFLOAT3 dir;
+		float intensity = 1.0f;
 	};
 	std::vector<MistSpawnData> pendingMists_;
+
+	struct SodaGasSpawnData {
+		DirectX::XMFLOAT3 pos;
+		DirectX::XMFLOAT3 dir;
+		float intensity = 1.0f;
+	};
+	std::vector<SodaGasSpawnData> pendingSodaGas_;
 
 	struct FireBreathSpawnData {
 		DirectX::XMFLOAT3 pos;
@@ -901,6 +958,143 @@ private:
 	bool prevHammer_ = false;
 	bool prevDodge_ = false;
 
+	DirectX::XMFLOAT3 GetCameraForward(const TransformComponent& tc, GameContext& ctx) const {
+		float yaw = tc.rotate.y;
+		if (ctx.camera) {
+			yaw = ctx.camera->Rotation().y;
+		}
+		return { std::sin(yaw), 0.0f, std::cos(yaw) };
+	}
+
+	DirectX::XMFLOAT3 GetCameraMoveDirection(const PlayerInputComponent& pi, GameContext& ctx, const TransformComponent& tc) const {
+		float ix = pi.moveDir.x;
+		float iz = pi.moveDir.y;
+		float len = std::sqrt(ix * ix + iz * iz);
+		if (len <= 0.001f) {
+			return GetCameraForward(tc, ctx);
+		}
+		ix /= len;
+		iz /= len;
+
+		float yaw = tc.rotate.y;
+		if (ctx.camera) {
+			yaw = ctx.camera->Rotation().y;
+		}
+		float cy = std::cos(yaw);
+		float sy = std::sin(yaw);
+		return {
+			ix * cy + iz * sy,
+			0.0f,
+			-ix * sy + iz * cy
+		};
+	}
+
+	void ClampHorizontalVelocity(DirectX::XMFLOAT3& velocity, float maxSpeed) const {
+		float speedSq = velocity.x * velocity.x + velocity.z * velocity.z;
+		float maxSq = maxSpeed * maxSpeed;
+		if (speedSq > maxSq) {
+			float s = maxSpeed / std::sqrt(speedSq);
+			velocity.x *= s;
+			velocity.z *= s;
+		}
+	}
+
+	void QueueSodaGas(const TransformComponent& tc, const DirectX::XMFLOAT3& exhaustDir, float intensity) {
+		pendingSodaGas_.push_back({
+			{ tc.translate.x, tc.translate.y + 0.25f, tc.translate.z },
+			exhaustDir,
+			intensity
+		});
+	}
+
+	void HandleSodaCan(
+		entt::registry& registry,
+		entt::entity entity,
+		PlayerActionComponent& pa,
+		const PlayerInputComponent& pi,
+		TransformComponent& tc,
+		GameContext& ctx,
+		bool boostInput,
+		bool aimInput,
+		bool aimReleased,
+		float& targetCamOffset) {
+		if (std::abs(pa.sodaDriftVelocity.x) > 0.01f || std::abs(pa.sodaDriftVelocity.z) > 0.01f) {
+			tc.translate.x += pa.sodaDriftVelocity.x * ctx.dt;
+			tc.translate.z += pa.sodaDriftVelocity.z * ctx.dt;
+			float damp = std::max(0.0f, 1.0f - 3.8f * ctx.dt);
+			pa.sodaDriftVelocity.x *= damp;
+			pa.sodaDriftVelocity.z *= damp;
+		}
+
+		bool canUseGas = pa.state == PlayerActionState::Idle && !pi.isRadialMenuOpen;
+		bool usingGas = false;
+		pa.sodaEmitTimer += ctx.dt;
+
+		if (!canUseGas) {
+			pa.sodaAiming = false;
+			pa.sodaAimTimer = 0.0f;
+			pa.sodaGas = std::min(100.0f, pa.sodaGas + 10.0f * ctx.dt);
+			return;
+		}
+
+		auto* rb = registry.try_get<RigidbodyComponent>(entity);
+		auto* cm = registry.try_get<CharacterMovementComponent>(entity);
+
+		if (boostInput && pa.sodaGas > 0.0f && rb && cm) {
+			DirectX::XMFLOAT3 moveDir = GetCameraMoveDirection(pi, ctx, tc);
+			rb->velocity.y = std::min(8.0f, std::max(rb->velocity.y + 18.0f * ctx.dt, 2.5f));
+			cm->isGrounded = false;
+			pa.sodaDriftVelocity.x += moveDir.x * 7.0f * ctx.dt;
+			pa.sodaDriftVelocity.z += moveDir.z * 7.0f * ctx.dt;
+			ClampHorizontalVelocity(pa.sodaDriftVelocity, 7.5f);
+			pa.sodaGas = std::max(0.0f, pa.sodaGas - 24.0f * ctx.dt);
+			targetCamOffset = std::max(targetCamOffset, 2.0f);
+			usingGas = true;
+
+			if (pa.sodaEmitTimer >= 0.07f) {
+				QueueSodaGas(tc, { -moveDir.x * 0.35f, -1.0f, -moveDir.z * 0.35f }, 0.9f);
+				pa.sodaEmitTimer = 0.0f;
+			}
+		}
+
+		if (aimInput) {
+			DirectX::XMFLOAT3 forward = GetCameraForward(tc, ctx);
+			pa.sodaAiming = true;
+			pa.sodaAimTimer = std::min(pa.sodaAimTimer + ctx.dt, 1.2f);
+			tc.rotate.y = std::atan2(forward.x, forward.z);
+			targetCamOffset = std::max(targetCamOffset, 3.5f);
+
+			if (pa.sodaEmitTimer >= 0.12f) {
+				QueueSodaGas(tc, { -forward.x * 0.3f, -0.4f, -forward.z * 0.3f }, 0.45f);
+				pa.sodaEmitTimer = 0.0f;
+			}
+		} else if (pa.sodaAiming) {
+			if (aimReleased && pa.sodaGas > 8.0f && rb && cm) {
+				DirectX::XMFLOAT3 forward = GetCameraForward(tc, ctx);
+				float charge = std::clamp(pa.sodaAimTimer / 1.1f, 0.35f, 1.0f);
+				float cost = 28.0f + 22.0f * charge;
+				float gasPower = std::clamp(pa.sodaGas / cost, 0.35f, 1.0f);
+				float power = charge * gasPower;
+
+				rb->velocity.y = std::max(rb->velocity.y, 12.0f + 8.0f * power);
+				cm->isGrounded = false;
+				pa.sodaDriftVelocity.x += forward.x * (12.0f + 10.0f * power);
+				pa.sodaDriftVelocity.z += forward.z * (12.0f + 10.0f * power);
+				ClampHorizontalVelocity(pa.sodaDriftVelocity, 18.0f);
+				pa.sodaGas = std::max(0.0f, pa.sodaGas - cost);
+				QueueSodaGas(tc, { -forward.x * 0.9f, -0.7f, -forward.z * 0.9f }, 1.8f);
+				if (ctx.camera) ctx.camera->StartShake(0.18f, 0.25f);
+				usingGas = true;
+			}
+			pa.sodaAiming = false;
+			pa.sodaAimTimer = 0.0f;
+		}
+
+		if (!usingGas && !boostInput && !aimInput) {
+			pa.sodaGas = std::min(100.0f, pa.sodaGas + 12.0f * ctx.dt);
+		}
+	}
+
 	// ★追加: 缶の切り替え処理
 	void ChangeCan(entt::registry& registry, entt::entity /*playerEntity*/, PlayerActionComponent& pa, TransformComponent& ptc, CanType newCan, GameContext& ctx) {
 		if (pa.canEntity != entt::null && registry.valid(pa.canEntity)) {
@@ -924,6 +1118,9 @@ private:
 				mr.modelPath = "Resources/Models/Cylinder/cylinder.obj";
 				mr.texturePath = "Resources/Textures/white1x1.png";
 				mr.useCubemap = true;
+				if (newCan == CanType::Soda) {
+					mr.color = {0.25f, 1.0f, 0.85f, 1.0f};
+				}
 
 				// ★追加: 缶を地面判定レイキャストに引っかからないようにVFXタグを付与
 				registry.emplace<TagComponent>(can, TagType::VFX);

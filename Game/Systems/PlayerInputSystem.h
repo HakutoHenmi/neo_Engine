@@ -23,6 +23,19 @@ public:
 		auto view = registry.view<PlayerInputComponent>();
 		for (auto entity : view) {
 			auto& pi = registry.get<PlayerInputComponent>(entity);
+			if (auto* hc = registry.try_get<HealthComponent>(entity)) {
+				if (hc->isDead || hc->hp <= 0.0f) {
+					pi.enabled = false;
+					pi.moveDir = {0.0f, 0.0f};
+					pi.jumpRequested = false;
+					pi.attackRequested = false;
+					pi.cameraYaw = 0.0f;
+					pi.cameraPitch = 0.0f;
+					pi.lockedEnemy = entt::null;
+					pi.isRadialMenuOpen = false;
+					continue;
+				}
+			}
 			if (!pi.enabled) continue;
 
 			pi.isRadialMenuOpen = currentTab;
@@ -98,8 +111,8 @@ public:
 			pi.cameraPitch = 0.0f;
 			if (ctx.input && pi.lockedEnemy == entt::null && !pi.isRadialMenuOpen) {
 				// ロックオン中でなく、かつラジアルメニューを開いていない場合のみマウスで視点移動
-				pi.cameraYaw = ctx.input->GetMouseDeltaX() * 0.005f;
-				pi.cameraPitch = ctx.input->GetMouseDeltaY() * 0.005f;
+				pi.cameraYaw = ctx.input->GetMouseDeltaX() * 0.003f;
+				pi.cameraPitch = ctx.input->GetMouseDeltaY() * 0.003f;
 			}
 		}
 	}

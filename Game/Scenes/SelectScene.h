@@ -19,6 +19,13 @@ private:
     Engine::Renderer* renderer_ = nullptr;
     
     int selectedIndex_ = 0; // 0: GameScene, 1: AssignmentScene
+    
+    // Gamepad state tracking
+    bool prevA_ = false;
+    bool prevUp_ = false;
+    bool prevDown_ = false;
+    bool stickUp_ = false;
+    bool stickDown_ = false;
 };
 
 } // namespace Game

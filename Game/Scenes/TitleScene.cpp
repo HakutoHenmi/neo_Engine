@@ -12,6 +12,8 @@
 #include <cmath>
 #include <algorithm>
 #include <filesystem>
+#include <Xinput.h>
+#pragma comment(lib, "xinput.lib")
 
 void LogFileMain(const char* msg);
 
@@ -122,6 +124,10 @@ void TitleScene::Initialize(Engine::WindowDX* dx, const Engine::SceneParameters&
     totalTime_ = 0.0f;
     uiAlpha_ = 1.0f;
     inkAlpha_ = 0.0f;
+    
+    // カーソルを表示する
+    ShowCursor(TRUE);
+    
     LogFileMain("    TitleScene::Initialize Complete");
 }
 
@@ -156,6 +162,13 @@ void TitleScene::Update() {
             // キーボード（主要なキーのみチェック）
             for (int k = 0; k < 256; ++k) {
                 if (input->Trigger(static_cast<BYTE>(k))) { anyKey = true; break; }
+            }
+            // ゲームパッド
+            XINPUT_STATE state = {};
+            if (XInputGetState(0, &state) == ERROR_SUCCESS) {
+                if (state.Gamepad.wButtons != 0) {
+                    anyKey = true;
+                }
             }
         }
         if (anyKey) {

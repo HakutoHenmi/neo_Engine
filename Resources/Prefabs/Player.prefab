@@ -21,7 +21,7 @@
         {"type": "GpuMeshCollider", "enabled": true, "isTrigger": false, "collisionType": 0, "meshPath": "Resources/Models/player_ball/ball.obj"},
         {"type": "PlayerInput", "enabled": true},
         {"type": "CharacterMovement", "enabled": true, "speed": 7, "jumpPower": 20, "gravity": 9.8},
-        {"type": "CameraTarget", "enabled": true, "distance": 10, "height": 3, "smoothSpeed": 5},
+        {"type": "CameraTarget", "enabled": true, "distance": 16, "height": 3, "smoothSpeed": 5},
         {"type": "Health", "enabled": true, "hp": 1000, "maxHp": 1000, "stamina": 100, "maxStamina": 100, "invincibleTime": 0, "isDead": false},
         {"type": "Script", "enabled": true, "scriptPath": "PlayerScript", "paramData": ""}
       ]

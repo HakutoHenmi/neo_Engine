@@ -4,7 +4,7 @@ struct Particle {
     float4 color;
     float type; float3 pad;
 };
-StructuredBuffer<Particle> Particles : register(t2); // In DrawGPUFluid it is mapped to t6 -> which is descriptor table? Wait, no, it's bound as SRV to root parameter 6. So register(t2) might be wrong if 6 is t0. Let's check rootSig3D_.
+StructuredBuffer<Particle> Particles : register(t2);
 
 cbuffer CBFrame : register(b0) { 
     row_major float4x4 gView; 
@@ -24,26 +24,20 @@ struct VSIn {
 struct VSOut {
     float4 svpos : SV_POSITION;
     float2 uv : TEXCOORD0;
-    float viewZ : TEXCOORD1;
-    float4 color : COLOR0;
-    float type : TEXCOORD2;
+    float type : TEXCOORD1;
 };
 
 VSOut main(VSIn v, uint instanceID : SV_InstanceID) {
     VSOut o;
     Particle p = Particles[instanceID];
     
-    // ★追加: 非アクティブなパーティクルは頂点を縮退させて描画とラスタライズを完全スキップ
     if (p.color.a < 0.01f || p.position.y < -500.0f) {
         o.svpos = float4(0, 0, 0, 0);
         o.uv = float2(0, 0);
-        o.viewZ = 0.0f;
-        o.color = float4(0, 0, 0, 0);
         o.type = 0.0f;
         return o;
     }
     
-    // 6頂点で1つのQuad(ビルボード)を生成する
     float2 quad[6] = {
         float2(-1.0f, -1.0f),
         float2(-1.0f,  1.0f),
@@ -54,29 +48,25 @@ VSOut main(VSIn v, uint instanceID : SV_InstanceID) {
     };
     float2 localXY = quad[v.vertexID];
     
-    // パーティクルの大きさを設定
-    float size = 0.7f; // スライム用（隙間を埋めるため大きめ）
-    if (p.type > 2.5f && p.type < 3.5f) {
-        size = 0.42f;
-    } else if (p.type >= 0.5f) {
-        size = 0.4f;  // 物理的な反発距離に対して描画サイズが小さすぎるとカエルの卵のように分離するため、少し大きめにして融合させる
+    float size = 0.7f;
+    if (p.type >= 0.5f) {
+        size = 0.4f;
     }
+    // 影の隙間を埋めるため少し大きめに設定
+    size *= 1.4f;
     
+    // gViewの右・上ベクトルを用いてカメラ向きビルボードを作成
     float3 right = float3(gView[0][0], gView[1][0], gView[2][0]);
     float3 up = float3(gView[0][1], gView[1][1], gView[2][1]);
     
-    // Quadのローカル座標をカメラの向きに合わせて回転
+    // シャドウ用なのでY軸回転だけでも十分だが、パーティクルの丸みを出すためにカメラ向きを採用
     float3 localPos = right * localXY.x * size + up * localXY.y * size;
     float3 worldPos = p.position + localPos;
     
+    // シャドウ投影行列(gViewProjにはライトのVPがセットされている)
     o.svpos = mul(float4(worldPos, 1.0f), gViewProj);
-    o.viewZ = mul(float4(worldPos, 1.0f), gView).z;
     
-    // UV座標の生成
     o.uv = localXY * 0.5f + 0.5f;
-    o.uv.y = 1.0f - o.uv.y; // DirectX仕様に合わせてYを反転
-    o.color = p.color;
     o.type = p.type;
-    
     return o;
 }
