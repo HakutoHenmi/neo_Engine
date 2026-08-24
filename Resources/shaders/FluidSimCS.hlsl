@@ -27,8 +27,8 @@ cbuffer CBCompute : register(b0) {
     float4 emitColor;
     float3 corePos; float coreAttraction;
     uint emitEndIndex; float3 pad3;
-    float3 coreScale; float pad4;
-    float3 coreForward; float pad5;
+    float3 coreScale; float coreFlowSpeed;
+    float3 coreForward; float coreMode;
     uint aabbCount; float3 pad6; // ★追加
     
     // ★追加: デコイ用
@@ -536,12 +536,17 @@ void CalcForce(uint3 DTid : SV_DispatchThreadID) {
     float3 currentCorePos = float3(0,0,0);
     float3 currentCoreScale = float3(1,1,1);
     float3 currentCoreForward = float3(0,0,1);
+    float currentCoreMode = 0.0f;
+    float currentCoreFlowSpeed = 0.0f;
+    bool isCurrentLiquefiedPlayer = false;
 
     if (pi.type < 0.5f && coreAttraction > 0.0f) {
         currentAttraction = coreAttraction;
         currentCorePos = corePos;
         currentCoreScale = coreScale;
         currentCoreForward = coreForward;
+        currentCoreMode = coreMode;
+        currentCoreFlowSpeed = coreFlowSpeed;
     } else if (pi.type > 1.5f && pi.type < 2.5f && decoyAttraction > 0.0f) {
         currentAttraction = decoyAttraction;
         currentCorePos = decoyPos;
@@ -552,6 +557,9 @@ void CalcForce(uint3 DTid : SV_DispatchThreadID) {
     if (currentAttraction > 0.0f) {
         float3 toCore = currentCorePos - pi.position;
         float distToCore = length(toCore);
+        bool isPlayerSlimeCore = (pi.type < 0.5f);
+        bool isLiquefiedPlayerCore = isPlayerSlimeCore && currentCoreMode > 0.5f;
+        isCurrentLiquefiedPlayer = isLiquefiedPlayerCore;
         
         if (distToCore > 0.001f) {
             // 前方ベクトルと上ベクトルからローカル座標系を作成
@@ -563,15 +571,26 @@ void CalcForce(uint3 DTid : SV_DispatchThreadID) {
             float3 rightDir = normalize(cross(upDir, forwardDir));
             upDir = normalize(cross(forwardDir, rightDir));
 
+            float3 localNow = float3(
+                dot(pi.position - currentCorePos, rightDir),
+                dot(pi.position - currentCorePos, upDir),
+                dot(pi.position - currentCorePos, forwardDir)
+            );
+
             // ★Shape Matching (目標位置への追従)
             float3 localTarget = pi.pad * currentCoreScale;
             if (pi.type > 2.5f && pi.type < 3.5f) {
                 localTarget = float3(0.0f, 0.0f, 0.0f);
             }
+            if (isLiquefiedPlayerCore) {
+                // 液状化中は Shape Matching を切り、現在位置をそのまま目標にする。
+                // コアへのクランプや形状復元ではなく、直前の勢いとSPHだけで崩す。
+                localTarget = localNow;
+            }
             
             // ★追加: 攻撃時に「とんがらせて」「前方に突き出す」変形
             // デコイは攻撃モーションをとらないので変形させない
-            if (currentCoreScale.z > 2.0f && pi.type < 0.5f) {
+            if (!isLiquefiedPlayerCore && currentCoreScale.z > 2.0f && pi.type < 0.5f) {
                 // 1. 後ろはそのまま残し、前半分だけを大きく前に伸ばす
                 if (pi.pad.z > 0.0f) {
                     localTarget.z = pi.pad.z * currentCoreScale.z; // 前方は鋭く伸びる
@@ -600,6 +619,9 @@ void CalcForce(uint3 DTid : SV_DispatchThreadID) {
                 max(1.0f, 1.0f / max(currentCoreScale.y, 0.1f)) * 6.0f, // Y軸の復元力をさらに倍増
                 max(1.0f, 1.0f / max(currentCoreScale.z, 0.1f)) * 3.0f
             ) * (currentAttraction * PARTICLE_MASS);
+            if (isLiquefiedPlayerCore) {
+                localPullStrength = float3(0.0f, 0.0f, 0.0f);
+            }
             
             // toTarget をローカル座標に変換して、各軸ごとに強さを適用
             float3 toTargetLocal = float3(dot(toTarget, rightDir), dot(toTarget, upDir), dot(toTarget, forwardDir));
@@ -607,6 +629,18 @@ void CalcForce(uint3 DTid : SV_DispatchThreadID) {
             
             // ワールド座標に戻す
             float3 springForce = rightDir * springForceLocal.x + upDir * springForceLocal.y + forwardDir * springForceLocal.z;
+            if (isLiquefiedPlayerCore) {
+                uint seed = OriginalIndices[i] == 0xFFFFFFFF ? i : OriginalIndices[i];
+                float r0 = hash(seed * 127U + 31U);
+                float wavePhase = currentCorePos.x * 0.61f + currentCorePos.z * 0.77f + localNow.z * 1.35f + r0 * (PI * 2.0f);
+                float wave = sin(wavePhase);
+                float flowBlend = saturate(currentCoreFlowSpeed / 8.0f);
+                float3 planarVelocity = pi.velocity - upDir * dot(pi.velocity, upDir);
+                float3 targetFlowVelocity =
+                    forwardDir * currentCoreFlowSpeed +
+                    rightDir * (wave * flowBlend * 0.8f);
+                springForce += (targetFlowVelocity - planarVelocity) * (2.2f + flowBlend * 2.8f) * PARTICLE_MASS;
+            }
             
             // 2. 床に潰れるのを防ぐ上向きの持ち上げ（重力相殺）
             if (pi.position.y < currentCorePos.y) {
@@ -617,14 +651,14 @@ void CalcForce(uint3 DTid : SV_DispatchThreadID) {
         }
         
         // ★ダンピング（超重要：振動を抑えて静止させる）
-        force -= pi.velocity * (currentAttraction * 0.15f);
+        force -= pi.velocity * (isLiquefiedPlayerCore ? 0.8f : (currentAttraction * 0.15f));
     }
     
     float3 acceleration = force / pi.density;
     
     // ★発散防止のため加速度をクランプ
     float accLen = length(acceleration);
-    if (accLen > 500.0f) {
+    if (!isCurrentLiquefiedPlayer && accLen > 500.0f) {
         acceleration = (acceleration / accLen) * 500.0f;
     }
     
@@ -636,7 +670,7 @@ void CalcForce(uint3 DTid : SV_DispatchThreadID) {
     
     // ★発散防止のため速度をクランプ
     float speed = length(pi.velocity);
-    if (speed > 30.0f) {
+    if (!isCurrentLiquefiedPlayer && speed > 30.0f) {
         pi.velocity = (pi.velocity / speed) * 30.0f;
     }
     
@@ -652,21 +686,26 @@ void CalcForce(uint3 DTid : SV_DispatchThreadID) {
         float3 rightDir = normalize(cross(upDir, forwardDir));
         upDir = normalize(cross(forwardDir, rightDir));
         
+        bool isLiquefiedPlayerCore = (pi.type < 0.5f) && currentCoreMode > 0.5f;
         float3 localToCoreC = float3(dot(toCoreClamp, rightDir), dot(toCoreClamp, upDir), dot(toCoreClamp, forwardDir));
-        float3 scaledToCoreC = localToCoreC / max(currentCoreScale, float3(0.01f, 0.01f, 0.01f));
-        float distC = length(scaledToCoreC);
-        
-        float maxRadiusC = 1.2f; // 基本の半径
-        
-        // もし楕円体からはみ出していたら、強制的に表面に引き戻す
-        if (distC > maxRadiusC) {
-            float3 surfaceLocal = (scaledToCoreC / distC) * maxRadiusC; // 半径1.2の表面のローカル座標
-            float3 targetLocal = surfaceLocal * currentCoreScale; // スケールを戻してワールドでの相対座標へ
-            float3 targetWorld = currentCorePos + rightDir * targetLocal.x + upDir * targetLocal.y + forwardDir * targetLocal.z;
+        if (isLiquefiedPlayerCore) {
+            // 液状化中はクランプ・再配置・コア追従を一切行わない。
+            // 位置はSPH、重力、直前の慣性だけで更新する。
+        } else {
+            float3 scaledToCoreC = localToCoreC / max(currentCoreScale, float3(0.01f, 0.01f, 0.01f));
+            float distC = length(scaledToCoreC);
+            float maxRadiusC = 1.2f; // 基本の半径
             
-            // はみ出し防止のセーフティーネット（常に柔らかくクランプ）
-            float lerpFactor = saturate(10.0f * dt); 
-            pi.position = lerp(pi.position, targetWorld, lerpFactor);
+            // もし楕円体からはみ出していたら、強制的に表面に引き戻す
+            if (distC > maxRadiusC) {
+                float3 surfaceLocal = (scaledToCoreC / distC) * maxRadiusC; // 半径1.2の表面のローカル座標
+                float3 targetLocal = surfaceLocal * currentCoreScale; // スケールを戻してワールドでの相対座標へ
+                float3 targetWorld = currentCorePos + rightDir * targetLocal.x + upDir * targetLocal.y + forwardDir * targetLocal.z;
+                
+                // はみ出し防止のセーフティーネット（常に柔らかくクランプ）
+                float lerpFactor = saturate(10.0f * dt); 
+                pi.position = lerp(pi.position, targetWorld, lerpFactor);
+            }
         }
     }
     
@@ -706,8 +745,22 @@ void CalcForce(uint3 DTid : SV_DispatchThreadID) {
         
         // 余裕を持たせたAABBの少し外側で判定（めり込み防止）
         float pRadius = 0.3f;
+        bool liquefiedFloorHit =
+            isCurrentLiquefiedPlayer &&
+            pi.position.x > bmin.x - pRadius && pi.position.x < bmax.x + pRadius &&
+            pi.position.z > bmin.z - pRadius && pi.position.z < bmax.z + pRadius &&
+            pi.position.y < bmax.y + pRadius && pi.position.y > bmax.y - 2.0f;
+        if (liquefiedFloorHit) {
+            pi.position.y = bmax.y + pRadius;
+            if (pi.velocity.y < 0.0f) {
+                pi.velocity.y *= -0.25f;
+            }
+            pi.velocity.x *= friction;
+            pi.velocity.z *= friction;
+        }
         
-        if (pi.position.x > bmin.x - pRadius && pi.position.x < bmax.x + pRadius &&
+        if (!liquefiedFloorHit &&
+            pi.position.x > bmin.x - pRadius && pi.position.x < bmax.x + pRadius &&
             pi.position.y > bmin.y - pRadius && pi.position.y < bmax.y + pRadius &&
             pi.position.z > bmin.z - pRadius && pi.position.z < bmax.z + pRadius) 
         {

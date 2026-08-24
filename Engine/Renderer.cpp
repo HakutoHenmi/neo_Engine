@@ -4473,11 +4473,13 @@ void Renderer::InitGPUFluid() {
 	isGPUFluidReady_ = true;
 }
 
-void Renderer::SetGPUFluidCore(const Vector3& pos, float attraction, const Vector3& scale, const Vector3& forward) {
+void Renderer::SetGPUFluidCore(const Vector3& pos, float attraction, const Vector3& scale, const Vector3& forward, float mode, float flowSpeed) {
 	gpuFluidCorePos_ = pos;
 	gpuFluidCoreAttraction_ = attraction;
 	gpuFluidCoreScale_ = scale;
 	gpuFluidCoreForward_ = forward;
+	gpuFluidCoreMode_ = mode;
+	gpuFluidCoreFlowSpeed_ = flowSpeed;
 }
 
 // ★追加: デコイ用コア情報の設定
@@ -4500,6 +4502,8 @@ void Renderer::ResetGPUFluid() {
 	gpuFluidCoreAttraction_ = 0.0f;
 	gpuFluidCoreScale_ = {1.0f, 1.0f, 1.0f};
 	gpuFluidCoreForward_ = {0.0f, 0.0f, 1.0f};
+	gpuFluidCoreMode_ = 0.0f;
+	gpuFluidCoreFlowSpeed_ = 0.0f;
 
 	gpuFluidDecoyPos_ = {0.0f, -1000.0f, 0.0f};
 	gpuFluidDecoyAttraction_ = 0.0f;
@@ -4544,8 +4548,8 @@ void Renderer::UpdateGPUFluid(float dt) {
 	cb.emitPos = {0,0,0}; cb.emitType = 0.0f; cb.emitDir = {0,0,0}; cb.emitStartIndex = 0; cb.emitColor = {0,0,0,0};
 	cb.corePos = gpuFluidCorePos_; cb.coreAttraction = gpuFluidCoreAttraction_;
 	cb.emitEndIndex = gpuFluidMaxParticles_; cb.pad3 = {0,0,0};
-	cb.coreScale = gpuFluidCoreScale_; cb.pad4 = 0.0f;
-	cb.coreForward = gpuFluidCoreForward_; cb.pad5 = 0.0f;
+	cb.coreScale = gpuFluidCoreScale_; cb.pad4 = gpuFluidCoreFlowSpeed_;
+	cb.coreForward = gpuFluidCoreForward_; cb.pad5 = gpuFluidCoreMode_;
 	cb.aabbCount = (uint32_t)(gpuFluidAABBs_.size() > 128 ? 128 : gpuFluidAABBs_.size());
 	cb.pad6 = {0,0,0};
 	cb.decoyPos = gpuFluidDecoyPos_; cb.decoyAttraction = gpuFluidDecoyAttraction_;
@@ -4702,8 +4706,8 @@ void Renderer::EmitGPUFluid(const Vector3& pos, const Vector3& velocityDir, cons
 	cb.emitPos = pos; cb.emitType = type; cb.emitDir = velocityDir; cb.emitStartIndex = startIndex; cb.emitColor = color;
 	cb.corePos = gpuFluidCorePos_; cb.coreAttraction = gpuFluidCoreAttraction_;
 	cb.emitEndIndex = endIndex; cb.pad3 = {0,0,0};
-	cb.coreScale = gpuFluidCoreScale_; cb.pad4 = 0.0f;
-	cb.coreForward = gpuFluidCoreForward_; cb.pad5 = 0.0f;
+	cb.coreScale = gpuFluidCoreScale_; cb.pad4 = gpuFluidCoreFlowSpeed_;
+	cb.coreForward = gpuFluidCoreForward_; cb.pad5 = gpuFluidCoreMode_;
 	cb.aabbCount = 0; cb.pad6 = {0,0,0};
 	cb.decoyPos = gpuFluidDecoyPos_; cb.decoyAttraction = gpuFluidDecoyAttraction_;
 	cb.decoyScale = gpuFluidDecoyScale_; cb.pad7 = 0.0f;
@@ -4804,9 +4808,9 @@ uint32_t Renderer::ExtractGPUFluidFromPlayer(const Vector3& pos, const Vector3& 
 	cb.emitEndIndex = endIndex;
 	cb.pad3 = {0, 0, 0};
 	cb.coreScale = gpuFluidCoreScale_;
-	cb.pad4 = 0.0f;
+	cb.pad4 = gpuFluidCoreFlowSpeed_;
 	cb.coreForward = gpuFluidCoreForward_;
-	cb.pad5 = 0.0f;
+	cb.pad5 = gpuFluidCoreMode_;
 	cb.aabbCount = 0;
 	cb.pad6 = {0, 0, 0};
 	cb.decoyPos = gpuFluidDecoyPos_;

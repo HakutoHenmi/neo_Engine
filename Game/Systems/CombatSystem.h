@@ -336,7 +336,7 @@ private:
 		bool isRealPlayer = registry.all_of<PlayerInputComponent>(target);
 		if (isRealPlayer && registry.all_of<PlayerActionComponent>(target)) {
 			auto& pa = registry.get<PlayerActionComponent>(target);
-			if (pa.state == PlayerActionState::Dodge) {
+			if (pa.state == PlayerActionState::Dodge || pa.state == PlayerActionState::Liquefy) {
 				return false;
 			}
 		}

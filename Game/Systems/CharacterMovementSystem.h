@@ -25,7 +25,6 @@ public:
 					wantJump = pi.jumpRequested;
 				}
 			}
-
 			// --- カメラ基準の移動計算 ---
 			// --- 3rd Person Character Controller 方式の移動更新 ---
 			float moveX = 0, moveZ = 0;
