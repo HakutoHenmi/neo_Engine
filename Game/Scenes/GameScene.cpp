@@ -560,32 +560,27 @@ void GameScene::Update() {
 				float angle = std::atan2(dy_mouse, dx_mouse);
 				if (angle < 0) angle += 3.14159f * 2.0f;
 				
-				// 3分割: 右=Fire(0~120度), 左下=Water(120~240度), 左上=Thunder(240~360度)
-				int selectedIndex = 0;
-				if (angle > 3.14159f * 2.0f / 3.0f * 2.0f) {
-					selectedIndex = 2; // Thunder
-				} else if (angle > 3.14159f * 2.0f / 3.0f) {
-					selectedIndex = 1; // Water
-				} else {
-					selectedIndex = 0; // Fire
-				}
+				constexpr int canCount = 4;
+				const float segment = (3.14159f * 2.0f) / static_cast<float>(canCount);
+				int selectedIndex = static_cast<int>(angle / segment);
+				if (selectedIndex < 0) selectedIndex = 0;
+				if (selectedIndex >= canCount) selectedIndex = canCount - 1;
 				
 				// 選択中の缶をセット
-				if (selectedIndex == 0) pi.selectedCan = CanType::Fire;
-				else if (selectedIndex == 1) pi.selectedCan = CanType::Water;
-				else if (selectedIndex == 2) pi.selectedCan = CanType::Thunder;
+				const CanType canTypes[canCount] = {CanType::Fire, CanType::Water, CanType::Thunder, CanType::Soda};
+				pi.selectedCan = canTypes[selectedIndex];
 
 				// 描画 (ImGuiに依存せずRendererを使う)
-				const char* names[] = {"Fire", "Water", "Thunder"};
+				const char* names[canCount] = {"Fire", "Water", "Thunder", "Soda"};
 				
 				float radius = 120.0f;
 				float boxSize = 80.0f;
 				
 				auto texH = ctx_.renderer->LoadTexture2D("Resources/Textures/ball.png");
 
-				for (int i = 0; i < 3; ++i) {
-					float startAngle = (3.14159f * 2.0f / 3.0f) * i;
-					float textAngle = startAngle + (3.14159f * 2.0f / 6.0f); // 扇形の中心角度
+				for (int i = 0; i < canCount; ++i) {
+					float startAngle = segment * static_cast<float>(i);
+					float textAngle = startAngle + segment * 0.5f; // 扇形の中心角度
 					
 					float px = centerX + std::cos(textAngle) * radius;
 					float py = centerY + std::sin(textAngle) * radius;
@@ -594,6 +589,7 @@ void GameScene::Update() {
 					if (i == 0) color = (i == selectedIndex) ? Engine::Vector4{255.0f/255.0f, 100.0f/255.0f, 100.0f/255.0f, 220.0f/255.0f} : Engine::Vector4{150.0f/255.0f, 50.0f/255.0f, 50.0f/255.0f, 180.0f/255.0f};
 					if (i == 1) color = (i == selectedIndex) ? Engine::Vector4{100.0f/255.0f, 150.0f/255.0f, 255.0f/255.0f, 220.0f/255.0f} : Engine::Vector4{50.0f/255.0f, 80.0f/255.0f, 150.0f/255.0f, 180.0f/255.0f};
 					if (i == 2) color = (i == selectedIndex) ? Engine::Vector4{255.0f/255.0f, 255.0f/255.0f, 100.0f/255.0f, 220.0f/255.0f} : Engine::Vector4{150.0f/255.0f, 150.0f/255.0f, 50.0f/255.0f, 180.0f/255.0f};
+					if (i == 3) color = (i == selectedIndex) ? Engine::Vector4{100.0f/255.0f, 255.0f/255.0f, 220.0f/255.0f, 220.0f/255.0f} : Engine::Vector4{45.0f/255.0f, 145.0f/255.0f, 130.0f/255.0f, 180.0f/255.0f};
 					
 					// 枠線の代わりの背景円 (少し大きめ)
 					Engine::Renderer::SpriteDesc border;
@@ -924,8 +920,9 @@ void GameScene::Draw() {
 
 	DirectX::XMFLOAT3 corePos = { 0.0f, 1.0f, 0.0f };
 	DirectX::XMFLOAT3 blobRadii = { 1.2f, 0.85f, 1.2f };
-	DirectX::XMFLOAT3 inputForce = { 0.0f, 0.0f, 0.0f };
 	bool isLiquidated = false;
+	float liquefyInitialFlowSpeed = 0.0f;
+	Engine::Vector3 liquefyFlowForward = {0.0f, 0.0f, 1.0f};
 	bool hasPlayerSlime = false;
 	bool isPlayerDead = false;
 
@@ -938,12 +935,11 @@ void GameScene::Draw() {
 			corePos = { tc.translate.x, tc.translate.y, tc.translate.z };
 			blobRadii = { tc.scale.x, tc.scale.y, tc.scale.z };
 		}
-		if (registry_.all_of<RigidbodyComponent>(playerEntity)) {
-			auto& rb = registry_.get<RigidbodyComponent>(playerEntity);
-			inputForce = rb.velocity; // 速度を流体への外力として適用
-		}
 		if (registry_.all_of<PlayerActionComponent>(playerEntity)) {
-			isLiquidated = registry_.get<PlayerActionComponent>(playerEntity).state == PlayerActionState::Liquefy;
+			const auto& pa = registry_.get<PlayerActionComponent>(playerEntity);
+			isLiquidated = pa.state == PlayerActionState::Liquefy;
+			liquefyInitialFlowSpeed = pa.liquefyInitialFlowSpeed;
+			liquefyFlowForward = {pa.liquefyFlowDir.x, pa.liquefyFlowDir.y, pa.liquefyFlowDir.z};
 		}
 		if (registry_.all_of<HealthComponent>(playerEntity)) {
 			const auto& hc = registry_.get<HealthComponent>(playerEntity);
@@ -1026,14 +1022,21 @@ void GameScene::Draw() {
 				}
 				
 				// アクション状態に応じて引力を変える（回避中は引力を弱めて散らばらせるなど）
-				float attraction = isPlayerDead ? 0.0f : (isLiquidated ? 10.0f : 80.0f);
+				float attraction = isPlayerDead ? 0.0f : (isLiquidated ? 1.0f : 80.0f);
 				
-				Engine::Vector3 targetCore = {corePos.x, corePos.y + 0.8f, corePos.z};
+				Engine::Vector3 targetCore = {corePos.x, corePos.y + (isLiquidated ? 0.18f : 0.8f), corePos.z};
 				auto& playerTc = registry_.get<TransformComponent>(playerEntity);
 				Engine::Matrix4x4 mat = playerTc.GetTransform().ToMatrix();
 				Engine::Vector3 forward = {mat.m[2][0], mat.m[2][1], mat.m[2][2]};
+				if (isLiquidated) {
+					forward = liquefyFlowForward;
+				}
 				Engine::Vector3 scaleVec = {blobRadii.x, blobRadii.y, blobRadii.z};
-				renderer_->SetGPUFluidCore(targetCore, attraction, scaleVec, forward);
+				float liquidFlowSpeed = 0.0f;
+				if (isLiquidated) {
+					liquidFlowSpeed = liquefyInitialFlowSpeed;
+				}
+				renderer_->SetGPUFluidCore(targetCore, attraction, scaleVec, forward, isLiquidated ? 1.0f : 0.0f, liquidFlowSpeed);
 
 				// ★追加: デコイコアの設定
 				bool decoyFound = false;

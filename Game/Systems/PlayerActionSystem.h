@@ -48,6 +48,12 @@ struct PlayerActionComponent : public Component {
 	float sodaEmitTimer = 0.0f;
 	bool sodaAiming = false;
 	DirectX::XMFLOAT3 sodaDriftVelocity = {0.0f, 0.0f, 0.0f};
+	float liquefyBaseSpeed = 0.0f;
+	bool liquefySpeedApplied = false;
+	DirectX::XMFLOAT3 liquefyAnchorPos = {0.0f, 0.0f, 0.0f};
+	DirectX::XMFLOAT3 liquefyFlowDir = {0.0f, 0.0f, 1.0f};
+	float liquefyInitialFlowSpeed = 0.0f;
+	bool liquefyLocked = false;
 
 	bool enabled = true;
 	PlayerActionComponent() { type = ComponentType::PlayerAction; }
@@ -66,6 +72,14 @@ public:
 			auto& pi = registry.get<PlayerInputComponent>(entity);
 			auto& tc = registry.get<TransformComponent>(entity);
 			if (!pa.enabled || !pi.enabled) continue;
+
+			if (pa.state != PlayerActionState::Liquefy && pa.liquefySpeedApplied) {
+				RestoreLiquefySpeed(registry, entity, pa);
+			}
+			if (pa.state != PlayerActionState::Liquefy && pa.liquefyLocked) {
+				pa.liquefyLocked = false;
+				pa.liquefyInitialFlowSpeed = 0.0f;
+			}
 
 			if (pa.hitStopTimer > 0.0f) {
 				pa.hitStopTimer -= ctx.dt;
@@ -151,6 +165,16 @@ public:
 				pa.sodaAimTimer = 0.0f;
 			}
 
+			bool dashInput = (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0;
+			bool dashPressed = dashInput && !prevDodge_;
+			prevDodge_ = dashInput;
+
+			bool waterLiquefyInput = (pa.currentCan == CanType::Water && hammerInput);
+			bool liquefyInput = waterLiquefyInput;
+			if (waterLiquefyInput) {
+				hammerPressed = false;
+			}
+
 			// ★追加: デコイワープ処理 (黄色の缶選択時)
 			if (hammerPressed && pa.currentCan == CanType::Thunder) {
 				hammerPressed = false; // ハンマー攻撃には派生させない
@@ -226,9 +250,6 @@ public:
 				}
 			}
 
-			// Shift長押しで液状化
-			bool liquefyInput = (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0;
-
 			switch (pa.state) {
 			case PlayerActionState::Idle:
 			{
@@ -259,7 +280,10 @@ public:
 				}
 
 				if (liquefyInput) {
+					BeginLiquefy(registry, entity, pa, pi, tc, ctx);
 					TransitionTo(pa, PlayerActionState::Liquefy, 0.0f); // 長押し状態
+				} else if (dashPressed && pa.dodgeCooldown <= 0.0f) {
+					StartDodge(pa, pi, tc, ctx);
 				} else if (attackPressed) {
 					TransitionTo(pa, PlayerActionState::Charging, 0.0f); // 溜め状態へ移行
 				} else if (hammerPressed) {
@@ -474,15 +498,47 @@ public:
 			case PlayerActionState::Liquefy:
 			{
 				if (!liquefyInput) {
+					EndLiquefy(registry, entity, pa);
 					TransitionTo(pa, PlayerActionState::Idle, 0.0f);
 					break;
 				}
 
-				// スムーズにペシャンコになる
+				if (!pa.liquefyLocked) {
+					BeginLiquefy(registry, entity, pa, pi, tc, ctx);
+				}
+
+				pi.moveDir = {0.0f, 0.0f};
+				pi.jumpRequested = false;
+				tc.translate = pa.liquefyAnchorPos;
+				if (auto* rb = registry.try_get<RigidbodyComponent>(entity)) {
+					rb->velocity.y = 0.0f;
+				}
+				if (auto* cm = registry.try_get<CharacterMovementComponent>(entity)) {
+					cm->isGrounded = true;
+				}
+
+				bool isMoving = pa.liquefyInitialFlowSpeed > 0.1f;
 				float t = std::min(1.0f, pa.stateTimer * 8.0f);
-				tc.scale.x = 1.2f + (1.8f * t); // 1.2 -> 3.0
-				tc.scale.y = 0.8f - (0.65f * t); // 0.8 -> 0.15
-				tc.scale.z = 1.2f + (1.8f * t); // 1.2 -> 3.0
+				float wave = std::sin(pa.totalTime * 12.0f) * 0.20f;
+				if (isMoving) {
+					DirectX::XMFLOAT3 flowDir = GetCameraMoveDirection(pi, ctx, tc);
+					float targetRot = std::atan2(flowDir.x, flowDir.z);
+					float diff = targetRot - tc.rotate.y;
+					while (diff > DirectX::XM_PI) diff -= DirectX::XM_2PI;
+					while (diff < -DirectX::XM_PI) diff += DirectX::XM_2PI;
+					tc.rotate.y += diff * std::min(1.0f, 14.0f * ctx.dt);
+
+					// 移動中は横へ大きく広がり、前後にゆるく波打つ薄い流れにする。
+					tc.scale.x = 2.45f + (2.15f * t) - wave * 0.45f;
+					tc.scale.y = 0.40f - (0.34f * t);
+					tc.scale.z = 2.80f + (2.95f * t) + wave * 0.75f;
+				} else {
+					// 停止中はまとまりが崩れて、かなり広く浅い水たまりのようになる。
+					tc.scale.x = 1.8f + (4.7f * t) + wave * 1.1f;
+					tc.scale.y = 0.65f - (0.58f * t);
+					tc.scale.z = 1.7f + (4.2f * t) - wave * 1.0f;
+				}
+				tc.scale.y = std::max(0.040f, tc.scale.y);
 
 				// 無敵状態を維持
 				if (registry.all_of<HealthComponent>(entity)) {
@@ -494,6 +550,9 @@ public:
 
 			case PlayerActionState::Dodge:
 			{
+				pi.moveDir = {0.0f, 0.0f};
+				pi.jumpRequested = false;
+
 				// 回避移動
 				tc.translate.x += pa.dodgeDirection.x * pa.dodgeSpeed * ctx.dt;
 				tc.translate.z += pa.dodgeDirection.z * pa.dodgeSpeed * ctx.dt;
@@ -903,6 +962,12 @@ public:
 			pa.sodaEmitTimer = 0.0f;
 			pa.sodaAiming = false;
 			pa.sodaDriftVelocity = {0.0f, 0.0f, 0.0f};
+			pa.liquefyBaseSpeed = 0.0f;
+			pa.liquefySpeedApplied = false;
+			pa.liquefyAnchorPos = {0.0f, 0.0f, 0.0f};
+			pa.liquefyFlowDir = {0.0f, 0.0f, 1.0f};
+			pa.liquefyInitialFlowSpeed = 0.0f;
+			pa.liquefyLocked = false;
 		}
 	}
 
@@ -957,6 +1022,75 @@ private:
 	bool prevAttack_ = false;
 	bool prevHammer_ = false;
 	bool prevDodge_ = false;
+
+	void BeginLiquefy(entt::registry& registry, entt::entity entity, PlayerActionComponent& pa, PlayerInputComponent& pi, TransformComponent& tc, GameContext& ctx) {
+		RestoreLiquefySpeed(registry, entity, pa);
+		pa.liquefyAnchorPos = tc.translate;
+		if (auto* cm = registry.try_get<CharacterMovementComponent>(entity)) {
+			if (ctx.scene) {
+				float groundHeight = ctx.scene->GetHeightAt(tc.translate.x, tc.translate.z, tc.translate.y + 1.0f, static_cast<uint32_t>(entity));
+				if (groundHeight > -5000.0f) {
+					pa.liquefyAnchorPos.y = std::max(pa.liquefyAnchorPos.y, groundHeight + cm->heightOffset);
+				}
+			}
+			cm->isGrounded = true;
+		}
+		pa.liquefyLocked = true;
+
+		DirectX::XMFLOAT3 flowDir = GetCameraForward(tc, ctx);
+		float flowSpeed = 0.0f;
+		float inputLen = std::sqrt(pi.moveDir.x * pi.moveDir.x + pi.moveDir.y * pi.moveDir.y);
+		if (inputLen > 0.01f) {
+			flowDir = GetCameraMoveDirection(pi, ctx, tc);
+			float moveSpeed = 0.0f;
+			if (auto* cm = registry.try_get<CharacterMovementComponent>(entity)) {
+				moveSpeed = cm->speed;
+			}
+			flowSpeed = moveSpeed * std::min(1.0f, inputLen);
+			tc.rotate.y = std::atan2(flowDir.x, flowDir.z);
+		} else if (auto* rb = registry.try_get<RigidbodyComponent>(entity)) {
+			flowSpeed = std::sqrt(rb->velocity.x * rb->velocity.x + rb->velocity.z * rb->velocity.z);
+			if (flowSpeed > 0.01f) {
+				flowDir = {rb->velocity.x / flowSpeed, 0.0f, rb->velocity.z / flowSpeed};
+			}
+		}
+
+		pa.liquefyFlowDir = flowDir;
+		pa.liquefyInitialFlowSpeed = std::min(flowSpeed, 14.0f);
+		pi.moveDir = {0.0f, 0.0f};
+		pi.jumpRequested = false;
+		if (auto* rb = registry.try_get<RigidbodyComponent>(entity)) {
+			rb->velocity.x = 0.0f;
+			rb->velocity.y = 0.0f;
+			rb->velocity.z = 0.0f;
+		}
+	}
+
+	void EndLiquefy(entt::registry& registry, entt::entity entity, PlayerActionComponent& pa) {
+		RestoreLiquefySpeed(registry, entity, pa);
+		pa.liquefyLocked = false;
+		pa.liquefyInitialFlowSpeed = 0.0f;
+	}
+
+	void ApplyLiquefySpeed(entt::registry& registry, entt::entity entity, PlayerActionComponent& pa) {
+		if (auto* cm = registry.try_get<CharacterMovementComponent>(entity)) {
+			if (!pa.liquefySpeedApplied) {
+				pa.liquefyBaseSpeed = cm->speed;
+				pa.liquefySpeedApplied = true;
+			}
+			cm->speed = std::max(pa.liquefyBaseSpeed * 1.75f, pa.liquefyBaseSpeed + 4.0f);
+		}
+	}
+
+	void RestoreLiquefySpeed(entt::registry& registry, entt::entity entity, PlayerActionComponent& pa) {
+		if (pa.liquefySpeedApplied) {
+			if (auto* cm = registry.try_get<CharacterMovementComponent>(entity)) {
+				cm->speed = pa.liquefyBaseSpeed;
+			}
+			pa.liquefyBaseSpeed = 0.0f;
+			pa.liquefySpeedApplied = false;
+		}
+	}
 
 	DirectX::XMFLOAT3 GetCameraForward(const TransformComponent& tc, GameContext& ctx) const {
 		float yaw = tc.rotate.y;
