@@ -242,6 +242,7 @@ public:
 			hc.invincibleTime = 0.0f;
 			hc.isDead = false;
 			hc.recoverableFluid = 0.0f;
+			hc.damageTakenCount = 0;
 			if (hc.hp <= 0) hc.hp = hc.maxHp;
 		}
 		auto fluidView = registry.view<LostFluidPickupComponent>();

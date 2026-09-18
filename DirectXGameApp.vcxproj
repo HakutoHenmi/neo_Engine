@@ -192,6 +192,7 @@ exit /b 0
     <ClCompile Include="Game\Scenes\AssignmentScene.cpp" />
     <ClCompile Include="Game\Scenes\GameScene.cpp" />
     <ClCompile Include="Game\Scenes\GameOverScene.cpp" />
+    <ClCompile Include="Game\Scenes\EquipmentScene.cpp" />
     <ClCompile Include="Game\Scenes\SelectScene.cpp" />
     <ClCompile Include="Game\Scenes\TitleScene.cpp" />
     <ClCompile Include="Game\Scripts\BaseScript.cpp" />
@@ -213,8 +214,10 @@ exit /b 0
     <ClInclude Include="Game\Scenes\AssignmentScene.h" />
     <ClInclude Include="Game\Scenes\GameScene.h" />
     <ClInclude Include="Game\Scenes\GameOverScene.h" />
+    <ClInclude Include="Game\Scenes\EquipmentScene.h" />
     <ClInclude Include="Game\Scenes\SelectScene.h" />
     <ClInclude Include="Game\Scenes\TitleScene.h" />
+    <ClInclude Include="Game\CanLoadout.h" />
     <ClInclude Include="Game\ObjectTypes.h" />
     <ClInclude Include="Game\Scripts\BaseScript.h" />
     <ClInclude Include="Game\Scripts\IScript.h" />
@@ -226,7 +229,8 @@ exit /b 0
     <ClInclude Include="Game\Scripts\BossTestScript.h" />
     <ClInclude Include="Game\Scripts\ScriptEngine.h" />
     <ClInclude Include="Game\Scripts\ScriptUtils.h" />
-    <ClInclude Include="Game\Systems\UISystem.h" />
+      <ClInclude Include="Game\Systems\UISystem.h" />
+      <ClInclude Include="Game\Systems\CanAbilitySystem.h" />
     <ClInclude Include="Game\Systems\ISystem.h" />
     <ClInclude Include="Game\Systems\PlayerInputSystem.h" />
     <ClInclude Include="Game\Systems\CharacterMovementSystem.h" />

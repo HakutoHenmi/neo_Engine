@@ -1090,7 +1090,7 @@ void EditorUI::Show(Engine::Renderer* renderer, GameScene* gameScene) {
 	}
 
 	// ★追加: Play中はImGuiのカーソルを消す
-	if (gameScene->GetIsPlaying()) {
+	if (gameScene->GetIsPlaying() && !gameScene->IsPaused()) {
 		ImGui::SetMouseCursor(ImGuiMouseCursor_None);
 	}
 

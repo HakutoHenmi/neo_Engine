@@ -15,8 +15,11 @@ public:
     void DrawEditor() override;
 
 private:
+    void DrawMenu();
+
     Engine::WindowDX* dx_ = nullptr;
     Engine::Renderer* renderer_ = nullptr;
+    Engine::Renderer::TextureHandle whiteTexture_ = 0;
     
     int selectedIndex_ = 0; // 0: GameScene, 1: AssignmentScene
     

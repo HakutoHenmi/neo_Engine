@@ -14,14 +14,28 @@ void SelectScene::Initialize(Engine::WindowDX* dx, const Engine::SceneParameters
     (void)params;
     dx_ = dx;
     renderer_ = Engine::Renderer::GetInstance();
+    if (renderer_) {
+        whiteTexture_ = renderer_->LoadTexture2D("Resources/Textures/white1x1.png");
+
+        auto pp = renderer_->GetPostProcessParams();
+        pp.noiseStrength = 0.0f;
+        pp.distortion = 0.0f;
+        pp.chromaShift = 0.0f;
+        pp.vignette = 0.0f;
+        pp.scanline = 0.0f;
+        pp.san = 0.0f;
+        renderer_->SetPostProcessParams(pp);
+        renderer_->SetPostEffect("Default");
+    }
     selectedIndex_ = 0;
     
     // カーソルを表示する
-    ShowCursor(TRUE);
+    Engine::WindowDX::SetCursorVisible(true);
 }
 
 void SelectScene::Update() {
     auto* input = Engine::Input::GetInstance();
+    Engine::WindowDX::SetCursorVisible(true);
     
     // Up / Down logic to select scene
     if (input->Trigger(0xC8) || input->Trigger(0x11)) { // Up Arrow or W
@@ -75,42 +89,128 @@ void SelectScene::Update() {
     } else if (ly >= -0.5f) {
         stickDown_ = false;
     }
-    
-    // Select (Enter or Pad A)
-    if (input->Trigger(0x1C) || aTrigger) { // 0x1C = Enter
+
+    auto confirmSelection = [this]() {
         if (selectedIndex_ == 0) {
-            Engine::SceneManager::GetInstance()->RequestChange("Game");
+            Engine::SceneManager::GetInstance()->RequestChange("Equipment");
         } else {
             Engine::SceneManager::GetInstance()->RequestChange("Assignment");
         }
+    };
+
+    if (renderer_) {
+        const float sw = static_cast<float>(Engine::WindowDX::kW);
+        const float sh = static_cast<float>(Engine::WindowDX::kH);
+        const float optionH = 72.0f;
+        const float optionPaddingX = 80.0f;
+
+        const float opt0W = renderer_->MeasureTextWidth("1. Play Game", 1.0f) + optionPaddingX;
+        const float opt1W = renderer_->MeasureTextWidth("2. Assignment Scene", 1.0f) + optionPaddingX;
+        const float opt0X = sw * 0.5f - opt0W * 0.5f;
+        const float opt1X = sw * 0.5f - opt1W * 0.5f;
+        const float opt0Y = sh * 0.5f - 14.0f;
+        const float opt1Y = sh * 0.6f - 14.0f;
+
+        float mx = 0.0f;
+        float my = 0.0f;
+        input->GetMousePos(mx, my);
+
+        auto inRect = [](float px, float py, float x, float y, float w, float h) {
+            return px >= x && px <= x + w && py >= y && py <= y + h;
+        };
+
+        if (inRect(mx, my, opt0X, opt0Y, opt0W, optionH)) {
+            selectedIndex_ = 0;
+            if (input->IsMouseTrigger(0)) {
+                confirmSelection();
+                return;
+            }
+        } else if (inRect(mx, my, opt1X, opt1Y, opt1W, optionH)) {
+            selectedIndex_ = 1;
+            if (input->IsMouseTrigger(0)) {
+                confirmSelection();
+                return;
+            }
+        }
+    }
+    
+    // Select (Enter or Pad A)
+    if (input->Trigger(0x1C) || aTrigger) { // 0x1C = Enter
+        confirmSelection();
     }
 }
 
 void SelectScene::Draw() {
-    // Clear screen with a different color
+    DrawMenu();
 }
 
 void SelectScene::DrawUI() {
+}
+
+void SelectScene::DrawMenu() {
     if (!renderer_) return;
     
     float sw = (float)Engine::WindowDX::kW;
     float sh = (float)Engine::WindowDX::kH;
-    
-    float titleW = renderer_->MeasureTextWidth("Select Scene", 1.5f);
-    renderer_->DrawString("Select Scene", sw/2.0f - titleW/2.0f, sh * 0.2f, 1.5f, {1, 1, 1, 1});
+
+    auto drawRect = [this](float x, float y, float w, float h, const Engine::Vector4& color, int layer) {
+        Engine::Renderer::SpriteDesc desc;
+        desc.x = x;
+        desc.y = y;
+        desc.w = w;
+        desc.h = h;
+        desc.color = color;
+        desc.layer = layer;
+        renderer_->DrawSprite(whiteTexture_, desc);
+    };
+
+    drawRect(0.0f, 0.0f, sw, sh, {0.025f, 0.035f, 0.055f, 1.0f}, 0);
+
+    const float panelW = 1180.0f;
+    const float panelH = 640.0f;
+    const float panelX = sw * 0.5f - panelW * 0.5f;
+    const float panelY = sh * 0.15f;
+    drawRect(panelX, panelY, panelW, panelH, {0.065f, 0.08f, 0.125f, 0.96f}, 1);
+    drawRect(panelX, panelY, panelW, 6.0f, {0.16f, 0.82f, 1.0f, 1.0f}, 2);
+    drawRect(panelX, panelY + panelH - 6.0f, panelW, 6.0f, {1.0f, 0.22f, 0.62f, 1.0f}, 2);
+
+    const char* title = "SELECT SCENE";
+    float titleW = renderer_->MeasureTextWidth(title, 1.35f);
+    renderer_->DrawString(title, sw/2.0f - titleW/2.0f, panelY + 86.0f, 1.35f, {1.0f, 0.93f, 0.34f, 1.0f});
+
+    const char* subtitle = "Choose where to go next";
+    float subtitleW = renderer_->MeasureTextWidth(subtitle, 0.45f);
+    renderer_->DrawString(subtitle, sw/2.0f - subtitleW/2.0f, panelY + 172.0f, 0.45f, {0.76f, 0.9f, 1.0f, 1.0f});
+
+    const float optionH = 72.0f;
+    const float optionPaddingX = 80.0f;
     
     // Game Scene Option
-    Engine::Vector4 color0 = (selectedIndex_ == 0) ? Engine::Vector4{1, 1, 0, 1} : Engine::Vector4{0.5f, 0.5f, 0.5f, 1};
+    Engine::Vector4 color0 = (selectedIndex_ == 0) ? Engine::Vector4{1, 1, 0, 1} : Engine::Vector4{0.82f, 0.86f, 0.92f, 1};
     float opt0W = renderer_->MeasureTextWidth("1. Play Game", 1.0f);
+    float opt0BoxW = opt0W + optionPaddingX;
+    float opt0BoxX = sw/2.0f - opt0BoxW/2.0f;
+    float opt0BoxY = sh * 0.5f - 14.0f;
+    drawRect(opt0BoxX - 4.0f, opt0BoxY - 4.0f, opt0BoxW + 8.0f, optionH + 8.0f,
+        selectedIndex_ == 0 ? Engine::Vector4{1.0f, 0.9f, 0.25f, 0.95f} : Engine::Vector4{0.18f, 0.28f, 0.42f, 0.9f}, 3);
+    drawRect(opt0BoxX, opt0BoxY, opt0BoxW, optionH,
+        selectedIndex_ == 0 ? Engine::Vector4{0.18f, 0.20f, 0.12f, 0.96f} : Engine::Vector4{0.09f, 0.12f, 0.18f, 0.95f}, 4);
     renderer_->DrawString("1. Play Game", sw/2.0f - opt0W/2.0f, sh * 0.5f, 1.0f, color0);
 
     // Assignment Scene Option
-    Engine::Vector4 color1 = (selectedIndex_ == 1) ? Engine::Vector4{1, 1, 0, 1} : Engine::Vector4{0.5f, 0.5f, 0.5f, 1};
+    Engine::Vector4 color1 = (selectedIndex_ == 1) ? Engine::Vector4{1, 1, 0, 1} : Engine::Vector4{0.82f, 0.86f, 0.92f, 1};
     float opt1W = renderer_->MeasureTextWidth("2. Assignment Scene", 1.0f);
+    float opt1BoxW = opt1W + optionPaddingX;
+    float opt1BoxX = sw/2.0f - opt1BoxW/2.0f;
+    float opt1BoxY = sh * 0.6f - 14.0f;
+    drawRect(opt1BoxX - 4.0f, opt1BoxY - 4.0f, opt1BoxW + 8.0f, optionH + 8.0f,
+        selectedIndex_ == 1 ? Engine::Vector4{1.0f, 0.9f, 0.25f, 0.95f} : Engine::Vector4{0.18f, 0.28f, 0.42f, 0.9f}, 3);
+    drawRect(opt1BoxX, opt1BoxY, opt1BoxW, optionH,
+        selectedIndex_ == 1 ? Engine::Vector4{0.18f, 0.20f, 0.12f, 0.96f} : Engine::Vector4{0.09f, 0.12f, 0.18f, 0.95f}, 4);
     renderer_->DrawString("2. Assignment Scene", sw/2.0f - opt1W/2.0f, sh * 0.6f, 1.0f, color1);
     
-    float guideW = renderer_->MeasureTextWidth("Use W/S or D-Pad to Select, Enter/A to Confirm", 0.5f);
-    renderer_->DrawString("Use W/S or D-Pad to Select, Enter/A to Confirm", sw/2.0f - guideW/2.0f, sh * 0.9f, 0.5f, {1, 1, 1, 1});
+    float guideW = renderer_->MeasureTextWidth("Use W/S or D-Pad / Mouse to Select, Enter/A/Click to Confirm", 0.5f);
+    renderer_->DrawString("Use W/S or D-Pad / Mouse to Select, Enter/A/Click to Confirm", sw/2.0f - guideW/2.0f, sh * 0.89f, 0.5f, {0.78f, 0.84f, 0.96f, 1});
 }
 
 void SelectScene::DrawEditor() {

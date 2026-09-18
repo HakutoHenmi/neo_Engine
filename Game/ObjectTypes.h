@@ -227,7 +227,60 @@ enum class CanType : uint32_t {
 	Fire,
 	Water,
 	Thunder,
-	Soda
+	Soda,
+	Ice,
+	Magnet,
+	Acid,
+	Bubble
+};
+
+struct CanAttackEffectComponent : public Component {
+	CanType canType = CanType::None;
+	float duration = 0.0f;
+	float strength = 0.0f;
+	CanAttackEffectComponent() { type = static_cast<ComponentType>(999); }
+};
+
+struct CanStatusComponent : public Component {
+	float freezeTimer = 0.0f;
+	float acidTimer = 0.0f;
+	float acidTickTimer = 0.0f;
+	float bubbleTimer = 0.0f;
+	float bubbleBaseY = 0.0f;
+	bool bubblePositionSaved = false;
+	bool baseColorSaved = false;
+	DirectX::XMFLOAT4 baseColor = {1, 1, 1, 1};
+	entt::entity iceVisual = entt::null;
+	entt::entity acidVisual = entt::null;
+	entt::entity bubbleVisual = entt::null;
+	CanStatusComponent() { type = static_cast<ComponentType>(999); }
+};
+
+struct AcidPoolComponent : public Component {
+	float radius = 5.0f;
+	float tickTimer = 0.0f;
+	float pulseTime = 0.0f;
+	AcidPoolComponent() { type = static_cast<ComponentType>(999); }
+};
+
+struct BubbleShieldComponent : public Component {
+	float timer = 0.0f;
+	int charges = 0;
+	entt::entity visualEntity = entt::null;
+	BubbleShieldComponent() { type = static_cast<ComponentType>(999); }
+};
+
+enum class CanVisualKind : uint32_t {
+	IceStatus,
+	AcidStatus,
+	BubbleStatus,
+	BubbleShield
+};
+
+struct CanStatusVisualComponent : public Component {
+	entt::entity target = entt::null;
+	CanVisualKind kind = CanVisualKind::IceStatus;
+	CanStatusVisualComponent() { type = static_cast<ComponentType>(999); }
 };
 
 
@@ -368,6 +421,7 @@ struct HealthComponent : public Component {
 	float stamina = 100.0f;          // スタミナ
 	float maxStamina = 100.0f;       // 最大スタミナ
 	float recoverableFluid = 0.0f;   // 被弾で散った、回収可能な体液量
+	int damageTakenCount = 0;        // 被ダメージ回数（リザルト表示用）
 	float invincibleTime = 0.0f;     // 残り無敵時間（ゼロ以上なら無敵）
 	bool isDead = false;             // 死亡フラグ
 

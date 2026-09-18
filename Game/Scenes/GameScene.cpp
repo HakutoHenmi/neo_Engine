@@ -2,6 +2,7 @@
 #define NOMINMAX
 #endif
 #include "./GameScene.h"
+#include "../CanLoadout.h"
 #include "../ObjectTypes.h"
 #include "../../Engine/Audio.h"
 #include "../../Engine/PathUtils.h"
@@ -22,6 +23,7 @@
 #include "../Systems/PlayerInputSystem.h"
 #include "../Systems/PlayerActionSystem.h" // ★追加: プレイヤーアクション
 #include "../Systems/CombatSystem.h"       // ★追加: 戦闘判定
+#include "../Systems/CanAbilitySystem.h"
 #include "../Systems/EnemyAISystem.h"      // ★追加: 敵AI
 #include "../Systems/BossActionSystem.h"    // ★追加: ボスAI
 #include "../Systems/WaveSystem.h"         // ★追加: ウェーブ管理
@@ -232,6 +234,7 @@ void GameScene::Initialize(Engine::WindowDX* dx, const Engine::SceneParameters& 
 	systems_.push_back(std::make_unique<WeaponSystem>());        // ★追加: 武器の管理・アニメーション
 	systems_.push_back(std::make_unique<CharacterMovementSystem>());
 	systems_.push_back(std::make_unique<PhysicsSystem>());
+	systems_.push_back(std::make_unique<CanAbilitySystem>());
 	systems_.push_back(std::make_unique<EnemyAISystem>());      // ★追加: 敵AI（CombatSystemの前）
 	systems_.push_back(std::make_unique<BossActionSystem>());   // ★追加: ボスAI（CombatSystemの前）
 	systems_.push_back(std::make_unique<CombatSystem>());         // ★追加: Hitbox vs Hurtbox 判定
@@ -257,36 +260,6 @@ void GameScene::Initialize(Engine::WindowDX* dx, const Engine::SceneParameters& 
 	registry_.on_destroy<TagComponent>().connect<&GameScene::OnTagRemoved>(this);
 	registry_.on_destroy<ScriptComponent>().disconnect<&GameScene::OnScriptDestroyed>(this);
 	registry_.on_destroy<ScriptComponent>().connect<&GameScene::OnScriptDestroyed>(this);
-
-	// ★追加: 操作説明テキストUIの生成
-	{
-		std::vector<std::string> controls = {
-			"【操作説明】",
-			"W, A, S, D : 移動",
-			"Space : ジャンプ",
-			"Shift : 回避",
-			"左クリック : 攻撃(大剣は長押しで溜め)",
-			"右クリック : パリィ",
-			"中クリック : ロックオン",
-			"マウス : 視点移動"
-		};
-		float startX = 20.0f;
-		float startY = 120.0f; // プレイヤーHUD(左上)に被らないように下げる
-		float gapY = 35.0f;
-		for (size_t i = 0; i < controls.size(); ++i) {
-			auto textEntity = registry_.create();
-			registry_.emplace<NameComponent>(textEntity, "ControlText_" + std::to_string(i));
-			auto& tc = registry_.emplace<TransformComponent>(textEntity);
-			tc.translate.x = startX;
-			tc.translate.y = startY + (i * gapY);
-			tc.translate.z = 0.0f;
-			
-			auto& txt = registry_.emplace<UITextComponent>(textEntity);
-			txt.text = controls[i];
-			txt.fontSize = (i == 0) ? 28.0f : 24.0f;
-			txt.color = (i == 0) ? DirectX::XMFLOAT4{0.6f, 1.0f, 0.4f, 1.0f} : DirectX::XMFLOAT4{0.4f, 1.0f, 0.4f, 1.0f}; // 見出しは黄緑、通常は緑色に変更して背景との同化を防ぐ
-		}
-	}
 
 	// 5. 初期シーン状態の保存 (ロード時以外)
 	if (!loaded) {
@@ -405,10 +378,11 @@ void GameScene::Update() {
 
 	// コンテキストを更新
 	ctx_.dt = dt;
+	const bool stageClear = IsStageClear();
 
 	if (isPlaying_) {
 		// ポーズメニューのボタン入力判定
-		if (isPaused_) {
+		if (!stageClear && isPaused_) {
 			const auto& pauseUIs = GetEntitiesByTag(TagType::PauseUI);
 			for (auto e : pauseUIs) {
 				if (registry_.valid(e) && registry_.all_of<UIButtonComponent, NameComponent>(e)) {
@@ -417,12 +391,12 @@ void GameScene::Update() {
 						auto& name = registry_.get<NameComponent>(e).name;
 						if (name == "ResumeButton") {
 							isPaused_ = false;
-							ShowCursor(FALSE);
+							Engine::WindowDX::SetCursorVisible(false);
 							DestroyPauseMenu();
 							break;
 						} else if (name == "TitleButton") {
 							isPaused_ = false;
-							ShowCursor(FALSE);
+							Engine::WindowDX::SetCursorVisible(false);
 							// シーン破棄前にUIを個別に削除すると、次フレームのClearScene()と競合するリスクがあるため
 							// DestroyPauseMenu() は呼ばずにそのままシーン遷移をリクエストする
 							Engine::SceneManager::GetInstance()->RequestChange("Title");
@@ -434,18 +408,20 @@ void GameScene::Update() {
 		}
 
 		// ESCキーでポーズ切り替え (0x01 = DIK_ESCAPE)
-		if (Engine::Input::GetInstance()->Trigger(0x01)) {
+		if (!stageClear && Engine::Input::GetInstance()->Trigger(0x01)) {
 			isPaused_ = !isPaused_;
 			if (isPaused_) {
-				ShowCursor(TRUE);
+				Engine::WindowDX::SetCursorVisible(true);
 				CreatePauseMenu();
 			} else {
-				ShowCursor(FALSE);
+				Engine::WindowDX::SetCursorVisible(false);
 				DestroyPauseMenu();
 			}
 		}
 
-		if (!isPaused_) {
+		if (stageClear) {
+			Engine::WindowDX::SetCursorVisible(true);
+		} else if (!isPaused_) {
 			playTime_ += dt;
 			
 			// ★追加: ラジアルメニューが開いているかチェック
@@ -538,7 +514,7 @@ void GameScene::Update() {
 		for (auto e : piView) {
 			auto& pi = registry_.get<PlayerInputComponent>(e);
 			if (pi.isRadialMenuOpen) {
-				ShowCursor(TRUE); // 開いている間はカーソルを表示
+				Engine::WindowDX::SetCursorVisible(true); // 開いている間はカーソルを表示
 				
 				float centerX = ctx_.viewportSize.x > 0 ? ctx_.viewportSize.x * 0.5f : (float)Engine::WindowDX::kW * 0.5f;
 				float centerY = ctx_.viewportSize.y > 0 ? ctx_.viewportSize.y * 0.5f : (float)Engine::WindowDX::kH * 0.5f;
@@ -560,19 +536,17 @@ void GameScene::Update() {
 				float angle = std::atan2(dy_mouse, dx_mouse);
 				if (angle < 0) angle += 3.14159f * 2.0f;
 				
-				constexpr int canCount = 4;
+				const auto& equippedCans = CanLoadout::GetEquipped();
+				const int canCount = (std::max)(1, CanLoadout::Count());
 				const float segment = (3.14159f * 2.0f) / static_cast<float>(canCount);
 				int selectedIndex = static_cast<int>(angle / segment);
 				if (selectedIndex < 0) selectedIndex = 0;
 				if (selectedIndex >= canCount) selectedIndex = canCount - 1;
 				
 				// 選択中の缶をセット
-				const CanType canTypes[canCount] = {CanType::Fire, CanType::Water, CanType::Thunder, CanType::Soda};
-				pi.selectedCan = canTypes[selectedIndex];
+				pi.selectedCan = equippedCans[selectedIndex];
 
 				// 描画 (ImGuiに依存せずRendererを使う)
-				const char* names[canCount] = {"Fire", "Water", "Thunder", "Soda"};
-				
 				float radius = 120.0f;
 				float boxSize = 80.0f;
 				
@@ -586,10 +560,14 @@ void GameScene::Update() {
 					float py = centerY + std::sin(textAngle) * radius;
 					
 					Engine::Vector4 color = {100.0f/255.0f, 100.0f/255.0f, 100.0f/255.0f, 180.0f/255.0f};
-					if (i == 0) color = (i == selectedIndex) ? Engine::Vector4{255.0f/255.0f, 100.0f/255.0f, 100.0f/255.0f, 220.0f/255.0f} : Engine::Vector4{150.0f/255.0f, 50.0f/255.0f, 50.0f/255.0f, 180.0f/255.0f};
-					if (i == 1) color = (i == selectedIndex) ? Engine::Vector4{100.0f/255.0f, 150.0f/255.0f, 255.0f/255.0f, 220.0f/255.0f} : Engine::Vector4{50.0f/255.0f, 80.0f/255.0f, 150.0f/255.0f, 180.0f/255.0f};
-					if (i == 2) color = (i == selectedIndex) ? Engine::Vector4{255.0f/255.0f, 255.0f/255.0f, 100.0f/255.0f, 220.0f/255.0f} : Engine::Vector4{150.0f/255.0f, 150.0f/255.0f, 50.0f/255.0f, 180.0f/255.0f};
-					if (i == 3) color = (i == selectedIndex) ? Engine::Vector4{100.0f/255.0f, 255.0f/255.0f, 220.0f/255.0f, 220.0f/255.0f} : Engine::Vector4{45.0f/255.0f, 145.0f/255.0f, 130.0f/255.0f, 180.0f/255.0f};
+					if (equippedCans[i] == CanType::Fire) color = (i == selectedIndex) ? Engine::Vector4{255.0f/255.0f, 100.0f/255.0f, 100.0f/255.0f, 220.0f/255.0f} : Engine::Vector4{150.0f/255.0f, 50.0f/255.0f, 50.0f/255.0f, 180.0f/255.0f};
+					if (equippedCans[i] == CanType::Water) color = (i == selectedIndex) ? Engine::Vector4{100.0f/255.0f, 150.0f/255.0f, 255.0f/255.0f, 220.0f/255.0f} : Engine::Vector4{50.0f/255.0f, 80.0f/255.0f, 150.0f/255.0f, 180.0f/255.0f};
+					if (equippedCans[i] == CanType::Thunder) color = (i == selectedIndex) ? Engine::Vector4{255.0f/255.0f, 255.0f/255.0f, 100.0f/255.0f, 220.0f/255.0f} : Engine::Vector4{150.0f/255.0f, 150.0f/255.0f, 50.0f/255.0f, 180.0f/255.0f};
+					if (equippedCans[i] == CanType::Soda) color = (i == selectedIndex) ? Engine::Vector4{100.0f/255.0f, 255.0f/255.0f, 220.0f/255.0f, 220.0f/255.0f} : Engine::Vector4{45.0f/255.0f, 145.0f/255.0f, 130.0f/255.0f, 180.0f/255.0f};
+					if (equippedCans[i] == CanType::Ice) color = (i == selectedIndex) ? Engine::Vector4{120.0f/255.0f, 235.0f/255.0f, 1.0f, 220.0f/255.0f} : Engine::Vector4{45.0f/255.0f, 125.0f/255.0f, 165.0f/255.0f, 180.0f/255.0f};
+					if (equippedCans[i] == CanType::Magnet) color = (i == selectedIndex) ? Engine::Vector4{215.0f/255.0f, 100.0f/255.0f, 1.0f, 220.0f/255.0f} : Engine::Vector4{110.0f/255.0f, 45.0f/255.0f, 150.0f/255.0f, 180.0f/255.0f};
+					if (equippedCans[i] == CanType::Acid) color = (i == selectedIndex) ? Engine::Vector4{160.0f/255.0f, 1.0f, 75.0f/255.0f, 220.0f/255.0f} : Engine::Vector4{70.0f/255.0f, 145.0f/255.0f, 30.0f/255.0f, 180.0f/255.0f};
+					if (equippedCans[i] == CanType::Bubble) color = (i == selectedIndex) ? Engine::Vector4{1.0f, 115.0f/255.0f, 215.0f/255.0f, 220.0f/255.0f} : Engine::Vector4{155.0f/255.0f, 55.0f/255.0f, 125.0f/255.0f, 180.0f/255.0f};
 					
 					// 枠線の代わりの背景円 (少し大きめ)
 					Engine::Renderer::SpriteDesc border;
@@ -614,11 +592,12 @@ void GameScene::Update() {
 					// 枠線は背景円で表現するため削除
 					
 					// テキスト描画
-					float tw = ctx_.renderer->MeasureTextWidth(names[i], 0.3f);
-					ctx_.renderer->DrawString(names[i], px - tw * 0.5f, py - 12.0f, 0.3f, {1.0f, 1.0f, 1.0f, 1.0f});
+					const char* canName = CanLoadout::Name(equippedCans[i]);
+					float tw = ctx_.renderer->MeasureTextWidth(canName, 0.3f);
+					ctx_.renderer->DrawString(canName, px - tw * 0.5f, py - 12.0f, 0.3f, {1.0f, 1.0f, 1.0f, 1.0f});
 				}
 			} else {
-				if (!isPaused_) ShowCursor(FALSE);
+				if (!isPaused_) Engine::WindowDX::SetCursorVisible(false);
 			}
 		}
 	}
@@ -633,6 +612,8 @@ void GameScene::Update() {
 		// リザルト遷移中などはシステムを動かさない (エンティティが削除されている可能性があるため)
 		if (!isPlaying_ || isPaused_)
 			break;
+		if (stageClear && dynamic_cast<WaveSystem*>(system.get()) == nullptr)
+			continue;
 		system->Update(registry_, ctx_);
 	}
 
@@ -1394,6 +1375,15 @@ void GameScene::DrawUI() {
 extern bool gizmoDragging;
 extern int gizmoDragAxis;
 
+bool GameScene::IsStageClear() const {
+	for (const auto& system : systems_) {
+		if (const auto* wave = dynamic_cast<const WaveSystem*>(system.get())) {
+			return wave->state == WaveSystem::State::Clear;
+		}
+	}
+	return false;
+}
+
 void GameScene::DrawSelectionHighlight() {
 	if (!renderer_)
 		return;
@@ -1733,7 +1723,7 @@ void GameScene::SetIsPlaying(bool play) {
 
 		isPlaying_ = true;
 		isPaused_ = false;
-		ShowCursor(FALSE); // ★追加: カーソルを非表示
+		Engine::WindowDX::SetCursorVisible(false); // ★追加: カーソルを非表示
 	} else {
 		// プレイ停止時: Play ボタンを押した直前の状態 (`sceneSnapshot_`) に戻す
 		// 選択状態のエンティティ名を一時保存
@@ -1747,7 +1737,7 @@ void GameScene::SetIsPlaying(bool play) {
 
 		isPlaying_ = false;
 		gpuSlimeEmitted_ = false; // ★追加: プレイ終了時にGPUスライム放出フラグをリセット
-		ShowCursor(TRUE); // ★追加: カーソルを表示
+		Engine::WindowDX::SetCursorVisible(true); // ★追加: カーソルを表示
 
 		// ★追加: プレイ終了時にエディタカメラの状態を復元
 		camera_.SetPosition(editorCameraPos_.x, editorCameraPos_.y, editorCameraPos_.z);
@@ -1899,6 +1889,7 @@ void GameScene::ClearScene() {
 void GameScene::CreatePauseMenu() {
 	float W = (float)Engine::WindowDX::kW;
 	float H = (float)Engine::WindowDX::kH;
+	Engine::Renderer::TextureHandle whiteTexture = renderer_ ? renderer_->LoadTexture2D("Resources/Textures/white1x1.png") : 0;
 
 	// 背景 (半透明の黒)
 	auto bg = CreateEntity("PauseBG");
@@ -1909,7 +1900,8 @@ void GameScene::CreatePauseMenu() {
 	bgRt.anchor = { 0.5f, 0.5f };
 	bgRt.pivot = { 0.5f, 0.5f };
 	auto& bgImg = registry_.emplace<UIImageComponent>(bg);
-	bgImg.color = { 0.0f, 0.0f, 0.0f, 0.5f };
+	bgImg.textureHandle = whiteTexture;
+	bgImg.color = { 0.02f, 0.03f, 0.06f, 0.72f };
 	bgImg.layer = -1; 
 
 	// タイトル
@@ -1922,7 +1914,7 @@ void GameScene::CreatePauseMenu() {
 	auto& tTxt = registry_.emplace<UITextComponent>(title);
 	tTxt.text = "PAUSE";
 	tTxt.fontSize = 64.0f;
-	tTxt.color = { 1.0f, 1.0f, 1.0f, 1.0f };
+	tTxt.color = { 1.0f, 0.95f, 0.55f, 1.0f };
 
 	// 再開ボタン
 	auto resume = CreateEntity("ResumeButton");
@@ -1933,15 +1925,16 @@ void GameScene::CreatePauseMenu() {
 	rRt.anchor = { 0.5f, 0.5f };
 	rRt.pivot = { 0.5f, 0.5f };
 	auto& rImg = registry_.emplace<UIImageComponent>(resume);
-	rImg.color = { 0.3f, 0.3f, 0.3f, 0.8f };
+	rImg.textureHandle = whiteTexture;
+	rImg.color = { 0.05f, 0.07f, 0.12f, 0.92f };
 	auto& rBtn = registry_.emplace<UIButtonComponent>(resume);
-	rBtn.normalColor = { 0.3f, 0.3f, 0.3f, 0.8f };
-	rBtn.hoverColor = { 0.5f, 0.5f, 0.5f, 0.9f };
-	rBtn.pressedColor = { 0.2f, 0.2f, 0.2f, 1.0f };
+	rBtn.normalColor = { 1.0f, 1.0f, 1.0f, 1.0f };
+	rBtn.hoverColor = { 1.25f, 1.18f, 0.78f, 1.0f };
+	rBtn.pressedColor = { 0.72f, 0.84f, 1.0f, 1.0f };
 	auto& rTxt = registry_.emplace<UITextComponent>(resume);
 	rTxt.text = "Resume";
 	rTxt.fontSize = 32.0f;
-	rTxt.color = { 1.0f, 1.0f, 1.0f, 1.0f };
+	rTxt.color = { 0.86f, 0.94f, 1.0f, 1.0f };
 
 	// タイトルに戻るボタン
 	auto back = CreateEntity("TitleButton");
@@ -1952,15 +1945,16 @@ void GameScene::CreatePauseMenu() {
 	bRt.anchor = { 0.5f, 0.5f };
 	bRt.pivot = { 0.5f, 0.5f };
 	auto& bImg = registry_.emplace<UIImageComponent>(back);
-	bImg.color = { 0.3f, 0.3f, 0.3f, 0.8f };
+	bImg.textureHandle = whiteTexture;
+	bImg.color = { 0.05f, 0.07f, 0.12f, 0.92f };
 	auto& bBtn = registry_.emplace<UIButtonComponent>(back);
-	bBtn.normalColor = { 0.3f, 0.3f, 0.3f, 0.8f };
-	bBtn.hoverColor = { 0.5f, 0.5f, 0.5f, 0.9f };
-	bBtn.pressedColor = { 0.2f, 0.2f, 0.2f, 1.0f };
+	bBtn.normalColor = { 1.0f, 1.0f, 1.0f, 1.0f };
+	bBtn.hoverColor = { 1.25f, 1.18f, 0.78f, 1.0f };
+	bBtn.pressedColor = { 0.72f, 0.84f, 1.0f, 1.0f };
 	auto& bTxt = registry_.emplace<UITextComponent>(back);
 	bTxt.text = "Back to Title";
 	bTxt.fontSize = 32.0f;
-	bTxt.color = { 1.0f, 1.0f, 1.0f, 1.0f };
+	bTxt.color = { 0.86f, 0.94f, 1.0f, 1.0f };
 }
 
 void GameScene::DestroyPauseMenu() {

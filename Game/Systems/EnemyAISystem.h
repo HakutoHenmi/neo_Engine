@@ -63,6 +63,15 @@ public:
 			auto& ai = view.get<EnemyAIComponent>(entity);
 			auto& tc = view.get<TransformComponent>(entity);
 			if (!ai.enabled) continue;
+			if (const auto* status = registry.try_get<CanStatusComponent>(entity)) {
+				if (status->freezeTimer > 0.0f || status->bubbleTimer > 0.0f) {
+					if (auto* hitbox = registry.try_get<HitboxComponent>(entity)) hitbox->isActive = false;
+					continue;
+				}
+			}
+			if (ai.state == EnemyAIState::Attack) {
+				if (auto* hitbox = registry.try_get<HitboxComponent>(entity)) hitbox->isActive = true;
+			}
 
 			// ★追加: サンドバッグモード時は敵の行動（AI更新）を停止する
 			if (ctx.isSandbagMode) continue;
