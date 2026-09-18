@@ -2,6 +2,7 @@
 #include "ScriptEngine.h"
 #include "../Engine/Renderer.h"
 #include "../Engine/Model.h"
+#include <algorithm>
 #include <cmath>
 #include <fstream>
 #include "../Engine/ThirdParty/nlohmann/json.hpp"
@@ -68,10 +69,7 @@ void BossTestScript::Start(entt::entity entity, GameScene* scene) {
 		rb.isKinematic = true; // ガクガク防止のためキネマティックにする（物理挙動は自前で行うかCMSに任せる）
 	}
 	if (!registry.all_of<BoxColliderComponent>(entity)) {
-		auto& bc = registry.emplace<BoxColliderComponent>(entity);
-		// BoxColliderはスケール倍されるため、ローカル空間では2x2x2程度にしておく
-		bc.size = {2.0f, 2.0f, 2.0f};
-		bc.center = {0, 1.0f, 0};
+		registry.emplace<BoxColliderComponent>(entity);
 	}
 	if (!registry.all_of<CharacterMovementComponent>(entity)) {
 		auto& cm = registry.emplace<CharacterMovementComponent>(entity);
@@ -100,7 +98,7 @@ void BossTestScript::Start(entt::entity entity, GameScene* scene) {
 		hc.maxHp = 250.0f;
 	}
 
-	// ★修正: ボス本体にHurtboxComponentを追加し、サイズを見た目のスケールに完全に一致させる
+	// ボス本体にHurtboxComponentを追加する。
 	if (!registry.all_of<HurtboxComponent>(entity)) {
 		registry.emplace<HurtboxComponent>(entity);
 	}
@@ -120,10 +118,74 @@ void BossTestScript::Start(entt::entity entity, GameScene* scene) {
 		}
 	}
 	auto& hr = registry.get<HurtboxComponent>(entity);
-	// cube.obj はベースが 2x2x2 なので、スケール値に2をかけると見た目とピッタリ一致する
-	hr.size = { originalScale_.x * 2.0f, originalScale_.y * 2.0f, originalScale_.z * 2.0f };
-	hr.center = {0, 0, 0}; // ボスの中心
-	hr.tag = TagType::Enemy; // ★追加: 敵として判定させる
+	auto& bc = registry.get<BoxColliderComponent>(entity);
+	hr.tag = TagType::Enemy;
+
+	bool boundsConfigured = false;
+	if (registry.all_of<MeshRendererComponent>(entity)) {
+		const auto& bossMr = registry.get<MeshRendererComponent>(entity);
+		if (auto* renderer = Engine::Renderer::GetInstance()) {
+			if (auto* model = renderer->GetModel(bossMr.modelHandle)) {
+				const auto& data = model->GetData();
+				const DirectX::XMFLOAT3 localSize = {
+					data.max.x - data.min.x,
+					data.max.y - data.min.y,
+					data.max.z - data.min.z
+				};
+				const DirectX::XMFLOAT3 localCenter = {
+					(data.min.x + data.max.x) * 0.5f,
+					(data.min.y + data.max.y) * 0.5f,
+					(data.min.z + data.max.z) * 0.5f
+				};
+				if (localSize.x > 0.01f && localSize.y > 0.01f && localSize.z > 0.01f &&
+					localSize.x < 10000.0f && localSize.y < 10000.0f && localSize.z < 10000.0f) {
+					const DirectX::XMFLOAT3 absScale = {
+						std::abs(originalScale_.x), std::abs(originalScale_.y), std::abs(originalScale_.z)
+					};
+					const float scaleX = (std::max)(absScale.x, 0.001f);
+					const float scaleY = (std::max)(absScale.y, 0.001f);
+					const float scaleZ = (std::max)(absScale.z, 0.001f);
+
+					// FBXの静的AABBはスキニング後の頭や腕を含まない場合があるため、
+					// 実寸を基準にしつつ、ボスの全身を保証する最小ワールド寸法を持たせる。
+					const float worldHalfX = (std::max)(localSize.x * scaleX * 0.59f, 3.0f);
+					const float worldHalfZ = (std::max)(localSize.z * scaleZ * 0.59f, 2.5f);
+					const float modelBottom = data.min.y * scaleY;
+					const float modelTop = data.max.y * scaleY;
+					const float worldBottom = (std::min)(modelBottom, 0.0f);
+					const float worldTop = (std::max)(modelTop * 1.08f, 9.0f);
+
+					hr.center = {
+						localCenter.x * scaleX,
+						(worldBottom + worldTop) * 0.5f,
+						localCenter.z * scaleZ
+					};
+					hr.size = {
+						worldHalfX * 2.0f,
+						worldTop - worldBottom,
+						worldHalfZ * 2.0f
+					};
+
+					// 物理コライダーはTransformのスケールが掛かるため、同じ全身判定をローカル寸法へ戻す。
+					bc.center = {hr.center.x / scaleX, hr.center.y / scaleY, hr.center.z / scaleZ};
+					bc.size = {hr.size.x / scaleX, hr.size.y / scaleY, hr.size.z / scaleZ};
+					boundsConfigured = true;
+				}
+			}
+		}
+	}
+
+	if (!boundsConfigured) {
+		// モデル境界を取得できない場合も、足元だけの判定には戻さない。
+		bc.center = {0.0f, 4.5f / (std::max)(std::abs(originalScale_.y), 0.001f), 0.0f};
+		bc.size = {
+			6.0f / (std::max)(std::abs(originalScale_.x), 0.001f),
+			9.0f / (std::max)(std::abs(originalScale_.y), 0.001f),
+			5.0f / (std::max)(std::abs(originalScale_.z), 0.001f)
+		};
+		hr.center = {0.0f, 4.5f, 0.0f};
+		hr.size = {6.0f, 9.0f, 5.0f};
+	}
 
 
 }

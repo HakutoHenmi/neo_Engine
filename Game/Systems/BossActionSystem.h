@@ -28,6 +28,18 @@ public:
 			auto& boss = view.get<BossActionComponent>(entity);
 			auto& tc = view.get<TransformComponent>(entity);
 			if (!boss.enabled) continue;
+			if (const auto* status = registry.try_get<CanStatusComponent>(entity)) {
+				if (status->freezeTimer > 0.0f || status->bubbleTimer > 0.0f) {
+					if (auto* hitbox = registry.try_get<HitboxComponent>(entity)) hitbox->isActive = false;
+					if (boss.currentBeamEntity != entt::null && registry.valid(boss.currentBeamEntity)) {
+						if (auto* beamHitbox = registry.try_get<HitboxComponent>(boss.currentBeamEntity)) beamHitbox->isActive = false;
+					}
+					continue;
+				}
+			}
+			if (boss.state == BossState::Attack && boss.currentBeamEntity != entt::null && registry.valid(boss.currentBeamEntity)) {
+				if (auto* beamHitbox = registry.try_get<HitboxComponent>(boss.currentBeamEntity)) beamHitbox->isActive = true;
+			}
 			
 			// ★追加: サンドバッグモード時はボスの行動（AI更新）を停止する
 			if (ctx.isSandbagMode) continue;

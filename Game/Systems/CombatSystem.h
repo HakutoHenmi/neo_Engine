@@ -37,6 +37,20 @@ public:
 				hbTc.translate.y + hb.center.y,
 				hbTc.translate.z + (-hb.center.x * hbSin + hb.center.z * hbCos)
 			};
+			DirectX::XMFLOAT3 hbSweepSize = {0.0f, 0.0f, 0.0f};
+			if (registry.all_of<CanAttackEffectComponent, RigidbodyComponent>(hbEntity)) {
+				const auto& rb = registry.get<RigidbodyComponent>(hbEntity);
+				const DirectX::XMFLOAT3 frameMove = {
+					rb.velocity.x * ctx.dt,
+					rb.velocity.y * ctx.dt,
+					rb.velocity.z * ctx.dt
+				};
+				// 高速な缶弾がフレーム間で敵を通り抜けないよう、直前位置まで判定を伸ばす。
+				hbWorldCenter.x -= frameMove.x * 0.5f;
+				hbWorldCenter.y -= frameMove.y * 0.5f;
+				hbWorldCenter.z -= frameMove.z * 0.5f;
+				hbSweepSize = {std::abs(frameMove.x), std::abs(frameMove.y), std::abs(frameMove.z)};
+			}
 
 			// Hitboxの所有者のタグを取得
 			TagType hbTag = TagType::Untagged;
@@ -75,9 +89,9 @@ public:
 
 				// 回転を加味したAABBサイズの再計算（OBBを包むAABB）
 				DirectX::XMFLOAT3 hbWorldSize = {
-					std::abs(hb.size.x * hbCos) + std::abs(hb.size.z * hbSin),
-					hb.size.y,
-					std::abs(hb.size.x * hbSin) + std::abs(hb.size.z * hbCos)
+					std::abs(hb.size.x * hbCos) + std::abs(hb.size.z * hbSin) + hbSweepSize.x,
+					hb.size.y + hbSweepSize.y,
+					std::abs(hb.size.x * hbSin) + std::abs(hb.size.z * hbCos) + hbSweepSize.z
 				};
 				DirectX::XMFLOAT3 hrWorldSize = {
 					std::abs(hr.size.x * hrCos) + std::abs(hr.size.z * hrSin),
@@ -115,10 +129,17 @@ public:
 					hitDir = { std::sin(hbTc.rotate.y), 0.35f, std::cos(hbTc.rotate.y) };
 				}
 
-				bool hitSuccess = ApplyDamage(registry, hrEntity, hb.damage * hr.damageMultiplier, ctx, hrWorldCenter, hitDir, hbTag);
+				const auto* canEffect = registry.try_get<CanAttackEffectComponent>(hbEntity);
+				const CanType incomingCanType = canEffect ? canEffect->canType : CanType::None;
+				bool hitSuccess = ApplyDamage(registry, hrEntity, hb.damage * hr.damageMultiplier, ctx,
+					hrWorldCenter, hitDir, hbTag, incomingCanType);
+				if (canEffect) {
+					// 状態弾は接触そのものを成功とし、敵の無敵時間中でも固有効果を与える。
+					ApplyCanEffect(registry, hrEntity, hbWorldCenter, *canEffect);
+				}
 
 				// 無敵時間などでダメージが適用されなかった場合は、履歴に残さず（後で当たるように）スキップ
-				if (!hitSuccess) continue;
+				if (!hitSuccess && !canEffect) continue;
 
 				// ダメージが通ったのでヒット履歴に記録
 				hb.hitTargets.push_back(hrEntity);
@@ -214,6 +235,44 @@ private:
 	}
 
 	// パリィ機能は削除されました
+	void ApplyCanEffect(entt::registry& registry, entt::entity target,
+		const DirectX::XMFLOAT3& sourcePos, const CanAttackEffectComponent& effect) {
+		if (auto* part = registry.try_get<BodyPartComponent>(target)) {
+			if (registry.valid(part->parentEntity)) target = part->parentEntity;
+		}
+		if (!registry.valid(target) || !registry.all_of<TagComponent, TransformComponent>(target)) return;
+		if (registry.get<TagComponent>(target).tag != TagType::Enemy) return;
+
+		auto& targetTc = registry.get<TransformComponent>(target);
+		if (effect.canType == CanType::Magnet) {
+			float dx = targetTc.translate.x - sourcePos.x;
+			float dz = targetTc.translate.z - sourcePos.z;
+			float len = std::sqrt(dx * dx + dz * dz);
+			if (len > 0.001f) {
+				const float strength = registry.all_of<BossActionComponent>(target) ? effect.strength * 0.35f : effect.strength;
+				targetTc.translate.x += (dx / len) * strength;
+				targetTc.translate.z += (dz / len) * strength;
+			}
+			return;
+		}
+
+		auto& status = registry.get_or_emplace<CanStatusComponent>(target);
+		if (effect.canType == CanType::Ice) {
+			const float duration = registry.all_of<BossActionComponent>(target) ? effect.duration * 0.55f : effect.duration;
+			status.freezeTimer = (std::max)(status.freezeTimer, duration);
+		} else if (effect.canType == CanType::Acid) {
+			status.acidTimer = (std::max)(status.acidTimer, effect.duration);
+			status.acidTickTimer = 0.0f;
+		} else if (effect.canType == CanType::Bubble) {
+			const float duration = registry.all_of<BossActionComponent>(target) ? effect.duration * 0.55f : effect.duration;
+			status.bubbleTimer = (std::max)(status.bubbleTimer, duration);
+			if (!status.bubblePositionSaved) {
+				status.bubbleBaseY = targetTc.translate.y;
+				status.bubblePositionSaved = true;
+			}
+		}
+	}
+
 	// ダメージ適用 (成功したらtrue)
 	void SpawnLostFluidPickups(entt::registry& registry, entt::entity owner, float amount,
 	                           const DirectX::XMFLOAT3& hitPos, const DirectX::XMFLOAT3& hitDir,
@@ -283,8 +342,8 @@ private:
 	bool ApplyDamage(entt::registry& registry, entt::entity target, float damage, GameContext& ctx,
 	                 DirectX::XMFLOAT3 hitPos = {0.0f, 0.0f, 0.0f},
 	                 DirectX::XMFLOAT3 hitDir = {0.0f, 0.35f, 1.0f},
-	                 TagType attackerTag = TagType::Untagged) {
-		(void)attackerTag;
+	                 TagType attackerTag = TagType::Untagged,
+	                 CanType incomingCanType = CanType::None) {
 		// --- ★追加: 部位破壊コンポーネント（BodyPart）がある場合 ---
 		if (registry.all_of<BodyPartComponent>(target)) {
 			auto& part = registry.get<BodyPartComponent>(target);
@@ -321,9 +380,16 @@ private:
 
 			// 親エンティティ（HealthComponent持ち）にダメージを伝播させる
 			if (registry.valid(part.parentEntity) && registry.all_of<HealthComponent>(part.parentEntity)) {
-				ApplyDamage(registry, part.parentEntity, damage * part.damageMultiplierToParent, ctx, hitPos, hitDir, attackerTag);
+				ApplyDamage(registry, part.parentEntity, damage * part.damageMultiplierToParent, ctx,
+					hitPos, hitDir, attackerTag, incomingCanType);
 			}
 			return true; // 部位自体の処理はここで終わり
+		}
+
+		if (attackerTag == TagType::Player) {
+			if (const auto* status = registry.try_get<CanStatusComponent>(target)) {
+				if (status->acidTimer > 0.0f) damage *= 1.25f;
+			}
 		}
 
 		// --- 既存の本体HealthComponentの処理 ---
@@ -334,6 +400,18 @@ private:
 		if (hc.invincibleTime > 0.0f) return false;
 
 		bool isRealPlayer = registry.all_of<PlayerInputComponent>(target);
+		if (isRealPlayer && attackerTag == TagType::Enemy) {
+			if (auto* shield = registry.try_get<BubbleShieldComponent>(target)) {
+				if (shield->timer > 0.0f && shield->charges > 0) {
+					shield->charges--;
+					shield->timer = 0.0f;
+					hc.invincibleTime = 0.35f;
+					hc.hitFlashTimer = 0.08f;
+					if (ctx.camera) ctx.camera->StartShake(0.16f, 0.22f);
+					return true;
+				}
+			}
+		}
 		if (isRealPlayer && registry.all_of<PlayerActionComponent>(target)) {
 			auto& pa = registry.get<PlayerActionComponent>(target);
 			if (pa.state == PlayerActionState::Dodge || pa.state == PlayerActionState::Liquefy) {
@@ -346,6 +424,66 @@ private:
 		if (registry.all_of<TagComponent>(target)) {
 			isEnemyBase = (registry.get<TagComponent>(target).tag == TagType::Enemy);
 		}
+
+		if (attackerTag == TagType::Player && isEnemyBase) {
+			if (auto* status = registry.try_get<CanStatusComponent>(target)) {
+				if (status->freezeTimer > 0.0f && incomingCanType != CanType::Ice) {
+					// 凍結中の次の攻撃で氷を砕き、攻撃力に応じた追加ダメージを与える。
+					damage += (std::max)(18.0f, damage * 0.5f);
+					status->freezeTimer = 0.0f;
+					hc.hitFlashTimer = (std::max)(hc.hitFlashTimer, 0.16f);
+					hc.hitStopTimer = (std::max)(hc.hitStopTimer, 0.10f);
+					if (ctx.camera) ctx.camera->StartShake(0.18f, 0.28f);
+				}
+
+				if (status->bubbleTimer > 0.0f && incomingCanType != CanType::Bubble) {
+					// 泡は次の攻撃で破裂し、敵を攻撃方向へ吹き飛ばす。
+					status->bubbleTimer = 0.0f;
+					if (status->bubblePositionSaved) {
+						if (auto* targetTc = registry.try_get<TransformComponent>(target)) {
+							float restoreY = status->bubbleBaseY;
+							auto* movement = registry.try_get<CharacterMovementComponent>(target);
+							if (ctx.scene) {
+								const float rayStartY = (std::max)(targetTc->translate.y, status->bubbleBaseY) + 4.0f;
+								const float groundY = ctx.scene->GetHeightAt(targetTc->translate.x, targetTc->translate.z,
+									rayStartY, static_cast<uint32_t>(target));
+								if (groundY > -5000.0f) {
+									restoreY = groundY + (movement ? movement->heightOffset : 0.0f);
+									if (movement) movement->isGrounded = true;
+								}
+							}
+							targetTc->translate.y = restoreY;
+						}
+						status->bubblePositionSaved = false;
+					}
+					const bool isBoss = registry.all_of<BossActionComponent>(target);
+					const float pushDistance = isBoss ? 9.0f : 12.0f;
+					if (auto* targetTc = registry.try_get<TransformComponent>(target)) {
+						targetTc->translate.x += hitDir.x * pushDistance;
+						targetTc->translate.z += hitDir.z * pushDistance;
+						// 吹き飛ばした先の地形へ再度スナップし、段差で床下へ入らないようにする。
+						if (ctx.scene) {
+							auto* movement = registry.try_get<CharacterMovementComponent>(target);
+							const float groundY = ctx.scene->GetHeightAt(targetTc->translate.x, targetTc->translate.z,
+								(std::max)(targetTc->translate.y, status->bubbleBaseY) + 8.0f,
+								static_cast<uint32_t>(target));
+							if (groundY > -5000.0f) {
+								targetTc->translate.y = groundY + (movement ? movement->heightOffset : 0.0f);
+								if (movement) movement->isGrounded = true;
+							}
+						}
+					}
+					if (auto* targetRb = registry.try_get<RigidbodyComponent>(target)) {
+						const float pushSpeed = isBoss ? 10.0f : 18.0f;
+						targetRb->velocity.x += hitDir.x * pushSpeed;
+						targetRb->velocity.y = 0.0f;
+						targetRb->velocity.z += hitDir.z * pushSpeed;
+					}
+					hc.hitStopTimer = (std::max)(hc.hitStopTimer, 0.08f);
+					if (ctx.camera) ctx.camera->StartShake(0.16f, 0.22f);
+				}
+			}
+		}
 		
 		float appliedDamage = 0.0f;
 		if (!(ctx.isSandbagMode && isEnemyBase)) {
@@ -355,12 +493,13 @@ private:
 		}
 
 		if (isRealPlayer && appliedDamage > 0.0f) {
+			hc.damageTakenCount++;
 			float missingHp = (std::max)(0.0f, hc.maxHp - hc.hp);
 			hc.recoverableFluid = (std::min)(missingHp, hc.recoverableFluid + appliedDamage);
 			SpawnLostFluidPickups(registry, target, appliedDamage, hitPos, hitDir, ctx);
 		}
-		hc.hitFlashTimer = 0.1f; // ヒットフラッシュ演出
-		hc.hitStopTimer = 0.05f; // 被弾側の軽いヒットストップ
+		hc.hitFlashTimer = (std::max)(hc.hitFlashTimer, 0.1f); // ヒットフラッシュ演出
+		hc.hitStopTimer = (std::max)(hc.hitStopTimer, 0.05f); // 被弾側の軽いヒットストップ
 
 		// 被弾後の短い無敵時間
 		hc.invincibleTime = 0.2f;

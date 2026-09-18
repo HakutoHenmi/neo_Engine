@@ -8,14 +8,261 @@
 #include "../../externals/imgui/imgui.h"
 #include "../Scenes/GameScene.h" // ★追加
 #include "../Scripts/GameManagerScript.h"
+#include "../CanLoadout.h"
+#include "PlayerActionSystem.h"
 #include <unordered_map>
 #include <set>
 #include <algorithm>
+#include <cstdio>
 
 namespace Game {
 
 void UISystem::Update(entt::registry& /*registry*/, GameContext& /*ctx*/) {
     // ボタンの更新や入力判定はワールド座標が確定するDrawフェーズ (RenderNodeWithRect) で実行するため、ここでは何もしない
+}
+
+namespace {
+Engine::Vector4 HudCanColor(CanType type) {
+    switch (type) {
+    case CanType::Fire: return {0.95f, 0.22f, 0.12f, 1.0f};
+    case CanType::Water: return {0.18f, 0.55f, 1.0f, 1.0f};
+    case CanType::Thunder: return {1.0f, 0.84f, 0.16f, 1.0f};
+    case CanType::Soda: return {0.08f, 0.82f, 0.66f, 1.0f};
+    case CanType::Ice: return {0.38f, 0.88f, 1.0f, 1.0f};
+    case CanType::Magnet: return {0.78f, 0.32f, 1.0f, 1.0f};
+    case CanType::Acid: return {0.55f, 1.0f, 0.16f, 1.0f};
+    case CanType::Bubble: return {1.0f, 0.40f, 0.78f, 1.0f};
+    default: return {0.42f, 0.48f, 0.58f, 1.0f};
+    }
+}
+
+const char* HudCanHint(CanType type) {
+    switch (type) {
+    case CanType::Fire: return "FIRE  LMB: Flame attack  RMB: Heavy hit";
+    case CanType::Water: return "WATER  LMB: Shot  Hold RMB: Liquefy";
+    case CanType::Thunder: return "THUNDER  RMB: Decoy warp";
+    case CanType::Soda: return "SODA  Hold LMB: Jet boost  RMB: Aim jump";
+    case CanType::Ice: return "ICE  LMB: Freeze shot  Hold RMB: Ice slide";
+    case CanType::Magnet: return "MAGNET  LMB: Repel pulse  Hold RMB: Pull";
+    case CanType::Acid: return "ACID  LMB: Corrode shot  RMB: Acid pool";
+    case CanType::Bubble: return "BUBBLE  LMB: Trap shot  RMB: One-hit shield";
+    default: return "TAB: Open can menu  MMB: Lock-on";
+    }
+}
+} // namespace
+
+void UISystem::EnsureHudTextures(GameContext& ctx) {
+    if (!ctx.renderer) return;
+    if (whiteTexture_ == 0) {
+        whiteTexture_ = ctx.renderer->LoadTexture2D("Resources/Textures/white1x1.png");
+    }
+    if (canPatternTexture_ == 0) {
+        canPatternTexture_ = ctx.renderer->LoadTexture2D("Resources/Textures/ball.png");
+    }
+}
+
+void UISystem::DrawSpriteRect(Engine::Renderer* renderer, Engine::Renderer::TextureHandle texture, float x, float y, float w, float h, const Engine::Vector4& color, int layer, float rotationRad) {
+    if (!renderer || texture == 0) return;
+    Engine::Renderer::SpriteDesc desc;
+    desc.x = x;
+    desc.y = y;
+    desc.w = w;
+    desc.h = h;
+    desc.rotationRad = rotationRad;
+    desc.color = color;
+    desc.layer = layer;
+    renderer->DrawSprite(texture, desc);
+}
+
+void UISystem::DrawCenteredText(Engine::Renderer* renderer, const std::string& text, float centerX, float y, float scale, const Engine::Vector4& color) {
+    if (!renderer) return;
+    const float w = renderer->MeasureTextWidth(text, scale);
+    renderer->DrawString(text, centerX - w * 0.5f, y, scale, color);
+}
+
+void UISystem::DrawHudBar(Engine::Renderer* renderer, float x, float y, float w, float h, float currentRate, float reserveRate, const Engine::Vector4& fillColor, int layer) {
+    const float hpRate = std::clamp(currentRate, 0.0f, 1.0f);
+    const float storedRate = std::clamp(reserveRate, hpRate, 1.0f);
+    DrawSpriteRect(renderer, whiteTexture_, x - 4.0f, y - 4.0f, w + 8.0f, h + 8.0f, {0.18f, 0.78f, 0.98f, 0.85f}, layer);
+    DrawSpriteRect(renderer, whiteTexture_, x, y, w, h, {0.03f, 0.04f, 0.07f, 0.94f}, layer + 1);
+    if (storedRate > hpRate + 0.01f) {
+        DrawSpriteRect(renderer, whiteTexture_, x + w * hpRate, y, w * (storedRate - hpRate), h, {0.78f, 1.0f, 0.40f, 0.42f}, layer + 2);
+    }
+    DrawSpriteRect(renderer, whiteTexture_, x, y, w * hpRate, h, fillColor, layer + 3);
+    DrawSpriteRect(renderer, whiteTexture_, x, y, w, 4.0f, {1.0f, 1.0f, 1.0f, 0.22f}, layer + 4);
+}
+
+void UISystem::DrawHudCanIcon(Engine::Renderer* renderer, CanType type, float centerX, float centerY, float w, float h, bool selected, int layer) {
+    const float x = centerX - w * 0.5f;
+    const float y = centerY - h * 0.5f;
+    const Engine::Vector4 canColor = HudCanColor(type);
+    const Engine::Vector4 edge = selected ? Engine::Vector4{1.0f, 0.95f, 0.24f, 1.0f} : Engine::Vector4{0.32f, 0.42f, 0.60f, 0.95f};
+
+    DrawSpriteRect(renderer, whiteTexture_, x - 7.0f, y - 7.0f, w + 14.0f, h + 14.0f, edge, layer);
+    DrawSpriteRect(renderer, whiteTexture_, x - 2.0f, y - 2.0f, w + 4.0f, h + 4.0f, {0.03f, 0.04f, 0.08f, 1.0f}, layer + 1);
+    DrawSpriteRect(renderer, whiteTexture_, x, y, w, h, canColor, layer + 2);
+    DrawSpriteRect(renderer, canPatternTexture_, x + 5.0f, y + 18.0f, w - 10.0f, h - 34.0f, {1.0f, 1.0f, 1.0f, 0.26f}, layer + 3);
+    DrawSpriteRect(renderer, whiteTexture_, x + 4.0f, y + 8.0f, w - 8.0f, 8.0f, {1.0f, 1.0f, 1.0f, 0.35f}, layer + 4);
+    DrawSpriteRect(renderer, whiteTexture_, x + w * 0.34f, y - 7.0f, w * 0.32f, 7.0f, {0.82f, 0.86f, 0.92f, 1.0f}, layer + 5);
+    DrawSpriteRect(renderer, whiteTexture_, x + w * 0.42f, y - 13.0f, w * 0.16f, 7.0f, {0.56f, 0.60f, 0.68f, 1.0f}, layer + 6);
+
+    const float sx = x + w * 0.5f;
+    const float sy = y + h * 0.50f;
+    switch (type) {
+    case CanType::Fire:
+        DrawSpriteRect(renderer, whiteTexture_, sx - 5.0f, sy - 20.0f, 10.0f, 38.0f, {1.0f, 0.90f, 0.18f, 1.0f}, layer + 7);
+        DrawSpriteRect(renderer, whiteTexture_, sx - 15.0f, sy - 2.0f, 13.0f, 27.0f, {1.0f, 0.50f, 0.06f, 1.0f}, layer + 8, -0.45f);
+        DrawSpriteRect(renderer, whiteTexture_, sx + 2.0f, sy - 8.0f, 13.0f, 30.0f, {1.0f, 0.16f, 0.08f, 0.95f}, layer + 8, 0.40f);
+        break;
+    case CanType::Water:
+        DrawSpriteRect(renderer, whiteTexture_, sx - 10.0f, sy - 18.0f, 20.0f, 38.0f, {0.64f, 0.92f, 1.0f, 1.0f}, layer + 7);
+        DrawSpriteRect(renderer, whiteTexture_, sx - 15.0f, sy + 4.0f, 30.0f, 18.0f, {0.18f, 0.66f, 1.0f, 0.95f}, layer + 8, 0.78f);
+        break;
+    case CanType::Thunder:
+        DrawSpriteRect(renderer, whiteTexture_, sx - 10.0f, sy - 24.0f, 16.0f, 42.0f, {1.0f, 0.96f, 0.18f, 1.0f}, layer + 7, 0.45f);
+        DrawSpriteRect(renderer, whiteTexture_, sx - 3.0f, sy - 4.0f, 16.0f, 42.0f, {1.0f, 0.68f, 0.04f, 1.0f}, layer + 8, 0.45f);
+        break;
+    case CanType::Soda:
+        DrawSpriteRect(renderer, whiteTexture_, sx - 17.0f, sy - 17.0f, 11.0f, 11.0f, {0.82f, 1.0f, 0.94f, 0.95f}, layer + 7);
+        DrawSpriteRect(renderer, whiteTexture_, sx + 6.0f, sy - 11.0f, 9.0f, 9.0f, {0.82f, 1.0f, 0.94f, 0.95f}, layer + 7);
+        DrawSpriteRect(renderer, whiteTexture_, sx - 4.0f, sy + 8.0f, 13.0f, 13.0f, {0.82f, 1.0f, 0.94f, 0.95f}, layer + 7);
+        break;
+    case CanType::Ice:
+        DrawSpriteRect(renderer, whiteTexture_, sx - 5.0f, sy - 23.0f, 10.0f, 43.0f, {0.82f, 0.98f, 1.0f, 1.0f}, layer + 7, 0.35f);
+        DrawSpriteRect(renderer, whiteTexture_, sx - 14.0f, sy - 2.0f, 9.0f, 27.0f, {0.20f, 0.72f, 1.0f, 1.0f}, layer + 8, -0.55f);
+        DrawSpriteRect(renderer, whiteTexture_, sx + 7.0f, sy + 1.0f, 8.0f, 22.0f, {0.55f, 0.92f, 1.0f, 1.0f}, layer + 8, 0.65f);
+        break;
+    case CanType::Magnet:
+        DrawSpriteRect(renderer, whiteTexture_, sx - 15.0f, sy - 19.0f, 8.0f, 35.0f, {1.0f, 0.35f, 0.45f, 1.0f}, layer + 7);
+        DrawSpriteRect(renderer, whiteTexture_, sx + 7.0f, sy - 19.0f, 8.0f, 35.0f, {0.38f, 0.58f, 1.0f, 1.0f}, layer + 7);
+        DrawSpriteRect(renderer, whiteTexture_, sx - 15.0f, sy + 9.0f, 30.0f, 8.0f, {0.88f, 0.90f, 1.0f, 1.0f}, layer + 8);
+        break;
+    case CanType::Acid:
+        DrawSpriteRect(renderer, whiteTexture_, sx - 11.0f, sy - 18.0f, 22.0f, 38.0f, {0.70f, 1.0f, 0.10f, 1.0f}, layer + 7, 0.72f);
+        DrawSpriteRect(renderer, whiteTexture_, sx - 15.0f, sy + 18.0f, 30.0f, 6.0f, {0.24f, 0.62f, 0.06f, 1.0f}, layer + 8);
+        break;
+    case CanType::Bubble:
+        DrawSpriteRect(renderer, canPatternTexture_, sx - 16.0f, sy - 17.0f, 24.0f, 24.0f, {0.92f, 0.78f, 1.0f, 0.95f}, layer + 7);
+        DrawSpriteRect(renderer, canPatternTexture_, sx + 5.0f, sy - 5.0f, 17.0f, 17.0f, {0.50f, 0.92f, 1.0f, 0.95f}, layer + 7);
+        DrawSpriteRect(renderer, canPatternTexture_, sx - 6.0f, sy + 13.0f, 13.0f, 13.0f, {1.0f, 0.52f, 0.82f, 0.90f}, layer + 7);
+        break;
+    default:
+        DrawSpriteRect(renderer, whiteTexture_, x + w * 0.25f, y + h * 0.50f - 3.0f, w * 0.50f, 6.0f, {0.22f, 0.26f, 0.34f, 1.0f}, layer + 7);
+        DrawSpriteRect(renderer, whiteTexture_, x + w * 0.50f - 3.0f, y + h * 0.25f, 6.0f, h * 0.50f, {0.22f, 0.26f, 0.34f, 1.0f}, layer + 7);
+        break;
+    }
+}
+
+void UISystem::DrawPlayerHud(entt::registry& /*registry*/, entt::entity /*playerEnt*/, PlayerInputComponent& /*pi*/, HealthComponent& pHealth, GameContext& ctx) {
+    auto* renderer = ctx.renderer;
+    const float x = 34.0f;
+    const float y = 28.0f;
+    const float panelW = 390.0f;
+    const float panelH = 112.0f;
+    const float hpRate = pHealth.hp / (pHealth.maxHp > 0.0f ? pHealth.maxHp : 1.0f);
+    const float reserveRate = (pHealth.hp + pHealth.recoverableFluid) / (pHealth.maxHp > 0.0f ? pHealth.maxHp : 1.0f);
+
+    DrawSpriteRect(renderer, whiteTexture_, x - 4.0f, y - 4.0f, panelW + 8.0f, panelH + 8.0f, {0.20f, 0.42f, 0.68f, 0.95f}, 180);
+    DrawSpriteRect(renderer, whiteTexture_, x, y, panelW, panelH, {0.05f, 0.07f, 0.12f, 0.92f}, 181);
+    DrawSpriteRect(renderer, whiteTexture_, x, y, panelW, 8.0f, {0.18f, 0.78f, 0.98f, 1.0f}, 182);
+    renderer->DrawString("PLAYER", x + 18.0f, y + 18.0f, 0.42f, {0.86f, 0.94f, 1.0f, 1.0f});
+
+    char hpText[48];
+    std::snprintf(hpText, sizeof(hpText), "%.0f / %.0f", pHealth.hp, pHealth.maxHp);
+    renderer->DrawString(hpText, x + 268.0f, y + 20.0f, 0.34f, {0.80f, 1.0f, 0.84f, 1.0f});
+    DrawHudBar(renderer, x + 20.0f, y + 58.0f, panelW - 40.0f, 24.0f, hpRate, reserveRate, {0.22f, 1.0f, 0.58f, 1.0f}, 183);
+
+    if (pHealth.recoverableFluid > 0.5f) {
+        char fluidText[48];
+        std::snprintf(fluidText, sizeof(fluidText), "RECOVERABLE +%.0f", pHealth.recoverableFluid);
+        renderer->DrawString(fluidText, x + 20.0f, y + 88.0f, 0.26f, {0.78f, 1.0f, 0.40f, 0.92f});
+    }
+}
+
+void UISystem::DrawEquippedCanHud(entt::registry& registry, entt::entity playerEnt, PlayerInputComponent& pi, GameContext& ctx) {
+    auto* renderer = ctx.renderer;
+    const float viewW = ctx.viewportSize.x > 0.0f ? ctx.viewportSize.x : static_cast<float>(Engine::WindowDX::kW);
+    const float x = viewW - 438.0f;
+    const float y = 28.0f;
+    const float panelW = 404.0f;
+    const float panelH = 184.0f;
+
+    CanType activeCan = pi.selectedCan;
+    PlayerActionComponent* action = registry.try_get<PlayerActionComponent>(playerEnt);
+    if (action) {
+        activeCan = action->currentCan;
+    }
+
+    DrawSpriteRect(renderer, whiteTexture_, x - 4.0f, y - 4.0f, panelW + 8.0f, panelH + 8.0f, {0.20f, 0.42f, 0.68f, 0.95f}, 180);
+    DrawSpriteRect(renderer, whiteTexture_, x, y, panelW, panelH, {0.05f, 0.07f, 0.12f, 0.92f}, 181);
+    DrawSpriteRect(renderer, whiteTexture_, x, y, panelW, 8.0f, {1.0f, 0.33f, 0.62f, 1.0f}, 182);
+    renderer->DrawString("EQUIPPED CANS", x + 18.0f, y + 18.0f, 0.36f, {0.86f, 0.94f, 1.0f, 1.0f});
+
+    const auto& cans = CanLoadout::GetEquipped();
+    const float slotY = y + 60.0f;
+    for (int i = 0; i < CanLoadout::kMaxEquippedCans; ++i) {
+        const float slotX = x + 20.0f + static_cast<float>(i) * 92.0f;
+        const CanType can = cans[i];
+        const bool selected = can != CanType::None && can == activeCan;
+        const Engine::Vector4 slotEdge = selected ? Engine::Vector4{1.0f, 0.95f, 0.24f, 1.0f} : Engine::Vector4{0.22f, 0.32f, 0.48f, 0.95f};
+
+        DrawSpriteRect(renderer, whiteTexture_, slotX - 4.0f, slotY - 4.0f, 74.0f, 76.0f, slotEdge, 183);
+        DrawSpriteRect(renderer, whiteTexture_, slotX, slotY, 66.0f, 68.0f, {0.08f, 0.10f, 0.16f, 0.95f}, 184);
+        DrawHudCanIcon(renderer, can, slotX + 33.0f, slotY + 34.0f, 28.0f, 48.0f, selected, 185);
+        DrawCenteredText(renderer, std::to_string(i + 1), slotX + 33.0f, slotY + 55.0f, 0.22f, {0.86f, 0.92f, 1.0f, 0.72f});
+    }
+
+    DrawSpriteRect(renderer, whiteTexture_, x + 20.0f, y + 132.0f, panelW - 40.0f, 22.0f, {0.11f, 0.16f, 0.24f, 0.95f}, 183);
+    DrawCenteredText(renderer, HudCanHint(activeCan), x + panelW * 0.5f, y + 135.0f, 0.24f, {0.86f, 0.94f, 1.0f, 1.0f});
+
+    std::string stateText = "READY";
+    if (action) {
+        char cooldown[48];
+        if (activeCan == CanType::Ice) {
+            stateText = action->iceSlideApplied ? "ICE SLIDE ACTIVE" : "SLIDE READY";
+        } else if (activeCan == CanType::Magnet) {
+            stateText = "MAGNETIC FIELD READY";
+        } else if (activeCan == CanType::Acid && action->canSecondaryCooldown > 0.0f) {
+            std::snprintf(cooldown, sizeof(cooldown), "ACID POOL %.1fs", action->canSecondaryCooldown);
+            stateText = cooldown;
+        } else if (activeCan == CanType::Bubble) {
+            if (const auto* shield = registry.try_get<BubbleShieldComponent>(playerEnt)) {
+                std::snprintf(cooldown, sizeof(cooldown), "SHIELD %d HIT / %.1fs", shield->charges, shield->timer);
+                stateText = cooldown;
+            } else if (action->canSecondaryCooldown > 0.0f) {
+                std::snprintf(cooldown, sizeof(cooldown), "SHIELD COOLDOWN %.1fs", action->canSecondaryCooldown);
+                stateText = cooldown;
+            }
+        }
+    }
+    DrawCenteredText(renderer, stateText, x + panelW * 0.5f, y + 160.0f, 0.22f, HudCanColor(activeCan));
+}
+
+void UISystem::DrawLockedEnemyHud(entt::registry& registry, PlayerInputComponent& pi, GameContext& ctx) {
+    if (pi.lockedEnemy == entt::null || !registry.valid(pi.lockedEnemy) || !registry.all_of<HealthComponent>(pi.lockedEnemy)) return;
+
+    const auto& enemyHealth = registry.get<HealthComponent>(pi.lockedEnemy);
+    if (enemyHealth.isDead || enemyHealth.maxHp <= 0.0f) return;
+
+    auto* renderer = ctx.renderer;
+    const float viewW = ctx.viewportSize.x > 0.0f ? ctx.viewportSize.x : static_cast<float>(Engine::WindowDX::kW);
+    const float panelW = 560.0f;
+    const float panelH = 78.0f;
+    const float x = viewW * 0.5f - panelW * 0.5f;
+    const float y = 28.0f;
+    const float hpRate = enemyHealth.hp / enemyHealth.maxHp;
+
+    std::string enemyName = "ENEMY";
+    if (auto* name = registry.try_get<NameComponent>(pi.lockedEnemy)) {
+        if (!name->name.empty()) enemyName = name->name;
+    }
+
+    DrawSpriteRect(renderer, whiteTexture_, x - 4.0f, y - 4.0f, panelW + 8.0f, panelH + 8.0f, {0.68f, 0.24f, 0.32f, 0.95f}, 190);
+    DrawSpriteRect(renderer, whiteTexture_, x, y, panelW, panelH, {0.06f, 0.05f, 0.08f, 0.92f}, 191);
+    DrawSpriteRect(renderer, whiteTexture_, x, y, panelW, 8.0f, {1.0f, 0.33f, 0.42f, 1.0f}, 192);
+    renderer->DrawString("TARGET", x + 18.0f, y + 18.0f, 0.32f, {1.0f, 0.74f, 0.78f, 1.0f});
+    DrawCenteredText(renderer, enemyName, x + panelW * 0.5f, y + 16.0f, 0.40f, {1.0f, 0.96f, 0.82f, 1.0f});
+    DrawHudBar(renderer, x + 42.0f, y + 48.0f, panelW - 84.0f, 18.0f, hpRate, hpRate, {1.0f, 0.22f, 0.30f, 1.0f}, 193);
 }
 
 UISystem::WorldRect UISystem::CalculateWorldRect(entt::entity entity, entt::registry& registry, float screenW, float screenH) {
@@ -57,6 +304,8 @@ UISystem::WorldRect UISystem::CalculateWorldRect(entt::entity entity, entt::regi
 }
 
 void UISystem::Draw(entt::registry& registry, GameContext& ctx) {
+    EnsureHudTextures(ctx);
+
     std::unordered_map<uint32_t, WorldRect> cache;
 
     // --- 既存のUI（Canvasベース）の描画 ---
@@ -103,15 +352,23 @@ void UISystem::Draw(entt::registry& registry, GameContext& ctx) {
 			DrawTextW(e, registry, text, transform.translate.x, transform.translate.y, 0.0f, 0.0f, ctx.renderer);
 		}
 	});
+
+    DrawGameplayHud(registry, ctx);
 }
 
 // ★追加: ワールド空間UI（HPバー）の描画パス
 void UISystem::DrawUI(entt::registry& registry, GameContext& ctx) {
     (void)registry;
     (void)ctx;
+}
+
+void UISystem::DrawGameplayHud(entt::registry& registry, GameContext& ctx) {
+    if (!ctx.isPlaying) return;
     if (!ctx.camera) return;
 
     if (!ctx.renderer) return;
+    EnsureHudTextures(ctx);
+    if (whiteTexture_ == 0) return;
 
     // 以下の3D空間UI（HPバーなど）は GameScene コンテキストが必要
     if (!ctx.scene) return;
@@ -171,44 +428,14 @@ void UISystem::DrawUI(entt::registry& registry, GameContext& ctx) {
                 if (registry.all_of<TagComponent>(e) && registry.get<TagComponent>(e).tag == TagType::Player) {
                     shouldShow = false;
                 }
+                if (!shouldShow) continue;
 
                 // 最新のViewport（画像描画位置）を使用して投影
                 if (WorldToScreenWithView(pos, *ctx.camera, ctx.viewportOffset, ctx.viewportSize, sx, sy)) {
                     float hpRate = hc.hp / (hc.maxHp > 0 ? hc.maxHp : 1.0f);
-                    float curW = barW * std::clamp(hpRate, 0.0f, 1.0f);
-                    
                     float localX = sx - ctx.viewportOffset.x;
                     float localY = sy - ctx.viewportOffset.y;
-                    
-                    // 枠 (少し大きい白の矩形)
-                    Engine::Renderer::SpriteDesc border;
-                    border.x = localX - barW * 0.5f - 2.0f;
-                    border.y = localY - barH * 0.5f - 2.0f;
-                    border.w = barW + 4.0f;
-                    border.h = barH + 4.0f;
-                    border.color = {1.0f, 1.0f, 1.0f, 200.0f/255.0f};
-                    border.layer = 99;
-                    ctx.renderer->DrawSprite(0, border);
-
-                    // 背景 (ダークグレー)
-                    Engine::Renderer::SpriteDesc bg;
-                    bg.x = localX - barW * 0.5f;
-                    bg.y = localY - barH * 0.5f;
-                    bg.w = barW;
-                    bg.h = barH;
-                    bg.color = {40.0f/255.0f, 40.0f/255.0f, 40.0f/255.0f, 180.0f/255.0f};
-                    bg.layer = 100;
-                    ctx.renderer->DrawSprite(0, bg);
-
-                    // HP残量 (緑)
-                    Engine::Renderer::SpriteDesc hp;
-                    hp.x = localX - barW * 0.5f;
-                    hp.y = localY - barH * 0.5f;
-                    hp.w = curW;
-                    hp.h = barH;
-                    hp.color = {50.0f/255.0f, 230.0f/255.0f, 50.0f/255.0f, 1.0f};
-                    hp.layer = 101;
-                    ctx.renderer->DrawSprite(0, hp);
+                    DrawHudBar(ctx.renderer, localX - barW * 0.5f, localY - barH * 0.5f, barW, barH, hpRate, hpRate, {1.0f, 0.22f, 0.30f, 1.0f}, 96);
                 }
             }
         }
@@ -246,7 +473,7 @@ void UISystem::DrawUI(entt::registry& registry, GameContext& ctx) {
 
     // 3. ロックオンカーソルとプレイヤーHUDの描画
     auto playerView = registry.view<PlayerInputComponent, HealthComponent>();
-    playerView.each([&](entt::entity /*playerEnt*/, PlayerInputComponent& pi, HealthComponent& pHealth) {
+    playerView.each([&](entt::entity playerEnt, PlayerInputComponent& pi, HealthComponent& pHealth) {
 
         // --- ロックオンカーソル ---
         if (pi.lockedEnemy != entt::null && registry.valid(pi.lockedEnemy)) {
@@ -270,7 +497,7 @@ void UISystem::DrawUI(entt::registry& registry, GameContext& ctx) {
                     hLine.w = size * 2.0f; hLine.h = thick;
                     hLine.color = {1.0f, 100.0f/255.0f, 100.0f/255.0f, 1.0f};
                     hLine.layer = 110;
-                    ctx.renderer->DrawSprite(0, hLine);
+                    ctx.renderer->DrawSprite(whiteTexture_, hLine);
                     
                     // 縦線
                     Engine::Renderer::SpriteDesc vLine;
@@ -278,61 +505,14 @@ void UISystem::DrawUI(entt::registry& registry, GameContext& ctx) {
                     vLine.w = thick; vLine.h = size * 2.0f;
                     vLine.color = {1.0f, 100.0f/255.0f, 100.0f/255.0f, 1.0f};
                     vLine.layer = 110;
-                    ctx.renderer->DrawSprite(0, vLine);
+                    ctx.renderer->DrawSprite(whiteTexture_, vLine);
                 }
             }
         }
 
-        // --- プレイヤーHUD（画面左上に固定表示） ---
-        // 座標はローカル座標系 (Gameビュー左上が 0,0)
-        float hudX = 40.0f;
-        float hudY = 40.0f;
-        float hpRate = pHealth.hp / (pHealth.maxHp > 0 ? pHealth.maxHp : 1.0f);
-        float recoverableRate = (pHealth.hp + pHealth.recoverableFluid) / (pHealth.maxHp > 0 ? pHealth.maxHp : 1.0f);
-        float barW = 200.0f;
-        float barH = 20.0f;
-        float curW = barW * std::clamp(hpRate, 0.0f, 1.0f);
-        float recoverableW = barW * std::clamp(recoverableRate, 0.0f, 1.0f);
-
-        // 枠
-        Engine::Renderer::SpriteDesc hudBorder;
-        hudBorder.x = hudX - 2.0f; hudBorder.y = hudY - 2.0f;
-        hudBorder.w = barW + 4.0f; hudBorder.h = barH + 4.0f;
-        hudBorder.color = {1.0f, 1.0f, 1.0f, 1.0f};
-        hudBorder.layer = 199;
-        ctx.renderer->DrawSprite(0, hudBorder);
-
-        // 背景
-        Engine::Renderer::SpriteDesc hudBg;
-        hudBg.x = hudX; hudBg.y = hudY;
-        hudBg.w = barW; hudBg.h = barH;
-        hudBg.color = {40.0f/255.0f, 40.0f/255.0f, 40.0f/255.0f, 200.0f/255.0f};
-        hudBg.layer = 200;
-        ctx.renderer->DrawSprite(0, hudBg);
-
-        if (recoverableW > curW + 0.5f) {
-            Engine::Renderer::SpriteDesc hudRecoverable;
-            hudRecoverable.x = hudX + curW;
-            hudRecoverable.y = hudY;
-            hudRecoverable.w = recoverableW - curW;
-            hudRecoverable.h = barH;
-            hudRecoverable.color = {120.0f/255.0f, 255.0f/255.0f, 90.0f/255.0f, 110.0f/255.0f};
-            hudRecoverable.layer = 201;
-            ctx.renderer->DrawSprite(0, hudRecoverable);
-        }
-        
-        // HP残量
-        Engine::Renderer::SpriteDesc hudHp;
-        hudHp.x = hudX; hudHp.y = hudY;
-        hudHp.w = curW; hudHp.h = barH;
-        hudHp.color = {50.0f/255.0f, 200.0f/255.0f, 150.0f/255.0f, 1.0f};
-        hudHp.layer = 202;
-        ctx.renderer->DrawSprite(0, hudHp);
-
-        // HPテキスト
-        char hpText[32];
-        snprintf(hpText, sizeof(hpText), "PLAYER HP: %.0f / %.0f  +%.0f", pHealth.hp, pHealth.maxHp, pHealth.recoverableFluid);
-        ctx.renderer->DrawString(hpText, hudX, hudY - 24.0f, 0.3f, {1.0f, 1.0f, 1.0f, 1.0f});
+        DrawLockedEnemyHud(registry, pi, ctx);
+        DrawPlayerHud(registry, playerEnt, pi, pHealth, ctx);
+        DrawEquippedCanHud(registry, playerEnt, pi, ctx);
 
         // --- 4. ゲームオーバー（YOU DIED）画面 ---
         if (pHealth.isDead) {
@@ -348,7 +528,7 @@ void UISystem::DrawUI(entt::registry& registry, GameContext& ctx) {
             darkScreen.h = ctx.viewportSize.y > 0 ? ctx.viewportSize.y : Engine::WindowDX::kH;
             darkScreen.color = {0.0f, 0.0f, 0.0f, darkAlpha};
             darkScreen.layer = 500; // 最前面
-            ctx.renderer->DrawSprite(0, darkScreen);
+            ctx.renderer->DrawSprite(whiteTexture_, darkScreen);
 
             auto* gm = GameManagerScript::GetInstance();
             std::string defeatStr = gm ? gm->defeatText : "YOU DIED";
@@ -440,9 +620,9 @@ void UISystem::RenderNodeWithRect(entt::entity entity, entt::registry& registry,
                 border.y = wr.y - 2.0f;
                 border.w = wr.w + 4.0f;
                 border.h = wr.h + 4.0f;
-                border.color = { 1.0f, 1.0f, 1.0f, 1.0f };
+                border.color = { 0.18f, 0.78f, 0.98f, 0.88f };
                 border.layer = img.layer; // ★追加: レイヤー引き継ぎ
-                ctx.renderer->DrawSprite(0, border); // 0番テクスチャはRenderer初期化時に生成された白色
+                ctx.renderer->DrawSprite(whiteTexture_, border);
             }
 
             DirectX::XMFLOAT4 finalColor = { img.color.x * buttonColor.x, img.color.y * buttonColor.y, img.color.z * buttonColor.z, img.color.w * buttonColor.w };

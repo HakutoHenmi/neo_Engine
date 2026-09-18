@@ -43,6 +43,7 @@ public:
 	Engine::ParticleEditor& GetParticleEditor() { return particleEditor_; }
 	bool GetIsPlaying() const { return isPlaying_; }
 	bool IsPlaying() const { return isPlaying_; } // Alias for backward compatibility
+	bool IsPaused() const { return isPaused_; }
 	void SetIsPlaying(bool play);
 
 	void CreatePauseMenu();  // ★追加
@@ -120,6 +121,7 @@ private:
 
 	// スクリプト破棄用コールバック
 	void OnScriptDestroyed(entt::registry& registry, entt::entity entity);
+	bool IsStageClear() const;
 
 	// 行列計算キャッシュ (FPS向上用)
 	mutable std::unordered_map<entt::entity, Engine::Matrix4x4> matrixCache_;

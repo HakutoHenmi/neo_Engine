@@ -126,7 +126,7 @@ void TitleScene::Initialize(Engine::WindowDX* dx, const Engine::SceneParameters&
     inkAlpha_ = 0.0f;
     
     // カーソルを表示する
-    ShowCursor(TRUE);
+    Engine::WindowDX::SetCursorVisible(true);
     
     LogFileMain("    TitleScene::Initialize Complete");
 }

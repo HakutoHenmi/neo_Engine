@@ -10,6 +10,9 @@
     <ClCompile Include="Game\Scenes\GameOverScene.cpp">
       <Filter>Scenes</Filter>
     </ClCompile>
+    <ClCompile Include="Game\Scenes\EquipmentScene.cpp">
+      <Filter>Scenes</Filter>
+    </ClCompile>
     <ClCompile Include="Game\Editor\EditorUI.cpp">
       <Filter>Editor</Filter>
     </ClCompile>
@@ -64,6 +67,9 @@
     <ClInclude Include="Game\Scenes\GameOverScene.h">
       <Filter>Scenes</Filter>
     </ClInclude>
+    <ClInclude Include="Game\Scenes\EquipmentScene.h">
+      <Filter>Scenes</Filter>
+    </ClInclude>
     <ClInclude Include="Game\Editor\EditorUI.h">
       <Filter>Editor</Filter>
     </ClInclude>
@@ -76,7 +82,13 @@
     <ClInclude Include="Game\ObjectTypes.h">
       <Filter>Game</Filter>
     </ClInclude>
+    <ClInclude Include="Game\CanLoadout.h">
+      <Filter>Game</Filter>
+    </ClInclude>
     <ClInclude Include="Game\Systems\UISystem.h">
+      <Filter>Systems</Filter>
+    </ClInclude>
+    <ClInclude Include="Game\Systems\CanAbilitySystem.h">
       <Filter>Systems</Filter>
     </ClInclude>
     <ClInclude Include="Game\Scripts\BaseScript.h">

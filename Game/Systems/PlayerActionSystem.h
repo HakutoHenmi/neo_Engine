@@ -54,6 +54,12 @@ struct PlayerActionComponent : public Component {
 	DirectX::XMFLOAT3 liquefyFlowDir = {0.0f, 0.0f, 1.0f};
 	float liquefyInitialFlowSpeed = 0.0f;
 	bool liquefyLocked = false;
+	float canPrimaryCooldown = 0.0f;
+	float canSecondaryCooldown = 0.0f;
+	float iceTrailEmitTimer = 0.0f;
+	float iceSlideBaseSpeed = 0.0f;
+	bool iceSlideApplied = false;
+	float magnetEffectTimer = 0.0f;
 
 	bool enabled = true;
 	PlayerActionComponent() { type = ComponentType::PlayerAction; }
@@ -88,6 +94,11 @@ public:
 			}
 
 			if (pa.dodgeCooldown > 0.0f) pa.dodgeCooldown -= ctx.dt;
+			pa.canPrimaryCooldown = (std::max)(0.0f, pa.canPrimaryCooldown - ctx.dt);
+			pa.canSecondaryCooldown = (std::max)(0.0f, pa.canSecondaryCooldown - ctx.dt);
+			if (pa.currentCan != CanType::Ice && pa.iceSlideApplied) {
+				RestoreIceSlide(registry, entity, pa);
+			}
 
 			pa.stateTimer += ctx.dt;
 			pa.totalTime += ctx.dt; // ★追加
@@ -163,6 +174,13 @@ public:
 			} else {
 				pa.sodaAiming = false;
 				pa.sodaAimTimer = 0.0f;
+			}
+
+			if (pa.currentCan == CanType::Ice || pa.currentCan == CanType::Magnet ||
+				pa.currentCan == CanType::Acid || pa.currentCan == CanType::Bubble) {
+				HandleAdvancedCan(registry, entity, pa, pi, tc, ctx, attackPressed, hammerInput, hammerPressed);
+				attackPressed = false;
+				hammerPressed = false;
 			}
 
 			bool dashInput = (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0;
@@ -736,6 +754,11 @@ public:
 		}
 		pendingProjectiles_.clear();
 
+		SpawnCanProjectiles(registry, ctx);
+		SpawnAcidPools(registry, ctx);
+		SpawnIceTrails(registry, ctx);
+		SpawnMagnetEffects(registry, ctx);
+
 		// --- 爆発エフェクトの遅延生成 ---
 		for (const auto& exp : pendingExplosions_) {
 			if (ctx.scene) {
@@ -968,6 +991,11 @@ public:
 			pa.liquefyFlowDir = {0.0f, 0.0f, 1.0f};
 			pa.liquefyInitialFlowSpeed = 0.0f;
 			pa.liquefyLocked = false;
+			pa.canPrimaryCooldown = 0.0f;
+			pa.canSecondaryCooldown = 0.0f;
+			pa.iceTrailEmitTimer = 0.0f;
+			if (pa.iceSlideApplied) RestoreIceSlide(registry, entity, pa);
+			pa.magnetEffectTimer = 0.0f;
 		}
 	}
 
@@ -978,6 +1006,30 @@ private:
 		DirectX::XMFLOAT3 dir;
 	};
 	std::vector<ProjectileSpawnData> pendingProjectiles_;
+
+	struct CanProjectileSpawnData {
+		CanType type = CanType::None;
+		DirectX::XMFLOAT3 pos = {0, 0, 0};
+		DirectX::XMFLOAT3 dir = {0, 0, 1};
+	};
+	std::vector<CanProjectileSpawnData> pendingCanProjectiles_;
+
+	struct AcidPoolSpawnData {
+		DirectX::XMFLOAT3 pos = {0, 0, 0};
+	};
+	std::vector<AcidPoolSpawnData> pendingAcidPools_;
+
+	struct IceTrailSpawnData {
+		DirectX::XMFLOAT3 pos = {0, 0, 0};
+		float yaw = 0.0f;
+	};
+	std::vector<IceTrailSpawnData> pendingIceTrails_;
+
+	struct MagnetEffectSpawnData {
+		DirectX::XMFLOAT3 pos = {0, 0, 0};
+		bool pulse = false;
+	};
+	std::vector<MagnetEffectSpawnData> pendingMagnetEffects_;
 
 	struct MistSpawnData {
 		DirectX::XMFLOAT3 pos;
@@ -1229,11 +1281,311 @@ private:
 		}
 	}
 
+	DirectX::XMFLOAT3 GetAbilityDirection(entt::registry& registry, const PlayerInputComponent& pi,
+		const TransformComponent& tc, GameContext& ctx) const {
+		if (pi.lockedEnemy != entt::null && registry.valid(pi.lockedEnemy) && registry.all_of<TransformComponent>(pi.lockedEnemy)) {
+			const auto& targetTc = registry.get<TransformComponent>(pi.lockedEnemy);
+			float dx = targetTc.translate.x - tc.translate.x;
+			float dz = targetTc.translate.z - tc.translate.z;
+			float len = std::sqrt(dx * dx + dz * dz);
+			if (len > 0.001f) return {dx / len, 0.0f, dz / len};
+		}
+		return GetCameraForward(tc, ctx);
+	}
+
+	void ApplyIceSlide(entt::registry& registry, entt::entity entity, PlayerActionComponent& pa) {
+		if (auto* cm = registry.try_get<CharacterMovementComponent>(entity)) {
+			if (!pa.iceSlideApplied) {
+				pa.iceSlideBaseSpeed = cm->speed;
+				pa.iceSlideApplied = true;
+			}
+			cm->speed = (std::max)(pa.iceSlideBaseSpeed * 2.1f, pa.iceSlideBaseSpeed + 7.0f);
+		}
+	}
+
+	void RestoreIceSlide(entt::registry& registry, entt::entity entity, PlayerActionComponent& pa) {
+		if (!pa.iceSlideApplied) return;
+		if (auto* cm = registry.try_get<CharacterMovementComponent>(entity)) cm->speed = pa.iceSlideBaseSpeed;
+		pa.iceSlideBaseSpeed = 0.0f;
+		pa.iceSlideApplied = false;
+	}
+
+	void HandleAdvancedCan(entt::registry& registry, entt::entity entity, PlayerActionComponent& pa,
+		const PlayerInputComponent& pi, TransformComponent& tc, GameContext& ctx,
+		bool attackPressed, bool secondaryInput, bool secondaryPressed) {
+		if (pi.isRadialMenuOpen || pa.state != PlayerActionState::Idle) {
+			if (pa.iceSlideApplied) RestoreIceSlide(registry, entity, pa);
+			return;
+		}
+
+		const DirectX::XMFLOAT3 dir = GetAbilityDirection(registry, pi, tc, ctx);
+		if (attackPressed && pa.canPrimaryCooldown <= 0.0f) {
+			if (pa.currentCan == CanType::Magnet) {
+				pendingMagnetEffects_.push_back({{tc.translate.x, tc.translate.y + 0.4f, tc.translate.z}, true});
+				pa.canPrimaryCooldown = 1.1f;
+				if (ctx.camera) ctx.camera->StartShake(0.12f, 0.18f);
+			} else {
+				pendingCanProjectiles_.push_back({
+					pa.currentCan,
+					{tc.translate.x + dir.x * 1.5f, tc.translate.y + 0.8f, tc.translate.z + dir.z * 1.5f},
+					dir
+				});
+				pa.canPrimaryCooldown = pa.currentCan == CanType::Bubble ? 0.75f : 0.42f;
+			}
+		}
+
+		if (pa.currentCan == CanType::Ice) {
+			if (secondaryInput) {
+				ApplyIceSlide(registry, entity, pa);
+				pa.iceTrailEmitTimer -= ctx.dt;
+				if (pa.iceTrailEmitTimer <= 0.0f) {
+					float trailY = tc.translate.y - 0.72f;
+					if (ctx.scene) {
+						const float groundY = ctx.scene->GetHeightAt(tc.translate.x, tc.translate.z, tc.translate.y + 2.5f, static_cast<uint32_t>(entity));
+						if (groundY > -5000.0f) trailY = groundY + 0.06f;
+					}
+					pendingIceTrails_.push_back({{tc.translate.x, trailY, tc.translate.z}, tc.rotate.y});
+					pa.iceTrailEmitTimer = 0.13f;
+				}
+			} else {
+				RestoreIceSlide(registry, entity, pa);
+			}
+		} else if (pa.currentCan == CanType::Magnet) {
+			if (secondaryInput) {
+				pa.magnetEffectTimer -= ctx.dt;
+				if (pa.magnetEffectTimer <= 0.0f) {
+					pendingMagnetEffects_.push_back({{tc.translate.x, tc.translate.y + 0.5f, tc.translate.z}, false});
+					pa.magnetEffectTimer = 0.16f;
+				}
+
+				auto enemies = registry.view<TagComponent, TransformComponent, HealthComponent>();
+				for (auto target : enemies) {
+					if (enemies.get<TagComponent>(target).tag != TagType::Enemy) continue;
+					auto& health = enemies.get<HealthComponent>(target);
+					if (health.isDead || !health.enabled) continue;
+					auto& targetTc = enemies.get<TransformComponent>(target);
+					float dx = tc.translate.x - targetTc.translate.x;
+					float dz = tc.translate.z - targetTc.translate.z;
+					float dist = std::sqrt(dx * dx + dz * dz);
+					if (dist < 2.5f || dist > 32.0f) continue;
+					const float pullSpeed = registry.all_of<BossActionComponent>(target) ? 7.0f : 21.0f;
+					targetTc.translate.x += (dx / dist) * pullSpeed * ctx.dt;
+					targetTc.translate.z += (dz / dist) * pullSpeed * ctx.dt;
+				}
+			}
+		} else if (pa.currentCan == CanType::Acid) {
+			if (secondaryPressed && pa.canSecondaryCooldown <= 0.0f) {
+				const float poolX = tc.translate.x + dir.x * 4.0f;
+				const float poolZ = tc.translate.z + dir.z * 4.0f;
+				float poolY = tc.translate.y - 0.7f;
+				if (ctx.scene) {
+					const float groundY = ctx.scene->GetHeightAt(poolX, poolZ, tc.translate.y + 3.0f, static_cast<uint32_t>(entity));
+					if (groundY > -5000.0f) poolY = groundY + 0.08f;
+				}
+				pendingAcidPools_.push_back({{poolX, poolY, poolZ}});
+				pa.canSecondaryCooldown = 5.0f;
+			}
+		} else if (pa.currentCan == CanType::Bubble) {
+			if (secondaryPressed && pa.canSecondaryCooldown <= 0.0f) {
+				auto& shield = registry.get_or_emplace<BubbleShieldComponent>(entity);
+				shield.timer = 6.0f;
+				shield.charges = 1;
+				pa.canSecondaryCooldown = 9.0f;
+			}
+		}
+	}
+
+	void SpawnCanProjectiles(entt::registry& registry, GameContext& ctx) {
+		for (const auto& spawn : pendingCanProjectiles_) {
+			if (!ctx.scene) continue;
+			auto projectile = ctx.scene->CreateEntity("CanProjectile");
+			auto& tc = registry.get<TransformComponent>(projectile);
+			tc.translate = spawn.pos;
+			tc.rotate.y = std::atan2(spawn.dir.x, spawn.dir.z);
+			tc.scale = spawn.type == CanType::Bubble ? DirectX::XMFLOAT3{1.0f, 1.0f, 1.0f} : DirectX::XMFLOAT3{0.62f, 0.62f, 0.62f};
+
+			auto& mesh = registry.emplace<MeshRendererComponent>(projectile);
+			mesh.modelPath = "Resources/Models/player_ball/ball.obj";
+			mesh.texturePath = "Resources/Textures/white1x1.png";
+			mesh.useCubemap = false;
+			mesh.shaderName = spawn.type == CanType::Bubble ? "ForceField" : "EmissiveGlow";
+			if (spawn.type == CanType::Ice) mesh.color = {0.34f, 0.88f, 1.0f, 0.95f};
+			if (spawn.type == CanType::Acid) mesh.color = {0.56f, 1.0f, 0.08f, 0.95f};
+			if (spawn.type == CanType::Bubble) mesh.color = {1.0f, 0.38f, 0.82f, 0.72f};
+			if (ctx.renderer) {
+				mesh.modelHandle = ctx.renderer->LoadObjMesh(mesh.modelPath);
+				mesh.textureHandle = ctx.renderer->LoadTexture2D(mesh.texturePath);
+			}
+
+			auto& rb = registry.emplace<RigidbodyComponent>(projectile);
+			rb.useGravity = false;
+			const float speed = spawn.type == CanType::Ice ? 68.0f : spawn.type == CanType::Acid ? 56.0f : 48.0f;
+			rb.velocity = {spawn.dir.x * speed, 0.0f, spawn.dir.z * speed};
+			auto& collider = registry.emplace<BoxColliderComponent>(projectile);
+			collider.size = spawn.type == CanType::Bubble ? DirectX::XMFLOAT3{2.4f, 2.4f, 2.4f} : DirectX::XMFLOAT3{1.6f, 1.6f, 1.6f};
+			collider.isTrigger = true;
+
+			auto& hitbox = registry.emplace<HitboxComponent>(projectile);
+			hitbox.isActive = true;
+			hitbox.damage = spawn.type == CanType::Ice ? 12.0f : spawn.type == CanType::Acid ? 8.0f : 4.0f;
+			hitbox.tag = TagType::Player;
+			hitbox.size = spawn.type == CanType::Bubble ? DirectX::XMFLOAT3{3.4f, 3.4f, 3.4f} : DirectX::XMFLOAT3{2.6f, 3.2f, 2.6f};
+			hitbox.isProjectile = true;
+			registry.emplace<TagComponent>(projectile, TagType::Projectile);
+			auto& effect = registry.emplace<CanAttackEffectComponent>(projectile);
+			effect.canType = spawn.type;
+			effect.duration = spawn.type == CanType::Ice ? 1.8f : spawn.type == CanType::Acid ? 6.0f : 5.5f;
+			effect.strength = 1.0f;
+			registry.emplace<AutoDestroyComponent>(projectile).timer = 1.4f;
+
+			auto& particles = registry.emplace<ParticleEmitterComponent>(projectile);
+			particles.emitter.params.name = "CanProjectileTrail";
+			particles.emitter.params.emitRate = 75.0f;
+			particles.emitter.params.lifeTime = 0.32f;
+			particles.emitter.params.startSize = {0.38f, 0.38f, 0.38f};
+			particles.emitter.params.endSize = {0.08f, 0.08f, 0.08f};
+			particles.emitter.params.startVelocity = {-spawn.dir.x * 2.0f, 0.2f, -spawn.dir.z * 2.0f};
+			particles.emitter.params.velocityVariance = {0.6f, 0.6f, 0.6f};
+			particles.emitter.params.isAdditive = true;
+			particles.emitter.params.shaderName = "SoftParticleAdditive";
+			particles.emitter.params.texturePath = "Resources/Textures/ball.png";
+			if (spawn.type == CanType::Ice) {
+				particles.emitter.params.startColor = {0.78f, 0.98f, 1.0f, 0.9f};
+				particles.emitter.params.endColor = {0.16f, 0.58f, 1.0f, 0.0f};
+			} else if (spawn.type == CanType::Acid) {
+				particles.emitter.params.startColor = {0.62f, 1.0f, 0.12f, 0.9f};
+				particles.emitter.params.endColor = {0.12f, 0.48f, 0.02f, 0.0f};
+			} else {
+				particles.emitter.params.startColor = {1.0f, 0.52f, 0.88f, 0.8f};
+				particles.emitter.params.endColor = {0.32f, 0.78f, 1.0f, 0.0f};
+			}
+		}
+		pendingCanProjectiles_.clear();
+	}
+
+	void SpawnAcidPools(entt::registry& registry, GameContext& ctx) {
+		for (const auto& spawn : pendingAcidPools_) {
+			if (!ctx.scene) continue;
+			auto pool = ctx.scene->CreateEntity("AcidPool");
+			auto& tc = registry.get<TransformComponent>(pool);
+			tc.translate = spawn.pos;
+			tc.scale = {6.0f, 0.10f, 6.0f};
+			auto& mesh = registry.emplace<MeshRendererComponent>(pool);
+			mesh.modelPath = "Resources/Models/Cylinder/cylinder.obj";
+			mesh.texturePath = "Resources/Textures/white1x1.png";
+			mesh.shaderName = "EmissiveGlow";
+			mesh.useCubemap = false;
+			mesh.color = {0.44f, 1.0f, 0.04f, 0.76f};
+			if (ctx.renderer) {
+				mesh.modelHandle = ctx.renderer->LoadObjMesh(mesh.modelPath);
+				mesh.textureHandle = ctx.renderer->LoadTexture2D(mesh.texturePath);
+			}
+			registry.emplace<TagComponent>(pool, TagType::VFX);
+			registry.emplace<AcidPoolComponent>(pool).radius = 6.0f;
+			registry.emplace<AutoDestroyComponent>(pool).timer = 6.0f;
+			auto& light = registry.emplace<PointLightComponent>(pool);
+			light.color = {0.42f, 1.0f, 0.06f};
+			light.intensity = 2.4f;
+			light.range = 11.0f;
+			auto& particles = registry.emplace<ParticleEmitterComponent>(pool);
+			particles.emitter.params.name = "AcidPoolBubbles";
+			particles.emitter.params.emitRate = 64.0f;
+			particles.emitter.params.shape = Engine::EmissionShape::Sphere;
+			particles.emitter.params.shapeRadius = 5.2f;
+			particles.emitter.params.lifeTime = 0.6f;
+			particles.emitter.params.startColor = {0.62f, 1.0f, 0.08f, 0.8f};
+			particles.emitter.params.endColor = {0.10f, 0.42f, 0.02f, 0.0f};
+			particles.emitter.params.startSize = {0.28f, 0.28f, 0.28f};
+			particles.emitter.params.endSize = {0.85f, 0.85f, 0.85f};
+			particles.emitter.params.startVelocity = {0.0f, 1.5f, 0.0f};
+			particles.emitter.params.velocityVariance = {0.6f, 0.5f, 0.6f};
+			particles.emitter.params.isAdditive = true;
+			particles.emitter.params.shaderName = "SoftParticleAdditive";
+			particles.emitter.params.texturePath = "Resources/Textures/ball.png";
+		}
+		pendingAcidPools_.clear();
+	}
+
+	void SpawnIceTrails(entt::registry& registry, GameContext& ctx) {
+		for (const auto& spawn : pendingIceTrails_) {
+			if (!ctx.scene) continue;
+			auto trail = ctx.scene->CreateEntity("IceTrail");
+			auto& tc = registry.get<TransformComponent>(trail);
+			tc.translate = spawn.pos;
+			tc.rotate.y = spawn.yaw;
+			tc.scale = {1.35f, 0.045f, 2.0f};
+			auto& mesh = registry.emplace<MeshRendererComponent>(trail);
+			mesh.modelPath = "Resources/Models/cube/cube.obj";
+			mesh.texturePath = "Resources/Textures/white1x1.png";
+			mesh.shaderName = "EmissiveGlow";
+			mesh.useCubemap = false;
+			mesh.color = {0.34f, 0.86f, 1.0f, 0.52f};
+			if (ctx.renderer) {
+				mesh.modelHandle = ctx.renderer->LoadObjMesh(mesh.modelPath);
+				mesh.textureHandle = ctx.renderer->LoadTexture2D(mesh.texturePath);
+			}
+			registry.emplace<TagComponent>(trail, TagType::VFX);
+			registry.emplace<AutoDestroyComponent>(trail).timer = 1.2f;
+		}
+		pendingIceTrails_.clear();
+	}
+
+	void SpawnMagnetEffects(entt::registry& registry, GameContext& ctx) {
+		for (const auto& spawn : pendingMagnetEffects_) {
+			if (!ctx.scene) continue;
+			auto effect = ctx.scene->CreateEntity(spawn.pulse ? "MagnetRepulse" : "MagnetPullAura");
+			auto& tc = registry.get<TransformComponent>(effect);
+			tc.translate = spawn.pos;
+			tc.scale = spawn.pulse ? DirectX::XMFLOAT3{15.0f, 0.24f, 15.0f} : DirectX::XMFLOAT3{20.0f, 0.12f, 20.0f};
+			auto& mesh = registry.emplace<MeshRendererComponent>(effect);
+			mesh.modelPath = "Resources/Models/player_ball/ball.obj";
+			mesh.texturePath = "Resources/Textures/white1x1.png";
+			mesh.shaderName = "ForceField";
+			mesh.useCubemap = false;
+			mesh.color = spawn.pulse ? DirectX::XMFLOAT4{0.88f, 0.28f, 1.0f, 0.48f} : DirectX::XMFLOAT4{0.38f, 0.55f, 1.0f, 0.35f};
+			if (ctx.renderer) {
+				mesh.modelHandle = ctx.renderer->LoadObjMesh(mesh.modelPath);
+				mesh.textureHandle = ctx.renderer->LoadTexture2D(mesh.texturePath);
+			}
+			registry.emplace<TagComponent>(effect, spawn.pulse ? TagType::Player : TagType::VFX);
+			registry.emplace<AutoDestroyComponent>(effect).timer = spawn.pulse ? 0.24f : 0.20f;
+			if (spawn.pulse) {
+				auto& hitbox = registry.emplace<HitboxComponent>(effect);
+				hitbox.isActive = true;
+				hitbox.damage = 6.0f;
+				hitbox.tag = TagType::Player;
+				hitbox.size = {30.0f, 8.0f, 30.0f};
+				auto& canEffect = registry.emplace<CanAttackEffectComponent>(effect);
+				canEffect.canType = CanType::Magnet;
+				canEffect.strength = 14.0f;
+			}
+			auto& particles = registry.emplace<ParticleEmitterComponent>(effect);
+			particles.emitter.params.name = spawn.pulse ? "MagnetRepulseParticles" : "MagnetPullParticles";
+			particles.emitter.params.emitRate = 0.0f;
+			particles.emitter.params.burstCount = spawn.pulse ? 48 : 12;
+			particles.emitter.params.lifeTime = 0.35f;
+			particles.emitter.params.startColor = {0.86f, 0.32f, 1.0f, 0.9f};
+			particles.emitter.params.endColor = {0.22f, 0.56f, 1.0f, 0.0f};
+			particles.emitter.params.startSize = {0.22f, 0.22f, 0.22f};
+			particles.emitter.params.endSize = {0.72f, 0.72f, 0.72f};
+			if (spawn.pulse) {
+				particles.emitter.params.velocityVariance = {7.0f, 2.0f, 7.0f};
+			} else {
+				particles.emitter.params.velocityVariance = {9.0f, 2.0f, 9.0f};
+			}
+			particles.emitter.params.isAdditive = true;
+			particles.emitter.params.shaderName = "SoftParticleAdditive";
+			particles.emitter.params.texturePath = "Resources/Textures/ball.png";
+		}
+		pendingMagnetEffects_.clear();
+	}
+
 	// ★追加: 缶の切り替え処理
-	void ChangeCan(entt::registry& registry, entt::entity /*playerEntity*/, PlayerActionComponent& pa, TransformComponent& ptc, CanType newCan, GameContext& ctx) {
+	void ChangeCan(entt::registry& registry, entt::entity playerEntity, PlayerActionComponent& pa, TransformComponent& ptc, CanType newCan, GameContext& ctx) {
 		if (pa.canEntity != entt::null && registry.valid(pa.canEntity)) {
 			if (ctx.scene) ctx.scene->DestroyObject(static_cast<uint32_t>(pa.canEntity));
 		}
+		if (pa.iceSlideApplied) RestoreIceSlide(registry, playerEntity, pa);
 		pa.currentCan = newCan;
 		pa.canEntity = entt::null;
 		pa.canDropProgress = 0.0f;
@@ -1265,6 +1617,14 @@ private:
 					mr.color = {0.2f, 0.5f, 1.0f, 1.0f}; // 青
 				} else if (newCan == CanType::Thunder) {
 					mr.color = {1.0f, 0.9f, 0.1f, 1.0f}; // 黄
+				} else if (newCan == CanType::Ice) {
+					mr.color = {0.35f, 0.88f, 1.0f, 1.0f};
+				} else if (newCan == CanType::Magnet) {
+					mr.color = {0.78f, 0.28f, 1.0f, 1.0f};
+				} else if (newCan == CanType::Acid) {
+					mr.color = {0.55f, 1.0f, 0.10f, 1.0f};
+				} else if (newCan == CanType::Bubble) {
+					mr.color = {1.0f, 0.38f, 0.78f, 1.0f};
 				}
 				
 				if (ctx.renderer) {
