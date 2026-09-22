@@ -113,6 +113,8 @@ static const float PARTICLE_MASS = 1.0f;
 static const float REST_DENSITY = 3.0f;     // 基準密度を下げる
 static const float GAS_CONSTANT = 50.0f;    // 反発力を弱める
 static const float VISCOSITY = 15.0f;       // 粘性
+static const float SLIME_SURFACE_TENSION = 18.0f;
+static const float WATER_SURFACE_TENSION = 4.0f;
 static const float GRAVITY = -20.0f;
 static const float PI = 3.1415926535f;
 static const uint NUM_GRID_CELLS = 65536;
@@ -124,6 +126,18 @@ static const float H_POWER_9 = 0.000262144f; // SMOOTHING_RADIUS^9
 static const float POLY6_COEFF = 315.0f / (64.0f * PI * H_POWER_9);
 static const float SPIKY_COEFF = 45.0f / (PI * H_POWER_6);
 static const float VISC_COEFF = 45.0f / (PI * H_POWER_6);
+
+uint GetFluidPhase(float type) {
+    // Player and its detached mass are the same material.  Decoys and water
+    // are separate phases and must not share density, pressure or viscosity.
+    if (type < 0.5f || (type > 2.5f && type < 3.5f)) return 0U;
+    if (type > 1.5f && type < 2.5f) return 1U;
+    return 2U;
+}
+
+bool CanFluidsInteract(float typeA, float typeB) {
+    return GetFluidPhase(typeA) == GetFluidPhase(typeB);
+}
 
 // ==========================================
 // 空間ハッシュグリッド用関数群
@@ -380,6 +394,7 @@ void CalcDensity(uint3 DTid : SV_DispatchThreadID) {
     }
     
     float3 pos_i = SortedParticles[i].position;
+    float type_i = SortedParticles[i].type;
     
     float density = 0.0f;
     
@@ -397,6 +412,7 @@ void CalcDensity(uint3 DTid : SV_DispatchThreadID) {
                     uint j = startIdx + k;
                     if (j >= maxParticles) break;
                     if (SortedParticles[j].position.y >= -500.0f) {
+                        if (!CanFluidsInteract(type_i, SortedParticles[j].type)) continue;
                         float3 diff = pos_i - SortedParticles[j].position;
                         float r2 = dot(diff, diff);
                         if (r2 < H2) {
@@ -437,6 +453,7 @@ void CalcForce(uint3 DTid : SV_DispatchThreadID) {
     
     float3 forcePressure = float3(0, 0, 0);
     float3 forceViscosity = float3(0, 0, 0);
+    float3 forceSurface = float3(0, 0, 0);
     
     int3 cell = GetCell(pi.position);
     for (int z = -1; z <= 1; ++z) {
@@ -453,6 +470,7 @@ void CalcForce(uint3 DTid : SV_DispatchThreadID) {
                     if (i != j) {
                         Particle pj = SortedParticles[j];
                         if (pj.position.y >= -500.0f) {
+                            if (!CanFluidsInteract(pi.type, pj.type)) continue;
                             float3 diff = pi.position - pj.position;
                             float r2 = dot(diff, diff);
                             
@@ -481,6 +499,13 @@ void CalcForce(uint3 DTid : SV_DispatchThreadID) {
                                 float currentViscosity = isSlimeType ? VISCOSITY : 0.02f;
                                 float3 velDiff = pj.velocity - pi.velocity;
                                 forceViscosity += velDiff * PARTICLE_MASS * invDensity * currentViscosity * VISC_COEFF * w;
+
+                                // Cohesion towards compatible neighbours gives the
+                                // material an explicit surface-tension term instead
+                                // of relying on oversized render billboards.
+                                float surfaceTension = isSlimeType ? SLIME_SURFACE_TENSION : WATER_SURFACE_TENSION;
+                                float normalizedKernel = saturate(w / SMOOTHING_RADIUS);
+                                forceSurface -= dir * surfaceTension * normalizedKernel * normalizedKernel;
                             }
                         }
                     }
@@ -496,7 +521,7 @@ void CalcForce(uint3 DTid : SV_DispatchThreadID) {
         forceViscosity *= 0.35f;
     }
 
-    float3 force = forcePressure + forceViscosity;
+    float3 force = forcePressure + forceViscosity + forceSurface;
 
     if (isLostPlayerSlimeForCluster) {
         uint sourceIndex = OriginalIndices[i];

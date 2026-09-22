@@ -1,3 +1,4 @@
+#include "FluidRenderSupport.hlsli"
 struct Particle {
     float3 position; float density;
     float3 velocity; float pressure;
@@ -31,7 +32,7 @@ VSOut main(VSIn v, uint instanceID : SV_InstanceID) {
     VSOut o;
     Particle p = Particles[instanceID];
     
-    if (p.color.a < 0.01f || p.position.y < -500.0f) {
+    if (FluidRenderSupport(p.density) <= 0 || p.color.a < 0.01f || p.position.y < -500.0f) {
         o.svpos = float4(0, 0, 0, 0);
         o.uv = float2(0, 0);
         o.type = 0.0f;

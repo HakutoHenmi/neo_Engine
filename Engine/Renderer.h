@@ -226,7 +226,7 @@ public:
 	// ★追加: 液体メタボール用の専用レンダーターゲット（ステップ1）
 	void BeginLiquidPass();
 	void EndLiquidPass();
-	D3D12_GPU_DESCRIPTOR_HANDLE GetLiquidSrv() const { return liquidSrv_; }
+	D3D12_GPU_DESCRIPTOR_HANDLE GetLiquidSrv() const { return liquidSrv_[0]; }
 
 	// ★追加: 外部（ParticleEditorなど）用のカスタムレンダーターゲット
 	struct CustomRenderTarget {
@@ -333,20 +333,24 @@ public:
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> psoFluidDensity_;
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> psoFluidForce_;
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> psoFluidWriteBack_;
-	Microsoft::WRL::ComPtr<ID3D12PipelineState> psoFluidRender_; 
+	Microsoft::WRL::ComPtr<ID3D12PipelineState> psoFluidDepthRender_[3];
+	Microsoft::WRL::ComPtr<ID3D12PipelineState> psoFluidRender_[3];
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> psoFluidDebug_; 
 	uint32_t gpuFluidMaxParticles_ = 32000;
 	uint32_t gpuFluidEmitCursorPlayer_ = 0;
 	uint32_t gpuFluidEmitCursorSplash_ = 2000;
 	uint32_t gpuFluidExtractCursor_ = 0;
 	uint32_t gpuFluidActiveParticleCount_ = 0;
+	// Conservative lifetime mask: never hide a live GPU particle based on a
+	// CPU timer. Bits are cleared only when the entire fluid pool is cleared.
+	uint32_t gpuFluidPhaseMask_ = 0;
 	bool isGPUFluidReady_ = false;
 	bool isGPUFluidInitialized_ = false;
 
 	void InitGPUFluid();
 	void UpdateGPUFluid(float dt);
 	void ResetGPUFluid();
-	void ClearGPUFluid() { gpuFluidActiveParticleCount_ = 0; }
+	void ClearGPUFluid() { gpuFluidActiveParticleCount_ = 0; gpuFluidPhaseMask_ = 0; }
 	void EmitGPUFluid(const Vector3& pos, const Vector3& velocityDir, const Vector4& color, int count, float type = 0.0f);
 	uint32_t ExtractGPUFluidFromPlayer(const Vector3& pos, const Vector3& velocityDir, int count);
 	void SyncLostGPUFluidGroup(uint32_t groupId, const Vector3& pos);
@@ -388,10 +392,29 @@ public:
 	bool GetDrawFluidDebugArrows() const { return drawFluidDebugArrows_; }
 
 	// ★追加: 深度ベースのメタボール用
-	Microsoft::WRL::ComPtr<ID3D12Resource> liquidDepthRT_;
-	D3D12_CPU_DESCRIPTOR_HANDLE liquidDepthRtv_{};
-	D3D12_GPU_DESCRIPTOR_HANDLE liquidDepthSrv_{};
-	D3D12_RESOURCE_STATES liquidDepthState_ = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+	// Independent phase layers prevent a foreground player/decoy from deleting
+	// water (or another fluid body) before transparent compositing.
+	Microsoft::WRL::ComPtr<ID3D12Resource> liquidRT_[3];
+	// View depth + density, reconstructed independently per phase.
+	Microsoft::WRL::ComPtr<ID3D12Resource> liquidSurface_[3][2];
+	D3D12_CPU_DESCRIPTOR_HANDLE liquidSurfaceRtv_[3][2]{};
+	D3D12_GPU_DESCRIPTOR_HANDLE liquidSurfaceSrv_[3][2]{};
+	Microsoft::WRL::ComPtr<ID3D12RootSignature> rootSigLiquid_;
+	Microsoft::WRL::ComPtr<ID3D12PipelineState> psoLiquidFilter_;
+	D3D12_GPU_DESCRIPTOR_HANDLE liquidNullCubeSrv_{};
+	D3D12_CPU_DESCRIPTOR_HANDLE liquidRtv_[3]{};
+	D3D12_GPU_DESCRIPTOR_HANDLE liquidSrv_[3]{};
+	D3D12_RESOURCE_STATES liquidState_[3] = {
+		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE };
+	Microsoft::WRL::ComPtr<ID3D12Resource> liquidDepthRT_[3];
+	D3D12_CPU_DESCRIPTOR_HANDLE liquidDepthRtv_[3]{};
+	D3D12_GPU_DESCRIPTOR_HANDLE liquidDepthSrv_[3]{};
+	D3D12_RESOURCE_STATES liquidDepthState_[3] = {
+		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE };
 
 	// ★追加: パーティクル描画 (UVスケール・オフセット付き)
 	void DrawParticle(MeshHandle mesh, TextureHandle texture, const Transform& transform, 
@@ -665,13 +688,6 @@ private:
 	D3D12_CPU_DESCRIPTOR_HANDLE backdropSrvCpu_{};
 	D3D12_CPU_DESCRIPTOR_HANDLE backdropSrvCpuMaster_{}; // ★追加
 	D3D12_GPU_DESCRIPTOR_HANDLE backdropSrv_{};
-
-	// ★追加: 液体メタボール用レンダーターゲット
-	Microsoft::WRL::ComPtr<ID3D12Resource> liquidRT_;
-	D3D12_CPU_DESCRIPTOR_HANDLE liquidRtv_{};
-	D3D12_GPU_DESCRIPTOR_HANDLE liquidSrv_{};
-	D3D12_RESOURCE_STATES liquidState_ = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
-
 
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> psoPP_;
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> psoPPDefault_; // ★追加: デフォルトPSOバックアップ
