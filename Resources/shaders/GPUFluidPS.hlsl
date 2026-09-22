@@ -1,12 +1,26 @@
 Texture2D<float4> tex : register(t0);
+Texture2D<float> frontDepthTex : register(t1);
 SamplerState smp : register(s0);
 
-struct PSOut {
-    float4 color : SV_TARGET0;
-    float depth : SV_TARGET1;
-};
+uint GetFluidPhase(float type) {
+    if (type < 0.5f || (type > 2.5f && type < 3.5f)) return 0U;
+    if (type > 1.5f && type < 2.5f) return 1U;
+    return 2U;
+}
 
-PSOut main(float4 svpos:SV_POSITION, float2 uv:TEXCOORD0, float viewZ:TEXCOORD1, float4 color:COLOR0, float type:TEXCOORD2) {
+float DecodeSurfaceDepth(float surfaceKey) {
+    return floor(surfaceKey * 0.25f) / 1024.0f;
+}
+
+uint DecodeSurfacePhase(float surfaceKey) {
+    return (uint)fmod(surfaceKey, 4.0f);
+}
+
+float4 RenderPhase(float4 svpos, float2 uv, float viewZ, float4 color,
+                   float type, uint targetPhase) {
+    if (GetFluidPhase(type) != targetPhase) {
+        discard;
+    }
     // 距離を計算 (UV: 0.0 ~ 1.0) -> 中心(0.5, 0.5) からの距離
     float2 centerOffset = uv - float2(0.5f, 0.5f);
     float distSq = dot(centerOffset, centerOffset);
@@ -21,7 +35,31 @@ PSOut main(float4 svpos:SV_POSITION, float2 uv:TEXCOORD0, float viewZ:TEXCOORD1,
     float alpha = saturate(1.0f - (dist / 0.5f));
     alpha = alpha * alpha * (3.0f - 2.0f * alpha); // Smoothstep曲線で滑らかに繋げる
     
-    // メタボール合成用に、アルファ（密度）を蓄積する
+    float sphereRadius = 0.90f;
+    if (type > 2.5f && type < 3.5f) {
+        sphereRadius = 0.65f;
+    } else if (type >= 0.5f) {
+        sphereRadius = 0.72f;
+    }
+
+    float normalizedDistSq = distSq * 4.0f;
+    float z_offset = sqrt(max(0.0f, 1.0f - normalizedDistSq)) * sphereRadius;
+    float fragmentDepth = viewZ - z_offset;
+    float surfaceKey = frontDepthTex.Load(int3(int2(svpos.xy), 0));
+    float frontDepth = DecodeSurfaceDepth(surfaceKey);
+    uint frontPhase = DecodeSurfacePhase(surfaceKey);
+
+    // Accumulate the thickness behind the resolved front surface.  The old
+    // symmetric 0.14 band kept only a thin shell, exposing every individual
+    // particle and leaving water below its visibility threshold.
+    float layerThickness = (frontPhase == 2U) ? 1.6f : 2.3f;
+    float depthBehindFront = fragmentDepth - frontDepth;
+    if (surfaceKey >= 1.0e19f || frontPhase != GetFluidPhase(type) ||
+        depthBehindFront < -0.03f || depthBehindFront > layerThickness) {
+        discard;
+    }
+
+    // メタボール合成用に、アルファ（厚み）を蓄積する
     float4 outColor = color;
     bool isPlayerSlime = (type < 0.5f);
     bool isDecoySlime = (type > 1.5f && type < 2.5f);
@@ -46,10 +84,10 @@ PSOut main(float4 svpos:SV_POSITION, float2 uv:TEXCOORD0, float viewZ:TEXCOORD1,
     } else {
         // カエルの卵のように黒く濁らないよう、元の明るい色をそのまま使う
         outColor.rgb = color.rgb;
-        // ★はぐれた水滴を完全に消すため、1粒のアルファをさらに下げます（0.07）。
-        // メタボールの閾値（0.08）を下回るため、2粒以上重ならないと描画されず、
+        // The larger reconstruction footprint closes gaps; keep each sample
+        // light so the accumulated surface does not saturate into white balls.
         // 完全に1枚の水たまりだけが残るようになります。
-        outColor.a = alpha * 0.07f * color.a; 
+        outColor.a = alpha * 0.055f * color.a;
     }
     
     // 加算ブレンド(ONE)で正しく色を乗せるための事前乗算アルファ (Premultiplied Alpha)
@@ -57,18 +95,23 @@ PSOut main(float4 svpos:SV_POSITION, float2 uv:TEXCOORD0, float viewZ:TEXCOORD1,
     
     if (outColor.a <= 0.0f) { discard; }
     
-    PSOut o;
-    o.color = outColor;
-    
-    // スライムの立体感を出すため、球体としての丸み（深度のオフセット）を計算する
-    // サイズはVSと合わせて0.7fとする。
-    float sphereRadius = 0.7f;
-    float normalizedDistSq = distSq * 4.0f; // 0.0 ~ 1.0
-    float z_offset = sqrt(max(0.0f, 1.0f - normalizedDistSq)) * sphereRadius;
-    
-    // 丸みを持たせた深度を出力する（これがMetaballPSで法線計算に使われる）
-    // 丸みによる重なりのノイズはMetaballPS側の平滑化処理で吸収する
-    o.depth = viewZ - z_offset; 
-    
-    return o;
+    return outColor;
+}
+
+float4 mainPhase0(float4 svpos : SV_POSITION, float2 uv : TEXCOORD0,
+                  float viewZ : TEXCOORD1, float4 color : COLOR0,
+                  float type : TEXCOORD2) : SV_TARGET0 {
+    return RenderPhase(svpos, uv, viewZ, color, type, 0U);
+}
+
+float4 mainPhase1(float4 svpos : SV_POSITION, float2 uv : TEXCOORD0,
+                  float viewZ : TEXCOORD1, float4 color : COLOR0,
+                  float type : TEXCOORD2) : SV_TARGET0 {
+    return RenderPhase(svpos, uv, viewZ, color, type, 1U);
+}
+
+float4 mainPhase2(float4 svpos : SV_POSITION, float2 uv : TEXCOORD0,
+                  float viewZ : TEXCOORD1, float4 color : COLOR0,
+                  float type : TEXCOORD2) : SV_TARGET0 {
+    return RenderPhase(svpos, uv, viewZ, color, type, 2U);
 }

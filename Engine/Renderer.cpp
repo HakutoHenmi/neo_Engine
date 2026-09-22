@@ -1207,6 +1207,8 @@ void Renderer::EndFrame() {
 	list_->SetGraphicsRootDescriptorTable(3, sumiEVignetteTex_ ? GetTextureSrvGpu(sumiEVignetteTex_) : ppSrvGpu_);
 	// ★修正: 深度バッファを t3 にバインド (法線バッファは廃止)
 	list_->SetGraphicsRootDescriptorTable(4, ppDepthSrvGpu_);
+	list_->SetGraphicsRootDescriptorTable(5, ppSrvGpu_);
+	list_->SetGraphicsRootDescriptorTable(6, ppDepthSrvGpu_);
 
 	list_->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 	list_->DrawInstanced(3, 1, 0, 0);
@@ -1241,10 +1243,12 @@ void Renderer::EndFrame() {
 	list_->SetGraphicsRootConstantBufferView(0, cbFrameAddr_);
 	list_->SetGraphicsRootDescriptorTable(1, finalSrvGpu_);
 	
-	// ★追加: 未バインドによるDevice Removed防止 (t1, t2, t3)
+	// ★追加: 未バインドによるDevice Removed防止 (t1 ... t5)
 	list_->SetGraphicsRootDescriptorTable(2, textures_[0].srvGpu);
 	list_->SetGraphicsRootDescriptorTable(3, textures_[0].srvGpu);
 	list_->SetGraphicsRootDescriptorTable(4, textures_[0].srvGpu);
+	list_->SetGraphicsRootDescriptorTable(5, textures_[0].srvGpu);
+	list_->SetGraphicsRootDescriptorTable(6, textures_[0].srvGpu);
 	
 	list_->DrawInstanced(3, 1, 0, 0);
 }
@@ -3077,13 +3081,19 @@ float4 main(float4 svpos:SV_POSITION, float2 uv:TEXCOORD0) : SV_TARGET {
 		rangeVignette.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 2); // t2: Vignette
 		CD3DX12_DESCRIPTOR_RANGE rangeDepth;
 		rangeDepth.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 3); // t3: Depth (Normalは廃止)
+		CD3DX12_DESCRIPTOR_RANGE rangeFluidColor2;
+		rangeFluidColor2.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 4); // t4
+		CD3DX12_DESCRIPTOR_RANGE rangeFluidDepth2;
+		rangeFluidDepth2.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 5); // t5
 
-		CD3DX12_ROOT_PARAMETER params[5]{};
+		CD3DX12_ROOT_PARAMETER params[7]{};
 		params[0].InitAsConstantBufferView(0); // b0
 		params[1].InitAsDescriptorTable(1, &rangeSRV, D3D12_SHADER_VISIBILITY_PIXEL); // t0
 		params[2].InitAsDescriptorTable(1, &rangePaper, D3D12_SHADER_VISIBILITY_PIXEL); // t1
 		params[3].InitAsDescriptorTable(1, &rangeVignette, D3D12_SHADER_VISIBILITY_PIXEL); // t2
 		params[4].InitAsDescriptorTable(1, &rangeDepth, D3D12_SHADER_VISIBILITY_PIXEL); // t3
+		params[5].InitAsDescriptorTable(1, &rangeFluidColor2, D3D12_SHADER_VISIBILITY_PIXEL); // t4
+		params[6].InitAsDescriptorTable(1, &rangeFluidDepth2, D3D12_SHADER_VISIBILITY_PIXEL); // t5
 
 		CD3DX12_STATIC_SAMPLER_DESC samp(0, D3D12_FILTER_MIN_MAG_MIP_LINEAR);
 		CD3DX12_ROOT_SIGNATURE_DESC rs{};
@@ -3256,16 +3266,40 @@ float4 main(float4 svpos:SV_POSITION, float2 uv:TEXCOORD0) : SV_TARGET {
 			}
 		}
 
-		// ★追加: Metaball ポストエフェクト（スクリーン空間流体・ステップ3）
+		// Fluid-only signature: the ordinary post effects keep their own bindings.
+		CD3DX12_DESCRIPTOR_RANGE fluidRanges[9];
+		CD3DX12_ROOT_PARAMETER fluidParams[11];
+		fluidParams[0].InitAsConstantBufferView(0);
+		for (UINT i = 0; i < 9; ++i) {
+			fluidRanges[i].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, i);
+			fluidParams[i + 1].InitAsDescriptorTable(1, &fluidRanges[i], D3D12_SHADER_VISIBILITY_PIXEL);
+		}
+		fluidParams[10].InitAsConstants(4, 1, 0, D3D12_SHADER_VISIBILITY_PIXEL);
+		CD3DX12_STATIC_SAMPLER_DESC fluidSampler(0, D3D12_FILTER_MIN_MAG_MIP_LINEAR,
+			D3D12_TEXTURE_ADDRESS_MODE_CLAMP, D3D12_TEXTURE_ADDRESS_MODE_CLAMP, D3D12_TEXTURE_ADDRESS_MODE_CLAMP);
+		CD3DX12_ROOT_SIGNATURE_DESC fluidRS;
+		fluidRS.Init(_countof(fluidParams), fluidParams, 1, &fluidSampler);
+		ComPtr<ID3DBlob> fluidSig, fluidError;
+		if (FAILED(D3D12SerializeRootSignature(&fluidRS, D3D_ROOT_SIGNATURE_VERSION_1, &fluidSig, &fluidError))) return false;
+		if (FAILED(dev_->CreateRootSignature(0, fluidSig->GetBufferPointer(), fluidSig->GetBufferSize(), IID_PPV_ARGS(&rootSigLiquid_)))) return false;
+		auto psSurface = CompileShaderFromFile(L"Resources/shaders/FluidSurfacePS.hlsl", "main", "ps_5_0");
+		if (!psSurface) return false;
+		D3D12_GRAPHICS_PIPELINE_STATE_DESC surfacePSO = pso;
+		surfacePSO.pRootSignature = rootSigLiquid_.Get();
+		surfacePSO.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
+		surfacePSO.PS = { psSurface->GetBufferPointer(), psSurface->GetBufferSize() };
+		surfacePSO.RTVFormats[0] = DXGI_FORMAT_R32G32_FLOAT;
+		if (FAILED(dev_->CreateGraphicsPipelineState(&surfacePSO, IID_PPV_ARGS(&psoLiquidFilter_)))) return false;
+
+		// Refractive composition writes the complete scene after per-pixel sorting.
 		auto psMetaball = CompileShaderFromFile(L"Resources/shaders/MetaballPS.hlsl", "main", "ps_5_0");
 		if (psMetaball) {
-			// メタボールはメインバッファに「アルファブレンド（加算など）」で合成したい場合もあるが、
-			// 基本はそのまま上書き（Zは既に書き込まれている）でブレンドする
-			// ここでは通常の半透明ブレンドを適用する
+			// Background transmission and all fluid layers are composed in the PS.
 			D3D12_GRAPHICS_PIPELINE_STATE_DESC psoMeta = pso;
+			psoMeta.pRootSignature = rootSigLiquid_.Get();
 			psoMeta.PS = { psMetaball->GetBufferPointer(), psMetaball->GetBufferSize() };
 			auto& rt = psoMeta.BlendState.RenderTarget[0];
-			rt.BlendEnable = TRUE;
+			rt.BlendEnable = FALSE;
 			rt.SrcBlend = D3D12_BLEND_ONE; // プレマルチプライド・アルファ
 			rt.DestBlend = D3D12_BLEND_INV_SRC_ALPHA;
 			rt.BlendOp = D3D12_BLEND_OP_ADD;
@@ -3301,7 +3335,7 @@ float4 main(float4 svpos:SV_POSITION, float2 uv:TEXCOORD0) : SV_TARGET {
 
 		D3D12_DESCRIPTOR_HEAP_DESC hd{};
 		hd.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
-		hd.NumDescriptors = 16; // ★修正: カスタムレンダーターゲット用に増やす
+		hd.NumDescriptors = 64; // Includes six fluid reconstruction ping-pong RTVs.
 		hr = dev_->CreateDescriptorHeap(&hd, IID_PPV_ARGS(&finalRtvHeap_));
 		if (FAILED(hr)) return false;
 		finalRtv_ = finalRtvHeap_->GetCPUDescriptorHandleForHeapStart();
@@ -3394,52 +3428,89 @@ float4 main(float4 svpos:SV_POSITION, float2 uv:TEXCOORD0) : SV_TARGET {
 	{
 		const UINT W = Engine::WindowDX::kW;
 		const UINT H = Engine::WindowDX::kH;
-		D3D12_RESOURCE_DESC rd = CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R8G8B8A8_UNORM, W, H, 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET);
 		CD3DX12_HEAP_PROPERTIES heap(D3D12_HEAP_TYPE_DEFAULT);
-		D3D12_CLEAR_VALUE cv = { DXGI_FORMAT_R8G8B8A8_UNORM, {0,0,0,0} }; // 完全に透明でクリア
-		HRESULT hr = dev_->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &rd, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, &cv, IID_PPV_ARGS(&liquidRT_));
-		if (SUCCEEDED(hr)) {
-			liquidState_ = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+		const UINT rtvStride = dev_->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
+		D3D12_SHADER_RESOURCE_VIEW_DESC nullCube{};
+		nullCube.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+		nullCube.ViewDimension = D3D12_SRV_DIMENSION_TEXTURECUBE;
+		nullCube.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+		nullCube.TextureCube.MipLevels = 1;
+		const UINT nullCubeIndex = AllocateSrvIndex();
+		dev_->CreateShaderResourceView(nullptr, &nullCube, window_->SRV_CPU((int)nullCubeIndex));
+		dev_->CreateShaderResourceView(nullptr, &nullCube, window_->SRV_CPU_Master((int)nullCubeIndex));
+		liquidNullCubeSrv_ = window_->SRV_GPU((int)nullCubeIndex);
+		for (uint32_t phase = 0; phase < 3; ++phase) {
+			for (uint32_t ping = 0; ping < 2; ++ping) {
+				auto surfaceDesc = CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R32G32_FLOAT,
+					(W + 1) / 2, (H + 1) / 2, 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET);
+				D3D12_CLEAR_VALUE surfaceClear = { DXGI_FORMAT_R32G32_FLOAT, { 0, 0, 0, 0 } };
+				if (FAILED(dev_->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &surfaceDesc,
+					D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, &surfaceClear, IID_PPV_ARGS(&liquidSurface_[phase][ping])))) return false;
+				liquidSurfaceRtv_[phase][ping] = CD3DX12_CPU_DESCRIPTOR_HANDLE(
+					finalRtvHeap_->GetCPUDescriptorHandleForHeapStart(), rtvCursor_++, rtvStride);
+				dev_->CreateRenderTargetView(liquidSurface_[phase][ping].Get(), nullptr, liquidSurfaceRtv_[phase][ping]);
+				D3D12_SHADER_RESOURCE_VIEW_DESC surfaceSrv{};
+				surfaceSrv.Format = DXGI_FORMAT_R32G32_FLOAT;
+				surfaceSrv.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+				surfaceSrv.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+				surfaceSrv.Texture2D.MipLevels = 1;
+				const UINT index = AllocateSrvIndex();
+				dev_->CreateShaderResourceView(liquidSurface_[phase][ping].Get(), &surfaceSrv, window_->SRV_CPU((int)index));
+				dev_->CreateShaderResourceView(liquidSurface_[phase][ping].Get(), &surfaceSrv, window_->SRV_CPU_Master((int)index));
+				liquidSurfaceSrv_[phase][ping] = window_->SRV_GPU((int)index);
+			}
+			D3D12_RESOURCE_DESC colorDesc = CD3DX12_RESOURCE_DESC::Tex2D(
+				DXGI_FORMAT_R16G16B16A16_FLOAT, W, H, 1, 1, 1, 0,
+				D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET);
+			D3D12_CLEAR_VALUE colorClear = {
+				DXGI_FORMAT_R16G16B16A16_FLOAT, { 0, 0, 0, 0 } };
+			HRESULT hr = dev_->CreateCommittedResource(
+				&heap, D3D12_HEAP_FLAG_NONE, &colorDesc,
+				D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, &colorClear,
+				IID_PPV_ARGS(&liquidRT_[phase]));
+			if (FAILED(hr)) continue;
 
-			uint32_t rtvIdx = rtvCursor_++;
-			liquidRtv_ = CD3DX12_CPU_DESCRIPTOR_HANDLE(finalRtvHeap_->GetCPUDescriptorHandleForHeapStart(), rtvIdx, dev_->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV));
-			dev_->CreateRenderTargetView(liquidRT_.Get(), nullptr, liquidRtv_);
+			liquidRtv_[phase] = CD3DX12_CPU_DESCRIPTOR_HANDLE(
+				finalRtvHeap_->GetCPUDescriptorHandleForHeapStart(), rtvCursor_++, rtvStride);
+			dev_->CreateRenderTargetView(liquidRT_[phase].Get(), nullptr, liquidRtv_[phase]);
 
-			uint32_t sIdx = AllocateSrvIndex();
-			liquidSrv_ = window_->SRV_GPU((int)sIdx);
-			D3D12_SHADER_RESOURCE_VIEW_DESC srv{};
-			srv.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-			srv.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
-			srv.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-			srv.Texture2D.MipLevels = 1;
-			dev_->CreateShaderResourceView(liquidRT_.Get(), &srv, window_->SRV_CPU((int)sIdx));
-			dev_->CreateShaderResourceView(liquidRT_.Get(), &srv, window_->SRV_CPU_Master((int)sIdx));
-		}
-		
-		// ★追加: スライム（流体）のスクリーン空間深度用レンダーターゲット (R32_FLOAT)
-		rd.Format = DXGI_FORMAT_R32_FLOAT;
-		cv.Format = DXGI_FORMAT_R32_FLOAT;
-		cv.Color[0] = 10000.0f; // 背景は非常に遠くに設定
-		hr = dev_->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &rd, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, &cv, IID_PPV_ARGS(&liquidDepthRT_));
-		if (SUCCEEDED(hr)) {
-			liquidDepthState_ = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
-			
-			uint32_t rtvIdx = rtvCursor_++;
-			liquidDepthRtv_ = CD3DX12_CPU_DESCRIPTOR_HANDLE(finalRtvHeap_->GetCPUDescriptorHandleForHeapStart(), rtvIdx, dev_->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV));
-			D3D12_RENDER_TARGET_VIEW_DESC rtvDesc{};
-			rtvDesc.Format = DXGI_FORMAT_R32_FLOAT;
-			rtvDesc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D;
-			dev_->CreateRenderTargetView(liquidDepthRT_.Get(), &rtvDesc, liquidDepthRtv_);
+			uint32_t colorSrvIndex = AllocateSrvIndex();
+			liquidSrv_[phase] = window_->SRV_GPU((int)colorSrvIndex);
+			D3D12_SHADER_RESOURCE_VIEW_DESC colorSrv{};
+			colorSrv.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+			colorSrv.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+			colorSrv.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+			colorSrv.Texture2D.MipLevels = 1;
+			dev_->CreateShaderResourceView(liquidRT_[phase].Get(), &colorSrv, window_->SRV_CPU((int)colorSrvIndex));
+			dev_->CreateShaderResourceView(liquidRT_[phase].Get(), &colorSrv, window_->SRV_CPU_Master((int)colorSrvIndex));
 
-			uint32_t sIdx = AllocateSrvIndex();
-			liquidDepthSrv_ = window_->SRV_GPU((int)sIdx);
-			D3D12_SHADER_RESOURCE_VIEW_DESC srv{};
-			srv.Format = DXGI_FORMAT_R32_FLOAT;
-			srv.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
-			srv.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-			srv.Texture2D.MipLevels = 1;
-			dev_->CreateShaderResourceView(liquidDepthRT_.Get(), &srv, window_->SRV_CPU((int)sIdx));
-			dev_->CreateShaderResourceView(liquidDepthRT_.Get(), &srv, window_->SRV_CPU_Master((int)sIdx));
+			D3D12_RESOURCE_DESC depthDesc = CD3DX12_RESOURCE_DESC::Tex2D(
+				DXGI_FORMAT_R32_FLOAT, W, H, 1, 1, 1, 0,
+				D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET);
+			D3D12_CLEAR_VALUE depthClear = {
+				DXGI_FORMAT_R32_FLOAT, { 1.0e20f, 0, 0, 0 } };
+			hr = dev_->CreateCommittedResource(
+				&heap, D3D12_HEAP_FLAG_NONE, &depthDesc,
+				D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, &depthClear,
+				IID_PPV_ARGS(&liquidDepthRT_[phase]));
+			if (FAILED(hr)) continue;
+
+			liquidDepthRtv_[phase] = CD3DX12_CPU_DESCRIPTOR_HANDLE(
+				finalRtvHeap_->GetCPUDescriptorHandleForHeapStart(), rtvCursor_++, rtvStride);
+			D3D12_RENDER_TARGET_VIEW_DESC depthRtv{};
+			depthRtv.Format = DXGI_FORMAT_R32_FLOAT;
+			depthRtv.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D;
+			dev_->CreateRenderTargetView(liquidDepthRT_[phase].Get(), &depthRtv, liquidDepthRtv_[phase]);
+
+			uint32_t depthSrvIndex = AllocateSrvIndex();
+			liquidDepthSrv_[phase] = window_->SRV_GPU((int)depthSrvIndex);
+			D3D12_SHADER_RESOURCE_VIEW_DESC depthSrv{};
+			depthSrv.Format = DXGI_FORMAT_R32_FLOAT;
+			depthSrv.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+			depthSrv.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+			depthSrv.Texture2D.MipLevels = 1;
+			dev_->CreateShaderResourceView(liquidDepthRT_[phase].Get(), &depthSrv, window_->SRV_CPU((int)depthSrvIndex));
+			dev_->CreateShaderResourceView(liquidDepthRT_[phase].Get(), &depthSrv, window_->SRV_CPU_Master((int)depthSrvIndex));
 		}
 	}
 
@@ -4203,47 +4274,106 @@ void Renderer::DrawSkybox() {
 
 // ★追加: 液体描画パス開始
 void Renderer::BeginLiquidPass() {
-	if (!liquidRT_ || !liquidDepthRT_) return;
+	if (!liquidRT_[0] || !liquidDepthRT_[0]) return;
 
-	if (liquidState_ != D3D12_RESOURCE_STATE_RENDER_TARGET) {
-		D3D12_RESOURCE_BARRIER barriers[2];
-		barriers[0] = CD3DX12_RESOURCE_BARRIER::Transition(liquidRT_.Get(), liquidState_, D3D12_RESOURCE_STATE_RENDER_TARGET);
-		barriers[1] = CD3DX12_RESOURCE_BARRIER::Transition(liquidDepthRT_.Get(), liquidDepthState_, D3D12_RESOURCE_STATE_RENDER_TARGET);
-		list_->ResourceBarrier(2, barriers);
-		liquidState_ = D3D12_RESOURCE_STATE_RENDER_TARGET;
-		liquidDepthState_ = D3D12_RESOURCE_STATE_RENDER_TARGET;
+	D3D12_RESOURCE_BARRIER barriers[6];
+	UINT barrierCount = 0;
+	for (uint32_t phase = 0; phase < 3; ++phase) {
+		if (liquidState_[phase] != D3D12_RESOURCE_STATE_RENDER_TARGET) {
+			barriers[barrierCount++] = CD3DX12_RESOURCE_BARRIER::Transition(
+				liquidRT_[phase].Get(), liquidState_[phase], D3D12_RESOURCE_STATE_RENDER_TARGET);
+			liquidState_[phase] = D3D12_RESOURCE_STATE_RENDER_TARGET;
+		}
+		if (liquidDepthState_[phase] != D3D12_RESOURCE_STATE_RENDER_TARGET) {
+			barriers[barrierCount++] = CD3DX12_RESOURCE_BARRIER::Transition(
+				liquidDepthRT_[phase].Get(), liquidDepthState_[phase], D3D12_RESOURCE_STATE_RENDER_TARGET);
+			liquidDepthState_[phase] = D3D12_RESOURCE_STATE_RENDER_TARGET;
+		}
 	}
+	if (barrierCount > 0) list_->ResourceBarrier(barrierCount, barriers);
 
-	D3D12_CPU_DESCRIPTOR_HANDLE rtvs[2] = { liquidRtv_, liquidDepthRtv_ };
-	list_->OMSetRenderTargets(2, rtvs, FALSE, &ppDepthDsv_);
-
-	const float clearColor[4] = {0.0f, 0.0f, 0.0f, 0.0f};
-	list_->ClearRenderTargetView(liquidRtv_, clearColor, 0, nullptr);
-	
-	const float clearDepth[4] = {10000.0f, 0.0f, 0.0f, 0.0f};
-	list_->ClearRenderTargetView(liquidDepthRtv_, clearDepth, 0, nullptr);
+	const float clearColor[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+	const float clearDepth[4] = { 1.0e20f, 0.0f, 0.0f, 0.0f };
+	for (uint32_t phase = 0; phase < 3; ++phase) {
+		list_->ClearRenderTargetView(liquidRtv_[phase], clearColor, 0, nullptr);
+		list_->ClearRenderTargetView(liquidDepthRtv_[phase], clearDepth, 0, nullptr);
+	}
 }
 
 // ★追加: 液体描画パス終了
 void Renderer::EndLiquidPass() {
-	if (!liquidRT_ || !liquidDepthRT_) return;
+	if (!liquidRT_[0] || !liquidDepthRT_[0] || !psoLiquidFilter_ || !liquidSurface_[2][1]) return;
 
-	if (liquidState_ != D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE) {
-		D3D12_RESOURCE_BARRIER barriers[2];
-		barriers[0] = CD3DX12_RESOURCE_BARRIER::Transition(liquidRT_.Get(), liquidState_, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
-		barriers[1] = CD3DX12_RESOURCE_BARRIER::Transition(liquidDepthRT_.Get(), liquidDepthState_, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
-		list_->ResourceBarrier(2, barriers);
-		liquidState_ = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
-		liquidDepthState_ = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+	D3D12_RESOURCE_BARRIER barriers[6];
+	UINT barrierCount = 0;
+	for (uint32_t phase = 0; phase < 3; ++phase) {
+		if (liquidState_[phase] != D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE) {
+			barriers[barrierCount++] = CD3DX12_RESOURCE_BARRIER::Transition(
+				liquidRT_[phase].Get(), liquidState_[phase], D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+			liquidState_[phase] = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+		}
+		if (liquidDepthState_[phase] != D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE) {
+			barriers[barrierCount++] = CD3DX12_RESOURCE_BARRIER::Transition(
+				liquidDepthRT_[phase].Get(), liquidDepthState_[phase], D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+			liquidDepthState_[phase] = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+		}
 	}
+	if (barrierCount > 0) list_->ResourceBarrier(barrierCount, barriers);
 
-	// 元のメインレンダーターゲットに戻す
-	list_->OMSetRenderTargets(1, &ppRtv_, FALSE, &ppDepthDsv_);
+	SnapshotSceneForRefraction(list_);
+	list_->SetGraphicsRootSignature(rootSigLiquid_.Get());
+	list_->SetGraphicsRootConstantBufferView(0, cbFrameAddr_);
+	list_->SetPipelineState(psoLiquidFilter_.Get());
+	list_->RSSetViewports(1, &viewport_);
+	list_->RSSetScissorRects(1, &scissor_);
+	ID3D12DescriptorHeap* fluidHeaps[] = { srvHeap_ };
+	list_->SetDescriptorHeaps(1, fluidHeaps);
+	// All declared tables are valid even for PS entries that do not use them.
+	for (UINT i = 1; i <= 8; ++i) list_->SetGraphicsRootDescriptorTable(i, liquidSrv_[0]);
+	list_->SetGraphicsRootDescriptorTable(9, envMapSrvGpu_.ptr ? envMapSrvGpu_ : liquidNullCubeSrv_);
+	list_->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+	// Dense first passes prefilter the input before broader sampling. Unlike a
+	// single sparse 7x7 regression, adjacent output pixels share filtered data.
+	const auto surfaceDesc = liquidSurface_[0][0]->GetDesc();
+	const D3D12_VIEWPORT surfaceViewport = { 0, 0, static_cast<float>(surfaceDesc.Width),
+		static_cast<float>(surfaceDesc.Height), 0, 1 };
+	const D3D12_RECT surfaceScissor = { 0, 0, static_cast<LONG>(surfaceDesc.Width), static_cast<LONG>(surfaceDesc.Height) };
+	list_->RSSetViewports(1, &surfaceViewport);
+	list_->RSSetScissorRects(1, &surfaceScissor);
+	// Half-resolution offsets retain approximately the previous world footprint.
+	const float strides[8] = { 1, 1, 2, 2, 4, 4, 6, 6 };
+	for (UINT phase = 0; phase < 3; ++phase) {
+		if ((gpuFluidPhaseMask_ & (1u << phase)) == 0) continue;
+		list_->SetGraphicsRootDescriptorTable(1, liquidSrv_[phase]);
+		list_->SetGraphicsRootDescriptorTable(2, liquidDepthSrv_[phase]);
+		for (UINT pass = 0; pass < _countof(strides); ++pass) {
+			const UINT destination = pass % 2;
+			// Pass zero does not read the previous surface. Bind raw colour to
+			// avoid even a dormant reference to an uninitialized ping-pong RT.
+			list_->SetGraphicsRootDescriptorTable(3, pass == 0 ? liquidSrv_[phase] : liquidSurfaceSrv_[phase][1 - destination]);
+			auto toRT = CD3DX12_RESOURCE_BARRIER::Transition(liquidSurface_[phase][destination].Get(),
+				D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_RENDER_TARGET);
+			list_->ResourceBarrier(1, &toRT);
+			list_->OMSetRenderTargets(1, &liquidSurfaceRtv_[phase][destination], FALSE, nullptr);
+			const float settings[4] = { pass % 2 == 0 ? 1.0f : 0.0f,
+				pass % 2 == 0 ? 0.0f : 1.0f, strides[pass], pass == 0 ? 1.0f : 0.0f };
+			list_->SetGraphicsRoot32BitConstants(10, 4, settings, 0);
+			list_->DrawInstanced(3, 1, 0, 0);
+			auto toSRV = CD3DX12_RESOURCE_BARRIER::Transition(liquidSurface_[phase][destination].Get(),
+				D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+			list_->ResourceBarrier(1, &toSRV);
+		}
+	}
+	auto depthToSRV = CD3DX12_RESOURCE_BARRIER::Transition(ppSceneDepth_.Get(),
+		ppDepthState_, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+	list_->ResourceBarrier(1, &depthToSRV);
+	ppDepthState_ = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+	list_->OMSetRenderTargets(1, &ppRtv_, FALSE, nullptr);
 
 	// ★追加（ステップ3）: Metaballシェーダーを使ってメイン画面に合成（コンポジット）
 	if (pipelines_.count("Metaball")) {
 		list_->SetPipelineState(pipelines_["Metaball"].Get());
-		list_->SetGraphicsRootSignature(rootSigPP_.Get());
+		list_->SetGraphicsRootSignature(rootSigLiquid_.Get());
 		list_->RSSetViewports(1, &viewport_);
 		list_->RSSetScissorRects(1, &scissor_);
 
@@ -4255,17 +4385,27 @@ void Renderer::EndLiquidPass() {
 			list_->SetGraphicsRootConstantBufferView(0, cbFrameAddr_);
 		}
 		
-		// t0: liquidSrv_ (色)
-		list_->SetGraphicsRootDescriptorTable(1, liquidSrv_);
-		// t1: liquidDepthSrv_ (深度) 
-		list_->SetGraphicsRootDescriptorTable(2, liquidDepthSrv_);
-		// ★追加: 未バインドによるDevice Removed防止 (t2, t3)
-		list_->SetGraphicsRootDescriptorTable(3, textures_[0].srvGpu);
-		list_->SetGraphicsRootDescriptorTable(4, textures_[0].srvGpu);
-
+		// Bind all material layers.  MetaballPS performs a per-pixel view-depth
+		// sort, so no material has a permanently privileged draw order.
+		const UINT compositeSettings[4] = { gpuFluidPhaseMask_, 0, 0, 0 };
+		list_->SetGraphicsRoot32BitConstants(10, 4, compositeSettings, 0);
+		list_->SetGraphicsRootDescriptorTable(1, liquidDepthSrv_[0]);
+		list_->SetGraphicsRootDescriptorTable(2, liquidSurfaceSrv_[0][1]);
+		list_->SetGraphicsRootDescriptorTable(3, liquidDepthSrv_[1]);
+		list_->SetGraphicsRootDescriptorTable(4, liquidSurfaceSrv_[1][1]);
+		list_->SetGraphicsRootDescriptorTable(5, liquidDepthSrv_[2]);
+		list_->SetGraphicsRootDescriptorTable(6, liquidSurfaceSrv_[2][1]);
+		list_->SetGraphicsRootDescriptorTable(7, backdropSrv_);
+		list_->SetGraphicsRootDescriptorTable(8, ppDepthSrvGpu_);
+		list_->SetGraphicsRootDescriptorTable(9, envMapSrvGpu_.ptr ? envMapSrvGpu_ : liquidNullCubeSrv_);
 		list_->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 		list_->DrawInstanced(3, 1, 0, 0);
 	}
+	auto depthToWrite = CD3DX12_RESOURCE_BARRIER::Transition(ppSceneDepth_.Get(),
+		ppDepthState_, D3D12_RESOURCE_STATE_DEPTH_WRITE);
+	list_->ResourceBarrier(1, &depthToWrite);
+	ppDepthState_ = D3D12_RESOURCE_STATE_DEPTH_WRITE;
+	list_->OMSetRenderTargets(1, &ppRtv_, FALSE, &ppDepthDsv_);
 }
 // ★追加: GPU流体パーティクルシステム
 void Renderer::InitGPUFluid() {
@@ -4344,13 +4484,23 @@ void Renderer::InitGPUFluid() {
 		dev_->CreateComputePipelineState(&psoDesc, IID_PPV_ARGS(&psoFluidWriteBack_));
 	}
 
-	auto vsBlob = CompileShaderFromFile(L"Resources/shaders/GPUFluidVS.hlsl", "main", "vs_5_0");
-	auto psBlob = CompileShaderFromFile(L"Resources/shaders/GPUFluidPS.hlsl", "main", "ps_5_0"); // ★変更
-	if (vsBlob && psBlob) {
+	const char* phaseEntries[3] = { "mainPhase0", "mainPhase1", "mainPhase2" };
+	Microsoft::WRL::ComPtr<ID3DBlob> vsBlobs[3];
+	Microsoft::WRL::ComPtr<ID3DBlob> psBlobs[3];
+	Microsoft::WRL::ComPtr<ID3DBlob> psDepthBlobs[3];
+	bool fluidShadersReady = true;
+	for (uint32_t phase = 0; phase < 3; ++phase) {
+		vsBlobs[phase] = CompileShaderFromFile(
+			L"Resources/shaders/GPUFluidVS.hlsl", phaseEntries[phase], "vs_5_0");
+		psBlobs[phase] = CompileShaderFromFile(
+			L"Resources/shaders/GPUFluidPS.hlsl", phaseEntries[phase], "ps_5_0");
+		psDepthBlobs[phase] = CompileShaderFromFile(
+			L"Resources/shaders/GPUFluidDepthPS.hlsl", phaseEntries[phase], "ps_5_0");
+		fluidShadersReady = fluidShadersReady && vsBlobs[phase] && psBlobs[phase] && psDepthBlobs[phase];
+	}
+	if (fluidShadersReady) {
 		D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc{};
 		psoDesc.pRootSignature = rootSig3D_.Get();
-		psoDesc.VS = {vsBlob->GetBufferPointer(), vsBlob->GetBufferSize()};
-		psoDesc.PS = {psBlob->GetBufferPointer(), psBlob->GetBufferSize()};
 		D3D12_INPUT_ELEMENT_DESC layout[] = {
 			{"POSITION", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 0,  D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
 			{"TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT,       0, 16, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
@@ -4358,9 +4508,9 @@ void Renderer::InitGPUFluid() {
 		};
 		psoDesc.InputLayout = {layout, _countof(layout)};
 		psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
-		psoDesc.NumRenderTargets = 2;
-		psoDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
-		psoDesc.RTVFormats[1] = DXGI_FORMAT_R32_FLOAT;
+		psoDesc.NumRenderTargets = 1;
+		// Preserve additive density and premultiplied colour beyond 1.0.
+		psoDesc.RTVFormats[0] = DXGI_FORMAT_R16G16B16A16_FLOAT;
 		psoDesc.SampleDesc.Count = 1;
 		psoDesc.SampleMask = UINT_MAX;
 		psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
@@ -4369,27 +4519,41 @@ void Renderer::InitGPUFluid() {
 		// RenderTarget[0]: 色と密度の蓄積 (加算ブレンド)
 		auto& rt0 = psoDesc.BlendState.RenderTarget[0];
 		rt0.BlendEnable = TRUE;
-		rt0.SrcBlend = D3D12_BLEND_SRC_ALPHA;
-		rt0.DestBlend = D3D12_BLEND_ONE; // ← 加算ブレンドに変更
+		rt0.SrcBlend = D3D12_BLEND_ONE;
+		rt0.DestBlend = D3D12_BLEND_ONE;
 		rt0.BlendOp = D3D12_BLEND_OP_ADD;
 		// ★変更: アルファ成分を加算合成にしてメタボールの密度を蓄積する
 		rt0.SrcBlendAlpha = D3D12_BLEND_ONE;
 		rt0.DestBlendAlpha = D3D12_BLEND_ONE;
 		rt0.BlendOpAlpha = D3D12_BLEND_OP_ADD;
 
-		// RenderTarget[1]: 深度の記録 (手前の面を残すためMINブレンド)
-		auto& rt1 = psoDesc.BlendState.RenderTarget[1];
-		rt1.BlendEnable = TRUE;
-		rt1.SrcBlend = D3D12_BLEND_ONE;
-		rt1.DestBlend = D3D12_BLEND_ONE;
-		rt1.BlendOp = D3D12_BLEND_OP_MIN; // 最小値 (最も手前の深度) を残す
-		rt1.SrcBlendAlpha = D3D12_BLEND_ONE;
-		rt1.DestBlendAlpha = D3D12_BLEND_ONE;
-		rt1.BlendOpAlpha = D3D12_BLEND_OP_MIN;
 		psoDesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
 		psoDesc.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ZERO; 
 		psoDesc.DSVFormat = DXGI_FORMAT_D32_FLOAT;
-		dev_->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&psoFluidRender_));
+
+		for (uint32_t phase = 0; phase < 3; ++phase) {
+			psoDesc.VS = { vsBlobs[phase]->GetBufferPointer(), vsBlobs[phase]->GetBufferSize() };
+			psoDesc.PS = { psBlobs[phase]->GetBufferPointer(), psBlobs[phase]->GetBufferSize() };
+			dev_->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&psoFluidRender_[phase]));
+
+			// Each material gets its own nearest surface.  A player can therefore
+			// occlude water during composition without deleting its reconstruction.
+			D3D12_GRAPHICS_PIPELINE_STATE_DESC depthPso = psoDesc;
+			depthPso.PS = {
+				psDepthBlobs[phase]->GetBufferPointer(), psDepthBlobs[phase]->GetBufferSize() };
+			depthPso.RTVFormats[0] = DXGI_FORMAT_R32_FLOAT;
+			depthPso.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
+			auto& depthRt = depthPso.BlendState.RenderTarget[0];
+			depthRt.BlendEnable = TRUE;
+			depthRt.SrcBlend = D3D12_BLEND_ONE;
+			depthRt.DestBlend = D3D12_BLEND_ONE;
+			depthRt.BlendOp = D3D12_BLEND_OP_MIN;
+			depthRt.SrcBlendAlpha = D3D12_BLEND_ONE;
+			depthRt.DestBlendAlpha = D3D12_BLEND_ONE;
+			depthRt.BlendOpAlpha = D3D12_BLEND_OP_MIN;
+			dev_->CreateGraphicsPipelineState(
+				&depthPso, IID_PPV_ARGS(&psoFluidDepthRender_[phase]));
+		}
 	}
 
 	auto vsShadow = CompileShaderFromFile(L"Resources/shaders/GPUFluidShadowVS.hlsl", "main", "vs_5_0");
@@ -4495,6 +4659,7 @@ void Renderer::ResetGPUFluid() {
 	gpuFluidEmitCursorSplash_ = 2000;
 	gpuFluidExtractCursor_ = 0;
 	gpuFluidActiveParticleCount_ = 0;
+	gpuFluidPhaseMask_ = 0;
 	isGPUFluidInitialized_ = false;
 	gpuFluidAABBs_.clear();
 
@@ -4701,6 +4866,9 @@ void Renderer::EmitGPUFluid(const Vector3& pos, const Vector3& velocityDir, cons
 	uint32_t rangeSize = endIndex - startIndex;
 	if (rangeSize == 0) return;
 	uint32_t emitCount = (std::min)(static_cast<uint32_t>(count), rangeSize);
+	const uint32_t phase = (type < 0.5f || (type > 2.5f && type < 3.5f)) ? 0u :
+		((type > 1.5f && type < 2.5f) ? 1u : 2u);
+	gpuFluidPhaseMask_ |= 1u << phase;
 	
 	cb.dt = 0.0f; cb.emitCursor = *cursorPtr; cb.emitCount = emitCount; cb.maxParticles = gpuFluidMaxParticles_;
 	cb.emitPos = pos; cb.emitType = type; cb.emitDir = velocityDir; cb.emitStartIndex = startIndex; cb.emitColor = color;
@@ -4837,6 +5005,7 @@ uint32_t Renderer::ExtractGPUFluidFromPlayer(const Vector3& pos, const Vector3& 
 
 	gpuFluidExtractCursor_ = startIndex + ((gpuFluidExtractCursor_ - startIndex + extractCount) % rangeSize);
 	gpuFluidActiveParticleCount_ = (std::max)(gpuFluidActiveParticleCount_, endIndex);
+	gpuFluidPhaseMask_ |= 1u; // Extracted player particles remain phase zero.
 	return firstGroupId;
 }
 
@@ -4930,10 +5099,10 @@ void Renderer::AbsorbLostGPUFluidGroup(uint32_t groupId) {
 }
 
 void Renderer::DrawGPUFluid(TextureHandle texture) {
-	if (!isGPUFluidReady_ || !psoFluidRender_ || !gpuFluidBuffer_) return;
+	if (!isGPUFluidReady_ || !psoFluidDepthRender_[0] || !psoFluidRender_[0] || !gpuFluidBuffer_) return;
 	uint32_t drawCount = (std::min)(gpuFluidActiveParticleCount_, gpuFluidMaxParticles_);
 	if (drawCount == 0) return;
-	list_->SetPipelineState(psoFluidRender_.Get());
+
 	list_->SetGraphicsRootSignature(rootSig3D_.Get());
 	list_->SetGraphicsRootConstantBufferView(0, cbFrameAddr_);
 	
@@ -4944,10 +5113,6 @@ void Renderer::DrawGPUFluid(TextureHandle texture) {
 	
 	list_->SetGraphicsRootDescriptorTable(3, GetTextureSrvGpu(texture));
 	
-	// ★追加: 未バインドによるDevice Removed防止 (ShadowMap)
-	if (shadowSrv_.ptr != 0) list_->SetGraphicsRootDescriptorTable(5, shadowSrv_);
-	else list_->SetGraphicsRootDescriptorTable(5, textures_[0].srvGpu);
-	
 	auto b1 = CD3DX12_RESOURCE_BARRIER::Transition(gpuFluidBuffer_.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
 	list_->ResourceBarrier(1, &b1);
 	list_->SetGraphicsRootShaderResourceView(6, gpuFluidBuffer_->GetGPUVirtualAddress());
@@ -4956,9 +5121,32 @@ void Renderer::DrawGPUFluid(TextureHandle texture) {
 	if (envMapSrvGpu_.ptr != 0) list_->SetGraphicsRootDescriptorTable(7, envMapSrvGpu_);
 	else list_->SetGraphicsRootDescriptorTable(7, textures_[0].srvGpu);
 
-    list_->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-    // 外部モデルに依存せず、頂点シェーダー内で直接ビルボードを生成するため頂点バッファはセットしない
-    list_->DrawInstanced(6, drawCount, 0, 0);
+	list_->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+
+	for (uint32_t phase = 0; phase < 3; ++phase) {
+		// Pass 1: resolve the nearest surface independently for this material.
+		if ((gpuFluidPhaseMask_ & (1u << phase)) == 0) continue;
+		list_->OMSetRenderTargets(1, &liquidDepthRtv_[phase], FALSE, &ppDepthDsv_);
+		list_->SetPipelineState(psoFluidDepthRender_[phase].Get());
+		list_->SetGraphicsRootDescriptorTable(5, textures_[0].srvGpu);
+		list_->DrawInstanced(6, drawCount, 0, 0);
+
+		if (liquidDepthState_[phase] != D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE) {
+			auto depthBarrier = CD3DX12_RESOURCE_BARRIER::Transition(
+				liquidDepthRT_[phase].Get(), liquidDepthState_[phase],
+				D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+			list_->ResourceBarrier(1, &depthBarrier);
+			liquidDepthState_[phase] = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+		}
+
+		// Pass 2: accumulate colour/thickness only for the selected phase and
+		// around that phase's own front surface.
+		list_->OMSetRenderTargets(1, &liquidRtv_[phase], FALSE, &ppDepthDsv_);
+		list_->SetPipelineState(psoFluidRender_[phase].Get());
+		list_->SetGraphicsRootDescriptorTable(5, liquidDepthSrv_[phase]);
+		list_->DrawInstanced(6, drawCount, 0, 0);
+	}
+
 	auto b2 = CD3DX12_RESOURCE_BARRIER::Transition(gpuFluidBuffer_.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 	list_->ResourceBarrier(1, &b2);
 }
@@ -4994,6 +5182,11 @@ void Renderer::DrawGPUFluidDebug() {
 }
 void Renderer::DrawGPUFluidShadow() {
 	if (!isGPUFluidReady_ || !psoGPUFluidShadow_ || !gpuFluidBuffer_ || gpuFluidActiveParticleCount_ == 0) return;
+	// The simulation leaves particles in UAV state. The shadow VS also reads
+	// them as an SRV, just like the colour pass, and needs its own transition.
+	auto toRead = CD3DX12_RESOURCE_BARRIER::Transition(gpuFluidBuffer_.Get(),
+		D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+	list_->ResourceBarrier(1, &toRead);
 
 	list_->SetPipelineState(psoGPUFluidShadow_.Get());
 	list_->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
@@ -5002,6 +5195,9 @@ void Renderer::DrawGPUFluidShadow() {
 
 	const uint32_t simulationCount = (std::min)((std::min)(gpuFluidActiveParticleCount_, gpuFluidMaxParticles_), 12000u);
 	list_->DrawInstanced(6, simulationCount, 0, 0);
+	auto toWrite = CD3DX12_RESOURCE_BARRIER::Transition(gpuFluidBuffer_.Get(),
+		D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+	list_->ResourceBarrier(1, &toWrite);
 }
 
 } // namespace Engine
