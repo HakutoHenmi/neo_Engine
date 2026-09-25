@@ -46,6 +46,9 @@
     <ClCompile Include="Engine\Renderer.cpp">
       <Filter>Graphics</Filter>
     </ClCompile>
+    <ClCompile Include="Engine\FluidVolume.cpp">
+      <Filter>Graphics</Filter>
+    </ClCompile>
     <ClCompile Include="Engine\Camera.cpp">
       <Filter>Graphics</Filter>
     </ClCompile>

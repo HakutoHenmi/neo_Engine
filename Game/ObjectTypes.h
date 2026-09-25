@@ -681,6 +681,7 @@ using Entity = entt::entity;
 // ★追加: 流体エミッターコンポーネント
 struct FluidEmitterComponent : public Component {
 	int emitCountPerFrame = 400;
+	float emissionRemainder = 0.0f; // Runtime-only fractional particle count.
 	DirectX::XMFLOAT4 color = {0.2f, 0.8f, 1.0f, 1.0f}; // 湧き水の色
 	DirectX::XMFLOAT3 velocity = {0.0f, -5.0f, 0.0f};
 	float fluidType = 1.0f; // 0=プレイヤーコア, 1=水しぶき

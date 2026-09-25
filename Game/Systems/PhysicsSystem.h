@@ -3,6 +3,7 @@
 #include <cmath>
 #include <cfloat>
 #include <vector>
+#include <array>
 #include <algorithm>
 #include "../Engine/QuadTree.h"
 
@@ -12,6 +13,30 @@ class PhysicsSystem : public ISystem {
 public:
 	void Update(entt::registry& registry, GameContext& ctx) override {
 		if (!ctx.isPlaying) return;
+		// The current frame slot has completed its previous use. Consume those
+		// GPU mesh contacts before integrating bodies, then reuse the slot below.
+		auto& frameRequests = m_pendingGpuRequests[ctx.renderer
+			? ctx.renderer->CurrentFrameIndex() % m_pendingGpuRequests.size() : 0];
+		if (ctx.renderer) for (const auto& req : frameRequests) {
+			if (!registry.valid(req.entity) || !registry.all_of<TransformComponent, RigidbodyComponent>(req.entity)) continue;
+			ContactInfo ci{};
+			if (!ctx.renderer->GetCollisionResult(req.resultIdx, ci)) continue;
+			auto& tc = registry.get<TransformComponent>(req.entity);
+			auto& rb = registry.get<RigidbodyComponent>(req.entity);
+			if (ci.depth > 0.0f && !rb.isKinematic) {
+				tc.translate.x += ci.normal.x * ci.depth;
+				tc.translate.y += ci.normal.y * ci.depth;
+				tc.translate.z += ci.normal.z * ci.depth;
+			}
+			DirectX::XMVECTOR vel = DirectX::XMLoadFloat3(reinterpret_cast<const DirectX::XMFLOAT3*>(&rb.velocity));
+			DirectX::XMVECTOR n = DirectX::XMLoadFloat3(reinterpret_cast<const DirectX::XMFLOAT3*>(&ci.normal));
+			float dotVN = DirectX::XMVectorGetX(DirectX::XMVector3Dot(vel, n));
+			if (dotVN < 0 && !rb.isKinematic) {
+				vel = DirectX::XMVectorSubtract(vel, DirectX::XMVectorScale(n, dotVN));
+				DirectX::XMStoreFloat3(reinterpret_cast<DirectX::XMFLOAT3*>(&rb.velocity), vel);
+			}
+		}
+		frameRequests.clear();
 
 		// --- 事前準備: エンティティのフィルタリングとAABB事前計算 ---
 		m_dynamics.clear();
@@ -232,13 +257,18 @@ public:
 		}
 
 		// --- Pass 2: GPU Mesh Collision Batched Requests ---
-		m_pendingGpuRequests.clear();
 		uint32_t nextResultIdx = 0;
 
 		if (ctx.renderer && !m_dynamics.empty() && !m_statics.empty()) {
 			ctx.renderer->BeginCollisionCheck(1024);
 
 			for (auto& d : m_dynamics) {
+				// Kinematic bodies never consume the GPU contact response.
+				if (registry.get<RigidbodyComponent>(d.entity).isKinematic) continue;
+				// CharacterMovementSystem already resolves terrain height and walls
+				// with mesh raycasts. A second BVH test on the GPU duplicates that
+				// work and delays the character response by a frame-slot cycle.
+				if (registry.all_of<CharacterMovementComponent>(d.entity)) continue;
 				auto& tc = registry.get<TransformComponent>(d.entity);
 				auto& bc = registry.get<BoxColliderComponent>(d.entity);
 				
@@ -266,39 +296,18 @@ public:
 
 					uint32_t rIdx = nextResultIdx++;
 					ctx.renderer->DispatchCollision(0, s.meshHandle, dynTransform, bc, staticTransform, rIdx);
-					m_pendingGpuRequests.push_back({d.entity, rIdx});
+					frameRequests.push_back({d.entity, rIdx});
 				}
 				if (nextResultIdx >= 1024) break;
 			}
 
 			ctx.renderer->EndCollisionCheck();
 
-			// --- Pass 3: Resolve GPU Results ---
-			for (const auto& req : m_pendingGpuRequests) {
-				ContactInfo ci{};
-				if (ctx.renderer->GetCollisionResult(req.resultIdx, ci)) {
-					auto& tc = registry.get<TransformComponent>(req.entity);
-					if (registry.all_of<RigidbodyComponent>(req.entity)) {
-						auto& rb = registry.get<RigidbodyComponent>(req.entity);
-						if (ci.depth > 0.0f && !rb.isKinematic) {
-							tc.translate.x += ci.normal.x * ci.depth;
-							tc.translate.y += ci.normal.y * ci.depth;
-							tc.translate.z += ci.normal.z * ci.depth;
-						}
-						DirectX::XMVECTOR vel = DirectX::XMLoadFloat3(reinterpret_cast<const DirectX::XMFLOAT3*>(&rb.velocity));
-						DirectX::XMVECTOR n = DirectX::XMLoadFloat3(reinterpret_cast<const DirectX::XMFLOAT3*>(&ci.normal));
-						float dotVN = DirectX::XMVectorGetX(DirectX::XMVector3Dot(vel, n));
-						if (dotVN < 0 && !rb.isKinematic) {
-							vel = DirectX::XMVectorSubtract(vel, DirectX::XMVectorScale(n, dotVN));
-							DirectX::XMStoreFloat3(reinterpret_cast<DirectX::XMFLOAT3*>(&rb.velocity), vel);
-						}
-					}
-				}
-			}
 		}
 	}
 
 	void Reset(entt::registry& registry) override {
+		for (auto& requests : m_pendingGpuRequests) requests.clear();
 		auto view = registry.view<RigidbodyComponent>();
 		for (auto entity : view) {
 			auto& rb = registry.get<RigidbodyComponent>(entity);
@@ -326,7 +335,7 @@ private:
 
 	std::vector<CollidableBox> m_dynamics;
 	std::vector<CollidableMesh> m_statics;
-	std::vector<GpuRequest> m_pendingGpuRequests;
+	std::array<std::vector<GpuRequest>, 2> m_pendingGpuRequests;
 	std::vector<uint32_t> m_nearbyEntities;
 
 	static void GetObbAxes(const ::Engine::Matrix4x4& mat, const BoxColliderComponent& cb,

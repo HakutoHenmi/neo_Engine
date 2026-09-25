@@ -11,6 +11,7 @@
 #include <mutex>
 #include <unordered_map>
 #include <string>
+#include <vector>
 #include "../../externals/entt/entt.hpp"
 #include "../../Engine/ParticleEmitter.h"
 #include "../../Engine/ParticleEditor.h"
@@ -26,6 +27,10 @@ public:
     void Draw() override;
     void DrawUI() override; // ★追加: ワールド空間UI用
     void DrawEditor() override;
+#ifndef NDEBUG
+    struct UpdateTiming { const char* name; float ms; };
+    const std::vector<UpdateTiming>& GetUpdateTimings() const { return updateTimings_; }
+#endif
 
     void DrawEditorGizmos();
     void DrawSelectionHighlight();
@@ -77,6 +82,9 @@ public:
 
 
 private:
+#ifndef NDEBUG
+    std::vector<UpdateTiming> updateTimings_;
+#endif
 	// CPU側でのプレイヤースライム変形・パーティクル管理用ロジック
 	struct PlayerSlimeCpuLogic {
 		uint32_t dynamicMeshHandle = 0;
