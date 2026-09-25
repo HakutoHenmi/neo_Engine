@@ -2,6 +2,8 @@
 #define NOMINMAX
 #endif
 #include "./GameScene.h"
+#include "../../Engine/FluidEmission.h"
+#include "../../Engine/Time/TimeManager.h"
 #include "../CanLoadout.h"
 #include "../ObjectTypes.h"
 #include "../../Engine/Audio.h"
@@ -332,6 +334,10 @@ void GameScene::Initialize(Engine::WindowDX* dx, const Engine::SceneParameters& 
 // =====================================================
 void GameScene::Update() {
 	if (!renderer_) return;
+#ifndef NDEBUG
+	const auto profileBegin = std::chrono::steady_clock::now();
+	updateTimings_.clear();
+#endif
 
 	// ★追加: Yキーでデバッグベクトルの表示/非表示を切り替え
 	if (Engine::Input::GetInstance()->Trigger(0x15)) { // 0x15 = DIK_Y
@@ -608,13 +614,63 @@ void GameScene::Update() {
 	}
 
 	// ★ 全Systemを順に実行
+#ifndef NDEBUG
+	const auto profileSystems = std::chrono::steady_clock::now();
+	updateTimings_.push_back({"Before systems", std::chrono::duration<float, std::milli>(profileSystems - profileBegin).count()});
+#endif
 	for (auto& system : systems_) {
 		// リザルト遷移中などはシステムを動かさない (エンティティが削除されている可能性があるため)
 		if (!isPlaying_ || isPaused_)
 			break;
 		if (stageClear && dynamic_cast<WaveSystem*>(system.get()) == nullptr)
 			continue;
+#ifndef NDEBUG
+		const auto profileSystemBegin = std::chrono::steady_clock::now();
+#endif
 		system->Update(registry_, ctx_);
+#ifndef NDEBUG
+		updateTimings_.push_back({typeid(*system).name(), std::chrono::duration<float, std::milli>(std::chrono::steady_clock::now() - profileSystemBegin).count()});
+#endif
+	}
+#ifndef NDEBUG
+	const auto profileAfterSystems = std::chrono::steady_clock::now();
+#endif
+	if (isPlaying_ && !isPaused_ && !stageClear) {
+		// The player moves after PlayerActionSystem. Attach the can here so it
+		// follows the final controller position, with the same short lag as the
+		// surrounding fluid during a turn or a sudden stop.
+		auto playersWithCan = registry_.view<PlayerActionComponent, TransformComponent>();
+		playersWithCan.each([&](entt::entity, PlayerActionComponent& pa, TransformComponent& playerTc) {
+			if (pa.canEntity == entt::null || !registry_.valid(pa.canEntity) ||
+				!registry_.all_of<TransformComponent, MeshRendererComponent>(pa.canEntity)) return;
+			auto& canTc = registry_.get<TransformComponent>(pa.canEntity);
+			auto& canMesh = registry_.get<MeshRendererComponent>(pa.canEntity);
+			if (!pa.canFollowInitialized) {
+				pa.canFollowPos = playerTc.translate;
+				pa.canFollowInitialized = true;
+			}
+			const float dx = playerTc.translate.x - pa.canFollowPos.x;
+			const float dy = playerTc.translate.y - pa.canFollowPos.y;
+			const float dz = playerTc.translate.z - pa.canFollowPos.z;
+			if (dx * dx + dy * dy + dz * dz > 100.0f) {
+				pa.canFollowPos = playerTc.translate;
+			} else {
+				const float followDt = (std::clamp)(dt, 0.0f, 1.0f / 30.0f);
+				const float blend = 1.0f - std::exp(-14.0f * followDt);
+				pa.canFollowPos.x += dx * blend;
+				pa.canFollowPos.y += dy * blend;
+				pa.canFollowPos.z += dz * blend;
+			}
+			canTc.translate = pa.canFollowPos;
+			canTc.translate.y += 0.35f + std::sin(pa.totalTime * 3.0f) * 0.025f;
+			canTc.rotate.y += dt * 2.0f;
+			canTc.rotate.z = std::sin(pa.totalTime * 2.0f) * 0.2f;
+			// The liquefied puddle is thinner than the can itself. Wait for the
+			// normal body to rise again before showing the can after release.
+			pa.canRevealTimer = pa.state == PlayerActionState::Liquefy ? 0.0f :
+				(std::min)(1.0f, pa.canRevealTimer + (std::max)(dt, 0.0f));
+			canMesh.enabled = pa.canRevealTimer >= 0.45f;
+		});
 	}
 
 	// ★ 追加: 停止中のみデバッグカメラを有効化
@@ -725,6 +781,9 @@ void GameScene::Update() {
 		pe.emitter.params.position = {tc.translate.x, tc.translate.y, tc.translate.z};
 		pe.emitter.Update(dt);
 	});
+#ifndef NDEBUG
+	updateTimings_.push_back({"After systems", std::chrono::duration<float, std::milli>(std::chrono::steady_clock::now() - profileAfterSystems).count()});
+#endif
 }
 
 // ★ 汎用スポーン
@@ -919,7 +978,7 @@ void GameScene::Draw() {
 		if (registry_.all_of<PlayerActionComponent>(playerEntity)) {
 			const auto& pa = registry_.get<PlayerActionComponent>(playerEntity);
 			isLiquidated = pa.state == PlayerActionState::Liquefy;
-			liquefyInitialFlowSpeed = pa.liquefyInitialFlowSpeed;
+			liquefyInitialFlowSpeed = pa.CurrentLiquefyFlowSpeed();
 			liquefyFlowForward = {pa.liquefyFlowDir.x, pa.liquefyFlowDir.y, pa.liquefyFlowDir.z};
 		}
 		if (registry_.all_of<HealthComponent>(playerEntity)) {
@@ -940,7 +999,9 @@ void GameScene::Draw() {
 			Engine::Vector4 col = { fec.color.x, fec.color.y, fec.color.z, fec.color.w };
 
 			// 毎フレームエミットを実行
-			renderer_->EmitGPUFluid(pos, vel, col, fec.emitCountPerFrame, fec.fluidType);
+			const int emitCount=Engine::AccumulateFluidEmission(fec.emitCountPerFrame,
+				Engine::TimeManager::GetInstance().GetDeltaTime(),fec.emissionRemainder);
+			renderer_->EmitGPUFluid(pos, vel, col, emitCount, fec.fluidType);
 
 			// スプラッシュ（水: fluidType >= 0.5f）の場合、プレイヤーが下（半径1.5m以内）にいればHPを回復する
 			if (isPlaying_ && !isPaused_ && fec.fluidType >= 0.5f && registry_.valid(playerEntity)) {
@@ -998,14 +1059,16 @@ void GameScene::Draw() {
 				if (!gpuSlimeEmitted_) {
 					// プレイヤー初期化時に1回だけ、大量のGPUパーティクルをコア位置に放出する
 					Engine::Vector4 pColor = {0.4f, 0.8f, 0.1f, 1.0f}; // プレイヤースライムの色（濃い黄緑）
-					renderer_->EmitGPUFluid({corePos.x, corePos.y, corePos.z}, {0, -2, 0}, pColor, 2000);
+					renderer_->EmitGPUFluid({corePos.x, corePos.y, corePos.z}, {0, -2, 0}, pColor, Engine::Renderer::kPlayerFluidParticles);
 					gpuSlimeEmitted_ = true;
 				}
 				
 				// アクション状態に応じて引力を変える（回避中は引力を弱めて散らばらせるなど）
-				float attraction = isPlayerDead ? 0.0f : (isLiquidated ? 1.0f : 80.0f);
+				float attraction = isPlayerDead ? 0.0f : (isLiquidated ? 1.0f : 32.0f);
 				
-				Engine::Vector3 targetCore = {corePos.x, corePos.y + (isLiquidated ? 0.18f : 0.8f), corePos.z};
+				// The normal slime's pressure source sits low in the body, so the
+				// crown receives an upward radial force and the base can spread.
+				Engine::Vector3 targetCore = {corePos.x, corePos.y + 0.18f, corePos.z};
 				auto& playerTc = registry_.get<TransformComponent>(playerEntity);
 				Engine::Matrix4x4 mat = playerTc.GetTransform().ToMatrix();
 				Engine::Vector3 forward = {mat.m[2][0], mat.m[2][1], mat.m[2][2]};

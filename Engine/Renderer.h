@@ -2,6 +2,7 @@
 #pragma once
 
 #include <cstdint>
+#include <array>
 #include <memory> // std::shared_ptr
 #include <string>
 #include <unordered_map>
@@ -200,6 +201,32 @@ public:
 	uint32_t GetParticleCount() const { return frameParticleCount_; }
 	Vector3 GetPlayerPos() const { return cbFrame_.playerPos; }
 
+	static constexpr uint32_t kFluidProfileStageCount = 8;
+	enum FluidProfileStage : uint32_t {
+		FluidSimulation, FluidShapes, FluidSplat, FluidFiltering,
+		FluidRaymarch, FluidImpostors, FluidShadow, SceneRender
+	};
+	struct FluidProfileStats {
+		bool available = false;
+		bool valid = false;
+		uint32_t framesSinceSample = 0;
+		uint32_t particleSlots = 0;
+		uint32_t substeps = 0;
+		float simulatedDtMs = 0;
+		float cpuSimulationMs = 0;
+		float cpuVolumeMs = 0;
+		std::array<float, kFluidProfileStageCount> lastMs{};
+		std::array<bool, kFluidProfileStageCount> sampledStages{};
+		std::array<float, kFluidProfileStageCount> averageMs{};
+		std::array<float, kFluidProfileStageCount> peakMs{};
+		float totalMs = 0;
+		std::array<float, 120> totalHistory{};
+		uint32_t historyCount = 0;
+	};
+	void SetFluidProfilerEnabled(bool enabled) { fluidProfilerEnabled_ = enabled && fluidProfilerAvailable_; }
+	bool IsFluidProfilerEnabled() const { return fluidProfilerEnabled_; }
+	const FluidProfileStats& GetFluidProfileStats() const { return fluidProfileStats_; }
+
 	D3D12_GPU_DESCRIPTOR_HANDLE GetPostProcessSRV() const { return ppSrvGpu_; }
 
 	// ★追加: Gameシーンの最終出力テクスチャ。エディタUIからここを描画する。
@@ -318,6 +345,9 @@ public:
 	Microsoft::WRL::ComPtr<ID3D12Resource> gpuFluidGridOffsetBuffer_;
 	Microsoft::WRL::ComPtr<ID3D12Resource> gpuFluidSortedParticlesBuffer_;
 	Microsoft::WRL::ComPtr<ID3D12Resource> gpuFluidOriginalIndicesBuffer_;
+	Microsoft::WRL::ComPtr<ID3D12Resource> gpuFluidPreviousBuffer_;
+	Microsoft::WRL::ComPtr<ID3D12Resource> gpuFluidScratchBuffer_;
+	Microsoft::WRL::ComPtr<ID3D12PipelineState> psoFluidSavePrevious_, psoFluidDelta_, psoFluidApply_, psoFluidVelocity_;
 	
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> psoFluidEmit_;
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> psoFluidExtract_;
@@ -330,15 +360,18 @@ public:
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> psoFluidCount_;
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> psoFluidPrefixSum_;
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> psoFluidSort_;
+	Microsoft::WRL::ComPtr<ID3D12PipelineState> psoFluidSortVelocity_;
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> psoFluidDensity_;
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> psoFluidForce_;
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> psoFluidWriteBack_;
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> psoFluidDepthRender_[3];
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> psoFluidRender_[3];
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> psoFluidDebug_; 
+	static constexpr uint32_t kPlayerFluidParticles = 6600;
+	static constexpr uint32_t kEffectFluidEnd = 28000;
 	uint32_t gpuFluidMaxParticles_ = 32000;
 	uint32_t gpuFluidEmitCursorPlayer_ = 0;
-	uint32_t gpuFluidEmitCursorSplash_ = 2000;
+	uint32_t gpuFluidEmitCursorSplash_ = kPlayerFluidParticles;
 	uint32_t gpuFluidExtractCursor_ = 0;
 	uint32_t gpuFluidActiveParticleCount_ = 0;
 	// Conservative lifetime mask: never hide a live GPU particle based on a
@@ -350,18 +383,40 @@ public:
 	void InitGPUFluid();
 	void UpdateGPUFluid(float dt);
 	void ResetGPUFluid();
-	void ClearGPUFluid() { gpuFluidActiveParticleCount_ = 0; gpuFluidPhaseMask_ = 0; }
+	void ClearGPUFluid() { gpuFluidActiveParticleCount_ = 0; gpuFluidPhaseMask_ = 0; volumeHistoryValid_ = false; isGPUFluidInitialized_ = false; }
 	void EmitGPUFluid(const Vector3& pos, const Vector3& velocityDir, const Vector4& color, int count, float type = 0.0f);
 	uint32_t ExtractGPUFluidFromPlayer(const Vector3& pos, const Vector3& velocityDir, int count);
 	void SyncLostGPUFluidGroup(uint32_t groupId, const Vector3& pos);
 	void AbsorbLostGPUFluidGroup(uint32_t groupId);
 	void DrawGPUFluid(TextureHandle texture);
+	bool InitFluidVolume();
+	void DrawFluidVolume();
+	// 0: material, 1: phase, 2: normals, 3: thickness, 4: domain/step budget.
+	void SetFluidVolumeDebugMode(uint32_t mode) { fluidVolumeDebugMode_ = mode; }
+	uint32_t GetFluidVolumeDebugMode() const { return fluidVolumeDebugMode_; }
+	bool IsFluidVolumeReady() const { return fluidVolumeReady_; }
+	Microsoft::WRL::ComPtr<ID3D12RootSignature> rootSigVolumeCompute_, rootSigVolumeDraw_;
+	Microsoft::WRL::ComPtr<ID3D12PipelineState> psoVolumeClear_, psoVolumeShapes_, psoVolumeSplat_, psoVolumeResolve_, psoVolumeSmooth_, psoVolumeTemporal_, psoVolumeOccupancy_, psoVolumeRaymarch_, psoVolumeSpray_;
+	Microsoft::WRL::ComPtr<ID3D12Resource> volumeAccum_, volumeMomentum_, volumeShapes_;
+	// 0/1: spatial ping-pong, 2/3: temporal ping-pong, 4: velocity.
+	// 5: conservative 4x4x4 empty-space acceleration grid, including a halo.
+	Microsoft::WRL::ComPtr<ID3D12Resource> volumeTextures_[6];
+	D3D12_GPU_DESCRIPTOR_HANDLE volumeSrv_[6]{}, volumeUav_[6]{};
+	Microsoft::WRL::ComPtr<ID3D12Resource> volumeSurfaceDepth_;
+	Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> volumeRtvHeap_;
+	D3D12_GPU_DESCRIPTOR_HANDLE volumeSurfaceDepthSrv_{};
+	Vector3 volumePreviousOrigin_{};
+	Vector4 volumeColors_[3] = { {0.02f,0.8f,0.06f,1}, {1,0.9f,0.1f,1}, {0.1f,0.65f,1,1} };
+	bool fluidVolumeReady_ = false, volumeHistoryValid_ = false;
+	uint32_t volumeHistoryIndex_ = 0, fluidVolumeDebugMode_ = 0;
+	float fluidSimulatedDt_ = 0.0f;
 	void DrawGPUFluidShadow(); // ★追加: シャドウパス描画用
 	void DrawGPUFluidDebug();
 	void SetGPUFluidCore(const Vector3& pos, float attraction, const Vector3& scale = {1.0f, 1.0f, 1.0f}, const Vector3& forward = {0.0f, 0.0f, 1.0f}, float mode = 0.0f, float flowSpeed = 0.0f);
 	void SetGPUFluidDecoy(const Vector3& pos, float attraction, const Vector3& scale = {1.0f, 1.0f, 1.0f}, const Vector3& forward = {0.0f, 0.0f, 1.0f}); // ★追加: デコイ用コア情報設定
 
 	Vector3 gpuFluidCorePos_ = {0,0,0};
+	Vector3 gpuFluidCoreVelocity_ = {0,0,0};
 	float gpuFluidCoreAttraction_ = 0.0f;
 	Vector3 gpuFluidCoreScale_ = {1.0f, 1.0f, 1.0f};
 	Vector3 gpuFluidCoreForward_ = {0.0f, 0.0f, 1.0f};
@@ -497,6 +552,8 @@ public:
 	void EndCollisionCheck();
 	bool GetCollisionResult(uint32_t resultIndex, Game::ContactInfo& outInfo) const;
 	bool GetCollisionResult(uint32_t resultIndex) const;
+	uint32_t CurrentFrameIndex() const { return window_ ? window_->FrameIndex() : 0; }
+	uint32_t CollisionDispatchCount() const { return collisionDispatchCount_; }
 
 	bool CreateShaderPipeline(const std::string& shaderName, const std::wstring& vsPath, const std::wstring& psPath);
 	const std::vector<std::string>& GetShaderNames() const { return shaderNames_; }
@@ -615,6 +672,33 @@ private:
 
 	static constexpr uint32_t kFrameCount = 2;
 	UploadRing upload_[kFrameCount]{};
+	struct FluidProfileFrame {
+		bool pending = false;
+		std::array<bool, kFluidProfileStageCount> used{};
+		uint32_t particleSlots = 0;
+		uint32_t substeps = 0;
+		float simulatedDtMs = 0;
+		float cpuSimulationMs = 0;
+		float cpuVolumeMs = 0;
+	};
+	struct FluidProfileSample {
+		std::array<float, kFluidProfileStageCount> ms{};
+		float totalMs = 0;
+	};
+	Microsoft::WRL::ComPtr<ID3D12QueryHeap> fluidProfilerQueries_;
+	Microsoft::WRL::ComPtr<ID3D12Resource> fluidProfilerReadback_[kFrameCount];
+	FluidProfileFrame fluidProfilerFrames_[kFrameCount]{};
+	std::array<FluidProfileSample, 120> fluidProfilerHistory_{};
+	uint32_t fluidProfilerHistoryCount_ = 0;
+	uint64_t fluidProfilerFrequency_ = 0;
+	bool fluidProfilerAvailable_ = false;
+	bool fluidProfilerEnabled_ = false;
+	FluidProfileStats fluidProfileStats_{};
+	void InitFluidProfiler();
+	void CollectFluidProfile(uint32_t frameIndex);
+	void ResolveFluidProfile(uint32_t frameIndex);
+	void BeginFluidProfile(FluidProfileStage stage);
+	void EndFluidProfile(FluidProfileStage stage);
 
 	Microsoft::WRL::ComPtr<ID3D12RootSignature> rootSig3D_;
 	Microsoft::WRL::ComPtr<ID3D12RootSignature> rootSigTerrain_; // ★追加: 地形用
@@ -626,10 +710,12 @@ private:
 	Microsoft::WRL::ComPtr<ID3D12RootSignature> rootSigSkinningCS_;
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> psoSkinningCS_;
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> psoCollision_;
-	Microsoft::WRL::ComPtr<ID3D12Resource> collisionResultBuffer_;
-	Microsoft::WRL::ComPtr<ID3D12Resource> collisionReadbackBuffer_;
-	Microsoft::WRL::ComPtr<ID3D12Resource> collisionRequestBuffer_; // ★追加: リクエスト転送用
-	Game::ContactInfo* collisionReadbackMapped_ = nullptr;
+	Microsoft::WRL::ComPtr<ID3D12Resource> collisionResultBuffer_[kFrameCount];
+	Microsoft::WRL::ComPtr<ID3D12Resource> collisionReadbackBuffer_[kFrameCount];
+	Microsoft::WRL::ComPtr<ID3D12Resource> collisionRequestBuffer_[kFrameCount];
+	Game::ContactInfo* collisionReadbackMapped_[kFrameCount]{};
+	uint32_t collisionResultCount_[kFrameCount]{};
+	uint32_t collisionDispatchCount_ = 0;
 	uint32_t collisionMaxPairs_ = 0;
 	std::vector<CollisionRequest> collisionRequests_; // ★追加: バッチ用
 
@@ -757,8 +843,6 @@ private:
 	std::unordered_map<std::string, MeshHandle> meshCache_;
 
 	// ★追加: コリジョン同期用
-	Microsoft::WRL::ComPtr<ID3D12CommandAllocator> collisionAlloc_;
-	Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> collisionList_;
 	TextureHandle sumiEPaperTex_ = 0;
 	TextureHandle sumiEVignetteTex_ = 0;
 

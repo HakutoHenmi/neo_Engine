@@ -1,10 +1,12 @@
 #include "Renderer.h"
 #include "Model.h"
 #include "PathUtils.h"
+#include "Time/TimeManager.h"
 #include "../Game/ObjectTypes.h"
 
 #include <algorithm>
 #include <cassert>
+#include <chrono>
 #include <cmath>
 #include <cstring>
 #include <numeric>
@@ -212,13 +214,13 @@ bool Renderer::Initialize(WindowDX* window) {
 
 	// ★追加: GPU流体初期化
 	InitGPUFluid();
+	fluidVolumeReady_ = InitFluidVolume();
+	if (!fluidVolumeReady_) OutputDebugStringA("[Fluid] Volume initialization failed; using legacy fallback.\n");
+#ifndef NDEBUG
+	InitFluidProfiler();
+#endif
 
 	ppEnabled_ = true;
-
-	// ★追加: コリジョン同期用のコマンドリスト作成
-	if (FAILED(dev_->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&collisionAlloc_)))) return false;
-	if (FAILED(dev_->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, collisionAlloc_.Get(), nullptr, IID_PPV_ARGS(&collisionList_)))) return false;
-	collisionList_->Close(); // 最初は閉じておく
 
 	// テキストシステム初期化
 	// ※"msgothic.ttc" はWindows環境依存ですがテスト用に使用
@@ -240,6 +242,23 @@ bool Renderer::Initialize(WindowDX* window) {
 
 void Renderer::Shutdown() {
 	WaitGPU();
+	fluidProfilerEnabled_ = false;
+	fluidProfilerAvailable_ = false;
+	fluidProfilerQueries_.Reset();
+	for (auto& readback : fluidProfilerReadback_) readback.Reset();
+	fluidProfilerHistoryCount_ = 0;
+	fluidProfileStats_ = FluidProfileStats{};
+	fluidVolumeReady_ = false;
+	volumeHistoryValid_ = false;
+	rootSigVolumeCompute_.Reset(); rootSigVolumeDraw_.Reset();
+	psoVolumeClear_.Reset(); psoVolumeShapes_.Reset(); psoVolumeSplat_.Reset();
+	psoVolumeResolve_.Reset(); psoVolumeSmooth_.Reset(); psoVolumeTemporal_.Reset();
+	psoVolumeOccupancy_.Reset(); psoVolumeRaymarch_.Reset(); psoVolumeSpray_.Reset();
+	volumeAccum_.Reset(); volumeMomentum_.Reset(); volumeShapes_.Reset();
+	for (auto& texture : volumeTextures_) texture.Reset();
+	volumeSurfaceDepth_.Reset(); volumeRtvHeap_.Reset();
+	gpuFluidPreviousBuffer_.Reset(); gpuFluidScratchBuffer_.Reset();
+	psoFluidSavePrevious_.Reset(); psoFluidDelta_.Reset(); psoFluidApply_.Reset(); psoFluidVelocity_.Reset();
 
 	instance_ = nullptr;
 
@@ -286,14 +305,14 @@ void Renderer::Shutdown() {
 	finalSceneState_ = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
 	psoCopy_.Reset();
 
-	if (collisionReadbackBuffer_ && collisionReadbackMapped_) {
-		collisionReadbackBuffer_->Unmap(0, nullptr);
-		collisionReadbackMapped_ = nullptr;
+	for (uint32_t i = 0; i < kFrameCount; ++i) {
+		if (collisionReadbackBuffer_[i] && collisionReadbackMapped_[i])
+			collisionReadbackBuffer_[i]->Unmap(0, nullptr);
+		collisionReadbackMapped_[i] = nullptr;
+		collisionResultBuffer_[i].Reset();
+		collisionReadbackBuffer_[i].Reset();
+		collisionRequestBuffer_[i].Reset();
 	}
-	collisionResultBuffer_.Reset();
-	collisionReadbackBuffer_.Reset();
-	collisionAlloc_.Reset();
-	collisionList_.Reset();
 
 	ppEnabled_ = true;
 	ppParams_ = PostProcessParams{};
@@ -337,10 +356,13 @@ void Renderer::WaitGPU() {
 
 void Renderer::BeginFrame(const float clearColorRGBA[4]) {
 	(void)clearColorRGBA;
+	collisionDispatchCount_ = 0;
 	ID3D12DescriptorHeap* heaps[] = {srvHeap_};
 	list_->SetDescriptorHeaps(1, heaps);
 
 	const uint32_t fi = window_->FrameIndex();
+	CollectFluidProfile(fi);
+	BeginFluidProfile(SceneRender);
 	upload_[fi].Reset();
 
 	drawCalls_.clear(); // ★追加: ドローコールをクリア
@@ -457,7 +479,8 @@ void Renderer::FlushDrawCalls() {
 	}
 
 	// ★追加: Skybox描画後にオブジェクトがなければ早期リターン
-	if (drawCalls_.empty() && instancedDrawCalls_.empty() && instancedParticleDrawCalls_.empty()) {
+	if (drawCalls_.empty() && instancedDrawCalls_.empty() && instancedParticleDrawCalls_.empty()
+		&& liquidParticleDrawCalls_.empty() && !(isGPUFluidReady_ && gpuFluidActiveParticleCount_ > 0)) {
 		FlushLines();
 		return;
 	}
@@ -712,17 +735,22 @@ void Renderer::FlushDrawCalls() {
 	// ★追加: GPU流体更新
 	const bool hasGpuFluidParticles = isGPUFluidReady_ && gpuFluidActiveParticleCount_ > 0;
 	if (hasGpuFluidParticles) {
-		UpdateGPUFluid(1.0f / 60.0f);
+		BeginFluidProfile(FluidSimulation);
+		const auto cpuStart = fluidProfilerEnabled_ ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
+		UpdateGPUFluid(TimeManager::GetInstance().GetDeltaTime());
+		if (fluidProfilerEnabled_) fluidProfilerFrames_[fi].cpuSimulationMs =
+			std::chrono::duration<float, std::milli>(std::chrono::steady_clock::now() - cpuStart).count();
+		EndFluidProfile(FluidSimulation);
 	}
 
 
 	// ★追加: 液体パーティクルのパス (メタボール)
-	if (!liquidParticleDrawCalls_.empty() || hasGpuFluidParticles) {
+	if (!liquidParticleDrawCalls_.empty() || (hasGpuFluidParticles && !fluidVolumeReady_)) {
 		BeginLiquidPass();
 		if (!liquidParticleDrawCalls_.empty()) {
 			flushInstanced(liquidParticleDrawCalls_, "ParticleInstanced");
 		}
-		if (hasGpuFluidParticles) {
+		if (hasGpuFluidParticles && !fluidVolumeReady_) {
 			DrawGPUFluid(LoadTexture2D("Resources/Textures/ball.png"));
 		}
 		EndLiquidPass();
@@ -737,6 +765,13 @@ void Renderer::FlushDrawCalls() {
 		if (drawFluidDebugArrows_) {
 			DrawGPUFluidDebug();
 		}
+	}
+	if (hasGpuFluidParticles && fluidVolumeReady_) {
+		const auto cpuStart = fluidProfilerEnabled_ ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
+		DrawFluidVolume();
+		if (fluidProfilerEnabled_) fluidProfilerFrames_[fi].cpuVolumeMs =
+			std::chrono::duration<float, std::milli>(std::chrono::steady_clock::now() - cpuStart).count();
+		if (drawFluidDebugArrows_) DrawGPUFluidDebug();
 	}
 
 	// --- 半透明オブジェクトの描画 (不透明オブジェクトの後に描画する) ---
@@ -996,7 +1031,9 @@ void Renderer::EndFrame() {
 
 		// ★追加: 流体の影を落とす
 		if (isGPUFluidReady_ && gpuFluidActiveParticleCount_ > 0) {
+			BeginFluidProfile(FluidShadow);
 			DrawGPUFluidShadow();
+			EndFluidProfile(FluidShadow);
 		}
 
 		b = CD3DX12_RESOURCE_BARRIER::Transition(shadowMap_.Get(), D3D12_RESOURCE_STATE_DEPTH_WRITE, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
@@ -1251,6 +1288,107 @@ void Renderer::EndFrame() {
 	list_->SetGraphicsRootDescriptorTable(6, textures_[0].srvGpu);
 	
 	list_->DrawInstanced(3, 1, 0, 0);
+	EndFluidProfile(SceneRender);
+	ResolveFluidProfile(fi);
+}
+
+void Renderer::InitFluidProfiler() {
+	uint64_t frequency = 0;
+	if (!queue_ || FAILED(queue_->GetTimestampFrequency(&frequency)) || !frequency) return;
+	D3D12_QUERY_HEAP_DESC queryDesc{};
+	queryDesc.Type = D3D12_QUERY_HEAP_TYPE_TIMESTAMP;
+	queryDesc.Count = kFrameCount * kFluidProfileStageCount * 2;
+	if (FAILED(dev_->CreateQueryHeap(&queryDesc, IID_PPV_ARGS(&fluidProfilerQueries_)))) return;
+	auto heap = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_READBACK);
+	auto buffer = CD3DX12_RESOURCE_DESC::Buffer(sizeof(uint64_t) * kFluidProfileStageCount * 2);
+	for (auto& readback : fluidProfilerReadback_) {
+		if (FAILED(dev_->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &buffer,
+			D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&readback)))) {
+			fluidProfilerQueries_.Reset();
+			for (auto& resource : fluidProfilerReadback_) resource.Reset();
+			return;
+		}
+	}
+	fluidProfilerFrequency_ = frequency;
+	fluidProfilerAvailable_ = true;
+	fluidProfileStats_.available = true;
+}
+
+void Renderer::BeginFluidProfile(FluidProfileStage stage) {
+	if (!fluidProfilerEnabled_ || !fluidProfilerAvailable_) return;
+	const UINT index = (window_->FrameIndex() * kFluidProfileStageCount + stage) * 2;
+	list_->EndQuery(fluidProfilerQueries_.Get(), D3D12_QUERY_TYPE_TIMESTAMP, index);
+}
+
+void Renderer::EndFluidProfile(FluidProfileStage stage) {
+	if (!fluidProfilerEnabled_ || !fluidProfilerAvailable_) return;
+	const UINT fi = window_->FrameIndex();
+	const UINT index = (fi * kFluidProfileStageCount + stage) * 2 + 1;
+	list_->EndQuery(fluidProfilerQueries_.Get(), D3D12_QUERY_TYPE_TIMESTAMP, index);
+	fluidProfilerFrames_[fi].used[stage] = true;
+}
+
+void Renderer::ResolveFluidProfile(uint32_t frameIndex) {
+	if (!fluidProfilerEnabled_ || !fluidProfilerAvailable_) return;
+	auto& frame = fluidProfilerFrames_[frameIndex];
+	for (UINT stage = 0; stage < kFluidProfileStageCount; ++stage) {
+		if (!frame.used[stage]) continue;
+		const UINT index = (frameIndex * kFluidProfileStageCount + stage) * 2;
+		list_->ResolveQueryData(fluidProfilerQueries_.Get(), D3D12_QUERY_TYPE_TIMESTAMP,
+			index, 2, fluidProfilerReadback_[frameIndex].Get(), stage * 2 * sizeof(uint64_t));
+		frame.pending = true;
+	}
+}
+
+void Renderer::CollectFluidProfile(uint32_t frameIndex) {
+	if (!fluidProfilerAvailable_) return;
+	if (fluidProfileStats_.valid && fluidProfileStats_.framesSinceSample < UINT32_MAX)
+		++fluidProfileStats_.framesSinceSample;
+	auto& frame = fluidProfilerFrames_[frameIndex];
+	if (frame.pending) {
+		D3D12_RANGE readRange{0, sizeof(uint64_t) * kFluidProfileStageCount * 2};
+		uint64_t* ticks = nullptr;
+		if (SUCCEEDED(fluidProfilerReadback_[frameIndex]->Map(0, &readRange, reinterpret_cast<void**>(&ticks)))) {
+			FluidProfileSample sample{};
+			for (UINT stage = 0; stage < kFluidProfileStageCount; ++stage) {
+				if (frame.used[stage] && ticks[stage * 2 + 1] >= ticks[stage * 2]) {
+					sample.ms[stage] = static_cast<float>(
+						(double(ticks[stage * 2 + 1] - ticks[stage * 2]) * 1000.0) / double(fluidProfilerFrequency_));
+					if (stage != SceneRender) sample.totalMs += sample.ms[stage];
+				}
+			}
+			D3D12_RANGE noWrites{0, 0};
+			fluidProfilerReadback_[frameIndex]->Unmap(0, &noWrites);
+			if (fluidProfilerHistoryCount_ == fluidProfilerHistory_.size()) {
+				std::move(fluidProfilerHistory_.begin() + 1, fluidProfilerHistory_.end(), fluidProfilerHistory_.begin());
+				--fluidProfilerHistoryCount_;
+			}
+			fluidProfilerHistory_[fluidProfilerHistoryCount_++] = sample;
+			auto& stats = fluidProfileStats_;
+			stats.valid = true;
+			stats.framesSinceSample = 0;
+			stats.lastMs = sample.ms;
+			stats.sampledStages = frame.used;
+			stats.totalMs = sample.totalMs;
+			stats.particleSlots = frame.particleSlots;
+			stats.substeps = frame.substeps;
+			stats.simulatedDtMs = frame.simulatedDtMs;
+			stats.cpuSimulationMs = frame.cpuSimulationMs;
+			stats.cpuVolumeMs = frame.cpuVolumeMs;
+			stats.historyCount = fluidProfilerHistoryCount_;
+			stats.averageMs.fill(0);
+			stats.peakMs.fill(0);
+			for (UINT i = 0; i < fluidProfilerHistoryCount_; ++i) {
+				stats.totalHistory[i] = fluidProfilerHistory_[i].totalMs;
+				for (UINT stage = 0; stage < kFluidProfileStageCount; ++stage) {
+					stats.averageMs[stage] += fluidProfilerHistory_[i].ms[stage];
+					stats.peakMs[stage] = (std::max)(stats.peakMs[stage], fluidProfilerHistory_[i].ms[stage]);
+				}
+			}
+			for (auto& average : stats.averageMs) average /= fluidProfilerHistoryCount_;
+		}
+	}
+	frame = FluidProfileFrame{};
 }
 
 void Renderer::SetCamera(const Camera& camera) {
@@ -3636,16 +3774,20 @@ void Renderer::EndCustomRenderTarget() {
 
 void Renderer::BeginCollisionCheck(uint32_t maxPairs) {
 	collisionRequests_.clear();
+	collisionDispatchCount_ = 0;
 
 	if (collisionMaxPairs_ != maxPairs) {
-		// Cleanup old resources
-		if (collisionReadbackBuffer_ && collisionReadbackMapped_) {
-			collisionReadbackBuffer_->Unmap(0, nullptr);
-			collisionReadbackMapped_ = nullptr;
+		// Each frame slot is fence-protected by WindowDX::EndFrame. Its readback
+		// can be consumed when the slot is reused without stalling the GPU.
+		for (uint32_t i = 0; i < kFrameCount; ++i) {
+			if (collisionReadbackBuffer_[i] && collisionReadbackMapped_[i])
+				collisionReadbackBuffer_[i]->Unmap(0, nullptr);
+			collisionReadbackMapped_[i] = nullptr;
+			collisionResultCount_[i] = 0;
+			collisionResultBuffer_[i].Reset();
+			collisionReadbackBuffer_[i].Reset();
+			collisionRequestBuffer_[i].Reset();
 		}
-		collisionResultBuffer_.Reset();
-		collisionReadbackBuffer_.Reset();
-		collisionRequestBuffer_.Reset();
 		collisionMaxPairs_ = 0; // 一旦クリア
 
 		if (maxPairs > 0) {
@@ -3654,24 +3796,18 @@ void Renderer::BeginCollisionCheck(uint32_t maxPairs) {
 			
 			CD3DX12_HEAP_PROPERTIES defaultHeap(D3D12_HEAP_TYPE_DEFAULT);
 			CD3DX12_RESOURCE_DESC resDesc = CD3DX12_RESOURCE_DESC::Buffer(bufferSize, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
-			if (FAILED(dev_->CreateCommittedResource(&defaultHeap, D3D12_HEAP_FLAG_NONE, &resDesc, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr, IID_PPV_ARGS(&collisionResultBuffer_)))) {
-				return;
-			}
-			
 			CD3DX12_HEAP_PROPERTIES readbackHeap(D3D12_HEAP_TYPE_READBACK);
 			CD3DX12_RESOURCE_DESC readbackDesc = CD3DX12_RESOURCE_DESC::Buffer(bufferSize);
-			if (FAILED(dev_->CreateCommittedResource(&readbackHeap, D3D12_HEAP_FLAG_NONE, &readbackDesc, D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&collisionReadbackBuffer_)))) {
-				return;
-			}
-			
 			CD3DX12_RESOURCE_DESC reqDesc = CD3DX12_RESOURCE_DESC::Buffer(requestBufferSize);
-			if (FAILED(dev_->CreateCommittedResource(&defaultHeap, D3D12_HEAP_FLAG_NONE, &reqDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&collisionRequestBuffer_)))) {
-				return;
-			}
-
-			if (FAILED(collisionReadbackBuffer_->Map(0, nullptr, reinterpret_cast<void**>(&collisionReadbackMapped_)))) {
-				collisionReadbackMapped_ = nullptr;
-				return;
+			for (uint32_t i = 0; i < kFrameCount; ++i) {
+				if (FAILED(dev_->CreateCommittedResource(&defaultHeap, D3D12_HEAP_FLAG_NONE, &resDesc,
+					D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr, IID_PPV_ARGS(&collisionResultBuffer_[i]))) ||
+					FAILED(dev_->CreateCommittedResource(&readbackHeap, D3D12_HEAP_FLAG_NONE, &readbackDesc,
+					D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&collisionReadbackBuffer_[i]))) ||
+					FAILED(dev_->CreateCommittedResource(&defaultHeap, D3D12_HEAP_FLAG_NONE, &reqDesc,
+					D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&collisionRequestBuffer_[i]))) ||
+					FAILED(collisionReadbackBuffer_[i]->Map(0, nullptr,
+					reinterpret_cast<void**>(&collisionReadbackMapped_[i])))) return;
 			}
 			
 			collisionMaxPairs_ = maxPairs; // 成功した時のみ更新
@@ -3682,7 +3818,7 @@ void Renderer::BeginCollisionCheck(uint32_t maxPairs) {
 }
 
 void Renderer::DispatchCollision(MeshHandle /*meshA*/, uint32_t meshBHandle, const Transform& trA, const Game::BoxColliderComponent& bcA, const Transform& trB, uint32_t resultIndex) {
-	if (!psoCollision_ || !rootSigCompute_ || !collisionResultBuffer_) return;
+	if (!psoCollision_ || !rootSigCompute_ || !collisionResultBuffer_[window_->FrameIndex()]) return;
 	auto* modelB = GetModel(meshBHandle);
 	if (!modelB) return;
 
@@ -3761,30 +3897,31 @@ void Renderer::DispatchCollision(MeshHandle meshA, const Transform& trA, MeshHan
 }
 
 void Renderer::EndCollisionCheck() {
-	if (!collisionResultBuffer_ || !collisionReadbackBuffer_ || collisionMaxPairs_ == 0) return;
-	if (collisionRequests_.empty()) return;
+	const uint32_t fi = window_->FrameIndex();
+	auto* result = collisionResultBuffer_[fi].Get();
+	auto* readback = collisionReadbackBuffer_[fi].Get();
+	auto* requests = collisionRequestBuffer_[fi].Get();
+	if (!result || !readback || !requests || collisionMaxPairs_ == 0) return;
+	if (collisionRequests_.empty()) { collisionResultCount_[fi] = 0; return; }
+	collisionDispatchCount_ = static_cast<uint32_t>(collisionRequests_.size());
+	collisionResultCount_[fi] = collisionMaxPairs_;
 
 	// 1. ターゲットメッシュ(meshB)ごとに並び替え（グルーピングのため、効率向上のため）
 	std::sort(collisionRequests_.begin(), collisionRequests_.end(), [](const CollisionRequest& a, const CollisionRequest& b) {
 		return a.meshB < b.meshB;
 	});
 
-	const uint32_t fi = window_->FrameIndex();
-
-	// 1. 専用コマンドリストのリセット
-	collisionAlloc_->Reset();
-	collisionList_->Reset(collisionAlloc_.Get(), nullptr);
-
 	// 2. 結果バッファのクリア
 	uint32_t bufferSize = collisionMaxPairs_ * sizeof(Game::ContactInfo);
 	uint32_t clearOff = upload_[fi].Allocate(bufferSize, 256);
-	if (clearOff != UINT32_MAX) {
+	if (clearOff == UINT32_MAX) { collisionResultCount_[fi] = 0; return; }
+	{
 		std::memset(upload_[fi].mapped + clearOff, 0, bufferSize);
-		auto b1 = CD3DX12_RESOURCE_BARRIER::Transition(collisionResultBuffer_.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_DEST);
-		collisionList_->ResourceBarrier(1, &b1);
-		collisionList_->CopyBufferRegion(collisionResultBuffer_.Get(), 0, upload_[fi].buffer.Get(), clearOff, bufferSize);
-		auto b2 = CD3DX12_RESOURCE_BARRIER::Transition(collisionResultBuffer_.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-		collisionList_->ResourceBarrier(1, &b2);
+		auto b1 = CD3DX12_RESOURCE_BARRIER::Transition(result, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_DEST);
+		list_->ResourceBarrier(1, &b1);
+		list_->CopyBufferRegion(result, 0, upload_[fi].buffer.Get(), clearOff, bufferSize);
+		auto b2 = CD3DX12_RESOURCE_BARRIER::Transition(result, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+		list_->ResourceBarrier(1, &b2);
 	}
 
 	// 3. 全リクエストデータをGPUに転送
@@ -3792,22 +3929,22 @@ void Renderer::EndCollisionCheck() {
 	uint32_t reqOff = upload_[fi].Allocate(reqSize, 256);
 	if (reqOff != UINT32_MAX) {
 		std::memcpy(upload_[fi].mapped + reqOff, collisionRequests_.data(), reqSize);
-		auto barrierReq = CD3DX12_RESOURCE_BARRIER::Transition(collisionRequestBuffer_.Get(), D3D12_RESOURCE_STATE_GENERIC_READ, D3D12_RESOURCE_STATE_COPY_DEST);
-		collisionList_->ResourceBarrier(1, &barrierReq);
-		collisionList_->CopyBufferRegion(collisionRequestBuffer_.Get(), 0, upload_[fi].buffer.Get(), reqOff, reqSize);
-		auto barrierReq2 = CD3DX12_RESOURCE_BARRIER::Transition(collisionRequestBuffer_.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_GENERIC_READ);
-		collisionList_->ResourceBarrier(1, &barrierReq2);
+		auto barrierReq = CD3DX12_RESOURCE_BARRIER::Transition(requests, D3D12_RESOURCE_STATE_GENERIC_READ, D3D12_RESOURCE_STATE_COPY_DEST);
+		list_->ResourceBarrier(1, &barrierReq);
+		list_->CopyBufferRegion(requests, 0, upload_[fi].buffer.Get(), reqOff, reqSize);
+		auto barrierReq2 = CD3DX12_RESOURCE_BARRIER::Transition(requests, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_GENERIC_READ);
+		list_->ResourceBarrier(1, &barrierReq2);
 	} else {
-		collisionList_->Close();
+		collisionResultCount_[fi] = 0;
 		return;
 	}
 
 	// 4. パイプラインとルートシグネチャの設定
 	ID3D12DescriptorHeap* heaps[] = {srvHeap_};
-	collisionList_->SetDescriptorHeaps(1, heaps);
-	collisionList_->SetPipelineState(psoCollision_.Get());
-	collisionList_->SetComputeRootSignature(rootSigCompute_.Get());
-	collisionList_->SetComputeRootUnorderedAccessView(4, collisionResultBuffer_->GetGPUVirtualAddress());
+	list_->SetDescriptorHeaps(1, heaps);
+	list_->SetPipelineState(psoCollision_.Get());
+	list_->SetComputeRootSignature(rootSigCompute_.Get());
+	list_->SetComputeRootUnorderedAccessView(4, result->GetGPUVirtualAddress());
 
 	// 5. メッシュごとにグループ化して Dispatch
 	uint32_t currentStart = 0;
@@ -3826,37 +3963,33 @@ void Renderer::EndCollisionCheck() {
 			model->GetBvhIndexBufferAddr() != 0 &&
 			model->GetVertexBufferAddr() != 0 &&
 			model->GetIndexBufferAddr() != 0) {
-			collisionList_->SetComputeRoot32BitConstant(0, count, 0);
-			collisionList_->SetComputeRootShaderResourceView(1, collisionRequestBuffer_->GetGPUVirtualAddress() + currentStart * sizeof(CollisionRequest));
-			collisionList_->SetComputeRootShaderResourceView(2, model->GetBvhNodeBufferAddr());
-			collisionList_->SetComputeRootShaderResourceView(3, model->GetBvhIndexBufferAddr());
-			collisionList_->SetComputeRootShaderResourceView(5, model->GetVertexBufferAddr());
-			collisionList_->SetComputeRootShaderResourceView(6, model->GetIndexBufferAddr());
-			collisionList_->Dispatch((count + 63) / 64, 1, 1);
+			list_->SetComputeRoot32BitConstant(0, count, 0);
+			list_->SetComputeRootShaderResourceView(1, requests->GetGPUVirtualAddress() + currentStart * sizeof(CollisionRequest));
+			list_->SetComputeRootShaderResourceView(2, model->GetBvhNodeBufferAddr());
+			list_->SetComputeRootShaderResourceView(3, model->GetBvhIndexBufferAddr());
+			list_->SetComputeRootShaderResourceView(5, model->GetVertexBufferAddr());
+			list_->SetComputeRootShaderResourceView(6, model->GetIndexBufferAddr());
+			list_->Dispatch((count + 63) / 64, 1, 1);
 		}
 		currentStart += count;
 	}
 
 	// 6. 結果を読み戻し用バッファにコピー
-	auto bCopy = CD3DX12_RESOURCE_BARRIER::Transition(collisionResultBuffer_.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_SOURCE);
-	collisionList_->ResourceBarrier(1, &bCopy);
-	collisionList_->CopyBufferRegion(collisionReadbackBuffer_.Get(), 0, collisionResultBuffer_.Get(), 0, collisionMaxPairs_ * sizeof(Game::ContactInfo));
-	auto bBack = CD3DX12_RESOURCE_BARRIER::Transition(collisionResultBuffer_.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-	collisionList_->ResourceBarrier(1, &bBack);
-
-	// 7. 命令発行と完了待ちの解除 (非同期的実行)
-	collisionList_->Close();
-	ID3D12CommandList* ppLists[] = {collisionList_.Get()};
-	queue_->ExecuteCommandLists(1, ppLists);
-	WaitGPU(); // ★修正: CPU停止によるTDRを回避しようとしたが、これがないと次フレームでの collisionAlloc_->Reset() 時に GPU がまだ実行中で Device Removed (0x887A0006) になるため戻す。
+	auto bCopy = CD3DX12_RESOURCE_BARRIER::Transition(result, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_SOURCE);
+	list_->ResourceBarrier(1, &bCopy);
+	list_->CopyBufferRegion(readback, 0, result, 0, collisionMaxPairs_ * sizeof(Game::ContactInfo));
+	auto bBack = CD3DX12_RESOURCE_BARRIER::Transition(result, D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+	list_->ResourceBarrier(1, &bBack);
+	// WindowDX submits and fences this command list with the rest of the frame.
 
 	// 8. リクエストリストをクリア (重要: 漏れると毎フレーム蓄積する)
 	collisionRequests_.clear();
 }
 
 bool Renderer::GetCollisionResult(uint32_t resultIndex, Game::ContactInfo& outInfo) const {
-	if (resultIndex < collisionMaxPairs_ && collisionReadbackMapped_) {
-		outInfo = collisionReadbackMapped_[resultIndex];
+	const uint32_t fi = window_->FrameIndex();
+	if (resultIndex < collisionResultCount_[fi] && collisionReadbackMapped_[fi]) {
+		outInfo = collisionReadbackMapped_[fi][resultIndex];
 		return outInfo.intersected > 0;
 	}
 	return false;
@@ -4409,7 +4542,7 @@ void Renderer::EndLiquidPass() {
 }
 // ★追加: GPU流体パーティクルシステム
 void Renderer::InitGPUFluid() {
-	CD3DX12_ROOT_PARAMETER computeParams[7]{};
+	CD3DX12_ROOT_PARAMETER computeParams[9]{};
 	// ★追加: 48 DWordsに変更 (デコイ情報など含め12x4=48)
 	computeParams[0].InitAsConstants(48, 0); 
 	computeParams[1].InitAsUnorderedAccessView(0); // u0 (Particles)
@@ -4418,6 +4551,8 @@ void Renderer::InitGPUFluid() {
 	computeParams[4].InitAsUnorderedAccessView(3); // u3 (SortedParticles)
 	computeParams[5].InitAsUnorderedAccessView(4); // u4 (OriginalIndices)
 	computeParams[6].InitAsShaderResourceView(0);  // t0 (AABBs)
+	computeParams[7].InitAsUnorderedAccessView(5); // previous positions (immutable during solve)
+	computeParams[8].InitAsUnorderedAccessView(6); // Jacobi output, never read/write neighbours in place
 
 	CD3DX12_ROOT_SIGNATURE_DESC rsDescCompute;
 	rsDescCompute.Init(_countof(computeParams), computeParams, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_NONE);
@@ -4436,11 +4571,12 @@ void Renderer::InitGPUFluid() {
 	auto csCount = CompileShaderFromFile(L"Resources/shaders/FluidSimCS.hlsl", "CountParticles", "cs_5_0");
 	auto csPrefixSum = CompileShaderFromFile(L"Resources/shaders/FluidSimCS.hlsl", "PrefixSum", "cs_5_0");
 	auto csSort = CompileShaderFromFile(L"Resources/shaders/FluidSimCS.hlsl", "SortParticles", "cs_5_0");
+	auto csSortVelocity = CompileShaderFromFile(L"Resources/shaders/FluidSimCS.hlsl", "SortParticlesVelocity", "cs_5_0");
 	auto csDensity = CompileShaderFromFile(L"Resources/shaders/FluidSimCS.hlsl", "CalcDensity", "cs_5_0");
 	auto csForce = CompileShaderFromFile(L"Resources/shaders/FluidSimCS.hlsl", "CalcForce", "cs_5_0");
 	auto csWriteBack = CompileShaderFromFile(L"Resources/shaders/FluidSimCS.hlsl", "WriteBack", "cs_5_0");
 	
-	if (csEmit && csExtract && csSyncLostGroup && csAbsorbLostGroup && csInit && csClearOriginal && csClearCount && csCount && csPrefixSum && csSort && csDensity && csForce && csWriteBack) {
+	if (csEmit && csExtract && csSyncLostGroup && csAbsorbLostGroup && csInit && csClearOriginal && csClearCount && csCount && csPrefixSum && csSort && csSortVelocity && csDensity && csForce && csWriteBack) {
 		D3D12_COMPUTE_PIPELINE_STATE_DESC psoDesc{};
 		psoDesc.pRootSignature = rootSigFluid_.Get();
 		
@@ -4473,6 +4609,8 @@ void Renderer::InitGPUFluid() {
 		
 		psoDesc.CS = { csSort->GetBufferPointer(), csSort->GetBufferSize() };
 		dev_->CreateComputePipelineState(&psoDesc, IID_PPV_ARGS(&psoFluidSort_));
+		psoDesc.CS = { csSortVelocity->GetBufferPointer(), csSortVelocity->GetBufferSize() };
+		dev_->CreateComputePipelineState(&psoDesc, IID_PPV_ARGS(&psoFluidSortVelocity_));
 		
 		psoDesc.CS = { csDensity->GetBufferPointer(), csDensity->GetBufferSize() };
 		dev_->CreateComputePipelineState(&psoDesc, IID_PPV_ARGS(&psoFluidDensity_));
@@ -4482,6 +4620,16 @@ void Renderer::InitGPUFluid() {
 		
 		psoDesc.CS = { csWriteBack->GetBufferPointer(), csWriteBack->GetBufferSize() };
 		dev_->CreateComputePipelineState(&psoDesc, IID_PPV_ARGS(&psoFluidWriteBack_));
+		auto makePbf = [&](const char* entry, ComPtr<ID3D12PipelineState>& target) {
+			auto cs = CompileShaderFromFile(L"Resources/shaders/FluidSimCS.hlsl", entry, "cs_5_0");
+			if (!cs) return;
+			psoDesc.CS = {cs->GetBufferPointer(), cs->GetBufferSize()};
+			dev_->CreateComputePipelineState(&psoDesc, IID_PPV_ARGS(&target));
+		};
+		makePbf("SavePrevious", psoFluidSavePrevious_);
+		makePbf("CalcDeltaP", psoFluidDelta_);
+		makePbf("ApplyDeltaP", psoFluidApply_);
+		makePbf("UpdateVelocity", psoFluidVelocity_);
 	}
 
 	const char* phaseEntries[3] = { "mainPhase0", "mainPhase1", "mainPhase2" };
@@ -4628,16 +4776,34 @@ void Renderer::InitGPUFluid() {
 	// OriginalIndicesBuffer
 	auto origDesc = CD3DX12_RESOURCE_DESC::Buffer(gpuFluidMaxParticles_ * sizeof(uint32_t), D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
 	dev_->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &origDesc, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr, IID_PPV_ARGS(&gpuFluidOriginalIndicesBuffer_));
+	auto previousDesc = CD3DX12_RESOURCE_DESC::Buffer(gpuFluidMaxParticles_ * sizeof(Vector4), D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
+	dev_->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &previousDesc, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr, IID_PPV_ARGS(&gpuFluidPreviousBuffer_));
+	dev_->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &sortedDesc, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr, IID_PPV_ARGS(&gpuFluidScratchBuffer_));
 
 	// ★追加: AABB用バッファ
 	auto hpAABB = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
 	auto aabbDesc = CD3DX12_RESOURCE_DESC::Buffer(sizeof(FluidAABB) * 128); // 最大128個まで対応
 	dev_->CreateCommittedResource(&hpAABB, D3D12_HEAP_FLAG_NONE, &aabbDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&gpuFluidAABBBuffer_));
 
-	isGPUFluidReady_ = true;
+	isGPUFluidReady_ = psoFluidSavePrevious_ && psoFluidDelta_ && psoFluidApply_ && psoFluidVelocity_
+		&& psoFluidSortVelocity_ && gpuFluidPreviousBuffer_ && gpuFluidScratchBuffer_;
 }
 
 void Renderer::SetGPUFluidCore(const Vector3& pos, float attraction, const Vector3& scale, const Vector3& forward, float mode, float flowSpeed) {
+	const float frameDt = TimeManager::GetInstance().GetDeltaTime();
+	gpuFluidCoreVelocity_ = {0,0,0};
+	if (gpuFluidCoreAttraction_ > 0.0f && frameDt > 1e-5f) {
+		Vector3 delta = pos - gpuFluidCorePos_;
+		const float distanceSquared = delta.x*delta.x + delta.y*delta.y + delta.z*delta.z;
+		// Teleports must not become a launch impulse.
+		// The fluid solver caps simulated time to 1/30 s per frame. Express
+		// controller velocity in that same time span so a slow frame does not
+		// move the core farther than its particles can follow.
+		if (distanceSquared < 4.0f) {
+			const float simulatedDt = (std::min)(frameDt, 1.0f / 30.0f);
+			gpuFluidCoreVelocity_ = delta * (1.0f / simulatedDt);
+		}
+	}
 	gpuFluidCorePos_ = pos;
 	gpuFluidCoreAttraction_ = attraction;
 	gpuFluidCoreScale_ = scale;
@@ -4655,8 +4821,9 @@ void Renderer::SetGPUFluidDecoy(const Vector3& pos, float attraction, const Vect
 }
 
 void Renderer::ResetGPUFluid() {
+	volumeHistoryValid_ = false;
 	gpuFluidEmitCursorPlayer_ = 0;
-	gpuFluidEmitCursorSplash_ = 2000;
+	gpuFluidEmitCursorSplash_ = kPlayerFluidParticles;
 	gpuFluidExtractCursor_ = 0;
 	gpuFluidActiveParticleCount_ = 0;
 	gpuFluidPhaseMask_ = 0;
@@ -4679,16 +4846,13 @@ void Renderer::ResetGPUFluid() {
 void Renderer::UpdateGPUFluid(float dt) {
 	if (!isGPUFluidReady_ || !psoFluidDensity_ || !psoFluidForce_ || !gpuFluidBuffer_) return;
 	
-	// AABBバッファの更新
-	if (gpuFluidAABBBuffer_) {
-		void* mapped = nullptr;
-		gpuFluidAABBBuffer_->Map(0, nullptr, &mapped);
-		if (!gpuFluidAABBs_.empty()) {
-			size_t copyCount = gpuFluidAABBs_.size() > 128 ? 128 : gpuFluidAABBs_.size();
-			memcpy(mapped, gpuFluidAABBs_.data(), sizeof(FluidAABB) * copyCount);
-		}
-		gpuFluidAABBBuffer_->Unmap(0, nullptr);
-	}
+	// Use the fence-protected frame upload ring. A single persistently shared
+	// upload buffer can otherwise change while the previous frame is solving.
+	auto& fluidUpload = upload_[window_->FrameIndex()];
+	const uint32_t aabbOffset = fluidUpload.Allocate(sizeof(FluidAABB) * 128, 256);
+	if (aabbOffset == UINT32_MAX) return;
+	const size_t aabbCopyCount = (std::min)(gpuFluidAABBs_.size(), size_t(128));
+	if (aabbCopyCount) memcpy(fluidUpload.mapped + aabbOffset, gpuFluidAABBs_.data(), sizeof(FluidAABB) * aabbCopyCount);
 	
 	struct CB { 
 		float dt; uint32_t emitCursor; uint32_t emitCount; uint32_t maxParticles; 
@@ -4709,10 +4873,22 @@ void Renderer::UpdateGPUFluid(float dt) {
 	const uint32_t simulationCount = (std::min)(gpuFluidActiveParticleCount_, gpuFluidMaxParticles_);
 	if (simulationCount == 0 && isGPUFluidInitialized_) return;
 
-	cb.dt = dt; cb.emitCursor = 0; cb.emitCount = 0; cb.maxParticles = simulationCount > 0 ? simulationCount : gpuFluidMaxParticles_;
+	// Velocity is bounded to 30 units/s in the shader. At 120 Hz a particle
+	// travels at most 0.25 units, below the 0.4-unit neighbor radius.
+	// Three PBF iterations still run for every substep.
+	// More substeps per slow frame create a GPU work feedback loop.
+	fluidSimulatedDt_ = (std::isfinite(dt) ? (std::clamp)(dt, 0.0f, 1.0f / 30.0f) : 0.0f);
+	const uint32_t substeps = (std::max)(1u, static_cast<uint32_t>(std::ceil(fluidSimulatedDt_ * 120.0f - 0.0001f)));
+	if (fluidProfilerEnabled_) {
+		auto& profile = fluidProfilerFrames_[window_->FrameIndex()];
+		profile.particleSlots = simulationCount;
+		profile.substeps = substeps;
+		profile.simulatedDtMs = fluidSimulatedDt_ * 1000.0f;
+	}
+	cb.dt = fluidSimulatedDt_ / substeps; cb.emitCursor = 0; cb.emitCount = 0; cb.maxParticles = simulationCount > 0 ? simulationCount : gpuFluidMaxParticles_;
 	cb.emitPos = {0,0,0}; cb.emitType = 0.0f; cb.emitDir = {0,0,0}; cb.emitStartIndex = 0; cb.emitColor = {0,0,0,0};
 	cb.corePos = gpuFluidCorePos_; cb.coreAttraction = gpuFluidCoreAttraction_;
-	cb.emitEndIndex = gpuFluidMaxParticles_; cb.pad3 = {0,0,0};
+	cb.emitEndIndex = gpuFluidMaxParticles_; cb.pad3 = gpuFluidCoreVelocity_;
 	cb.coreScale = gpuFluidCoreScale_; cb.pad4 = gpuFluidCoreFlowSpeed_;
 	cb.coreForward = gpuFluidCoreForward_; cb.pad5 = gpuFluidCoreMode_;
 	cb.aabbCount = (uint32_t)(gpuFluidAABBs_.size() > 128 ? 128 : gpuFluidAABBs_.size());
@@ -4729,7 +4905,9 @@ void Renderer::UpdateGPUFluid(float dt) {
 	list_->SetComputeRootUnorderedAccessView(3, gpuFluidGridOffsetBuffer_->GetGPUVirtualAddress());
 	list_->SetComputeRootUnorderedAccessView(4, gpuFluidSortedParticlesBuffer_->GetGPUVirtualAddress());
 	list_->SetComputeRootUnorderedAccessView(5, gpuFluidOriginalIndicesBuffer_->GetGPUVirtualAddress());
-	if (gpuFluidAABBBuffer_) list_->SetComputeRootShaderResourceView(6, gpuFluidAABBBuffer_->GetGPUVirtualAddress());
+	list_->SetComputeRootShaderResourceView(6, fluidUpload.buffer->GetGPUVirtualAddress() + aabbOffset);
+	list_->SetComputeRootUnorderedAccessView(7, gpuFluidPreviousBuffer_->GetGPUVirtualAddress());
+	list_->SetComputeRootUnorderedAccessView(8, gpuFluidScratchBuffer_->GetGPUVirtualAddress());
 
 	uint32_t threadGroups = ((simulationCount > 0 ? simulationCount : gpuFluidMaxParticles_) + 63) / 64;
 	uint32_t gridGroups = (65536 + 63) / 64;
@@ -4743,6 +4921,13 @@ void Renderer::UpdateGPUFluid(float dt) {
 		isGPUFluidInitialized_ = true;
 	}
 	if (simulationCount == 0) return;
+	auto dispatch = [&](ID3D12PipelineState* pipeline, ID3D12Resource* output) {
+		list_->SetPipelineState(pipeline);
+		list_->Dispatch(threadGroups, 1, 1);
+		auto barrier = CD3DX12_RESOURCE_BARRIER::UAV(output);
+		list_->ResourceBarrier(1, &barrier);
+	};
+	auto rebuildGrid = [&](bool prepareVelocity = false) {
 
 	// Pass 0.0: Clear Original Indices
 	list_->SetPipelineState(psoFluidClearOriginal_.Get());
@@ -4774,31 +4959,54 @@ void Renderer::UpdateGPUFluid(float dt) {
 	list_->ResourceBarrier(2, bPrefixSum);
 
 	// Pass 0.4: Sort Particles
-	list_->SetPipelineState(psoFluidSort_.Get());
+	list_->SetPipelineState(prepareVelocity ? psoFluidSortVelocity_.Get() : psoFluidSort_.Get());
 	list_->Dispatch(threadGroups, 1, 1);
-	D3D12_RESOURCE_BARRIER bSort[2] = {
+	D3D12_RESOURCE_BARRIER bSort[3] = {
 		CD3DX12_RESOURCE_BARRIER::UAV(gpuFluidSortedParticlesBuffer_.Get()),
-		CD3DX12_RESOURCE_BARRIER::UAV(gpuFluidOriginalIndicesBuffer_.Get())
+		CD3DX12_RESOURCE_BARRIER::UAV(gpuFluidOriginalIndicesBuffer_.Get()),
+		CD3DX12_RESOURCE_BARRIER::UAV(gpuFluidGridCountBuffer_.Get())
 	};
-	list_->ResourceBarrier(2, bSort);
+	list_->ResourceBarrier(3, bSort);
+	};
+	// Even during hitstop, build a current grid for surface reconstruction.
+	if (cb.dt <= 0.0f) { rebuildGrid(); return; }
+	rebuildGrid();
+	for (uint32_t step = 0; step < substeps; ++step) {
+		dispatch(psoFluidSavePrevious_.Get(), gpuFluidPreviousBuffer_.Get());
+		// Previous substep ends with a current grid. Velocity writeback does
+		// not move particles, so rebuilding that same grid here was redundant.
 
 	// Pass 1: Density
 	list_->SetPipelineState(psoFluidDensity_.Get());
 	list_->Dispatch(threadGroups, 1, 1);
-	auto bDensity = CD3DX12_RESOURCE_BARRIER::UAV(gpuFluidSortedParticlesBuffer_.Get());
+	// CalcDensity also writes surface gradients to the scratch buffer for CalcForce.
+	auto bDensity = CD3DX12_RESOURCE_BARRIER::UAV(nullptr);
 	list_->ResourceBarrier(1, &bDensity);
 
 	// Pass 2: Force & Integrate
 	list_->SetPipelineState(psoFluidForce_.Get());
 	list_->Dispatch(threadGroups, 1, 1);
-	auto bForce = CD3DX12_RESOURCE_BARRIER::UAV(gpuFluidSortedParticlesBuffer_.Get());
+	auto bForce = CD3DX12_RESOURCE_BARRIER::UAV(gpuFluidScratchBuffer_.Get());
 	list_->ResourceBarrier(1, &bForce);
 
 	// Pass 3: WriteBack
 	list_->SetPipelineState(psoFluidWriteBack_.Get());
 	list_->Dispatch(threadGroups, 1, 1);
-	auto bWriteBack = CD3DX12_RESOURCE_BARRIER::UAV(gpuFluidBuffer_.Get());
+	auto bWriteBack = CD3DX12_RESOURCE_BARRIER::UAV(nullptr);
 	list_->ResourceBarrier(1, &bWriteBack);
+		for (uint32_t iteration = 0; iteration < 3; ++iteration) {
+			rebuildGrid();
+			dispatch(psoFluidDensity_.Get(), gpuFluidSortedParticlesBuffer_.Get());
+			dispatch(psoFluidDelta_.Get(), gpuFluidScratchBuffer_.Get());
+			dispatch(psoFluidApply_.Get(), gpuFluidBuffer_.Get());
+		}
+		rebuildGrid(true);
+		dispatch(psoFluidVelocity_.Get(), gpuFluidScratchBuffer_.Get());
+		dispatch(psoFluidWriteBack_.Get(), nullptr);
+	}
+	// Velocity writeback changes sorted data too; make it visible to volume CS.
+	auto sortedReady = CD3DX12_RESOURCE_BARRIER::UAV(gpuFluidSortedParticlesBuffer_.Get());
+	list_->ResourceBarrier(1, &sortedReady);
 }
 
 void Renderer::EmitGPUFluid(const Vector3& pos, const Vector3& velocityDir, const Vector4& color, int count, float type) {
@@ -4854,12 +5062,12 @@ void Renderer::EmitGPUFluid(const Vector3& pos, const Vector3& velocityDir, cons
 	} cb;
 	
 	uint32_t startIndex = 0;
-	uint32_t endIndex = 2000;
+	uint32_t endIndex = kPlayerFluidParticles;
 	uint32_t* cursorPtr = &gpuFluidEmitCursorPlayer_;
-	const uint32_t effectParticleEnd = (std::min)(gpuFluidMaxParticles_, 16000u);
+	const uint32_t effectParticleEnd = (std::min)(gpuFluidMaxParticles_, kEffectFluidEnd);
 	
 	if (type > 0.5f) { // Splash or Decoy
-		startIndex = 2000;
+		startIndex = kPlayerFluidParticles;
 		endIndex = effectParticleEnd;
 		cursorPtr = &gpuFluidEmitCursorSplash_;
 	}
@@ -4869,8 +5077,10 @@ void Renderer::EmitGPUFluid(const Vector3& pos, const Vector3& velocityDir, cons
 	const uint32_t phase = (type < 0.5f || (type > 2.5f && type < 3.5f)) ? 0u :
 		((type > 1.5f && type < 2.5f) ? 1u : 2u);
 	gpuFluidPhaseMask_ |= 1u << phase;
+	volumeColors_[phase] = color;
 	
-	cb.dt = 0.0f; cb.emitCursor = *cursorPtr; cb.emitCount = emitCount; cb.maxParticles = gpuFluidMaxParticles_;
+	cb.dt = (std::min)((std::max)(TimeManager::GetInstance().GetDeltaTime(),1e-4f),1.0f/30.0f);
+	cb.emitCursor = *cursorPtr; cb.emitCount = emitCount; cb.maxParticles = gpuFluidMaxParticles_;
 	cb.emitPos = pos; cb.emitType = type; cb.emitDir = velocityDir; cb.emitStartIndex = startIndex; cb.emitColor = color;
 	cb.corePos = gpuFluidCorePos_; cb.coreAttraction = gpuFluidCoreAttraction_;
 	cb.emitEndIndex = endIndex; cb.pad3 = {0,0,0};
@@ -4939,7 +5149,7 @@ uint32_t Renderer::ExtractGPUFluidFromPlayer(const Vector3& pos, const Vector3& 
 	}
 
 	const uint32_t startIndex = 0;
-	const uint32_t endIndex = 2000;
+	const uint32_t endIndex = kPlayerFluidParticles;
 	const uint32_t rangeSize = endIndex - startIndex;
 	const uint32_t extractCount = (std::min)(static_cast<uint32_t>(count), rangeSize);
 	if (gpuFluidExtractCursor_ + extractCount > endIndex) {
@@ -5031,7 +5241,7 @@ void Renderer::SyncLostGPUFluidGroup(uint32_t groupId, const Vector3& pos) {
 	cb.emitPos = pos;
 	cb.corePos = gpuFluidCorePos_;
 	cb.coreAttraction = gpuFluidCoreAttraction_;
-	cb.emitEndIndex = 2000;
+	cb.emitEndIndex = kPlayerFluidParticles;
 	cb.pad3 = {static_cast<float>(groupId), 0.0f, 0.0f};
 	cb.coreScale = gpuFluidCoreScale_;
 	cb.coreForward = gpuFluidCoreForward_;
@@ -5075,7 +5285,7 @@ void Renderer::AbsorbLostGPUFluidGroup(uint32_t groupId) {
 	cb.maxParticles = gpuFluidMaxParticles_;
 	cb.corePos = gpuFluidCorePos_;
 	cb.coreAttraction = gpuFluidCoreAttraction_;
-	cb.emitEndIndex = 2000;
+	cb.emitEndIndex = kPlayerFluidParticles;
 	cb.pad3 = {static_cast<float>(groupId), 0.0f, 0.0f};
 	cb.coreScale = gpuFluidCoreScale_;
 	cb.coreForward = gpuFluidCoreForward_;

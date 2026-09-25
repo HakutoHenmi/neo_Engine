@@ -37,7 +37,9 @@ struct PlayerActionComponent : public Component {
 
 	CanType currentCan = CanType::None; // ★追加: 現在滞在している缶
 	entt::entity canEntity = entt::null; // ★追加: 缶のエンティティID
-	float canDropProgress = 1.0f; // ★追加: 0.0 -> 1.0 (落ちてくるアニメーション用)
+	DirectX::XMFLOAT3 canFollowPos = {0.0f, 0.0f, 0.0f};
+	bool canFollowInitialized = false;
+	float canRevealTimer = 1.0f;
 	bool prevRadialMenuOpen = false; // ★追加: 前回のラジアルメニュー開閉状態
 
 	DirectX::XMFLOAT3 warpStartPos = {0,0,0}; // ★追加: ワープ開始位置
@@ -54,6 +56,11 @@ struct PlayerActionComponent : public Component {
 	DirectX::XMFLOAT3 liquefyFlowDir = {0.0f, 0.0f, 1.0f};
 	float liquefyInitialFlowSpeed = 0.0f;
 	bool liquefyLocked = false;
+	float CurrentLiquefyFlowSpeed() const {
+		// The controller is anchored while liquefied. Its entry momentum must
+		// fade instead of driving the puddle away for the entire hold.
+		return liquefyInitialFlowSpeed * std::exp(-8.0f * stateTimer);
+	}
 	float canPrimaryCooldown = 0.0f;
 	float canSecondaryCooldown = 0.0f;
 	float iceTrailEmitTimer = 0.0f;
@@ -117,42 +124,7 @@ public:
 			}
 			pa.prevRadialMenuOpen = currentRadialMenuOpen;
 
-			// ★追加: 缶の追従とアニメーション
-			if (pa.canEntity != entt::null && registry.valid(pa.canEntity)) {
-				auto& canTc = registry.get<TransformComponent>(pa.canEntity);
-				
-				// 落下アニメーション
-				if (pa.canDropProgress < 1.0f) {
-					pa.canDropProgress += ctx.dt * 2.0f; // 0.5秒で落ちる
-					if (pa.canDropProgress > 1.0f) pa.canDropProgress = 1.0f;
-				}
-				
-				// イージング
-				float t = pa.canDropProgress;
-				float easeT = 1.0f - std::pow(1.0f - t, 3.0f); // easeOutCubic
-				
-				// ふわふわ
-				float hoverOffset = std::sin(pa.totalTime * 3.0f) * 0.1f;
-				
-				// 目標位置 (プレイヤーの中心やや上)
-				DirectX::XMFLOAT3 targetPos = tc.translate;
-				targetPos.y += 0.8f + hoverOffset; // 体内(または少し上)
-				
-				if (pa.canDropProgress < 1.0f) {
-					// 落下中
-					float startY = tc.translate.y + 3.0f;
-					canTc.translate.x = tc.translate.x;
-					canTc.translate.z = tc.translate.z;
-					canTc.translate.y = startY + (targetPos.y - startY) * easeT;
-				} else {
-					// 追従
-					canTc.translate = targetPos;
-				}
-				
-				// 回転
-				canTc.rotate.y += ctx.dt * 2.0f;
-				canTc.rotate.z = std::sin(pa.totalTime * 2.0f) * 0.2f;
-			}
+			// The can follows the final player transform after movement and physics.
 
 
 			float targetCamOffset = 0.0f;
@@ -279,22 +251,22 @@ public:
 
 				if (!isGrounded) {
 					// 空中：縦に伸びる
-					tc.scale.x = 0.9f;
-					tc.scale.y = 1.2f;
-					tc.scale.z = 0.9f;
+					tc.scale.x = 1.18f;
+					tc.scale.y = 0.96f;
+					tc.scale.z = 1.18f;
 				} else if (isMoving) {
 					// 移動中：地面を這うように平べったく進む（跳ねない）
 					// 高さは一定にしつつ、XとZを少し伸縮させて這っている感を出します
 					float slither = std::sin(pa.stateTimer * 12.0f);
-					tc.scale.x = 1.3f - slither * 0.05f;
-					tc.scale.y = 0.65f; // 高さを固定（跳ねない）
-					tc.scale.z = 1.3f + slither * 0.05f;
+					tc.scale.x = 1.2f - slither * 0.015f;
+					tc.scale.y = 0.90f;
+					tc.scale.z = 1.2f + slither * 0.015f;
 				} else {
 					// 待機時：ゆっくり呼吸しておまんじゅう型
 					float breathe = std::sin(pa.stateTimer * 3.0f);
-					tc.scale.x = 1.2f + breathe * 0.05f;
-					tc.scale.y = 0.8f - breathe * 0.05f;
-					tc.scale.z = 1.2f + breathe * 0.05f;
+					tc.scale.x = 1.2f + breathe * 0.015f;
+					tc.scale.y = 0.92f - breathe * 0.015f;
+					tc.scale.z = 1.2f + breathe * 0.015f;
 				}
 
 				if (liquefyInput) {
@@ -535,7 +507,7 @@ public:
 					cm->isGrounded = true;
 				}
 
-				bool isMoving = pa.liquefyInitialFlowSpeed > 0.1f;
+				bool isMoving = pa.CurrentLiquefyFlowSpeed() > 0.1f;
 				float t = std::min(1.0f, pa.stateTimer * 8.0f);
 				float wave = std::sin(pa.totalTime * 12.0f) * 0.20f;
 				if (isMoving) {
@@ -991,6 +963,8 @@ public:
 			pa.liquefyFlowDir = {0.0f, 0.0f, 1.0f};
 			pa.liquefyInitialFlowSpeed = 0.0f;
 			pa.liquefyLocked = false;
+			pa.canFollowInitialized = false;
+			pa.canRevealTimer = 1.0f;
 			pa.canPrimaryCooldown = 0.0f;
 			pa.canSecondaryCooldown = 0.0f;
 			pa.iceTrailEmitTimer = 0.0f;
@@ -1588,7 +1562,8 @@ private:
 		if (pa.iceSlideApplied) RestoreIceSlide(registry, playerEntity, pa);
 		pa.currentCan = newCan;
 		pa.canEntity = entt::null;
-		pa.canDropProgress = 0.0f;
+		pa.canFollowPos = ptc.translate;
+		pa.canFollowInitialized = true;
 
 		if (newCan != CanType::None) {
 			if (ctx.scene) {
@@ -1598,7 +1573,7 @@ private:
 				auto& tc = registry.get<TransformComponent>(can);
 				tc.scale = {0.3f, 0.4f, 0.3f};
 				tc.translate = ptc.translate;
-				tc.translate.y += 3.0f; // 上空から
+				tc.translate.y += 0.35f; // Keep it inside the slime from its first frame.
 				
 				auto& mr = registry.emplace<MeshRendererComponent>(can);
 				mr.modelPath = "Resources/Models/Cylinder/cylinder.obj";

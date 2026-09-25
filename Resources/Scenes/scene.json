@@ -177,7 +177,7 @@
         {
           "type": "FluidEmitter",
           "enabled": true,
-          "emitCountPerFrame": 40,
+          "emitCountPerFrame": 80,
           "color": [
             0.2,
             0.8,

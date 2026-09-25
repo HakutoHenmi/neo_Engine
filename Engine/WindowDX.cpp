@@ -384,8 +384,36 @@ bool WindowDX::InitDX_() {
 #endif
 	if (FAILED(CreateDXGIFactory2(factoryFlags, IID_PPV_ARGS(&factory_))))
 		return false;
-	if (FAILED(D3D12CreateDevice(nullptr, D3D_FEATURE_LEVEL_12_0, IID_PPV_ARGS(&dev_))))
+	// Prefer the OS high-performance ordering, not the default display adapter.
+	Microsoft::WRL::ComPtr<IDXGIAdapter1> selectedAdapter;
+	for (UINT index = 0; ; ++index) {
+		Microsoft::WRL::ComPtr<IDXGIAdapter1> candidate;
+		HRESULT result = factory_->EnumAdapterByGpuPreference(index,
+			DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE, IID_PPV_ARGS(&candidate));
+		if (result == DXGI_ERROR_NOT_FOUND) break;
+		if (FAILED(result)) return false;
+		DXGI_ADAPTER_DESC1 desc{};
+		if (FAILED(candidate->GetDesc1(&desc)) || (desc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE)) continue;
+		if (SUCCEEDED(D3D12CreateDevice(candidate.Get(), D3D_FEATURE_LEVEL_12_0, IID_PPV_ARGS(&dev_)))) {
+			selectedAdapter = candidate;
+			break;
+		}
+	}
+	if (!selectedAdapter) {
+		AppendDebugLog("[GPU] No compatible hardware D3D12 adapter found.\n");
 		return false;
+	}
+	DXGI_ADAPTER_DESC1 selectedDesc{};
+	selectedAdapter->GetDesc1(&selectedDesc);
+	char gpuName[512]{};
+	WideCharToMultiByte(CP_UTF8, 0, selectedDesc.Description, -1, gpuName, sizeof(gpuName), nullptr, nullptr);
+	AppendDebugLog((std::string("[GPU] Selected hardware: ") + gpuName + "\n").c_str());
+	// Visible in both Release and Debug; no FPS instrumentation is added.
+	std::wstring title(256, L'\0');
+	int titleLength = GetWindowTextW(hwnd_, title.data(), static_cast<int>(title.size()));
+	title.resize(titleLength);
+	title += L" | "; title += selectedDesc.Description;
+	SetWindowTextW(hwnd_, title.c_str());
 
 #ifdef _DEBUG
 	{

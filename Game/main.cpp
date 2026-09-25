@@ -7,6 +7,11 @@
 #include "AssignmentScene.h"
 #include <fstream>
 #include <eh.h>
+#ifndef NDEBUG
+#include "../tests/FluidValidationScene.h"
+#include "../tests/FluidGameBenchmarkScene.h"
+#include <shellapi.h>
+#endif
 
 void LogFileMain(const char* msg) {
 	FILE* f = nullptr;
@@ -18,7 +23,8 @@ void LogFileMain(const char* msg) {
 	}
 }
 
-int WINAPI WinMain(_In_ HINSTANCE hInst, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int cmdShow) {
+int WINAPI WinMain(_In_ HINSTANCE hInst, _In_opt_ HINSTANCE, _In_ LPSTR commandLine, _In_ int cmdShow) {
+	(void)commandLine;
 	SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
 
 	{
@@ -64,10 +70,41 @@ int WINAPI WinMain(_In_ HINSTANCE hInst, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ in
 		sm.Register("Game", []() -> std::unique_ptr<Engine::IScene> { return std::unique_ptr<Engine::IScene>(new Game::GameScene()); });
 		sm.Register("Assignment", []() -> std::unique_ptr<Engine::IScene> { return std::unique_ptr<Engine::IScene>(new Game::AssignmentScene()); });
 		sm.Register("GameOver", []() -> std::unique_ptr<Engine::IScene> { return std::unique_ptr<Engine::IScene>(new Game::GameOverScene()); });
+#ifndef NDEBUG
+		sm.Register("FluidValidation", []() -> std::unique_ptr<Engine::IScene> { return std::make_unique<FluidValidationScene>(); });
+		sm.Register("FluidGameBenchmark", []() -> std::unique_ptr<Engine::IScene> { return std::make_unique<FluidGameBenchmarkScene>(); });
+		sm.Register("FluidGameBenchmarkEditor", []() -> std::unique_ptr<Engine::IScene> { return std::make_unique<FluidGameBenchmarkScene>(true); });
+		sm.Register("FluidCollisionSmoke", []() -> std::unique_ptr<Engine::IScene> { return std::make_unique<FluidGameBenchmarkScene>(false, true); });
+#endif
 	});
 
 	// Default Scene
 	app.SetInitialSceneKey("Title");
+#ifndef NDEBUG
+	int argumentCount = 0;
+	LPWSTR* arguments = CommandLineToArgvW(GetCommandLineW(), &argumentCount);
+	if (arguments) {
+		for (int i = 1; i < argumentCount; ++i) {
+			if (wcscmp(arguments[i], L"--fluid-smoke") == 0) {
+				app.SetInitialSceneKey("FluidValidation");
+				LogFileMain("Fluid smoke scene requested");
+			}
+			if (wcscmp(arguments[i], L"--fluid-game-benchmark") == 0) {
+				app.SetInitialSceneKey("FluidGameBenchmark");
+				LogFileMain("Fluid game benchmark scene requested");
+			}
+			if (wcscmp(arguments[i], L"--fluid-game-benchmark-editor") == 0) {
+				app.SetInitialSceneKey("FluidGameBenchmarkEditor");
+				LogFileMain("Fluid game editor benchmark scene requested");
+			}
+			if (wcscmp(arguments[i], L"--fluid-collision-smoke") == 0) {
+				app.SetInitialSceneKey("FluidCollisionSmoke");
+				LogFileMain("Fluid collision smoke scene requested");
+			}
+		}
+		LocalFree(arguments);
+	}
+#endif
 
 	try {
 		LogFileMain("Initializing App...");

@@ -157,13 +157,12 @@ void main(uint3 dtid : SV_DispatchThreadID) {
         uint nodeAddr = nodeIdx * kNodeStride;
         float3 bmin = asfloat(g_BvhNodes.Load3(nodeAddr + 0));
         float3 bmax = asfloat(g_BvhNodes.Load3(nodeAddr + 12));
-        int left = g_BvhNodes.Load(nodeAddr + 24);
-        int right = g_BvhNodes.Load(nodeAddr + 28);
-        uint firstTri = g_BvhNodes.Load(nodeAddr + 32);
-        uint triCount = g_BvhNodes.Load(nodeAddr + 36);
-
         if (IntersectAabbAabb(obbAabbMin, obbAabbMax, bmin, bmax)) {
+            int left = g_BvhNodes.Load(nodeAddr + 24);
+            int right = g_BvhNodes.Load(nodeAddr + 28);
             if (left < 0) {
+                uint firstTri = g_BvhNodes.Load(nodeAddr + 32);
+                uint triCount = g_BvhNodes.Load(nodeAddr + 36);
                 // Leaf: Iterate triangles
                 for (uint i = 0; i < triCount; ++i) {
                     if (firstTri + i >= req.bvhIndexCount) break;
@@ -178,6 +177,9 @@ void main(uint3 dtid : SV_DispatchThreadID) {
                     float3 v0 = GetVertexPos(vIdx0);
                     float3 v1 = GetVertexPos(vIdx1);
                     float3 v2 = GetVertexPos(vIdx2);
+                    float3 triMin = min(v0, min(v1, v2));
+                    float3 triMax = max(v0, max(v1, v2));
+                    if (!IntersectAabbAabb(obbAabbMin, obbAabbMax, triMin, triMax)) continue;
 
                     float3 localNormal; float localDepth;
                     if (IntersectObbTriangle(obbCenter, obbExtents, obbAxes, v0, v1, v2, localNormal, localDepth)) {

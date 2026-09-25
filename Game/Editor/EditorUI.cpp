@@ -1069,6 +1069,8 @@ void EditorUI::Initialize(Engine::Renderer* renderer) {
 // ====== Main UI ======
 void EditorUI::Show(Engine::Renderer* renderer, GameScene* gameScene) {
 	globalTime += ImGui::GetIO().DeltaTime;
+	static bool fluidProfilerOpen = false;
+	static bool fluidProfilerPaused = false;
 	
 	ImGuiWindowFlags window_flags = ImGuiWindowFlags_MenuBar | ImGuiWindowFlags_NoDocking;
 	ImGuiViewport* viewport = ImGui::GetMainViewport();
@@ -1184,6 +1186,17 @@ void EditorUI::Show(Engine::Renderer* renderer, GameScene* gameScene) {
 			ImGui::EndMenu();
 		}
 		if (ImGui::BeginMenu("Tools")) {
+			ImGui::MenuItem("Fluid Profiler", nullptr, &fluidProfilerOpen);
+			if (ImGui::BeginMenu("Fluid diagnostics")) {
+				if (renderer) {
+					ImGui::TextUnformatted(renderer->IsFluidVolumeReady() ? "3D volume active" : "Legacy fallback (volume init failed)");
+					const char* modes[] = {"Material", "Material phases", "3D normals", "Thickness", "Domain / ray steps"};
+					for (uint32_t mode = 0; mode < 5; ++mode) {
+						if (ImGui::MenuItem(modes[mode], nullptr, renderer->GetFluidVolumeDebugMode() == mode)) renderer->SetFluidVolumeDebugMode(mode);
+					}
+				}
+				ImGui::EndMenu();
+			}
 			static bool pipeOpen = false;
 			if (ImGui::MenuItem("Pipe Mode", nullptr, &pipeOpen)) {
 				s_pipeEditor.SetPipeMode(pipeOpen);
@@ -1740,6 +1753,58 @@ void EditorUI::Show(Engine::Renderer* renderer, GameScene* gameScene) {
 	ImGui::PopStyleVar();
 
 	ImGui::End(); // EditorMain
+
+	if (fluidProfilerOpen) {
+		ImGui::SetNextWindowSize(ImVec2(540, 420), ImGuiCond_FirstUseEver);
+		if (ImGui::Begin("Fluid Profiler##Development", &fluidProfilerOpen)) {
+			ImGui::Checkbox("Pause capture", &fluidProfilerPaused);
+			const auto& profile = renderer->GetFluidProfileStats();
+			if (fluidProfilerPaused) ImGui::TextColored(ImVec4(1.0f, 0.72f, 0.32f, 1.0f),
+				"Capture paused: the values below are from an earlier frame.");
+			if (!profile.available) {
+				ImGui::TextUnformatted("GPU timestamp queries are unavailable on this device.");
+			} else if (!profile.valid) {
+				ImGui::TextUnformatted("Waiting for a completed GPU frame...");
+			} else {
+				ImGui::Text("Fluid GPU total: %.3f ms", profile.totalMs);
+				ImGui::SameLine();
+				ImGui::TextDisabled("(%u frames old)", profile.framesSinceSample);
+				if (profile.sampledStages[Engine::Renderer::SceneRender]) {
+					const float sceneMs = profile.lastMs[Engine::Renderer::SceneRender];
+					ImGui::Text("Game render GPU: %.3f ms   Other game passes: %.3f ms",
+						sceneMs, (std::max)(0.0f, sceneMs - profile.totalMs));
+				}
+				ImGui::Text("Particles: %u   Simulation substeps: %u   Simulated dt: %.2f ms",
+					profile.particleSlots, profile.substeps, profile.simulatedDtMs);
+				ImGui::Text("Spatial grid rebuilds: %u", profile.simulatedDtMs > 0.0f ? 1 + 4 * profile.substeps : 1);
+				ImGui::Text("Volume: 176 x 64 x 176 at 0.56 units   LOD: 46.0 - 48.5 units");
+				ImGui::Text("Frame rate: %.1f FPS (whole editor)", ImGui::GetIO().Framerate);
+				ImGui::Text("CPU command recording: simulation %.3f ms, volume %.3f ms",
+					profile.cpuSimulationMs, profile.cpuVolumeMs);
+				ImGui::Separator();
+				ImGui::TextUnformatted("GPU pass                                Last       Mean       Peak (ms)");
+				static const char* names[Engine::Renderer::kFluidProfileStageCount] = {
+					"Particle simulation", "Shape reconstruction", "Density splat + resolve",
+					"Filtering + occupancy", "Refraction + raymarch", "Distant impostors", "Fluid shadow", "Whole game render"
+				};
+				for (uint32_t i = 0; i < Engine::Renderer::kFluidProfileStageCount; ++i) {
+					if (!profile.sampledStages[i]) {
+						ImGui::Text("%-30s    (inactive)", names[i]);
+						continue;
+					}
+					ImGui::Text("%-30s %8.3f   %8.3f   %8.3f", names[i],
+						profile.lastMs[i], profile.averageMs[i], profile.peakMs[i]);
+				}
+				ImGui::Separator();
+				ImGui::PlotLines("Fluid GPU total", profile.totalHistory.data(),
+					static_cast<int>(profile.historyCount), 0, nullptr, 0.0f, FLT_MAX, ImVec2(0, 100));
+				ImGui::TextDisabled("Mean / peak: last %u completed samples. GPU time excludes CPU waits and UI.", profile.historyCount);
+				ImGui::TextDisabled("Game render includes fluid; Other game passes is the difference. Editor UI and Present are excluded.");
+			}
+		}
+		ImGui::End();
+	}
+	if (renderer) renderer->SetFluidProfilerEnabled(fluidProfilerOpen && !fluidProfilerPaused);
 }
 
 void EditorUI::ShowHierarchy(GameScene* scene) {

@@ -145,6 +145,7 @@
     <ClCompile Include="Engine\ParticleEmitter.cpp" />
     <ClCompile Include="Engine\ParticleEditor.cpp" />
     <ClCompile Include="Engine\Renderer.cpp" />
+    <ClCompile Include="Engine\FluidVolume.cpp" />
     <ClCompile Include="Engine\DynamicGlyphCache.cpp" />
     <ClCompile Include="Engine\Font.cpp" />
     <ClCompile Include="externals\stb\stb_truetype_impl.cpp" />
