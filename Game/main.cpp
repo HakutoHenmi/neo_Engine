@@ -10,6 +10,7 @@
 #ifndef NDEBUG
 #include "../tests/FluidValidationScene.h"
 #include "../tests/FluidGameBenchmarkScene.h"
+#include "../tests/ChronoValidationScene.h"
 #include <shellapi.h>
 #endif
 
@@ -72,6 +73,7 @@ int WINAPI WinMain(_In_ HINSTANCE hInst, _In_opt_ HINSTANCE, _In_ LPSTR commandL
 		sm.Register("GameOver", []() -> std::unique_ptr<Engine::IScene> { return std::unique_ptr<Engine::IScene>(new Game::GameOverScene()); });
 #ifndef NDEBUG
 		sm.Register("FluidValidation", []() -> std::unique_ptr<Engine::IScene> { return std::make_unique<FluidValidationScene>(); });
+		sm.Register("ChronoValidation", []() -> std::unique_ptr<Engine::IScene> { return std::make_unique<ChronoValidationScene>(); });
 		sm.Register("FluidGameBenchmark", []() -> std::unique_ptr<Engine::IScene> { return std::make_unique<FluidGameBenchmarkScene>(); });
 		sm.Register("FluidGameBenchmarkEditor", []() -> std::unique_ptr<Engine::IScene> { return std::make_unique<FluidGameBenchmarkScene>(true); });
 		sm.Register("FluidCollisionSmoke", []() -> std::unique_ptr<Engine::IScene> { return std::make_unique<FluidGameBenchmarkScene>(false, true); });
@@ -85,6 +87,10 @@ int WINAPI WinMain(_In_ HINSTANCE hInst, _In_opt_ HINSTANCE, _In_ LPSTR commandL
 	LPWSTR* arguments = CommandLineToArgvW(GetCommandLineW(), &argumentCount);
 	if (arguments) {
 		for (int i = 1; i < argumentCount; ++i) {
+			if (wcscmp(arguments[i], L"--chrono-smoke") == 0) {
+				app.SetInitialSceneKey("ChronoValidation");
+				LogFileMain("Chrono validation scene requested");
+			}
 			if (wcscmp(arguments[i], L"--fluid-smoke") == 0) {
 				app.SetInitialSceneKey("FluidValidation");
 				LogFileMain("Fluid smoke scene requested");

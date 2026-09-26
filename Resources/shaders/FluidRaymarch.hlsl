@@ -159,7 +159,8 @@ RayResult RaymarchPS(FullscreenIn input) {
         float3 absorption=(1-tint)*(selected==2?0.55f:2.2f)+0.035f;
         float3 transmission=exp(-absorption*thickness[selected]);
         float3 body=result*transmission+tint*(1-transmission)*0.12f;
-        result=lerp(body,Reflection(n,ray,roughness),fresnel);
+        float opacity=saturate(phaseColor[selected].a);
+        result=lerp(result,lerp(body,Reflection(n,ray,roughness),fresnel),opacity);
     }
     output.color=float4(lerp(background,result,NearVolumeWeight(cameraPosition+ray*nearest)),1);
     return output;

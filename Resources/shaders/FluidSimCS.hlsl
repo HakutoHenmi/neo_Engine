@@ -154,7 +154,53 @@ static const float H_POWER_9 = 0.000262144f; // SMOOTHING_RADIUS^9
 static const float POLY6_COEFF = 315.0f / (64.0f * PI * H_POWER_9);
 static const float SPIKY_COEFF = 45.0f / (PI * H_POWER_6);
 
-float RestDensity(float type) { return FluidRestDensity(type); }
+float RestDensity(float type) {
+    // Above baseline mass, keep the same particle budget and increase volume.
+    float volume = (type < 0.5f && coreMode >= 2.0f) ? max(1.0f, coreFlowSpeed / 100.0f) : 1.0f;
+    return FluidRestDensity(type) / volume;
+}
+float3 ChronoTransportVelocity() {
+    // Ordinary walking uses exactly the legacy velocity-follow force.
+    // Carry only the high-speed part that the 30-unit solver cannot follow.
+    return pad3 * saturate((length(pad3) - 20.0f) / 45.0f);
+}
+bool IsTetherParticle(uint index) {
+    // Stable identities: gaining/losing mass must not reassign the whole arm.
+    return coreMode >= 2.0f && index % 20U >= 13U && index < (uint)pad6.y;
+}
+float TetherParameter(uint index) {
+    uint lane = (index / 20U) * 7U + index % 20U - 13U;
+    return frac((lane + 0.5f) * 0.61803398875f);
+}
+float3 TetherGuide(uint index) {
+    if (!IsTetherParticle(index)) return 0;
+    float t = TetherParameter(index);
+    float3 span = (emitPos - corePos) * emitType;
+    float sag = min(length(span) * 0.035f, 0.45f) * sin(t * PI);
+    return span * t - float3(0, sag, 0);
+}
+bool TetherControlled(uint index) { return IsTetherParticle(index) && emitType > 0.001f; }
+float TetherShapeWeight() { return smoothstep(1.5f, 6.0f, length(emitPos - corePos) * emitType); }
+float3 TetherGoal(uint index, float3 rest) {
+    float3 span = (emitPos - corePos) * emitType;
+    float distance = length(span), t = TetherParameter(index);
+    float3 axis = distance > 1e-5f ? span / distance : float3(0,0,1);
+    float3 across = normalize(cross(axis, abs(axis.y) < 0.9f ? float3(0,1,0) : float3(1,0,0)));
+    float angle = hash(index * 123U + 71U) * 2 * PI;
+    float massScale = pow(max(0.1f, coreFlowSpeed / 100.0f), 1.0f / 3.0f);
+    float radius = lerp(0.70f, 0.32f, t) * massScale * sqrt(hash(index * 999U + 3U));
+    float3 section = (across * cos(angle) + cross(axis, across) * sin(angle)) * radius;
+    // Absolute material goal, never an inverse stretch of the solver's output.
+    // Shortening the hand blends the same liquid back into its captured body shape.
+    return corePos + lerp(rest, TetherGuide(index) + section, smoothstep(0.0f, 6.0f, distance));
+}
+float3 ConstrainTether(float3 position, uint index, float3 rest) {
+    if (!TetherControlled(index)) return position;
+    float3 goal = TetherGoal(index, rest), residual = position - goal;
+    float distance = length(residual);
+    float3 constrained = goal + residual * min(1.0f, 0.12f / max(distance, 1e-5f));
+    return lerp(position, constrained, TetherShapeWeight());
+}
 float3 KernelGradient(float3 d) {
     float r = length(d);
     if (r < 1e-5f || r >= SMOOTHING_RADIUS) return 0;
@@ -572,13 +618,17 @@ void CalcForce(uint3 DTid : SV_DispatchThreadID) {
     
     // The controller moves the core; player particles keep their own positions.
     // Density projection and collisions determine the occupied volume and base.
-    bool isCurrentLiquefiedPlayer = pi.type < 0.5f && coreMode > 0.5f;
+    bool isCurrentLiquefiedPlayer = pi.type < 0.5f && coreMode > 0.5f && coreMode < 1.5f;
     if (pi.type < 0.5f && coreAttraction > 0.0f) {
         if (!isCurrentLiquefiedPlayer) {
-            float3 fromCore = pi.position - corePos;
+            uint original = OriginalIndices[i];
+            bool tether = TetherControlled(original);
+            float3 guide = tether ? TetherGuide(original) : float3(0,0,0);
+            float3 fromCore = pi.position - corePos - guide;
             float distanceToCore = length(fromCore);
             float3 radialDir = distanceToCore > 1e-4f ? fromCore / distanceToCore : float3(0.0f, 1.0f, 0.0f);
             float fieldDistance = distanceToCore;
+            if (coreMode >= 2.0f) fieldDistance /= pow(max(1.0f, coreFlowSpeed / 100.0f), 1.0f/3.0f);
             // An attack opens the field in front without assigning particle
             // identities or rotating the body when the controller turns.
             if (coreScale.z > 2.0f) {
@@ -601,26 +651,41 @@ void CalcForce(uint3 DTid : SV_DispatchThreadID) {
             float cohesionMag = min(3.0f * fieldDistance
                                   + 15.0f * max(fieldDistance - 1.55f, 0.0f), 45.0f);
             float3 coreForce = radialDir * (outwardPressure - cohesionMag);
+            if (tether) {
+                // The extended liquid keeps pressure and neighbour interaction;
+                // a soft field holds its centreline without drawing a rigid mesh.
+                float pull = min(90.0f * max(distanceToCore - 0.35f, 0.0f), 120.0f);
+                coreForce = radialDir * (outwardPressure - pull);
+            }
 
             // --- Vertical support: dome shaping ---
             // Moderate baseline keeps floor particles grounded (net −6).
             // Crown gets enough lift to form a dome (net +4).
             // The always-on cohesion prevents the separation that a dead zone
             // would allow.
-            float aboveCore = saturate((pi.position.y - corePos.y) / 2.1f);
-            coreForce.y += 14.0f + 10.0f * aboveCore;
+            float aboveCore = saturate(fromCore.y / 2.1f);
+            coreForce.y += tether ? 20.0f : 14.0f + 10.0f * aboveCore;
+            // Chrono landing/airborne deformation changes forces, never teleports
+            // particles through the floor. Unit aspect leaves normal SPH intact.
+            if(coreMode>=2.0f && !tether && emitType<0.05f){
+                float massScale=pow(clamp(coreFlowSpeed,1.0f,200.0f)/100.0f,1.0f/3.0f);
+                float aspect=clamp(coreScale.y/max(massScale,0.01f),0.62f,1.18f);
+                coreForce.y+=clamp((aspect-1.0f)*max(fromCore.y,0.0f)*90.0f,-48.0f,12.0f);
+                coreForce.xz+=fromCore.xz*clamp((rsqrt(aspect)-1.0f)*25.0f,-4.0f,9.0f);
+            }
 
             // Follow equally on every side. Front/rear gain differences pile
             // fluid into a wall when the controller reverses direction.
-            float coreSpeed = length(pad3);
+            float3 followVelocity = coreMode >= 2.0f ? pad3 - ChronoTransportVelocity() : pad3;
+            float coreSpeed = length(followVelocity);
             float baseFollow = 1.2f;
             float distanceFollow = min(6.0f * saturate((fieldDistance - 1.8f) / 2.3f), 6.0f);
             float speedFollow = 0.2f * min(coreSpeed, 20.0f);
-            float planarCoreSpeed = length(pad3.xz);
+            float planarCoreSpeed = length(followVelocity.xz);
             float opposingSpeed = planarCoreSpeed > 0.5f
-                ? max(-dot(pi.velocity.xz, pad3.xz) / planarCoreSpeed, 0.0f) : 0.0f;
+                ? max(-dot(pi.velocity.xz, followVelocity.xz) / planarCoreSpeed, 0.0f) : 0.0f;
             float follow = baseFollow + distanceFollow + speedFollow + 0.35f * min(opposingSpeed, 20.0f);
-            float3 velocityFollow = (pad3 - pi.velocity) * follow;
+            float3 velocityFollow = (followVelocity - pi.velocity) * follow;
             // Vertical coupling must be at least as strong as horizontal so that
             // the body does not smear vertically during fast movement.
             velocityFollow.y *= max(1.0f, 2.0f * aboveCore);
@@ -673,6 +738,7 @@ void CalcForce(uint3 DTid : SV_DispatchThreadID) {
     }
     
     pi.position += pi.velocity * dt;
+    pi.position = ConstrainTether(pi.position, OriginalIndices[i], pi.pad);
     
     // Only the decoy retains a rest-shape safety boundary.
     if (pi.type > 1.5f && pi.type < 2.5f && decoyAttraction > 0.0f) {
@@ -817,7 +883,35 @@ void WriteBack(uint3 DTid : SV_DispatchThreadID) {
 
 [numthreads(64, 1, 1)]
 void SavePrevious(uint3 id : SV_DispatchThreadID) {
-    if (id.x < maxParticles) PreviousPositions[id.x] = float4(Particles[id.x].position, 1);
+    if (id.x >= maxParticles) return;
+    if (pad6.x > 0.5f && id.x < (uint)pad6.z) {
+        Particle p = Particles[id.x];
+        if (id.x >= (uint)pad6.y) { p.position=float3(0,-1000,0); p.color.a=0; }
+        else {
+            if (p.position.y < -500 || p.color.a <= 0) {
+                float polar=1-2*hash(id.x*456U+19U), angle=6.2831853f*hash(id.x*123U+71U);
+                float ring=sqrt(max(0,1-polar*polar));
+                p.position=corePos+float3(ring*cos(angle),polar,ring*sin(angle))*pow(hash(id.x*999U),0.333333f)*PLAYER_REST_RADIUS;
+                p.velocity=0;p.pad=0;
+            } else p.position+=ChronoTransportVelocity()*dt;
+            if (TetherControlled(id.x)) {
+                if (dot(p.pad,p.pad) < 1e-10f) {
+                    float3 rest = p.position - corePos;
+                    // Do not capture a remote remnant after a fast chain as a rest position.
+                    float limit = PLAYER_REST_RADIUS * pow(max(0.1f,coreFlowSpeed/100.0f),1.0f/3.0f);
+                    p.pad = rest * min(1.0f, limit / max(length(rest),1e-5f)) + float3(0,0.0001f,0);
+                }
+                // Once the arm rejoins the body, let PBF redistribute it. Pinning
+                // captured positions inside the moving body repeatedly compressed
+                // neighbours and launched them outward on release.
+                p.position = lerp(p.position, TetherGoal(id.x, p.pad), TetherShapeWeight());
+                p.velocity *= exp(-24.0f * dt);
+            } else p.pad = 0;
+            p.type=0; p.color=float4(0.4f,0.8f,0.1f,1);
+        }
+        Particles[id.x]=p;
+    }
+    PreviousPositions[id.x] = float4(Particles[id.x].position, 1);
 }
 
 // Jacobi: lambdas and predicted positions are read-only for this dispatch.
@@ -873,7 +967,8 @@ void ApplyDeltaP(uint3 id : SV_DispatchThreadID) {
     if (i>=maxParticles || OriginalIndices[i]==0xffffffffU) return;
     Particle p=SortedParticles[i];
     if (p.position.y < -500 || p.color.a < 0.01f) return;
-    p.position=ProjectCollisions(p.position+SolverOutput[i].position,p.type);
+    float3 corrected = ConstrainTether(p.position+SolverOutput[i].position, OriginalIndices[i], p.pad);
+    p.position=ProjectCollisions(corrected,p.type);
     Particles[OriginalIndices[i]]=p;
 }
 
@@ -902,5 +997,12 @@ void UpdateVelocity(uint3 id : SV_DispatchThreadID) {
     bool water=p.type>0.5f && p.type<1.5f;
     float blend=1.0f-exp(-(water ? 2.0f : 40.0f)*dt);
     p.velocity=weightSum>1e-6f ? lerp(velocity,sum/weightSum,blend) : velocity;
+    if (coreMode >= 2.0f && p.type < 0.5f && emitType > 0.001f) {
+        float recovery = 1.0f - TetherShapeWeight();
+        float3 follow = pad3 - ChronoTransportVelocity();
+        float3 relative = p.velocity - follow;
+        float speed = length(relative);
+        p.velocity = lerp(p.velocity, follow + relative * min(1.0f, 8.0f / max(speed,1e-5f)), recovery);
+    }
     SolverOutput[i]=p;
 }

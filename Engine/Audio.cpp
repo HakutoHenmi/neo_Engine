@@ -79,11 +79,11 @@ uint32_t Audio::Load(const std::string& path) {
 }
 
 // ハンドル指定再生
-size_t Audio::Play(uint32_t soundHandle, bool loop, float volume) {
+size_t Audio::Play(uint32_t soundHandle, bool loop, float volume, float pitch) {
 	// 定期お掃除 (再生終わったボイスを消す)
 	GarbageCollect();
 
-	if (soundHandle >= soundDatas_.size())
+	if (!xa_ || soundHandle >= soundDatas_.size())
 		return 0;
 
 	const auto& sd = soundDatas_[soundHandle];
@@ -94,6 +94,7 @@ size_t Audio::Play(uint32_t soundHandle, bool loop, float volume) {
 	}
 
 	src->SetVolume(volume);
+	src->SetFrequencyRatio(std::clamp(pitch,0.5f,2.0f));
 
 	XAUDIO2_BUFFER buf{};
 	buf.pAudioData = sd.data.data();

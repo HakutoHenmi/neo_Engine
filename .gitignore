@@ -375,3 +375,5 @@ externals/**/*.exe
 imgui.ini
 temp_play.json
 *.temp_play.json
+# Local build diagnostics
+/build/

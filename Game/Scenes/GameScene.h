@@ -116,6 +116,7 @@ private:
     entt::entity selectedEntity_ = entt::null;
 
     bool isPlaying_ = false;
+    bool chronoMode_ = false;
     bool isPaused_ = false; // ★追加: ポーズ状態
     entt::registry pendingSpawns_;
     std::vector<entt::entity> pendingDestroys_;

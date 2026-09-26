@@ -39,6 +39,7 @@ float CalcShadow(float3 worldPos) {
     return shadow / 9.0f;
 }
 float4 main(float4 svpos:SV_POSITION, float3 worldPos:TEXCOORD0, float3 normal:TEXCOORD1, float2 uv:TEXCOORD2, float4 color:COLOR0) : SV_TARGET {
+    if(color.a<0)clip(-color.a-frac(52.9829189*frac(dot(floor(svpos.xy),float2(.06711056,.00583715)))));
     float4 tex = gTex.Sample(gSmp, uv);
     clip(tex.a - 0.1f);
     float3 albedo = tex.rgb * color.rgb;
@@ -53,5 +54,5 @@ float4 main(float4 svpos:SV_POSITION, float3 worldPos:TEXCOORD0, float3 normal:T
     for(int i=0; i<MAX_DIR; ++i) if(gDir[i].enabled) finalColor += BlinnPhong(normalize(-gDir[i].dir), V, N, gDir[i].color, albedo) * shadowFactor;
     for(int j=0; j<MAX_POINT; ++j) if(gPoint[j].enabled) { float3 Lv = gPoint[j].pos - worldPos; float d = length(Lv); if(d < gPoint[j].range) finalColor += BlinnPhong(normalize(Lv), V, N, gPoint[j].color, albedo) * GetAttenuation(gPoint[j].atten, d); }
     for(int k=0; k<MAX_SPOT; ++k) if(gSpot[k].enabled) { float3 Lv = gSpot[k].pos - worldPos; float d = length(Lv); if(d < gSpot[k].range) { float3 L = normalize(Lv); float c = dot(L, normalize(-gSpot[k].dir)); float s = smoothstep(gSpot[k].outer, gSpot[k].inner, c); finalColor += BlinnPhong(L, V, N, gSpot[k].color, albedo) * GetAttenuation(gSpot[k].atten, d) * s; } }
-    return float4(finalColor, tex.a * color.a);
+    return float4(finalColor, tex.a * abs(color.a));
 }

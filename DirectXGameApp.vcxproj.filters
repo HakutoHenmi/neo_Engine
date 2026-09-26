@@ -1203,4 +1203,10 @@
     <None Include="Resources\shaders\TextPS.hlsl" />
     <None Include="Resources\shaders\Text.hlsli" />
   </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="Game\Systems\ChronoSystem.cpp" />
+    <ClInclude Include="Game\Systems\ChronoSystem.h" />
+    <ClInclude Include="Game\Chrono\ChronoComponents.h" />
+    <ClInclude Include="Game\Chrono\ChronoRules.h" />
+  </ItemGroup>
 </Project>

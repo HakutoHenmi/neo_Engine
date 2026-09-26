@@ -413,6 +413,12 @@ public:
 	void DrawGPUFluidShadow(); // ★追加: シャドウパス描画用
 	void DrawGPUFluidDebug();
 	void SetGPUFluidCore(const Vector3& pos, float attraction, const Vector3& scale = {1.0f, 1.0f, 1.0f}, const Vector3& forward = {0.0f, 0.0f, 1.0f}, float mode = 0.0f, float flowSpeed = 0.0f);
+	// Deforms existing player particles; no separate arm mesh or extra emission.
+	void SetGPUFluidTether(const Vector3& tip, bool active) { gpuFluidTetherTip_ = tip; gpuFluidTetherActive_ = active; }
+	void SetChronoFluidPresentation(float opacity,float flash,bool paused) { chronoFluidOpacity_=opacity;chronoFluidFlash_=flash;chronoFluidPaused_=paused; }
+	Vector3 gpuFluidTetherTip_{};
+	bool gpuFluidTetherActive_ = false;
+	float gpuFluidTetherBlend_ = 0.0f;
 	void SetGPUFluidDecoy(const Vector3& pos, float attraction, const Vector3& scale = {1.0f, 1.0f, 1.0f}, const Vector3& forward = {0.0f, 0.0f, 1.0f}); // ★追加: デコイ用コア情報設定
 
 	Vector3 gpuFluidCorePos_ = {0,0,0};
@@ -421,6 +427,8 @@ public:
 	Vector3 gpuFluidCoreScale_ = {1.0f, 1.0f, 1.0f};
 	Vector3 gpuFluidCoreForward_ = {0.0f, 0.0f, 1.0f};
 	float gpuFluidCoreMode_ = 0.0f;
+	float chronoFluidOpacity_=1,chronoFluidFlash_=0;
+	bool chronoFluidPaused_=false;
 	float gpuFluidCoreFlowSpeed_ = 0.0f;
 
 	// ★追加: デコイ用コア情報

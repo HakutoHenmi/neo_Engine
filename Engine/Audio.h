@@ -50,7 +50,7 @@ public:
 	// 再生
 	// 戻り値: 再生ハンドル (停止時に使用)
 	// volume: 0.0f ~ 1.0f
-	size_t Play(uint32_t soundHandle, bool loop = false, float volume = 1.0f);
+	size_t Play(uint32_t soundHandle, bool loop = false, float volume = 1.0f, float pitch = 1.0f);
 
 	// 停止
 	void Stop(size_t voiceHandle);
