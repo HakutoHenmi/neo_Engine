@@ -1,3 +1,4 @@
+param([ValidateSet('', '--chrono-only', '--volume-only', '--reversal-only', '--liquefy-only')][string]$Case = '')
 $ErrorActionPreference = 'Stop'
 $repoPath = Split-Path $PSScriptRoot -Parent
 Push-Location $repoPath
@@ -10,6 +11,6 @@ try {
     $buildCommand = 'call "{0}" -arch=x64 -host_arch=x64 >nul && cl /nologo /std:c++17 /EHsc /O2 /W4 tests/FluidGpuTests.cpp /Fo:tests/out/FluidGpuTests.obj /Fe:tests/out/FluidGpuTests.exe /link d3d11.lib d3dcompiler.lib windowscodecs.lib ole32.lib' -f $devCmd
     & $env:ComSpec /d /s /c $buildCommand
     if ($LASTEXITCODE) { throw 'Fluid GPU test build failed.' }
-    & './tests/out/FluidGpuTests.exe'
+    if ($Case) { & './tests/out/FluidGpuTests.exe' $Case } else { & './tests/out/FluidGpuTests.exe' }
     if ($LASTEXITCODE) { throw 'Fluid GPU regression failed.' }
 } finally { Pop-Location }

@@ -1223,3 +1223,12 @@
 [GPU] Selected hardware: NVIDIA GeForce RTX 4060 Laptop GPU
 [GPU] Selected hardware: NVIDIA GeForce RTX 4060 Laptop GPU
 [GPU] Selected hardware: NVIDIA GeForce RTX 4060 Laptop GPU
+[GPU] Selected hardware: NVIDIA GeForce RTX 4060 Laptop GPU
+[GPU] Selected hardware: NVIDIA GeForce RTX 4060 Laptop GPU
+[GPU] Selected hardware: NVIDIA GeForce RTX 4060 Laptop GPU
+[GPU] Selected hardware: NVIDIA GeForce RTX 4060 Laptop GPU
+[GPU] Selected hardware: NVIDIA GeForce RTX 4060 Laptop GPU
+[GPU] Selected hardware: NVIDIA GeForce RTX 4060 Laptop GPU
+[GPU] Selected hardware: NVIDIA GeForce RTX 4060 Laptop GPU
+[GPU] Selected hardware: NVIDIA GeForce RTX 4060 Laptop GPU
+[GPU] Selected hardware: NVIDIA GeForce RTX 4060 Laptop GPU

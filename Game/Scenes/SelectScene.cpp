@@ -8,11 +8,11 @@
 namespace Game {
 
 namespace {
-constexpr int kOptionCount = 3;
+constexpr int kOptionCount = 4;
 constexpr const char* kOptionLabels[kOptionCount] = {
-    "1. Stage 1", "2. Stage 2", "3. Test Scene"
+    "1. Chrono Chain - Liquid Time", "2. Stage 1", "3. Stage 2", "4. Test Scene"
 };
-constexpr float kOptionY[kOptionCount] = {0.44f, 0.56f, 0.68f};
+constexpr float kOptionY[kOptionCount] = {0.38f, 0.50f, 0.62f, 0.74f};
 }
 
 SelectScene::~SelectScene() {
@@ -99,11 +99,15 @@ void SelectScene::Update() {
     }
 
     auto confirmSelection = [this]() {
-        if (selectedIndex_ == 2) {
+        if (selectedIndex_ == 0) {
+            Engine::SceneParameters params;
+            params.stagePath = "Resources/Scenes/chrono.json";
+            Engine::SceneManager::GetInstance()->RequestChange("Game", params);
+        } else if (selectedIndex_ == 3) {
             Engine::SceneManager::GetInstance()->RequestChange("Assignment");
         } else {
             Engine::SceneParameters params;
-            if (selectedIndex_ == 1) params.stagePath = "Resources/Scenes/stage2.json";
+            if (selectedIndex_ == 2) params.stagePath = "Resources/Scenes/stage2.json";
             Engine::SceneManager::GetInstance()->RequestChange("Equipment", params);
         }
     };

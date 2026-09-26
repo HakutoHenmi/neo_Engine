@@ -3259,6 +3259,10 @@ float4 main(float4 svpos:SV_POSITION, float2 uv:TEXCOORD0) : SV_TARGET {
 		psoPPDefault_ = psoPP_; // ★追加: デフォルトPSOをバックアップ
 
 		// ★追加：PostProcessと同様、そのままテクスチャをコピーするだけのパイプライン
+		auto psChrono = CompileShaderFromFile(L"Resources/shaders/ChronoFocusPost.hlsl", "main", "ps_5_0");
+		if (!psChrono) return false;
+		pso.PS={psChrono->GetBufferPointer(),psChrono->GetBufferSize()};
+		if(FAILED(dev_->CreateGraphicsPipelineState(&pso,IID_PPV_ARGS(&pipelines_["ChronoFocus"]))))return false;
 		auto psCopy = CompileShaderFromFile(L"Resources/shaders/CopyPS.hlsl", "main", "ps_5_0");
 		if (psCopy) {
 			pso.PS = { psCopy->GetBufferPointer(), psCopy->GetBufferSize() };
@@ -4799,7 +4803,7 @@ void Renderer::SetGPUFluidCore(const Vector3& pos, float attraction, const Vecto
 		// The fluid solver caps simulated time to 1/30 s per frame. Express
 		// controller velocity in that same time span so a slow frame does not
 		// move the core farther than its particles can follow.
-		if (distanceSquared < 4.0f) {
+		if (distanceSquared < 4.0f || mode >= 2.0f) {
 			const float simulatedDt = (std::min)(frameDt, 1.0f / 30.0f);
 			gpuFluidCoreVelocity_ = delta * (1.0f / simulatedDt);
 		}
@@ -4821,6 +4825,9 @@ void Renderer::SetGPUFluidDecoy(const Vector3& pos, float attraction, const Vect
 }
 
 void Renderer::ResetGPUFluid() {
+	chronoFluidOpacity_=1;chronoFluidFlash_=0;chronoFluidPaused_=false;
+	gpuFluidTetherActive_ = false;
+	gpuFluidTetherBlend_ = 0;
 	volumeHistoryValid_ = false;
 	gpuFluidEmitCursorPlayer_ = 0;
 	gpuFluidEmitCursorSplash_ = kPlayerFluidParticles;
@@ -4844,6 +4851,11 @@ void Renderer::ResetGPUFluid() {
 }
 
 void Renderer::UpdateGPUFluid(float dt) {
+	if(gpuFluidCoreMode_>=2.0f&&chronoFluidPaused_){
+		fluidSimulatedDt_=0;
+		if(fluidProfilerEnabled_)fluidProfilerFrames_[window_->FrameIndex()].particleSlots=gpuFluidActiveParticleCount_;
+		return;
+	}
 	if (!isGPUFluidReady_ || !psoFluidDensity_ || !psoFluidForce_ || !gpuFluidBuffer_) return;
 	
 	// Use the fence-protected frame upload ring. A single persistently shared
@@ -4893,6 +4905,15 @@ void Renderer::UpdateGPUFluid(float dt) {
 	cb.coreForward = gpuFluidCoreForward_; cb.pad5 = gpuFluidCoreMode_;
 	cb.aabbCount = (uint32_t)(gpuFluidAABBs_.size() > 128 ? 128 : gpuFluidAABBs_.size());
 	cb.pad6 = {0,0,0};
+	if (gpuFluidCoreMode_ >= 2.0f) {
+		cb.pad6 = {1.0f, (std::clamp)(gpuFluidCoreFlowSpeed_ * (kPlayerFluidParticles / 100.0f), 0.0f, static_cast<float>(kPlayerFluidParticles)), static_cast<float>(kPlayerFluidParticles)};
+		// The hand already advances continuously; it must reach the visible hit.
+		gpuFluidTetherBlend_ = gpuFluidTetherActive_ ? 1.0f : gpuFluidTetherBlend_ * std::exp(-24.0f * fluidSimulatedDt_);
+		if (gpuFluidTetherBlend_ < 0.001f) gpuFluidTetherBlend_ = 0;
+		// Emit fields are unused by solver dispatches. Keep the shared 48-DWORD layout.
+		cb.emitPos = gpuFluidTetherTip_;
+		cb.emitType = gpuFluidTetherBlend_;
+	}
 	cb.decoyPos = gpuFluidDecoyPos_; cb.decoyAttraction = gpuFluidDecoyAttraction_;
 	cb.decoyScale = gpuFluidDecoyScale_; cb.pad7 = 0.0f;
 	cb.decoyForward = gpuFluidDecoyForward_; cb.pad8 = 0.0f;
@@ -4970,9 +4991,14 @@ void Renderer::UpdateGPUFluid(float dt) {
 	};
 	// Even during hitstop, build a current grid for surface reconstruction.
 	if (cb.dt <= 0.0f) { rebuildGrid(); return; }
-	rebuildGrid();
+	if (gpuFluidCoreMode_ < 2.0f) rebuildGrid();
 	for (uint32_t step = 0; step < substeps; ++step) {
 		dispatch(psoFluidSavePrevious_.Get(), gpuFluidPreviousBuffer_.Get());
+		if (gpuFluidCoreMode_ >= 2.0f) {
+			auto transported = CD3DX12_RESOURCE_BARRIER::UAV(gpuFluidBuffer_.Get());
+			list_->ResourceBarrier(1, &transported);
+			rebuildGrid();
+		}
 		// Previous substep ends with a current grid. Velocity writeback does
 		// not move particles, so rebuilding that same grid here was redundant.
 

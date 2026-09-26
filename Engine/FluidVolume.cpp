@@ -159,10 +159,20 @@ void Renderer::DrawFluidVolume() {
     Vector3 origin={std::floor(center.x/kVoxelSize)*kVoxelSize-kVolumeHalfWidth,
                     std::floor(center.y/kVoxelSize)*kVoxelSize-8,
                     std::floor(center.z/kVoxelSize)*kVoxelSize-kVolumeHalfWidth};
+    if (gpuFluidCoreMode_ >= 2.0f && gpuFluidTetherBlend_ > 0.01f) {
+        const float low = (std::min)(center.y, center.y + (gpuFluidTetherTip_.y - center.y) * gpuFluidTetherBlend_);
+        origin.y = std::floor(low / kVoxelSize) * kVoxelSize - 4;
+    }
     float move=std::abs(origin.x-volumePreviousOrigin_.x)+std::abs(origin.y-volumePreviousOrigin_.y)+std::abs(origin.z-volumePreviousOrigin_.z);
     if(move>8) volumeHistoryValid_=false;
     VolumeConstants cb{origin,kVoxelSize,{kVolumeWidth,kVolumeHeight,kVolumeWidth},(std::min)(gpuFluidActiveParticleCount_,gpuFluidMaxParticles_),
         volumePreviousOrigin_,volumeHistoryValid_?1.0f:0.0f,fluidSimulatedDt_,0.25f,0,static_cast<float>(fluidVolumeDebugMode_),{volumeColors_[0],volumeColors_[1],volumeColors_[2]}};
+    if(gpuFluidCoreMode_>=2.0f){
+        cb.colors[0].w=chronoFluidOpacity_;
+        cb.colors[0].x+=(1-cb.colors[0].x)*chronoFluidFlash_;
+        cb.colors[0].y+=(1-cb.colors[0].y)*chronoFluidFlash_;
+        cb.colors[0].z+=(1-cb.colors[0].z)*chronoFluidFlash_;
+    }
     auto transition=[&](ID3D12Resource* resource,D3D12_RESOURCE_STATES before,D3D12_RESOURCE_STATES after) {
         auto b=CD3DX12_RESOURCE_BARRIER::Transition(resource,before,after); list_->ResourceBarrier(1,&b);
     };

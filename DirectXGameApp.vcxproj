@@ -205,6 +205,7 @@ exit /b 0
     <ClCompile Include="Game\Scripts\GameManagerScript.cpp" />
     <ClCompile Include="Game\Scripts\BossTestScript.cpp" />
     <ClCompile Include="Game\Systems\UISystem.cpp" />
+    <ClCompile Include="Game\Systems\ChronoSystem.cpp" />
     <ClCompile Include="Game\Systems\RiverSystem.cpp" />
   </ItemGroup>
   <ItemGroup>
@@ -213,6 +214,9 @@ exit /b 0
     <ClInclude Include="Game\Editor\EnemySpawnerEditor.h" />
     <ClInclude Include="Game\Scenes\AssignmentScene.h" />
     <ClInclude Include="Game\Scenes\GameScene.h" />
+    <ClInclude Include="Game\Systems\ChronoSystem.h" />
+    <ClInclude Include="Game\Chrono\ChronoComponents.h" />
+    <ClInclude Include="Game\Chrono\ChronoRules.h" />
     <ClInclude Include="Game\Scenes\GameOverScene.h" />
     <ClInclude Include="Game\Scenes\EquipmentScene.h" />
     <ClInclude Include="Game\Scenes\SelectScene.h" />

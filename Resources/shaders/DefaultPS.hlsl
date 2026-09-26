@@ -66,6 +66,7 @@ float CalcShadow(float3 worldPos) {
 }
 
 float4 main(float4 svpos:SV_POSITION, float3 worldPos:TEXCOORD0, float3 normal:TEXCOORD1, float2 uv:TEXCOORD2) : SV_TARGET {
+    if(gColor.a<0)clip(-gColor.a-frac(52.9829189*frac(dot(floor(svpos.xy),float2(.06711056,.00583715)))));
     float4 tex = gTex.Sample(gSmp, uv); 
     clip(tex.a - 0.1f);
     float3 albedo = tex.rgb * gColor.rgb; 
@@ -84,5 +85,5 @@ float4 main(float4 svpos:SV_POSITION, float3 worldPos:TEXCOORD0, float3 normal:T
     for(int i=0; i<MAX_SPOT; ++i) if(gSpot[i].enabled) { float3 Lv = gSpot[i].pos - worldPos; float d = length(Lv); if(d < gSpot[i].range) { float3 L = normalize(Lv); float c = dot(L, normalize(-gSpot[i].dir)); float s = smoothstep(gSpot[i].outer, gSpot[i].inner, c); finalColor += BlinnPhong(L, V, N, gSpot[i].color, albedo) * GetAttenuation(gSpot[i].atten, d) * s; } }
     for(int i=0; i<MAX_AREA; ++i) if(gArea[i].enabled) finalColor += CalcAreaLight(gArea[i], worldPos, N, V, albedo);
 
-    return float4(finalColor, tex.a * gColor.a);
+    return float4(finalColor, tex.a * abs(gColor.a));
 }

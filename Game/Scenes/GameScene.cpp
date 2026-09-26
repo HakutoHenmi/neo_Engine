@@ -23,6 +23,7 @@
 #include "../Systems/MotionSystem.h" // ★追加
 #include "../Systems/PhysicsSystem.h"
 #include "../Systems/PlayerInputSystem.h"
+#include "../Systems/ChronoSystem.h"
 #include "../Systems/PlayerActionSystem.h" // ★追加: プレイヤーアクション
 #include "../Systems/CombatSystem.h"       // ★追加: 戦闘判定
 #include "../Systems/CanAbilitySystem.h"
@@ -72,6 +73,8 @@ GameScene::~GameScene() {
 void GameScene::Initialize(Engine::WindowDX* dx, const Engine::SceneParameters& params) {
 	dx_ = dx;
 	renderer_ = Engine::Renderer::GetInstance();
+	chronoMode_ = params.stagePath.find("chrono.json") != std::string::npos;
+	if (chronoMode_) renderer_->ResetGPUFluid();
 
 	// ★追加: テストシーン等で変更されたポストプロセスをリセット
 	if (renderer_) {
@@ -231,6 +234,9 @@ void GameScene::Initialize(Engine::WindowDX* dx, const Engine::SceneParameters& 
 
 	// ★ Systemの登録（順序が重要）
 	systems_.clear();
+	if (chronoMode_) {
+		systems_.push_back(std::make_unique<ChronoSystem>(this));
+	} else {
 	systems_.push_back(std::make_unique<PlayerInputSystem>());
 	systems_.push_back(std::make_unique<PlayerActionSystem>());  // ★追加: 攻撃・パリィ・回避
 	systems_.push_back(std::make_unique<WeaponSystem>());        // ★追加: 武器の管理・アニメーション
@@ -254,6 +260,7 @@ void GameScene::Initialize(Engine::WindowDX* dx, const Engine::SceneParameters& 
 	systems_.push_back(std::make_unique<MotionSystem>());
 	systems_.push_back(std::make_unique<PostProcessSystem>()); // ★追加
 	systems_.push_back(std::make_unique<CleanupSystem>());
+	}
 
 	// リスナー登録
 	registry_.on_construct<TagComponent>().disconnect<&GameScene::OnTagAdded>(this);
@@ -385,7 +392,7 @@ void GameScene::Update() {
 	// コンテキストを更新
 	ctx_.dt = dt;
 	ctx_.combatFlow = &combatFlow_;
-	if (isPlaying_ && !isPaused_) combatFlow_.Tick(dt);
+	if (isPlaying_ && !isPaused_ && !chronoMode_) combatFlow_.Tick(dt);
 	const bool stageClear = IsStageClear();
 
 	if (isPlaying_) {
@@ -481,7 +488,7 @@ void GameScene::Update() {
 				auto& meshWrapper = registry_.get<MeshRendererComponent>(entity);
 
 				if (anim.enabled && anim.isPlaying) {
-						const float animDt = registry_.all_of<BossActionComponent>(entity)
+						const float animDt = (registry_.all_of<BossActionComponent>(entity) || registry_.all_of<Chrono::Boss>(entity))
 							? dt * combatFlow_.enemyScale : dt;
 						anim.time += animDt * 60.0f * anim.speed;
 						if (anim.crossfadeTimer > 0.0f) {
@@ -626,7 +633,7 @@ void GameScene::Update() {
 		// リザルト遷移中などはシステムを動かさない (エンティティが削除されている可能性があるため)
 		if (!isPlaying_ || isPaused_)
 			break;
-		if (stageClear && dynamic_cast<WaveSystem*>(system.get()) == nullptr)
+		if (stageClear && dynamic_cast<WaveSystem*>(system.get()) == nullptr && dynamic_cast<ChronoSystem*>(system.get()) == nullptr)
 			continue;
 #ifndef NDEBUG
 		const auto profileSystemBegin = std::chrono::steady_clock::now();
@@ -1090,7 +1097,21 @@ void GameScene::Draw() {
 				if (isLiquidated) {
 					liquidFlowSpeed = liquefyInitialFlowSpeed;
 				}
-				renderer_->SetGPUFluidCore(targetCore, attraction, scaleVec, forward, isLiquidated ? 1.0f : 0.0f, liquidFlowSpeed);
+				if (chronoMode_) {
+					float mass = registry_.get<HealthComponent>(playerEntity).hp;
+					renderer_->SetGPUFluidCore(targetCore, attraction, scaleVec, forward, 2.0f, mass);
+					if (auto* action = registry_.try_get<Chrono::Player>(playerEntity)) {
+						float flash=action->damageAge<.6f?(std::sin(action->damageAge*70)>0?.75f:0):0;
+						if(action->instability>75)flash=std::max(flash,.35f*(.5f+.5f*std::sin(action->stats.seconds*10)));
+						renderer_->SetChronoFluidPresentation(action->cameraOpacity,flash,action->hitStop>0);
+						bool tether = action->action == Chrono::Action::Extending || action->action == Chrono::Action::Pulling || action->action == Chrono::Action::Retracting;
+						renderer_->SetGPUFluidTether({action->hand.x, action->hand.y, action->hand.z}, tether);
+					}
+				} else {
+					renderer_->SetGPUFluidTether({}, false);
+					renderer_->SetChronoFluidPresentation(1,0,false);
+					renderer_->SetGPUFluidCore(targetCore, attraction, scaleVec, forward, isLiquidated ? 1.0f : 0.0f, liquidFlowSpeed);
+				}
 
 				// ★追加: デコイコアの設定
 				bool decoyFound = false;
@@ -1272,6 +1293,8 @@ void GameScene::Draw() {
 		}
 
 		bool hasMeshRenderer = false;
+		if(chronoMode_&&isPlaying_)if(auto* occluder=registry_.try_get<Chrono::CameraOccluder>(entity))
+			if(occluder->opacity<.995f)color.w=-occluder->opacity; // Opt-in screen-door transparency; shadows/collision stay solid.
 		if (registry_.all_of<MeshRendererComponent>(entity)) {
 			const auto& mr = registry_.get<MeshRendererComponent>(entity);
 			if (mr.enabled && mr.modelHandle != 0) {
@@ -1407,6 +1430,8 @@ void GameScene::Draw() {
 
 	for (auto& system : systems_) {
 		system->Draw(registry_, ctx_);
+		// Chrono HUD queues sprites before Renderer::EndFrame flushes them.
+		if (chronoMode_ && isPlaying_) system->DrawUI(registry_, ctx_);
 	}
 }
 
@@ -1441,7 +1466,7 @@ void GameScene::DrawUI() {
 	if (!isPlaying_)
 		return;
 	for (auto& sys : systems_) {
-		sys->DrawUI(registry_, ctx_);
+		if (!chronoMode_) sys->DrawUI(registry_, ctx_);
 	}
 }
 
@@ -1450,6 +1475,7 @@ extern int gizmoDragAxis;
 
 bool GameScene::IsStageClear() const {
 	for (const auto& system : systems_) {
+		if (const auto* chrono = dynamic_cast<const ChronoSystem*>(system.get())) return chrono->Finished();
 		if (const auto* wave = dynamic_cast<const WaveSystem*>(system.get())) {
 			return wave->state == WaveSystem::State::Clear;
 		}
@@ -1749,6 +1775,11 @@ void GameScene::SetIsPlaying(bool play) {
 		return;
 
 	wasLiquidated_ = false;
+	if (chronoMode_) {
+		renderer_->ResetGPUFluid();
+		gpuSlimeEmitted_ = false;
+		renderer_->SetPostEffect("Default");renderer_->SetPostProcessParams({});
+	}
 
 	if (play) {
 		// プレイ開始時: スクリプトの現在の設定（インスペクターでの変更）をコンポーネントに確実に反映 (Flush)
@@ -1926,7 +1957,8 @@ void GameScene::SetTag(entt::entity entity, const std::string& tagStr) {
 void GameScene::ClearScene() {
 	// 1. 各システムのリセット（システム側の状態をクリア）
 	for (auto& sys : systems_) {
-		sys->Reset(registry_);
+		if (auto* chrono = dynamic_cast<ChronoSystem*>(sys.get())) chrono->Invalidate();
+		else sys->Reset(registry_);
 	}
 
 	// 2. 予約バッファやキャッシュの完全クリア

@@ -268,6 +268,120 @@ void TestReversalSymmetry(Gpu& g) {
     printf("PASS reversal symmetry: left %.4f, right %.4f velocity response\n",left,right);
 }
 
+void TestChronoLiquid(Gpu& g) {
+    for(const char* entry:{"ClearOriginalIndices","ClearGridCount","CountParticles","PrefixSum",
+                          "SortParticles","SortParticlesVelocity","CalcDensity","CalcForce","SavePrevious","WriteBack",
+                          "CalcDeltaP","ApplyDeltaP","UpdateVelocity"}) g.Kernel(entry,true);
+    constexpr UINT count=6600,groups=(count+63)/64;
+    std::vector<Particle> initial;
+    for(UINT i=0;i<count;++i){
+        float polar=1-2*(i+.5f)/count,angle=i*2.39996323f,ring=std::sqrt(1-polar*polar);
+        float radius=2.8f*std::cbrt(std::fmod((i+.5f)*.754877666f,1.f));
+        auto v=MakeParticle(ring*std::cos(angle)*radius,20+polar*radius,ring*std::sin(angle)*radius,0);
+        v.velocity={-2,1,3};initial.push_back(v);
+    }
+    auto p=g.MakeBuffer(count,64,initial.data()),counts=g.MakeBuffer(65536,4),offsets=g.MakeBuffer(65536,4);
+    auto sorted=g.MakeBuffer(count,64),indices=g.MakeBuffer(count,4),previous=g.MakeBuffer(count,16),scratch=g.MakeBuffer(count,64);
+    XMFLOAT4 dummy[2]{};auto aabb=g.MakeBuffer(1,32,dummy);
+    std::array<UINT,48> cb{};
+    auto f=[&](UINT index,float value){memcpy(&cb[index],&value,4);};
+    cb[3]=count;cb[20]=count;f(0,1.f/120);f(17,20);f(19,32);
+    f(24,1);f(25,1);f(26,1);f(27,100);f(21,15);f(30,1);
+    auto constants=g.Constant(192);
+    auto bind=[&](){
+        g.Unbind();g.context->UpdateSubresource(constants.Get(),0,nullptr,cb.data(),0,0);
+        auto c=constants.Get();g.context->CSSetConstantBuffers(0,1,&c);
+        ID3D11UnorderedAccessView* u[]={p.uav.Get(),counts.uav.Get(),offsets.uav.Get(),sorted.uav.Get(),indices.uav.Get(),previous.uav.Get(),scratch.uav.Get()};
+        g.context->CSSetUnorderedAccessViews(0,7,u,nullptr);auto a=aabb.srv.Get();g.context->CSSetShaderResources(0,1,&a);
+    };
+    auto reset=[&](){g.Unbind();g.context->UpdateSubresource(p.resource.Get(),0,nullptr,initial.data(),0,0);};
+    auto grid=[&](bool velocity=false){
+        g.Dispatch("ClearOriginalIndices",groups);g.Dispatch("ClearGridCount",1024);
+        g.Dispatch("CountParticles",groups);g.Dispatch("PrefixSum",1);
+        g.Dispatch(velocity?"SortParticlesVelocity":"SortParticles",groups);
+    };
+    auto solve=[&](){
+        bind();g.Dispatch("ClearOriginalIndices",groups);g.Dispatch("ClearGridCount",1024);
+        g.Dispatch("CountParticles",groups);g.Dispatch("PrefixSum",1);g.Dispatch("SortParticles",groups);
+        g.Dispatch("CalcDensity",groups);g.Dispatch("CalcForce",groups);g.Dispatch("WriteBack",groups);
+    };
+    // Both modes must retain the same dynamic response at baseline mass.
+    solve();auto legacy=g.Read<Particle>(p);reset();
+    f(31,2);f(33,1);f(34,count);f(35,count);
+    bind();g.Dispatch("SavePrevious",groups);auto walking=g.Read<Particle>(p);
+    for(UINT i=0;i<count;++i)Require(std::abs(walking[i].position.x-initial[i].position.x)<1e-6f,"ordinary walking rigidly transports the liquid");
+    solve();auto chrono=g.Read<Particle>(p);
+    for(UINT i=0;i<count;++i){
+        auto a=XMLoadFloat3(&legacy[i].velocity),b=XMLoadFloat3(&chrono[i].velocity);
+        Require(XMVectorGetX(XMVector3Length(a-b))<.0001f,"Chrono baseline response differs from the other scenes");
+    }
+    // Landing compression must push the crown down, with finite outward spread.
+    reset();f(25,.7f);solve();auto compressed=g.Read<Particle>(p);
+    float crownDelta=0;unsigned crownCount=0;
+    for(UINT i=0;i<count;++i)if(initial[i].position.y>21){
+        crownDelta+=compressed[i].velocity.y-chrono[i].velocity.y;++crownCount;
+        Require(std::isfinite(compressed[i].velocity.x),"landing deformation produced invalid velocity");
+    }
+    Require(crownCount>0&&crownDelta/crownCount<-.02f,"landing force does not compress the crown");
+    f(25,1);
+    // Use the production shader to stretch the body down and sideways, then retract.
+    reset();f(21,0);f(4,12);f(5,12);f(7,1);
+    bind();g.Dispatch("SavePrevious",groups);auto stretched=g.Read<Particle>(p);
+    unsigned extended=0,live=0;
+    for(UINT i=0;i<count;++i){
+        if(stretched[i].color.w>0)++live;
+        if(stretched[i].position.x>8&&stretched[i].position.y<16)++extended;
+        if(i%20<13)Require(std::abs(stretched[i].position.x-initial[i].position.x)<.0001f,"extension moves the whole body instead of part of its liquid");
+    }
+    Require(live==count&&extended>50,"body particles do not form a downward liquid extension");
+    reset();
+    // Production PBF loop, maximum body mass, rapid reversals, shortening and
+    // repeated attacks. Finite values alone did not catch the exploding silhouette.
+    float widest=0;
+    f(24,std::cbrt(1.85f));f(25,std::cbrt(1.85f));f(26,std::cbrt(1.85f));
+    for(unsigned step=0;step<72;++step){
+        float sign=(step/12)%2?1.f:-1.f;
+        float reach=step%12<8?22.f:2.f;
+        f(4,sign*reach);f(5,20);f(7,1);f(27,185);
+        bind();g.Dispatch("SavePrevious",groups);solve();
+        for(int iteration=0;iteration<3;++iteration){
+            bind();grid();g.Dispatch("CalcDensity",groups);g.Dispatch("CalcDeltaP",groups);g.Dispatch("ApplyDeltaP",groups);
+        }
+        bind();grid(true);g.Dispatch("UpdateVelocity",groups);g.Dispatch("WriteBack",groups);
+        auto state=g.Read<Particle>(p);std::array<unsigned,10> sections{};
+        for(UINT i=0;i<count;++i){
+            const auto& v=state[i];Require(std::isfinite(v.position.x)&&std::isfinite(v.velocity.y),"chain solver became non-finite");
+            if(i%20<13)continue;
+            float along=sign*v.position.x;
+            float radial=std::hypot(v.position.y-20,v.position.z);
+            if(reach>10){
+                widest=std::max(widest,radial);
+                Require(radial<1.6f&&along>-.2f&&along<reach+.2f,"liquid arm bursts outside its narrow corridor");
+                if(along>=0&&along<reach)++sections[std::min(9,int(along/reach*10))];
+            }
+        }
+        if(reach>10)for(auto occupants:sections)Require(occupants>50,"liquid arm breaks into disconnected clumps");
+    }
+    auto simulated=g.Read<Particle>(p);
+    for(auto& v:simulated)Require(std::isfinite(v.position.x)&&std::isfinite(v.position.y)&&std::isfinite(v.velocity.z)&&v.color.w>0,"liquid chain simulation loses or invalidates body particles");
+    // Retract at the actual hand's exponential rate, then allow the released
+    // particles to settle. Include the whole body in the explosion check.
+    f(4,22);
+    for(unsigned step=0;step<180;++step){
+        f(7,step<70?std::exp(-25.f*step/120.f):0.f);
+        bind();g.Dispatch("SavePrevious",groups);solve();
+        for(int iteration=0;iteration<3;++iteration){
+            bind();grid();g.Dispatch("CalcDensity",groups);g.Dispatch("CalcDeltaP",groups);g.Dispatch("ApplyDeltaP",groups);
+        }
+        bind();grid(true);g.Dispatch("UpdateVelocity",groups);g.Dispatch("WriteBack",groups);
+    }
+    auto recovered=g.Read<Particle>(p);
+    for(const auto& v:recovered)Require(std::sqrt(v.position.x*v.position.x+(v.position.y-20)*(v.position.y-20)+v.position.z*v.position.z)<5.f,"chain retraction scatters body particles");
+    reset();f(7,0);f(21,85);bind();g.Dispatch("SavePrevious",groups);auto fast=g.Read<Particle>(p);
+    Require(fast[0].position.x-initial[0].position.x>.5f,"fast pull leaves the body behind");
+    printf("PASS Chrono liquid: legacy walk response, %u reused particles, %u at extended tip, 72 full PBF steps with reversals at mass 185, connected narrow arm (max radius %.3f), retraction, fast pull\n",live,extended,widest);
+}
+
 void TestStreamEmission(Gpu& g) {
     g.Kernel("Emit",true);
     for(UINT batch: {80U,160U}) {
@@ -575,6 +689,9 @@ void TestVolume(Gpu& g, int waterLayers=2, float waterOffset=0, bool draw=true, 
 }
 int main(int argc,char** argv) {
     try {
+        if(argc>1 && std::strcmp(argv[1],"--chrono-only")==0) {
+            Check(CoInitializeEx(nullptr,COINIT_MULTITHREADED));Gpu gpu;TestChronoLiquid(gpu);return 0;
+        }
         if(argc>1 && std::strcmp(argv[1],"--liquefy-only")==0) {
             Check(CoInitializeEx(nullptr,COINIT_MULTITHREADED)); Gpu gpu;
             TestLiquefyRetention(gpu); return 0;
