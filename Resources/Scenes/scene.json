@@ -413,7 +413,7 @@
         {
           "type": "CharacterMovement",
           "enabled": true,
-          "speed": 8,
+          "speed": 11,
           "jumpPower": 10,
           "gravity": 9.8,
           "heightOffset": 0.375948
@@ -423,7 +423,7 @@
           "enabled": true,
           "distance": 16,
           "height": 2.5,
-          "smoothSpeed": 8
+          "smoothSpeed": 12
         },
         {
           "type": "Hitbox",
@@ -461,8 +461,8 @@
         {
           "type": "PlayerAction",
           "enabled": true,
-          "dodgeDuration": 0.4,
-          "dodgeSpeed": 15
+          "dodgeDuration": 0.26,
+          "dodgeSpeed": 23
         }
       ]
     },

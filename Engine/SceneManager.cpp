@@ -58,6 +58,7 @@ bool SceneManager::Change(const std::string& name, const SceneParameters& params
 	}
 	current_ = it->second();
 	currentName_ = name;
+	currentParams_ = params;
 
 	if (current_) {
 		OutputDebugStringA("[SceneManager] Initialize scene\n");
@@ -115,6 +116,7 @@ void SceneManager::Clear() {
 	}
 	current_.reset();
 	currentName_.clear();
+	currentParams_ = {};
 	pendingNext_.clear();
 	factories_.clear();
 }

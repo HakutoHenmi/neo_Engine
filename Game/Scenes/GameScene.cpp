@@ -237,8 +237,8 @@ void GameScene::Initialize(Engine::WindowDX* dx, const Engine::SceneParameters& 
 	systems_.push_back(std::make_unique<CharacterMovementSystem>());
 	systems_.push_back(std::make_unique<PhysicsSystem>());
 	systems_.push_back(std::make_unique<CanAbilitySystem>());
-	systems_.push_back(std::make_unique<EnemyAISystem>());      // ★追加: 敵AI（CombatSystemの前）
-	systems_.push_back(std::make_unique<BossActionSystem>());   // ★追加: ボスAI（CombatSystemの前）
+	systems_.push_back(std::make_unique<BossActionSystem>());   // Boss movement precedes minion separation.
+	systems_.push_back(std::make_unique<EnemyAISystem>());      // Keep enemies apart before combat resolves.
 	systems_.push_back(std::make_unique<CombatSystem>());         // ★追加: Hitbox vs Hurtbox 判定
 	systems_.push_back(std::make_unique<CameraFollowSystem>());
 	systems_.push_back(std::make_unique<HealthSystem>());
@@ -384,6 +384,8 @@ void GameScene::Update() {
 
 	// コンテキストを更新
 	ctx_.dt = dt;
+	ctx_.combatFlow = &combatFlow_;
+	if (isPlaying_ && !isPaused_) combatFlow_.Tick(dt);
 	const bool stageClear = IsStageClear();
 
 	if (isPlaying_) {
@@ -479,11 +481,13 @@ void GameScene::Update() {
 				auto& meshWrapper = registry_.get<MeshRendererComponent>(entity);
 
 				if (anim.enabled && anim.isPlaying) {
-					anim.time += dt * 60.0f * anim.speed;
-					if (anim.crossfadeTimer > 0.0f) {
-						anim.crossfadeTimer -= dt;
-						if (anim.crossfadeTimer < 0.0f) anim.crossfadeTimer = 0.0f;
-						anim.prevTime += dt * 60.0f * anim.speed;
+						const float animDt = registry_.all_of<BossActionComponent>(entity)
+							? dt * combatFlow_.enemyScale : dt;
+						anim.time += animDt * 60.0f * anim.speed;
+						if (anim.crossfadeTimer > 0.0f) {
+							anim.crossfadeTimer -= animDt;
+							if (anim.crossfadeTimer < 0.0f) anim.crossfadeTimer = 0.0f;
+							anim.prevTime += animDt * 60.0f * anim.speed;
 					}
 
 					auto* m = renderer_->GetModel(meshWrapper.modelHandle);
@@ -627,7 +631,13 @@ void GameScene::Update() {
 #ifndef NDEBUG
 		const auto profileSystemBegin = std::chrono::steady_clock::now();
 #endif
-		system->Update(registry_, ctx_);
+		if (dynamic_cast<BossActionSystem*>(system.get()) != nullptr && combatFlow_.combo >= 2) {
+			GameContext bossContext = ctx_;
+			bossContext.dt *= combatFlow_.enemyScale;
+			system->Update(registry_, bossContext);
+		} else {
+			system->Update(registry_, ctx_);
+		}
 #ifndef NDEBUG
 		updateTimings_.push_back({typeid(*system).name(), std::chrono::duration<float, std::milli>(std::chrono::steady_clock::now() - profileSystemBegin).count()});
 #endif
@@ -1767,6 +1777,7 @@ void GameScene::SetIsPlaying(bool play) {
 		}
 
 		// 各Systemのリセット（スクリプトの再初期化、インスタンスのクリアなど）を先に実行
+		combatFlow_.Reset();
 		for (auto& sys : systems_) {
 			sys->Reset(registry_);
 		}
