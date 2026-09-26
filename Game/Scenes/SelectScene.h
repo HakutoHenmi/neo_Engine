@@ -21,7 +21,7 @@ private:
     Engine::Renderer* renderer_ = nullptr;
     Engine::Renderer::TextureHandle whiteTexture_ = 0;
     
-    int selectedIndex_ = 0; // 0: GameScene, 1: AssignmentScene
+    int selectedIndex_ = 0; // Stage 1, Stage 2, test scene
     
     // Gamepad state tracking
     bool prevA_ = false;

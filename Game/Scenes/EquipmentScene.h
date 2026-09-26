@@ -60,6 +60,7 @@ private:
     Engine::Renderer::TextureHandle whiteTexture_ = 0;
     Engine::Renderer::TextureHandle canPatternTexture_ = 0;
     std::array<CanType, 4> equipped_{};
+    Engine::SceneParameters stageParams_{};
     int selectedIndex_ = 0;
 
     bool prevA_ = false;

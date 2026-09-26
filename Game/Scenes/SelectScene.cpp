@@ -7,6 +7,14 @@
 
 namespace Game {
 
+namespace {
+constexpr int kOptionCount = 3;
+constexpr const char* kOptionLabels[kOptionCount] = {
+    "1. Stage 1", "2. Stage 2", "3. Test Scene"
+};
+constexpr float kOptionY[kOptionCount] = {0.44f, 0.56f, 0.68f};
+}
+
 SelectScene::~SelectScene() {
 }
 
@@ -40,11 +48,11 @@ void SelectScene::Update() {
     // Up / Down logic to select scene
     if (input->Trigger(0xC8) || input->Trigger(0x11)) { // Up Arrow or W
         selectedIndex_--;
-        if (selectedIndex_ < 0) selectedIndex_ = 1;
+        if (selectedIndex_ < 0) selectedIndex_ = kOptionCount - 1;
     }
     if (input->Trigger(0xD0) || input->Trigger(0x1F)) { // Down Arrow or S
         selectedIndex_++;
-        if (selectedIndex_ > 1) selectedIndex_ = 0;
+        if (selectedIndex_ >= kOptionCount) selectedIndex_ = 0;
     }
     
     float ly = 0.0f;
@@ -62,21 +70,21 @@ void SelectScene::Update() {
         bool currUp = (state.Gamepad.wButtons & XINPUT_GAMEPAD_DPAD_UP) != 0;
         if (currUp && !prevUp_) {
             selectedIndex_--;
-            if (selectedIndex_ < 0) selectedIndex_ = 1;
+            if (selectedIndex_ < 0) selectedIndex_ = kOptionCount - 1;
         }
         prevUp_ = currUp;
         
         bool currDown = (state.Gamepad.wButtons & XINPUT_GAMEPAD_DPAD_DOWN) != 0;
         if (currDown && !prevDown_) {
             selectedIndex_++;
-            if (selectedIndex_ > 1) selectedIndex_ = 0;
+            if (selectedIndex_ >= kOptionCount) selectedIndex_ = 0;
         }
         prevDown_ = currDown;
     }
     
     if (ly > 0.5f && !stickUp_) {
         selectedIndex_--;
-        if (selectedIndex_ < 0) selectedIndex_ = 1;
+        if (selectedIndex_ < 0) selectedIndex_ = kOptionCount - 1;
         stickUp_ = true;
     } else if (ly <= 0.5f) {
         stickUp_ = false;
@@ -84,17 +92,19 @@ void SelectScene::Update() {
     
     if (ly < -0.5f && !stickDown_) {
         selectedIndex_++;
-        if (selectedIndex_ > 1) selectedIndex_ = 0;
+        if (selectedIndex_ >= kOptionCount) selectedIndex_ = 0;
         stickDown_ = true;
     } else if (ly >= -0.5f) {
         stickDown_ = false;
     }
 
     auto confirmSelection = [this]() {
-        if (selectedIndex_ == 0) {
-            Engine::SceneManager::GetInstance()->RequestChange("Equipment");
-        } else {
+        if (selectedIndex_ == 2) {
             Engine::SceneManager::GetInstance()->RequestChange("Assignment");
+        } else {
+            Engine::SceneParameters params;
+            if (selectedIndex_ == 1) params.stagePath = "Resources/Scenes/stage2.json";
+            Engine::SceneManager::GetInstance()->RequestChange("Equipment", params);
         }
     };
 
@@ -104,12 +114,6 @@ void SelectScene::Update() {
         const float optionH = 72.0f;
         const float optionPaddingX = 80.0f;
 
-        const float opt0W = renderer_->MeasureTextWidth("1. Play Game", 1.0f) + optionPaddingX;
-        const float opt1W = renderer_->MeasureTextWidth("2. Assignment Scene", 1.0f) + optionPaddingX;
-        const float opt0X = sw * 0.5f - opt0W * 0.5f;
-        const float opt1X = sw * 0.5f - opt1W * 0.5f;
-        const float opt0Y = sh * 0.5f - 14.0f;
-        const float opt1Y = sh * 0.6f - 14.0f;
 
         float mx = 0.0f;
         float my = 0.0f;
@@ -119,17 +123,15 @@ void SelectScene::Update() {
             return px >= x && px <= x + w && py >= y && py <= y + h;
         };
 
-        if (inRect(mx, my, opt0X, opt0Y, opt0W, optionH)) {
-            selectedIndex_ = 0;
-            if (input->IsMouseTrigger(0)) {
-                confirmSelection();
-                return;
-            }
-        } else if (inRect(mx, my, opt1X, opt1Y, opt1W, optionH)) {
-            selectedIndex_ = 1;
-            if (input->IsMouseTrigger(0)) {
-                confirmSelection();
-                return;
+        for (int i = 0; i < kOptionCount; ++i) {
+            const float width = renderer_->MeasureTextWidth(kOptionLabels[i], 1.0f) + optionPaddingX;
+            if (inRect(mx, my, sw * 0.5f - width * 0.5f,
+                       sh * kOptionY[i] - 14.0f, width, optionH)) {
+                selectedIndex_ = i;
+                if (input->IsMouseTrigger(0)) {
+                    confirmSelection();
+                    return;
+                }
             }
         }
     }
@@ -185,29 +187,20 @@ void SelectScene::DrawMenu() {
     const float optionH = 72.0f;
     const float optionPaddingX = 80.0f;
     
-    // Game Scene Option
-    Engine::Vector4 color0 = (selectedIndex_ == 0) ? Engine::Vector4{1, 1, 0, 1} : Engine::Vector4{0.82f, 0.86f, 0.92f, 1};
-    float opt0W = renderer_->MeasureTextWidth("1. Play Game", 1.0f);
-    float opt0BoxW = opt0W + optionPaddingX;
-    float opt0BoxX = sw/2.0f - opt0BoxW/2.0f;
-    float opt0BoxY = sh * 0.5f - 14.0f;
-    drawRect(opt0BoxX - 4.0f, opt0BoxY - 4.0f, opt0BoxW + 8.0f, optionH + 8.0f,
-        selectedIndex_ == 0 ? Engine::Vector4{1.0f, 0.9f, 0.25f, 0.95f} : Engine::Vector4{0.18f, 0.28f, 0.42f, 0.9f}, 3);
-    drawRect(opt0BoxX, opt0BoxY, opt0BoxW, optionH,
-        selectedIndex_ == 0 ? Engine::Vector4{0.18f, 0.20f, 0.12f, 0.96f} : Engine::Vector4{0.09f, 0.12f, 0.18f, 0.95f}, 4);
-    renderer_->DrawString("1. Play Game", sw/2.0f - opt0W/2.0f, sh * 0.5f, 1.0f, color0);
-
-    // Assignment Scene Option
-    Engine::Vector4 color1 = (selectedIndex_ == 1) ? Engine::Vector4{1, 1, 0, 1} : Engine::Vector4{0.82f, 0.86f, 0.92f, 1};
-    float opt1W = renderer_->MeasureTextWidth("2. Assignment Scene", 1.0f);
-    float opt1BoxW = opt1W + optionPaddingX;
-    float opt1BoxX = sw/2.0f - opt1BoxW/2.0f;
-    float opt1BoxY = sh * 0.6f - 14.0f;
-    drawRect(opt1BoxX - 4.0f, opt1BoxY - 4.0f, opt1BoxW + 8.0f, optionH + 8.0f,
-        selectedIndex_ == 1 ? Engine::Vector4{1.0f, 0.9f, 0.25f, 0.95f} : Engine::Vector4{0.18f, 0.28f, 0.42f, 0.9f}, 3);
-    drawRect(opt1BoxX, opt1BoxY, opt1BoxW, optionH,
-        selectedIndex_ == 1 ? Engine::Vector4{0.18f, 0.20f, 0.12f, 0.96f} : Engine::Vector4{0.09f, 0.12f, 0.18f, 0.95f}, 4);
-    renderer_->DrawString("2. Assignment Scene", sw/2.0f - opt1W/2.0f, sh * 0.6f, 1.0f, color1);
+    for (int i = 0; i < kOptionCount; ++i) {
+        const bool selected = selectedIndex_ == i;
+        const float textW = renderer_->MeasureTextWidth(kOptionLabels[i], 1.0f);
+        const float boxW = textW + optionPaddingX;
+        const float boxX = sw * 0.5f - boxW * 0.5f;
+        const float boxY = sh * kOptionY[i] - 14.0f;
+        drawRect(boxX - 4.0f, boxY - 4.0f, boxW + 8.0f, optionH + 8.0f,
+            selected ? Engine::Vector4{1.0f, 0.9f, 0.25f, 0.95f} : Engine::Vector4{0.18f, 0.28f, 0.42f, 0.9f}, 3);
+        drawRect(boxX, boxY, boxW, optionH,
+            selected ? Engine::Vector4{0.18f, 0.20f, 0.12f, 0.96f} : Engine::Vector4{0.09f, 0.12f, 0.18f, 0.95f}, 4);
+        renderer_->DrawString(kOptionLabels[i], sw * 0.5f - textW * 0.5f,
+            sh * kOptionY[i], 1.0f,
+            selected ? Engine::Vector4{1, 1, 0, 1} : Engine::Vector4{0.82f, 0.86f, 0.92f, 1});
+    }
     
     float guideW = renderer_->MeasureTextWidth("Use W/S or D-Pad / Mouse to Select, Enter/A/Click to Confirm", 0.5f);
     renderer_->DrawString("Use W/S or D-Pad / Mouse to Select, Enter/A/Click to Confirm", sw/2.0f - guideW/2.0f, sh * 0.89f, 0.5f, {0.78f, 0.84f, 0.96f, 1});

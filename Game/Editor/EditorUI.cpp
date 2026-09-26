@@ -375,6 +375,10 @@ static std::vector<entt::entity> RestoreSceneFromJson(GameScene* scene, const js
 					c.chaseSpeed = comp.value("chaseSpeed", 4.0f);
 					c.chaseRange = comp.value("chaseRange", 15.0f);
 					c.attackRange = comp.value("attackRange", 15.0f);
+					c.hopper = comp.value("hopper", false);
+					c.hopInterval = comp.value("hopInterval", 0.72f);
+					c.hopHeight = comp.value("hopHeight", 1.65f);
+					c.aggroRange = comp.value("aggroRange", 28.0f);
 				} else if (type == "Motion") {
 					auto& c = reg.get_or_emplace<MotionComponent>(entity);
 					c.enabled = en;
@@ -779,7 +783,7 @@ static std::string SerializeEntity(entt::registry& registry, entt::entity entity
 	}
 	if (auto* cp = registry.try_get<EnemyAIComponent>(entity)) {
 		addComma();
-		ss << "        {\"type\": \"EnemyAI\", \"enabled\": " << (cp->enabled ? "true" : "false") << ", \"attackInterval\": " << cp->attackInterval << ", \"windUpDuration\": " << cp->windUpDuration << ", \"attackDuration\": " << cp->attackDuration << ", \"cooldownDuration\": " << cp->cooldownDuration << ", \"stunDuration\": " << cp->stunDuration << ", \"chaseSpeed\": " << cp->chaseSpeed << ", \"chaseRange\": " << cp->chaseRange << ", \"attackRange\": " << cp->attackRange << "}";
+		ss << "        {\"type\": \"EnemyAI\", \"enabled\": " << (cp->enabled ? "true" : "false") << ", \"attackInterval\": " << cp->attackInterval << ", \"windUpDuration\": " << cp->windUpDuration << ", \"attackDuration\": " << cp->attackDuration << ", \"cooldownDuration\": " << cp->cooldownDuration << ", \"stunDuration\": " << cp->stunDuration << ", \"chaseSpeed\": " << cp->chaseSpeed << ", \"chaseRange\": " << cp->chaseRange << ", \"attackRange\": " << cp->attackRange << ", \"hopper\": " << (cp->hopper ? "true" : "false") << ", \"hopInterval\": " << cp->hopInterval << ", \"hopHeight\": " << cp->hopHeight << ", \"aggroRange\": " << cp->aggroRange << "}";
 	}
 	if (auto* cp = registry.try_get<MotionComponent>(entity)) {
 		addComma();

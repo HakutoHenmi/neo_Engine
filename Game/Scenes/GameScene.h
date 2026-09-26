@@ -111,6 +111,7 @@ private:
     Engine::Camera camera_;
     Engine::EventSystem eventSystem_; // ★追加: スクリプト間通信用
     entt::registry registry_;
+	CombatFlowState combatFlow_;
     std::set<entt::entity> selectedEntities_;
     entt::entity selectedEntity_ = entt::null;
 

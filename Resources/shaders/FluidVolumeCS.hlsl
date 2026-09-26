@@ -40,8 +40,8 @@ void BuildShapes(uint3 id : SV_DispatchThreadID) {
     VolumeParticle p=particles[i];
     if (p.color.a<0.01f || p.position.y<-500 || !all(isfinite(p.position))) { shapes[i]=shape; return; }
     bool water=VolumePhase(p.type)==2;
-    bool supported=water && (p.position.y<=0.4f ||
-        (p.pad.z>0 && abs(p.position.y-p.pad.y)<0.35f && abs(p.velocity.y)<2.5f));
+    bool supported=water && p.pad.z>0 &&
+        abs(p.position.y-p.pad.y)<0.35f && abs(p.velocity.y)<2.5f;
     float sum=0;
     float3 mean=0;
     float3x3 moment=(float3x3)0;

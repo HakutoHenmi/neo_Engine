@@ -691,8 +691,9 @@ void CalcForce(uint3 DTid : SV_DispatchThreadID) {
         (pi.type < 0.5f ? 0.97f : (isSlimeTypeForFriction ? 0.6f : 0.98f)), dt * 60.0f);
     bool groundContact=false;
     
-    // コリジョン (簡易的な床バウンド)
-    if (pi.position.y < 0.2f) {
+    // Slime retains the legacy safety floor. Water must use scene colliders so
+    // it can leave a ledge and fall under gravity.
+    if (!FluidIsWater(pi.type) && pi.position.y < 0.2f) {
         groundContact=true;
         pi.position.y = 0.2f;
         pi.velocity.y *= -0.3f;
@@ -849,8 +850,8 @@ void CalcDeltaP(uint3 id : SV_DispatchThreadID) {
     SolverOutput[i].position = correction;
 }
 
-float3 ProjectCollisions(float3 position) {
-    position.y = max(position.y, 0.2f);
+float3 ProjectCollisions(float3 position, float particleType) {
+    if (!FluidIsWater(particleType)) position.y = max(position.y, 0.2f);
     [loop] for (uint k=0; k<min(aabbCount,128U); ++k) {
         float3 lo=AABBs[k].min-0.2f, hi=AABBs[k].max+0.2f;
         if (all(position>lo) && all(position<hi)) {
@@ -872,7 +873,7 @@ void ApplyDeltaP(uint3 id : SV_DispatchThreadID) {
     if (i>=maxParticles || OriginalIndices[i]==0xffffffffU) return;
     Particle p=SortedParticles[i];
     if (p.position.y < -500 || p.color.a < 0.01f) return;
-    p.position=ProjectCollisions(p.position+SolverOutput[i].position);
+    p.position=ProjectCollisions(p.position+SolverOutput[i].position,p.type);
     Particles[OriginalIndices[i]]=p;
 }
 

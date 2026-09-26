@@ -513,6 +513,19 @@ void UISystem::DrawGameplayHud(entt::registry& registry, GameContext& ctx) {
         DrawLockedEnemyHud(registry, pi, ctx);
         DrawPlayerHud(registry, playerEnt, pi, pHealth, ctx);
         DrawEquippedCanHud(registry, playerEnt, pi, ctx);
+		if (ctx.combatFlow && ctx.combatFlow->combo >= 2 && !pHealth.isDead) {
+			const auto& flow = *ctx.combatFlow;
+			const float viewW = ctx.viewportSize.x > 0.0f ? ctx.viewportSize.x : static_cast<float>(Engine::WindowDX::kW);
+			const float x = viewW * 0.5f - 110.0f;
+			DrawSpriteRect(ctx.renderer, whiteTexture_, x, 95.0f, 220.0f, 56.0f,
+				{0.035f, 0.12f, 0.18f, 0.78f}, 120);
+			const std::string label = "FLOW COMBO x" + std::to_string(flow.combo);
+			DrawCenteredText(ctx.renderer, label, viewW * 0.5f, 103.0f, 0.65f,
+				{0.48f, 0.96f, 1.0f, 1.0f});
+			DrawSpriteRect(ctx.renderer, whiteTexture_, x + 12.0f, 137.0f,
+				196.0f * (std::min)(1.0f, flow.remaining / 1.8f), 4.0f,
+				{0.48f, 0.96f, 1.0f, 1.0f}, 121);
+		}
 
         // --- 4. ゲームオーバー（YOU DIED）画面 ---
         if (pHealth.isDead) {

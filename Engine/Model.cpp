@@ -575,6 +575,16 @@ bool Model::LoadWithUFBX(ID3D12Device* device, ID3D12GraphicsCommandList* cmd, c
     opts.ignore_missing_external_files = true;
     opts.target_axes = ufbx_axes_right_handed_y_up;
     opts.generate_missing_normals = true;
+    // Quaternius static FBX geometry is Z-up. Its node carries the axis and
+    // centimetre conversion, while the raw vertex stream does not.
+    const bool inQuaternius = objPath.find("/Quaternius/") != std::string::npos ||
+                              objPath.find("\\Quaternius\\") != std::string::npos;
+    const bool quaterniusAsset = inQuaternius &&
+        objPath.find("/Character/") == std::string::npos &&
+        objPath.find("\\Character\\") == std::string::npos &&
+        objPath.find("/Enemies/") == std::string::npos &&
+        objPath.find("\\Enemies\\") == std::string::npos;
+    if (quaterniusAsset) opts.target_unit_meters = 1.0;
     
     ufbx_error error;
     ufbx_scene* scene = ufbx_load_file(objPath.c_str(), &opts, &error);
@@ -607,6 +617,11 @@ bool Model::LoadWithUFBX(ID3D12Device* device, ID3D12GraphicsCommandList* cmd, c
             }
         }
         if (!is_visible) continue;
+
+        const ufbx_node* instance = quaterniusAsset && mesh->instances.count > 0
+            ? mesh->instances.data[0] : nullptr;
+        const ufbx_matrix normalMatrix = instance
+            ? ufbx_matrix_for_normals(&instance->geometry_to_world) : ufbx_matrix{};
         
         // Split mesh into materials
         for (size_t part_idx = 0; part_idx < mesh->material_parts.count; ++part_idx) {
@@ -647,10 +662,12 @@ bool Model::LoadWithUFBX(ID3D12Device* device, ID3D12GraphicsCommandList* cmd, c
                         
                         VertexData v{};
                         ufbx_vec3 pos = ufbx_get_vertex_vec3(&mesh->vertex_position, index);
+                        if (instance) pos = ufbx_transform_position(&instance->geometry_to_world, pos);
                         v.position = {(float)-pos.x, (float)pos.y, (float)pos.z, 1.0f};
                         
                         if (mesh->vertex_normal.exists) {
                             ufbx_vec3 norm = ufbx_get_vertex_vec3(&mesh->vertex_normal, index);
+                            if (instance) norm = ufbx_vec3_normalize(ufbx_transform_direction(&normalMatrix, norm));
                             v.normal = {(float)-norm.x, (float)norm.y, (float)norm.z};
                         }
                         if (mesh->vertex_uv.exists) {
@@ -720,12 +737,15 @@ bool Model::LoadWithUFBX(ID3D12Device* device, ID3D12GraphicsCommandList* cmd, c
         ufbx_material* mat = scene->materials.data[i];
         ufbx_texture* tex = mat->pbr.base_color.texture;
         if (!tex && mat->fbx.diffuse_color.texture) tex = mat->fbx.diffuse_color.texture;
-        if (!tex) continue;
+        if (!tex && !inQuaternius) continue;
+
+        std::string str;
+        if (tex) {
+            str = tex->relative_filename.data;
+            if (str.empty()) str = tex->filename.data;
+        }
         
-        std::string str = tex->relative_filename.data;
-        if (str.empty()) str = tex->filename.data;
-        
-        if (!str.empty()) {
+        if (tex && !str.empty()) {
             DirectX::ScratchImage mip;
             bool textureReady = false;
 
@@ -758,6 +778,38 @@ bool Model::LoadWithUFBX(ID3D12Device* device, ID3D12GraphicsCommandList* cmd, c
                 srvDescs_.push_back(srvDesc);
                 
                 materialToTexIdx[i] = (int)texs_.size() - 1;
+            }
+        }
+
+        // The pack uses per-material diffuse constants rather than image
+        // textures. A one-pixel material texture lets the existing subset
+        // renderer preserve every FBX material without changing shaders.
+        if (inQuaternius && materialToTexIdx[i] < 0) {
+            const ufbx_material_map& diffuse = mat->fbx.diffuse_color.has_value
+                ? mat->fbx.diffuse_color : mat->pbr.base_color;
+            const double factor = mat->fbx.diffuse_factor.has_value
+                ? mat->fbx.diffuse_factor.value_real : 1.0;
+            DirectX::ScratchImage solid;
+            if (SUCCEEDED(solid.Initialize2D(DXGI_FORMAT_R8G8B8A8_UNORM, 1, 1, 1, 1))) {
+                uint8_t* pixel = solid.GetImage(0, 0, 0)->pixels;
+                const double channels[3] = {diffuse.value_vec3.x, diffuse.value_vec3.y, diffuse.value_vec3.z};
+                for (int c = 0; c < 3; ++c) {
+                    pixel[c] = static_cast<uint8_t>(std::clamp(channels[c] * factor, 0.0, 1.0) * 255.0 + 0.5);
+                }
+                pixel[3] = 255;
+                auto texture = CreateTextureResource(device, solid.GetMetadata());
+                if (texture) {
+                    auto upload = UploadTextureData(texture.Get(), solid, device, cmd);
+                    D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc{};
+                    srvDesc.Format = solid.GetMetadata().format;
+                    srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+                    srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+                    srvDesc.Texture2D.MipLevels = 1;
+                    texs_.push_back(texture);
+                    uploads_.push_back(upload);
+                    srvDescs_.push_back(srvDesc);
+                    materialToTexIdx[i] = static_cast<int>(texs_.size()) - 1;
+                }
             }
         }
     }

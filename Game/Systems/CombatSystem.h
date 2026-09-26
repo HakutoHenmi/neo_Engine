@@ -133,6 +133,14 @@ public:
 				const CanType incomingCanType = canEffect ? canEffect->canType : CanType::None;
 				bool hitSuccess = ApplyDamage(registry, hrEntity, hb.damage * hr.damageMultiplier, ctx,
 					hrWorldCenter, hitDir, hbTag, incomingCanType);
+				if (hitSuccess && ctx.combatFlow &&
+					registry.all_of<PlayerActionComponent>(hbEntity) &&
+					registry.get<PlayerActionComponent>(hbEntity).state == PlayerActionState::SlimeSpike &&
+					registry.all_of<EnemyAIComponent, HealthComponent>(hrEntity) &&
+					registry.get<EnemyAIComponent>(hrEntity).hopper) {
+					const auto& health = registry.get<HealthComponent>(hrEntity);
+					ctx.combatFlow->RegisterHit(health.hp <= 0.0f);
+				}
 				if (canEffect) {
 					// 状態弾は接触そのものを成功とし、敵の無敵時間中でも固有効果を与える。
 					ApplyCanEffect(registry, hrEntity, hbWorldCenter, *canEffect);
@@ -150,7 +158,7 @@ public:
 					// 攻撃側のヒットストップ
 					if (registry.all_of<PlayerActionComponent>(hbEntity)) {
 						auto& attackerPa = registry.get<PlayerActionComponent>(hbEntity);
-						attackerPa.hitStopTimer = 0.08f;
+						attackerPa.hitStopTimer = 0.035f;
 					}
 
 					// カメラシェイク（軽い）

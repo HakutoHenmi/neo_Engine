@@ -27,8 +27,8 @@ struct PlayerActionComponent : public Component {
 	float chargeTimer = 0.0f; // 溜めタイマー
 
 
-	float dodgeDuration = 0.4f;
-	float dodgeSpeed = 15.0f;
+	float dodgeDuration = 0.26f;
+	float dodgeSpeed = 23.0f;
 	float dodgeCooldown = 0.0f;
 	DirectX::XMFLOAT3 dodgeDirection = {0, 0, 1};
 
@@ -158,6 +158,14 @@ public:
 			bool dashInput = (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0;
 			bool dashPressed = dashInput && !prevDodge_;
 			prevDodge_ = dashInput;
+			// Cancel the recovery of a liquid attack into a dodge.
+			if (dashPressed && pa.dodgeCooldown <= 0.0f &&
+				((pa.state == PlayerActionState::SlimeSpike && pa.stateTimer >= 0.08f) ||
+				 (pa.state == PlayerActionState::SlimeHammer && pa.stateTimer >= 0.22f) ||
+				 pa.state == PlayerActionState::Charging)) {
+				pa.chargeTimer = 0.0f;
+				StartDodge(pa, pi, tc, ctx);
+			}
 
 			bool waterLiquefyInput = (pa.currentCan == CanType::Water && hammerInput);
 			bool liquefyInput = waterLiquefyInput;
@@ -275,9 +283,11 @@ public:
 				} else if (dashPressed && pa.dodgeCooldown <= 0.0f) {
 					StartDodge(pa, pi, tc, ctx);
 				} else if (attackPressed) {
-					TransitionTo(pa, PlayerActionState::Charging, 0.0f); // 溜め状態へ移行
+					pa.chargeTimer = 0.0f;
+					TransitionTo(pa, pa.currentCan == CanType::Fire ? PlayerActionState::FireBreath : PlayerActionState::SlimeSpike,
+						pa.currentCan == CanType::Fire ? 0.6f : 0.26f);
 				} else if (hammerPressed) {
-					TransitionTo(pa, PlayerActionState::SlimeHammer, 1.0f);
+					TransitionTo(pa, PlayerActionState::SlimeHammer, 0.58f);
 				}
 				break;
 			}
@@ -304,13 +314,8 @@ public:
 					if (pa.chargeTimer >= 0.4f) { // 一定時間以上で遠距離発射
 						TransitionTo(pa, PlayerActionState::Shoot, 0.3f);
 						pa.chargeTimer = 0.0f;
-					} else { // 短い場合は通常の近接攻撃
-						if (pa.currentCan == CanType::Fire) {
-							// ★追加: 火炎の缶なら専用の炎攻撃へ
-							TransitionTo(pa, PlayerActionState::FireBreath, 1.0f); // 1秒間の放射
-						} else {
-							TransitionTo(pa, PlayerActionState::SlimeSpike, 0.4f);
-						}
+					} else { // The quick strike already happened on press.
+						TransitionTo(pa, PlayerActionState::Idle, 0.0f);
 						pa.chargeTimer = 0.0f;
 					}
 				}
@@ -453,7 +458,12 @@ public:
 				}
 
 				if (pa.stateTimer >= pa.stateDuration) {
-					TransitionTo(pa, PlayerActionState::Idle, 0.0f);
+					if (attackInput) {
+						pa.chargeTimer = pa.stateDuration;
+						TransitionTo(pa, PlayerActionState::Charging, 0.0f);
+					} else {
+						TransitionTo(pa, PlayerActionState::Idle, 0.0f);
+					}
 				}
 			}
 			break;
@@ -544,8 +554,21 @@ public:
 				pi.jumpRequested = false;
 
 				// 回避移動
-				tc.translate.x += pa.dodgeDirection.x * pa.dodgeSpeed * ctx.dt;
-				tc.translate.z += pa.dodgeDirection.z * pa.dodgeSpeed * ctx.dt;
+				float step = pa.dodgeSpeed * ctx.dt;
+				if (ctx.scene) {
+					float wallDistance = step + 0.7f;
+					if (ctx.scene->RayCast({tc.translate.x, tc.translate.y + 0.4f, tc.translate.z},
+						{pa.dodgeDirection.x, 0.0f, pa.dodgeDirection.z}, step + 0.7f,
+						static_cast<uint32_t>(entity), wallDistance)) {
+						step = (std::max)(0.0f, wallDistance - 0.7f);
+					}
+					const float currentGround = ctx.scene->GetHeightAt(tc.translate.x, tc.translate.z, tc.translate.y + 2.0f, static_cast<uint32_t>(entity));
+					const float nextGround = ctx.scene->GetHeightAt(tc.translate.x + pa.dodgeDirection.x * step,
+						tc.translate.z + pa.dodgeDirection.z * step, tc.translate.y + 2.0f, static_cast<uint32_t>(entity));
+					if (nextGround < -999.0f || (currentGround > -999.0f && std::abs(nextGround - currentGround) > 1.2f)) step = 0.0f;
+				}
+				tc.translate.x += pa.dodgeDirection.x * step;
+				tc.translate.z += pa.dodgeDirection.z * step;
 
 				// シュッと伸び縮みしながら移動
 				float progress = pa.stateTimer / pa.stateDuration;
@@ -557,7 +580,7 @@ public:
 				// 無敵時間
 				if (registry.all_of<HealthComponent>(entity)) {
 					auto& hc = registry.get<HealthComponent>(entity);
-					if (pa.stateTimer >= 0.05f && pa.stateTimer <= 0.3f) {
+					if (pa.stateTimer >= 0.02f && pa.stateTimer <= 0.22f) {
 						hc.invincibleTime = 0.1f;
 					}
 				}
@@ -633,7 +656,7 @@ public:
 				if (pa.state == PlayerActionState::SlimeSpike) {
 					bool wasActive = hb.isActive;
 					// ★修正: 最も水が伸びる瞬間(0.08秒)から縮む途中までしっかり判定を残す
-					hb.isActive = (pa.stateTimer >= 0.05f && pa.stateTimer <= 0.3f);
+					hb.isActive = (pa.stateTimer >= 0.025f && pa.stateTimer <= 0.19f);
 					if (!wasActive && hb.isActive) hb.hitTargets.clear();
 					hb.damage = 30.0f; // ダメージ上昇
 					// ★修正: 当たり判定(Hitbox)を、プレイヤーの根本から先端までカバーするように設定
@@ -642,7 +665,7 @@ public:
 				} else if (pa.state == PlayerActionState::SlimeHammer) {
 					bool wasActive = hb.isActive;
 					// ★修正: ハンマー攻撃も判定発生を早め、長めに残す
-					hb.isActive = (pa.stateTimer >= 0.3f && pa.stateTimer <= 0.7f);
+					hb.isActive = (pa.stateTimer >= 0.14f && pa.stateTimer <= 0.42f);
 					if (!wasActive && hb.isActive) hb.hitTargets.clear();
 					hb.damage = 40.0f;
 					// ★修正: ハンマーの当たり判定
@@ -950,6 +973,7 @@ public:
 			auto& pa = registry.get<PlayerActionComponent>(entity);
 			pa.state = PlayerActionState::Idle;
 			pa.stateTimer = 0.0f;
+			pa.chargeTimer = 0.0f;
 			pa.hitStopTimer = 0.0f;
 			pa.dodgeCooldown = 0.0f;
 			pa.sodaGas = 100.0f;
@@ -1618,7 +1642,7 @@ private:
 
 	void StartDodge(PlayerActionComponent& pa, PlayerInputComponent& pi, TransformComponent& tc, GameContext& ctx) {
 		TransitionTo(pa, PlayerActionState::Dodge, pa.dodgeDuration);
-		pa.dodgeCooldown = 0.6f;
+		pa.dodgeCooldown = 0.42f;
 
 		float ix = pi.moveDir.x;
 		float iz = pi.moveDir.y;

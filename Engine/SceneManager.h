@@ -38,6 +38,7 @@ public:
 
 	IScene* Current() const { return current_.get(); }
 	const std::string& CurrentName() const { return currentName_; }
+	const SceneParameters& CurrentParameters() const { return currentParams_; }
 
 	void SetDX(WindowDX* dx) { dx_ = dx; }
 
@@ -52,6 +53,7 @@ private:
 	std::unordered_map<std::string, Factory> factories_;
 	std::unique_ptr<IScene> current_;
 	std::string currentName_;
+	SceneParameters currentParams_;
 	std::string pendingNext_;
 	SceneParameters pendingParams_;
 	WindowDX* dx_ = nullptr;

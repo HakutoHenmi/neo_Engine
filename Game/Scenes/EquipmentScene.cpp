@@ -35,7 +35,7 @@ const char* EquipmentScene::buttonLabels_[EquipmentScene::kButtonCount] = {
 EquipmentScene::~EquipmentScene() = default;
 
 void EquipmentScene::Initialize(Engine::WindowDX* dx, const Engine::SceneParameters& params) {
-    (void)params;
+    stageParams_ = params;
     dx_ = dx;
     renderer_ = Engine::Renderer::GetInstance();
     if (renderer_) {
@@ -329,7 +329,7 @@ void EquipmentScene::ClearEquipped() {
 
 void EquipmentScene::SaveAndStart() {
     CanLoadout::SetEquipped(equipped_);
-    Engine::SceneManager::GetInstance()->RequestChange("Game");
+    Engine::SceneManager::GetInstance()->RequestChange("Game", stageParams_);
 }
 
 void EquipmentScene::ConfirmSelection() {
