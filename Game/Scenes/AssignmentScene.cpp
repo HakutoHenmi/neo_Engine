@@ -1,3 +1,4 @@
+#include "../UI/GameUI.h"
 #include "AssignmentScene.h"
 #include "../../Engine/Input.h"
 #include "../../Engine/PathUtils.h"
@@ -779,45 +780,23 @@ void AssignmentScene::Draw() {
             renderer_->DrawString(bone.name, screenPos.first, screenPos.second, 0.4f, {1,1,1,1});
         }
     }
+    UI::Canvas ui(renderer_);
+    ui.Panel({24,24,460,370});
+    ui.Text("TRAINING GROUNDS",44,42,34,UI::Lime);
+    ui.Text("PLAYER  "+std::to_string(playerHp_)+" / 100",44,93,26);
+    ui.Bar({44,132,410,12},playerHp_/100.f);
+    ui.Text("ENEMY  "+std::to_string(enemyHp_)+" / 60",44,159,26);
+    ui.Bar({44,199,410,12},enemyHp_/60.f,UI::Gold);
+    ui.Prompt("keyboard_w","WASD / PAD: MOVE",44,235);
+    ui.Prompt("mouse_left","ATTACK / SPACE / PAD A",44,277);
+    ui.Prompt("mouse_right","GUARD / SHIFT / PAD LB",44,319);
+    ui.Prompt("keyboard_escape","BACK TO TITLE",44,410);
+    ui.Panel({820,24,436,112});
+    ui.Text("POST EFFECT / "+currentEffect_,840,42,24);
+    ui.Text(currentEffectReason_,840,82,18,UI::Muted);
 }
 
-void AssignmentScene::DrawUI() {
-    if (renderer_) {
-        renderer_->DrawString("Assignment Scene", 20, 20, 1.0f, {1, 1, 1, 1});
-        renderer_->DrawString("WASD/Pad: Move to blend walk animation", 20, 70, 0.5f, {1, 1, 1, 1});
-        renderer_->DrawString("Mouse/Right stick: Camera", 20, 100, 0.5f, {1, 1, 1, 1});
-        renderer_->DrawString("LMB/Space/A: Attack cube enemy", 20, 130, 0.5f, {1, 1, 1, 1});
-        renderer_->DrawString("RMB/Shift/LB: Guard focus", 20, 160, 0.5f, {0.7f, 0.9f, 1, 1});
-        renderer_->DrawString("Approach cube: enemy attacks", 20, 190, 0.5f, {1, 0.8f, 0.3f, 1});
-        renderer_->DrawString("ESC: Back to Title", 20, 220, 0.5f, {1, 1, 1, 1});
-        
-        // Show current blend state
-        std::string debugStr = "Anim: " + currentAnim_ + " | Blend: " + std::to_string(1.0f - blendFactor_);
-        renderer_->DrawString(debugStr, 20, 250, 0.4f, {0, 1, 0, 1});
-        renderer_->DrawString(std::string("Guard: ") + (isGuarding_ ? "ON" : "OFF"), 20, 275, 0.45f, isGuarding_ ? Engine::Vector4{0.6f, 0.9f, 1, 1} : Engine::Vector4{1, 1, 1, 1});
-        renderer_->DrawString("Player HP: " + std::to_string(playerHp_) + " / 100", 20, 300, 0.45f, playerHitFlash_ > 0.0f ? Engine::Vector4{1, 0.15f, 0.1f, 1} : Engine::Vector4{1, 1, 1, 1});
-        renderer_->DrawString("Enemy Cube HP: " + std::to_string(enemyHp_) + " / 60", 20, 325, 0.45f, enemyHitFlash_ > 0.0f ? Engine::Vector4{1, 1, 0.2f, 1} : Engine::Vector4{1, 1, 1, 1});
-        
-        // PostEffect Guide
-        float sw = (float)Engine::WindowDX::kW;
-        float sx = sw - 430.0f;
-        float sy = 20.0f;
-        renderer_->DrawString("Current PostEffect: " + currentEffect_, sx, sy, 0.6f, {1, 1, 0, 1});
-        sy += 30.0f;
-        renderer_->DrawString("Reason: " + currentEffectReason_, sx, sy, 0.42f, {1, 1, 1, 1}); sy += 24.0f;
-        renderer_->DrawString("Queued events: " + std::to_string(postEffectQueue_.size()), sx, sy, 0.42f, {0.8f, 1, 1, 1}); sy += 28.0f;
-        renderer_->DrawString("Grayscale: enemy detects player", sx, sy, 0.38f, {1, 1, 1, 1}); sy += 20.0f;
-        renderer_->DrawString("Outline: lock-on range", sx, sy, 0.38f, {1, 1, 1, 1}); sy += 20.0f;
-        renderer_->DrawString("DepthOutline: enemy windup", sx, sy, 0.38f, {1, 1, 1, 1}); sy += 20.0f;
-        renderer_->DrawString("RadialBlur: player attack", sx, sy, 0.38f, {1, 1, 1, 1}); sy += 20.0f;
-        renderer_->DrawString("Gaussian: successful hit", sx, sy, 0.38f, {1, 1, 1, 1}); sy += 20.0f;
-        renderer_->DrawString("BoxFilter: guard/block", sx, sy, 0.38f, {1, 1, 1, 1}); sy += 20.0f;
-        renderer_->DrawString("Random: damage glitch", sx, sy, 0.38f, {1, 1, 1, 1}); sy += 20.0f;
-        renderer_->DrawString("Vignetting: low HP", sx, sy, 0.38f, {1, 1, 1, 1}); sy += 20.0f;
-        renderer_->DrawString("Dissolve: enemy defeated", sx, sy, 0.38f, {1, 1, 1, 1});
-    }
-}
-
+void AssignmentScene::DrawUI() {}
 void AssignmentScene::DrawEditor() {
 #ifdef USE_IMGUI
     if (ImGui::Begin("GPU Particle Editor")) {

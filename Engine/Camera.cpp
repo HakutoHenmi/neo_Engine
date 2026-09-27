@@ -8,6 +8,7 @@ namespace Engine {
 // 初期化（既存）
 // ===============================
 void Camera::Initialize() {
+	handheldAmplitude_=0;handheldTime_=0;handheldOffset_={0,0,0};
 	pos_ = {8.0f, 10.0f, -20.0f};
 	rot_ = {0, 0, 0};
 	shakeTime_ = 9999.0f;
@@ -76,9 +77,13 @@ void Camera::Update(const Input& in) {
 // 1フレーム進める（シェイクのみ）
 // ===============================
 void Camera::Tick(float dt) {
+	handheldTime_+=dt;
+	float drift=handheldAmplitude_*shakeStrength_;
+	handheldOffset_={std::sin(handheldTime_*1.7f)*drift,std::sin(handheldTime_*2.3f)*drift*.65f,0};
 	if (!IsShaking()) {
 		shakeOfs_ = {0, 0, 0};
 		shakeRot_ = {0, 0, 0};
+		UpdateView();
 		return;
 	}
 
@@ -99,6 +104,13 @@ void Camera::Tick(float dt) {
 	shakeRot_.x = unit_(rng_) * shakeAmpRot_ * atten;
 	shakeRot_.y = unit_(rng_) * shakeAmpRot_ * atten;
 	shakeRot_.z = unit_(rng_) * shakeAmpRot_ * atten;
+	if(impactShake_){
+		float wave=std::cos(shakeTime_*impactFrequency_*6.283185f)*atten*atten*shakeAmpPos_;
+		shakeOfs_={impactDirection_.x*wave,impactDirection_.y*wave,impactDirection_.z*wave};
+		shakeRot_={0,0,0};
+	}
+	shakeOfs_.x*=shakeStrength_;shakeOfs_.y*=shakeStrength_;shakeOfs_.z*=shakeStrength_;
+	shakeRot_.x*=shakeStrength_;shakeRot_.y*=shakeStrength_;shakeRot_.z*=shakeStrength_;
 
 	// シェイクは view 再構築に反映されるので、ここで更新
 	UpdateView();
@@ -109,7 +121,7 @@ void Camera::Tick(float dt) {
 // ===============================
 void Camera::UpdateView() {
 	// 位置/回転 + シェイク
-	XMFLOAT3 p = {pos_.x + shakeOfs_.x, pos_.y + shakeOfs_.y, pos_.z + shakeOfs_.z};
+	XMFLOAT3 p = {pos_.x + shakeOfs_.x+handheldOffset_.x, pos_.y + shakeOfs_.y+handheldOffset_.y, pos_.z + shakeOfs_.z};
 	XMFLOAT3 rAdd = {rot_.x + shakeRot_.x, rot_.y + shakeRot_.y, rot_.z + shakeRot_.z};
 
 	XMMATRIX r = XMMatrixRotationRollPitchYaw(rAdd.x, rAdd.y, rAdd.z);
@@ -172,12 +184,21 @@ void Camera::LookAt(float tx, float ty, float tz, float ux, float uy, float uz) 
 // シェイク制御
 // ===============================
 void Camera::StartShake(float duration, float ampPos, float ampRot) {
+	impactShake_=false;
 	shakeDuration_ = (duration > 0.0f) ? duration : 0.0001f;
 	shakeTime_ = 0.0f;
 	shakeAmpPos_ = ampPos;
 	shakeAmpRot_ = ampRot;
 }
 
+void Camera::StartImpactShake(float duration,float amplitude,const DirectX::XMFLOAT3& direction,float frequency){
+	if(IsShaking()&&shakeAmpPos_*(1-shakeTime_/shakeDuration_)>amplitude)return;
+	StartShake(duration>.3f?.3f:duration,amplitude>.35f?.35f:amplitude);
+	float length=std::sqrt(direction.x*direction.x+direction.y*direction.y+direction.z*direction.z);if(length<.0001f)length=1;
+	impactShake_=true;impactDirection_={direction.x/length,direction.y/length,direction.z/length};impactFrequency_=frequency;
+	shakeOfs_={impactDirection_.x*shakeAmpPos_*shakeStrength_,impactDirection_.y*shakeAmpPos_*shakeStrength_,impactDirection_.z*shakeAmpPos_*shakeStrength_};
+	UpdateView();
+}
 void Camera::StopShake() {
 	shakeTime_ = 9999.0f;
 	shakeDuration_ = 0.0f;

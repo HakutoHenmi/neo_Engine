@@ -687,8 +687,10 @@ void TestVolume(Gpu& g, int waterLayers=2, float waterOffset=0, bool draw=true, 
     auto vanished=g.Read(textures[3]); for(auto v:vanished) Require(v.x==0&&v.y==0&&v.z==0,"temporal ghost after clear");
     printf("PASS temporal: zero-support rejection\n");
 }
+#include "SlimeFluidTests.inl"
 int main(int argc,char** argv) {
     try {
+        if(argc>1 && std::strcmp(argv[1],"--slime-only")==0){ Check(CoInitializeEx(nullptr,COINIT_MULTITHREADED)); Gpu gpu; TestSlimeFluid(gpu); return 0; }
         if(argc>1 && std::strcmp(argv[1],"--chrono-only")==0) {
             Check(CoInitializeEx(nullptr,COINIT_MULTITHREADED));Gpu gpu;TestChronoLiquid(gpu);return 0;
         }

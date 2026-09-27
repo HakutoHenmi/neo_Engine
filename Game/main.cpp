@@ -3,7 +3,6 @@
 #include "GameOverScene.h"
 #include "TitleScene.h"
 #include "SelectScene.h"
-#include "EquipmentScene.h"
 #include "AssignmentScene.h"
 #include <fstream>
 #include <eh.h>
@@ -11,6 +10,7 @@
 #include "../tests/FluidValidationScene.h"
 #include "../tests/FluidGameBenchmarkScene.h"
 #include "../tests/ChronoValidationScene.h"
+#include "../tests/UIValidationScene.h"
 #include <shellapi.h>
 #endif
 
@@ -67,13 +67,14 @@ int WINAPI WinMain(_In_ HINSTANCE hInst, _In_opt_ HINSTANCE, _In_ LPSTR commandL
 		(void)dx;
 		sm.Register("Title", []() -> std::unique_ptr<Engine::IScene> { return std::unique_ptr<Engine::IScene>(new Game::TitleScene()); });
 		sm.Register("Select", []() -> std::unique_ptr<Engine::IScene> { return std::unique_ptr<Engine::IScene>(new Game::SelectScene()); });
-		sm.Register("Equipment", []() -> std::unique_ptr<Engine::IScene> { return std::unique_ptr<Engine::IScene>(new Game::EquipmentScene()); });
 		sm.Register("Game", []() -> std::unique_ptr<Engine::IScene> { return std::unique_ptr<Engine::IScene>(new Game::GameScene()); });
 		sm.Register("Assignment", []() -> std::unique_ptr<Engine::IScene> { return std::unique_ptr<Engine::IScene>(new Game::AssignmentScene()); });
 		sm.Register("GameOver", []() -> std::unique_ptr<Engine::IScene> { return std::unique_ptr<Engine::IScene>(new Game::GameOverScene()); });
 #ifndef NDEBUG
 		sm.Register("FluidValidation", []() -> std::unique_ptr<Engine::IScene> { return std::make_unique<FluidValidationScene>(); });
-		sm.Register("ChronoValidation", []() -> std::unique_ptr<Engine::IScene> { return std::make_unique<ChronoValidationScene>(); });
+		sm.Register("UIResultValidation", []() -> std::unique_ptr<Engine::IScene> { return std::make_unique<UIResultValidationScene>(); });
+        sm.Register("UIValidation", []() -> std::unique_ptr<Engine::IScene> { return std::make_unique<UIValidationScene>(); });
+        sm.Register("ChronoValidation", []() -> std::unique_ptr<Engine::IScene> { return std::make_unique<ChronoValidationScene>(); });
 		sm.Register("FluidGameBenchmark", []() -> std::unique_ptr<Engine::IScene> { return std::make_unique<FluidGameBenchmarkScene>(); });
 		sm.Register("FluidGameBenchmarkEditor", []() -> std::unique_ptr<Engine::IScene> { return std::make_unique<FluidGameBenchmarkScene>(true); });
 		sm.Register("FluidCollisionSmoke", []() -> std::unique_ptr<Engine::IScene> { return std::make_unique<FluidGameBenchmarkScene>(false, true); });
@@ -87,7 +88,10 @@ int WINAPI WinMain(_In_ HINSTANCE hInst, _In_opt_ HINSTANCE, _In_ LPSTR commandL
 	LPWSTR* arguments = CommandLineToArgvW(GetCommandLineW(), &argumentCount);
 	if (arguments) {
 		for (int i = 1; i < argumentCount; ++i) {
-			if (wcscmp(arguments[i], L"--chrono-smoke") == 0) {
+			if (wcscmp(arguments[i], L"--ui-result") == 0) app.SetInitialSceneKey("UIResultValidation");
+            if (wcscmp(arguments[i], L"--ui-smoke") == 0) app.SetInitialSceneKey("UIValidation");
+            if (wcscmp(arguments[i], L"--test-scene") == 0) app.SetInitialSceneKey("Assignment");
+			if (wcscmp(arguments[i], L"--ink-smoke") == 0 || wcscmp(arguments[i], L"--chrono-smoke") == 0 || wcscmp(arguments[i], L"--creature-smoke") == 0 || wcscmp(arguments[i], L"--snake-smoke") == 0) {
 				app.SetInitialSceneKey("ChronoValidation");
 				LogFileMain("Chrono validation scene requested");
 			}

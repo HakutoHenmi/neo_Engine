@@ -2,6 +2,7 @@
 #define NOMINMAX
 #endif
 #include "TitleScene.h"
+#include "../UI/GameUI.h"
 #include "../../Engine/SceneManager.h"
 #include "../../Engine/Renderer.h"
 #include "../../Engine/Input.h"
@@ -12,8 +13,6 @@
 #include <cmath>
 #include <algorithm>
 #include <filesystem>
-#include <Xinput.h>
-#pragma comment(lib, "xinput.lib")
 
 void LogFileMain(const char* msg);
 
@@ -149,91 +148,15 @@ void TitleScene::Update() {
     pp.time = totalTime_;
     renderer_->SetPostProcessParams(pp);
 
-    switch (phase_) {
-    // --------------------------------------------------
-    case Phase::Idle: {
-        // 任意のキーまたはマウスボタンで遷移開始
-        auto* input = Engine::Input::GetInstance();
-        bool anyKey = false;
-        if (input) {
-            // マウスボタン
-            anyKey |= input->IsMouseTrigger(0);
-            anyKey |= input->IsMouseTrigger(1);
-            // キーボード（主要なキーのみチェック）
-            for (int k = 0; k < 256; ++k) {
-                if (input->Trigger(static_cast<BYTE>(k))) { anyKey = true; break; }
-            }
-            // ゲームパッド
-            XINPUT_STATE state = {};
-            if (XInputGetState(0, &state) == ERROR_SUCCESS) {
-                if (state.Gamepad.wButtons != 0) {
-                    anyKey = true;
-                }
-            }
+    auto* input = Engine::Input::GetInstance();
+    if (input) {
+        bool start=UI::Pressed(DIK_RETURN)||UI::Canvas(renderer_).Click({0,0,1280,720})||input->IsMouseTrigger(1);
+        for(int key=0;key<256&&!start;++key)start=input->Trigger(static_cast<BYTE>(key));
+        if(start){
+            Engine::SceneManager::GetInstance()->RequestChange("Select");
+            return;
         }
-        if (anyKey) {
-            phase_ = Phase::FadeOut;
-            phaseTimer_ = 0.0f;
-        }
-        break;
     }
-    // --------------------------------------------------
-    case Phase::FadeOut: {
-        phaseTimer_ += dt_;
-        // UIを0.2秒でフェードアウト
-        uiAlpha_ = std::max(0.0f, 1.0f - phaseTimer_ / 0.2f);
-        if (phaseTimer_ >= 0.2f) {
-            phase_ = Phase::CameraMove;
-            phaseTimer_ = 0.0f;
-            uiAlpha_ = 0.0f;
-        }
-        break;
-    }
-    // --------------------------------------------------
-    case Phase::CameraMove: {
-        phaseTimer_ += dt_;
-        float duration = 2.0f;
-        float t = EaseInOut(std::min(phaseTimer_ / duration, 1.0f));
-
-        // カメラ位置の補間
-        DirectX::XMFLOAT3 pos = {
-            camStartPos_.x + (camEndPos_.x - camStartPos_.x) * t,
-            camStartPos_.y + (camEndPos_.y - camStartPos_.y) * t,
-            camStartPos_.z + (camEndPos_.z - camStartPos_.z) * t
-        };
-        DirectX::XMFLOAT3 target = {
-            camStartTarget_.x + (camEndTarget_.x - camStartTarget_.x) * t,
-            camStartTarget_.y + (camEndTarget_.y - camStartTarget_.y) * t,
-            camStartTarget_.z + (camEndTarget_.z - camStartTarget_.z) * t
-        };
-        currentFov_ = camStartFov_ + (camEndFov_ - camStartFov_) * t;
-
-        camera_.SetPosition(pos);
-        camera_.LookAt(target, { 0, 1, 0 });
-        float aspect = (float)Engine::WindowDX::kW / (float)Engine::WindowDX::kH;
-        camera_.SetProjection(currentFov_, aspect, 0.1f, 500.0f);
-
-        // 墨トランジション（1.3s～1.8sの間で画面を覆う）
-        if (phaseTimer_ >= 1.3f && phaseTimer_ < 1.8f) {
-            inkAlpha_ = std::min(1.0f, (phaseTimer_ - 1.3f) / 0.3f);
-        } else if (phaseTimer_ >= 1.8f) {
-            inkAlpha_ = std::max(0.0f, 1.0f - (phaseTimer_ - 1.8f) / 0.4f);
-        }
-
-        if (phaseTimer_ >= 2.2f) {
-            phase_ = Phase::GameStart;
-            phaseTimer_ = 0.0f;
-        }
-        break;
-    }
-    // --------------------------------------------------
-    case Phase::GameStart: {
-        Engine::SceneManager::GetInstance()->RequestChange("Select");
-        phase_ = Phase::Idle; // 再呼び出し防止
-        return;
-    }
-    }
-
     // カメラをRendererに設定
     renderer_->SetCamera(camera_);
 }
@@ -305,108 +228,25 @@ void TitleScene::Draw() {
     );
 
 
+    UI::Canvas ui(renderer_, Engine::WindowDX::kW, Engine::WindowDX::kH, uiAlpha_);
+    if (uiAlpha_ > .01f) {
+        ui.Background("FIELD OPERATIONS");
+        ui.Panel({240,125,800,300});
+        ui.Center("VERDANT BASIN",640,167,22,UI::Muted);
+        ui.Center(UI::GameTitle,640,230,60,UI::Lime,UI::JapaneseFont);
+        ui.Center("MOVE. RECALL. RELEASE.",640,339,27);
+        ui.Button({440,520,400,66},"BEGIN EXPEDITION",true);
+        ui.Prompt("keyboard_enter","PRESS ANY KEY / CLICK",495,607);
+    }
+    if (inkAlpha_ > .01f) {
+        UI::Canvas transition(renderer_);
+        transition.Fill({0,0,1280,720},{.02f,.045f,.035f,inkAlpha_});
+    }
 }
 
 // ============================================================
 // DrawUI: 2D UI（ImGui）の描画
 // ============================================================
-void TitleScene::DrawUI() {
-#ifdef USE_IMGUI
-    float W = (float)Engine::WindowDX::kW;
-    float H = (float)Engine::WindowDX::kH;
-
-    // デフォルトの"Debug"ウィンドウが出ないように、全画面の透明ウィンドウを作成する
-    ImGui::SetNextWindowPos(ImVec2(0, 0));
-    ImGui::SetNextWindowSize(ImVec2(W, H));
-    ImGuiWindowFlags flags = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
-                             ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBackground |
-                             ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoInputs;
-                             
-    ImGui::Begin("TitleUI", nullptr, flags);
-    ImDrawList* dl = ImGui::GetWindowDrawList();
-
-    // ============ タイトルロゴ（ImGuiテキスト） ============
-    if (uiAlpha_ > 0.01f) {
-        // メインタイトル
-        const char* titleText = "NEO ENGINE";
-        ImGui::SetWindowFontScale(1.0f);
-        ImVec2 textSize = ImGui::CalcTextSize(titleText);
-        // 大きくスケーリング
-        float scale = 5.0f;
-        ImVec2 titlePos = { W * 0.5f - textSize.x * scale * 0.5f, H * 0.18f };
-
-        // 金箔風の発光エッジ（和風・スチームパンクに合うゴールド系）
-        ImU32 glowColor = IM_COL32(255, 180, 50, (int)(140.0f * uiAlpha_));
-        for (int dx = -3; dx <= 3; ++dx) {
-            for (int dy = -3; dy <= 3; ++dy) {
-                if (dx == 0 && dy == 0) continue;
-                dl->AddText(nullptr, textSize.y * scale,
-                    ImVec2(titlePos.x + dx * 2.0f, titlePos.y + dy * 2.0f),
-                    glowColor, titleText);
-            }
-        }
-
-        // 内側の濃いオレンジのサブグロー
-        ImU32 orangeGlow = IM_COL32(200, 80, 0, (int)(100.0f * uiAlpha_));
-        for (int dx = -2; dx <= 2; ++dx) {
-            for (int dy = -2; dy <= 2; ++dy) {
-                if (dx == 0 && dy == 0) continue;
-                dl->AddText(nullptr, textSize.y * scale,
-                    ImVec2(titlePos.x + dx * 1.0f, titlePos.y + dy * 1.0f),
-                    orangeGlow, titleText);
-            }
-        }
-
-        // 本体テキスト（少しクリーム色がかった白和紙風）
-        ImU32 textColor = IM_COL32(255, 250, 230, (int)(255.0f * uiAlpha_));
-        dl->AddText(nullptr, textSize.y * scale, titlePos, textColor, titleText);
-
-        // ============ "Press Any Button" ============
-        const char* pressText = "- Press Any Button -";
-        ImVec2 pressSize = ImGui::CalcTextSize(pressText);
-        float pressScale = 2.0f;
-        float sinAlpha = 0.2f + 0.8f * (0.5f + 0.5f * std::sin(totalTime_ * 2.5f));
-        float pressAlpha = sinAlpha * uiAlpha_;
-        ImVec2 pressPos = {
-            W * 0.5f - pressSize.x * pressScale * 0.5f,
-            H * 0.78f
-        };
-        ImU32 pressColor = IM_COL32(200, 200, 210, (int)(255.0f * pressAlpha));
-        dl->AddText(nullptr, pressSize.y * pressScale, pressPos, pressColor, pressText);
-    }
-
-    // ============ 墨トランジション ============
-    if (inkAlpha_ > 0.01f) {
-        ImU32 inkColor = IM_COL32(5, 5, 10, (int)(255.0f * std::min(inkAlpha_, 1.0f)));
-        dl->AddRectFilled(ImVec2(0, 0), ImVec2(W, H), inkColor);
-    }
-
-    // ============ カスタムマウスカーソル ============
-    ImGui::SetMouseCursor(ImGuiMouseCursor_None);
-    ImVec2 mousePos = ImGui::GetMousePos();
-
-    float size = 10.0f;
-    ImU32 colorOuter = IM_COL32(255, 180, 50, 255);
-    ImU32 colorInner = IM_COL32(255, 255, 255, 255);
-
-    dl->AddCircleFilled(mousePos, 2.5f, colorInner);
-    dl->AddCircle(mousePos, size, colorOuter, 0, 2.0f);
-
-    dl->AddLine(ImVec2(mousePos.x - size - 6, mousePos.y), ImVec2(mousePos.x - size + 2, mousePos.y), colorOuter, 2.0f);
-    dl->AddLine(ImVec2(mousePos.x + size + 6, mousePos.y), ImVec2(mousePos.x + size - 2, mousePos.y), colorOuter, 2.0f);
-    dl->AddLine(ImVec2(mousePos.x, mousePos.y - size - 6), ImVec2(mousePos.x, mousePos.y - size + 2), colorOuter, 2.0f);
-    dl->AddLine(ImVec2(mousePos.x, mousePos.y + size + 6), ImVec2(mousePos.x, mousePos.y + size - 2), colorOuter, 2.0f);
-
-    dl->AddQuad(
-        ImVec2(mousePos.x, mousePos.y - size * 0.7f),
-        ImVec2(mousePos.x + size * 0.7f, mousePos.y),
-        ImVec2(mousePos.x, mousePos.y + size * 0.7f),
-        ImVec2(mousePos.x - size * 0.7f, mousePos.y),
-        IM_COL32(255, 180, 50, 150), 1.5f
-    );
-    
-    ImGui::End();
-#endif
-}
+void TitleScene::DrawUI() {}
 
 } // namespace Game

@@ -49,6 +49,7 @@ public:
 	bool GetIsPlaying() const { return isPlaying_; }
 	bool IsPlaying() const { return isPlaying_; } // Alias for backward compatibility
 	bool IsPaused() const { return isPaused_; }
+	bool IsResultShowing() const { return IsStageClear(); }
 	void SetIsPlaying(bool play);
 
 	void CreatePauseMenu();  // ★追加

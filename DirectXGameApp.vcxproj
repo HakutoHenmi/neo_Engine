@@ -104,6 +104,7 @@
       <Command>set "OUT=$(SolutionDir)..\Generated\Outputs\$(Configuration)\Resources"
 if not exist "%OUT%" mkdir "%OUT%"
 robocopy "$(ProjectDir)Resources" "%OUT%" /E /NFL /NDL /NJH /NJS /NP /R:1 /W:1
+powershell -NoProfile -Command "Remove-Item -LiteralPath '%OUT%\Scenes\scene.json','%OUT%\Scenes\stage2.json' -Force -ErrorAction SilentlyContinue"
 exit /b 0
 </Command>
     </PostBuildEvent>
@@ -141,6 +142,7 @@ exit /b 0
       <Command>set "OUT=$(SolutionDir)..\Generated\Outputs\$(Configuration)\Resources"
 if not exist "%OUT%" mkdir "%OUT%"
 robocopy "$(ProjectDir)Resources" "%OUT%" /E /NFL /NDL /NJH /NJS /NP /R:1 /W:1
+powershell -NoProfile -Command "Remove-Item -LiteralPath '%OUT%\Scenes\scene.json','%OUT%\Scenes\stage2.json' -Force -ErrorAction SilentlyContinue"
 exit /b 0
 </Command>
     </PostBuildEvent>
@@ -180,6 +182,7 @@ exit /b 0
       <Command>set "OUT=$(SolutionDir)..\Generated\Outputs\$(Configuration)\Resources"
 if not exist "%OUT%" mkdir "%OUT%"
 robocopy "$(ProjectDir)Resources" "%OUT%" /E /NFL /NDL /NJH /NJS /NP /R:1 /W:1
+powershell -NoProfile -Command "Remove-Item -LiteralPath '%OUT%\Scenes\scene.json','%OUT%\Scenes\stage2.json' -Force -ErrorAction SilentlyContinue"
 exit /b 0
 </Command>
     </PostBuildEvent>
@@ -192,7 +195,6 @@ exit /b 0
     <ClCompile Include="Game\Scenes\AssignmentScene.cpp" />
     <ClCompile Include="Game\Scenes\GameScene.cpp" />
     <ClCompile Include="Game\Scenes\GameOverScene.cpp" />
-    <ClCompile Include="Game\Scenes\EquipmentScene.cpp" />
     <ClCompile Include="Game\Scenes\SelectScene.cpp" />
     <ClCompile Include="Game\Scenes\TitleScene.cpp" />
     <ClCompile Include="Game\Scripts\BaseScript.cpp" />
@@ -218,9 +220,10 @@ exit /b 0
     <ClInclude Include="Game\Chrono\ChronoComponents.h" />
     <ClInclude Include="Game\Chrono\ChronoRules.h" />
     <ClInclude Include="Game\Scenes\GameOverScene.h" />
-    <ClInclude Include="Game\Scenes\EquipmentScene.h" />
     <ClInclude Include="Game\Scenes\SelectScene.h" />
     <ClInclude Include="Game\Scenes\TitleScene.h" />
+    <ClInclude Include="Game\UI\GameUI.h" />
+    <ClInclude Include="tests\UIValidationScene.h" />
     <ClInclude Include="Game\CanLoadout.h" />
     <ClInclude Include="Game\ObjectTypes.h" />
     <ClInclude Include="Game\Scripts\BaseScript.h" />
@@ -413,7 +416,7 @@ exit /b 0
     <None Include="Resources\Prefabs\Player.prefab" />
     <None Include="Resources\Prefabs\Terrain.prefab" />
     <None Include="Resources\Prefabs\UI.prefab" />
-    <None Include="Resources\Scenes\scene.json" />
+    <None Include="Resources\Scenes\chrono.json" />
     <None Include="Resources\Scripts\bullet_logic.txt" />
     <None Include="Resources\Scripts\enemy_ai.txt" />
     <None Include="Resources\Scripts\player_control.txt" />

@@ -1,4 +1,6 @@
 #include "ChronoSystem.h"
+#include "../UI/GameUI.h"
+#include "../Chrono/CreatureMotion.h"
 #include "../Scenes/GameScene.h"
 #include "../../Engine/SceneManager.h"
 #include "../../Engine/Model.h"
@@ -50,7 +52,8 @@ entt::entity ChronoSystem::Mesh(entt::registry& r,const std::string& name,const 
     return e;
 }
 void ChronoSystem::Block(entt::registry& r,const std::string& name,V center,V size){
-    Mesh(r,name,grass,center,size);
+    auto mesh=Mesh(r,name,grass,center,size);
+    if(center.y+size.y*.5f<=.01f)r.remove<CameraOccluder>(mesh);
     auto e=r.create();r.emplace<NameComponent>(e,"Chrono "+name+" collision");
     r.emplace<TransformComponent>(e).translate=Write(center);
     r.emplace<BoxColliderComponent>(e).size=Write(size);
@@ -130,7 +133,216 @@ void ChronoSystem::Build(entt::registry& r){
     auto& w=r.emplace<Target>(weakpoint_);w.kind=Kind::Weakpoint;w.radius=3;w.reward=0;w.active=false;
     w.offset=V{0,23,49}-Read(r.get<TransformComponent>(weakpoint_).translate);
     r.get<MeshRendererComponent>(weakpoint_).enabled=false;
-    if(arena_)BuildArena(r);
+    if(arena_||creature_)BuildArena(r);
+    if(creature_)BuildCreature(r);
+}
+void ChronoSystem::BuildCreature(entt::registry& r){
+    // A wider, flat arena leaves room for the wings and the pulled-back camera.
+    std::vector<entt::entity> remove;
+    for(auto e:r.view<NameComponent>()){
+        const auto& name=r.get<NameComponent>(e).name;
+        if(name.find("Chrono Arena ")==0)remove.push_back(e);
+    }
+    for(auto e:remove)r.destroy(e);
+    Block(r,"Creature floor",{0,-2,0},{700,4,800});
+    Block(r,"Creature north",{0,2,400},{700,4,2});Block(r,"Creature south",{0,2,-400},{700,4,2});
+    Block(r,"Creature west",{-350,2,0},{2,4,800});Block(r,"Creature east",{350,2,0},{2,4,800});
+    r.emplace_or_replace<CreatureBoss>(boss_);
+    r.get<MeshRendererComponent>(boss_).enabled=false;
+    if(auto* a=r.try_get<AnimatorComponent>(boss_))a->isPlaying=false;
+    const auto pose=EvaluateCreature(0,0);
+    for(int i=0;i<pose.count;++i){const auto& piece=pose.pieces[i];
+        auto e=Mesh(r,"Creature part "+std::to_string(i),piece.plate?"Resources/Models/Chrono/feather.obj":ball,{0,0,0},{1,1,1});
+        auto& t=r.get<TransformComponent>(e);auto& part=r.emplace<CreaturePart>(e);
+        part.index=i;part.unitScale=Read(t.scale);part.unitOffset=Read(t.translate);
+        r.emplace<CameraOccluder>(e);
+    }
+    auto& core=r.get<MeshRendererComponent>(weakpoint_);core.enabled=true;core.color={.2f,.65f,.75f,1};
+    r.get<Target>(weakpoint_).radius=3.0f;
+    r.get<Target>(boss_).radius=3.0f;
+    r.get<TransformComponent>(player_).translate={0,1.3f,-12};
+    r.get<Player>(player_).recoveryPoint={0,1.3f,-12};
+    PoseCreature(r);
+    if(inkMode_){BuildInk(r);return;}
+    auto route=FeatherRoute({0,1,-12},Center(r,boss_));
+    for(int i=0;i<std::min(5,static_cast<int>(route.size()));++i){
+        auto e=Mesh(r,"Serpent relay "+std::to_string(i),"Resources/Models/Chrono/feather.obj",route[i],{2.5f,1,3});
+        auto& target=r.emplace<Target>(e);target.kind=Kind::Anchor;target.radius=1.8f;target.reward=0;
+        r.emplace<Anchor>(e).reusable=false;
+        r.emplace<SerpentRelay>(e,route[i],static_cast<float>(i+1)/(route.size()+1));
+        r.get<MeshRendererComponent>(e).color={.3f,1.3f,.65f,1};
+        target.active=false;r.get<MeshRendererComponent>(e).enabled=false;
+    }
+}
+void ChronoSystem::PoseCreature(entt::registry& r){
+    auto& creature=r.get<CreatureBoss>(boss_);auto pose=EvaluateCreature(creature.age,creature.form);
+    for(int i=0;i<pose.count;++i)pose.pieces[i].position=pose.pieces[i].position+creature.offset;
+    pose.head=pose.head+creature.offset;pose.core=pose.core+creature.offset;
+    if(creature.stage==CreatureStage::Snake&&creature.sweepPhase>0){
+        float phase=creature.sweepPhase==1?AttackEase(creature.sweepTime/WarningTime(creature.attack)):creature.sweepPhase==4?1-AttackEase(creature.sweepTime/.8f):1.f;
+        V head=creature.sweepCenter+AttackHead(creature.attack,creature.sweepPhase,creature.sweepTime);
+        V shift=(head-pose.head)*phase;
+        for(int i=0;i<48;++i){float along=static_cast<float>(i/4)/12;
+            float wave=std::sin(creature.sweepTime*6-along*4)*std::sin(along*3.14159f)*phase;
+            pose.pieces[i].position=pose.pieces[i].position+shift*((1-along)*(1-along))+V{wave*2,0,0};}
+        for(int i=218;i<224;++i)pose.pieces[i].position=pose.pieces[i].position+shift;
+        pose.head=pose.head+shift;
+        V counter=creature.attack==CreatureAttack::Sweep?V{12,7,-1}:creature.attack==CreatureAttack::Charge?V{7,7,-10}:V{10,7,0};
+        pose.core=Lerp(pose.core,creature.sweepCenter+counter,phase);
+    }
+    creature.attention=pose.head;
+    if(creature.stage==CreatureStage::Opening&&creature.sweepPhase>0){
+        float w=creature.sweepPhase==1?AttackEase(creature.sweepTime/1.2f):creature.sweepPhase==2?1-2*AttackEase(creature.sweepTime/ActiveTime(CreatureAttack::Wing)):-1;
+        if(creature.sweepPhase>=3)w*=1-AttackEase(creature.sweepTime/3.f);
+        V root=pose.pieces[104].position;
+        float travel=creature.sweepPhase==1?0.f:creature.sweepPhase==2?AttackEase(creature.sweepTime/ActiveTime(CreatureAttack::Wing)):1.f;
+        V targetTip=creature.sweepCenter+V{-13+28*travel,0,0};
+        float contactBlend=creature.sweepPhase==1?AttackEase(creature.sweepTime/1.2f):creature.sweepPhase>=3?1-AttackEase(creature.sweepTime/3.f):1.f;
+        for(int i=104;i<161;++i){V d=pose.pieces[i].position-root;float angle=w*.65f;
+            pose.pieces[i].position=root+V{d.x*std::cos(angle)-d.y*std::sin(angle),d.x*std::sin(angle)+d.y*std::cos(angle),d.z};
+            pose.pieces[i].rotation.z+=angle;}
+        V rotatedTip=pose.pieces[130].position;
+        V correction=(targetTip-rotatedTip)*contactBlend;
+        for(int i=104;i<161;++i){float weight=std::clamp(Length(pose.pieces[i].position-root)/std::max(1.f,Length(rotatedTip-root)),0.f,1.f);
+            pose.pieces[i].position=pose.pieces[i].position+correction*weight;}
+        creature.attention=pose.pieces[130].position;
+    }
+    if(creature.recoil>0)for(int i=0;i<pose.count;++i){float lag=(i%26)*.016f;
+        float age=.6f-creature.recoil-lag;if(age>0)pose.pieces[i].position.y+=std::sin(age*22)*std::exp(-age*8)*1.5f;}
+    if(inkMode_){
+        // Resolve the conservative circumsphere of every rotated piece against
+        // the ramp/deck envelope, including the anticipatory clearance margin.
+        for(int i=0;i<pose.count;++i){auto& piece=pose.pieces[i];float radius=Length(piece.size)*.5f;
+            piece.position.y=std::max(piece.position.y,InkBossSupport(piece.position,radius)+radius+.3f);}
+        pose.core.y=std::max(pose.core.y,InkBossSupport(pose.core,3.f)+3.3f);
+        pose.head.y=std::max(pose.head.y,InkBossSupport(pose.head,7.f)+7.3f);
+        creature.attention=pose.head;
+    }
+    creatureSolids_.clear();
+    for(int i=0;i<26;++i){if(creature.stage==CreatureStage::Snake&&creature.sweepPhase>0&&i<12)continue;const auto& body=pose.pieces[i*4];
+        V half{body.size.x*.36f,body.size.y*.36f,.65f*CreatureScale};
+        creatureSolids_.push_back({body.position-half,body.position+half});}
+    const DirectX::XMFLOAT4 colors[]={{.13f,.18f,.23f,1},{.48f,.56f,.62f,1},{.87f,.9f,.88f,1},{2,.12f,.04f,1}};
+    for(auto e:r.view<CreaturePart,TransformComponent,MeshRendererComponent>()){
+        const auto& part=r.get<CreaturePart>(e);const auto& piece=pose.pieces[part.index];auto& t=r.get<TransformComponent>(e);
+        t.scale={part.unitScale.x*piece.size.x,part.unitScale.y*piece.size.y,part.unitScale.z*piece.size.z};
+        t.translate=Write(piece.position);t.rotate=Write(piece.rotation);
+        r.get<MeshRendererComponent>(e).color=colors[piece.material];
+        auto& o=r.get<CameraOccluder>(e);o.center=piece.position;
+        float extent=std::max({piece.size.x,piece.size.y,piece.size.z});o.size={extent,extent,extent};
+    }
+    // The logical boss and visible core share the same evaluated position.
+    auto& bossTransform=r.get<TransformComponent>(boss_);bossTransform.translate=Write(pose.core);
+    r.get<Target>(boss_).offset={};
+    r.get<TransformComponent>(weakpoint_).translate=Write(pose.core);
+    r.get<TransformComponent>(weakpoint_).scale={5.f,5.f,5.f};
+    r.get<Target>(weakpoint_).offset={};
+    auto& core=r.get<MeshRendererComponent>(weakpoint_);core.enabled=true;
+    core.color=r.get<Target>(weakpoint_).active?DirectX::XMFLOAT4{2,1.2f,.15f,1}:DirectX::XMFLOAT4{.12f,.55f,.65f,1};
+}
+void ChronoSystem::UpdateCreature(entt::registry& r,Player& p,GameContext& ctx){
+    auto& c=r.get<CreatureBoss>(boss_);auto& b=r.get<Boss>(boss_);float dt=ctx.dt*p.worldScale;
+    c.age+=dt;c.timer+=dt;b.clock+=dt;
+    c.recoil=std::max(0.f,c.recoil-dt);
+    // Cruise at a readable distance; freeze the root while an attack route is live.
+    bool cruising=c.stage==CreatureStage::Assemble||c.stage==CreatureStage::Descend||
+        (c.stage==CreatureStage::Snake&&c.sweepPhase==0);
+    if(cruising){c.roam+=dt*.38f;V player=Read(r.get<TransformComponent>(player_).translate);
+        V base=EvaluateCreature(c.age,c.form).core;
+        V destination{std::clamp(player.x+std::sin(c.roam)*90.f,-200.f,200.f),0,
+            std::clamp(player.z+std::cos(c.roam)*90.f,-220.f,220.f)};
+        V goal=destination-V{base.x,0,base.z};V delta=goal-c.offset;
+        V velocity=Unit(delta)*std::min(32.f,Length(delta)*2.f);
+        c.moveVelocity=Lerp(c.moveVelocity,velocity,1-std::exp(-4*dt));c.offset=c.offset+c.moveVelocity*dt;
+    }else c.moveVelocity={};
+    auto transition=[&](CreatureStage stage){c.stage=stage;c.timer=0;};
+    if(c.stage==CreatureStage::Snake){c.form=0;b.phase=0;c.sweepTime+=dt;
+        if(c.sweepPhase==0&&c.sweepTime>2.f){
+            auto previous=c.attack;
+            c.attack=static_cast<CreatureAttack>(c.attackCount%3);
+            if(c.attackCount>=3){auto at=Read(r.get<TransformComponent>(player_).translate);
+                c.attack=at.y>5?CreatureAttack::Slam:Length(at-Center(r,boss_))>35?CreatureAttack::Charge:CreatureAttack::Sweep;
+                if(c.attack==previous)c.attack=static_cast<CreatureAttack>((static_cast<int>(previous)+1)%3);}
+            if(auto* control=r.try_get<ControlFrame>(player_);control&&control->attackPattern>=0)c.attack=static_cast<CreatureAttack>(std::min(2,control->attackPattern));
+            ++c.attackCount;
+            c.sweepCenter=Read(r.get<TransformComponent>(player_).translate);c.sweepCenter.y=inkMode_?InkGround(c.sweepCenter):0;
+            c.sweepPhase=1;c.sweepTime=0;c.sweepHit=false;b.countered=false;
+            // These scales are a stable escape route above the announced sweep.
+            int index=0;for(auto e:r.view<SerpentRelay,TransformComponent>()){
+                if(e==p.target||e==p.bufferedTarget||e==p.preview)continue;
+                float side=c.attack==CreatureAttack::Sweep?0.f:c.attack==CreatureAttack::Charge?8.f:12.f;
+                V at=c.sweepCenter+V{side,7.f+index*2.f,4.f+index*3.f};
+                r.get<TransformComponent>(e).translate=Write(at);++index;
+                r.get<Target>(e).active=true;r.get<MeshRendererComponent>(e).enabled=true;
+            }
+        }else if(c.sweepPhase==1){b.phase=1;
+            if(c.sweepTime>=WarningTime(c.attack)){c.sweepPhase=2;c.sweepTime=0;}
+        }else if(c.sweepPhase==2){b.phase=2;
+            float now=std::min(c.sweepTime,ActiveTime(c.attack)),before=std::max(0.f,now-dt);
+            V at=Read(r.get<TransformComponent>(player_).translate)-c.sweepCenter;
+            if(!c.sweepHit&&AttackTouches(c.attack,at,before,now)&&p.invincible<=0){
+                c.sweepHit=true;p.damageReason=c.attack==CreatureAttack::Sweep?"HIT - SERPENT SWEEP":c.attack==CreatureAttack::Charge?"HIT - SERPENT CHARGE":"HIT - HEAD SLAM";Damage(r,p,22,ctx,c.sweepCenter);
+            }
+            if(c.attack==CreatureAttack::Slam&&before<ActiveTime(c.attack)&&now>=ActiveTime(c.attack)){
+                float proximity=1.f/(1+Length(at)/25);ctx.camera->StartImpactShake(.28f,.34f*proximity,{.3f,1,.15f},6+12*proximity);
+                for(int i=0;i<20&&droplets_.size()<96;++i){float a=i*2.39996f;droplets_.push_back({c.sweepCenter,{std::cos(a)*20,6,std::sin(a)*20},0,true});}
+                auto* audio=Engine::Audio::GetInstance();audio->Play(coreSound_,false,.35f*audio->GetMasterSEVolume(),.65f);
+            }
+            if(c.sweepTime>=ActiveTime(c.attack)){c.sweepPhase=3;c.sweepTime=0;b.phase=3;}
+        }else if(c.sweepPhase==3){b.phase=3;
+            if(c.sweepTime>=3.f){c.sweepPhase=4;c.sweepTime=0;}
+        }else if(c.sweepPhase==4){b.phase=3;
+            if(c.sweepTime>=.8f){c.sweepPhase=0;c.sweepTime=0;
+                if(!snakeOnly_)transition(CreatureStage::Assemble);}
+        }
+    }else if(c.stage==CreatureStage::Assemble){c.form=std::min(1.f,c.timer/CreatureMorphSeconds);b.phase=0;
+        if(c.timer>=CreatureMorphSeconds){c.form=1;transition(CreatureStage::Volley);b.phase=1;b.clock=0;}
+    }else if(c.stage==CreatureStage::Volley){
+        b.phase=1;
+        if(c.timer>1.2f){
+            // Remove the previous attack before emitting a fresh, reachable route.
+            std::vector<entt::entity> old;for(auto e:r.view<Feather>())old.push_back(e);for(auto e:old)r.destroy(e);
+            ++b.wave;++p.stats.opportunities;b.waveBreaks=0;b.countered=false;
+            V player=Read(r.get<TransformComponent>(player_).translate);
+            auto route=FeatherRoute(player,Center(r,boss_));
+            for(int lane=0;lane<1;++lane)for(int i=0;i<static_cast<int>(route.size());++i){
+                if(lane==1&&i%2==1)continue;
+                V start=Center(r,boss_)+V{(i%2==0?-1.f:1.f)*(5+i),2,2};
+                auto e=Mesh(r,"Flight feather "+std::to_string(i),"Resources/Models/Chrono/feather.obj",start,{lane==1?1.6f:2.8f,.7f,3.4f});
+                auto& target=r.emplace<Target>(e);target.kind=Kind::Projectile;target.radius=lane==1?1.15f:1.65f;
+                target.hp=1;target.reward=8;target.wave=b.wave;target.active=false;
+                auto& q=r.emplace<Projectile>(e);q.lifetime=lane==1?8.f:44.f;
+                auto& f=r.emplace<Feather>(e);f.fast=lane==1;f.start=start;f.destination=route[i];f.destination.x+=(lane==0?7.f:-4.f)*std::sin(3.14159f*(i+1)/(route.size()+1));f.delay=.18f*i/std::max(1,static_cast<int>(route.size())-1);
+                r.get<MeshRendererComponent>(e).color={2.f,.2f,.04f,1};
+            }
+            c.wingDone=false;c.wingClock=0;transition(CreatureStage::Opening);b.phase=2;
+        }
+    }else if(c.stage==CreatureStage::Opening){
+        b.phase=2;
+        // Chain slow motion must not postpone the aerial threat until the route is exhausted.
+        c.wingClock+=ctx.dt;
+        if(c.sweepPhase==0&&c.wingClock>(c.wingDone?2.5f:.8f)&&Read(r.get<TransformComponent>(player_).translate).y>10){c.attack=CreatureAttack::Wing;c.sweepPhase=1;c.sweepTime=0;c.sweepHit=false;c.wingCounter=false;
+            c.sweepCenter=Read(r.get<TransformComponent>(player_).translate);}
+        if(c.sweepPhase>0){c.sweepTime+=ctx.dt;
+            if(c.sweepPhase==1&&c.sweepTime>=1.2f){c.sweepPhase=2;c.sweepTime=0;}
+            else if(c.sweepPhase==2){V at=Read(r.get<TransformComponent>(player_).translate)-c.sweepCenter;
+                if(!c.sweepHit&&p.invincible<=0&&AttackTouches(CreatureAttack::Wing,at,std::max(0.f,c.sweepTime-ctx.dt),c.sweepTime)){
+                    c.sweepHit=true;p.damageReason="HIT - WING SWEEP";Damage(r,p,22,ctx,c.sweepCenter);}
+                if(c.sweepTime>=ActiveTime(CreatureAttack::Wing)){c.sweepPhase=3;c.sweepTime=0;c.wingCounter=!c.sweepHit;c.wingDone=true;}}
+            else if(c.sweepPhase==3&&c.sweepTime>=3){c.sweepPhase=0;c.sweepTime=0;c.wingClock=0;c.wingCounter=false;}
+        }
+        if(b.countered||c.timer>40){c.sweepPhase=0;c.wingCounter=false;c.wingClock=0;transition(CreatureStage::Descend);b.phase=3;}
+    }else{
+        b.phase=3;c.form=1-std::min(1.f,c.timer/CreatureMorphSeconds);
+        if(c.timer>=CreatureMorphSeconds){c.form=0;transition(CreatureStage::Snake);}
+    }
+    r.get<Target>(weakpoint_).active=!b.countered&&((c.stage==CreatureStage::Opening&&c.sweepPhase!=1&&c.sweepPhase!=2&&((b.waveBreaks>=3&&c.wingDone)||c.wingCounter))||
+        (c.stage==CreatureStage::Snake&&c.sweepPhase==3&&!c.sweepHit));
+    PoseCreature(r);
+    for(auto e:r.view<SerpentRelay,TransformComponent>()){
+        bool live=c.stage==CreatureStage::Snake&&c.sweepPhase>=1&&c.sweepPhase<=3;
+        if(!live&&e!=p.target){r.get<Target>(e).active=false;r.get<MeshRendererComponent>(e).enabled=false;}
+    }
 }
 void ChronoSystem::BuildArena(entt::registry& r){
     std::vector<entt::entity> remove;
@@ -161,6 +373,9 @@ void ChronoSystem::BuildArena(entt::registry& r){
     pitch_=.28f;
 }
 void ChronoSystem::Reset(entt::registry& r){
+    // Legacy diagnostic fixtures remain runnable; normal play always uses the new shooter.
+    inkMode_=!wcsstr(GetCommandLineW(),L"--chrono-smoke")&&!wcsstr(GetCommandLineW(),L"--creature-smoke")&&!wcsstr(GetCommandLineW(),L"--snake-smoke");
+    if(inkMode_){creature_=true;arena_=false;inkShots_.clear();inkSurfaces_.clear();inkMeshes_.clear();inkDirty_=true;}
     std::vector<entt::entity> remove;
     for(auto e:r.view<NameComponent>())if(r.get<NameComponent>(e).name.rfind("Chrono ",0)==0)remove.push_back(e);
     for(auto e:remove)r.destroy(e);
@@ -168,11 +383,12 @@ void ChronoSystem::Reset(entt::registry& r){
     for(auto e:r.view<NameComponent>()){
         const auto& n=r.get<NameComponent>(e).name;if(n=="Player")player_=e;if(n=="Boss")boss_=e;
     }
-    initialized_=r.valid(player_);finished_=won_=false;finishAge_=0;sparks_.clear();
+    initialized_=r.valid(player_);finished_=won_=false;finishAge_=0;sparks_.clear();creatureSolids_.clear();
     prevL_=Down(VK_LBUTTON);prevM_=Down(VK_MBUTTON);prevSpace_=Down(VK_SPACE);prevShift_=Down(VK_SHIFT);
     yaw_=0;pitch_=0.12f;zoom_=17;shoulder_=1.8f;chainCameraHold_=0;fov_=1.0472f;
-    cameraReady_=false;composition_={};viewPitch_=pitch_;postStrength_=0;droplets_.clear();manualCameraHold_=0;
+    cameraReady_=false;zoomVelocity_=0;cameraBoom_=-1;composition_={};viewPitch_=pitch_;postStrength_=0;droplets_.clear();manualCameraHold_=0;
     if(!initialized_)return;
+    if(r.valid(boss_)){r.remove<CreatureBoss>(boss_);r.get<MeshRendererComponent>(boss_).enabled=true;}
     r.emplace_or_replace<Player>(player_);
     auto& pt=r.get<TransformComponent>(player_);pt.translate={0,1.3f,-27};pt.scale={1,1,1};
     auto& hp=r.get<HealthComponent>(player_);hp.hp=100;hp.maxHp=200;hp.isDead=false;
@@ -197,6 +413,8 @@ void ChronoSystem::CacheSolids(entt::registry& r){
 }
 bool ChronoSystem::Sweep(V p,V d,V half,float& fraction,V& normal)const{
     bool found=false;fraction=1;for(const auto& box:solids_){float f;V n;
+        if(Chrono::Sweep(p,d,box,half,f,n)&&f<fraction){fraction=f;normal=n;found=true;}}
+    for(const auto& box:creatureSolids_){float f;V n;
         if(Chrono::Sweep(p,d,box,half,f,n)&&f<fraction){fraction=f;normal=n;found=true;}}
     return found;
 }
@@ -251,7 +469,7 @@ bool ChronoSystem::Reachable(entt::registry& r,const Player& p,entt::entity e,V 
     return false;
 }
 void ChronoSystem::Shoot(entt::registry& r,Player& p,GameContext& ctx){
-    V origin=Read(r.get<TransformComponent>(player_).translate);p.shotManual=p.bufferedManual;
+    V origin=Read(r.get<TransformComponent>(player_).translate);p.shotManual=p.bufferedManual;p.shotTimed=p.timedInput;
     p.target=p.bufferedTarget;p.bufferedTarget=entt::null;p.buffer=0;
     if(r.valid(p.target)&&(!r.get<Target>(p.target).active||!Reachable(r,p,p.target,origin)||
         Length(Center(r,p.target)-origin)>Reach(p.mass)+r.get<Target>(p.target).radius)){
@@ -272,11 +490,12 @@ void ChronoSystem::Shoot(entt::registry& r,Player& p,GameContext& ctx){
 }
 void ChronoSystem::Damage(entt::registry& r,Player& p,float amount,GameContext& ctx,V source){
     if(p.invincible>0||finished_)return;
-    p.mass=std::max(0.0f,p.mass-amount);p.invincible=0.65f;++p.stats.hitsTaken;p.flow.Break();
+    if(inkMode_)amount*=SlimeMaximumMass/100.f;
+    p.chainDrive=1;p.lastChainHit=10;p.mass=std::max(0.0f,p.mass-amount);p.invincible=0.65f;++p.stats.hitsTaken;p.flow.Break();
     p.damageSource=source;p.damageAge=0;
     p.buffer=0;p.bufferedTarget=entt::null;
     if(p.action!=Action::Collapsed){p.action=Action::Recovery;p.timer=0.12f;p.target=entt::null;}
-    ctx.camera->StartShake(0.1f,0.12f);
+    ctx.camera->StartImpactShake(.16f,.18f,Write(Unit(Read(r.get<TransformComponent>(player_).translate)-source)),10);
     r.get<HealthComponent>(player_).hp=p.mass;
     if(p.mass<=0)Finish(p,false);
 }
@@ -294,7 +513,7 @@ ChainFailure ChronoSystem::Failure(entt::registry& r,Player& p,GameContext& ctx)
     return reason;
 }
 void ChronoSystem::Feedback(Player& p,V at,bool heavy){
-    p.hitStop=std::max(p.hitStop,heavy?0.065f:0.035f);
+    p.hitStop=std::max(p.hitStop,heavy?0.08f:0.025f);
     for(int i=0;i<(heavy?18:10)&&droplets_.size()<96;++i){
         float angle=i*2.39996f;float speed=heavy?8.0f:5.0f;
         droplets_.push_back({at,{std::cos(angle)*speed,2.0f+(i%4)*1.2f,std::sin(angle)*speed},0});
@@ -306,88 +525,119 @@ void ChronoSystem::Feedback(Player& p,V at,bool heavy){
 void ChronoSystem::Impact(entt::registry& r,Player& p,entt::entity e,GameContext& ctx,bool grabbed){
     if(!r.valid(e)||!r.all_of<Target>(e))return;
     auto& t=r.get<Target>(e);if(!t.active)return;
+    if(grabbed&&t.kind!=Kind::Boss){p.chainDrive=(p.shotTimed||p.automatic)?std::min(1.5f,p.chainDrive+.15f):std::min(1.15f,p.chainDrive+.05f);p.lastChainHit=0;}
     if(t.kind==Kind::Anchor){
         // Consume only on arrival; an interrupted or obstructed pull can be retried.
         if(grabbed){
             t.active=false;r.get<MeshRendererComponent>(e).enabled=false;
-            if(auto* a=r.try_get<Anchor>(e);a&&a->reusable)a->cooldown=1.2f;
+            if(auto* a=r.try_get<Anchor>(e))a->cooldown=1.2f; // Also records one-shot relay use; only reusable anchors respawn.
             if(sparks_.size()<64)sparks_.push_back({Center(r,e),Read(r.get<TransformComponent>(player_).translate),0});
         }
         return;
     }
     if(t.kind==Kind::Weakpoint){
         auto& b=r.get<Boss>(boss_);
-        if(b.countered||b.waveBreaks<3)return;
+        bool snakeOpening=creature_&&r.get<CreatureBoss>(boss_).stage==CreatureStage::Snake&&
+            r.get<CreatureBoss>(boss_).sweepPhase==3&&!r.get<CreatureBoss>(boss_).sweepHit;
+        bool wingOpening=creature_&&r.get<CreatureBoss>(boss_).wingCounter;
+        if(b.countered||(!snakeOpening&&!wingOpening&&b.waveBreaks<3))return;
         b.countered=true;t.active=false;r.get<MeshRendererComponent>(e).enabled=false;
         auto& bt=r.get<Target>(boss_);bt.hp-=120;++p.stats.counters;
         p.instability=std::max(0.0f,p.instability-55);p.mass=std::min(200.0f,p.mass+25);
-        p.flow.grace=2;ctx.camera->StartShake(0.10f,p.aiming?0.025f:0.08f);
+        p.flow.grace=2;ctx.camera->StartImpactShake(.20f,p.aiming?.06f:.22f,Write(Unit(Read(r.get<TransformComponent>(player_).translate)-Center(r,e))),11);
+        if(creature_)r.get<CreatureBoss>(boss_).recoil=.6f;
         Feedback(p,Center(r,e),true);
         b.phase=3;b.clock=0;
         if(bt.hp<=0)Finish(p,true);
         return;
     }
+    if(creature_&&t.kind==Kind::Boss)return; // Only the exposed core accepts damage.
     const float damage=(grabbed?46.0f:24.0f)*(0.8f+p.mass*0.002f);
     t.hp-=t.kind==Kind::Boss ? damage*0.18f : damage;
     if(t.kind==Kind::Boss){if(t.hp<=0)Finish(p,true);return;}
     bool defeated=t.hp<=0;p.flow.Hit(defeated);
     Feedback(p,Center(r,e),false);
-    if(!p.aiming)ctx.camera->StartShake(0.035f,defeated?0.035f:0.015f);
+    ctx.camera->StartImpactShake(.07f,p.aiming?.015f:.045f,Write(Unit(Read(r.get<TransformComponent>(player_).translate)-Center(r,e))),18);
     if(!defeated)return;
     V c=Center(r,e);t.active=false;r.get<MeshRendererComponent>(e).enabled=false;
     p.mass=std::min(200.0f,p.mass+t.reward);p.stats.absorbed+=t.reward;
     if(!p.grounded){++p.stats.airKills;p.stats.maxAirKills=std::max(p.stats.maxAirKills,p.stats.airKills);}
+    if(creature_&&r.all_of<Feather>(e))p.instability=std::max(0.f,p.instability-12.f);
     if(t.kind==Kind::Projectile){++p.stats.projectiles;auto& b=r.get<Boss>(boss_);if(t.wave==b.wave)++b.waveBreaks;}
     if(sparks_.size()<64)sparks_.push_back({c,Read(r.get<TransformComponent>(player_).translate),0});
 }
 
 void ChronoSystem::Camera(entt::registry& r,Player& p,GameContext& ctx,float dt){
+    ctx.camera->SetHandheld(creature_&&!p.aiming?.012f:0.f);
     manualCameraHold_=std::max(0.0f,manualCameraHold_-dt);
     bool combat=r.valid(boss_)&&r.get<Boss>(boss_).engaged;
     bool assist=combat&&!p.aiming&&manualCameraHold_<=0;
+    cameraAssist_+=(static_cast<float>(assist)-cameraAssist_)*(1-std::exp(-3*dt));
     bool chaining=p.shotLimit>4 && (p.action==Action::Extending||p.action==Action::Pulling||p.action==Action::Retracting);
     if(chaining)chainCameraHold_=0.35f;else chainCameraHold_=std::max(0.0f,chainCameraHold_-dt);
     bool wide=chainCameraHold_>0;
     float scale=std::max(1.0f,BodyScale(p.mass));
-    float desiredZoom=(p.aiming?(wide?16.0f:12.0f):(combat?25.0f:wide?22.0f:19.0f))*scale;
+    float desiredZoom=(p.aiming?(wide?16.0f:12.0f):(creature_?21.0f:combat?25.0f:wide?22.0f:19.0f))*scale;
+    if(creature_&&!p.aiming){auto& c=r.get<CreatureBoss>(boss_);
+        if(c.sweepPhase==0&&!chaining)desiredZoom+=3.f*scale;}
+
     float desiredShoulder=(p.aiming?4.6f:(wide?4.2f:1.8f))*scale;
     float blend=1-std::exp(-9*dt);
-    zoom_+=(desiredZoom-zoom_)*blend;shoulder_+=(desiredShoulder-shoulder_)*blend;
+    float wanted=std::clamp((desiredZoom-zoom_)*5.f,-12.f,12.f);
+    zoomVelocity_+=std::clamp(wanted-zoomVelocity_,-32.f*dt,32.f*dt);
+    zoom_+=zoomVelocity_*dt;shoulder_+=(desiredShoulder-shoulder_)*blend;
     V pos=Read(r.get<TransformComponent>(player_).translate);
-    if(!cameraReady_||Length(pos-cameraFollow_)>35){cameraFollow_=pos;cameraReady_=true;composition_={};}
+    if(!cameraReady_||Length(pos-cameraFollow_)>300){cameraFollow_=pos;cameraReady_=true;composition_={};}
     if(dt>0){float oldY=cameraFollow_.y;cameraFollow_=Follow(cameraFollow_,pos,dt,2.2f*scale);
         if(!p.aiming)cameraFollow_.y=std::clamp(oldY+(pos.y-oldY)*(1-std::exp(-4*dt)),pos.y-5*scale,pos.y+5*scale);}
     V aimOffset{};
     if(combat&&!p.aiming){
-        V delta=Center(r,boss_)-(pos+V{0,2.8f*scale,0});
-        aimOffset=Unit(delta)*std::min(6.0f,Length(delta)*.30f);
+        V interest=Center(r,boss_);
+        if(creature_){const auto& c=r.get<CreatureBoss>(boss_);if(c.sweepPhase==1||c.sweepPhase==2)interest=c.attention;}
+        V delta=interest-(pos+V{0,2.8f*scale,0});
+        aimOffset=Unit(delta)*std::min(creature_?3.0f:6.0f,Length(delta)*.30f);
+        if(creature_)aimOffset.y=std::clamp(aimOffset.y,-1.f,1.f);
         if(assist&&Length(V{delta.x,0,delta.z})>4){
             float error=std::remainder(std::atan2(delta.x,delta.z)-yaw_,6.283185f);
-            yaw_+=std::clamp(error,-.8f,.8f)*(1-std::exp(-2*dt));
+            yaw_+=std::clamp(error,-.8f,.8f)*(1-std::exp(-2*dt))*cameraAssist_;
         }
     }
+    if(chaining&&!p.aiming&&r.valid(p.target))aimOffset=Lerp(aimOffset,Unit(Center(r,p.target)-pos)*3.f,.45f);
     composition_=Lerp(composition_,aimOffset,1-std::exp(-7*dt));
     V focus=cameraFollow_+V{0,2.8f*scale,0}+composition_;
     float goalPitch=pitch_;
-    if(assist)goalPitch=.28f;
+    if(assist){float desiredPitch=creature_?-.12f:.28f;
+        if(creature_){auto& c=r.get<CreatureBoss>(boss_);V d=c.attention-pos;
+            if(c.sweepPhase==1||c.sweepPhase==2)desiredPitch=std::clamp(-std::atan2(d.y,std::max(10.f,Length(V{d.x,0,d.z})))*.45f,p.grounded?.10f:-.30f,.18f);}
+        goalPitch=pitch_+(desiredPitch-pitch_)*cameraAssist_;}
     // Manual aim remains exactly under the crosshair. Automatic framing never
     // changes the player's selection direction, avoiding target/camera feedback.
     viewPitch_=p.aiming?pitch_:viewPitch_+(goalPitch-viewPitch_)*(1-std::exp(-9*dt));
     V right{std::cos(yaw_),0,-std::sin(yaw_)};
     V orbit=Forward(yaw_,viewPitch_);
     V desired=focus-orbit*zoom_+right*shoulder_;
+    auto cameraSweep=[&](V at,V delta,V half,float& fraction,V& normal){
+        bool found=false;fraction=1;
+        for(const auto& box:solids_){float f;V n;
+            if(Chrono::Sweep(at,delta,box,half,f,n)&&f<fraction){found=true;fraction=f;normal=n;}}
+        return found;
+    };
     // Preserve the full orbit while airborne. At ground level, lift the camera
     // onto the floor instead of shortening the boom into the player's body.
     float f;V n;
     if(desired.y<focus.y){
         V above{desired.x,focus.y,desired.z};float drop=focus.y-desired.y;
-        if(Sweep(above,{0,-drop,0},{0.35f,0.35f,0.35f},f,n)&&n.y>0.5f)desired.y=above.y-drop*f+0.05f;
+        if(cameraSweep(above,{0,-drop,0},{0.35f,0.35f,0.35f},f,n)&&n.y>0.5f)desired.y=above.y-drop*f+0.05f;
     }
-    if(Sweep(focus,desired-focus,{0.35f,0.35f,0.35f},f,n))desired=focus+(desired-focus)*std::max(0.0f,f-0.02f);
+    if(cameraSweep(focus,desired-focus,{0.35f,0.35f,0.35f},f,n))desired=focus+(desired-focus)*std::max(0.0f,f-0.02f);
     if(Length(desired-pos)<5.0f*scale){
         V raised=focus-Forward(yaw_,0)*(8.0f*scale)+right*shoulder_+V{0,3*scale,0};
-        if(!Sweep(focus,raised-focus,{0.35f,0.35f,0.35f},f,n))desired=raised;
+        if(!cameraSweep(focus,raised-focus,{0.35f,0.35f,0.35f},f,n))desired=raised;
     }
+    if(creature_)desired.y=std::max(1.5f,desired.y);
+    float safeBoom=Length(desired-focus);
+    cameraBoom_=cameraBoom_<0?safeBoom:std::min(safeBoom,cameraBoom_+18.f*dt);
+    desired=focus+Unit(desired-focus)*cameraBoom_;
     // A floor-clamped upward orbit needs extra vertical space for the body and
     // the root of the arm. Keep the reticle's ray unchanged; widen the lens.
     V up{std::sin(yaw_)*std::sin(viewPitch_),std::cos(viewPitch_),std::cos(yaw_)*std::sin(viewPitch_)};
@@ -402,13 +652,15 @@ void ChronoSystem::Camera(entt::registry& r,Player& p,GameContext& ctx,float dt)
             std::atan(std::abs(Dot(next,right))/z/aspect));
         required=std::max(required,2*(halfAngle+0.13f));
     }
-    if(combat&&!p.aiming){
+    if(combat&&!p.aiming&&!creature_){
         V boss=Center(r,boss_)-desired;float z=Dot(boss,orbit);
         if(z>1){float aspect=ctx.viewportSize.y>0?ctx.viewportSize.x/ctx.viewportSize.y:16.f/9;
             required=std::max(required,2*(std::max(std::abs(std::atan2(Dot(boss,up),z)),
-                std::atan(std::abs(Dot(boss,right))/z/aspect))+std::atan2(6.0f,Length(boss))));}
+                std::atan(std::abs(Dot(boss,right))/z/aspect))+std::atan2(creature_?18.0f:6.0f,Length(boss))));}
+
     }
-    float desiredFov=std::clamp(required,wide?1.2217f:1.0472f,1.7453f);
+    if(creature_)required=1.13446f+(p.chainDrive-1)*.349066f;
+    float desiredFov=std::clamp(required,creature_?1.13446f:wide?1.2217f:1.0472f,creature_?1.39626f:1.7453f);
     fov_+=(desiredFov-fov_)*(1-std::exp(-(desiredFov>fov_?18.0f:4.0f)*dt));
     float aspect=ctx.viewportSize.y>0?ctx.viewportSize.x/ctx.viewportSize.y:16.0f/9.0f;
     ctx.camera->SetProjection(fov_,aspect,0.1f,10000.0f);
@@ -421,7 +673,7 @@ void ChronoSystem::Camera(entt::registry& r,Player& p,GameContext& ctx,float dt)
         auto& o=r.get<CameraOccluder>(e);float fraction;V normal;
         bool hidesBody=Chrono::Sweep(desired,pos+V{0,scale,0}-desired,
             {o.center-o.size*0.5f,o.center+o.size*0.5f},{0.3f,0.3f,0.3f},fraction,normal);
-        bool hidesBoss=combat&&e!=boss_&&Chrono::Sweep(desired,Center(r,boss_)-desired,
+        bool hidesBoss=combat&&e!=boss_&&!r.all_of<CreaturePart>(e)&&Chrono::Sweep(desired,Center(r,boss_)-desired,
             {o.center-o.size*.5f,o.center+o.size*.5f},{.5f,.5f,.5f},fraction,normal);
         bool close=r.all_of<Hopper>(e)&&Length(o.center-desired)<Length(o.size)*.6f+2;
         o.opacity+=((hidesBody||hidesBoss||close?0.18f:1.0f)-o.opacity)*(1-std::exp(-12*dt));
@@ -430,11 +682,14 @@ void ChronoSystem::Camera(entt::registry& r,Player& p,GameContext& ctx,float dt)
 void ChronoSystem::UpdatePlayer(entt::registry& r,Player& p,GameContext& ctx){
     const float dt=ctx.dt;
     const auto* control=r.try_get<ControlFrame>(player_);
+    bool snakeKey=control?control->snake:Down(VK_F4);
+    if(snakeKey&&!prevSnake_){snakeOnly_=!snakeOnly_;creature_=true;arena_=false;prevSnake_=true;Reset(r);return;}
+    prevSnake_=snakeKey;
     bool left=control?control->attack:Down(VK_LBUTTON),middle=control?control->toggle:Down(VK_MBUTTON);
     bool jump=control?control->jump:Down(VK_SPACE),dodge=control?control->dodge:Down(VK_SHIFT);
     if(middle&&!prevM_)p.automatic=!p.automatic;
     bool attackPressed=left&&!prevL_;
-    if(!left){p.buffer=0;p.bufferedTarget=entt::null;}
+    if(!left){p.buffer=0;p.bufferedTarget=entt::null;p.holdCancelled=false;}
     if(jump&&!prevSpace_)p.jumpBuffer=0.14f;
     bool dodgePressed=dodge&&!prevShift_;
     prevL_=left;prevM_=middle;prevSpace_=jump;prevShift_=dodge;
@@ -444,13 +699,14 @@ void ChronoSystem::UpdatePlayer(entt::registry& r,Player& p,GameContext& ctx){
         if(std::abs(ctx.input->GetMouseDeltaX())+std::abs(ctx.input->GetMouseDeltaY())>0.01f)manualCameraHold_=1.5f;
         yaw_+=ctx.input->GetMouseDeltaX()*sens;pitch_=std::clamp(pitch_+ctx.input->GetMouseDeltaY()*sens,-1.35f,1.3f);}
     Camera(r,p,ctx,0);
-    if(attackPressed){p.buffer=.3f;p.bufferedManual=p.aiming;
+    if(attackPressed){p.timedInput=p.lastChainHit>=.07f&&p.lastChainHit<=.32f;p.buffer=.3f;p.bufferedManual=p.aiming;
         p.bufferedTarget=(p.aiming||p.automatic)?Choose(r,p,ctx,p.aiming):entt::null;}
     V input{static_cast<float>(Down('D'))-static_cast<float>(Down('A')),0,static_cast<float>(Down('W'))-static_cast<float>(Down('S'))};
     if(control)input=control->move;
     input=Unit(input);V wish{input.x*std::cos(yaw_)+input.z*std::sin(yaw_),0,-input.x*std::sin(yaw_)+input.z*std::cos(yaw_)};
-    if(dodgePressed){p.buffer=0;p.bufferedTarget=entt::null;p.dodgeBuffer=.2f;
+    if(dodgePressed){p.holdCancelled=true;p.buffer=0;p.bufferedTarget=entt::null;p.dodgeBuffer=.2f;
         p.bufferedDodge=Length(wish)>.1f?wish:Forward(yaw_,0);}
+    p.lastChainHit+=dt;if(p.lastChainHit>1.2f)p.chainDrive=std::max(1.f,p.chainDrive-dt);
     p.flow.Tick(dt);p.stats.seconds+=dt;
     p.aimScale=AimTimeScale(p.aimScale,p.aiming,dt);
     p.worldScale=WorldTimeScale(p.flow.scale,p.aimScale);
@@ -476,18 +732,22 @@ void ChronoSystem::UpdatePlayer(entt::registry& r,Player& p,GameContext& ctx){
     float scale=p.collisionScale,radius=std::max(0.55f,scale*0.9f);V half{radius,0.8f+scale*0.4f,radius};
     if(p.grounded){p.coyote=0.1f;p.stats.airKills=0;}else p.coyote=std::max(0.0f,p.coyote-dt);
     if(p.dodgeBuffer>0&&p.cooldown==0&&p.action!=Action::Collapsed){
-        p.action=Action::Dodge;p.timer=0.19f;p.cooldown=0.55f;p.invincible=0.15f;p.target=entt::null;
+        p.chainDrive=1;p.lastChainHit=10;p.action=Action::Dodge;p.timer=0.19f;p.cooldown=0.55f;p.invincible=0.15f;p.target=entt::null;
         p.dodgeDirection=p.bufferedDodge;p.buffer=0;p.dodgeBuffer=0;p.bufferedTarget=entt::null;
         p.failureTime=0;p.hand=pos;p.velocity.y=std::max(p.velocity.y,0.0f);p.airHang=.2f;
     }
     p.dodgeBuffer=std::max(0.0f,p.dodgeBuffer-dt);
     if(p.action==Action::Dodge||p.action==Action::Collapsed){p.buffer=0;p.bufferedTarget=entt::null;}
+    if(left&&p.automatic&&!p.aiming&&!p.holdCancelled&&p.action==Action::Free&&p.dodgeBuffer<=0&&p.cooldown<=0){
+        p.bufferedTarget=Choose(r,p,ctx,false);p.bufferedManual=false;p.timedInput=false;
+        if(r.valid(p.bufferedTarget))p.buffer=.1f;
+    }
     if(p.action==Action::Free && p.buffer>0)Shoot(r,p,ctx);
     if(p.action==Action::Extending){
         // Auto steering happens only while the hand travels. Manual shots are
         // real rays: missed shots retract, and never move the body.
         if(!p.shotManual&&r.valid(p.target)&&r.get<Target>(p.target).active)p.shotDirection=Unit(Center(r,p.target)-p.hand);
-        float step=std::min(110*dt,p.shotLimit-p.shotDistance);
+        float step=std::min((p.automatic&&!p.shotManual?160.f:110.f)*dt,p.shotLimit-p.shotDistance);
         float nearest=step;entt::entity hit=entt::null;V dir=p.shotDirection;
         float wf;V wn;bool wall=Sweep(p.hand,dir*step,{0.08f,0.08f,0.08f},wf,wn);
         if(wall)nearest=step*wf;
@@ -529,7 +789,7 @@ void ChronoSystem::UpdatePlayer(entt::registry& r,Player& p,GameContext& ctx){
             V end=tg.kind==Kind::Anchor?c+V{0,1.7f,0}:c-Unit(c-pos)*(tg.radius+radius+0.15f);
             bool stepping=p.pullStep;
             if(stepping)end=p.pullWaypoint;
-            V delta=end-pos;float dist=Length(delta);float step=std::min(dist,PullSpeed(dist)*dt);
+            V delta=end-pos;float dist=Length(delta);float step=std::min(dist,PullSpeed(dist)*(1+(p.chainDrive-1)*std::clamp(dist/3.f,0.f,1.f))*dt);
             float f;V n;
             if(Sweep(pos,Unit(delta)*step,half,f,n)){
                 pos=pos+Unit(delta)*(step*std::max(0.0f,f-0.005f));p.action=Action::Recovery;p.timer=0.1f;p.target=entt::null;
@@ -540,7 +800,7 @@ void ChronoSystem::UpdatePlayer(entt::registry& r,Player& p,GameContext& ctx){
                     if(stepping){p.pullStep=false;}
                     else {
                     t.translate=Write(pos);Impact(r,p,p.target,ctx,true);
-                    p.action=Action::Recovery;p.timer=0.055f;p.velocity={0,4,0};p.airHang=0.28f;
+                    p.action=Action::Recovery;p.timer=p.automatic?.025f:.055f;p.velocity={0,4,0};p.airHang=0.28f;
                     }
                 }
             }
@@ -617,6 +877,7 @@ void ChronoSystem::UpdatePlayer(entt::registry& r,Player& p,GameContext& ctx){
 
 void ChronoSystem::UpdateBoss(entt::registry& r,Player& p,GameContext& ctx){
     if(!r.valid(boss_))return;
+    if(creature_){UpdateCreature(r,p,ctx);return;}
     auto& b=r.get<Boss>(boss_);V player=Read(r.get<TransformComponent>(player_).translate);
     if(!b.engaged){if(player.z>3)b.engaged=true;else return;}
     const float dt=ctx.dt*p.worldScale;b.clock+=dt;
@@ -705,6 +966,28 @@ void ChronoSystem::UpdateWorld(entt::registry& r,Player& p,GameContext& ctx){
     std::vector<entt::entity> expired;
     for(auto e:r.view<Projectile,Target,TransformComponent>()){
         auto& q=r.get<Projectile>(e);auto& tg=r.get<Target>(e);auto& t=r.get<TransformComponent>(e);
+        if(auto* feather=r.try_get<Feather>(e)){
+            if(r.get<CreatureBoss>(boss_).stage!=CreatureStage::Opening&&e!=p.target){expired.push_back(e);continue;}
+            q.lifetime-=ctx.dt;
+            if(q.lifetime<=0||(feather->age>=feather->delay+.45f&&!tg.active)){expired.push_back(e);continue;}
+            V before=Read(t.translate);feather->age+=ctx.dt;
+            float u=Ease((feather->age-feather->delay)/.45f);
+            V after=Lerp(feather->start,feather->destination,u);t.translate=Write(after);
+            t.rotate.y+=dt*1.4f;
+            if(feather->age>=feather->delay+.45f){tg.active=true;
+                if(!feather->readySound){feather->readySound=true;if(feather->delay<.001f)Engine::Audio::GetInstance()->Play(hitSound_,false,.12f*Engine::Audio::GetInstance()->GetMasterSEVolume(),1.6f);}
+            }
+            r.get<MeshRendererComponent>(e).color=tg.active?DirectX::XMFLOAT4{.1f,1.2f,1.6f,1}:DirectX::XMFLOAT4{2,.15f,.02f,1};
+            r.get<MeshRendererComponent>(e).enabled=!tg.active||e==p.target||Length(after-player)<Reach(p.mass)*1.6f;
+            t.rotate.x=tg.active?0.f:1.2f;
+            // A launched feather is dangerous; after arrival it is a stable chain target.
+            float hit;V delta=after-before;
+            if(!tg.active&&Length(delta)>.001f&&RaySphere(before,Unit(delta),player,1.7f,Length(delta),hit)){
+                if(p.invincible<=0)p.damageReason="HIT - FEATHER VOLLEY";
+                Damage(r,p,14,ctx,before);
+            }
+            continue;
+        }
         q.lifetime-=dt;if(q.lifetime<=0 || (q.breakable&&!tg.active)){expired.push_back(e);continue;}
         V before=Center(r,e),after=before+q.velocity*dt;
         float hit;bool contact=RaySphere(before,Unit(after-before),player,tg.radius+0.9f,Length(after-before),hit);
@@ -735,7 +1018,7 @@ void ChronoSystem::Finish(Player& p,bool win){
     if(finished_)return;finished_=true;won_=win;finishAge_=0;p.target=entt::null;p.preview=entt::null;
     p.action=Action::Free;p.velocity={};p.flow.remaining=0;p.flow.scale=1;p.aimScale=1;p.worldScale=1;p.aiming=false;
     p.hitStop=0;p.damageAge=1;
-    if(!win||diagnostic_||arena_)return;
+    if(!win||diagnostic_||arena_||creature_)return;
     newTime_=bestTime_==0||p.stats.seconds<bestTime_;newChain_=p.flow.maxCombo>bestChain_;
     if(newTime_)bestTime_=p.stats.seconds;if(newChain_)bestChain_=p.flow.maxCombo;
     try{auto path=RecordPath();if(!path.empty()){
@@ -745,35 +1028,46 @@ void ChronoSystem::Finish(Player& p,bool win){
 }
 void ChronoSystem::Update(entt::registry& r,GameContext& ctx){
     if(!initialized_||!r.valid(player_))return;
-    const auto* control=r.try_get<ControlFrame>(player_);
-    bool arenaKey=control?control->arena:Down(VK_F2);
-    if(arenaKey&&!prevArena_){arena_=!arena_;prevArena_=true;Reset(r);return;}
-    prevArena_=arenaKey;
-    auto& p=r.get<Player>(player_);
-    diagnostic_=r.all_of<ControlFrame>(player_);
     if(finished_){
+        auto& p=r.get<Player>(player_);
+        if(inkMode_){
+            auto& ink=r.get<InkPlayer>(player_);
+            ink.monoAge=-1;ink.phase=SlimePhase::Roaming;ink.charge=ink.spent=0;
+            InkCamera(r,p,ctx);
+        }
         Presentation(r,p,ctx);
         finishAge_+=ctx.dt;Engine::WindowDX::SetCursorVisible(true);
         if(finishAge_>0.2f&&ctx.input){
-            float mx=0,my=0;ctx.input->GetMousePos(mx,my);
-            float uiScale=std::min(ctx.viewportSize.x/1280,ctx.viewportSize.y/720);
-            if(uiScale>0){mx/=uiScale;my/=uiScale;}
-            bool click=ctx.input->IsMouseTrigger(0);
-            if(ctx.input->Trigger(0x13)||ctx.input->Trigger(0x1C)||(click&&mx>=290&&mx<=610&&my>=520&&my<=582)){
-                if(arena_){Reset(r);return;}
+            UI::Canvas ui(ctx.renderer,ctx.viewportSize.x,ctx.viewportSize.y);
+            if(ctx.useOverrideMouse)ui.SetPointer(ctx.overrideMouseX,ctx.overrideMouseY);
+            if(UI::Pressed(DIK_R)||UI::Pressed(DIK_RETURN)||ui.Click(UI::Retry)){
+                if(inkMode_||arena_||creature_){Reset(r);return;}
                 Engine::SceneParameters params;params.stagePath="Resources/Scenes/chrono.json";
                 Engine::SceneManager::GetInstance()->RequestChange("Game",params);
             }
-            if(ctx.input->Trigger(0x0F)||(click&&mx>=650&&mx<=970&&my>=520&&my<=582))Engine::SceneManager::GetInstance()->RequestChange("Select");
+            if(UI::Pressed(DIK_TAB)||ui.Click(UI::Select))Engine::SceneManager::GetInstance()->RequestChange("Select");
         }
         return;
     }
+    if(inkMode_){UpdateInk(r,r.get<Player>(player_),ctx);return;}
+    const auto* control=r.try_get<ControlFrame>(player_);
+    bool creatureKey=control?control->creature:Down(VK_F3);
+    if(creatureKey&&!prevCreature_){snakeOnly_=false;creature_=!creature_;arena_=false;prevCreature_=true;Reset(r);return;}
+    prevCreature_=creatureKey;
+    bool arenaKey=control?control->arena:Down(VK_F2);
+    if(arenaKey&&!prevArena_){snakeOnly_=false;creature_=false;arena_=!arena_;prevArena_=true;Reset(r);return;}
+    prevArena_=arenaKey;
+    auto& p=r.get<Player>(player_);
+    diagnostic_=r.all_of<ControlFrame>(player_);
+    bool shakeKey=!control&&Down(VK_F6);if(shakeKey&&!prevShake_)shakeSetting_=(shakeSetting_+1)%3;prevShake_=shakeKey;
+    ctx.camera->SetShakeStrength(shakeSetting_*.5f);
     UpdatePlayer(r,p,ctx);if(!finished_&&p.hitStop<=0)UpdateWorld(r,p,ctx);
     Presentation(r,p,ctx);
     if(ctx.combatFlow)ctx.combatFlow->enemyScale=p.hitStop>0?0:p.worldScale;
 }
 void ChronoSystem::Draw(entt::registry& r,GameContext& ctx){
     if(!initialized_||!ctx.isPlaying||!r.valid(player_)||!ctx.renderer)return;
+    if(inkMode_){DrawInk(r,ctx);return;}
     auto sphere=[&](V at,float size,Engine::Vector4 color){
         Engine::Transform transform;transform.translate=EV(at);transform.scale={size,size,size};
         ctx.renderer->DrawMesh(sphere_,white_,transform,color,"Default",0.3f,false);
@@ -781,7 +1075,34 @@ void ChronoSystem::Draw(entt::registry& r,GameContext& ctx){
     // The arm is part of the player's SPH volume (GameScene::SetGPUFluidTether).
     for(const auto& s:sparks_){float a=std::clamp(s.age/0.35f,0.0f,1.0f);
         V at=Lerp(s.from,s.to,a*a);sphere(at,0.2f*(1-a)+0.08f,{0.2f,1.4f,1.6f,1});}
-    for(const auto& d:droplets_)sphere(d.position,.18f*(1-d.age/.45f)+.035f,{.18f,1.1f,.6f,1});
+    for(const auto& d:droplets_)sphere(d.position,(d.dust?.8f:.18f)*(1-d.age/.45f)+.035f,d.dust?Engine::Vector4{.65f,.48f,.26f,1}:Engine::Vector4{.18f,1.1f,.6f,1});
+    if(creature_&&r.valid(boss_)){
+        const auto& c=r.get<CreatureBoss>(boss_);
+        if((c.stage==CreatureStage::Snake||c.stage==CreatureStage::Opening)&&(c.sweepPhase==1||c.sweepPhase==2)){
+            auto color=c.sweepPhase==1?Engine::Vector4{1,.65f,.05f,1}:Engine::Vector4{2,.1f,.02f,1};
+            V origin=c.sweepCenter+V{0,.12f,0};
+            if(c.attack==CreatureAttack::Slam){
+                for(int i=0;i<48;++i){float a=i*6.283185f/48,aa=(i+1)*6.283185f/48;
+                    ctx.renderer->DrawLine3D(EV(origin+V{std::cos(a)*8,0,std::sin(a)*8}),EV(origin+V{std::cos(aa)*8,0,std::sin(aa)*8}),color);}
+                for(float x:{-8.f,8.f})ctx.renderer->DrawLine3D(EV(origin+V{x,0,0}),EV(origin+V{x,32,0}),color);
+            }else if(c.attack==CreatureAttack::Charge){
+                for(float x:{-4.f,4.f})ctx.renderer->DrawLine3D(EV(origin+V{x,0,-20}),EV(origin+V{x,0,26}),color);
+                ctx.renderer->DrawLine3D(EV(origin+V{0,0,20}),EV(origin+V{0,0,-16}),color);
+                for(float x:{-3.f,3.f})ctx.renderer->DrawLine3D(EV(origin+V{0,0,-16}),EV(origin+V{x,0,-11}),color);
+            }else if(c.attack==CreatureAttack::Wing){
+                for(float y:{-6.f,6.f})for(float z:{-7.f,7.f})ctx.renderer->DrawLine3D(EV(origin+V{-16,y,z}),EV(origin+V{18,y,z}),color);
+                for(float x:{-16.f,18.f})for(float z:{-7.f,7.f})ctx.renderer->DrawLine3D(EV(origin+V{x,-6,z}),EV(origin+V{x,6,z}),color);
+            }else{
+            for(float z:{-5.f,5.f})ctx.renderer->DrawLine3D(EV(origin+V{-15,0,z}),EV(origin+V{15,0,z}),color);
+            for(float x:{-15.f,15.f})ctx.renderer->DrawLine3D(EV(origin+V{x,0,-5}),EV(origin+V{x,0,5}),color);
+            float edge=c.sweepPhase==1?-12.f:-12.f+24.f*AttackEase(c.sweepTime/ActiveTime(c.attack));
+            ctx.renderer->DrawLine3D(EV(origin+V{edge,0,-5}),EV(origin+V{edge,0,5}),color);
+            ctx.renderer->DrawLine3D(EV(origin+V{-10,0,0}),EV(origin+V{10,0,0}),color);
+            ctx.renderer->DrawLine3D(EV(origin+V{10,0,0}),EV(origin+V{7,0,-2}),color);
+            ctx.renderer->DrawLine3D(EV(origin+V{10,0,0}),EV(origin+V{7,0,2}),color);
+            }
+        }
+    }
     if(arena_&&r.valid(boss_)){
         const auto& b=r.get<Boss>(boss_);V c=Center(r,boss_)+V{0,-4.9f,0};
         if(b.phase==1||b.phase==2){
@@ -795,6 +1116,11 @@ void ChronoSystem::Draw(entt::registry& r,GameContext& ctx){
                     EV(c+(b.attackDirection*std::cos(aa)+side*std::sin(aa))*7),color);}
         }
     }
+    for(auto e:r.view<Feather,Target,TransformComponent>()){
+        const auto& feather=r.get<Feather>(e);if(r.get<Target>(e).active||feather.age<feather.delay)continue;
+        V at=Read(r.get<TransformComponent>(e).translate);
+        ctx.renderer->DrawLine3D(EV(at),EV(at-Unit(feather.destination-feather.start)*5.f),{2,.2f,.02f,1});
+    }
     // Projectiles keep their cyan/red silhouettes. Only the selected target
     // gets a HUD frame; no overlapping route lines through the battlefield.
     if(r.valid(weakpoint_)&&r.get<Target>(weakpoint_).active){
@@ -806,14 +1132,16 @@ void ChronoSystem::Draw(entt::registry& r,GameContext& ctx){
 }
 void ChronoSystem::DrawUI(entt::registry& r,GameContext& ctx){
     if(!initialized_||!r.valid(player_)||!ctx.renderer)return;
+    if(inkMode_){DrawInkUI(r,ctx);return;}
     const auto& p=r.get<Player>(player_);auto* render=ctx.renderer;
     float w=ctx.viewportSize.x>0?ctx.viewportSize.x:1280,h=ctx.viewportSize.y>0?ctx.viewportSize.y:720;
     float s=std::min(w/1280,h/720);
     auto rect=[&](float x,float y,float width,float height,Engine::Vector4 color){
+        if(height>=40 && width<1280){ UI::Canvas ui(render,w,h);ui.Panel({x,y,width,height},UI::Ink);return; }
         Engine::Renderer::SpriteDesc d;d.x=x*s;d.y=y*s;d.w=width*s;d.h=height*s;d.color=color;d.layer=0;render->DrawSprite(white_,d);};
     auto text=[&](const std::string& label,float x,float y,float scale,Engine::Vector4 color=Engine::Vector4{0.9f,0.98f,1,1}){
-        render->DrawString(label,x*s,y*s,scale*s,color);};
-    const Engine::Vector4 bg{0.025f,0.045f,0.085f,0.94f},cyan{0.1f,0.9f,1,1},gold{1,0.75f,0.2f,1};
+        render->DrawString(label,x*s,y*s,scale*s,color,UI::Font);};
+    const Engine::Vector4 bg=UI::Ink,cyan=UI::Lime,gold=UI::Gold;
     if(finished_){
         rect(0,0,1280,720,{0.02f,0.03f,0.06f,0.86f});rect(250,82,780,530,bg);
         text(won_?"CHRONO CHAIN  /  CLEAR":"REFORM AND TRY AGAIN",290,106,0.65f);
@@ -826,7 +1154,8 @@ void ChronoSystem::DrawUI(entt::registry& r,GameContext& ctx){
         text("MANUAL  "+std::to_string(p.stats.manual)+"    AUTO  "+std::to_string(p.stats.automatic)+"    SLOW  "+TimeText(p.flow.slowSeconds),290,417,0.32f);
         text("BEST  "+TimeText(bestTime_)+"    CHAIN  "+std::to_string(bestChain_),290,455,0.31f,cyan);
         rect(290,520,320,62,{0.07f,0.35f,0.48f,1});rect(650,520,320,62,{0.14f,0.17f,0.26f,1});
-        text("[R / ENTER] RETRY",312,537,0.39f);text("[TAB] STAGE SELECT",672,537,0.38f);
+        UI::Canvas ui(render,w,h);ui.Button(UI::Retry,"RETRY",true);ui.Button(UI::Select,"STAGE SELECT");
+        ui.Prompt("keyboard_r","RETRY",310,475);ui.Prompt("keyboard_tab","STAGE SELECT",710,475);
         return;
     }
     rect(422,610,436,76,bg);
@@ -834,23 +1163,34 @@ void ChronoSystem::DrawUI(entt::registry& r,GameContext& ctx){
     rect(438,648,188,7,{.1f,.17f,.22f,1});rect(438,648,188*p.mass/200,7,cyan);
     text(p.instability>75?"STRAIN - LAND TO STABILIZE":"STRAIN",651,621,.22f,p.instability>75?gold:cyan);
     rect(651,648,190,7,{.16f,.15f,.13f,1});rect(651,648,190*p.instability/100,7,gold);
-    text(p.aiming?"RMB FOCUS  /  MANUAL":p.automatic?"AUTO CHAIN":"MANUAL  /  HOLD RMB",438,665,.20f);
+    text(p.aiming?"RMB FOCUS / MANUAL":p.automatic?(p.holdCancelled?"RELEASE LMB TO RESUME":"AUTO CHAIN / HOLD LMB"):"MANUAL / HOLD RMB",438,665,.20f);
     if(p.worldScale<.99f)text("TIME "+std::to_string(static_cast<int>(p.worldScale*100))+"%",737,665,.20f,cyan);
     if(p.flow.combo>0){text(std::to_string(p.flow.combo)+" CHAIN",582,542,.42f,gold);
         rect(580,579,125*p.flow.grace/2,3,gold);}
     if(r.valid(boss_)){
         auto& boss=r.get<Boss>(boss_);auto& bt=r.get<Target>(boss_);
         if(boss.engaged){
-            rect(380,8,520,55,bg);
+            float hudX=creature_?-365.f:0.f;
+            rect(380+hudX,8,520,55,bg);
             std::string instruction=boss.phase==0?"APPROACH - GET READY":boss.phase==3?(boss.countered?"COUNTER LANDED - REFORM":"WAVE ENDED - REGROUP"):
                 boss.waveBreaks<3?"BREAK ORBS  "+std::to_string(std::min(3,boss.waveBreaks))+" / 3":"BOSS EXPOSED - GRAB THE BODY";
             if(arena_)instruction=boss.phase==1?(boss.wave%2==0?"CHARGE INCOMING - DODGE SIDEWAYS":"SWEEP INCOMING - LEAVE THE ARC"):
                 boss.phase==2?"ATTACK ACTIVE":boss.phase==3?"OPENING - COUNTER OR LAND":"ARENA - WATCH THE BOSS";
-            text(instruction,408,15,.27f,gold);
-            if(!arena_)for(int i=0;i<3;++i)rect(410.0f+static_cast<float>(i)*154,36,143,3,boss.waveBreaks>i?cyan:Engine::Vector4{.17f,.23f,.29f,1});
-            rect(410,44,451,4,{0.1f,0.12f,0.2f,1});rect(410,44,451*std::max(0.0f,bt.hp)/360,4,{0.95f,0.23f,0.45f,1});
-            text("COUNTERS "+std::to_string(p.stats.counters)+" / 3",410,51,.14f);
-            V c=Center(r,boss_);using namespace DirectX;
+            if(creature_){const auto& c=r.get<CreatureBoss>(boss_);
+                instruction=c.stage==CreatureStage::Snake?(c.sweepPhase==1?"SWEEP INCOMING - BACKSTEP OR CHAIN UP":c.sweepPhase==2?"SWEEP ACTIVE - STAY ABOVE THE JAW":c.sweepPhase==3?(c.sweepHit?"RECOVER - NEXT SWEEP SOON":"CORE OPEN - COUNTER NOW"):"SERPENT - WATCH THE HEAD"):
+                    c.stage==CreatureStage::Assemble?"MORPHING - REPOSITION / RELAYS CLOSED":
+                    c.stage==CreatureStage::Volley?"FEATHER VOLLEY - GET READY":
+                    c.stage==CreatureStage::Descend?"REFORMING - LAND TO RECOVER":
+                    boss.waveBreaks<3?"CHAIN FEATHERS  "+std::to_string(boss.waveBreaks)+" / 3":"CORE OPEN - CHAIN UP AND STRIKE";
+                if(c.sweepPhase==1)instruction=c.attack==CreatureAttack::Sweep?"SWEEP - BACKSTEP OR CHAIN UP":c.attack==CreatureAttack::Charge?"CHARGE - DODGE SIDEWAYS":c.attack==CreatureAttack::Slam?"HEAD SLAM - LEAVE THE COLUMN":"WING SWEEP - SWITCH ROUTE OR DROP";
+                if(c.sweepPhase==2)instruction=c.attack==CreatureAttack::Sweep?"SWEEP ACTIVE":c.attack==CreatureAttack::Charge?"CHARGE ACTIVE":c.attack==CreatureAttack::Slam?"SLAM ACTIVE":"WING ACTIVE - DROP OR EVADE";
+                if(c.wingCounter)instruction="WING RECOVERY - CORE OPEN";
+            }
+            text(instruction,408+hudX,15,.27f,gold);
+            if(!arena_)for(int i=0;i<3;++i)rect(410.0f+hudX+static_cast<float>(i)*154,36,143,3,boss.waveBreaks>i?cyan:Engine::Vector4{.17f,.23f,.29f,1});
+            rect(410+hudX,44,451,4,{0.1f,0.12f,0.2f,1});rect(410+hudX,44,451*std::max(0.0f,bt.hp)/360,4,{0.95f,0.23f,0.45f,1});
+            text("COUNTERS "+std::to_string(p.stats.counters)+" / 3",410+hudX,51,.14f);
+            V c=Center(r,boss_);if(creature_){auto& creature=r.get<CreatureBoss>(boss_);if(creature.sweepPhase==1||creature.sweepPhase==2)c=creature.attention;}using namespace DirectX;
             XMFLOAT4 clip;XMStoreFloat4(&clip,XMVector4Transform(XMVectorSet(c.x,c.y,c.z,1),ctx.camera->View()*ctx.camera->Proj()));
             if(clip.w<=0||std::abs(clip.x)>clip.w*.85f||std::abs(clip.y)>clip.w*.75f){
                 V d=c-Read(ctx.camera->Position());float x=Dot(d,V{std::cos(yaw_),0,-std::sin(yaw_)}),y=-Dot(d,Forward(yaw_,0));
@@ -861,7 +1201,11 @@ void ChronoSystem::DrawUI(entt::registry& r,GameContext& ctx){
             }
         }else text("CHAIN UP TO THE CITADEL",494,34,0.3f,gold);
     }
-    if(p.stats.seconds<12)text("WASD Move  SPACE Jump  SHIFT Cancel/Dodge  LMB Grab  RMB Aim  MMB Auto  F2 Arena",170,698,.20f);
+    if(p.stats.seconds<12)text("WASD Move  SPACE Jump  SHIFT Dodge  LMB Grab  RMB Aim  MMB Auto",270,698,.20f);
+    text("F2 ARENA / F3 BIRD / F4 SNAKE",creature_?980.f:24.f,22,.20f,cyan);
+    text("F6 SHAKE "+std::to_string(shakeSetting_*50)+"%",creature_?980.f:24.f,42,.18f,cyan);
+    if(creature_)text(p.lastChainHit<.32f?"TAP ON IMPACT - BUILD SPEED":"CYAN: CHAIN   RED: DANGER   GREEN: RELAY",410,568,.20f,cyan);
+    if(creature_)text("CHAIN SPEED "+std::to_string(static_cast<int>(p.chainDrive*100))+"%",24,85,.22f,gold);
     text(p.action==Action::Collapsed?"REFORMING - DODGE LOCKED":p.cooldown>0?"DODGE RECHARGING":"SHIFT - CANCEL / DODGE",487,594,.18f,cyan);
     if(p.landingAge<.6f)text("LANDED - STABILIZING",515,495,.25f,cyan);
     if(p.instability>75){float pulse=.5f+.5f*std::sin(p.stats.seconds*10);
@@ -877,7 +1221,7 @@ void ChronoSystem::DrawUI(entt::registry& r,GameContext& ctx){
             XMFLOAT4 clip;XMStoreFloat4(&clip,v);
             if(clip.w>0){float x=(clip.x/clip.w*0.5f+0.5f)*w/s,y=(-clip.y/clip.w*0.5f+0.5f)*h/s;
                 rect(x-20,y-20,40,2,col);rect(x-20,y+18,40,2,col);rect(x-20,y-20,2,40,col);rect(x+18,y-20,2,40,col);}
-            text(unsafe?"OVERLOAD RISK":p.action==Action::Pulling?"PULLING":r.get<Target>(p.preview).kind==Kind::Anchor?"ANCHOR":"GRAB",590,392,0.25f,col);
+            text(unsafe?"OVERLOAD RISK":p.action==Action::Pulling?"PULLING":r.get<Target>(p.preview).kind==Kind::Anchor?"SAFE RELAY":r.all_of<Feather>(p.preview)?(r.get<Feather>(p.preview).fast?"SHORTCUT - EXPIRES SOON":"STABLE FEATHER"):"GRAB",590,392,0.25f,col);
         }
     }
     if(p.failureTime>0){
@@ -912,5 +1256,5 @@ void ChronoSystem::DrawUI(entt::registry& r,GameContext& ctx){
     }
 }
 } // namespace Game
-
-
+#include "ChronoInk.inl"
+#include "SlimeAssault.inl"

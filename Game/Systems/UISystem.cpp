@@ -1,3 +1,4 @@
+#include "../UI/GameUI.h"
 #include "UISystem.h"
 #include "../ObjectTypes.h"
 #include "../../Engine/Renderer.h"
@@ -63,6 +64,13 @@ void UISystem::EnsureHudTextures(GameContext& ctx) {
 
 void UISystem::DrawSpriteRect(Engine::Renderer* renderer, Engine::Renderer::TextureHandle texture, float x, float y, float w, float h, const Engine::Vector4& color, int layer, float rotationRad) {
     if (!renderer || texture == 0) return;
+    if (texture == whiteTexture_ && w >= 150 && h >= 40 && h < 400 && rotationRad == 0 && color.x+color.y+color.z < .7f) {
+        Engine::Renderer::Sprite9SliceDesc panel;
+        panel.x=x;panel.y=y;panel.w=w;panel.h=h;
+        panel.left=panel.right=panel.top=panel.bottom=8;panel.layer=layer;panel.color=UI::Ink;
+        renderer->DrawSprite9Slice(renderer->LoadTexture2D(UI::Canvas::Asset("Grey/Default/button_rectangle_flat.png")),panel);
+        return;
+    }
     Engine::Renderer::SpriteDesc desc;
     desc.x = x;
     desc.y = y;
@@ -76,8 +84,8 @@ void UISystem::DrawSpriteRect(Engine::Renderer* renderer, Engine::Renderer::Text
 
 void UISystem::DrawCenteredText(Engine::Renderer* renderer, const std::string& text, float centerX, float y, float scale, const Engine::Vector4& color) {
     if (!renderer) return;
-    const float w = renderer->MeasureTextWidth(text, scale);
-    renderer->DrawString(text, centerX - w * 0.5f, y, scale, color);
+    const float w = renderer->MeasureTextWidth(text, scale, UI::Font);
+    renderer->DrawString(text, centerX - w * 0.5f, y, scale, color, UI::Font);
 }
 
 void UISystem::DrawHudBar(Engine::Renderer* renderer, float x, float y, float w, float h, float currentRate, float reserveRate, const Engine::Vector4& fillColor, int layer) {
@@ -165,17 +173,17 @@ void UISystem::DrawPlayerHud(entt::registry& /*registry*/, entt::entity /*player
     DrawSpriteRect(renderer, whiteTexture_, x - 4.0f, y - 4.0f, panelW + 8.0f, panelH + 8.0f, {0.20f, 0.42f, 0.68f, 0.95f}, 180);
     DrawSpriteRect(renderer, whiteTexture_, x, y, panelW, panelH, {0.05f, 0.07f, 0.12f, 0.92f}, 181);
     DrawSpriteRect(renderer, whiteTexture_, x, y, panelW, 8.0f, {0.18f, 0.78f, 0.98f, 1.0f}, 182);
-    renderer->DrawString("PLAYER", x + 18.0f, y + 18.0f, 0.42f, {0.86f, 0.94f, 1.0f, 1.0f});
+    renderer->DrawString("PLAYER", x + 18.0f, y + 18.0f, 0.42f, {0.86f, 0.94f, 1.0f, 1.0f}, UI::Font);
 
     char hpText[48];
     std::snprintf(hpText, sizeof(hpText), "%.0f / %.0f", pHealth.hp, pHealth.maxHp);
-    renderer->DrawString(hpText, x + 268.0f, y + 20.0f, 0.34f, {0.80f, 1.0f, 0.84f, 1.0f});
+    renderer->DrawString(hpText, x + 268.0f, y + 20.0f, 0.34f, {0.80f, 1.0f, 0.84f, 1.0f}, UI::Font);
     DrawHudBar(renderer, x + 20.0f, y + 58.0f, panelW - 40.0f, 24.0f, hpRate, reserveRate, {0.22f, 1.0f, 0.58f, 1.0f}, 183);
 
     if (pHealth.recoverableFluid > 0.5f) {
         char fluidText[48];
         std::snprintf(fluidText, sizeof(fluidText), "RECOVERABLE +%.0f", pHealth.recoverableFluid);
-        renderer->DrawString(fluidText, x + 20.0f, y + 88.0f, 0.26f, {0.78f, 1.0f, 0.40f, 0.92f});
+        renderer->DrawString(fluidText, x + 20.0f, y + 88.0f, 0.26f, {0.78f, 1.0f, 0.40f, 0.92f}, UI::Font);
     }
 }
 
@@ -196,7 +204,7 @@ void UISystem::DrawEquippedCanHud(entt::registry& registry, entt::entity playerE
     DrawSpriteRect(renderer, whiteTexture_, x - 4.0f, y - 4.0f, panelW + 8.0f, panelH + 8.0f, {0.20f, 0.42f, 0.68f, 0.95f}, 180);
     DrawSpriteRect(renderer, whiteTexture_, x, y, panelW, panelH, {0.05f, 0.07f, 0.12f, 0.92f}, 181);
     DrawSpriteRect(renderer, whiteTexture_, x, y, panelW, 8.0f, {1.0f, 0.33f, 0.62f, 1.0f}, 182);
-    renderer->DrawString("EQUIPPED CANS", x + 18.0f, y + 18.0f, 0.36f, {0.86f, 0.94f, 1.0f, 1.0f});
+    renderer->DrawString("EQUIPPED CANS", x + 18.0f, y + 18.0f, 0.36f, {0.86f, 0.94f, 1.0f, 1.0f}, UI::Font);
 
     const auto& cans = CanLoadout::GetEquipped();
     const float slotY = y + 60.0f;
@@ -260,7 +268,7 @@ void UISystem::DrawLockedEnemyHud(entt::registry& registry, PlayerInputComponent
     DrawSpriteRect(renderer, whiteTexture_, x - 4.0f, y - 4.0f, panelW + 8.0f, panelH + 8.0f, {0.68f, 0.24f, 0.32f, 0.95f}, 190);
     DrawSpriteRect(renderer, whiteTexture_, x, y, panelW, panelH, {0.06f, 0.05f, 0.08f, 0.92f}, 191);
     DrawSpriteRect(renderer, whiteTexture_, x, y, panelW, 8.0f, {1.0f, 0.33f, 0.42f, 1.0f}, 192);
-    renderer->DrawString("TARGET", x + 18.0f, y + 18.0f, 0.32f, {1.0f, 0.74f, 0.78f, 1.0f});
+    renderer->DrawString("TARGET", x + 18.0f, y + 18.0f, 0.32f, {1.0f, 0.74f, 0.78f, 1.0f}, UI::Font);
     DrawCenteredText(renderer, enemyName, x + panelW * 0.5f, y + 16.0f, 0.40f, {1.0f, 0.96f, 0.82f, 1.0f});
     DrawHudBar(renderer, x + 42.0f, y + 48.0f, panelW - 84.0f, 18.0f, hpRate, hpRate, {1.0f, 0.22f, 0.30f, 1.0f}, 193);
 }
@@ -463,10 +471,10 @@ void UISystem::DrawGameplayHud(entt::registry& registry, GameContext& ctx) {
 				float localY = sy - ctx.viewportOffset.y;
 				
 				// ドロップシャドウ（黒縁）
-				ctx.renderer->DrawString(text, localX + 2.0f, localY + 2.0f, scale, {0.0f, 0.0f, 0.0f, alpha});
+				ctx.renderer->DrawString(text, localX + 2.0f, localY + 2.0f, scale, {0.0f, 0.0f, 0.0f, alpha}, UI::Font);
 				
 				// メインテキスト
-				ctx.renderer->DrawString(text, localX, localY, scale, {dnc.color.x, dnc.color.y, dnc.color.z, alpha});
+				ctx.renderer->DrawString(text, localX, localY, scale, {dnc.color.x, dnc.color.y, dnc.color.z, alpha}, UI::Font);
 			}
         }
     }
@@ -555,11 +563,11 @@ void UISystem::DrawGameplayHud(entt::registry& registry, GameContext& ctx) {
             float textAlpha = std::min(1.0f, deathTimer_);
 
             if (ctx.renderer) {
-                float defeatWidth = ctx.renderer->MeasureTextWidth(defeatStr, scale);
+                float defeatWidth = ctx.renderer->MeasureTextWidth(defeatStr, scale, UI::Font);
                 float sx = centerX - defeatWidth * 0.5f; 
                 float sy = centerY - 180.0f;
-                ctx.renderer->DrawString(defeatStr, sx + 5.0f, sy + 5.0f, scale, {0.0f, 0.0f, 0.0f, textAlpha});
-                ctx.renderer->DrawString(defeatStr, sx, sy, scale, {rColor[0], rColor[1], rColor[2], rColor[3] * textAlpha});
+                ctx.renderer->DrawString(defeatStr, sx + 5.0f, sy + 5.0f, scale, {0.0f, 0.0f, 0.0f, textAlpha}, UI::Font);
+                ctx.renderer->DrawString(defeatStr, sx, sy, scale, {rColor[0], rColor[1], rColor[2], rColor[3] * textAlpha}, UI::Font);
             }
 
             // 1.5秒後に完全にGameOverシーンへ遷移

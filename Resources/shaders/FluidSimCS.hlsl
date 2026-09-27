@@ -113,6 +113,17 @@ void Emit(uint3 DTid : SV_DispatchThreadID) {
                 p.velocity=flow;
             }
             p.color = emitColor;
+            // Ink jets occupy the effect pool but share the player's material.
+            // A resolved 3x3 ribbon overlaps the body before detaching.
+            if(emitType>=4.0f){
+                float3 along=normalize(emitDir+float3(0,0,1e-6f));
+                float3 across=normalize(cross(along,abs(along.y)<.9f?float3(0,1,0):float3(1,0,0)));
+                float3 up=cross(along,across);
+                float axial=1-2*(localIndex+.5f)/emitCount,angle=localIndex*2.399963f;
+                float radius=sqrt(max(0,1-axial*axial))*.32f;
+                p.position=emitPos+along*(axial*.8f)+across*(cos(angle)*radius)+up*(sin(angle)*radius);
+                p.velocity=emitDir*5.0f;
+            }
             p.type = emitType;
             
             // 物理初期値
@@ -155,11 +166,14 @@ static const float POLY6_COEFF = 315.0f / (64.0f * PI * H_POWER_9);
 static const float SPIKY_COEFF = 45.0f / (PI * H_POWER_6);
 
 float RestDensity(float type) {
+    // Assault mass changes the active particle count, not each particle's mass.
+    if(type<0.5f && coreMode>=4.0f) return FluidRestDensity(type);
     // Above baseline mass, keep the same particle budget and increase volume.
-    float volume = (type < 0.5f && coreMode >= 2.0f) ? max(1.0f, coreFlowSpeed / 100.0f) : 1.0f;
+    float volume = (type < 0.5f && coreMode >= 2.0f) ? (coreMode>=4.0f?clamp(coreFlowSpeed/100.0f,.05f,2.0f):max(1.0f, coreFlowSpeed / 100.0f)) : 1.0f;
     return FluidRestDensity(type) / volume;
 }
 float3 ChronoTransportVelocity() {
+    if(coreMode>=4.0f) return pad3*float3(.9f,lerp(.9f,.65f,saturate(coreScale.y)),.9f);
     // Ordinary walking uses exactly the legacy velocity-follow force.
     // Carry only the high-speed part that the 30-unit solver cannot follow.
     return pad3 * saturate((length(pad3) - 20.0f) / 45.0f);
@@ -167,6 +181,38 @@ float3 ChronoTransportVelocity() {
 bool IsTetherParticle(uint index) {
     // Stable identities: gaining/losing mass must not reassign the whole arm.
     return coreMode >= 2.0f && index % 20U >= 13U && index < (uint)pad6.y;
+}
+// A soft containment field acts on simulated positions. No particle is assigned
+// a surface slot: pressure, viscosity and collisions remain free to redistribute it.
+float3 SlimeSupportOrigin() {
+    return corePos+float3(0,-1.25f+.8f*saturate(coreScale.y),0);
+}
+float3 SlimeFieldRadii() {
+    float scale=pow(clamp(coreFlowSpeed/100.0f,.05f,2.0f),1.0f/3.0f);
+    // Same volume in both poses; 6600 particles / rest density 275 ~= 24.
+    float3 radii=lerp(coreMode>=5.0f?float3(4.2f,.66f,4.2f):float3(2.55f,1.8f,2.55f),float3(1.8f,1.8f,1.8f),saturate(coreScale.y));
+    float aspect=coreScale.x>.1f?clamp(coreScale.x,.55f,1.6f):1.f;
+    return radii*float3(rsqrt(aspect),aspect,rsqrt(aspect))*scale;
+}
+float3 SlimeMotionAxis(){return normalize(float3(coreForward.x,0,coreForward.z)+float3(0,0,1e-6f));}
+float SlimeGroundHeight(float3 position){return emitDir.y+dot(position.xz-corePos.xz,emitDir.xz);}
+float SlimeMotionAmount(){return saturate(coreScale.z)*(1-.75f*saturate(coreScale.y));}
+float3 SlimeToField(float3 local){
+    local.y-=dot(local.xz,emitDir.xz)*(1-saturate(coreScale.y));
+    float3 forward=SlimeMotionAxis(),side=float3(forward.z,0,-forward.x);
+    float motion=SlimeMotionAmount(),stretch=1+.55f*motion;
+    float along=dot(local,forward)/stretch;
+    float width=1+motion*.26f*clamp(along/max(SlimeFieldRadii().z,.1f),-1.f,1.f);
+    // Broad advancing front and a trailing tapered rear. The transverse squeeze
+    // compensates axial stretch, while particles can flow across the field.
+    return float3(dot(local,side)*sqrt(stretch)/width,local.y*sqrt(stretch)/width,along);
+}
+float3 SlimeFromField(float3 local){
+    float3 forward=SlimeMotionAxis(),side=float3(forward.z,0,-forward.x);
+    float motion=SlimeMotionAmount(),stretch=1+.55f*motion;
+    float width=1+motion*.26f*clamp(local.z/max(SlimeFieldRadii().z,.1f),-1.f,1.f);
+    float3 world=side*(local.x*width/sqrt(stretch))+float3(0,local.y*width/sqrt(stretch),0)+forward*(local.z*stretch);
+    world.y+=dot(world.xz,emitDir.xz)*(1-saturate(coreScale.y));return world;
 }
 float TetherParameter(uint index) {
     uint lane = (index / 20U) * 7U + index % 20U - 13U;
@@ -214,6 +260,7 @@ float Kernel(float3 d) {
 uint GetFluidPhase(float type) {
     // Player and its detached mass are the same material.  Decoys and water
     // are separate phases and must not share density, pressure or viscosity.
+    if(type>=4.0f)return 3U; // Independent projectile physics.
     if (type < 0.5f || (type > 2.5f && type < 3.5f)) return 0U;
     if (type > 1.5f && type < 2.5f) return 1U;
     return 2U;
@@ -452,9 +499,9 @@ void SortParticle(uint i, bool prepareVelocity) {
     
     uint destIdx = GridOffset[gHash] + localOffset;
     if (destIdx >= maxParticles) return;
-    if (prepareVelocity) {
+    if (prepareVelocity && p.type<4.0f) {
         float3 v = (p.position - PreviousPositions[i].xyz) / max(dt, 1e-6f);
-        p.velocity = v * min(1.0f, 30.0f / max(length(v), 1e-6f));
+        p.velocity = v * min(1.0f, (p.type>=4.0f?80.0f:30.0f) / max(length(v), 1e-6f));
     }
     SortedParticles[destIdx] = p;
     OriginalIndices[destIdx] = i;
@@ -573,6 +620,13 @@ void CalcForce(uint3 DTid : SV_DispatchThreadID) {
     Particle pi = SortedParticles[i];
     if (pi.position.y < -500.0f) return;
     
+    if(pi.type>=4.0f){
+        // Coherent independent ink volume, matching the authoritative ballistic path.
+        pi.position+=pi.velocity*dt+float3(0,-9*dt*dt,0);
+        pi.velocity.y-=18*dt;pi.pad.x+=dt;
+        if(pi.pad.x>=max(.02f,(pi.type-4)*10)){pi.color.a=0;pi.position.y=-1000;}
+        SolverOutput[i]=pi;return;
+    }
     // The density pass already collected the same spiky gradients. Its sum
     // converts exactly to the former cohesion force (including overlap jitter).
     bool isSlimeType = (pi.type < 0.5f || (pi.type > 1.5f && pi.type < 3.5f));
@@ -620,7 +674,20 @@ void CalcForce(uint3 DTid : SV_DispatchThreadID) {
     // Density projection and collisions determine the occupied volume and base.
     bool isCurrentLiquefiedPlayer = pi.type < 0.5f && coreMode > 0.5f && coreMode < 1.5f;
     if (pi.type < 0.5f && coreAttraction > 0.0f) {
-        if (!isCurrentLiquefiedPlayer) {
+        if(coreMode>=4.0f){
+            float3 radii=SlimeFieldRadii();
+            float3 local=pi.position-SlimeSupportOrigin();
+            float3 field=SlimeToField(local);
+            float extent=length(field/radii);
+            float3 normal=normalize(SlimeFromField(field/(radii*radii))+float3(0,1e-6f,0));
+            float air=saturate(coreScale.y);
+            float3 confinement=-normal*min(100.0f,lerp(65.f,24.f,air)*max(extent-.86f,0.0f));
+            // Counter most gravity to support the crown; residual gravity wets
+            // the base. Relative damping preserves small ripples after motion.
+            confinement.y+=lerp(18.f,20.f,air);
+            float3 follow=pad3-ChronoTransportVelocity();
+            force+=(confinement+(follow-pi.velocity)*lerp(5.f,2.8f,air))*pi.density;
+        }else if (!isCurrentLiquefiedPlayer) {
             uint original = OriginalIndices[i];
             bool tether = TetherControlled(original);
             float3 guide = tether ? TetherGuide(original) : float3(0,0,0);
@@ -669,7 +736,7 @@ void CalcForce(uint3 DTid : SV_DispatchThreadID) {
             // particles through the floor. Unit aspect leaves normal SPH intact.
             if(coreMode>=2.0f && !tether && emitType<0.05f){
                 float massScale=pow(clamp(coreFlowSpeed,1.0f,200.0f)/100.0f,1.0f/3.0f);
-                float aspect=clamp(coreScale.y/max(massScale,0.01f),0.62f,1.18f);
+                float aspect=clamp(coreScale.y/max(massScale,0.01f),coreMode>=5.0f?.08f:.62f,1.18f);
                 coreForce.y+=clamp((aspect-1.0f)*max(fromCore.y,0.0f)*90.0f,-48.0f,12.0f);
                 coreForce.xz+=fromCore.xz*clamp((rsqrt(aspect)-1.0f)*25.0f,-4.0f,9.0f);
             }
@@ -726,15 +793,16 @@ void CalcForce(uint3 DTid : SV_DispatchThreadID) {
     }
     
     // 外力 (重力)
-    acceleration.y += GRAVITY;
+    acceleration.y += pi.type>=4.0f ? -18.0f : GRAVITY;
     
     // 積分 (Symplectic Euler)
     pi.velocity += acceleration * dt;
     
     // ★発散防止のため速度をクランプ
     float speed = length(pi.velocity);
-    if (speed > 30.0f) {
-        pi.velocity = (pi.velocity / speed) * 30.0f;
+    float speedLimit=pi.type>=4.0f?80.0f:30.0f;
+    if (speed > speedLimit) {
+        pi.velocity = (pi.velocity / speed) * speedLimit;
     }
     
     pi.position += pi.velocity * dt;
@@ -773,6 +841,9 @@ void CalcForce(uint3 DTid : SV_DispatchThreadID) {
     for (uint k = 0; k < safeAABBCount; ++k) {
         float3 bmin = AABBs[k].min;
         float3 bmax = AABBs[k].max;
+        // The continuous support plane owns top contacts. An expanded tower
+        // front face must not repeatedly kick climbing particles backwards.
+        if(coreMode>=4&&pi.type<.5f&&emitStartIndex!=0&&bmax.y<=SlimeGroundHeight(pi.position)+.4f)continue;
         
         // 余裕を持たせたAABBの少し外側で判定（めり込み防止）
         float pRadius = 0.3f;
@@ -891,7 +962,9 @@ void SavePrevious(uint3 id : SV_DispatchThreadID) {
             if (p.position.y < -500 || p.color.a <= 0) {
                 float polar=1-2*hash(id.x*456U+19U), angle=6.2831853f*hash(id.x*123U+71U);
                 float ring=sqrt(max(0,1-polar*polar));
-                p.position=corePos+float3(ring*cos(angle),polar,ring*sin(angle))*pow(hash(id.x*999U),0.333333f)*PLAYER_REST_RADIUS;
+                float3 sample=float3(ring*cos(angle),polar,ring*sin(angle))*pow(hash(id.x*999U),0.333333f);
+                p.position=corePos+sample*PLAYER_REST_RADIUS;
+                if(coreMode>=4.0f){sample.y=abs(sample.y);p.position=SlimeSupportOrigin()+sample*SlimeFieldRadii();}
                 p.velocity=0;p.pad=0;
             } else p.position+=ChronoTransportVelocity()*dt;
             if (TetherControlled(id.x)) {
@@ -947,6 +1020,7 @@ void CalcDeltaP(uint3 id : SV_DispatchThreadID) {
 float3 ProjectCollisions(float3 position, float particleType) {
     if (!FluidIsWater(particleType)) position.y = max(position.y, 0.2f);
     [loop] for (uint k=0; k<min(aabbCount,128U); ++k) {
+        if(coreMode>=4&&particleType<.5f&&emitStartIndex!=0&&AABBs[k].max.y<=SlimeGroundHeight(position)+.4f)continue;
         float3 lo=AABBs[k].min-0.2f, hi=AABBs[k].max+0.2f;
         if (all(position>lo) && all(position<hi)) {
             float3 a=position-lo, b=hi-position;
@@ -958,6 +1032,7 @@ float3 ProjectCollisions(float3 position, float particleType) {
             else position.z = a.z < b.z ? lo.z : hi.z;
         }
     }
+    if(coreMode>=4&&particleType<.5f&&emitStartIndex!=0)position.y=max(position.y,SlimeGroundHeight(position)+.18f);
     return position;
 }
 
@@ -967,8 +1042,21 @@ void ApplyDeltaP(uint3 id : SV_DispatchThreadID) {
     if (i>=maxParticles || OriginalIndices[i]==0xffffffffU) return;
     Particle p=SortedParticles[i];
     if (p.position.y < -500 || p.color.a < 0.01f) return;
+    if(p.type>=4.0f){Particles[OriginalIndices[i]]=p;return;}
     float3 corrected = ConstrainTether(p.position+SolverOutput[i].position, OriginalIndices[i], p.pad);
     p.position=ProjectCollisions(corrected,p.type);
+    if(coreMode>=4.0f&&p.type<.5f){
+        float3 origin=SlimeSupportOrigin(),local=p.position-origin;
+        float3 field=SlimeToField(local);float extent=length(field/SlimeFieldRadii());
+        // Compliant PBF containment leaves a soft moving surface rather than
+        // snapping particles to an exact ellipsoid. Collisions have final say.
+        float air=saturate(coreScale.y);
+        if(extent>1)local=lerp(local,SlimeFromField(field/extent),lerp(.14f,.025f,air));
+        // The supporting plane disappears in flight, so the underside rounds
+        // off and individual particles can lag/stretch before landing.
+        local.y=max(local.y,dot(local.xz,emitDir.xz)*(1-air)-SlimeFieldRadii().y*air);
+        p.position=ProjectCollisions(origin+local,p.type);
+    }
     Particles[OriginalIndices[i]]=p;
 }
 
@@ -977,6 +1065,7 @@ void UpdateVelocity(uint3 id : SV_DispatchThreadID) {
     uint i=id.x;
     if (i>=maxParticles || OriginalIndices[i]==0xffffffffU) return;
     Particle p=SortedParticles[i];
+    if(p.type>=4.0f){SolverOutput[i]=p;return;}
     float3 velocity=p.velocity, sum=0;
     float weightSum=0;
     int3 cell=GetCell(p.position);
