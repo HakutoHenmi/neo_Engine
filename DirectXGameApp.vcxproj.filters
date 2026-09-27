@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
     <ClCompile Include="Game\Scenes\TitleScene.cpp">
@@ -8,9 +8,6 @@
       <Filter>Scenes</Filter>
     </ClCompile>
     <ClCompile Include="Game\Scenes\GameOverScene.cpp">
-      <Filter>Scenes</Filter>
-    </ClCompile>
-    <ClCompile Include="Game\Scenes\EquipmentScene.cpp">
       <Filter>Scenes</Filter>
     </ClCompile>
     <ClCompile Include="Game\Editor\EditorUI.cpp">
@@ -65,9 +62,6 @@
       <Filter>Scenes</Filter>
     </ClInclude>
     <ClInclude Include="Game\Scenes\GameOverScene.h">
-      <Filter>Scenes</Filter>
-    </ClInclude>
-    <ClInclude Include="Game\Scenes\EquipmentScene.h">
       <Filter>Scenes</Filter>
     </ClInclude>
     <ClInclude Include="Game\Editor\EditorUI.h">
@@ -788,7 +782,7 @@
     <None Include="Resources\Prefabs\UI.prefab">
       <Filter>Resources\Prefabs</Filter>
     </None>
-    <None Include="Resources\Scenes\scene.json">
+    <None Include="Resources\Scenes\chrono.json">
       <Filter>Resources\Scenes</Filter>
     </None>
     <None Include="Resources\Scripts\bullet_logic.txt">

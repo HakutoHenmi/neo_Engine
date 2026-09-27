@@ -37,7 +37,7 @@ using json = nlohmann::json;
 namespace Game {
 namespace fs = std::filesystem;
 
-std::string EditorUI::currentScenePath = "Resources/Scenes/scene.json";
+std::string EditorUI::currentScenePath = "Resources/Scenes/chrono.json";
 
 // シーン復元ヘルパー (ID保持とヒエラルキー解決)
 static std::vector<entt::entity> RestoreSceneFromJson(GameScene* scene, const json& j, bool append) {
@@ -1096,8 +1096,10 @@ void EditorUI::Show(Engine::Renderer* renderer, GameScene* gameScene) {
 	}
 
 	// ★追加: Play中はImGuiのカーソルを消す
-	if (gameScene->GetIsPlaying() && !gameScene->IsPaused()) {
+	if (gameScene->GetIsPlaying() && !gameScene->IsPaused() && !gameScene->IsResultShowing()) {
 		ImGui::SetMouseCursor(ImGuiMouseCursor_None);
+	} else {
+		ImGui::SetMouseCursor(ImGuiMouseCursor_Arrow);
 	}
 
 	// Global Shortcuts
@@ -1136,7 +1138,7 @@ void EditorUI::Show(Engine::Renderer* renderer, GameScene* gameScene) {
 				gameScene->GetRegistry().clear();
 				gameScene->GetSelectedEntities().clear();
 				gameScene->SetSelectedEntity(entt::null);
-				currentScenePath = "Resources/Scenes/scene.json";
+				currentScenePath = "Resources/Scenes/chrono.json";
 			}
 			ImGui::Separator();
 			if (ImGui::MenuItem("Open Scene", "Ctrl+O")) {

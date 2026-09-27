@@ -241,11 +241,15 @@ bool Renderer::Initialize(WindowDX* window) {
 }
 
 void Renderer::Shutdown() {
+    pendingPaint_.clear();
 	WaitGPU();
 	fluidProfilerEnabled_ = false;
 	fluidProfilerAvailable_ = false;
 	fluidProfilerQueries_.Reset();
 	for (auto& readback : fluidProfilerReadback_) readback.Reset();
+    for(auto& readback:fluidBodyReadback_)readback.Reset();
+    for(auto& pending:fluidBodyPending_)pending=false;
+    fluidBodySnapshot_={};
 	fluidProfilerHistoryCount_ = 0;
 	fluidProfileStats_ = FluidProfileStats{};
 	fluidVolumeReady_ = false;
@@ -362,6 +366,7 @@ void Renderer::BeginFrame(const float clearColorRGBA[4]) {
 
 	const uint32_t fi = window_->FrameIndex();
 	CollectFluidProfile(fi);
+    CollectFluidBody(fi);
 	BeginFluidProfile(SceneRender);
 	upload_[fi].Reset();
 
@@ -491,7 +496,7 @@ void Renderer::FlushDrawCalls() {
 
 	for (const auto& dc : drawCalls_) {
 		if (dc.shaderName == "Distortion") continue; // 空間のゆがみは EndFrame で別途描画
-		if (dc.shaderName == "Slime" || dc.shaderName == "SlimeNoFace" || dc.shaderName == "SlimeNoFaceNoDepth" || dc.shaderName == "Hologram" || dc.shaderName == "ForceField" || dc.shaderName == "Reflection" || dc.shaderName == "EnergyBeam" || dc.shaderName == "EnergyCylinder" || dc.shaderName == "Particle" || dc.shaderName == "ParticleAdditive" || dc.isParticle) continue;
+		if (dc.shaderName == "Slime" || dc.shaderName == "SlimeNoFace" || dc.shaderName == "SlimeNoFaceNoDepth" || dc.shaderName == "Hologram" || dc.shaderName == "ForceField" || dc.shaderName == "Reflection" || dc.shaderName == "EnergyBeam" || dc.shaderName == "SlimeBeam" || dc.shaderName == "EnergyCylinder" || dc.shaderName == "Particle" || dc.shaderName == "ParticleAdditive" || dc.isParticle) continue;
 
 		auto* model = GetModel(dc.mesh);
 		if (!model) continue;
@@ -776,7 +781,7 @@ void Renderer::FlushDrawCalls() {
 
 	// --- 半透明オブジェクトの描画 (不透明オブジェクトの後に描画する) ---
 	for (const auto& dc : drawCalls_) {
-		if (dc.shaderName != "Slime" && dc.shaderName != "SlimeNoFace" && dc.shaderName != "SlimeNoFaceNoDepth" && dc.shaderName != "Hologram" && dc.shaderName != "ForceField" && dc.shaderName != "Reflection" && dc.shaderName != "EnergyBeam" && dc.shaderName != "EnergyCylinder" && dc.shaderName != "Particle" && dc.shaderName != "ParticleAdditive" && !dc.isParticle) continue;
+		if (dc.shaderName != "Slime" && dc.shaderName != "SlimeNoFace" && dc.shaderName != "SlimeNoFaceNoDepth" && dc.shaderName != "Hologram" && dc.shaderName != "ForceField" && dc.shaderName != "Reflection" && dc.shaderName != "EnergyBeam" && dc.shaderName != "SlimeBeam" && dc.shaderName != "EnergyCylinder" && dc.shaderName != "Particle" && dc.shaderName != "ParticleAdditive" && !dc.isParticle) continue;
 
 		auto* model = GetModel(dc.mesh);
 		if (!model) continue;
@@ -902,6 +907,7 @@ void Renderer::FlushDrawCalls() {
 }
 
 void Renderer::EndFrame() {
+    FlushPaintUploads();
 	const uint32_t fi = window_->FrameIndex();
 
 	static int dbgFrameCounter = 0;
@@ -970,7 +976,7 @@ void Renderer::EndFrame() {
 		
 		// Normal Shadow Pass
 		for (const auto& dc : drawCalls_) {
-			if (dc.isParticle || dc.shaderName == "Particle" || dc.shaderName == "ParticleAdditive" || dc.shaderName == "ProceduralSmoke" || dc.shaderName == "ProceduralSmokeAdditive" || dc.shaderName == "2D" || dc.shaderName == "Distortion") continue;
+			if (dc.shaderName == "SlimeBeam" || dc.isParticle || dc.shaderName == "Particle" || dc.shaderName == "ParticleAdditive" || dc.shaderName == "ProceduralSmoke" || dc.shaderName == "ProceduralSmokeAdditive" || dc.shaderName == "2D" || dc.shaderName == "Distortion") continue;
 
 			auto* model = GetModel(dc.mesh);
 			if (!model) continue;
@@ -2353,6 +2359,61 @@ float4 main(PSIn i) : SV_TARGET { return i.color; }
 	return true;
 }
 
+Renderer::TextureHandle Renderer::UpdatePaintTexture(const std::string& name,uint32_t width,uint32_t height,const uint8_t* pixels) {
+    if(!pixels||!width||!height)return 0;
+    const std::string key="__paint/"+name;
+    auto found=textureCache_.find(key);bool fresh=found==textureCache_.end();
+    TextureHandle handle=fresh?static_cast<TextureHandle>(textures_.size()):found->second;
+    ComPtr<ID3D12Resource> tex;
+    if(fresh){
+        auto heap=CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
+        auto desc=CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R8G8B8A8_UNORM,width,height,1,1);
+        if(FAILED(dev_->CreateCommittedResource(&heap,D3D12_HEAP_FLAG_NONE,&desc,D3D12_RESOURCE_STATE_COPY_DEST,nullptr,IID_PPV_ARGS(&tex))))return 0;
+    }else {tex=textures_[handle].res;if(tex->GetDesc().Width!=width||tex->GetDesc().Height!=height)return 0;}
+    if(!fresh){
+        for(auto& paint:pendingPaint_)if(paint.handle==handle){paint.pixels.assign(pixels,pixels+size_t(width)*height*4);return handle;}
+        pendingPaint_.push_back({handle,width,height,std::vector<uint8_t>(pixels,pixels+size_t(width)*height*4)});return handle;
+    }
+    // Initial creation may happen before BeginFrame, so it uses an isolated transfer.
+    // One atlas per scene, at most ten transfers/sec, no per-splat resources or descriptors.
+    WaitGPU();
+    auto desc=tex->GetDesc();UINT64 bytes=0;dev_->GetCopyableFootprints(&desc,0,1,0,nullptr,nullptr,nullptr,&bytes);
+    ComPtr<ID3D12Resource> upload;auto heap=CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);auto buffer=CD3DX12_RESOURCE_DESC::Buffer(bytes);
+    if(FAILED(dev_->CreateCommittedResource(&heap,D3D12_HEAP_FLAG_NONE,&buffer,D3D12_RESOURCE_STATE_GENERIC_READ,nullptr,IID_PPV_ARGS(&upload))))return 0;
+    ComPtr<ID3D12CommandAllocator> alloc;ComPtr<ID3D12GraphicsCommandList> list;
+    if(FAILED(dev_->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT,IID_PPV_ARGS(&alloc))))return 0;
+    if(FAILED(dev_->CreateCommandList(0,D3D12_COMMAND_LIST_TYPE_DIRECT,alloc.Get(),nullptr,IID_PPV_ARGS(&list))))return 0;
+    if(!fresh){auto barrier=CD3DX12_RESOURCE_BARRIER::Transition(tex.Get(),D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,D3D12_RESOURCE_STATE_COPY_DEST);list->ResourceBarrier(1,&barrier);}
+    D3D12_SUBRESOURCE_DATA sub{};sub.pData=pixels;sub.RowPitch=width*4;sub.SlicePitch=width*height*4;
+    UpdateSubresources(list.Get(),tex.Get(),upload.Get(),0,0,1,&sub);
+    auto barrier=CD3DX12_RESOURCE_BARRIER::Transition(tex.Get(),D3D12_RESOURCE_STATE_COPY_DEST,D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);list->ResourceBarrier(1,&barrier);
+    list->Close();ID3D12CommandList* lists[]={list.Get()};queue_->ExecuteCommandLists(1,lists);WaitGPU();
+    if(fresh){Texture t{};t.res=tex;auto index=AllocateSrvIndex();t.srvCpu=window_->SRV_CPU(index);t.srvCpuMaster=window_->SRV_CPU_Master(index);t.srvGpu=window_->SRV_GPU(index);
+        D3D12_SHADER_RESOURCE_VIEW_DESC srv{};srv.Shader4ComponentMapping=D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;srv.Format=DXGI_FORMAT_R8G8B8A8_UNORM;srv.ViewDimension=D3D12_SRV_DIMENSION_TEXTURE2D;srv.Texture2D.MipLevels=1;
+        dev_->CreateShaderResourceView(tex.Get(),&srv,t.srvCpu);dev_->CreateShaderResourceView(tex.Get(),&srv,t.srvCpuMaster);textures_.push_back(t);textureCache_[key]=handle;}
+    return handle;
+}
+
+void Renderer::FlushPaintUploads(){
+    for(const auto& paint:pendingPaint_){
+        auto tex=textures_[paint.handle].res;auto width=paint.width,height=paint.height;const auto* pixels=paint.pixels.data();
+        // Copy on the normal graphics queue with the fence-protected upload ring.
+        // Queue ordering protects earlier draws; no CPU/GPU flush on every paint tick.
+        auto desc=tex->GetDesc();D3D12_PLACED_SUBRESOURCE_FOOTPRINT footprint{};UINT64 bytes=0;
+        dev_->GetCopyableFootprints(&desc,0,1,0,&footprint,nullptr,nullptr,&bytes);
+        auto& ring=upload_[window_->FrameIndex()];auto offset=ring.Allocate(static_cast<uint32_t>(bytes),D3D12_TEXTURE_DATA_PLACEMENT_ALIGNMENT);
+        if(offset==UINT32_MAX)continue;
+        for(UINT y=0;y<height;++y)memcpy(ring.mapped+offset+y*footprint.Footprint.RowPitch,pixels+y*width*4,width*4);
+        footprint.Offset=offset;
+        D3D12_TEXTURE_COPY_LOCATION src{};src.pResource=ring.buffer.Get();src.Type=D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;src.PlacedFootprint=footprint;
+        D3D12_TEXTURE_COPY_LOCATION dst{};dst.pResource=tex.Get();dst.Type=D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+        auto before=CD3DX12_RESOURCE_BARRIER::Transition(tex.Get(),D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,D3D12_RESOURCE_STATE_COPY_DEST);
+        list_->ResourceBarrier(1,&before);list_->CopyTextureRegion(&dst,0,0,0,&src,nullptr);
+        auto after=CD3DX12_RESOURCE_BARRIER::Transition(tex.Get(),D3D12_RESOURCE_STATE_COPY_DEST,D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+        list_->ResourceBarrier(1,&after);continue;
+    }
+    pendingPaint_.clear();
+}
 Renderer::TextureHandle Renderer::LoadTexture2D(const std::string& filePath, bool sRGB) {
 	if (filePath.empty())
 		return 0;
@@ -3409,8 +3470,8 @@ float4 main(float4 svpos:SV_POSITION, float2 uv:TEXCOORD0) : SV_TARGET {
 		}
 
 		// Fluid-only signature: the ordinary post effects keep their own bindings.
-		CD3DX12_DESCRIPTOR_RANGE fluidRanges[9];
-		CD3DX12_ROOT_PARAMETER fluidParams[11];
+		CD3DX12_DESCRIPTOR_RANGE fluidRanges[9]{};
+		CD3DX12_ROOT_PARAMETER fluidParams[11]{};
 		fluidParams[0].InitAsConstantBufferView(0);
 		for (UINT i = 0; i < 9; ++i) {
 			fluidRanges[i].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, i);
@@ -4825,6 +4886,8 @@ void Renderer::SetGPUFluidDecoy(const Vector3& pos, float attraction, const Vect
 }
 
 void Renderer::ResetGPUFluid() {
+    fluidBodySnapshot_={};
+    for(auto& pending:fluidBodyPending_)pending=false;
 	chronoFluidOpacity_=1;chronoFluidFlash_=0;chronoFluidPaused_=false;
 	gpuFluidTetherActive_ = false;
 	gpuFluidTetherBlend_ = 0;
@@ -4917,6 +4980,7 @@ void Renderer::UpdateGPUFluid(float dt) {
 	cb.decoyPos = gpuFluidDecoyPos_; cb.decoyAttraction = gpuFluidDecoyAttraction_;
 	cb.decoyScale = gpuFluidDecoyScale_; cb.pad7 = 0.0f;
 	cb.decoyForward = gpuFluidDecoyForward_; cb.pad8 = 0.0f;
+	if(gpuFluidCoreMode_>=4){cb.emitDir=slimeGround_;cb.emitStartIndex=slimeGrounded_?1U:0U;}
 	
 	list_->SetComputeRootSignature(rootSigFluid_.Get());
 	// ★追加: CBサイズを 48 DWords に更新
@@ -4942,11 +5006,18 @@ void Renderer::UpdateGPUFluid(float dt) {
 		isGPUFluidInitialized_ = true;
 	}
 	if (simulationCount == 0) return;
+	// A null resource deliberately orders all UAV accesses. The helper's
+	// non-null annotation cannot express that valid D3D12 global barrier.
+	auto uavBarrier = [&](ID3D12Resource* resource) {
+		D3D12_RESOURCE_BARRIER barrier{};
+		barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
+		barrier.UAV.pResource = resource;
+		list_->ResourceBarrier(1, &barrier);
+	};
 	auto dispatch = [&](ID3D12PipelineState* pipeline, ID3D12Resource* output) {
 		list_->SetPipelineState(pipeline);
 		list_->Dispatch(threadGroups, 1, 1);
-		auto barrier = CD3DX12_RESOURCE_BARRIER::UAV(output);
-		list_->ResourceBarrier(1, &barrier);
+		uavBarrier(output);
 	};
 	auto rebuildGrid = [&](bool prepareVelocity = false) {
 
@@ -4993,6 +5064,14 @@ void Renderer::UpdateGPUFluid(float dt) {
 	if (cb.dt <= 0.0f) { rebuildGrid(); return; }
 	if (gpuFluidCoreMode_ < 2.0f) rebuildGrid();
 	for (uint32_t step = 0; step < substeps; ++step) {
+        // Each solver step targets the corresponding point on the controller's
+        // path, rather than constraining all substeps to the frame-end height.
+        if(gpuFluidCoreMode_>=4){
+            float remaining=fluidSimulatedDt_-cb.dt*(step+1);
+            cb.corePos=gpuFluidCorePos_-gpuFluidCoreVelocity_*remaining;
+            cb.emitDir.y=slimeGround_.y-(slimeGround_.x*gpuFluidCoreVelocity_.x+slimeGround_.z*gpuFluidCoreVelocity_.z)*remaining;
+            list_->SetComputeRoot32BitConstants(0,48,&cb,0);
+        }
 		dispatch(psoFluidSavePrevious_.Get(), gpuFluidPreviousBuffer_.Get());
 		if (gpuFluidCoreMode_ >= 2.0f) {
 			auto transported = CD3DX12_RESOURCE_BARRIER::UAV(gpuFluidBuffer_.Get());
@@ -5006,8 +5085,7 @@ void Renderer::UpdateGPUFluid(float dt) {
 	list_->SetPipelineState(psoFluidDensity_.Get());
 	list_->Dispatch(threadGroups, 1, 1);
 	// CalcDensity also writes surface gradients to the scratch buffer for CalcForce.
-	auto bDensity = CD3DX12_RESOURCE_BARRIER::UAV(nullptr);
-	list_->ResourceBarrier(1, &bDensity);
+	uavBarrier(nullptr);
 
 	// Pass 2: Force & Integrate
 	list_->SetPipelineState(psoFluidForce_.Get());
@@ -5018,8 +5096,7 @@ void Renderer::UpdateGPUFluid(float dt) {
 	// Pass 3: WriteBack
 	list_->SetPipelineState(psoFluidWriteBack_.Get());
 	list_->Dispatch(threadGroups, 1, 1);
-	auto bWriteBack = CD3DX12_RESOURCE_BARRIER::UAV(nullptr);
-	list_->ResourceBarrier(1, &bWriteBack);
+	uavBarrier(nullptr);
 		for (uint32_t iteration = 0; iteration < 3; ++iteration) {
 			rebuildGrid();
 			dispatch(psoFluidDensity_.Get(), gpuFluidSortedParticlesBuffer_.Get());
@@ -5033,6 +5110,37 @@ void Renderer::UpdateGPUFluid(float dt) {
 	// Velocity writeback changes sorted data too; make it visible to volume CS.
 	auto sortedReady = CD3DX12_RESOURCE_BARRIER::UAV(gpuFluidSortedParticlesBuffer_.Get());
 	list_->ResourceBarrier(1, &sortedReady);
+    QueueFluidBody();
+}
+
+void Renderer::CollectFluidBody(uint32_t frame) {
+    if(!fluidBodyPending_[frame] || !fluidBodyReadback_[frame])return;
+    // BeginFrame runs only after the swapchain slot's fence has completed.
+    D3D12_RANGE range{0,sizeof(GPUFluidParticle)*kPlayerFluidParticles};
+    GPUFluidParticle* particles=nullptr;
+    if(SUCCEEDED(fluidBodyReadback_[frame]->Map(0,&range,reinterpret_cast<void**>(&particles)))){
+        fluidBodySnapshot_.offsets.clear();fluidBodySnapshot_.core=fluidBodyReadbackCore_[frame];
+        for(uint32_t i=0;i<kPlayerFluidParticles;++i){const auto& p=particles[i];
+            if(p.color.w>0.01f&&p.position.y>-500&&p.type<.5f&&std::isfinite(p.position.x)&&std::isfinite(p.position.y)&&std::isfinite(p.position.z))
+                fluidBodySnapshot_.offsets.push_back(p.position-fluidBodySnapshot_.core);
+        }
+        ++fluidBodySnapshot_.serial;
+        D3D12_RANGE noWrites{0,0};fluidBodyReadback_[frame]->Unmap(0,&noWrites);
+    }
+    fluidBodyPending_[frame]=false;
+}
+void Renderer::QueueFluidBody(){
+    if(gpuFluidCoreMode_<4 || !gpuFluidBuffer_)return;
+    const auto frame=window_->FrameIndex();const UINT64 bytes=sizeof(GPUFluidParticle)*kPlayerFluidParticles;
+    if(!fluidBodyReadback_[frame]){
+        auto heap=CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_READBACK);auto desc=CD3DX12_RESOURCE_DESC::Buffer(bytes);
+        if(FAILED(dev_->CreateCommittedResource(&heap,D3D12_HEAP_FLAG_NONE,&desc,D3D12_RESOURCE_STATE_COPY_DEST,nullptr,IID_PPV_ARGS(&fluidBodyReadback_[frame]))))return;
+    }
+    auto barrier=CD3DX12_RESOURCE_BARRIER::Transition(gpuFluidBuffer_.Get(),D3D12_RESOURCE_STATE_UNORDERED_ACCESS,D3D12_RESOURCE_STATE_COPY_SOURCE);
+    list_->ResourceBarrier(1,&barrier);
+    list_->CopyBufferRegion(fluidBodyReadback_[frame].Get(),0,gpuFluidBuffer_.Get(),0,bytes);
+    barrier=CD3DX12_RESOURCE_BARRIER::Transition(gpuFluidBuffer_.Get(),D3D12_RESOURCE_STATE_COPY_SOURCE,D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+    list_->ResourceBarrier(1,&barrier);fluidBodyReadbackCore_[frame]=gpuFluidCorePos_;fluidBodyPending_[frame]=true;
 }
 
 void Renderer::EmitGPUFluid(const Vector3& pos, const Vector3& velocityDir, const Vector4& color, int count, float type) {
@@ -5100,7 +5208,7 @@ void Renderer::EmitGPUFluid(const Vector3& pos, const Vector3& velocityDir, cons
 	uint32_t rangeSize = endIndex - startIndex;
 	if (rangeSize == 0) return;
 	uint32_t emitCount = (std::min)(static_cast<uint32_t>(count), rangeSize);
-	const uint32_t phase = (type < 0.5f || (type > 2.5f && type < 3.5f)) ? 0u :
+	const uint32_t phase = (type < 0.5f || (type > 2.5f && type < 3.5f) || type>=4.0f) ? 0u :
 		((type > 1.5f && type < 2.5f) ? 1u : 2u);
 	gpuFluidPhaseMask_ |= 1u << phase;
 	volumeColors_[phase] = color;

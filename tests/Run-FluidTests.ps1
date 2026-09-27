@@ -1,4 +1,4 @@
-param([ValidateSet('', '--chrono-only', '--volume-only', '--reversal-only', '--liquefy-only')][string]$Case = '')
+param([ValidateSet('', '--chrono-only', '--volume-only', '--reversal-only', '--liquefy-only', '--slime-only')][string]$Case = '')
 $ErrorActionPreference = 'Stop'
 $repoPath = Split-Path $PSScriptRoot -Parent
 Push-Location $repoPath

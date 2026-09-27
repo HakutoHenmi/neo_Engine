@@ -256,7 +256,7 @@ private:
 		if (selectedButton_ == 0) {
 			Engine::SceneManager::GetInstance()->RequestChange("Game", Engine::SceneManager::GetInstance()->CurrentParameters());
 		} else if (selectedButton_ == 1) {
-			Engine::SceneManager::GetInstance()->RequestChange("Equipment", Engine::SceneManager::GetInstance()->CurrentParameters());
+			Engine::SceneManager::GetInstance()->RequestChange("Select", Engine::SceneManager::GetInstance()->CurrentParameters());
 		} else {
 			Engine::SceneManager::GetInstance()->RequestChange("Select");
 		}

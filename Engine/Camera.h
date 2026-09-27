@@ -48,6 +48,9 @@ public:
 	// ===== 画面シェイク =====
 	// ampPos: 位置ノイズの最大量（ワールド座標単位）、ampRot: 回転ノイズの最大量（ラジアン）
 	void StartShake(float duration, float ampPos, float ampRot = 0.0f);
+	void StartImpactShake(float duration, float amplitude, const DirectX::XMFLOAT3& direction, float frequency=12.f);
+	void SetShakeStrength(float value) { shakeStrength_=value<0?0:value>1?1:value; }
+	void SetHandheld(float amplitude) { handheldAmplitude_=amplitude; }
 	void StopShake();
 	bool IsShaking() const { return shakeTime_ < shakeDuration_; }
 
@@ -73,6 +76,10 @@ private:
 	float shakeDuration_ = 0.0f; // 全体の長さ
 	float shakeAmpPos_ = 0.0f;   // 位置ノイズ振幅
 	float shakeAmpRot_ = 0.0f;   // 回転ノイズ振幅（ラジアン）
+	float shakeStrength_=1,impactFrequency_=12;bool impactShake_=false;
+	DirectX::XMFLOAT3 impactDirection_{0,1,0};
+	float handheldAmplitude_=0,handheldTime_=0;
+	DirectX::XMFLOAT3 handheldOffset_{0,0,0};
 
 	DirectX::XMFLOAT3 shakeOfs_{0, 0, 0}; // 直近フレームの位置ノイズ
 	DirectX::XMFLOAT3 shakeRot_{0, 0, 0}; // 直近フレームの回転ノイズ

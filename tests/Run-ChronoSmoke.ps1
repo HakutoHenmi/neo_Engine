@@ -1,4 +1,4 @@
-param([string]$Executable = '')
+param([string]$Executable = '', [switch]$Ink, [switch]$SlimeBattle, [switch]$SlimeLow, [switch]$SlimePolish, [switch]$SlimeField, [switch]$Creature, [switch]$Snake, [ValidateRange(0,2)][int]$AttackPattern=0, [switch]$RecordMotion, [switch]$Portfolio)
 $ErrorActionPreference = 'Stop'
 $repoPath = Split-Path $PSScriptRoot -Parent
 if (!$Executable) { $Executable = Join-Path $repoPath '../Generated/Outputs/Development/DirectXGameApp.exe' }
@@ -18,10 +18,19 @@ foreach ($name in $logs) {
     if (Test-Path -LiteralPath $source) { Copy-Item -LiteralPath $source -Destination (Join-Path $backupPath $name) }
 }
 $process = $null
+$reportName = if ($Ink) { 'ink-smoke.txt' } elseif ($Snake) { 'snake-smoke.txt' } elseif ($Creature) { 'creature-smoke.txt' } else { 'chrono-smoke.txt' }
+$argument = if ($Ink) { '--ink-smoke' } elseif ($Snake) { '--snake-smoke' } elseif ($Creature) { '--creature-smoke' } else { '--chrono-smoke' }
+if ($Snake) { $argument += " --attack-pattern=$AttackPattern" }
+if ($RecordMotion) { $argument += ' --record-motion' }
+if ($SlimeBattle) { $argument = '--ink-smoke --slime-battle'; $reportName = 'ink-smoke.txt' }
+if ($SlimePolish) { $argument = '--ink-smoke --slime-polish'; $reportName = 'ink-smoke.txt' }
+if ($SlimeField) { $argument = '--ink-smoke --slime-field'; $reportName = 'ink-smoke.txt' }
+if ($SlimeLow) { $argument = '--ink-smoke --slime-battle --slime-low'; $reportName = 'ink-smoke.txt' }
+if ($Portfolio) { $argument += ' --portfolio' }
 try {
-    'RUNNING' | Set-Content -LiteralPath (Join-Path $outputPath 'chrono-smoke.txt')
-    $process = Start-Process -FilePath $Executable -ArgumentList '--chrono-smoke' -WorkingDirectory $repoPath -WindowStyle Hidden -PassThru
-    if (!$process.WaitForExit(90000)) { throw 'Chrono smoke test exceeded 90 seconds.' }
+    'RUNNING' | Set-Content -LiteralPath (Join-Path $outputPath $reportName)
+    $process = Start-Process -FilePath $Executable -ArgumentList $argument -WorkingDirectory $repoPath -WindowStyle Hidden -PassThru
+    if (!$process.WaitForExit(240000)) { throw 'Chrono smoke test exceeded 240 seconds.' }
     $process.Refresh()
     if ($process.ExitCode -ne 0) { throw "Chrono smoke test exited with code $($process.ExitCode)." }
     $newValidation = @(Get-Content -LiteralPath $validationPath -ErrorAction SilentlyContinue | Select-Object -Skip $previousLines)
@@ -30,7 +39,7 @@ try {
     $runLog = Get-Content -Raw -LiteralPath (Join-Path $repoPath 'error_log.txt')
     if ($runLog -notmatch 'Chrono validation scene requested' -or $runLog -notmatch 'Shutting down') { throw 'Diagnostic scene or normal shutdown was not reached.' }
     if ($newValidation -match '\[(ERROR|CORRUPTION)\]|Device removed') { throw 'D3D12 validation errors: see tests/out/chrono-d3d12-validation.txt.' }
-    $report = Get-Content -Raw (Join-Path $outputPath 'chrono-smoke.txt')
+    $report = Get-Content -Raw (Join-Path $outputPath $reportName)
     if ($report -notmatch '^PASS') { throw $report }
     Write-Output $report
 } finally {

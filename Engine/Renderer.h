@@ -287,6 +287,11 @@ public:
 	LightCB GetLightCB() const { return lightCB_; }
 
 	TextureHandle LoadTexture2D(const std::string& filePath, bool sRGB = true);
+	// Reuses a named, bounded RGBA8 paint atlas. Uploads are batched by the caller.
+	TextureHandle UpdatePaintTexture(const std::string& name, uint32_t width, uint32_t height, const uint8_t* pixels);
+    struct PendingPaint {TextureHandle handle;uint32_t width,height;std::vector<uint8_t> pixels;};
+    std::vector<PendingPaint> pendingPaint_;
+    void FlushPaintUploads();
 	MeshHandle LoadObjMesh(const std::string& objFilePath);
 	bool LoadAdditionalAnimation(MeshHandle handle, const std::string& animPath);
 
@@ -327,7 +332,7 @@ public:
 
 	// ★追加: パーティクル インスタンス描画
 	void DrawParticleInstanced(MeshHandle mesh, TextureHandle texture, const Transform& transform, const Vector4& mulColor, const Vector4& uvScaleOffset, const std::string& shaderName = "Particle");
-	
+
 	// ★追加: 液体（スライムメタボール）パーティクル インスタンス描画
 	void DrawLiquidParticleInstanced(MeshHandle mesh, TextureHandle tex, const Transform& transform, const Vector4& color, const Vector4& uvScaleOffset, const std::string& shaderName);
 
@@ -348,7 +353,7 @@ public:
 	Microsoft::WRL::ComPtr<ID3D12Resource> gpuFluidPreviousBuffer_;
 	Microsoft::WRL::ComPtr<ID3D12Resource> gpuFluidScratchBuffer_;
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> psoFluidSavePrevious_, psoFluidDelta_, psoFluidApply_, psoFluidVelocity_;
-	
+
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> psoFluidEmit_;
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> psoFluidExtract_;
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> psoFluidSyncLostGroup_;
@@ -367,7 +372,19 @@ public:
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> psoFluidDepthRender_[3];
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> psoFluidRender_[3];
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> psoFluidDebug_; 
-	static constexpr uint32_t kPlayerFluidParticles = 6600;
+	static constexpr uint32_t kFrameCount = 2;
+    static constexpr uint32_t kPlayerFluidParticles = 6600;
+    // Fence-protected snapshots for gameplay contact painting (never stall the GPU).
+    struct FluidBodySnapshot { std::vector<Vector3> offsets; Vector3 core{}; uint64_t serial=0; };
+    const FluidBodySnapshot& GetFluidBodySnapshot() const { return fluidBodySnapshot_; }
+    FluidBodySnapshot fluidBodySnapshot_;
+    Microsoft::WRL::ComPtr<ID3D12Resource> fluidBodyReadback_[kFrameCount];
+    Vector3 fluidBodyReadbackCore_[kFrameCount]{};
+    bool fluidBodyPending_[kFrameCount]{};
+    void CollectFluidBody(uint32_t frame);
+    void QueueFluidBody();
+    Vector3 slimeGround_{};bool slimeGrounded_=false;
+    void SetSlimeGround(Vector3 slopeHeight,bool grounded){slimeGround_=slopeHeight;slimeGrounded_=grounded;}
 	static constexpr uint32_t kEffectFluidEnd = 28000;
 	uint32_t gpuFluidMaxParticles_ = 32000;
 	uint32_t gpuFluidEmitCursorPlayer_ = 0;
@@ -436,7 +453,7 @@ public:
 	float gpuFluidDecoyAttraction_ = 0.0f;
 	Vector3 gpuFluidDecoyScale_ = {1.0f, 1.0f, 1.0f};
 	Vector3 gpuFluidDecoyForward_ = {0.0f, 0.0f, 1.0f};
-	
+
 	// ★追加: 流体シミュレーション用のAABBコリジョン
 	struct FluidAABB {
 		Vector3 min; float pad0;
@@ -445,7 +462,7 @@ public:
 	void SetFluidAABBs(const std::vector<FluidAABB>& aabbs) { gpuFluidAABBs_ = aabbs; }
 	std::vector<FluidAABB> gpuFluidAABBs_;
 	Microsoft::WRL::ComPtr<ID3D12Resource> gpuFluidAABBBuffer_;
-	
+
 	// ★追加: Compute Shader Skinning
 	void ComputeSkinning(Model* model, const std::vector<Matrix4x4>& skeletonParams);
 
@@ -673,12 +690,12 @@ private:
 	uint32_t srvDynamicCursor_ = 0;
 	static constexpr uint32_t kSrvStaticMax = 1000;
 	static constexpr uint32_t kSrvHeapTotal = 2048;
-	
+
 	// ★追加: RTV割り当て用
 	uint32_t rtvCursor_ = 1; // 0番目は finalSceneColor_ 用
 	uint32_t dsvCursor_ = 1; // 0番目は shadowMap_ 用
 
-	static constexpr uint32_t kFrameCount = 2;
+
 	UploadRing upload_[kFrameCount]{};
 	struct FluidProfileFrame {
 		bool pending = false;

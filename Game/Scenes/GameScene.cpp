@@ -1,7 +1,8 @@
-﻿#ifndef NOMINMAX
+#ifndef NOMINMAX
 #define NOMINMAX
 #endif
 #include "./GameScene.h"
+#include "../UI/GameUI.h"
 #include "../../Engine/FluidEmission.h"
 #include "../../Engine/Time/TimeManager.h"
 #include "../CanLoadout.h"
@@ -73,7 +74,7 @@ GameScene::~GameScene() {
 void GameScene::Initialize(Engine::WindowDX* dx, const Engine::SceneParameters& params) {
 	dx_ = dx;
 	renderer_ = Engine::Renderer::GetInstance();
-	chronoMode_ = params.stagePath.find("chrono.json") != std::string::npos;
+	chronoMode_ = params.stagePath.empty() || params.stagePath.find("chrono.json") != std::string::npos;
 	if (chronoMode_) renderer_->ResetGPUFluid();
 
 	// ★追加: テストシーン等で変更されたポストプロセスをリセット
@@ -104,7 +105,7 @@ void GameScene::Initialize(Engine::WindowDX* dx, const Engine::SceneParameters& 
 	bool loaded = false;
 	// ★ リリース構成等での自動ロード
 	try {
-		std::string scenePath = params.stagePath.empty() ? EditorUI::GetUnifiedProjectPath("Resources/Scenes/scene.json") : params.stagePath;
+		std::string scenePath = params.stagePath.empty() ? EditorUI::GetUnifiedProjectPath("Resources/Scenes/chrono.json") : params.stagePath;
 		// ★修正: UTF-8文字列をFromUTF8経由でfs::pathに変換し、日本語パスに対応
 		if (std::filesystem::exists(Engine::PathUtils::FromUTF8(scenePath))) {
 			OutputDebugStringA(("[GameScene] " + scenePath + " found. Loading...\n").c_str());
@@ -347,7 +348,7 @@ void GameScene::Update() {
 #endif
 
 	// ★追加: Yキーでデバッグベクトルの表示/非表示を切り替え
-	if (Engine::Input::GetInstance()->Trigger(0x15)) { // 0x15 = DIK_Y
+	if (!chronoMode_ && Engine::Input::GetInstance()->Trigger(0x15)) { // Editor/legacy fluid diagnostics only.
 		renderer_->SetDrawFluidDebugArrows(!renderer_->GetDrawFluidDebugArrows());
 	}
 
@@ -397,31 +398,17 @@ void GameScene::Update() {
 
 	if (isPlaying_) {
 		// ポーズメニューのボタン入力判定
-		if (!stageClear && isPaused_) {
-			const auto& pauseUIs = GetEntitiesByTag(TagType::PauseUI);
-			for (auto e : pauseUIs) {
-				if (registry_.valid(e) && registry_.all_of<UIButtonComponent, NameComponent>(e)) {
-					auto& btn = registry_.get<UIButtonComponent>(e);
-					if (btn.isHovered && Engine::Input::GetInstance()->IsMouseTrigger(0)) {
-						auto& name = registry_.get<NameComponent>(e).name;
-						if (name == "ResumeButton") {
-							isPaused_ = false;
-							Engine::WindowDX::SetCursorVisible(false);
-							DestroyPauseMenu();
-							break;
-						} else if (name == "TitleButton") {
-							isPaused_ = false;
-							Engine::WindowDX::SetCursorVisible(false);
-							// シーン破棄前にUIを個別に削除すると、次フレームのClearScene()と競合するリスクがあるため
-							// DestroyPauseMenu() は呼ばずにそのままシーン遷移をリクエストする
-							Engine::SceneManager::GetInstance()->RequestChange("Title");
-							return;
-						}
-					}
-				}
-			}
-		}
-
+        if (!stageClear && isPaused_) {
+            UI::Canvas ui(renderer_);
+            auto* input=Engine::Input::GetInstance();
+            if (ui.Click(UI::Title) || input->Trigger(DIK_TAB)) {
+                Engine::SceneManager::GetInstance()->RequestChange("Title");return;
+            }
+            if (ui.Click(UI::Resume) || input->Trigger(DIK_RETURN)) {
+                isPaused_=false;
+                Engine::WindowDX::SetCursorVisible(false);
+            }
+        }
 		// ESCキーでポーズ切り替え (0x01 = DIK_ESCAPE)
 		if (!stageClear && Engine::Input::GetInstance()->Trigger(0x01)) {
 			isPaused_ = !isPaused_;
@@ -614,7 +601,7 @@ void GameScene::Update() {
 					ctx_.renderer->DrawString(canName, px - tw * 0.5f, py - 12.0f, 0.3f, {1.0f, 1.0f, 1.0f, 1.0f});
 				}
 			} else {
-				if (!isPaused_) Engine::WindowDX::SetCursorVisible(false);
+				if (!isPaused_ && !stageClear) Engine::WindowDX::SetCursorVisible(false);
 			}
 		}
 	}
@@ -1075,7 +1062,7 @@ void GameScene::Draw() {
 				
 				if (!gpuSlimeEmitted_) {
 					// プレイヤー初期化時に1回だけ、大量のGPUパーティクルをコア位置に放出する
-					Engine::Vector4 pColor = {0.4f, 0.8f, 0.1f, 1.0f}; // プレイヤースライムの色（濃い黄緑）
+					Engine::Vector4 pColor = {Chrono::SlimeRed, Chrono::SlimeGreen, Chrono::SlimeBlue, 1.0f};
 					renderer_->EmitGPUFluid({corePos.x, corePos.y, corePos.z}, {0, -2, 0}, pColor, Engine::Renderer::kPlayerFluidParticles);
 					gpuSlimeEmitted_ = true;
 				}
@@ -1098,8 +1085,10 @@ void GameScene::Draw() {
 					liquidFlowSpeed = liquefyInitialFlowSpeed;
 				}
 				if (chronoMode_) {
+					if(auto* ink=registry_.try_get<Chrono::InkPlayer>(playerEntity)){renderer_->SetSlimeGround({ink->groundSlope.x,ink->groundHeight,ink->groundSlope.z},registry_.get<Chrono::Player>(playerEntity).grounded);scaleVec={ink->fluidAspect,ink->airBlend,ink->fluidMotion};forward={ink->fluidDirection.x,0,ink->fluidDirection.z};}
 					float mass = registry_.get<HealthComponent>(playerEntity).hp;
-					renderer_->SetGPUFluidCore(targetCore, attraction, scaleVec, forward, 2.0f, mass);
+					if(registry_.all_of<Chrono::InkPlayer>(playerEntity))mass*=100.f/Chrono::SlimeMaximumMass;
+					renderer_->SetGPUFluidCore(targetCore, attraction, scaleVec, forward, (registry_.all_of<Chrono::InkPlayer>(playerEntity) && registry_.get<Chrono::InkPlayer>(playerEntity).swimming) ? 5.0f : (registry_.all_of<Chrono::InkPlayer>(playerEntity) ? 4.0f : 2.0f), mass);
 					if (auto* action = registry_.try_get<Chrono::Player>(playerEntity)) {
 						float flash=action->damageAge<.6f?(std::sin(action->damageAge*70)>0?.75f:0):0;
 						if(action->instability>75)flash=std::max(flash,.35f*(.5f+.5f*std::sin(action->stats.seconds*10)));
@@ -1428,8 +1417,13 @@ void GameScene::Draw() {
 	// プレイヤースライム: Screen-Space Fluid Rendering（参考: UE5 Niagara / 液状スライム）の軽量版Slimeシェーダーに置き換えたため無効化
 	renderer_->SetCustomDrawJob(nullptr);
 
-	for (auto& system : systems_) {
-		system->Draw(registry_, ctx_);
+    if (isPlaying_ && isPaused_) {
+        UI::Canvas ui(renderer_);
+        ui.Pause();
+        return;
+    }
+    for (auto& system : systems_) {
+        system->Draw(registry_, ctx_);
 		// Chrono HUD queues sprites before Renderer::EndFrame flushes them.
 		if (chronoMode_ && isPlaying_) system->DrawUI(registry_, ctx_);
 	}
@@ -1992,76 +1986,7 @@ void GameScene::ClearScene() {
 	}
 }
 
-void GameScene::CreatePauseMenu() {
-	float W = (float)Engine::WindowDX::kW;
-	float H = (float)Engine::WindowDX::kH;
-	Engine::Renderer::TextureHandle whiteTexture = renderer_ ? renderer_->LoadTexture2D("Resources/Textures/white1x1.png") : 0;
-
-	// 背景 (半透明の黒)
-	auto bg = CreateEntity("PauseBG");
-	SetTag(bg, TagType::PauseUI);
-	auto& bgRt = registry_.emplace<RectTransformComponent>(bg);
-	bgRt.pos = { 0.0f, 0.0f };
-	bgRt.size = { W, H };
-	bgRt.anchor = { 0.5f, 0.5f };
-	bgRt.pivot = { 0.5f, 0.5f };
-	auto& bgImg = registry_.emplace<UIImageComponent>(bg);
-	bgImg.textureHandle = whiteTexture;
-	bgImg.color = { 0.02f, 0.03f, 0.06f, 0.72f };
-	bgImg.layer = -1; 
-
-	// タイトル
-	auto title = CreateEntity("PauseTitle");
-	SetTag(title, TagType::PauseUI);
-	auto& tRt = registry_.emplace<RectTransformComponent>(title);
-	tRt.pos = { 0.0f, -H * 0.2f };
-	tRt.anchor = { 0.5f, 0.5f };
-	tRt.pivot = { 0.5f, 0.5f };
-	auto& tTxt = registry_.emplace<UITextComponent>(title);
-	tTxt.text = "PAUSE";
-	tTxt.fontSize = 64.0f;
-	tTxt.color = { 1.0f, 0.95f, 0.55f, 1.0f };
-
-	// 再開ボタン
-	auto resume = CreateEntity("ResumeButton");
-	SetTag(resume, TagType::PauseUI);
-	auto& rRt = registry_.emplace<RectTransformComponent>(resume);
-	rRt.pos = { 0.0f, 0.0f };
-	rRt.size = { 300, 60 };
-	rRt.anchor = { 0.5f, 0.5f };
-	rRt.pivot = { 0.5f, 0.5f };
-	auto& rImg = registry_.emplace<UIImageComponent>(resume);
-	rImg.textureHandle = whiteTexture;
-	rImg.color = { 0.05f, 0.07f, 0.12f, 0.92f };
-	auto& rBtn = registry_.emplace<UIButtonComponent>(resume);
-	rBtn.normalColor = { 1.0f, 1.0f, 1.0f, 1.0f };
-	rBtn.hoverColor = { 1.25f, 1.18f, 0.78f, 1.0f };
-	rBtn.pressedColor = { 0.72f, 0.84f, 1.0f, 1.0f };
-	auto& rTxt = registry_.emplace<UITextComponent>(resume);
-	rTxt.text = "Resume";
-	rTxt.fontSize = 32.0f;
-	rTxt.color = { 0.86f, 0.94f, 1.0f, 1.0f };
-
-	// タイトルに戻るボタン
-	auto back = CreateEntity("TitleButton");
-	SetTag(back, TagType::PauseUI);
-	auto& bRt = registry_.emplace<RectTransformComponent>(back);
-	bRt.pos = { 0.0f, 80.0f };
-	bRt.size = { 300, 60 };
-	bRt.anchor = { 0.5f, 0.5f };
-	bRt.pivot = { 0.5f, 0.5f };
-	auto& bImg = registry_.emplace<UIImageComponent>(back);
-	bImg.textureHandle = whiteTexture;
-	bImg.color = { 0.05f, 0.07f, 0.12f, 0.92f };
-	auto& bBtn = registry_.emplace<UIButtonComponent>(back);
-	bBtn.normalColor = { 1.0f, 1.0f, 1.0f, 1.0f };
-	bBtn.hoverColor = { 1.25f, 1.18f, 0.78f, 1.0f };
-	bBtn.pressedColor = { 0.72f, 0.84f, 1.0f, 1.0f };
-	auto& bTxt = registry_.emplace<UITextComponent>(back);
-	bTxt.text = "Back to Title";
-	bTxt.fontSize = 32.0f;
-	bTxt.color = { 0.86f, 0.94f, 1.0f, 1.0f };
-}
+void GameScene::CreatePauseMenu() { /* Drawn by the shared UI canvas. */ }
 
 void GameScene::DestroyPauseMenu() {
 	const auto& pauseUIs = GetEntitiesByTag(TagType::PauseUI);

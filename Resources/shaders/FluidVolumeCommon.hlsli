@@ -18,7 +18,7 @@ cbuffer VolumeSettings : register(b1) {
     float4 phaseColor[3];
 };
 uint VolumePhase(float type) {
-    if (type < 0.5f || (type > 2.5f && type < 3.5f)) return 0;
+    if (type < 0.5f || (type > 2.5f && type < 3.5f) || type>=4.0f) return 0;
     return type > 1.5f && type < 2.5f ? 1 : 2;
 }
 uint VolumeIndex(uint3 p) { return (p.z * volumeSize.y + p.y) * volumeSize.x + p.x; }
