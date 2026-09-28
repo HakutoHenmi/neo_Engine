@@ -55,6 +55,12 @@ struct InkSurface {
 };
 inline constexpr float SlimeMaximumMass=800.f, SlimeMinimumMass=40.f;
 inline constexpr float SlimeChargeCapacity=SlimeMaximumMass-SlimeMinimumMass;
+inline constexpr float SlimeBeamRange=700.f;
+inline constexpr float SlimeDodgeInvincibility=.45f,SlimePerfectInvincibility=.95f;
+inline float SlimePerfectPulse(float age){
+    if(age<0||age>=.4f)return 0;
+    return age<.06f?age/.06f:1-(age-.06f)/.34f;
+}
 // Continuous support follows walkable slopes both up and down, but never snaps a jump to ground.
 inline bool SlimeGrounded(float oldY,float nextY,float verticalSpeed,bool grounded,bool jumped,float floor,float nextFloor,float travel){
     bool follow=grounded&&!jumped&&std::abs(nextFloor-floor)<=.15f+travel*.65f;
@@ -63,6 +69,13 @@ inline bool SlimeGrounded(float oldY,float nextY,float verticalSpeed,bool ground
 inline constexpr float SlimeRed=.4f,SlimeGreen=.8f,SlimeBlue=.1f;
 enum class SlimePhase { Roaming, Charging, Firing, Returning };
 struct SlimeDissolvable { Vec center{},half{2,2,2};float integrity=30; };
+struct SlimeFeather { Vec velocity{};float life=6; };
+// A rounded rectangular flight path between the arena rim and distant scenery.
+inline Vec SlimeFlightPoint(float angle){
+    float x=std::sin(angle),z=std::cos(angle);
+    float radius=1/std::max(std::abs(x)/205.f,std::abs(z)/225.f);
+    return {x*radius,58.f+std::sin(angle*2)*6,20+z*radius};
+}
 inline float SlimeReserve(float total){return std::min(SlimeMinimumMass,std::max(1.f,total*.05f));}
 inline float SlimeCapacity(float total){return std::max(.01f,total-SlimeReserve(total));}
 inline int SlimeTier(float charge,float capacity=SlimeChargeCapacity){return charge<=0?0:charge/capacity>=.75f?3:charge/capacity>=.35f?2:1;}
@@ -93,13 +106,24 @@ struct InkPlayer {
     Vec beamStart{},beamEnd{};
     SlimePhase phase=SlimePhase::Roaming;
     bool swimming=false,onInk=false,previousAttack=false,limitEligible=false,limitBreak=false,downUsed=false,beamContact=false;
+    bool lockedOn=false,previousLock=false;
+    bool previousDodge=false,dodgeLiquid=false;
+    float beamView=0,heavyView=0,cameraPullback=0;
+    Vec cameraBeamDirection{0,0,1};
+    float dodgeAge=10,perfectAge=-1;bool perfectUsed=false,perfectBurst=false;Vec dodgeOrigin{};
+    int perfectDodges=0;
+    bool TryPerfectDodge(float window=.12f){
+        if(dodgeAge>window||perfectUsed)return false;
+        perfectUsed=true;perfectAge=0;perfectBurst=false;++perfectDodges;return true;
+    }
     int shots=0,coreHits=0,tier=0;
-    void Collect(float& body,float amount){body+=amount;charge+=amount;}
-    void Cancel(){charge=0;tier=0;phase=SlimePhase::Roaming;phaseAge=0;limitEligible=false;}
+    float bonusCharge=0;
+    void Collect(float& body,float amount,bool bonus=false){if(bonus)bonusCharge+=amount;else body+=amount;charge+=amount;}
+    void Cancel(){charge=0;bonusCharge=0;tier=0;phase=SlimePhase::Roaming;phaseAge=0;limitEligible=false;}
     bool Fire(float& body){
-        charge=std::min(charge,std::max(0.f,body-reserve));
+        charge=std::min(charge,std::max(0.f,body-reserve)+bonusCharge);
         if(charge<.1f){Cancel();return false;}
-        beamCharge=charge;tier=SlimeTier(charge,capacity);spent=charge;body-=charge;charge=0;
+        beamCharge=charge;tier=SlimeTier(charge,capacity);spent=std::max(0.f,charge-bonusCharge);body-=spent;charge=0;bonusCharge=0;
         limitBreak=limitEligible&&tier==3;downUsed=false;phase=SlimePhase::Firing;phaseAge=0;
         float q=Power(beamCharge);beamDuration=.35f+q*.85f;beamRadius=.28f+q*q*2.6f;
         damageClock=0;effectClock=0;monoAge=tier==3?0.f:-1.f;++shots;return true;

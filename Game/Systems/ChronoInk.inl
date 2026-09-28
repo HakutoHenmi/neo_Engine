@@ -80,54 +80,112 @@ void ChronoSystem::InkCamera(entt::registry& r,Player& p,GameContext& ctx){
     if(!cameraReady_){cameraFollow_=pos;cameraReady_=true;}
     cameraFollow_=Follow(cameraFollow_,pos,ctx.dt,1.2f);
     V forward=Forward(yaw_,pitch_),right{std::cos(yaw_),0,-std::sin(yaw_)};
-    const auto& ink=r.get<InkPlayer>(player_);
-    float pullback=ink.phase==SlimePhase::Charging?3*ink.Power(ink.charge):ink.phase==SlimePhase::Firing?3.f:0.f;
-    V focus=cameraFollow_+V{0,2.f,0};V wanted=focus-forward*(17.f+pullback)+right*1.5f;
+    auto& ink=r.get<InkPlayer>(player_);
+    bool firing=ink.phase==SlimePhase::Firing;
+    bool charging=ink.phase==SlimePhase::Charging;
+    float power=ink.Power(charging?ink.charge:ink.beamCharge);
+    // Smoothstep eases both ends of the shoulder move; aim input remains independent.
+    auto approach=[&](float value,float target,float seconds){float step=std::min(ctx.dt,.05f)/seconds;return value+std::clamp(target-value,-step,step);};
+    float shoulderTarget=firing?1.f:charging?std::clamp(.4f+power/.35f*.6f,0.f,1.f):0.f;
+    float heavyTarget=(charging||firing)?std::clamp((power-.35f)/.4f,0.f,1.f):0.f;
+    ink.beamView=approach(ink.beamView,shoulderTarget,(charging||firing)?.22f:.36f);
+    ink.heavyView=approach(ink.heavyView,heavyTarget,(charging||firing)?.28f:.42f);
+    float shot=Ease(ink.beamView),heavy=Ease(ink.heavyView);
+    float pullback=(charging||firing)?3*power:0.f;
+    ink.cameraPullback+=(pullback-ink.cameraPullback)*(1-std::exp(-10*ctx.dt));
+    V focus=cameraFollow_+V{0,2.f,0};
+    V wanted=focus-forward*(17.f+ink.cameraPullback+heavy*5)+right*(1.5f+shot*4.5f+heavy*8)+V{0,shot*1.2f+heavy*3,0};
     float f;V n;
     for(const auto& box:solids_)if(Chrono::Sweep(focus,wanted-focus,box,{.3f,.3f,.3f},f,n))wanted=focus+(wanted-focus)*std::max(.05f,f-.025f);
     for(const auto& surface:inkSurfaces_){V hit;if(surface.Ray(focus,wanted-focus,f,hit))wanted=focus+(wanted-focus)*std::max(.05f,f-.06f);}
     wanted.y=std::max(wanted.y,.7f);
-    ctx.camera->SetPosition(Write(wanted));ctx.camera->SetRotation(pitch_,yaw_,0);
-    float goal=r.get<InkPlayer>(player_).swimming?1.22f:1.13f;fov_+=(goal-fov_)*(1-std::exp(-6*ctx.dt));
-    ctx.camera->SetProjection(fov_,ctx.viewportSize.x/std::max(1.f,ctx.viewportSize.y),.1f,2000);
+    V beamForward=firing?Forward(ink.beamYaw,ink.beamPitch):forward;
+    ink.cameraBeamDirection=Unit(Lerp(ink.cameraBeamDirection,beamForward,1-std::exp(-14*ctx.dt)));
+    V lookAt=focus+ink.cameraBeamDirection*(45-heavy*20);
+    V view=Unit(Lerp(forward,Unit(lookAt-wanted),shot));
+    ctx.camera->SetPosition(Write(wanted));
+    ctx.camera->SetRotation(-std::asin(std::clamp(view.y,-1.f,1.f)),std::atan2(view.x,view.z),0);
+    float goal=(ink.swimming?1.22f:1.13f)+heavy*.06f;fov_+=(goal-fov_)*(1-std::exp(-6*ctx.dt));
+    // A quick seven-degree kick, returning fully to the regular camera within 0.4 seconds.
+    ctx.camera->SetProjection(fov_+.12f*SlimePerfectPulse(ink.perfectAge),ctx.viewportSize.x/std::max(1.f,ctx.viewportSize.y),.1f,2000);
     ctx.camera->SetHandheld(.008f);p.cameraOpacity=1;
 }
 void ChronoSystem::UpdateInkBoss(entt::registry& r,Player& p,GameContext& ctx){
     auto& c=r.get<CreatureBoss>(boss_);auto& b=r.get<Boss>(boss_);
-    auto& ink=r.get<InkPlayer>(player_);
-    if(ink.downTimer>0){ink.downTimer=std::max(0.f,ink.downTimer-ctx.dt);c.recoil=.35f;
-        r.get<Target>(weakpoint_).active=!b.countered;PoseCreature(r);return;}
-    if(c.stage==CreatureStage::Snake){
-        UpdateCreature(r,p,ctx);return;
-    }
-    c.age+=ctx.dt;c.timer+=ctx.dt;c.recoil=std::max(0.f,c.recoil-ctx.dt);
-    auto transition=[&](CreatureStage stage){c.stage=stage;c.timer=0;c.sweepTime=0;c.sweepPhase=0;};
+    auto& ink=r.get<InkPlayer>(player_);const float dt=std::min(ctx.dt,.05f)*p.worldScale;
     V player=Read(r.get<TransformComponent>(player_).translate);
-    if(c.stage==CreatureStage::Assemble){c.form=std::min(1.f,c.timer/CreatureMorphSeconds);
-        if(c.timer>=CreatureMorphSeconds){transition(CreatureStage::Volley);b.countered=false;c.sweepCenter=player;}}
-    else if(c.stage==CreatureStage::Volley){
+    std::vector<entt::entity> expired;
+    for(auto e:r.view<SlimeFeather,TransformComponent>()){
+        auto& feather=r.get<SlimeFeather>(e);auto& transform=r.get<TransformComponent>(e);
+        V before=Read(transform.translate),delta=feather.velocity*dt;float hit;
+        bool blocked=false;float travel=Length(delta);
+        for(const auto& surface:inkSurfaces_){V at;float fraction;if(surface.Ray(before,delta,fraction,at)){blocked=true;travel=std::min(travel,Length(delta)*fraction);}}
+        for(const auto& box:solids_){V normal;float fraction;if(Chrono::Sweep(before,delta,box,{.3f,.3f,.3f},fraction,normal)){blocked=true;travel=std::min(travel,Length(delta)*fraction);}}
+        bool contact=RaySphere(before,Unit(delta),player,2.f,travel,hit);
+        // Generous graze region only awards a dodge; it never enlarges the damage hitbox.
+        if(ink.dodgeAge<=.24f&&!ink.perfectUsed)
+            contact|=RaySphere(before,Unit(delta),ink.dodgeOrigin,4.f,travel,hit)||RaySphere(before,Unit(delta),player,4.f,travel,hit);
+        feather.life-=dt;
+        if(contact){p.damageReason="HIT - FEATHER VOLLEY";Damage(r,p,14,ctx,before,.24f);}
+        if(contact||blocked||feather.life<=0)expired.push_back(e);
+        else transform.translate=Write(before+delta);
+    }
+    for(auto e:expired)r.destroy(e);
+    if(finished_)return;
+    if(ink.downTimer>0){ink.downTimer=std::max(0.f,ink.downTimer-dt);c.recoil=.35f;
+        r.get<Target>(weakpoint_).active=!b.countered;PoseCreature(r);return;}
+    if(c.stage==CreatureStage::Snake){UpdateCreature(r,p,ctx);return;}
+    c.age+=dt;c.timer+=dt;c.recoil=std::max(0.f,c.recoil-dt);
+    auto transition=[&](CreatureStage stage){c.stage=stage;c.timer=0;c.sweepPhase=0;c.sweepTime=0;};
+    auto move=[&](V goal,float speed){V delta=goal-c.offset;
+        c.moveVelocity=Lerp(c.moveVelocity,Unit(delta)*std::min(speed,Length(delta)*2.f),1-std::exp(-3*dt));
+        c.offset=c.offset+c.moveVelocity*dt;};
+    V base=EvaluateCreature(c.age,c.form).core;
+    if(c.stage==CreatureStage::Assemble){
+        if(c.timer<=dt*1.5f){V at=Center(r,boss_)-V{0,0,20};c.flightAngle=std::atan2(at.x,at.z);c.volleys=0;}
+        c.form=std::min(1.f,c.timer/CreatureMorphSeconds);
+        if(c.timer>=CreatureMorphSeconds){c.offset=c.morphDestination-EvaluateCreature(c.age,1).core;c.heading=c.morphHeading;
+            transition(CreatureStage::Volley);b.countered=false;}
+    }else if(c.stage==CreatureStage::Volley){
         c.form=1;
-        // Bird brings its chest within firing range, above the two reachable gun decks.
-        V desired=c.sweepCenter+V{0,23,28};
-        // Keep the readable central attack lane; shift that lane toward a
-        // distant player only when the expanded outskirts require it.
-        desired.x=std::clamp(desired.x,std::min(-8.f,c.sweepCenter.x+72.f),std::max(8.f,c.sweepCenter.x-72.f));
-        desired.z=std::clamp(desired.z,std::min(-15.f,c.sweepCenter.z+60.f),std::max(65.f,c.sweepCenter.z-60.f));
-        V base=EvaluateCreature(c.age,1).core;
-        c.offset=Lerp(c.offset,desired-base,1-std::exp(-3*ctx.dt));
-        if(c.timer>=2.5f){transition(CreatureStage::Opening);c.attack=CreatureAttack::Wing;c.sweepPhase=1;c.sweepCenter=player;c.sweepHit=false;}}
-    else if(c.stage==CreatureStage::Opening){
-        c.sweepTime+=ctx.dt;
-        if(c.sweepPhase==1&&c.sweepTime>=1.2f){c.sweepPhase=2;c.sweepTime=0;}
-        else if(c.sweepPhase==2){if(!c.sweepHit&&p.invincible<=0&&AttackTouches(CreatureAttack::Wing,player-c.sweepCenter,std::max(0.f,c.sweepTime-ctx.dt),c.sweepTime)){
-                c.sweepHit=true;p.damageReason="WING STRIKE";Damage(r,p,22,ctx,c.sweepCenter);}
-            if(c.sweepTime>=ActiveTime(CreatureAttack::Wing)){c.sweepPhase=3;c.sweepTime=0;}}
-        if(b.countered){transition(CreatureStage::Descend);}
-        else if(c.sweepPhase==3&&c.sweepTime>5.5f){transition(CreatureStage::Volley);c.sweepCenter=player;}
-    }else{c.form=1-std::min(1.f,c.timer/CreatureMorphSeconds);
-        // Return to ground smoothly, not a height snap at the next snake warning.
-        c.offset.y+=(0-c.offset.y)*(1-std::exp(-ctx.dt*2));
-        if(c.timer>=CreatureMorphSeconds){transition(CreatureStage::Snake);c.form=0;c.offset.y=0;}}
+        // Circle on the player's side of the rim, continually correcting the orbit toward them.
+        float bearing=std::atan2(player.x,player.z-20);
+        c.flightAngle+=dt*(.10f+std::clamp(std::remainder(bearing-c.flightAngle,6.283185f),-.8f,.8f)*.10f);
+        move(SlimeFlightPoint(c.flightAngle)-base,60);
+        if(c.timer>=4.5f&&Length(SlimeFlightPoint(c.flightAngle)-Center(r,boss_))<35){
+            transition(CreatureStage::Opening);c.sweepPhase=1;c.volleyClock=0;b.emitted=0;c.moveVelocity={};}
+    }else if(c.stage==CreatureStage::Opening){
+        c.sweepTime+=dt;
+        // Twenty nine-feather fans sweep across the player, with gaps between lanes.
+        if(c.sweepPhase==1&&c.sweepTime>=1.15f){c.sweepPhase=2;c.sweepTime=0;c.volleyClock=.14f;}
+        if(c.sweepPhase==2){
+            c.volleyClock+=dt;
+            while(c.volleyClock>=.14f&&b.emitted<180){
+                c.volleyClock-=.14f;int wave=b.emitted/9;float side=wave%2==0?-1.f:1.f;
+                V right{std::cos(c.heading),0,-std::sin(c.heading)};
+                V start=Center(r,boss_)+right*(side*15)+V{0,5,0};
+                V aim=player+p.velocity*.2f;V axis=Unit(aim-start);
+                float yaw=std::atan2(axis.x,axis.z),pitch=-std::asin(axis.y);
+                for(int lane=-4;lane<=4;++lane){
+                V direction=Forward(yaw+lane*.055f+std::sin(wave*.55f)*.12f,pitch+(wave%3-1)*.012f);
+                auto e=Mesh(r,"Bird volley feather","Resources/Models/Chrono/feather.obj",start,{1.2f,.55f,4.5f});
+                r.emplace<SlimeFeather>(e).velocity=direction*62;
+                r.get<TransformComponent>(e).rotate={-std::asin(direction.y),std::atan2(direction.x,direction.z),0};
+                r.get<MeshRendererComponent>(e).color={1.6f,.65f,.15f,1};++b.emitted;
+                }
+            }
+            if(b.emitted>=180){c.sweepPhase=3;c.sweepTime=0;++c.volleys;}
+        }
+        if(b.countered||(c.sweepPhase==3&&c.sweepTime>=2.f)){
+            transition(b.countered||c.volleys>=2?CreatureStage::Descend:CreatureStage::Volley);}
+    }else{
+        c.form=1-std::min(1.f,c.timer/CreatureMorphSeconds);
+        if(c.timer>=CreatureMorphSeconds){c.offset=c.morphDestination-EvaluateCreature(c.age,0).core;c.heading=c.morphHeading;
+            transition(CreatureStage::Snake);c.form=0;}
+    }
+    V toward=player-Center(r,boss_);
+    float heading=std::atan2(-toward.x,-toward.z);
+    c.heading+=std::remainder(heading-c.heading,6.283185f)*(1-std::exp(-2*dt));
     r.get<Target>(weakpoint_).active=!b.countered&&c.stage==CreatureStage::Opening&&c.sweepPhase==3;
     PoseCreature(r);
 }
@@ -136,7 +194,7 @@ void ChronoSystem::DrawInk(entt::registry& r,GameContext& ctx){
     Engine::Transform identity;
     for(auto mesh:inkMeshes_)ctx.renderer->DrawMesh(mesh,inkTexture_,identity,{1,1,1,1},"InkSurface",.4f,false);
     const auto& c=r.get<CreatureBoss>(boss_);
-    if(c.sweepPhase==1||c.sweepPhase==2){auto color=c.sweepPhase==1?Engine::Vector4{1,.7f,.05f,1}:Engine::Vector4{2,.12f,.02f,1};
+    if(c.stage==CreatureStage::Snake&&(c.sweepPhase==1||c.sweepPhase==2)){auto color=c.sweepPhase==1?Engine::Vector4{1,.7f,.05f,1}:Engine::Vector4{2,.12f,.02f,1};
         float width=c.attack==CreatureAttack::Charge?4.f:c.attack==CreatureAttack::Slam?8.f:16.f;
         float depth=c.attack==CreatureAttack::Charge?22.f:c.attack==CreatureAttack::Slam?8.f:7.f;
         V center=c.sweepCenter;center.y=InkGround(center)+.12f;

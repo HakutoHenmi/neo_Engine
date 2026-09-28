@@ -139,12 +139,8 @@ exit /b 0
       <ShaderModel>5.0</ShaderModel>
     </FxCompile>
     <PostBuildEvent>
-      <Command>set "OUT=$(SolutionDir)..\Generated\Outputs\$(Configuration)\Resources"
-if not exist "%OUT%" mkdir "%OUT%"
-robocopy "$(ProjectDir)Resources" "%OUT%" /E /NFL /NDL /NJH /NJS /NP /R:1 /W:1
-powershell -NoProfile -Command "Remove-Item -LiteralPath '%OUT%\Scenes\scene.json','%OUT%\Scenes\stage2.json' -Force -ErrorAction SilentlyContinue"
-exit /b 0
-</Command>
+      <Command>powershell -NoProfile -ExecutionPolicy Bypass -File "$(ProjectDir)scripts\Package-SlimeResources.ps1"
+exit /b %ERRORLEVEL%</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Development|x64'">

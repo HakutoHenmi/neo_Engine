@@ -1,3 +1,4 @@
+#include "../UI/SceneMusic.h"
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
@@ -73,6 +74,7 @@ GameScene::~GameScene() {
 
 void GameScene::Initialize(Engine::WindowDX* dx, const Engine::SceneParameters& params) {
 	dx_ = dx;
+    Music::Play(Music::Battle, .30f);
 	renderer_ = Engine::Renderer::GetInstance();
 	chronoMode_ = params.stagePath.empty() || params.stagePath.find("chrono.json") != std::string::npos;
 	if (chronoMode_) renderer_->ResetGPUFluid();
@@ -198,34 +200,12 @@ void GameScene::Initialize(Engine::WindowDX* dx, const Engine::SceneParameters& 
 	Game::FluidSystem::GetInstance()->Initialize(renderer_->GetDevice());
 
 	// エディターUIの初期化
+#ifndef NDEBUG
 	EditorUI::Initialize(renderer_);
+#endif
 
-	// ★追加: Skybox用キューブマップの読み込み (00. 環境マップ)
-	// DDSファイルが Resources/Textures/ に配置されていれば読み込む
-	// 注意: rostock_laage_airport_4k.dds は使用禁止
-	{
-		namespace fs = std::filesystem;
-		std::string texDir = EditorUI::GetUnifiedProjectPath("Resources/Textures");
-		try {
-			for (const auto& entry : fs::directory_iterator(Engine::PathUtils::FromUTF8(texDir))) {
-				if (entry.is_regular_file() && entry.path().extension() == L".dds") {
-					std::string filename = Engine::PathUtils::ToUTF8(entry.path().filename().wstring());
-					// 使用禁止のファイルをスキップ
-					if (filename.find("rostock_laage_airport") != std::string::npos) continue;
-					
-					std::string ddsPath = Engine::PathUtils::ToUTF8(entry.path().wstring());
-					auto cubeHandle = renderer_->LoadCubeMap(ddsPath);
-					if (cubeHandle > 0) {
-						renderer_->SetSkyboxTexture(cubeHandle);
-						OutputDebugStringA(("[GameScene] Skybox loaded: " + filename + "\n").c_str());
-					}
-					break; // 最初に見つかったDDSを使用
-				}
-			}
-		} catch (...) {
-			OutputDebugStringA("[GameScene] Skybox DDS search failed, using default\n");
-		}
-	}
+	if(auto sky=renderer_->LoadCubeMap("Resources/Textures/skybox.dds"))renderer_->SetSkyboxTexture(sky);
+
 
 	// パーティクルエディターの初期化
 	particleEditor_.Initialize();
@@ -406,12 +386,14 @@ void GameScene::Update() {
             }
             if (ui.Click(UI::Resume) || input->Trigger(DIK_RETURN)) {
                 isPaused_=false;
+                if(auto* audio=Engine::Audio::GetInstance())audio->SetBGMDucked(false);
                 Engine::WindowDX::SetCursorVisible(false);
             }
         }
 		// ESCキーでポーズ切り替え (0x01 = DIK_ESCAPE)
 		if (!stageClear && Engine::Input::GetInstance()->Trigger(0x01)) {
 			isPaused_ = !isPaused_;
+            if(auto* audio=Engine::Audio::GetInstance())audio->SetBGMDucked(isPaused_);
 			if (isPaused_) {
 				Engine::WindowDX::SetCursorVisible(true);
 				CreatePauseMenu();
@@ -1087,8 +1069,10 @@ void GameScene::Draw() {
 				if (chronoMode_) {
 					if(auto* ink=registry_.try_get<Chrono::InkPlayer>(playerEntity)){renderer_->SetSlimeGround({ink->groundSlope.x,ink->groundHeight,ink->groundSlope.z},registry_.get<Chrono::Player>(playerEntity).grounded);scaleVec={ink->fluidAspect,ink->airBlend,ink->fluidMotion};forward={ink->fluidDirection.x,0,ink->fluidDirection.z};}
 					float mass = registry_.get<HealthComponent>(playerEntity).hp;
+                    if(auto* ink=registry_.try_get<Chrono::InkPlayer>(playerEntity);ink&&ink->perfectAge>=0&&ink->perfectAge<.16f)
+                        mass*=.18f; // Brief visual compression; gameplay mass stays unchanged.
 					if(registry_.all_of<Chrono::InkPlayer>(playerEntity))mass*=100.f/Chrono::SlimeMaximumMass;
-					renderer_->SetGPUFluidCore(targetCore, attraction, scaleVec, forward, (registry_.all_of<Chrono::InkPlayer>(playerEntity) && registry_.get<Chrono::InkPlayer>(playerEntity).swimming) ? 5.0f : (registry_.all_of<Chrono::InkPlayer>(playerEntity) ? 4.0f : 2.0f), mass);
+					renderer_->SetGPUFluidCore(targetCore, attraction, scaleVec, forward, (registry_.all_of<Chrono::InkPlayer>(playerEntity) && registry_.get<Chrono::InkPlayer>(playerEntity).dodgeLiquid) ? 5.0f : (registry_.all_of<Chrono::InkPlayer>(playerEntity) ? 4.0f : 2.0f), mass);
 					if (auto* action = registry_.try_get<Chrono::Player>(playerEntity)) {
 						float flash=action->damageAge<.6f?(std::sin(action->damageAge*70)>0?.75f:0):0;
 						if(action->instability>75)flash=std::max(flash,.35f*(.5f+.5f*std::sin(action->stats.seconds*10)));

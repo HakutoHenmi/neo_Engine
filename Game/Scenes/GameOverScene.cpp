@@ -1,3 +1,4 @@
+#include "../UI/SceneMusic.h"
 #include "GameOverScene.h"
 #include "../../Engine/SceneManager.h"
 #include "../../Engine/Renderer.h"
@@ -6,6 +7,7 @@
 namespace Game {
 void GameOverScene::Initialize(Engine::WindowDX* dx, const Engine::SceneParameters&) {
     dx_=dx;
+    Music::Play(Music::Defeat, .34f);
     Engine::WindowDX::SetCursorVisible(true);
     if(auto* r=Engine::Renderer::GetInstance()){r->ResetGPUFluid();r->SetPostEffect("Default");}
 }

@@ -1,3 +1,4 @@
+#include "../UI/SceneMusic.h"
 #include "ChronoSystem.h"
 #include "../UI/GameUI.h"
 #include "../Chrono/CreatureMotion.h"
@@ -176,8 +177,48 @@ void ChronoSystem::BuildCreature(entt::registry& r){
 }
 void ChronoSystem::PoseCreature(entt::registry& r){
     auto& creature=r.get<CreatureBoss>(boss_);auto pose=EvaluateCreature(creature.age,creature.form);
+    if(inkMode_){
+        // Turn the entire animal toward its prey. A compact flight silhouette fits the outer corridor.
+        float scale=1-.62f*Ease(creature.form),sn=std::sin(creature.heading),cs=std::cos(creature.heading);
+        auto rotate=[&](V point){V d=(point-pose.core)*scale;return pose.core+V{d.x*cs+d.z*sn,d.y,-d.x*sn+d.z*cs};};
+        for(int i=0;i<pose.count;++i){auto& piece=pose.pieces[i];piece.position=rotate(piece.position);piece.size=piece.size*scale;piece.rotation.y+=creature.heading;
+            if(creature.stage==CreatureStage::Opening&&creature.sweepPhase==1&&i>=104&&i<218)
+                piece.position.y+=std::sin(std::min(1.f,creature.sweepTime/1.15f)*1.570796f)*5;
+        }
+        pose.head=rotate(pose.head);
+    }
     for(int i=0;i<pose.count;++i)pose.pieces[i].position=pose.pieces[i].position+creature.offset;
     pose.head=pose.head+creature.offset;pose.core=pose.core+creature.offset;
+    bool reforming=inkMode_&&(creature.stage==CreatureStage::Assemble||creature.stage==CreatureStage::Descend);
+    if(reforming){
+        bool bird=creature.stage==CreatureStage::Assemble;
+        if(!creature.morphActive){
+            creature.morphActive=true;creature.moveVelocity={};creature.morphSource=pose;
+            creature.morphSource.core=Center(r,boss_);creature.morphSource.head=creature.attention;
+            for(auto e:r.view<CreaturePart,TransformComponent>()){
+                const auto& part=r.get<CreaturePart>(e);const auto& t=r.get<TransformComponent>(e);
+                auto& source=creature.morphSource.pieces[part.index];source.position=Read(t.translate);source.rotation=Read(t.rotate);
+                source.size={t.scale.x/part.unitScale.x,t.scale.y/part.unitScale.y,t.scale.z/part.unitScale.z};
+            }
+            V player=Read(r.get<TransformComponent>(player_).translate);
+            V radial=creature.morphSource.core-V{0,0,20};creature.flightAngle=std::atan2(radial.x,radial.z);
+            creature.morphDestination=bird?SlimeFlightPoint(creature.flightAngle):V{std::clamp(player.x,-100.f,100.f),EvaluateCreature(creature.age,0).core.y,std::clamp(player.z+28,-90.f,125.f)};
+            V toward=player-creature.morphDestination;creature.morphHeading=std::atan2(-toward.x,-toward.z);
+        }
+        auto target=EvaluateCreature(creature.age,bird?1.f:0.f);
+        float scale=bird?.38f:1.f,sn=std::sin(creature.morphHeading),cs=std::cos(creature.morphHeading);
+        auto destination=[&](V point){V d=(point-target.core)*scale;return creature.morphDestination+V{d.x*cs+d.z*sn,d.y,-d.x*sn+d.z*cs};};
+        float progress=std::clamp(creature.timer/CreatureMorphSeconds,0.f,1.f);
+        for(int i=0;i<pose.count;++i){auto& piece=pose.pieces[i];const auto& source=creature.morphSource.pieces[i];
+            piece.position=ReformPart(source.position,destination(target.pieces[i].position),i,progress);
+            float blend=AttackEase(std::clamp((progress-.2f)/.76f,0.f,1.f));
+            piece.size=Lerp(source.size,target.pieces[i].size*scale,blend);
+            piece.rotation=Lerp(source.rotation,target.pieces[i].rotation+V{0,creature.morphHeading,0},blend);
+            piece.rotation.z+=std::sin(progress*3.14159265f)*std::sin(i*2.4f)*3;
+        }
+        pose.core=ReformPart(creature.morphSource.core,creature.morphDestination,0,progress);
+        pose.head=ReformPart(creature.morphSource.head,destination(target.head),1,progress);
+    }else creature.morphActive=false;
     if(creature.stage==CreatureStage::Snake&&creature.sweepPhase>0){
         float phase=creature.sweepPhase==1?AttackEase(creature.sweepTime/WarningTime(creature.attack)):creature.sweepPhase==4?1-AttackEase(creature.sweepTime/.8f):1.f;
         V head=creature.sweepCenter+AttackHead(creature.attack,creature.sweepPhase,creature.sweepTime);
@@ -191,7 +232,7 @@ void ChronoSystem::PoseCreature(entt::registry& r){
         pose.core=Lerp(pose.core,creature.sweepCenter+counter,phase);
     }
     creature.attention=pose.head;
-    if(creature.stage==CreatureStage::Opening&&creature.sweepPhase>0){
+    if(!inkMode_&&creature.stage==CreatureStage::Opening&&creature.sweepPhase>0){
         float w=creature.sweepPhase==1?AttackEase(creature.sweepTime/1.2f):creature.sweepPhase==2?1-2*AttackEase(creature.sweepTime/ActiveTime(CreatureAttack::Wing)):-1;
         if(creature.sweepPhase>=3)w*=1-AttackEase(creature.sweepTime/3.f);
         V root=pose.pieces[104].position;
@@ -246,18 +287,22 @@ void ChronoSystem::UpdateCreature(entt::registry& r,Player& p,GameContext& ctx){
     c.recoil=std::max(0.f,c.recoil-dt);
     // Cruise at a readable distance; freeze the root while an attack route is live.
     bool cruising=c.stage==CreatureStage::Assemble||c.stage==CreatureStage::Descend||
-        (c.stage==CreatureStage::Snake&&c.sweepPhase==0);
+        (c.stage==CreatureStage::Snake&&(c.sweepPhase==0||(inkMode_&&c.sweepPhase==4)));
     if(cruising){c.roam+=dt*.38f;V player=Read(r.get<TransformComponent>(player_).translate);
         V base=EvaluateCreature(c.age,c.form).core;
         V destination{std::clamp(player.x+std::sin(c.roam)*90.f,-200.f,200.f),0,
             std::clamp(player.z+std::cos(c.roam)*90.f,-220.f,220.f)};
+        if(inkMode_)destination={std::clamp(player.x+std::sin(c.roam)*22.f,-120.f,120.f),0,
+            std::clamp(player.z+28+std::cos(c.roam)*12.f,-105.f,145.f)};
         V goal=destination-V{base.x,0,base.z};V delta=goal-c.offset;
         V velocity=Unit(delta)*std::min(32.f,Length(delta)*2.f);
         c.moveVelocity=Lerp(c.moveVelocity,velocity,1-std::exp(-4*dt));c.offset=c.offset+c.moveVelocity*dt;
     }else c.moveVelocity={};
+    if(inkMode_&&cruising){V toward=Read(r.get<TransformComponent>(player_).translate)-Center(r,boss_);
+        c.heading+=std::remainder(std::atan2(-toward.x,-toward.z)-c.heading,6.283185f)*(1-std::exp(-2*dt));}
     auto transition=[&](CreatureStage stage){c.stage=stage;c.timer=0;};
     if(c.stage==CreatureStage::Snake){c.form=0;b.phase=0;c.sweepTime+=dt;
-        if(c.sweepPhase==0&&c.sweepTime>2.f){
+        if(c.sweepPhase==0&&c.sweepTime>(inkMode_?3.5f:2.f)){
             auto previous=c.attack;
             c.attack=static_cast<CreatureAttack>(c.attackCount%3);
             if(c.attackCount>=3){auto at=Read(r.get<TransformComponent>(player_).translate);
@@ -280,7 +325,10 @@ void ChronoSystem::UpdateCreature(entt::registry& r,Player& p,GameContext& ctx){
         }else if(c.sweepPhase==2){b.phase=2;
             float now=std::min(c.sweepTime,ActiveTime(c.attack)),before=std::max(0.f,now-dt);
             V at=Read(r.get<TransformComponent>(player_).translate)-c.sweepCenter;
-            if(!c.sweepHit&&AttackTouches(c.attack,at,before,now)&&p.invincible<=0){
+            bool contact=AttackTouches(c.attack,at,before,now);
+            if(inkMode_){const auto& ink=r.get<InkPlayer>(player_);
+                if(ink.dodgeAge<=.12f)contact|=AttackTouches(c.attack,ink.dodgeOrigin-c.sweepCenter,before,now);}
+            if(!c.sweepHit&&contact&&(inkMode_||p.invincible<=0)){
                 c.sweepHit=true;p.damageReason=c.attack==CreatureAttack::Sweep?"HIT - SERPENT SWEEP":c.attack==CreatureAttack::Charge?"HIT - SERPENT CHARGE":"HIT - HEAD SLAM";Damage(r,p,22,ctx,c.sweepCenter);
             }
             if(c.attack==CreatureAttack::Slam&&before<ActiveTime(c.attack)&&now>=ActiveTime(c.attack)){
@@ -290,7 +338,7 @@ void ChronoSystem::UpdateCreature(entt::registry& r,Player& p,GameContext& ctx){
             }
             if(c.sweepTime>=ActiveTime(c.attack)){c.sweepPhase=3;c.sweepTime=0;b.phase=3;}
         }else if(c.sweepPhase==3){b.phase=3;
-            if(c.sweepTime>=3.f){c.sweepPhase=4;c.sweepTime=0;}
+            if(c.sweepTime>=(inkMode_?1.5f:3.f)){c.sweepPhase=4;c.sweepTime=0;}
         }else if(c.sweepPhase==4){b.phase=3;
             if(c.sweepTime>=.8f){c.sweepPhase=0;c.sweepTime=0;
                 if(!snakeOnly_)transition(CreatureStage::Assemble);}
@@ -388,6 +436,7 @@ void ChronoSystem::Reset(entt::registry& r){
     yaw_=0;pitch_=0.12f;zoom_=17;shoulder_=1.8f;chainCameraHold_=0;fov_=1.0472f;
     cameraReady_=false;zoomVelocity_=0;cameraBoom_=-1;composition_={};viewPitch_=pitch_;postStrength_=0;droplets_.clear();manualCameraHold_=0;
     if(!initialized_)return;
+    Music::Play(Music::Battle, .30f);
     if(r.valid(boss_)){r.remove<CreatureBoss>(boss_);r.get<MeshRendererComponent>(boss_).enabled=true;}
     r.emplace_or_replace<Player>(player_);
     auto& pt=r.get<TransformComponent>(player_);pt.translate={0,1.3f,-27};pt.scale={1,1,1};
@@ -488,7 +537,10 @@ void ChronoSystem::Shoot(entt::registry& r,Player& p,GameContext& ctx){
     else {p.shotDirection=Forward(yaw_,0);p.shotLimit=3.3f;}
     p.action=Action::Extending;p.timer=0;p.buffer=0;
 }
-void ChronoSystem::Damage(entt::registry& r,Player& p,float amount,GameContext& ctx,V source){
+void ChronoSystem::Damage(entt::registry& r,Player& p,float amount,GameContext& ctx,V source,float perfectWindow){
+    if(inkMode_&&!finished_){auto& ink=r.get<InkPlayer>(player_);
+        if(ink.TryPerfectDodge(perfectWindow)){p.invincible=std::max(p.invincible,SlimePerfectInvincibility);p.worldScale=.15f;
+            ctx.camera->StartImpactShake(.10f,.08f,{0,1,0},12);return;}}
     if(p.invincible>0||finished_)return;
     if(inkMode_)amount*=SlimeMaximumMass/100.f;
     p.chainDrive=1;p.lastChainHit=10;p.mass=std::max(0.0f,p.mass-amount);p.invincible=0.65f;++p.stats.hitsTaken;p.flow.Break();
@@ -1015,7 +1067,9 @@ void ChronoSystem::Presentation(entt::registry& r,Player& p,GameContext& ctx){
     ctx.renderer->SetPostProcessParams(params);ctx.renderer->SetPostEffect("ChronoFocus");
 }
 void ChronoSystem::Finish(Player& p,bool win){
-    if(finished_)return;finished_=true;won_=win;finishAge_=0;p.target=entt::null;p.preview=entt::null;
+    if(finished_)return;
+    Music::Play(win ? Music::Victory : Music::Defeat, .34f);
+    finished_=true;won_=win;finishAge_=0;p.target=entt::null;p.preview=entt::null;
     p.action=Action::Free;p.velocity={};p.flow.remaining=0;p.flow.scale=1;p.aimScale=1;p.worldScale=1;p.aiming=false;
     p.hitStop=0;p.damageAge=1;
     if(!win||diagnostic_||arena_||creature_)return;

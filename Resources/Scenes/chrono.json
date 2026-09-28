@@ -24,7 +24,7 @@
         {
           "type": "MeshRenderer",
           "enabled": true,
-          "modelPath": "Resources/Models/Animation/Boss/attack1.fbx",
+          "modelPath": "Resources/Models/player_ball/ball.obj",
           "texturePath": "",
           "shaderName": "Default",
           "color": [
@@ -48,14 +48,6 @@
           "type": "Tag",
           "enabled": true,
           "tag": "Enemy"
-        },
-        {
-          "type": "Animator",
-          "enabled": true,
-          "currentAnimation": "Mutant Run_mixamo.com",
-          "speed": 0.6,
-          "isPlaying": true,
-          "loop": true
         }
       ]
     },

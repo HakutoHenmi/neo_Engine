@@ -40,6 +40,9 @@ bool Audio::Initialize() {
 }
 
 void Audio::Shutdown() {
+	bgmVoice_ = retiringBgmVoice_ = 0;
+	bgmPath_.clear();
+	bgmSounds_.clear();
 	// 全ボイス停止・破棄
 	for (auto& pair : activeVoices_) {
 		if (pair.second.source) {
@@ -136,6 +139,8 @@ void Audio::SetVolume(size_t voiceHandle, float volume) {
 }
 
 void Audio::StopAll() {
+	bgmVoice_ = retiringBgmVoice_ = 0;
+	bgmPath_.clear();
 	for(auto& pair : activeVoices_) {
 		if(pair.second.source) {
 			pair.second.source->Stop();
@@ -144,6 +149,55 @@ void Audio::StopAll() {
 		}
 	}
 	activeVoices_.clear();
+}
+
+bool Audio::PlayBGM(const std::string& path, float volume) {
+	if (path == bgmPath_ && IsBGMPlaying()) return true;
+	auto found = bgmSounds_.find(path);
+	uint32_t sound = found == bgmSounds_.end() ? Load(path) : found->second;
+	if (sound == 0xFFFFFFFF) {
+		OutputDebugStringA(("BGM load failed: " + path + "\n").c_str());
+		return false;
+	}
+	bgmSounds_[path] = sound;
+	const size_t voice = Play(sound, true, 0);
+	if (!voice) return false;
+	StopBGM();
+	bgmVoice_ = voice;
+	bgmPath_ = path;
+	bgmGain_ = std::clamp(volume, 0.0f, 1.0f);
+	bgmFade_ = 0;
+	bgmDuckTarget_ = 1;
+	return true;
+}
+
+void Audio::StopBGM() {
+	Stop(retiringBgmVoice_);
+	retiringBgmVoice_ = bgmVoice_;
+	retiringBgmGain_ = bgmGain_ * bgmFade_;
+	retiringBgmFade_ = 1;
+	bgmVoice_ = 0;
+	bgmPath_.clear();
+}
+
+bool Audio::IsBGMPlaying() const {
+	auto it = activeVoices_.find(bgmVoice_);
+	if (it == activeVoices_.end() || !it->second.source) return false;
+	XAUDIO2_VOICE_STATE state{};
+	it->second.source->GetState(&state);
+	return state.BuffersQueued != 0;
+}
+
+void Audio::UpdateBGM(float dt) {
+	dt = std::clamp(dt, 0.0f, 0.1f);
+	bgmDuck_ += (bgmDuckTarget_ - bgmDuck_) * std::min(1.0f, dt * 8.0f);
+	bgmFade_ = std::min(1.0f, bgmFade_ + dt / 0.65f);
+	SetVolume(bgmVoice_, bgmGain_ * bgmFade_ * masterBGMVolume_ * bgmDuck_);
+	if (retiringBgmVoice_) {
+		retiringBgmFade_ = std::max(0.0f, retiringBgmFade_ - dt / 0.65f);
+		SetVolume(retiringBgmVoice_, retiringBgmGain_ * retiringBgmFade_ * masterBGMVolume_ * bgmDuck_);
+		if (retiringBgmFade_ == 0) { Stop(retiringBgmVoice_); retiringBgmVoice_ = 0; }
+	}
 }
 
 void Audio::GarbageCollect() {

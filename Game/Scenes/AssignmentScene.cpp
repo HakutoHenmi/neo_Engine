@@ -1,3 +1,4 @@
+#include "../UI/SceneMusic.h"
 #include "../UI/GameUI.h"
 #include "AssignmentScene.h"
 #include "../../Engine/Input.h"
@@ -243,6 +244,7 @@ void AssignmentScene::UpdateEnemyCombat(float dt, bool attackPressed) {
     void AssignmentScene::Initialize(Engine::WindowDX* dx, const Engine::SceneParameters& params) {
         (void)params;
         dx_ = dx;
+    Music::Play(Music::Select, .28f);
         renderer_ = Engine::Renderer::GetInstance();
         
         camera_.Initialize();

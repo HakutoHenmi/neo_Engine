@@ -6,6 +6,8 @@
 #include "AssignmentScene.h"
 #include <fstream>
 #include <eh.h>
+#include "../Engine/PathUtils.h"
+#include "../tests/PackageValidationScene.h"
 #ifndef NDEBUG
 #include "../tests/FluidValidationScene.h"
 #include "../tests/FluidGameBenchmarkScene.h"
@@ -47,6 +49,10 @@ int WINAPI WinMain(_In_ HINSTANCE hInst, _In_opt_ HINSTANCE, _In_ LPSTR commandL
 			if (lastSlash)
 				*lastSlash = L'\0';
 
+			// Release reads only the Resources beside the executable.
+#ifdef NDEBUG
+            SetCurrentDirectoryW(exePath);
+#else
 			// プロジェクトルートを探す (neo_Engine ディレクトリ)
 			wchar_t projectPath[32768] = {};
 			wcscpy_s(projectPath, exePath);
@@ -58,6 +64,7 @@ int WINAPI WinMain(_In_ HINSTANCE hInst, _In_opt_ HINSTANCE, _In_ LPSTR commandL
 			} else {
 				SetCurrentDirectoryW(exePath);
 			}
+#endif
 		}
 	}
 
@@ -65,6 +72,7 @@ int WINAPI WinMain(_In_ HINSTANCE hInst, _In_opt_ HINSTANCE, _In_ LPSTR commandL
 
 	app.SetSceneRegistrar([](Engine::SceneManager& sm, Engine::WindowDX& dx) {
 		(void)dx;
+        sm.Register("PackageValidation", []() -> std::unique_ptr<Engine::IScene> { return std::make_unique<PackageValidationScene>(); });
 		sm.Register("Title", []() -> std::unique_ptr<Engine::IScene> { return std::unique_ptr<Engine::IScene>(new Game::TitleScene()); });
 		sm.Register("Select", []() -> std::unique_ptr<Engine::IScene> { return std::unique_ptr<Engine::IScene>(new Game::SelectScene()); });
 		sm.Register("Game", []() -> std::unique_ptr<Engine::IScene> { return std::unique_ptr<Engine::IScene>(new Game::GameScene()); });
@@ -74,6 +82,9 @@ int WINAPI WinMain(_In_ HINSTANCE hInst, _In_opt_ HINSTANCE, _In_ LPSTR commandL
 		sm.Register("FluidValidation", []() -> std::unique_ptr<Engine::IScene> { return std::make_unique<FluidValidationScene>(); });
 		sm.Register("UIResultValidation", []() -> std::unique_ptr<Engine::IScene> { return std::make_unique<UIResultValidationScene>(); });
         sm.Register("UIValidation", []() -> std::unique_ptr<Engine::IScene> { return std::make_unique<UIValidationScene>(); });
+        sm.Register("BossValidation", []() -> std::unique_ptr<Engine::IScene> { return std::make_unique<BossValidationScene>(); });
+        sm.Register("DodgeValidation", []() -> std::unique_ptr<Engine::IScene> { return std::make_unique<DodgeValidationScene>(); });
+        sm.Register("BeamCameraValidation", []() -> std::unique_ptr<Engine::IScene> { return std::make_unique<BeamCameraValidationScene>(); });
         sm.Register("ChronoValidation", []() -> std::unique_ptr<Engine::IScene> { return std::make_unique<ChronoValidationScene>(); });
 		sm.Register("FluidGameBenchmark", []() -> std::unique_ptr<Engine::IScene> { return std::make_unique<FluidGameBenchmarkScene>(); });
 		sm.Register("FluidGameBenchmarkEditor", []() -> std::unique_ptr<Engine::IScene> { return std::make_unique<FluidGameBenchmarkScene>(true); });
@@ -83,6 +94,7 @@ int WINAPI WinMain(_In_ HINSTANCE hInst, _In_opt_ HINSTANCE, _In_ LPSTR commandL
 
 	// Default Scene
 	app.SetInitialSceneKey("Title");
+    if(wcsstr(GetCommandLineW(),L"--package-smoke"))app.SetInitialSceneKey("PackageValidation");
 #ifndef NDEBUG
 	int argumentCount = 0;
 	LPWSTR* arguments = CommandLineToArgvW(GetCommandLineW(), &argumentCount);
@@ -90,6 +102,9 @@ int WINAPI WinMain(_In_ HINSTANCE hInst, _In_opt_ HINSTANCE, _In_ LPSTR commandL
 		for (int i = 1; i < argumentCount; ++i) {
 			if (wcscmp(arguments[i], L"--ui-result") == 0) app.SetInitialSceneKey("UIResultValidation");
             if (wcscmp(arguments[i], L"--ui-smoke") == 0) app.SetInitialSceneKey("UIValidation");
+            if (wcscmp(arguments[i], L"--boss-smoke") == 0) app.SetInitialSceneKey("BossValidation");
+            if (wcscmp(arguments[i], L"--dodge-smoke") == 0) app.SetInitialSceneKey("DodgeValidation");
+            if (wcscmp(arguments[i], L"--beam-camera-smoke") == 0) app.SetInitialSceneKey("BeamCameraValidation");
             if (wcscmp(arguments[i], L"--test-scene") == 0) app.SetInitialSceneKey("Assignment");
 			if (wcscmp(arguments[i], L"--ink-smoke") == 0 || wcscmp(arguments[i], L"--chrono-smoke") == 0 || wcscmp(arguments[i], L"--creature-smoke") == 0 || wcscmp(arguments[i], L"--snake-smoke") == 0) {
 				app.SetInitialSceneKey("ChronoValidation");

@@ -67,6 +67,14 @@ public:
 	// ★追加: 全てのボイスを停止 (Playモード終了時用)
 	void StopAll();
 
+	// One scene music channel, independent of sound effects. Tick with real time.
+	bool PlayBGM(const std::string& path, float volume = 0.35f);
+	void StopBGM();
+	void UpdateBGM(float dt);
+	void SetBGMDucked(bool ducked) { bgmDuckTarget_ = ducked ? 0.3f : 1.0f; }
+	bool IsBGMPlaying() const;
+	const std::string& CurrentBGM() const { return bgmPath_; }
+
 private:
 	// 内部用ロード関数
 	bool LoadViaMF(const std::wstring& path, SoundData& outData);
@@ -87,6 +95,11 @@ private:
 	// Key: 発行した再生ハンドル, Value: ボイス実体
 	std::map<size_t, VoiceData> activeVoices_;
 	size_t nextVoiceHandle_ = 1;
+	std::map<std::string, uint32_t> bgmSounds_;
+	std::string bgmPath_;
+	size_t bgmVoice_ = 0, retiringBgmVoice_ = 0;
+	float bgmGain_ = 0.35f, bgmFade_ = 0, retiringBgmGain_ = 0, retiringBgmFade_ = 0;
+	float bgmDuck_ = 1, bgmDuckTarget_ = 1;
 
 	// ★追加: マスター音量
 	float masterBGMVolume_ = 1.0f;

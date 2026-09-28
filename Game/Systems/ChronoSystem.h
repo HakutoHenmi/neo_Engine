@@ -18,7 +18,7 @@ private:
     bool inkMode_=true;
     struct InkShot {Chrono::Vec at,velocity;float age=0;};
     std::vector<InkShot> inkShots_;
-    struct SlimeTrail {Chrono::Vec at;int surface;float mass,radius;std::array<float,32> footprint{};float originalMass=0;};
+    struct SlimeTrail {Chrono::Vec at;int surface;float mass,radius;std::array<float,32> footprint{};float originalMass=0;bool bonus=false;};
     std::vector<SlimeTrail> slimeTrails_;
     bool inkNeedsRebuild_=false;
     uint32_t slimeBeamMesh_=0,slimeRingMesh_=0;
@@ -75,7 +75,7 @@ private:
     entt::entity Choose(entt::registry&,Chrono::Player&,GameContext&,bool);
     void Shoot(entt::registry&,Chrono::Player&,GameContext&);
     void Impact(entt::registry&,Chrono::Player&,entt::entity,GameContext&,bool);
-    void Damage(entt::registry&,Chrono::Player&,float,GameContext&,V);
+    void Damage(entt::registry&,Chrono::Player&,float,GameContext&,V,float perfectWindow=.12f);
     void Feedback(Chrono::Player&,V,bool);
     Chrono::ChainFailure Failure(entt::registry&,Chrono::Player&,GameContext&);
     void Presentation(entt::registry&,Chrono::Player&,GameContext&);
