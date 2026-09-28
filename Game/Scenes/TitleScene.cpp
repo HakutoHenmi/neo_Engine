@@ -1,3 +1,5 @@
+#include "../UI/SceneMusic.h"
+#include "../UI/CreditsUI.h"
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
@@ -51,6 +53,9 @@ void TitleScene::DrawMeshAt(uint32_t mesh, uint32_t tex,
 void TitleScene::Initialize(Engine::WindowDX* dx, const Engine::SceneParameters& /*params*/) {
     LogFileMain("    TitleScene::Initialize 1");
     dx_ = dx;
+    creditsOpen_ = false;
+    creditsPage_ = 0;
+    Music::Play(Music::Title, .32f);
     renderer_ = Engine::Renderer::GetInstance();
     lastTime_ = std::chrono::steady_clock::now();
 
@@ -69,54 +74,9 @@ void TitleScene::Initialize(Engine::WindowDX* dx, const Engine::SceneParameters&
         true
     );
 
-    LogFileMain("    TitleScene::Initialize 2 (Loading models)");
-    groundMesh_ = renderer_->LoadObjMesh("Resources/Models/plane.obj");
-    groundTex_  = renderer_->LoadTexture2D("Resources/Textures/white1x1.png");
-    cubeMesh_   = renderer_->LoadObjMesh("Resources/Models/cube/cube.obj");
-    cubeTex_    = renderer_->LoadTexture2D("Resources/Textures/white1x1.png");
-
-    try {
-        namespace fs = std::filesystem;
-        if (fs::exists("Resources/Models/TitleParts/title.obj")) {
-            titleMesh_ = renderer_->LoadObjMesh("Resources/Models/TitleParts/title.obj");
-            titleTex_  = renderer_->LoadTexture2D("Resources/Models/TitleParts/title.png");
-        }
-        if (fs::exists("Resources/Models/TitleParts/title_futi.obj")) {
-            titleFutiMesh_ = renderer_->LoadObjMesh("Resources/Models/TitleParts/title_futi.obj");
-            titleFutiTex_  = renderer_->LoadTexture2D("Resources/Models/TitleParts/title_futi.png");
-        }
-    } catch (...) {}
-
-    LogFileMain("    TitleScene::Initialize 3 (Skybox)");
-    try {
-        namespace fs = std::filesystem;
-        for (const auto& entry : fs::directory_iterator("Resources/Textures")) {
-            if (entry.is_regular_file() && entry.path().extension() == L".dds") {
-                std::string filename = entry.path().filename().string();
-                if (filename.find("rostock_laage_airport") != std::string::npos) continue;
-                auto cubeHandle = renderer_->LoadCubeMap(entry.path().string());
-                if (cubeHandle > 0) {
-                    renderer_->SetSkyboxTexture(cubeHandle);
-                }
-                break;
-            }
-        }
-    } catch (...) {}
-
-    LogFileMain("    TitleScene::Initialize 4 (PostProcess)");
     renderer_->SetPostProcessEnabled(true);
-    auto paper = renderer_->LoadTexture2D("Resources/Textures/paper.png");
-    auto vignetteTex = renderer_->LoadTexture2D("Resources/Textures/vignette.png");
-    renderer_->SetSumiETextures(paper, vignetteTex);
-
-    Engine::Renderer::PostProcessParams pp;
-    pp.noiseStrength = 0.4f;
-    pp.chromaShift = 0.5f;
-    pp.scanline = 0.0f;
-    pp.distortion = 0.0f;
-    pp.vignette = 0.0f;
-    renderer_->SetPostProcessParams(pp);
-    renderer_->SetPostEffect("Rich");
+    renderer_->SetPostEffect("Default");
+    renderer_->SetPostProcessParams({});
 
     phase_ = Phase::Idle;
     phaseTimer_ = 0.0f;
@@ -150,8 +110,20 @@ void TitleScene::Update() {
 
     auto* input = Engine::Input::GetInstance();
     if (input) {
-        bool start=UI::Pressed(DIK_RETURN)||UI::Canvas(renderer_).Click({0,0,1280,720})||input->IsMouseTrigger(1);
-        for(int key=0;key<256&&!start;++key)start=input->Trigger(static_cast<BYTE>(key));
+        UI::Canvas ui(renderer_);
+        if(creditsOpen_){
+            if(UI::Pressed(DIK_ESCAPE)||ui.Click(UI::CreditsBack))creditsOpen_=false;
+            else if(creditsPage_>0&&ui.Click(UI::CreditsPrev))--creditsPage_;
+            else if(creditsPage_+1<UI::CreditsPageCount&&ui.Click(UI::CreditsNext))++creditsPage_;
+            renderer_->SetCamera(camera_);
+            return; // Enter never starts the game while reading credits.
+        }
+        if(ui.Click(UI::CreditsButton)){
+            creditsOpen_=true;creditsPage_=0;
+            renderer_->SetCamera(camera_);
+            return;
+        }
+        bool start=UI::Pressed(DIK_RETURN)||UI::Canvas(renderer_).Click({440,520,400,66});
         if(start){
             Engine::SceneManager::GetInstance()->RequestChange("Select");
             return;
@@ -166,67 +138,7 @@ void TitleScene::Update() {
 // ============================================================
 void TitleScene::Draw() {
     if (!renderer_) return;
-
-    // =============== 地面（水面） ===============
-    // 暗い半透明の床（水面を表現）
-    DrawMeshAt(groundMesh_, groundTex_,
-        { 0, -0.05f, 20.0f },         // pos: 少し下に
-        { 0, 0, 0 },                  // rot
-        { 50.0f, 1.0f, 50.0f },       // scale
-        { 0.05f, 0.07f, 0.12f, 0.95f } // 暗い紺色
-    );
-
-    // =============== プレイヤー（手前左） ===============
-    float playerYaw = DirectX::XMConvertToRadians(30.0f); // やや右を向く
-    // スケールを小さくし、シルエットのように暗い色にする
-    DrawMeshAt(cubeMesh_, cubeTex_,
-        { -2.0f, 0.5f, 2.0f },
-        { 0, playerYaw, 0 },
-        { 0.5f, 1.0f, 0.5f },
-        { 0.05f, 0.05f, 0.08f, 1.0f } // 暗いシルエット
-    );
-
-    // プレイヤーのフェイク反射（Y反転）
-    DrawMeshAt(cubeMesh_, cubeTex_,
-        { -2.0f, -0.5f, 2.0f },
-        { 0, playerYaw, 0 },
-        { 0.5f, -1.0f, 0.5f },
-        { 0.02f, 0.02f, 0.04f, 0.3f } // 暗く半透明
-    );
-
-    // =============== ボス（遠景） ===============
-    // 霧の中にいるような暗い色で描画
-    float bossBreath = 1.0f + 0.05f * std::sin(totalTime_ * 1.5f); // 呼吸風の微動
-    DrawMeshAt(cubeMesh_, cubeTex_,
-        { 0.0f, 3.0f * bossBreath, 45.0f },
-        { 0, 0, 0 },
-        { 4.0f, 6.0f * bossBreath, 4.0f },
-        { 0.1f, 0.05f, 0.05f, 0.7f } // 暗い赤のシルエット
-    );
-
-    // ボスの目の発光（小さな明るいキューブ）
-    float eyeGlow = 0.7f + 0.3f * std::sin(totalTime_ * 3.0f);
-    DrawMeshAt(cubeMesh_, cubeTex_,
-        { -0.8f, 4.5f * bossBreath, 44.0f },
-        { 0, 0, 0 },
-        { 0.3f, 0.3f, 0.3f },
-        { 1.0f * eyeGlow, 0.2f * eyeGlow, 0.2f * eyeGlow, 1.0f }
-    );
-    DrawMeshAt(cubeMesh_, cubeTex_,
-        { 0.8f, 4.5f * bossBreath, 44.0f },
-        { 0, 0, 0 },
-        { 0.3f, 0.3f, 0.3f },
-        { 1.0f * eyeGlow, 0.2f * eyeGlow, 0.2f * eyeGlow, 1.0f }
-    );
-
-    // ボスのフェイク反射
-    DrawMeshAt(cubeMesh_, cubeTex_,
-        { 0.0f, -3.0f * bossBreath, 45.0f },
-        { 0, 0, 0 },
-        { 4.0f, -6.0f * bossBreath, 4.0f },
-        { 0.04f, 0.01f, 0.01f, 0.2f }
-    );
-
+    if(creditsOpen_){UI::Canvas ui(renderer_);UI::DrawCredits(ui,creditsPage_);return;}
 
     UI::Canvas ui(renderer_, Engine::WindowDX::kW, Engine::WindowDX::kH, uiAlpha_);
     if (uiAlpha_ > .01f) {
@@ -236,7 +148,9 @@ void TitleScene::Draw() {
         ui.Center(UI::GameTitle,640,230,60,UI::Lime,UI::JapaneseFont);
         ui.Center("MOVE. RECALL. RELEASE.",640,339,27);
         ui.Button({440,520,400,66},"BEGIN EXPEDITION",true);
-        ui.Prompt("keyboard_enter","PRESS ANY KEY / CLICK",495,607);
+        ui.Prompt("keyboard_enter","ENTER / CLICK BEGIN",495,607);
+        ui.Center("Music: Kevin MacLeod (incompetech.com) / CC BY 4.0",640,635,16,UI::Muted);
+        ui.Button(UI::CreditsButton,"CREDITS");
     }
     if (inkAlpha_ > .01f) {
         UI::Canvas transition(renderer_);

@@ -163,6 +163,7 @@ void App::Run() {
 
 		// ★追加: TimeManagerの更新
 		TimeManager::GetInstance().Update(dt);
+		audio_.UpdateBGM(dt);
 
 		// プロファイラにフレームタイムをセット
 		NetworkProfiler::GetInstance().SetDeltaTime(dt);

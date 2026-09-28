@@ -1,6 +1,7 @@
 #pragma once
 #include "ChronoRules.h"
 #include "CreatureCombat.h"
+#include "CreatureMotion.h"
 #include "../../externals/entt/entt.hpp"
 namespace Game::Chrono {
 enum class Kind { Enemy, Projectile, Anchor, Weakpoint, Boss };
@@ -18,7 +19,8 @@ struct Feather { Vec start{},destination{};float age=0,delay=0; bool readySound=
 enum class CreatureStage { Snake, Assemble, Volley, Opening, Descend };
 struct CreatureBoss { CreatureStage stage=CreatureStage::Snake;float age=0,timer=0,form=0; int sweepPhase=0; float sweepTime=0; Vec sweepCenter{}; bool sweepHit=false;
     CreatureAttack attack=CreatureAttack::Sweep;int attackCount=0;float wingClock=0,recoil=0;Vec attention{};bool wingCounter=false,wingDone=false;
-    Vec offset{0,0,65},moveVelocity{};float roam=0;
+    Vec offset{0,0,65},moveVelocity{};float roam=0,heading=0,flightAngle=0,volleyClock=0;int volleys=0;
+    CreaturePose morphSource{};Vec morphDestination{};float morphHeading=0;bool morphActive=false;
 };
 struct CreaturePart { Vec unitScale{1,1,1},unitOffset{};int index=0; };
 struct SerpentRelay { Vec origin{}; float progress=0; };
@@ -29,7 +31,7 @@ enum class ChainFailure { None, NoTarget, OutOfRange, Obstructed, Recovering, Un
 // Optional input source used by deterministic playback / validation scenes.
 struct ControlFrame {
     Vec move{};
-    bool attack=false, aim=false, toggle=false, jump=false, dodge=false;
+    bool attack=false, aim=false, toggle=false, jump=false, dodge=false,lockOn=false;
     bool arena=false;
     bool creature=false,snake=false;
     int attackPattern=-1; // Validation override; normal play selects by situation.

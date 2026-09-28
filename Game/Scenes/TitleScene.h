@@ -28,6 +28,8 @@ public:
     void DrawUI() override;
 
 private:
+    bool creditsOpen_ = false;
+    int creditsPage_ = 0;
     // === 遷移フェーズ ===
     enum class Phase {
         Idle,        // タイトル表示中（入力待ち）

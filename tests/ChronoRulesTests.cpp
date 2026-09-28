@@ -186,6 +186,28 @@ int main(){
         assert(reservoir.Fire(body) && reservoir.StoredRatio()==0);
         reservoir.Return(body,1);assert(reservoir.StoredRatio()==0);
     }
+    {InkPlayer bonus;float hp=40;bonus.Collect(hp,608,true);assert(hp==40&&bonus.charge==608);
+        assert(bonus.Fire(hp)&&hp==40&&bonus.tier==3&&bonus.spent==0);
+        bonus.Return(hp,1);assert(hp==40);
+        InkPlayer graze;graze.dodgeAge=.2f;assert(graze.TryPerfectDodge(.24f));}
+    {InkPlayer dodge;dodge.dodgeAge=.1f;assert(dodge.TryPerfectDodge());assert(!dodge.TryPerfectDodge());
+        dodge.perfectUsed=false;dodge.dodgeAge=.121f;assert(!dodge.TryPerfectDodge());
+        assert(SlimeBeamRange>600);
+        assert(SlimeDodgeInvincibility>.18f&&SlimePerfectInvincibility>.65f);
+        assert(SlimePerfectPulse(-1)==0&&SlimePerfectPulse(0)==0);
+        assert(SlimePerfectPulse(.06f)>.99f&&SlimePerfectPulse(.2f)<1&&SlimePerfectPulse(.4f)==0);}
+    for(int part=0;part<224;++part){
+        Vec from{1,2,3},to{200,60,220};
+        assert(Length(ReformPart(from,to,part,0)-from)<.001f);
+        assert(Length(ReformPart(from,to,part,1)-to)<.001f);
+    }
+    assert(Length(ReformPart({0,0,0},{200,60,220},0,.4f)-ReformPart({0,0,0},{200,60,220},1,.4f))>5);
+    for(int angle=0;angle<360;++angle){
+        Vec at=SlimeFlightPoint(angle*3.14159265f/180);
+        assert(std::abs(at.x)>140||at.z< -130||at.z>170);
+        assert(std::abs(at.x)<290&&at.z> -280&&at.z<320);
+        assert(at.y>=52&&at.y<=64);
+    }
     float f;Vec n;Bounds wall{{5,-10,-10},{5.1f,10,10}};
     assert(Sweep({0,0,0},{100,0,0},wall,{1,1,1},f,n));
     assert(std::abs(f-0.04f)<0.0001f&&n.x==-1);

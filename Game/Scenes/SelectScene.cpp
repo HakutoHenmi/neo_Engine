@@ -1,3 +1,4 @@
+#include "../UI/SceneMusic.h"
 #include "SelectScene.h"
 #include "../UI/GameUI.h"
 #include "../../Engine/Input.h"
@@ -13,6 +14,7 @@ SelectScene::~SelectScene() {
 void SelectScene::Initialize(Engine::WindowDX* dx, const Engine::SceneParameters& params) {
     (void)params;
     dx_ = dx;
+    Music::Play(Music::Select, .28f);
     renderer_ = Engine::Renderer::GetInstance();
     if (renderer_) {
         whiteTexture_ = renderer_->LoadTexture2D("Resources/Textures/white1x1.png");

@@ -135,6 +135,11 @@ private:
         buffer[length] = L'\0'; // Ensure null-termination
         
         std::filesystem::path exeDir = std::filesystem::path(buffer.data()).parent_path();
+#ifdef NDEBUG
+        // Packaged games must never borrow assets from an unrelated source checkout.
+        rootPath = exeDir;
+        return rootPath;
+#endif
         
         auto IsBuildFolder = [](const std::wstring& name) {
             std::wstring lower = name;

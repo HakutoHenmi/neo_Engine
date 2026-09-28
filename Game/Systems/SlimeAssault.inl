@@ -3,21 +3,48 @@ namespace Game {
 void ChronoSystem::UpdateInk(entt::registry& r,Player& p,GameContext& ctx){
     auto& ink=r.get<InkPlayer>(player_);auto* control=r.try_get<ControlFrame>(player_);
     const float dt=std::min(ctx.dt,.05f);diagnostic_=control!=nullptr;
-    bool attack=control?control->attack:Down(VK_LBUTTON),slide=control?control->aim:Down(VK_RBUTTON);
+    ink.dodgeAge+=dt;
+    if(ink.perfectAge>=0){ink.perfectAge+=dt;if(ink.perfectAge>1.2f)ink.perfectAge=-1;}
+    bool attack=control?control->attack:Down(VK_LBUTTON);
     if(!control&&Down(VK_F4)&&!prevSnake_){snakeOnly_=!snakeOnly_;prevSnake_=true;Reset(r);return;}prevSnake_=!control&&Down(VK_F4);
     bool shake=!control&&Down(VK_F6);if(shake&&!prevShake_)shakeSetting_=(shakeSetting_+1)%3;prevShake_=shake;ctx.camera->SetShakeStrength(shakeSetting_*.5f);
-    if(control){yaw_=control->yaw;pitch_=control->pitch;}
+    if(control){if(!ink.lockedOn){yaw_=control->yaw;pitch_=control->pitch;}}
     else if(ctx.input){yaw_+=ctx.input->GetMouseDeltaX()*.0025f;pitch_=std::clamp(pitch_+ctx.input->GetMouseDeltaY()*.0025f,-1.15f,1.2f);}
+    bool lockPressed=control?control->lockOn:Down(VK_MBUTTON);
+    if(lockPressed&&!ink.previousLock)ink.lockedOn=!ink.lockedOn;
+    ink.previousLock=lockPressed;
+    if(ink.lockedOn){
+        V from=Read(r.get<TransformComponent>(player_).translate)+V{0,.25f,0};
+        V direction=Unit(Center(r,weakpoint_)-from);
+        float aimYaw=std::atan2(direction.x,direction.z),aimPitch=-std::asin(std::clamp(direction.y,-1.f,1.f));
+        yaw_+=std::remainder(aimYaw-yaw_,6.283185f)*(1-std::exp(-12*dt));
+        pitch_+=(aimPitch-pitch_)*(1-std::exp(-12*dt));
+    }
     Engine::WindowDX::SetCursorVisible(false);
     p.stats.seconds+=dt;p.worldScale=p.aimScale=1;p.aiming=p.automatic=false;p.target=p.preview=p.bufferedTarget=entt::null;p.buffer=0;
+    if(ink.perfectAge>=0&&ink.perfectAge<.4f)p.worldScale=.15f;
     p.invincible=std::max(0.f,p.invincible-dt);p.damageAge+=dt;p.hitStop=std::max(0.f,p.hitStop-dt);ink.hitFlash=std::max(0.f,ink.hitFlash-dt);
     ink.shotClock=std::max(0.f,ink.shotClock-dt);ink.phaseAge+=dt;if(ink.monoAge>=0)ink.monoAge+=dt;
     auto& t=r.get<TransformComponent>(player_);V pos=Read(t.translate);int surface=-1;float floor=InkGround(pos,&surface);
     ink.deployed=0;for(const auto& trail:slimeTrails_)ink.deployed+=trail.mass;
+    if(ink.perfectAge>=.16f&&!ink.perfectBurst){
+        ink.perfectBurst=true;
+        float budget=SlimeChargeCapacity*.8f;
+        // Perfect-dodge reward is independent of body HP, including at low health.
+        for(int i=0;i<48;++i){float angle=i*2.399963f,radius=6+16*std::sqrt(float(i)/47);
+            V at=pos+V{std::cos(angle)*radius,0,std::sin(angle)*radius};int surfaceIndex=-1;
+            at.y=InkGround(at,&surfaceIndex);if(surfaceIndex<0)continue;
+            float amount=budget/48;if(amount<=0)continue;std::array<float,32> footprint{};footprint.fill(3.5f);
+            slimeTrails_.push_back({at,surfaceIndex,amount,3.5f,footprint,amount,true});
+            inkSurfaces_[surfaceIndex].Stamp(at,3.5f,&footprint);ink.deployed+=amount;
+            ctx.renderer->EmitGPUFluid(EV(pos+V{0,1,0}),EV(Unit(at-pos)*20+V{0,8,0}),{SlimeRed,SlimeGreen,SlimeBlue,1},4,4.025f);
+        }
+        inkDirty_=true;inkUploadClock_=.1f;
+    }
     ink.Recover(p.mass,p.damageAge,dt);
-    if(ink.phase==SlimePhase::Roaming){float total=p.mass+ink.deployed+ink.spent;ink.capacity=SlimeCapacity(total);ink.reserve=SlimeReserve(total);}
-    bool jump=control?control->jump:Down(VK_SPACE),dodge=control?control->dodge:Down(VK_SHIFT);
-    bool dodged=dodge&&!prevShift_&&p.cooldown<=0&&ink.phase!=SlimePhase::Firing&&ink.phase!=SlimePhase::Returning;
+    if(ink.phase==SlimePhase::Roaming){float total=std::min(SlimeMaximumMass,p.mass+ink.deployed+ink.spent);ink.capacity=SlimeCapacity(total);ink.reserve=SlimeReserve(total);}
+    bool jump=control?control->jump:Down(VK_SPACE),dodge=control?control->dodge:Down(VK_RBUTTON);
+    bool dodged=dodge&&!ink.previousDodge&&p.cooldown<=0&&ink.phase!=SlimePhase::Firing&&ink.phase!=SlimePhase::Returning;
     if(attack&&!ink.previousAttack&&ink.phase==SlimePhase::Roaming&&p.action!=Action::Dodge){
         ink.phase=SlimePhase::Charging;ink.phaseAge=0;ink.charge=0;
         ink.limitEligible=p.mass<=ink.reserve*2&&ink.deployed>=ink.capacity*.75f;
@@ -26,7 +53,7 @@ void ChronoSystem::UpdateInk(entt::registry& r,Player& p,GameContext& ctx){
     if(ink.phase==SlimePhase::Charging){
         float budget=ink.capacity*dt/.9f;
         for(auto& trail:slimeTrails_){if(budget<=0)break;float amount=std::min(trail.mass,budget);
-            if(amount<=0)continue;trail.mass-=amount;budget-=amount;ink.Collect(p.mass,amount);inkDirty_=true;inkNeedsRebuild_=true;
+            if(amount<=0)continue;trail.mass-=amount;budget-=amount;ink.Collect(p.mass,amount,trail.bonus);inkDirty_=true;inkNeedsRebuild_=true;
             if(sparks_.size()<180)sparks_.push_back({trail.at,pos,0});
         }
         slimeTrails_.erase(std::remove_if(slimeTrails_.begin(),slimeTrails_.end(),[](const SlimeTrail& a){return a.mass<=.0001f;}),slimeTrails_.end());
@@ -39,16 +66,17 @@ void ChronoSystem::UpdateInk(entt::registry& r,Player& p,GameContext& ctx){
     ink.previousAttack=attack;
     V input=control?control->move:V{float(Down('D'))-float(Down('A')),0,float(Down('W'))-float(Down('S'))};input=Unit(input);
     V wish{input.x*std::cos(yaw_)+input.z*std::sin(yaw_),0,-input.x*std::sin(yaw_)+input.z*std::cos(yaw_)};
-    ink.swimming=slide&&p.grounded&&ink.phase==SlimePhase::Roaming;
+    ink.swimming=p.grounded&&ink.phase==SlimePhase::Roaming;
     float speed=InkMoveSpeed(ink.swimming,false);
     if(ink.phase==SlimePhase::Charging)speed*=.28f;
     bool jumped=jump&&!prevSpace_&&p.grounded&&ink.phase!=SlimePhase::Firing;
     if(jumped)p.velocity.y=12;prevSpace_=jump;
-    if(dodged){p.action=Action::Dodge;p.timer=.18f;p.cooldown=.65f;p.invincible=.16f;p.dodgeDirection=Length(wish)>.1f?wish:Forward(yaw_,0);}prevShift_=dodge;
+    if(dodged){ink.dodgeAge=0;ink.perfectUsed=false;ink.dodgeOrigin=pos;p.action=Action::Dodge;p.timer=.18f;p.cooldown=.65f;p.invincible=std::max(p.invincible,SlimeDodgeInvincibility);p.dodgeDirection=Length(wish)>.1f?wish:Forward(yaw_,0);}ink.previousDodge=dodge;
     p.cooldown=std::max(0.f,p.cooldown-dt);
     bool isDodge=p.action==Action::Dodge;
     if(isDodge){wish=p.dodgeDirection;speed=30;p.timer-=dt;if(p.timer<=0)p.action=Action::Free;}
     else if(p.action!=Action::Free){p.timer-=dt;if(p.timer<=0)p.action=Action::Free;speed*=.4f;}
+    ink.dodgeLiquid=p.action==Action::Dodge;
     if(ink.phase==SlimePhase::Firing){
         float turn=(ink.tier==3?.7f:ink.tier==2?1.3f:2.8f)*dt;
         ink.beamYaw+=std::clamp(std::remainder(yaw_-ink.beamYaw,6.283185f),-turn,turn);
@@ -79,7 +107,7 @@ void ChronoSystem::UpdateInk(entt::registry& r,Player& p,GameContext& ctx){
     // with the controller during the short readback latency; their deformation stays intact.
     const auto& body=Engine::Renderer::GetInstance()->GetFluidBodySnapshot();
     float distance=Length(V{next.x-pos.x,0,next.z-pos.z});
-    if(ink.phase==SlimePhase::Roaming&&distance>.0001f&&wasGrounded&&p.grounded&&!body.offsets.empty()){
+    if(ink.phase==SlimePhase::Roaming&&!isDodge&&!(ink.perfectAge>=0&&ink.perfectAge<.4f)&&distance>.0001f&&wasGrounded&&p.grounded&&!body.offsets.empty()){
         struct ContactShape {int surface;V at;std::array<float,32> outline{};float radius=0;};
         std::vector<ContactShape> contacts;
         for(int k=0;k<int(inkSurfaces_.size());++k){const auto& s=inkSurfaces_[k];V normal=s.Normal();
@@ -106,7 +134,7 @@ void ChronoSystem::UpdateInk(entt::registry& r,Player& p,GameContext& ctx){
                 for(const auto& c:contacts){const auto& s=inkSurfaces_[c.surface];V normal=s.Normal();
                     V delta=Lerp(pos,next,float(j)/steps)-next;delta=delta-normal*Dot(delta,normal);V at=c.at+delta;
                     float share=amount/float(contacts.size());bool merged=false;
-                    for(auto it=slimeTrails_.rbegin();it!=slimeTrails_.rend();++it)if(it->surface==c.surface&&Length(it->at-at)<.35f){
+                    for(auto it=slimeTrails_.rbegin();it!=slimeTrails_.rend();++it)if(!it->bonus&&it->surface==c.surface&&Length(it->at-at)<.35f){
                         it->mass+=share;it->originalMass+=share;it->radius=std::max(it->radius,c.radius);
                         for(int n=0;n<32;++n)it->footprint[n]=std::max(it->footprint[n],c.outline[n]);merged=true;break;
                     }
@@ -136,9 +164,9 @@ void ChronoSystem::UpdateInk(entt::registry& r,Player& p,GameContext& ctx){
     InkCamera(r,p,ctx);
     if(p.hitStop<=0)UpdateInkBoss(r,p,ctx);
     if(finished_){ink.monoAge=-1;ink.phase=SlimePhase::Roaming;Presentation(r,p,ctx);return;}
-    if(ink.phase==SlimePhase::Charging)ink.charge=std::min(ink.charge,std::max(0.f,p.mass-ink.reserve));
+    if(ink.phase==SlimePhase::Charging)ink.charge=std::min(ink.charge,std::max(0.f,p.mass-ink.reserve)+ink.bonusCharge);
     if(ink.phase==SlimePhase::Firing){
-        V direction=Forward(ink.beamYaw,ink.beamPitch);float range=24+(ink.Power(ink.beamCharge))*71.25f;
+        V direction=Forward(ink.beamYaw,ink.beamPitch);float range=SlimeBeamRange;
         ink.beamStart=next+V{0,.25f,0}+direction*.8f;float length=range;
         // Sweep the beam cross-section. The underside can brush the supporting floor.
         V half{ink.beamRadius,std::min(.35f,ink.beamRadius),ink.beamRadius};
@@ -186,6 +214,10 @@ void ChronoSystem::UpdateInk(entt::registry& r,Player& p,GameContext& ctx){
         }
         for(auto e:dissolveProjectiles){V at=Read(r.get<TransformComponent>(e).translate);
             ctx.renderer->EmitGPUFluid(EV(at),{0,1,0},{SlimeRed,SlimeGreen,SlimeBlue,1},16,4.025f);r.destroy(e);}
+        std::vector<entt::entity> feathers;
+        for(auto e:r.view<SlimeFeather,TransformComponent>()){float impact;
+            if(RaySphere(ink.beamStart,direction,Read(r.get<TransformComponent>(e).translate),ink.beamRadius+1,length,impact))feathers.push_back(e);}
+        for(auto e:feathers)r.destroy(e);
         ink.effectClock+=dt;if(ink.effectClock>=.09f){ink.effectClock=0;
             if(ink.beamContact)ctx.renderer->EmitGPUFluid(EV(ink.beamEnd-direction*.4f),{0,1.8f,0},{SlimeRed,SlimeGreen,SlimeBlue,1},12+ink.tier*8,4.035f);
             if((core||armorHit)&&ink.shotClock<=0){auto* audio=Engine::Audio::GetInstance();audio->Play(slimeAcidSound_,false,.08f*audio->GetMasterSEVolume(),1.f);ink.shotClock=.22f;}
@@ -206,6 +238,9 @@ void ChronoSystem::UpdateInk(entt::registry& r,Player& p,GameContext& ctx){
     ink.onInk=surface>=0&&p.grounded&&inkSurfaces_[surface].Painted({next.x,nextFloor,next.z});
     auto& hp=r.get<HealthComponent>(player_);hp.hp=p.mass;hp.maxHp=SlimeMaximumMass;hp.isDead=p.mass<=0;
     Presentation(r,p,ctx);
+    if(!finished_&&ink.perfectAge>=0&&ink.perfectAge<.4f){auto params=ctx.renderer->GetPostProcessParams();
+        params.san=1;params.vignette=.3f;params.chromaShift=SlimePerfectPulse(ink.perfectAge);
+        ctx.renderer->SetPostProcessParams(params);ctx.renderer->SetPostEffect("Grayscale");}
     if(!finished_&&ink.monoAge>=0&&ink.monoAge<.2f){auto params=ctx.renderer->GetPostProcessParams();params.san=SlimeMono(ink.monoAge);params.vignette=.35f;
         ctx.renderer->SetPostProcessParams(params);ctx.renderer->SetPostEffect("Grayscale");}
 }
@@ -231,6 +266,9 @@ void ChronoSystem::DrawInkUI(entt::registry& r,GameContext& ctx){
     ui.Text(std::to_string(int(ink.armor))+"%",1066,58,21,UI::Lime);
     ui.Panel({1080,123,176,42});
     ui.Prompt("keyboard_escape","PAUSE",1090,127);
+    ui.Panel({1030,174,226,42});
+    ui.Prompt("mouse_scroll",ink.lockedOn?"LOCK ON / OFF":"LOCK ON",1040,178);
+    if(ink.perfectAge>=0)ui.Center("PERFECT DODGE / SPLASH!",640,470,26,UI::Gold);
     ui.Panel({414,574,452,86});
     ui.Text("BODY  "+std::to_string(int(p.mass)),430,585,19);
     ui.Text("TRAIL  "+std::to_string(int(ink.deployed)),577,585,19,UI::Lime);
@@ -249,16 +287,17 @@ void ChronoSystem::DrawInkUI(entt::registry& r,GameContext& ctx){
     else if(p.mass<=SlimeMaximumMass*.15f)ui.Center(ink.deployed>.1f?"LOW BODY / HOLD LMB TO RECALL":"LOW BODY / EVADE TO REGENERATE",640,513,23,UI::Gold);
     ui.Fill({631,359,18,2},ink.hitFlash>0?UI::Gold:UI::Lime);ui.Fill({639,351,2,18},UI::Lime);
     ui.Panel({24,674,1232,40});
-    ui.Prompt("keyboard_w","WASD MOVE",44,678);
-    ui.Prompt("mouse_right","SLIDE",240,678);
-    ui.Prompt("keyboard_shift","DODGE / CANCEL",401,678);
+    ui.Prompt("keyboard_w","WASD / AUTO SLIDE",44,678);
+    ui.Prompt("mouse_right","DODGE / JUST DODGE",340,678);
     ui.Prompt("mouse_left","HOLD: RECALL / RELEASE: BEAM",652,678);
     ui.Prompt("keyboard_space","JUMP",1090,678);
-    if(open){
+    if(open||ink.lockedOn){
         V target=Center(r,weakpoint_);using namespace DirectX;XMFLOAT4 clip;
         XMStoreFloat4(&clip,XMVector4Transform(XMVectorSet(target.x,target.y,target.z,1),ctx.camera->View()*ctx.camera->Proj()));
         if(clip.w>0){float x=std::clamp((clip.x/clip.w*.5f+.5f)*1280,40.f,1240.f),y=std::clamp((-clip.y/clip.w*.5f+.5f)*720,180.f,490.f);
-            ui.Center("CORE",x,y-30,24,UI::Gold);}
+            ui.Center(ink.lockedOn?"LOCKED":"CORE",x,y-30,24,UI::Gold);
+            if(ink.lockedOn){ui.Fill({x-18,y-18,8,2},UI::Gold);ui.Fill({x-18,y-18,2,10},UI::Gold);
+                ui.Fill({x+10,y+16,8,2},UI::Gold);ui.Fill({x+16,y+8,2,10},UI::Gold);}}
     }
 }
 void ChronoSystem::DrawSlimeBeam(entt::registry& r,GameContext& ctx){

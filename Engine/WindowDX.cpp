@@ -332,7 +332,7 @@ bool WindowDX::InitWindow_(HINSTANCE hInst, int cmdShow, HWND& outHwnd) {
 	RECT rc = {0, 0, (LONG)kW, (LONG)kH};
 	AdjustWindowRect(&rc, WS_OVERLAPPEDWINDOW, FALSE);
 
-	hwnd_ = CreateWindow(wc_.lpszClassName, L"4ヶ月制作", WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, rc.right - rc.left, rc.bottom - rc.top, nullptr, nullptr, hInst, nullptr);
+	hwnd_ = CreateWindow(wc_.lpszClassName, L"スライム、跡で本気出す。", WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, rc.right - rc.left, rc.bottom - rc.top, nullptr, nullptr, hInst, nullptr);
 
 	if (!hwnd_)
 		return false;
@@ -408,12 +408,6 @@ bool WindowDX::InitDX_() {
 	char gpuName[512]{};
 	WideCharToMultiByte(CP_UTF8, 0, selectedDesc.Description, -1, gpuName, sizeof(gpuName), nullptr, nullptr);
 	AppendDebugLog((std::string("[GPU] Selected hardware: ") + gpuName + "\n").c_str());
-	// Visible in both Release and Debug; no FPS instrumentation is added.
-	std::wstring title(256, L'\0');
-	int titleLength = GetWindowTextW(hwnd_, title.data(), static_cast<int>(title.size()));
-	title.resize(titleLength);
-	title += L" | "; title += selectedDesc.Description;
-	SetWindowTextW(hwnd_, title.c_str());
 
 #ifdef _DEBUG
 	{

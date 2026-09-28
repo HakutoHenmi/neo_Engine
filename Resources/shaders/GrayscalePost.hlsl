@@ -26,11 +26,21 @@ struct PSIn
 float4 main(PSIn i) : SV_TARGET
 {
     float3 sceneColor = gScene.Sample(gSmp, i.uv).rgb;
+    // In this effect gChromaShift controls the perfect-dodge radial blur.
+    // Keep the aim point sharp, and leave other grayscale effects unchanged at zero.
+    float2 radial=i.uv-.5;
+    float blur=saturate(gChromaShift)*smoothstep(.12,.55,length(radial));
+    if(blur>0){
+        float3 samples=0;
+        [unroll]for(int sampleIndex=0;sampleIndex<8;++sampleIndex)
+            samples+=gScene.Sample(gSmp,saturate(i.uv-radial*(sampleIndex/7.0)*.075*blur)).rgb;
+        sceneColor=lerp(sceneColor,samples/8,blur*.85);
+    }
 
     // ITU-R BT.709 輝度係数によるグレースケール変換
     float gray = Luminance(sceneColor);
 
-    // gDistortion を変換強度として使用 (0=カラー, 1=完全グレー)
+    // gSan を変換強度として使用 (0=カラー, 1=完全グレー)
     float strength = saturate(gSan);
     float3 col = lerp(sceneColor, gray.xxx, strength);
 

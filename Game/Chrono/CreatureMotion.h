@@ -123,6 +123,17 @@ inline CreaturePose EvaluateCreature(float age,float form){
     out.head=expand(out.head);out.core=expand(out.core);
     return out;
 }
+// Each part departs independently, scatters locally, then flies to its own final socket.
+inline Vec ReformPart(Vec from,Vec to,int index,float progress){
+    float delay=float((index*37)%223)/222*.20f;
+    float t=std::clamp((progress-delay)/(.96f-delay),0.f,1.f);
+    float phase=index*2.399963f;
+    Vec scatter{std::cos(phase)*(10+index%7),12+float(index%11),std::sin(phase)*(10+index%7)};
+    float depart=Ease(t/.24f),travel=AttackEase((t-.18f)/.82f);
+    Vec start=from+scatter*depart;
+    Vec arc{std::sin(phase)*18,22+float(index%13),std::cos(phase)*18};
+    return Lerp(start,to,travel)+arc*(4*travel*(1-travel));
+}
 // One attack with enough feathers to keep each hop within minimum reach.
 // The route is frozen at launch, and remains usable
 // after its brief dangerous arrival so a missed chain can be retried.

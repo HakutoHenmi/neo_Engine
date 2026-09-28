@@ -1,4 +1,4 @@
-param([string]$Executable = '')
+param([string]$Executable = '', [switch]$Boss, [switch]$Dodge, [switch]$BeamCamera)
 $ErrorActionPreference = 'Stop'
 $repoPath = Split-Path $PSScriptRoot -Parent
 if (!$Executable) { $Executable = Join-Path $repoPath '../Generated/Outputs/Development/DirectXGameApp.exe' }
@@ -17,8 +17,9 @@ $previousLines = @(Get-Content $validation -ErrorAction SilentlyContinue).Count
 $process = $null
 try {
     'RUNNING' | Set-Content (Join-Path $outputPath 'ui-smoke.txt')
-    $process = Start-Process $Executable -ArgumentList '--ui-smoke' -WorkingDirectory $repoPath -WindowStyle Hidden -PassThru
-    if (!$process.WaitForExit(55000)) { throw 'UI smoke timed out.' }
+    $argument = if ($BeamCamera) { '--beam-camera-smoke' } elseif ($Dodge) { '--dodge-smoke' } elseif ($Boss) { '--boss-smoke' } else { '--ui-smoke' }
+    $process = Start-Process $Executable -ArgumentList $argument -WorkingDirectory $repoPath -WindowStyle Hidden -PassThru
+    if (!$process.WaitForExit(95000)) { throw 'UI smoke timed out.' }
     $process.Refresh()
     $report = Get-Content -Raw (Join-Path $outputPath 'ui-smoke.txt')
     $newValidation = @(Get-Content $validation -ErrorAction SilentlyContinue | Select-Object -Skip $previousLines)
