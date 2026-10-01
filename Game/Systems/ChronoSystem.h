@@ -2,6 +2,8 @@
 #include "ISystem.h"
 #include "../Chrono/ChronoComponents.h"
 #include "../Chrono/InkRules.h"
+#include "../Chrono/LiquidTrail.h"
+#include "../Chrono/DomainHighlight.h"
 #include <vector>
 namespace Game {
 // Scene-level orchestration; all persistent actor state lives in ECS components.
@@ -20,6 +22,37 @@ private:
     std::vector<InkShot> inkShots_;
     struct SlimeTrail {Chrono::Vec at;int surface;float mass,radius;std::array<float,32> footprint{};float originalMass=0;bool bonus=false;};
     std::vector<SlimeTrail> slimeTrails_;
+    struct HomingDomain {Chrono::DomainLoop loop;Chrono::LiquidTrail liquid;std::vector<std::array<Chrono::Vec,3>> highlight;float age=0,clock=0,afterglow=0,bulletPower=1,lifetime=1.2f;int remaining=0,launched=0,total=0;bool enclosesBoss=false,meteor=false;};
+    struct DomainMissile {Chrono::Vec at{},velocity{};std::array<Chrono::Vec,8> tail{};float age=0,seed=0,tailClock=0,power=1;int tailCount=0,lane=1;entt::entity projectile=entt::null;uint32_t target=Chrono::SwarmNoTarget;bool enclosed=false,meteor=false;Chrono::DomainShape shape=Chrono::DomainShape::Loop;};
+    std::vector<HomingDomain> homingDomains_;
+    std::vector<DomainMissile> domainMissiles_;
+    std::vector<Chrono::SwarmEnemy> swarm_;
+    struct SwarmEffect {Chrono::Vec at{};float age=0,size=1;int kind=1;};
+    std::vector<SwarmEffect> swarmEffects_;
+    struct SwarmMesh {uint32_t handle=0;Chrono::Vec inverseExtent{1,1,1},center{};};
+    std::array<SwarmMesh,3> swarmMeshes_{};
+    uint32_t swarmQuad_=0,swarmNextId_=1;float swarmSpawnClock_=0,swarmSoundClock_=0,swarmAttackClock_=0;int swarmAttackBurst_=0;
+    size_t swarmAttackCursor_=0;bool swarmRestPending_=false;
+    Chrono::Vec swarmEmergenceAt_{};
+    struct Familiar { Chrono::Vec at{};float age=0,clock=0,lifetime=12; };
+    std::vector<Familiar> familiars_;
+    float rogueDamageClock_=0;
+    bool UpdateRogueMenu(entt::registry&,Chrono::Player&,GameContext&);
+    void UpdateRogueSkills(entt::registry&,Chrono::Player&,GameContext&);
+    void ActivateRogue(entt::registry&,Chrono::Player&,GameContext&,HomingDomain&);
+    void PerfectRogueLoop(entt::registry&,Chrono::Player&,GameContext&);
+    void BuildSwarm(entt::registry&);
+    void UpdateSwarm(entt::registry&,Chrono::Player&,GameContext&);
+    void DrawSwarm(entt::registry&,GameContext&);
+    void SetSwarmBossVisible(entt::registry&,bool,float=0);
+    void HitSwarm(entt::registry&,Chrono::Player&,GameContext&,uint32_t,float,bool=true);
+    uint32_t ChooseSwarmTarget(entt::registry&,Chrono::Vec,bool);
+    Chrono::LiquidTrail trailLiquid_,candidateLiquid_;
+    std::vector<Chrono::Vec> highlightedCandidate_;
+    std::vector<std::array<Chrono::Vec,3>> candidateHighlight_;
+    uint32_t domainFillMesh_=0;
+    void UpdateDomains(entt::registry&,Chrono::Player&,GameContext&);
+    void HitDomainMissile(entt::registry&,Chrono::Player&,GameContext&,Chrono::Vec,bool,float);
     bool inkNeedsRebuild_=false;
     uint32_t slimeBeamMesh_=0,slimeRingMesh_=0;
     uint32_t slimePressureSound_=0xffffffff,slimeRecallSound_=0xffffffff,slimeAcidSound_=0xffffffff;
@@ -64,6 +97,8 @@ private:
     void BuildCreature(entt::registry&);
     void UpdateCreature(entt::registry&,Chrono::Player&,GameContext&);
     void PoseCreature(entt::registry&);
+    void BossImpact(entt::registry&,GameContext&,V,V,float);
+    void DrawBossImpact(GameContext&,const Chrono::CreatureBoss&);
     bool Reachable(entt::registry&,const Chrono::Player&,entt::entity,V,V* =nullptr) const;
     entt::entity Mesh(entt::registry&,const std::string&,const std::string&,V,V);
     void Block(entt::registry&,const std::string&,V,V);

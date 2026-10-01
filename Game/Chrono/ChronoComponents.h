@@ -16,13 +16,14 @@ struct Target {
 struct Hopper { Vec velocity{}; float timer=0; bool grounded=false; };
 struct Projectile { Vec velocity{}; float lifetime=18; bool breakable=true; };
 struct Feather { Vec start{},destination{};float age=0,delay=0; bool readySound=false,fast=false; };
-enum class CreatureStage { Snake, Assemble, Volley, Opening, Descend };
+enum class CreatureStage { Snake, Assemble, Volley, Opening, Dive, Descend };
 struct CreatureBoss { CreatureStage stage=CreatureStage::Snake;float age=0,timer=0,form=0; int sweepPhase=0; float sweepTime=0; Vec sweepCenter{}; bool sweepHit=false;
+    float impactAge=10.f,impactPower=0;Vec impactPoint{};
     CreatureAttack attack=CreatureAttack::Sweep;int attackCount=0;float wingClock=0,recoil=0;Vec attention{};bool wingCounter=false,wingDone=false;
-    Vec offset{0,0,65},moveVelocity{};float roam=0,heading=0,flightAngle=0,volleyClock=0;int volleys=0;
+    Vec offset{0,0,65},moveVelocity{},cruiseGoal{},diveStart{};float roam=0,heading=0,flightAngle=0,volleyClock=0;int volleys=0,cruiseStep=0;bool cruiseReady=false;
     CreaturePose morphSource{};Vec morphDestination{};float morphHeading=0;bool morphActive=false;
 };
-struct CreaturePart { Vec unitScale{1,1,1},unitOffset{};int index=0; };
+struct CreaturePart { Vec unitScale{1,1,1},unitOffset{};int index=0,segment=-1;CreatureRole role=CreatureRole::Spine; };
 struct SerpentRelay { Vec origin{}; float progress=0; };
 struct Anchor { bool reusable=false; float cooldown=0; };
 struct Solid {};
@@ -34,6 +35,7 @@ struct ControlFrame {
     bool attack=false, aim=false, toggle=false, jump=false, dodge=false,lockOn=false;
     bool arena=false;
     bool creature=false,snake=false;
+    int upgradeChoice=-1;bool upgradeReroll=false,upgradeSkip=false;
     int attackPattern=-1; // Validation override; normal play selects by situation.
     bool cameraInput=false; // Scripted view changes have the same priority as mouse motion.
     float yaw=0, pitch=0;

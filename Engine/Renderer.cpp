@@ -1,5 +1,6 @@
 #include "Renderer.h"
 #include "Model.h"
+#include "StaticLod.h"
 #include "PathUtils.h"
 #include "Time/TimeManager.h"
 #include "../Game/ObjectTypes.h"
@@ -86,6 +87,7 @@ bool Renderer::Initialize(WindowDX* window) {
 
 	textures_.clear();
 	models_.clear();
+	sceneryLods_.clear();
 
 	// ★修正: Index 0 に「白い1x1テクスチャ」をプログラムで生成して登録する
 	// これにより、テクスチャがない場合のフォールバック描画でクラッシュしなくなります
@@ -226,11 +228,11 @@ bool Renderer::Initialize(WindowDX* window) {
 	// ※"msgothic.ttc" はWindows環境依存ですがテスト用に使用
 	InitTextSystem("C:\\Windows\\Fonts\\msgothic.ttc", 64.0f);
 
-	// ★追加: デフォルトのプロシージャルSkybox生成（グラデーション空）
+	// CC0 HDR sky shared by the background and environment reflections.
 	{
-		TextureHandle cubeHandle = LoadCubeMap("Resources/Textures/skybox.dds");
+		TextureHandle cubeHandle = LoadCubeMap("Resources/Textures/PolyHaven/kloppenheim_06_puresky_8k_cube.dds");
 		if (cubeHandle == 0 || cubeHandle >= textures_.size()) {
-			OutputDebugStringA("[Renderer] Proceeding without custom skybox.dds\n");
+			OutputDebugStringA("[Renderer] Proceeding without custom skybox\n");
 		} else {
 			SetSkyboxTexture(cubeHandle);
 			OutputDebugStringA(("[Renderer] Loaded skybox from DDS, handle=" + std::to_string(cubeHandle) + "\n").c_str());
@@ -325,6 +327,7 @@ void Renderer::Shutdown() {
 	textures_.clear();
 	textureCache_.clear();
 	meshCache_.clear();
+	sceneryLods_.clear();
 
 	window_ = nullptr;
 	dev_ = nullptr;
@@ -374,9 +377,10 @@ void Renderer::BeginFrame(const float clearColorRGBA[4]) {
 	
 	// ★追加: 毎フレーム最初にカウンタをリセット
 	frameDrawCalls_ = 0;
+	lastSceneryLodStats_=sceneryLodStats_;sceneryLodStats_={};
 	frameParticleCount_ = 0;
 
-	cbFrame_.time += 0.016f; // 固定値だが、本来はDeltaTimeを使うべき
+	if(!rogueWorldFrozen_)cbFrame_.time += 0.016f; // 固定値だが、本来はDeltaTimeを使うべき
 
 	// インスタンス描画用のキューをクリア
 	instancedDrawCalls_.clear();                    
@@ -391,7 +395,7 @@ void Renderer::BeginFrame(const float clearColorRGBA[4]) {
 
 	framePPEnabled_ = ppEnabled_ && ppSceneColor_;
 
-	cbFrame_.time += 1.0f / 60.0f;
+	if(!rogueWorldFrozen_)cbFrame_.time += 1.0f / 60.0f;
 
 	{
 		const uint32_t off = upload_[fi].Allocate(sizeof(CBFrame), 256);
@@ -1017,7 +1021,7 @@ void Renderer::EndFrame() {
 
 		// Instanced Shadow Pass
 		for (const auto& idc : instancedDrawCalls_) {
-			if (idc.shaderName == "Particle" || idc.shaderName == "ParticleInstanced" || idc.shaderName == "ProceduralSmoke" || idc.shaderName == "ProceduralSmokeInstanced" || idc.shaderName == "2D" || idc.shaderName == "Distortion") continue;
+			if (idc.shaderName == "HordeEffect" || idc.shaderName == "DomainFill" || idc.shaderName == "DomainGlow" || idc.shaderName == "LiquidTrail" || idc.shaderName == "Particle" || idc.shaderName == "ParticleInstanced" || idc.shaderName == "ProceduralSmoke" || idc.shaderName == "ProceduralSmokeInstanced" || idc.shaderName == "2D" || idc.shaderName == "Distortion") continue;
 			
 			auto* model = GetModel(idc.mesh);
 			if (!model || idc.instances.empty()) continue;
@@ -1216,7 +1220,8 @@ void Renderer::EndFrame() {
 			float scanline;
 			float san;
 			float pad0;
-			float pad[8];
+			float dofFocus,dofRange,dofStrength,dofNear;
+			float dofFar,texelX,texelY,dofBossDepth;
 		};
 #ifdef _MSC_VER
 #pragma warning(pop)
@@ -1229,6 +1234,12 @@ void Renderer::EndFrame() {
 		cb.vignette = ppParams_.vignette;
 		cb.scanline = ppParams_.scanline;
 		cb.san = ppParams_.san;
+		cb.dofFocus=ppParams_.dofFocus;cb.dofRange=ppParams_.dofRange;cb.dofStrength=ppParams_.dofStrength;
+		// Recover the actual camera clip planes from its perspective matrix.
+		float projA=cbFrame_.proj.m[2][2],projB=cbFrame_.proj.m[3][2];
+		cb.dofNear=std::abs(projB/(std::max)(.000001f,projA));
+		cb.dofFar=std::abs(projB/(std::abs(projA-1)>.000001f?projA-1:.000001f));
+		cb.texelX=1.f/(std::max)(1.f,viewport_.Width);cb.texelY=1.f/(std::max)(1.f,viewport_.Height);cb.dofBossDepth=ppParams_.dofBossDepth;
 
 		const uint32_t off = upload_[fi].Allocate(sizeof(CBPost), 256);
 		if (off != UINT32_MAX) {
@@ -1550,7 +1561,7 @@ bool Renderer::CreatePSO(const std::string& name, ID3DBlob* vsBlob, ID3DBlob* ps
 	pso.SampleMask = UINT_MAX;
 
 	auto rast = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
-	rast.CullMode = D3D12_CULL_MODE_BACK;
+	rast.CullMode = D3D12_CULL_MODE_NONE; // ボスなどのモデルで面が欠ける問題への対策
 	pso.RasterizerState = rast;
 
 	pso.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
@@ -1913,9 +1924,9 @@ float4 main(VSIn v, uint instanceID : SV_InstanceID) : SV_POSITION {
 		psoDesc.pRootSignature = rootSig3D_.Get();
 		psoDesc.VS = {vsShadow->GetBufferPointer(), vsShadow->GetBufferSize()};
 		psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
-		psoDesc.RasterizerState.DepthBias = 10000;
+		psoDesc.RasterizerState.DepthBias = 100000;
 		psoDesc.RasterizerState.DepthBiasClamp = 0.0f;
-		psoDesc.RasterizerState.SlopeScaledDepthBias = 1.0f;
+		psoDesc.RasterizerState.SlopeScaledDepthBias = 2.0f;
 		psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
 		psoDesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
 		psoDesc.SampleMask = UINT_MAX;
@@ -2186,7 +2197,7 @@ float4 main(PSIn i) : SV_TARGET { return i.color; }
 		// --- ToonSkinning (スキニング対応トゥーン) ---
 		auto vsToonSkin = CompileShaderFromFile(L"Resources/shaders/ToonSkinningVS.hlsl", "main", "vs_5_0");
 		if (vsToonSkin && psToon) {
-			CreatePSO("ToonSkinning", vsToonSkin.Get(), psToon.Get());
+			CreatePSO("ToonSkinning", vsToonSkin.Get(), psToon.Get(), skinLayout, _countof(skinLayout));
 		}
 
 		// --- ToonSkinningOutline (スキニング対応アウトライン) ---
@@ -2514,6 +2525,7 @@ void Renderer::DrawMeshInstanced(MeshHandle mesh, TextureHandle texture, const T
 
 void Renderer::DrawMeshInstanced(MeshHandle mesh, TextureHandle texture, const Matrix4x4& worldMatrix, const Vector4& mulColor, 
 								 const std::string& shaderName, const std::vector<TextureHandle>& extraTex) {
+	mesh=SelectDistanceLod(mesh,worldMatrix);
 	// キャッシュチェック (前回のドローコールと同じアセットなら検索をスキップ)
 	if (lastIDCIndex_ != -1 && lastIDCIndex_ < (int)instancedDrawCalls_.size()) {
 		auto& last = instancedDrawCalls_[lastIDCIndex_];
@@ -2646,6 +2658,34 @@ Model* Renderer::GetModel(MeshHandle handle) {
 		return nullptr;
 	return models_[handle].get();
 }
+void Renderer::PrepareDistanceLods(uint32_t mesh,bool grassCards){
+    if(sceneryLods_.count(mesh))return;auto* source=GetModel(mesh);if(!source||!source->GetData().bones.empty())return;
+    SceneryLods lod;lod.meshes.fill(mesh);Vector3 lo{1e30f,1e30f,1e30f},hi{-1e30f,-1e30f,-1e30f};
+    for(const auto& v:source->GetData().vertices){lo.x=(std::min)(lo.x,v.position.x);lo.y=(std::min)(lo.y,v.position.y);lo.z=(std::min)(lo.z,v.position.z);
+        hi.x=(std::max)(hi.x,v.position.x);hi.y=(std::max)(hi.y,v.position.y);hi.z=(std::max)(hi.z,v.position.z);}
+    lod.center=(lo+hi)*.5f;Vector3 half=(hi-lo)*.5f;lod.radius=std::sqrt(half.x*half.x+half.y*half.y+half.z*half.z);
+    for(int level=1;level<=2;++level){auto reduced=std::make_shared<Model>();
+        if(reduced->InitializeStaticLOD(dev_,*source,grassCards?(level==1?2:4):(level==1?32:20),grassCards)){
+            lod.meshes[level]=uint32_t(models_.size());models_.push_back(reduced);
+        }else lod.meshes[level]=lod.meshes[level-1];}
+    sceneryLods_.emplace(mesh,lod);
+}
+std::array<uint32_t,3> Renderer::GetDistanceLodMeshes(uint32_t mesh)const{
+    auto it=sceneryLods_.find(mesh);return it==sceneryLods_.end()?std::array<uint32_t,3>{mesh,mesh,mesh}:it->second.meshes;
+}
+uint32_t Renderer::SelectDistanceLod(uint32_t mesh,const Matrix4x4& world){
+    auto it=sceneryLods_.find(mesh);if(it==sceneryLods_.end())return mesh;const auto& lod=it->second;
+    auto center=lod.center;
+    Vector3 point{center.x*world.m[0][0]+center.y*world.m[1][0]+center.z*world.m[2][0]+world.m[3][0],
+        center.x*world.m[0][1]+center.y*world.m[1][1]+center.z*world.m[2][1]+world.m[3][1],
+        center.x*world.m[0][2]+center.y*world.m[1][2]+center.z*world.m[2][2]+world.m[3][2]};
+    float scale=0;for(int a=0;a<3;++a)scale=(std::max)(scale,std::sqrt(world.m[a][0]*world.m[a][0]+world.m[a][1]*world.m[a][1]+world.m[a][2]*world.m[a][2]));
+    Vector3 delta=point-cbFrame_.cameraPos;float distance=std::sqrt(delta.x*delta.x+delta.y*delta.y+delta.z*delta.z);
+    int level=distanceLodEnabled_?DistanceLodLevel(distance,lod.radius*scale):0;uint32_t selected=lod.meshes[level];
+    sceneryLodStats_.originalIndices+=models_[mesh]->GetIndexCount();sceneryLodStats_.selectedIndices+=models_[selected]->GetIndexCount();
+    sceneryLodStats_.originalVertices+=models_[mesh]->GetVertexCount();sceneryLodStats_.selectedVertices+=models_[selected]->GetVertexCount();
+    ++sceneryLodStats_.instances[level];return selected;
+}
 
 bool Renderer::LoadAdditionalAnimation(MeshHandle handle, const std::string& animPath) {
     Model* model = GetModel(handle);
@@ -2660,6 +2700,7 @@ void Renderer::DrawMesh(MeshHandle meshH, TextureHandle texH, const Transform& t
 }
 
 void Renderer::DrawMesh(MeshHandle meshH, TextureHandle texH, const Matrix4x4& worldMatrix, const Vector4& mulColor, const std::string& shaderName, float reflectivity, bool useCubemap) {
+	meshH=SelectDistanceLod(meshH,worldMatrix);
 	if (meshH == 0 || meshH >= models_.size())
 		return;
 
@@ -4886,6 +4927,7 @@ void Renderer::SetGPUFluidDecoy(const Vector3& pos, float attraction, const Vect
 }
 
 void Renderer::ResetGPUFluid() {
+    guidedTrailParticles_.clear();previousTrailParticleCount_=0;
     fluidBodySnapshot_={};
     for(auto& pending:fluidBodyPending_)pending=false;
 	chronoFluidOpacity_=1;chronoFluidFlash_=0;chronoFluidPaused_=false;
@@ -4914,6 +4956,21 @@ void Renderer::ResetGPUFluid() {
 }
 
 void Renderer::UpdateGPUFluid(float dt) {
+    // CPU pressure waves guide the permanent ink spine. Use the same GPU
+    // particle pool, density reconstruction and optical material as the player.
+    if(isGPUFluidInitialized_&&gpuFluidBuffer_){
+        uint32_t count=uint32_t((std::min)(guidedTrailParticles_.size(),size_t(kTrailFluidCapacity)));
+        uint32_t copyCount=(std::max)(count,previousTrailParticleCount_);
+        if(copyCount){auto& ring=upload_[window_->FrameIndex()];uint32_t bytes=copyCount*sizeof(GPUFluidParticle),offset=ring.Allocate(bytes,256);
+            if(offset!=UINT32_MAX){auto* particles=reinterpret_cast<GPUFluidParticle*>(ring.mapped+offset);
+                for(uint32_t i=0;i<copyCount;++i){if(i<count)particles[i]=guidedTrailParticles_[i];else{particles[i]={};particles[i].position.y=-1000;}}
+                auto toCopy=CD3DX12_RESOURCE_BARRIER::Transition(gpuFluidBuffer_.Get(),D3D12_RESOURCE_STATE_UNORDERED_ACCESS,D3D12_RESOURCE_STATE_COPY_DEST);list_->ResourceBarrier(1,&toCopy);
+                list_->CopyBufferRegion(gpuFluidBuffer_.Get(),UINT64(kTrailFluidStart)*sizeof(GPUFluidParticle),ring.buffer.Get(),offset,bytes);
+                auto toSolve=CD3DX12_RESOURCE_BARRIER::Transition(gpuFluidBuffer_.Get(),D3D12_RESOURCE_STATE_COPY_DEST,D3D12_RESOURCE_STATE_UNORDERED_ACCESS);list_->ResourceBarrier(1,&toSolve);
+                gpuFluidActiveParticleCount_=(std::max)(gpuFluidActiveParticleCount_,kTrailFluidStart+copyCount);gpuFluidPhaseMask_|=1;previousTrailParticleCount_=count;
+            }
+        }
+    }
 	if(gpuFluidCoreMode_>=2.0f&&chronoFluidPaused_){
 		fluidSimulatedDt_=0;
 		if(fluidProfilerEnabled_)fluidProfilerFrames_[window_->FrameIndex()].particleSlots=gpuFluidActiveParticleCount_;
@@ -4978,7 +5035,7 @@ void Renderer::UpdateGPUFluid(float dt) {
 		cb.emitType = gpuFluidTetherBlend_;
 	}
 	cb.decoyPos = gpuFluidDecoyPos_; cb.decoyAttraction = gpuFluidDecoyAttraction_;
-	cb.decoyScale = gpuFluidDecoyScale_; cb.pad7 = 0.0f;
+	cb.decoyScale = gpuFluidDecoyScale_; cb.pad7 = rogueWorldFrozen_?1.f:0.0f;
 	cb.decoyForward = gpuFluidDecoyForward_; cb.pad8 = 0.0f;
 	if(gpuFluidCoreMode_>=4){cb.emitDir=slimeGround_;cb.emitStartIndex=slimeGrounded_?1U:0U;}
 	
@@ -5222,7 +5279,7 @@ void Renderer::EmitGPUFluid(const Vector3& pos, const Vector3& velocityDir, cons
 	cb.coreForward = gpuFluidCoreForward_; cb.pad5 = gpuFluidCoreMode_;
 	cb.aabbCount = 0; cb.pad6 = {0,0,0};
 	cb.decoyPos = gpuFluidDecoyPos_; cb.decoyAttraction = gpuFluidDecoyAttraction_;
-	cb.decoyScale = gpuFluidDecoyScale_; cb.pad7 = 0.0f;
+	cb.decoyScale = gpuFluidDecoyScale_; cb.pad7 = rogueWorldFrozen_?1.f:0.0f;
 	cb.decoyForward = gpuFluidDecoyForward_; cb.pad8 = 0.0f;
 	
 	// ★追加: CBサイズを変更したので48DWordsに変更

@@ -4,6 +4,7 @@
 #include "../Game/Scenes/GameScene.h"
 #include "../Game/Scenes/GameOverScene.h"
 #include "../Game/UI/CreditsUI.h"
+#include "../Game/Chrono/InkRules.h"
 #include "../externals/DirectXTex/DirectXTex.h"
 #include <filesystem>
 #include <fstream>
@@ -15,6 +16,8 @@ class PackageValidationScene final : public Engine::IScene {
     int page_=0,frame_=0;
     bool passed_=true;
     void Load(){
+        if(page_>=8){auto* game=static_cast<Game::GameScene*>(scene_.get());auto view=game->GetRegistry().view<Game::Chrono::InkPlayer>();auto& state=view.get<Game::Chrono::InkPlayer>(*view.begin()).rogue;
+            if(page_==8)state.Gain(20);else {for(auto& rank:state.ranks)rank=1;game->SetPaused(true);}return;}
         if(page_==0)scene_=std::make_unique<Game::TitleScene>();
         else if(page_==1)scene_=std::make_unique<Game::SelectScene>();
         else if(page_==7)scene_=std::make_unique<Game::GameScene>();
@@ -27,7 +30,7 @@ public:
         window_=dx;std::filesystem::create_directories("PackageCheck");Load();
     }
     void Update()override{
-        if(page_==7)scene_->Update();
+        if(page_>=7)scene_->Update();
         if(++frame_<90)return;
         auto* r=Engine::Renderer::GetInstance();
         passed_&=r->MeasureTextWidth(Game::UI::GameTitle,1,Game::UI::JapaneseFont)>0;
@@ -36,7 +39,7 @@ public:
         auto hr=DirectX::CaptureTexture(window_->Queue(),window_->GetCurrentBackBufferResource(),false,image,D3D12_RESOURCE_STATE_PRESENT,D3D12_RESOURCE_STATE_PRESENT);
         if(SUCCEEDED(hr))hr=DirectX::SaveToWICFile(*image.GetImage(0,0,0),DirectX::WIC_FLAGS_NONE,DirectX::GetWICCodec(DirectX::WIC_CODEC_PNG),(L"PackageCheck/page-"+std::to_wstring(page_)+L".png").c_str());
         passed_&=SUCCEEDED(hr);
-        if(++page_==8){std::ofstream("PackageCheck/result.txt")<<(passed_?"PASS":"FAIL")<<" Release package: title, select, battle, result, credits, both fonts";PostQuitMessage(passed_?0:2);return;}
+        if(++page_==10){std::ofstream("PackageCheck/result.txt")<<(passed_?"PASS":"FAIL")<<" Release package: title, select, battle, upgrade selection, palette pause, result, credits, both fonts";PostQuitMessage(passed_?0:2);return;}
         frame_=0;Load();
     }
     void Draw()override{

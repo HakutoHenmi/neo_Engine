@@ -74,9 +74,9 @@ void SelectScene::DrawMenu() {
     UI::Canvas ui(renderer_);
     ui.Background("EXPEDITION SELECT");
     ui.Panel({220,160,840,450});
-    ui.Text("01  /  BOSS ENCOUNTER",270,203,22,UI::Lime);
+    ui.Text("01  /  SWARM ASSAULT",270,203,22,UI::Lime);
     ui.Text("VERDANT BASIN",270,244,56);
-    ui.Text("One slime. One boss. An entire valley to fight.",270,314,26,UI::Muted);
+    ui.Text("Clear the horde. Awaken the serpent. Unleash your swarm.",270,314,23,UI::Muted);
     ui.Button(UI::Stage,"DEPLOY TO VERDANT BASIN",true);
     ui.Prompt("mouse_left","CLICK TO DEPLOY",350,506);
     ui.Prompt("keyboard_enter","DEPLOY",690,506);

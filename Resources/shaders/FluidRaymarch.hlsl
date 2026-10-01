@@ -65,6 +65,47 @@ float3 Reflection(float3 normal,float3 ray,float roughness) {
     float3 sky=lerp(float3(0.035f,0.055f,0.075f),float3(0.3f,0.43f,0.55f),saturate(r.y*0.5f+0.5f));
     return max(env,sky*0.3f);
 }
+float BubbleLayer(float2 facePoint, float density, float speed, float seed) {
+    float2 cellPoint=facePoint*density-float2(0,time*speed);
+    float2 cell=floor(cellPoint);
+    float2 random=float2(frac(sin(dot(cell+seed,float2(127.1f,311.7f)))*43758.5453f),
+                         frac(sin(dot(cell+seed,float2(269.5f,183.3f)))*43758.5453f));
+    float2 center=0.2f+random*0.6f;
+    float distanceToBubble=length(frac(cellPoint)-center);
+    float radius=lerp(0.10f,0.20f,random.y);
+    float bubble=1-smoothstep(radius-0.035f,radius+0.035f,distanceToBubble);
+    return bubble*step(0.38f,random.x);
+}
+float3 PlayerSurfaceDetail(float3 world, float3 normal, float3 color) {
+    float3 toCamera=cameraPosition-playerBodyCenter;
+    float2 front=normalize(toCamera.xz+float2(0.0001f,0));
+    float3 right=float3(front.y,0,-front.x);
+    float3 facing=float3(front.x,0,front.y);
+    float3 relative=world-playerBodyCenter;
+    float2 face=float2(dot(relative,right),relative.y);
+    float nearBody=saturate((3.2f-length(relative))*2.0f);
+    float frontal=smoothstep(0.1f,0.85f,dot(relative,facing));
+    float body=nearBody*frontal;
+    if(nearBody<=0) return color;
+
+    // Two soft luminous eyes stay readable while the SPH surface deforms.
+    float eyeLeft=length((face-float2(-0.52f,0.85f))/float2(0.18f,0.31f));
+    float eyeRight=length((face-float2(0.52f,0.85f))/float2(0.18f,0.31f));
+    float eyeDistance=min(eyeLeft,eyeRight);
+    float eye=1-smoothstep(0.77f,1.04f,eyeDistance);
+    float eyeGlow=1-smoothstep(0.9f,2.0f,eyeDistance);
+
+    // Small trapped bubbles drift upward independently of the body motion.
+    float surface=saturate(dot(normal,normalize(toCamera)));
+    float rim=pow(1-saturate(dot(normal,normalize(cameraPosition-world))),2.0f);
+    float bubbles=(BubbleLayer(face,6.0f,0.55f,1.3f)*0.55f+
+                   BubbleLayer(face,11.0f,0.95f,8.7f)*0.32f)*surface;
+    bubbles*=1-eyeGlow*0.9f;
+    color=lerp(color,float3(0.06f,0.72f,0.30f),rim*nearBody*0.65f);
+    color+=float3(0.14f,0.90f,0.67f)*bubbles*body;
+    color+=float3(0.20f,0.57f,0.13f)*eyeGlow*body;
+    return lerp(color,float3(1.0f,0.98f,0.67f),eye*body);
+}
 struct FullscreenIn { float4 position:SV_POSITION; float2 uv:TEXCOORD0; };
 struct RayResult { float4 color:SV_Target0; float depth:SV_Target1; };
 
@@ -156,13 +197,19 @@ RayResult RaymarchPS(FullscreenIn input) {
         float fresnel=f0+(1-f0)*pow(1-saturate(dot(n,-ray)),5);
         float roughness=selected==2?0.12f:0.20f;
         float3 tint=saturate(phaseColor[selected].rgb);
-        float3 absorption=(1-tint)*(selected==2?0.55f:2.2f)+0.035f;
+        float4 localDensity=fluidDensity.SampleLevel(linearClamp,(cameraPosition+ray*farthest-volumeOrigin)/(voxelSize*volumeSize),0);
+        float inkFraction=selected==0?saturate(localDensity.w/max(localDensity.x,.001f)):0;
+        tint=lerp(tint,float3(.045,.32,.17),inkFraction);
+        float3 absorption=(1-tint)*(selected==2?0.55f:lerp(2.2f,7.2f,inkFraction))+0.035f;
         float3 transmission=exp(-absorption*thickness[selected]);
         float3 body=result*transmission+tint*(1-transmission)*0.12f;
         float opacity=saturate(phaseColor[selected].a);
         result=lerp(result,lerp(body,Reflection(n,ray,roughness),fresnel),opacity);
     }
-    output.color=float4(lerp(background,result,NearVolumeWeight(cameraPosition+ray*nearest)),1);
+    float3 nearestWorld=cameraPosition+ray*nearest;
+    if(playerDecoration>0.001f && nearestPhase==0)
+        result=lerp(result,PlayerSurfaceDetail(nearestWorld,normal,result),saturate(playerDecoration));
+    output.color=float4(lerp(background,result,NearVolumeWeight(nearestWorld)),1);
     return output;
 }
 
@@ -178,6 +225,21 @@ struct SprayOut {
 };
 SprayOut SprayVS(uint vertex:SV_VertexID, uint instance:SV_InstanceID) {
     SprayOut o=(SprayOut)0;
+    float2 corners[6]={float2(-1,-1),float2(-1,1),float2(1,-1),float2(1,-1),float2(-1,1),float2(1,1)};
+    o.local=corners[vertex];
+    if(instance>=particleCount) {
+        float id=(float)(instance-particleCount);
+        float3 jitter=frac(sin(float3(id*12.9898f+3.1f,id*78.233f+9.2f,id*39.346f+1.7f))*43758.5453f);
+        float age=frac(time*(0.24f+0.08f*jitter.y)+jitter.x);
+        float angle=id*2.39996323f;
+        float orbit=1.9f+0.95f*jitter.z;
+        float3 world=playerBodyCenter+float3(cos(angle)*orbit,-0.8f+age*3.4f,sin(angle)*orbit);
+        o.distantBulk=2;
+        o.centerView=mul(float4(world,1),view).xyz;
+        o.radius=0.07f+0.065f*jitter.y;
+        o.position=mul(float4(o.centerView+float3(o.local*o.radius,0),1),projection);
+        return o;
+    }
     FluidShape s=particleShapes[instance];
     VolumeParticle p=renderParticles[instance];
     float3 margin=min(ShapeCenter(s)-volumeOrigin,volumeOrigin+voxelSize*volumeSize-ShapeCenter(s));
@@ -186,8 +248,6 @@ SprayOut SprayVS(uint vertex:SV_VertexID, uint instance:SV_InstanceID) {
     if(s.info.w==0 || (s.info.z<0.005f && !distant)) { o.position=float4(2,2,2,1); return o; }
     o.shapeIndex=instance; o.distantBulk=distant ? 1 : 0;
     o.phase=VolumePhase(p.type);
-    float2 corners[6]={float2(-1,-1),float2(-1,1),float2(1,-1),float2(1,-1),float2(-1,1),float2(1,1)};
-    o.local=corners[vertex];
     o.centerView=mul(float4(distant ? ShapeCenter(s) : p.position,1),view).xyz;
     o.radius=distant ? s.info.y : s.info.z;
     o.position=mul(float4(o.centerView+float3(o.local*o.radius,0),1),projection);
@@ -195,6 +255,20 @@ SprayOut SprayVS(uint vertex:SV_VertexID, uint instance:SV_InstanceID) {
     return o;
 }
 float4 SprayPS(SprayOut input):SV_Target {
+    if(input.distantBulk==2) {
+        float r2=dot(input.local,input.local);
+        if(r2>=1) discard;
+        uint width,height; sceneDepth.GetDimensions(width,height);
+        float2 uv=input.position.xy/float2(width,height);
+        float z=input.centerView.z-sqrt(1-r2)*input.radius;
+        if(z>ViewDepth(uv)) discard;
+        float bulkDepth=fluidDepth.Load(int3((int2)input.position.xy,0));
+        if(bulkDepth>0 && z>bulkDepth) discard;
+        float ring=smoothstep(0.25f,0.62f,r2)*(1-smoothstep(0.75f,1.0f,r2));
+        float glint=1-smoothstep(0.02f,0.15f,length(input.local-float2(-0.35f,-0.35f)));
+        float coverage=saturate((1-r2)/max(fwidth(r2),0.001f));
+        return float4(0.35f,1.0f,0.64f,(ring*0.48f+glint*0.55f)*coverage*saturate(playerDecoration));
+    }
     if(input.distantBulk!=0) {
         uint width,height; sceneDepth.GetDimensions(width,height);
         float2 uv=input.position.xy/float2(width,height);
@@ -219,12 +293,14 @@ float4 SprayPS(SprayOut input):SV_Target {
         float3 normal=normalize(shape.row0.xyz*local.x+shape.row1.xyz*local.y+shape.row2.xyz*local.z);
         float f0=input.phase==2 ? 0.0204f : 0.035f;
         float fresnel=f0+(1-f0)*pow(1-saturate(dot(normal,-ray)),5);
-        float3 transmission=exp(-((1-saturate(input.color.rgb))*(input.phase==2 ? 0.55f : 2.2f)+0.035f)*(endT-t));
+        bool ink=renderParticles[input.shapeIndex].type>=8.0f;
+        float3 tint=ink?float3(.045,.32,.17):saturate(input.color.rgb);
+        float3 transmission=exp(-((1-tint)*(input.phase==2 ? 0.55f : ink?7.2f:2.2f)+0.035f)*(endT-t));
         float3 viewNormal=mul(normal,(float3x3)view);
         float2 refracted=clamp(uv+viewNormal.xy*float2(1,-1)*min(endT-t,2.0f)*0.025f/max(t*viewRay.z,1),0.001f,0.999f);
         if(ViewDepth(refracted)<t*viewRay.z) refracted=uv;
         float3 background=sceneColor.SampleLevel(linearClamp,refracted,0).rgb;
-        float3 color=lerp(background*transmission+input.color.rgb*(1-transmission)*0.12f,Reflection(normal,ray,input.phase==2 ? 0.12f : 0.20f),fresnel);
+        float3 color=lerp(background*transmission+tint*(1-transmission)*0.12f,Reflection(normal,ray,input.phase==2 ? 0.12f : 0.20f),fresnel);
         float edgeCoverage=saturate(discriminant/(a*0.15f));
         return float4(color,weight*edgeCoverage*saturate(input.color.a));
     }

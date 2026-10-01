@@ -2,82 +2,204 @@
     bool portfolioTrail_=false,portfolioRecall_=false,portfolioCharged_=false;
     int slimePreviousCores_=0;int slimeTarget_=3;float slimeLastTotal_=Game::Chrono::SlimeMaximumMass;int slimeHits_=0;
     entt::entity slimeTestProp_=entt::null,slimeTestShot_=entt::null;bool slimeFixture_=false,slimeDissolved_=false;
+    int domainTestRound_=0,domainTestNode_=1,domainTestCounts_[3]{};
+    int chainNode_=1,chainMaxLoops_=0;bool chainFired_=false,chainCaptured_=false;float chainWait_=0;
+    bool domainTestWaiting_=false,domainTestCapture_=false;float domainTestWait_=0;
+    #include "RogueliteValidation.inl"
     void UpdateInkTest(){
+        if(wcsstr(GetCommandLineW(),L"--rogue-smoke")){UpdateRogueliteTest();return;}
+        if(wcsstr(GetCommandLineW(),L"--horde-smoke")){UpdateHordeTest();return;}
+        if(wcsstr(GetCommandLineW(),L"--scenery-perf")){UpdateSceneryPerformanceTest();return;}
+        if(wcsstr(GetCommandLineW(),L"--domain-skills")){UpdateDomainSkillsTest();return;}
+        if(wcsstr(GetCommandLineW(),L"--domain-chain")){UpdateDomainChainTest();return;}
         if(wcsstr(GetCommandLineW(),L"--slime-field")){UpdateSlimeFieldTest();return;}
         if(wcsstr(GetCommandLineW(),L"--slime-polish")){UpdateSlimePolishTest();return;}
         using namespace Game;using namespace Game::Chrono;
-        auto& r=GetRegistry();auto player=FindObjectByName("Player"),boss=FindObjectByName("Boss"),core=FindObjectByName("Chrono Weakpoint");
-        auto& p=r.get<Player>(player);auto& ink=r.get<InkPlayer>(player);auto& t=r.get<TransformComponent>(player);auto& c=r.get<CreatureBoss>(boss);
-        auto& input=r.get<ControlFrame>(player);input={};input.cameraInput=true;
-        float elapsed=std::chrono::duration<float>(std::chrono::steady_clock::now()-start_).count();
-        bool battle=wcsstr(GetCommandLineW(),L"--slime-battle")!=nullptr;
-        bool low=wcsstr(GetCommandLineW(),L"--slime-low")!=nullptr;
-        if(frames_==0){t.translate={-60,1.25f,-45};p.velocity={};if(low){p.mass=8;r.get<HealthComponent>(player).hp=8;}} // Fixed fixture spawn; every subsequent action uses production input.
-        Vec pos{t.translate.x,t.translate.y,t.translate.z};
-        auto ct=r.get<TransformComponent>(core).translate;Vec d=Unit(Vec{ct.x,ct.y,ct.z}-(pos+Vec{0,.25f,0}));
-        input.yaw=std::atan2(d.x,d.z);input.pitch=-std::asin(std::clamp(d.y,-1.f,1.f));
-        float required=(slimeTarget_==3?90.f:slimeTarget_==2?43.f:18.f)*ink.capacity/95.f;
-        if(ink.phase==SlimePhase::Roaming){
-            if(ink.deployed>=required&&(!low||(c.sweepPhase==3&&c.sweepTime<.8f)))input.attack=!ink.previousAttack;
-            else{
-                // Traverse a safe rectangular route and build charge on dry floor.
-                Vec goals[]={{60,0,-45},{60,0,-25},{-60,0,-25},{-60,0,-45}};
-                Vec goal=goals[inkStage_%4];Vec delta=goal-pos;delta.y=0;
-                if(Length(delta)<3)++inkStage_;
-                Vec world=Unit(delta);input.aim=true;
-                input.move={world.x*std::cos(input.yaw)-world.z*std::sin(input.yaw),0,world.x*std::sin(input.yaw)+world.z*std::cos(input.yaw)};
-                if(c.sweepPhase==2)input.dodge=p.cooldown<=0;
+        auto& r=GetRegistry();auto player=FindObjectByName("Player");
+        auto& p=r.get<Player>(player);auto& ink=r.get<InkPlayer>(player);auto& t=r.get<TransformComponent>(player);
+        auto& input=r.get<ControlFrame>(player);input={};input.cameraInput=true;input.pitch=.55f;
+        const float radii[]={8,16,28};float radius=radii[std::min(2,domainTestRound_)];
+        // Invulnerability isolates the new offensive loop while the real boss continues its AI.
+        p.invincible=1;
+        if(frames_++==0){t.translate={-180+radius,1.25f,-160};p.velocity={};ink.domainPath.Clear();}
+        if(!domainTestWaiting_&&domainTestRound_<3){
+            Vec pos{t.translate.x,0,t.translate.z};float angle=domainTestNode_*6.283185f/48;
+            Vec goal{-180+radius*std::cos(angle),0,-160+radius*std::sin(angle)};
+            if(DomainDistance(pos,goal)<1){++domainTestNode_;angle=domainTestNode_*6.283185f/48;
+                goal={-180+radius*std::cos(angle),0,-160+radius*std::sin(angle)};}
+            input.move=Unit(goal-pos);
+            if(ink.domainPath.candidate.Ready()){
+                if(!domainTestCapture_){Capture(L"tests/out/domain-ready.png");domainTestCapture_=true;}
+                input.move={};input.attack=true;
             }
-        }else if(ink.phase==SlimePhase::Charging)input.attack=ink.deployed>.05f;
-        if(!battle&&!slimeFixture_&&ink.phase==SlimePhase::Firing&&ink.tier==3&&ink.phaseAge>.3f){
-            Vec axis=Unit(ink.beamEnd-ink.beamStart);slimeFixture_=true;
-            slimeTestProp_=r.create();auto& prop=r.emplace<SlimeDissolvable>(slimeTestProp_);prop.center=ink.beamStart+axis*6;prop.half={.6f,.6f,.6f};prop.integrity=8;
-            r.emplace<MeshRendererComponent>(slimeTestProp_);
-            slimeTestShot_=r.create();auto& shot=r.emplace<HitboxComponent>(slimeTestShot_);shot.isProjectile=true;shot.tag=TagType::Enemy;
-            auto at=ink.beamStart+axis*3;r.emplace<TransformComponent>(slimeTestShot_).translate={at.x,at.y,at.z};
         }
-        Game::GameScene::Update();++frames_;
-        if(wcsstr(GetCommandLineW(),L"--portfolio")){
-            // An oblique presentation camera reveals the trail and beam length.
-            Vec at{t.translate.x,t.translate.y,t.translate.z};
-            Vec forward{std::sin(input.yaw),0,std::cos(input.yaw)};
-            Vec right{forward.z,0,-forward.x};
-            Vec eye=at+right*25-forward*16+Vec{0,19,0};
-            Vec focus=at+forward*10+Vec{0,3,0};
-            Vec view=Unit(focus-eye);
-            GetCamera().SetPosition(eye.x,eye.y,eye.z);
-            GetCamera().SetRotation(-std::asin(view.y),std::atan2(view.x,view.z),0);
-            if(!portfolioTrail_&&ink.phase==SlimePhase::Roaming&&ink.deployed>ink.capacity*.8f){Capture(L"tests/out/portfolio-trail.png");portfolioTrail_=true;}
-            if(!portfolioRecall_&&ink.phase==SlimePhase::Charging&&ink.charge>ink.capacity*.35f){Capture(L"tests/out/portfolio-recall.png");portfolioRecall_=true;}
-            if(!portfolioCharged_&&ink.phase==SlimePhase::Charging&&ink.charge>ink.capacity*.85f){Capture(L"tests/out/portfolio-charged.png");portfolioCharged_=true;}
+        int before=ink.domainVolleys;Game::GameScene::Update();
+        if(ink.domainVolleys>before){domainTestCounts_[domainTestRound_]=ink.domainLastCount;domainTestWaiting_=true;domainTestWait_=0;}
+        if(domainTestWaiting_){
+            domainTestWait_+=1.f/60;
+            if(domainTestWait_>.8f&&domainTestWait_<.85f)Capture((L"tests/out/domain-volley-"+std::to_wstring(domainTestRound_)+L".png").c_str());
+            if(domainTestWait_>1&&ink.domainQueued==0&&ink.domainFlying==0){
+                ++domainTestRound_;domainTestWaiting_=false;domainTestNode_=1;
+                if(domainTestRound_<3){t.translate={-180+radii[domainTestRound_],1.25f,-160};p.velocity={};ink.domainPath.Clear();}
+            }
         }
-        if(slimeFixture_)slimeDissolved_=!r.valid(slimeTestProp_)&&!r.valid(slimeTestShot_);
-        inkPaint_|=ink.deployed>1;inkSwim_|=ink.swimming&&Length(p.velocity)>15;
-        float total=p.mass+ink.deployed+ink.spent;
-        slimeMass_&=total<=(p.stats.counters>slimePreviousCores_?SlimeMaximumMass+.02f:slimeLastTotal_+(ink.regenerating?1.61f:.02f))&&total>=-.01f;slimeLastTotal_=total;slimePreviousCores_=p.stats.counters;
-        if(ink.phase==SlimePhase::Firing){
-            slimeTiers_[ink.tier]=true;
-            if(ink.tier==3&&ink.monoAge>=.035f&&ink.monoAge<.075f){slimeMono_|=Engine::Renderer::GetInstance()->GetPostProcessParams().san>.95f;Capture(L"tests/out/slime-monochrome.png");}
-            if(ink.phaseAge>.23f&&!inkJetCapture_){Capture((L"tests/out/slime-beam-"+std::to_wstring(ink.tier)+L".png").c_str());inkJetCapture_=true;}
+        if(frames_%120==0){trace_<<"domain round="<<domainTestRound_<<" length="<<ink.domainPath.length<<" ready="<<ink.domainPath.candidate.Ready()<<" queued="<<ink.domainQueued<<" flying="<<ink.domainFlying<<" cores="<<p.stats.counters<<" hits="<<ink.coreHits<<'\n';trace_.flush();}
+        float elapsed=std::chrono::duration<float>(std::chrono::steady_clock::now()-start_).count();
+        if(domainTestRound_>=3||elapsed>100){
+            bool pass=domainTestRound_==3&&domainTestCounts_[0]==48&&domainTestCounts_[1]==domainTestCounts_[0]&&domainTestCounts_[2]==domainTestCounts_[0]&&ink.coreHits>0&&p.mass==SlimeMaximumMass;
+            std::ofstream("tests/out/ink-smoke.txt")<<(pass?"PASS":"FAIL")<<" domains="<<ink.domainVolleys<<" missiles="<<domainTestCounts_[0]<<','<<domainTestCounts_[1]<<','<<domainTestCounts_[2]<<" core_hits="<<ink.coreHits<<" body="<<p.mass<<" queued="<<ink.domainQueued<<" flying="<<ink.domainFlying<<" elapsed="<<elapsed;
+            Capture(L"tests/out/domain-result.png");PostQuitMessage(pass?0:2);
         }
-        if(ink.phase==SlimePhase::Returning)slimeReturn_=true;
-        if(slimeTiers_[slimeTarget_]&&ink.phase==SlimePhase::Roaming){slimeTarget_=battle?3:slimeTarget_==3?2:1;inkJetCapture_=false;}
-        if(frames_%120==0){trace_<<"slime phase="<<int(ink.phase)<<" tier="<<ink.tier<<" body="<<p.mass<<" trail="<<ink.deployed<<" charge="<<ink.charge<<" spent="<<ink.spent<<" hit="<<ink.coreHits<<" pos="<<t.translate.x<<','<<t.translate.y<<','<<t.translate.z<<'\n';trace_.flush();}
-        bool complete=slimeTiers_[1]&&slimeTiers_[2]&&slimeTiers_[3]&&ink.phase==SlimePhase::Roaming;
-        if(battle)complete=p.stats.counters==3;
-        if(complete||p.mass<=0||elapsed>(battle?180.f:85.f)){bool pass=complete&&inkPaint_&&inkSwim_&&slimeMono_&&slimeReturn_&&slimeMass_&&(battle||slimeDissolved_);
-            Capture(L"tests/out/ink-result.png");std::ofstream("tests/out/ink-smoke.txt")<<(pass?"PASS":"FAIL")<<" trail="<<inkPaint_<<" slide="<<inkSwim_<<" tiers="<<slimeTiers_[1]<<slimeTiers_[2]<<slimeTiers_[3]<<" monochrome="<<slimeMono_<<" return="<<slimeReturn_<<" mass="<<slimeMass_<<" dissolve="<<slimeDissolved_<<" cores="<<p.stats.counters<<" hits="<<ink.coreHits<<" elapsed="<<elapsed;PostQuitMessage(pass?0:2);}
+    }
+    int hordeNode_=1,hordeMaxAlive_=0,hordeSpawnAtBoss_=0,hordeMaxAttacks_=0;bool hordeEmerging_=false,hordeBoss_=false,hordeHidden_=true,hordeVolleyCapture_=false;float hordeBossAge_=0;
+    void UpdateHordeTest(){
+        using namespace Game;using namespace Game::Chrono;
+        auto& r=GetRegistry();auto player=FindObjectByName("Player");
+        auto& p=r.get<Player>(player);auto& ink=r.get<InkPlayer>(player);auto& t=r.get<TransformComponent>(player);
+        auto& input=r.get<ControlFrame>(player);input={};input.cameraInput=true;input.pitch=.05f;p.invincible=1;
+        if(frames_++==0){t.translate={12,1.25f,-12};p.velocity={};ink.domainPath.Clear();}
+        if(frames_<1800){
+            for(auto e:r.view<CreaturePart,MeshRendererComponent>())hordeHidden_&=!r.get<MeshRendererComponent>(e).enabled;
+            hordeHidden_&=ink.swarmKills==0&&ink.battlePhase==BattlePhase::Horde;
+        }else{
+            Vec pos{t.translate.x,0,t.translate.z};float a=hordeNode_*6.283185f/96;
+            Vec goal{12*std::cos(a),0,-12+12*std::sin(a)};
+            if(DomainDistance(pos,goal)<.8f){++hordeNode_;a=hordeNode_*6.283185f/96;goal={12*std::cos(a),0,-12+12*std::sin(a)};}
+            input.move=Unit(goal-pos);input.attack=ink.domainPath.candidate.Ready();
+        }
+        Game::GameScene::Update();hordeMaxAlive_=std::max(hordeMaxAlive_,ink.swarmAlive);hordeMaxAttacks_=std::max(hordeMaxAttacks_,ink.swarmActiveAttacks);
+        if(frames_==120)Capture(L"tests/out/horde-crowd.png");
+        if(!hordeVolleyCapture_&&ink.domainVolleys==1&&ink.domainFlying>25){Capture(L"tests/out/horde-volley.png");hordeVolleyCapture_=true;}
+        if(ink.battlePhase!=BattlePhase::Horde&&ink.swarmKills<SwarmBossKills)hordeHidden_=false;
+        if(ink.battlePhase==BattlePhase::Emerging){
+            if(!hordeEmerging_){hordeEmerging_=true;Capture(L"tests/out/horde-eruption.png");}
+            if(ink.battleAge>2.7f&&ink.battleAge<2.74f)Capture(L"tests/out/horde-emerging.png");
+        }
+        if(ink.battlePhase==BattlePhase::Boss){
+            if(!hordeBoss_){hordeBoss_=r.get<CreatureBoss>(*r.view<CreatureBoss>().begin()).stage==CreatureStage::Snake;hordeSpawnAtBoss_=ink.swarmSpawned;}
+            hordeBossAge_+=1.f/60;
+        }
+        if(frames_%120==0){trace_<<"horde kills="<<ink.swarmKills<<" alive="<<ink.swarmAlive<<" phase="<<int(ink.battlePhase)<<" volleys="<<ink.domainVolleys<<" strikes="<<ink.swarmStrikes<<" detonations="<<ink.swarmDetonations<<" core_hits="<<ink.coreHits<<'\n';trace_.flush();}
+        float elapsed=std::chrono::duration<float>(std::chrono::steady_clock::now()-start_).count();
+        if((hordeBossAge_>8&&ink.coreHits>0)||elapsed>210){
+            bool pass=hordeHidden_&&hordeEmerging_&&hordeBoss_&&ink.swarmKills>=SwarmBossKills&&ink.swarmSpawned>hordeSpawnAtBoss_+12&&hordeMaxAlive_<=int(SwarmCapacity)&&hordeMaxAttacks_<=3&&ink.swarmStrikes>0&&ink.swarmDetonations>0&&ink.coreHits>0;
+            std::ofstream("tests/out/ink-smoke.txt")<<(pass?"PASS":"FAIL")<<" horde kills="<<ink.swarmKills<<" max_alive="<<hordeMaxAlive_<<" max_attacks="<<hordeMaxAttacks_<<" hidden="<<hordeHidden_<<" emerging="<<hordeEmerging_<<" snake="<<hordeBoss_<<" reinforcements="<<ink.swarmSpawned-hordeSpawnAtBoss_<<" volleys="<<ink.domainVolleys<<" strikes="<<ink.swarmStrikes<<" detonations="<<ink.swarmDetonations<<" core_hits="<<ink.coreHits<<" elapsed="<<elapsed;
+            Capture(L"tests/out/horde-boss.png");PostQuitMessage(pass?0:2);
+        }
     }
     bool fieldValid_=true;int fieldEdges_=0;
+    double sceneryGpu_[3]{},sceneryWall_[3]{};uint64_t sceneryOriginal_[3]{},scenerySelected_[3]{},sceneryOriginalVertices_[3]{},scenerySelectedVertices_[3]{};int scenerySamples_[3]{};
+    std::chrono::steady_clock::time_point sceneryPrevious_{};
+    void UpdateSceneryPerformanceTest(){
+        using namespace Game;using namespace Game::Chrono;
+        auto now=std::chrono::steady_clock::now();double seconds=sceneryPrevious_.time_since_epoch().count()?std::chrono::duration<double>(now-sceneryPrevious_).count():0;sceneryPrevious_=now;
+        auto* renderer=Engine::Renderer::GetInstance();auto& r=GetRegistry();auto player=FindObjectByName("Player");
+        auto& p=r.get<Player>(player);auto& t=r.get<TransformComponent>(player);auto& input=r.get<ControlFrame>(player);
+        unsigned phase=std::min(2u,frames_/240),frame=frames_%240;
+        if(frames_==0){t.translate={-60,1.25f,-45};p.velocity={};}
+        if(frame>=80&&frame<200){const auto& stats=renderer->GetSceneryLodStats();const auto& gpu=renderer->GetFluidProfileStats();
+            sceneryOriginal_[phase]+=stats.originalIndices;scenerySelected_[phase]+=stats.selectedIndices;
+            sceneryOriginalVertices_[phase]+=stats.originalVertices;scenerySelectedVertices_[phase]+=stats.selectedVertices;
+            sceneryGpu_[phase]+=gpu.lastMs[Engine::Renderer::SceneRender];sceneryWall_[phase]+=seconds*1000;++scenerySamples_[phase];}
+        renderer->SetDistanceLodEnabled(phase>0);p.invincible=1;p.hitStop=1;input={};input.cameraInput=true;input.pitch=.18f;
+        Game::GameScene::Update();auto params=renderer->GetPostProcessParams();params.dofStrength=phase==2?.75f:0;renderer->SetPostProcessParams(params);
+        if(frame==210)Capture((L"tests/out/scenery-"+std::to_wstring(phase)+L".png").c_str());
+        if(++frames_>=720){
+            bool pass=scenerySamples_[0]>0&&sceneryOriginal_[0]>0&&sceneryOriginal_[0]==scenerySelected_[0]&&scenerySelected_[1]<sceneryOriginal_[1]*.8&&scenerySelected_[2]<sceneryOriginal_[2]*.8;
+            std::ofstream report("tests/out/ink-smoke.txt");report<<(pass?"PASS":"FAIL")<<" scenery LOD + depth of field\n";
+            for(int i=0;i<3;++i)report<<"phase="<<i<<" original_indices="<<sceneryOriginal_[i]/uint64_t(std::max(1,scenerySamples_[i]))<<" selected_indices="<<scenerySelected_[i]/uint64_t(std::max(1,scenerySamples_[i]))<<" original_vertices="<<sceneryOriginalVertices_[i]/uint64_t(std::max(1,scenerySamples_[i]))<<" selected_vertices="<<scenerySelectedVertices_[i]/uint64_t(std::max(1,scenerySamples_[i]))<<" gpu_scene_ms="<<sceneryGpu_[i]/std::max(1,scenerySamples_[i])<<" wall_frame_ms="<<sceneryWall_[i]/std::max(1,scenerySamples_[i])<<'\n';
+            PostQuitMessage(pass?0:2);
+        }
+    }
+    void UpdateDomainChainTest(){
+        using namespace Game;using namespace Game::Chrono;
+        auto& r=GetRegistry();auto player=FindObjectByName("Player");
+        auto& p=r.get<Player>(player);auto& ink=r.get<InkPlayer>(player);auto& t=r.get<TransformComponent>(player);
+        auto& input=r.get<ControlFrame>(player);input={};input.cameraInput=true;input.pitch=.7f;p.invincible=1;
+        const Vec origin{-180,0,-160};
+        if(frames_++==0){t.translate={origin.x,1.25f,origin.z};p.velocity={};ink.domainPath.Clear();}
+        if(!chainFired_){
+            Vec pos{t.translate.x,0,t.translate.z};
+            auto goalAt=[&](int node){int petal=std::min(2,(node-1)/96);float angle=petal*6.283185f/3;
+                Vec radial{std::cos(angle),0,std::sin(angle)},tangent{-radial.z,0,radial.x};
+                float a=3.14159265f+float(node-petal*96)*6.283185f/96;
+                return origin+radial*(16*(1+std::cos(a)))+tangent*(8*std::sin(a));};
+            Vec goal=goalAt(chainNode_);
+            if(DomainDistance(pos,goal)<.8f&&chainNode_<288){++chainNode_;goal=goalAt(chainNode_);}
+            input.move=Unit(goal-pos);
+            if(ink.domainPath.candidate.Ready())chainMaxLoops_=std::max(chainMaxLoops_,ink.domainPath.candidate.Enclosures());
+            if(chainMaxLoops_>=3){input.move={};
+                if(!chainCaptured_){Capture(L"tests/out/chain-ready.png");chainCaptured_=true;}
+                else input.attack=true;
+            }
+        }
+        int before=ink.domainVolleys;Game::GameScene::Update();
+        if(ink.domainVolleys>before)chainFired_=true;
+        if(chainFired_){chainWait_+=1.f/60;if(chainWait_>.8f&&chainWait_<.82f)Capture(L"tests/out/chain-volley.png");}
+        if(frames_%120==0){trace_<<"chain node="<<chainNode_<<" loops="<<chainMaxLoops_<<" fired="<<chainFired_<<" hits="<<ink.coreHits<<'\n';trace_.flush();}
+        float elapsed=std::chrono::duration<float>(std::chrono::steady_clock::now()-start_).count();
+        if((chainFired_&&chainWait_>1&&ink.domainQueued==0&&ink.domainFlying==0)||elapsed>80){
+            bool pass=chainFired_&&ink.domainLastEnclosures==3&&ink.domainLastShape==DomainShape::Loop&&ink.domainLastCount==80&&ink.coreHits>0;
+            std::ofstream("tests/out/ink-smoke.txt")<<(pass?"PASS":"FAIL")<<" one-stroke loops="<<ink.domainLastEnclosures<<" missiles="<<ink.domainLastCount<<" power="<<DomainBulletPower(ink.domainLastEnclosures)<<" normal="<<(ink.domainLastShape==DomainShape::Loop)<<" hits="<<ink.coreHits<<" elapsed="<<elapsed;
+            PostQuitMessage(pass?0:2);
+        }
+    }
+    int skillRound_=0,skillNode_=1,skillEscape_=0;bool skillWaiting_=false,skillRemote_=true;float skillWait_=0;
+    void UpdateDomainSkillsTest(){
+        using namespace Game;using namespace Game::Chrono;
+        auto& r=GetRegistry();auto player=FindObjectByName("Player");auto& p=r.get<Player>(player);
+        auto& ink=r.get<InkPlayer>(player);auto& t=r.get<TransformComponent>(player);
+        auto& input=r.get<ControlFrame>(player);input={};input.cameraInput=true;input.pitch=.4f;p.invincible=1;
+        Vec origin{-180,0,-160},pos{t.translate.x,0,t.translate.z};
+        const DomainShape shapes[]={DomainShape::Triangle,DomainShape::Square,DomainShape::Infinity};
+        if(frames_++==0){t.translate={origin.x,1.25f,origin.z};p.velocity={};ink.domainPath.Clear();}
+        if(!skillWaiting_&&skillRound_<3){
+            if(ink.domainPath.candidate.Ready()&&ink.domainPath.candidate.shape==shapes[skillRound_]){
+                // Escape outside the lobes rather than draw a new dividing chord
+                // through the figure eight (which correctly creates a third region).
+                if(skillEscape_++<45)input.move=skillRound_==2?Vec{0,0,1}:Vec{-1,0,0};
+                else{skillRemote_&=DomainDistance(pos,ink.domainPath.candidate.points.front())>12;
+                    input.attack=true;Capture((L"tests/out/skill-ready-"+std::to_wstring(skillRound_)+L".png").c_str());}
+            }else{
+                Vec goal;
+                if(skillRound_<2){
+                    const Vec triangle[]={{0,0,0},{30,0,0},{15,0,26},{0,0,0}};
+                    const Vec square[]={{0,0,0},{30,0,0},{30,0,30},{0,0,30},{0,0,0}};
+                    int nodes=skillRound_==0?3:4;const Vec* route=skillRound_==0?triangle:square;
+                    goal=origin+route[skillNode_%nodes];
+                    if(DomainDistance(pos,goal)<1.2f){++skillNode_;goal=origin+route[skillNode_%nodes];}
+                }else{
+                    float a=skillNode_*6.283185f/96;goal=origin+Vec{28*std::sin(a),0,18*std::sin(a)*std::cos(a)};
+                    if(DomainDistance(pos,goal)<1.2f){++skillNode_;a=skillNode_*6.283185f/96;goal=origin+Vec{28*std::sin(a),0,18*std::sin(a)*std::cos(a)};}
+                }
+                input.move=Unit(goal-pos);
+            }
+        }
+        int before=ink.domainVolleys;Game::GameScene::Update();
+        if(ink.domainVolleys>before){skillWaiting_=true;skillWait_=0;}
+        if(skillWaiting_){skillWait_+=1.f/60;
+            if(skillWait_>.8f&&skillWait_<.84f)Capture((L"tests/out/skill-volley-"+std::to_wstring(skillRound_)+L".png").c_str());
+            if(skillWait_>1&&ink.domainQueued==0&&ink.domainFlying==0){++skillRound_;skillWaiting_=false;skillNode_=1;skillEscape_=0;
+                if(skillRound_<3){t.translate={origin.x,1.25f,origin.z};p.velocity={};ink.domainPath.Clear();}}
+        }
+        float elapsed=std::chrono::duration<float>(std::chrono::steady_clock::now()-start_).count();
+        if(frames_%120==0){trace_<<"skill round="<<skillRound_<<" node="<<skillNode_<<" shape="<<int(ink.domainPath.candidate.shape)<<" ready="<<ink.domainPath.candidate.Ready()<<" escape="<<skillEscape_<<" flying="<<ink.domainFlying<<'\n';trace_.flush();}
+        bool used=ink.domainSkillUses[1]>0&&ink.domainSkillUses[2]>0&&ink.domainSkillUses[3]>0;
+        if(skillRound_>=3||(used&&p.stats.counters>=3)||elapsed>100){
+            bool pass=used&&skillRemote_&&ink.coreHits>0;
+            std::ofstream("tests/out/ink-smoke.txt")<<(pass?"PASS":"FAIL")<<" triangle="<<ink.domainSkillUses[1]<<" square="<<ink.domainSkillUses[2]<<" infinity="<<ink.domainSkillUses[3]<<" remote="<<skillRemote_<<" hits="<<ink.coreHits<<" elapsed="<<elapsed;
+            PostQuitMessage(pass?0:2);
+        }
+    }
     void UpdateSlimeFieldTest(){
         using namespace Game;using namespace Game::Chrono;
         auto& r=GetRegistry();auto player=FindObjectByName("Player");auto& p=r.get<Player>(player);
         auto& t=r.get<TransformComponent>(player);auto& ink=r.get<InkPlayer>(player);
         auto& input=r.get<ControlFrame>(player);input={};input.cameraInput=true;
-        // Four isolated boundary fixtures, then an overview of the production scene.
+        // Four isolated boundary fixtures on the expanded floor, then an overview.
         int side=frames_/150,frame=frames_%150;
         if(side<4){
-            if(frame==0){const Vec starts[]={{125,1.25f,0},{-125,1.25f,0},{0,1.25f,155},{0,1.25f,-115}};
+            if(frame==0){const Vec starts[]={{315,1.25f,0},{-315,1.25f,0},{0,1.25f,365},{0,1.25f,-325}};
                 t.translate={starts[side].x,starts[side].y,starts[side].z};p.velocity={};}
             const Vec directions[]={{1,0,0},{-1,0,0},{0,0,1},{0,0,-1}};
             input.move=directions[side];input.aim=true;p.invincible=1;
@@ -85,18 +207,27 @@
         Game::GameScene::Update();
         if(side<4&&frame==149){
             fieldValid_&=p.grounded&&std::abs(t.translate.y-1.25f)<.1f&&ink.deployed>0;
-            fieldValid_&=side==0?t.translate.x>137:side==1?t.translate.x<-137:side==2?t.translate.z>167:t.translate.z<-127;
-            fieldValid_&=std::abs(t.translate.x)<=138.01f&&t.translate.z>=-128.01f&&t.translate.z<=168.01f;
+            fieldValid_&=side==0?t.translate.x>327:side==1?t.translate.x<-327:side==2?t.translate.z>377:t.translate.z<-337;
+            fieldValid_&=std::abs(t.translate.x)<=328.01f&&t.translate.z>=-338.01f&&t.translate.z<=378.01f;
             ++fieldEdges_;
         }
-        if(side>=4){GetCamera().SetPosition(220,210,-260);GetCamera().SetRotation(.52f,-.64f,0);}
+        if(side>=4){GetCamera().SetPosition(325,310,-390);GetCamera().SetRotation(.52f,-.64f,0);}
         if(frames_==630){
-            int bosses=int(r.view<CreatureBoss>().size()),scenery=0;
-            for(auto e:r.view<NameComponent>())if(r.get<NameComponent>(e).name=="Chrono Distant mountain"){
-                ++scenery;fieldValid_&=!r.any_of<BoxColliderComponent,GpuMeshColliderComponent,Solid>(e);}
-            fieldValid_&=bosses==1&&r.view<Hopper>().size()==0&&scenery==28&&fieldEdges_==4;
-            Capture(L"tests/out/verdant-basin.png");
-            std::ofstream("tests/out/ink-smoke.txt")<<(fieldValid_?"PASS":"FAIL")<<" field_edges="<<fieldEdges_<<" bosses="<<bosses<<" mountains="<<scenery<<" trail="<<ink.deployed;
+            int bosses=int(r.view<CreatureBoss>().size()),rockFaces=0,boulders=0,grass=0,grassPatches=0,pebbles=0,scannedStones=0,oldScenery=0;
+            for(auto e:r.view<NameComponent>()){
+                const auto& name=r.get<NameComponent>(e).name;
+                if(name=="Chrono Scanned rock face")++rockFaces;
+                if(name=="Chrono Border boulder")++boulders;
+                if(name=="Chrono Meadow grass")++grass;
+                if(name=="Chrono Meadow grass patch")++grassPatches;
+                if(name=="Chrono Field pebble")++pebbles;
+                if(name=="Chrono Scanned field stone")++scannedStones;
+                if(name=="Chrono Distant mountain"||name=="Chrono Woodland tree"||name=="Chrono Basin rocks"||name=="Chrono Citadel tower"||name=="Chrono Creature floor"||name=="Chrono Sandstone cliff"||name=="Chrono Scanned cliff")++oldScenery;
+                if(name=="Chrono Scanned rock face"||name=="Chrono Border boulder"||name=="Chrono Meadow grass"||name=="Chrono Meadow grass patch"||name=="Chrono Field pebble"||name=="Chrono Scanned field stone")fieldValid_&=!r.any_of<BoxColliderComponent,GpuMeshColliderComponent,Solid>(e);
+            }
+            fieldValid_&=bosses==1&&r.view<Hopper>().size()==0&&rockFaces==12&&boulders==12&&grass==16&&grassPatches==272&&pebbles==203&&scannedStones==8&&oldScenery==0&&fieldEdges_==4;
+            Capture(L"tests/out/meadow-field.png");
+            std::ofstream("tests/out/ink-smoke.txt")<<(fieldValid_?"PASS":"FAIL")<<" field_edges="<<fieldEdges_<<" bosses="<<bosses<<" rock_faces="<<rockFaces<<" boulders="<<boulders<<" grass="<<grass<<" grass_patches="<<grassPatches<<" pebbles="<<pebbles<<" scanned_stones="<<scannedStones<<" old_scenery="<<oldScenery<<" trail="<<ink.deployed;
             PostQuitMessage(fieldValid_?0:2);
         }
         ++frames_;
@@ -129,7 +260,7 @@
         float elapsed=std::chrono::duration<float>(std::chrono::steady_clock::now()-start_).count();
         if(inkFinishFrames_>210||elapsed>30||p.mass<=0){
             bool pass=polishSupportMin_>.12f&&polishSupportDelta_<.18f&&polishJump_&&polishLand_&&ink.footprintSerial>0&&ink.footprintRadius>2&&polishUp_&&stopped&&polishGrounded_&&polishMaxStep_<.6f&&ink.deployed>100&&p.mass>SlimeMaximumMass*.5f&&!Engine::Renderer::GetInstance()->GetDrawFluidDebugArrows();
-            std::ofstream("tests/out/ink-smoke.txt")<<(pass?"PASS":"FAIL")<<" support_min="<<polishSupportMin_<<" support_delta="<<polishSupportDelta_<<" rest_height="<<polishRestHeight_<<" air_height="<<polishAirHeight_<<" land_height="<<polishLandingHeight_<<" footprint="<<ink.footprintRadius<<" jump="<<polishJump_<<" landing="<<polishLand_<<" ramp_up="<<polishUp_<<" ramp_down="<<stopped<<" grounded="<<polishGrounded_<<" max_y_step="<<polishMaxStep_<<" body="<<p.mass<<" trail="<<ink.deployed;
+            std::ofstream("tests/out/ink-smoke.txt")<<(pass?"PASS":"FAIL")<<" support_min="<<polishSupportMin_<<" support_delta="<<polishSupportDelta_<<" rest_height="<<polishRestHeight_<<" air_height="<<polishAirHeight_<<" land_height="<<polishLandingHeight_<<" footprint="<<ink.footprintRadius<<" jump="<<polishJump_<<" landing="<<polishLand_<<" traverse_out="<<polishUp_<<" traverse_back="<<stopped<<" grounded="<<polishGrounded_<<" max_y_step="<<polishMaxStep_<<" body="<<p.mass<<" trail="<<ink.deployed;
             PostQuitMessage(pass?0:2);
         }
     }

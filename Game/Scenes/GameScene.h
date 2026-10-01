@@ -51,6 +51,7 @@ public:
 	bool IsPaused() const { return isPaused_; }
 	bool IsResultShowing() const { return IsStageClear(); }
 	void SetIsPlaying(bool play);
+    void SetPaused(bool paused);
 
 	void CreatePauseMenu();  // ★追加
 	void DestroyPauseMenu(); // ★追加

@@ -32,7 +32,7 @@ VSOut main(VSIn v, uint instanceID : SV_InstanceID) {
     VSOut o;
     Particle p = Particles[instanceID];
     
-    if (FluidRenderSupport(p.density) <= 0 || p.color.a < 0.01f || p.position.y < -500.0f) {
+    if (p.type>=8.0f || FluidRenderSupport(p.density) <= 0 || p.color.a < 0.01f || p.position.y < -500.0f) {
         o.svpos = float4(0, 0, 0, 0);
         o.uv = float2(0, 0);
         o.type = 0.0f;

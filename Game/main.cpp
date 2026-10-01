@@ -53,17 +53,8 @@ int WINAPI WinMain(_In_ HINSTANCE hInst, _In_opt_ HINSTANCE, _In_ LPSTR commandL
 #ifdef NDEBUG
             SetCurrentDirectoryW(exePath);
 #else
-			// プロジェクトルートを探す (neo_Engine ディレクトリ)
-			wchar_t projectPath[32768] = {};
-			wcscpy_s(projectPath, exePath);
-			wcscat_s(projectPath, L"\\..\\..\\..\\neo_Engine");
-
-			DWORD attr = GetFileAttributesW(projectPath);
-			if (attr != INVALID_FILE_ATTRIBUTES && (attr & FILE_ATTRIBUTE_DIRECTORY)) {
-				SetCurrentDirectoryW(projectPath);
-			} else {
-				SetCurrentDirectoryW(exePath);
-			}
+			// Use the existing project-marker search for custom diagnostic build directories too.
+			SetCurrentDirectoryW(Engine::PathUtils::FromUTF8(Engine::PathUtils::GetRootPath()).c_str());
 #endif
 		}
 	}

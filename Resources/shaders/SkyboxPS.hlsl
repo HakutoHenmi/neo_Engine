@@ -28,6 +28,9 @@ float4 main(PSIn p) : SV_TARGET {
     if (gUseCubemapBackground != 0) {
         // Cubemapから景色をサンプリング
         color = gCubeMap.Sample(gSampler, dir).rgb;
+        // 実写HDRI等の高輝度テクスチャが白飛び・青飛びするのを防ぐためトーンマッピングを適用
+        color = color / (color + 1.0);
+        color = pow(color, 1.0 / 2.2);
     } else {
         // 超高速化＆軽量化された美しい宇宙空間の生成（TDRの原因を取り除いた完全版）
         color = GetProceduralSpaceColor(dir, gTime);

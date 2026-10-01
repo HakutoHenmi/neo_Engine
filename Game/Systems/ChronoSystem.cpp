@@ -1,6 +1,8 @@
 #include "../UI/SceneMusic.h"
 #include "ChronoSystem.h"
+#include <set>
 #include "../UI/GameUI.h"
+#include "../UI/RogueliteUI.h"
 #include "../Chrono/CreatureMotion.h"
 #include "../Scenes/GameScene.h"
 #include "../../Engine/SceneManager.h"
@@ -142,20 +144,27 @@ void ChronoSystem::BuildCreature(entt::registry& r){
     std::vector<entt::entity> remove;
     for(auto e:r.view<NameComponent>()){
         const auto& name=r.get<NameComponent>(e).name;
-        if(name.find("Chrono Arena ")==0)remove.push_back(e);
+        if(e!=weakpoint_&&name.rfind("Chrono ",0)==0)remove.push_back(e);
     }
     for(auto e:remove)r.destroy(e);
     Block(r,"Creature floor",{0,-2,0},{700,4,800});
     Block(r,"Creature north",{0,2,400},{700,4,2});Block(r,"Creature south",{0,2,-400},{700,4,2});
     Block(r,"Creature west",{-350,2,0},{2,4,800});Block(r,"Creature east",{350,2,0},{2,4,800});
-    r.emplace_or_replace<CreatureBoss>(boss_);
+    auto& creature=r.emplace_or_replace<CreatureBoss>(boss_);
+    if(inkMode_)creature.offset={0,0,125};
     r.get<MeshRendererComponent>(boss_).enabled=false;
     if(auto* a=r.try_get<AnimatorComponent>(boss_))a->isPlaying=false;
     const auto pose=EvaluateCreature(0,0);
     for(int i=0;i<pose.count;++i){const auto& piece=pose.pieces[i];
-        auto e=Mesh(r,"Creature part "+std::to_string(i),piece.plate?"Resources/Models/Chrono/feather.obj":ball,{0,0,0},{1,1,1});
+        const char* models[]={"Resources/Models/Chrono/link.obj","Resources/Models/Chrono/armor.obj",
+            "Resources/Models/Chrono/spar.obj","Resources/Models/Chrono/primary.obj",
+            "Resources/Models/Chrono/covert.obj","Resources/Models/Chrono/beak.obj",
+            "Resources/Models/Chrono/horn.obj"};
+        auto shape=static_cast<int>(piece.shape);
+        auto e=Mesh(r,"Creature part "+std::to_string(i),shape<7?models[shape]:ball,{0,0,0},{1,1,1});
         auto& t=r.get<TransformComponent>(e);auto& part=r.emplace<CreaturePart>(e);
-        part.index=i;part.unitScale=Read(t.scale);part.unitOffset=Read(t.translate);
+        part.index=i;part.segment=piece.segment;part.role=piece.role;
+        part.unitScale=Read(t.scale);part.unitOffset=Read(t.translate);
         r.emplace<CameraOccluder>(e);
     }
     auto& core=r.get<MeshRendererComponent>(weakpoint_);core.enabled=true;core.color={.2f,.65f,.75f,1};
@@ -182,10 +191,34 @@ void ChronoSystem::PoseCreature(entt::registry& r){
         float scale=1-.62f*Ease(creature.form),sn=std::sin(creature.heading),cs=std::cos(creature.heading);
         auto rotate=[&](V point){V d=(point-pose.core)*scale;return pose.core+V{d.x*cs+d.z*sn,d.y,-d.x*sn+d.z*cs};};
         for(int i=0;i<pose.count;++i){auto& piece=pose.pieces[i];piece.position=rotate(piece.position);piece.size=piece.size*scale;piece.rotation.y+=creature.heading;
-            if(creature.stage==CreatureStage::Opening&&creature.sweepPhase==1&&i>=104&&i<218)
+            if(creature.stage==CreatureStage::Opening&&creature.sweepPhase==1&&CreatureWing(piece.role))
                 piece.position.y+=std::sin(std::min(1.f,creature.sweepTime/1.15f)*1.570796f)*5;
         }
+        if(creature.stage==CreatureStage::Dive){
+            float fold=creature.sweepPhase==1?AttackEase(creature.sweepTime/1.15f)*.78f:
+                creature.sweepPhase==2?.78f:.78f*(1-AttackEase(creature.sweepTime/.55f));
+            for(int i=0;i<pose.count;++i){auto& piece=pose.pieces[i];if(!CreatureWing(piece.role))continue;
+                V root=pose.pieces[pose.wingRoot[piece.side<0?0:1]].position,d=piece.position-root;
+                piece.position=Lerp(piece.position,root+V{d.x*.25f,d.y*.8f,d.z*.72f},fold);
+                piece.rotation.z+=fold*(piece.side<0?-.35f:.35f);
+            }
+        }
         pose.head=rotate(pose.head);
+    }
+    // Locomotion travels down the body instead of translating a rigid chain.
+    float locomotion=std::clamp(Length(creature.moveVelocity)/30.f,0.f,1.f);
+    if(locomotion>0){
+        V side{std::cos(creature.heading),0,-std::sin(creature.heading)};
+        auto sway=[&](float u){return std::sin(creature.age*5.5f-u*5.f)*locomotion*(1.8f-u*.7f);};
+        for(int i=0;i<pose.count;++i){auto& piece=pose.pieces[i];
+            if(piece.segment>=0){float u=float(piece.segment)/25.f;
+                piece.position=piece.position+side*sway(u);
+                piece.rotation.z+=std::cos(creature.age*5.5f-u*5.f)*locomotion*.04f;}
+            else if(CreatureWing(piece.role)){float span=float(std::max(0,piece.span))/17.f;
+                piece.position=piece.position+side*sway(.24f)+V{0,std::sin(creature.age*5.f-span*2.f)*locomotion*span*1.2f,0};}
+            else piece.position=piece.position+side*sway(0);
+        }
+        pose.head=pose.head+side*sway(0);pose.core=pose.core+side*sway(.24f);
     }
     for(int i=0;i<pose.count;++i)pose.pieces[i].position=pose.pieces[i].position+creature.offset;
     pose.head=pose.head+creature.offset;pose.core=pose.core+creature.offset;
@@ -202,7 +235,9 @@ void ChronoSystem::PoseCreature(entt::registry& r){
             }
             V player=Read(r.get<TransformComponent>(player_).translate);
             V radial=creature.morphSource.core-V{0,0,20};creature.flightAngle=std::atan2(radial.x,radial.z);
-            creature.morphDestination=bird?SlimeFlightPoint(creature.flightAngle):V{std::clamp(player.x,-100.f,100.f),EvaluateCreature(creature.age,0).core.y,std::clamp(player.z+28,-90.f,125.f)};
+            if(bird)creature.morphDestination=SlimeFlightPoint(creature.flightAngle);
+            else{V perch=CreatureCruisePoint(player,creature.morphSource.core,creature.cruiseStep++,true);
+                creature.morphDestination={perch.x,EvaluateCreature(creature.age,0).core.y,perch.z};}
             V toward=player-creature.morphDestination;creature.morphHeading=std::atan2(-toward.x,-toward.z);
         }
         auto target=EvaluateCreature(creature.age,bird?1.f:0.f);
@@ -210,24 +245,42 @@ void ChronoSystem::PoseCreature(entt::registry& r){
         auto destination=[&](V point){V d=(point-target.core)*scale;return creature.morphDestination+V{d.x*cs+d.z*sn,d.y,-d.x*sn+d.z*cs};};
         float progress=std::clamp(creature.timer/CreatureMorphSeconds,0.f,1.f);
         for(int i=0;i<pose.count;++i){auto& piece=pose.pieces[i];const auto& source=creature.morphSource.pieces[i];
-            piece.position=ReformPart(source.position,destination(target.pieces[i].position),i,progress);
+            piece.position=ReformPart(source.position,destination(target.pieces[i].position),piece,i,progress);
             float blend=AttackEase(std::clamp((progress-.2f)/.76f,0.f,1.f));
             piece.size=Lerp(source.size,target.pieces[i].size*scale,blend);
             piece.rotation=Lerp(source.rotation,target.pieces[i].rotation+V{0,creature.morphHeading,0},blend);
             piece.rotation.z+=std::sin(progress*3.14159265f)*std::sin(i*2.4f)*3;
         }
-        pose.core=ReformPart(creature.morphSource.core,creature.morphDestination,0,progress);
-        pose.head=ReformPart(creature.morphSource.head,destination(target.head),1,progress);
+        pose.core=ReformPart(creature.morphSource.core,creature.morphDestination,pose.pieces[pose.spineIndex[6]],0,progress);
+        pose.head=ReformPart(creature.morphSource.head,destination(target.head),pose.pieces[pose.skullIndex],1,progress);
     }else creature.morphActive=false;
     if(creature.stage==CreatureStage::Snake&&creature.sweepPhase>0){
         float phase=creature.sweepPhase==1?AttackEase(creature.sweepTime/WarningTime(creature.attack)):creature.sweepPhase==4?1-AttackEase(creature.sweepTime/.8f):1.f;
+        if(creature.attack==CreatureAttack::HeadTail){
+            phase=creature.sweepPhase==2?AttackEase(creature.sweepTime/ActiveTime(creature.attack)):
+                creature.sweepPhase==5?1-AttackEase(creature.sweepTime/TailWarningTime):0.f;
+        }
         V head=creature.sweepCenter+AttackHead(creature.attack,creature.sweepPhase,creature.sweepTime);
         V shift=(head-pose.head)*phase;
-        for(int i=0;i<48;++i){float along=static_cast<float>(i/4)/12;
+        for(int i=0;i<pose.count;++i){auto& piece=pose.pieces[i];if(piece.segment<0||piece.segment>=12)continue;
+            float along=static_cast<float>(piece.segment)/12;
             float wave=std::sin(creature.sweepTime*6-along*4)*std::sin(along*3.14159f)*phase;
-            pose.pieces[i].position=pose.pieces[i].position+shift*((1-along)*(1-along))+V{wave*2,0,0};}
-        for(int i=218;i<224;++i)pose.pieces[i].position=pose.pieces[i].position+shift;
+            piece.position=piece.position+shift*((1-along)*(1-along))+V{wave*2,0,0};}
+        for(int i=0;i<pose.count;++i)if(CreatureHead(pose.pieces[i].role))pose.pieces[i].position=pose.pieces[i].position+shift;
         pose.head=pose.head+shift;
+        if(creature.attack==CreatureAttack::HeadTail&&(creature.sweepPhase==3||creature.sweepPhase>=5)){
+            float tailBlend=creature.sweepPhase==5?AttackEase(creature.sweepTime/TailWarningTime):
+                creature.sweepPhase==6?1.f:1-AttackEase(creature.sweepTime/1.5f);
+            float travel=creature.sweepPhase==6?AttackEase(creature.sweepTime/TailActiveTime):
+                creature.sweepPhase==5?0.f:1.f;
+            for(int segment=17;segment<26;++segment){
+                float u=float(segment-17)/8.f,weight=u*u*tailBlend;
+                V target=creature.sweepCenter+V{-20+42*travel-(1-u)*25,3+u*2,(1-u)*25};
+                for(int i=0;i<pose.count;++i){auto& piece=pose.pieces[i];if(piece.segment!=segment)continue;
+                    piece.position=Lerp(piece.position,target+V{0,static_cast<float>(piece.layer+1)*.2f,0},weight);
+                    piece.rotation.y+=weight*1.2f;}
+            }
+        }
         V counter=creature.attack==CreatureAttack::Sweep?V{12,7,-1}:creature.attack==CreatureAttack::Charge?V{7,7,-10}:V{10,7,0};
         pose.core=Lerp(pose.core,creature.sweepCenter+counter,phase);
     }
@@ -235,40 +288,47 @@ void ChronoSystem::PoseCreature(entt::registry& r){
     if(!inkMode_&&creature.stage==CreatureStage::Opening&&creature.sweepPhase>0){
         float w=creature.sweepPhase==1?AttackEase(creature.sweepTime/1.2f):creature.sweepPhase==2?1-2*AttackEase(creature.sweepTime/ActiveTime(CreatureAttack::Wing)):-1;
         if(creature.sweepPhase>=3)w*=1-AttackEase(creature.sweepTime/3.f);
-        V root=pose.pieces[104].position;
+        V root=pose.pieces[pose.wingRoot[0]].position;
         float travel=creature.sweepPhase==1?0.f:creature.sweepPhase==2?AttackEase(creature.sweepTime/ActiveTime(CreatureAttack::Wing)):1.f;
         V targetTip=creature.sweepCenter+V{-13+28*travel,0,0};
         float contactBlend=creature.sweepPhase==1?AttackEase(creature.sweepTime/1.2f):creature.sweepPhase>=3?1-AttackEase(creature.sweepTime/3.f):1.f;
-        for(int i=104;i<161;++i){V d=pose.pieces[i].position-root;float angle=w*.65f;
-            pose.pieces[i].position=root+V{d.x*std::cos(angle)-d.y*std::sin(angle),d.x*std::sin(angle)+d.y*std::cos(angle),d.z};
-            pose.pieces[i].rotation.z+=angle;}
-        V rotatedTip=pose.pieces[130].position;
+        for(int i=0;i<pose.count;++i){auto& piece=pose.pieces[i];if(!CreatureWing(piece.role)||piece.side!=-1)continue;
+            V d=piece.position-root;float angle=w*.65f;
+            piece.position=root+V{d.x*std::cos(angle)-d.y*std::sin(angle),d.x*std::sin(angle)+d.y*std::cos(angle),d.z};
+            piece.rotation.z+=angle;}
+        V rotatedTip=pose.pieces[pose.wingTip[0]].position;
         V correction=(targetTip-rotatedTip)*contactBlend;
-        for(int i=104;i<161;++i){float weight=std::clamp(Length(pose.pieces[i].position-root)/std::max(1.f,Length(rotatedTip-root)),0.f,1.f);
-            pose.pieces[i].position=pose.pieces[i].position+correction*weight;}
-        creature.attention=pose.pieces[130].position;
+        for(int i=0;i<pose.count;++i){auto& piece=pose.pieces[i];if(!CreatureWing(piece.role)||piece.side!=-1)continue;
+            float weight=std::clamp(Length(piece.position-root)/std::max(1.f,Length(rotatedTip-root)),0.f,1.f);
+            piece.position=piece.position+correction*weight;}
+        creature.attention=pose.pieces[pose.wingTip[0]].position;
     }
-    if(creature.recoil>0)for(int i=0;i<pose.count;++i){float lag=(i%26)*.016f;
+    if(creature.recoil>0)for(int i=0;i<pose.count;++i){const auto& piece=pose.pieces[i];float lag=(piece.segment>=0?piece.segment:std::max(0,piece.span))*.016f;
         float age=.6f-creature.recoil-lag;if(age>0)pose.pieces[i].position.y+=std::sin(age*22)*std::exp(-age*8)*1.5f;}
-    if(inkMode_){
-        // Resolve the conservative circumsphere of every rotated piece against
-        // the ramp/deck envelope, including the anticipatory clearance margin.
-        for(int i=0;i<pose.count;++i){auto& piece=pose.pieces[i];float radius=Length(piece.size)*.5f;
-            piece.position.y=std::max(piece.position.y,InkBossSupport(piece.position,radius)+radius+.3f);}
+    if(inkMode_||creature.stage==CreatureStage::Snake){
+        // Keep the body and trailing tip on the floor using the actual mesh
+        // profile. A bounding sphere lifted the narrow tail off the ground.
+        for(int i=0;i<pose.count;++i){auto& piece=pose.pieces[i];float clearance=CreatureVerticalExtent(piece);
+            piece.position.y=std::max(piece.position.y,InkBossSupport(piece.position,clearance)+clearance+.08f);}
         pose.core.y=std::max(pose.core.y,InkBossSupport(pose.core,3.f)+3.3f);
         pose.head.y=std::max(pose.head.y,InkBossSupport(pose.head,7.f)+7.3f);
         creature.attention=pose.head;
     }
     creatureSolids_.clear();
-    for(int i=0;i<26;++i){if(creature.stage==CreatureStage::Snake&&creature.sweepPhase>0&&i<12)continue;const auto& body=pose.pieces[i*4];
+    for(int i=0;i<CreatureSpineCount;++i){if(creature.stage==CreatureStage::Snake&&creature.sweepPhase>0&&i<12)continue;const auto& body=pose.pieces[pose.spineIndex[i]];
         V half{body.size.x*.36f,body.size.y*.36f,.65f*CreatureScale};
         creatureSolids_.push_back({body.position-half,body.position+half});}
-    const DirectX::XMFLOAT4 colors[]={{.13f,.18f,.23f,1},{.48f,.56f,.62f,1},{.87f,.9f,.88f,1},{2,.12f,.04f,1}};
+    const DirectX::XMFLOAT4 colors[]={{.09f,.13f,.17f,1},{.27f,.34f,.39f,1},{.93f,.95f,.88f,1},{1.8f,.07f,.025f,1}};
     for(auto e:r.view<CreaturePart,TransformComponent,MeshRendererComponent>()){
         const auto& part=r.get<CreaturePart>(e);const auto& piece=pose.pieces[part.index];auto& t=r.get<TransformComponent>(e);
         t.scale={part.unitScale.x*piece.size.x,part.unitScale.y*piece.size.y,part.unitScale.z*piece.size.z};
         t.translate=Write(piece.position);t.rotate=Write(piece.rotation);
-        r.get<MeshRendererComponent>(e).color=colors[piece.material];
+        auto color=colors[piece.material];
+        if(CreatureWing(piece.role)){float reveal=Ease(creature.form);
+            color.x=.10f+(color.x-.10f)*reveal;
+            color.y=.14f+(color.y-.14f)*reveal;
+            color.z=.18f+(color.z-.18f)*reveal;}
+        r.get<MeshRendererComponent>(e).color=color;
         auto& o=r.get<CameraOccluder>(e);o.center=piece.position;
         float extent=std::max({piece.size.x,piece.size.y,piece.size.z});o.size={extent,extent,extent};
     }
@@ -281,34 +341,66 @@ void ChronoSystem::PoseCreature(entt::registry& r){
     auto& core=r.get<MeshRendererComponent>(weakpoint_);core.enabled=true;
     core.color=r.get<Target>(weakpoint_).active?DirectX::XMFLOAT4{2,1.2f,.15f,1}:DirectX::XMFLOAT4{.12f,.55f,.65f,1};
 }
+void ChronoSystem::BossImpact(entt::registry& r,GameContext& ctx,V at,V direction,float power){
+    auto& c=r.get<CreatureBoss>(boss_);c.impactAge=0;c.impactPoint=at;c.impactPower=power;
+    V player=Read(r.get<TransformComponent>(player_).translate)-at;player.y=0;
+    float proximity=1.f/(1.f+Length(player)/80.f);
+    ctx.camera->StartImpactShake(.19f+.06f*power,std::min(.35f,.31f*power*proximity),Write(direction),10.f+2.f*power);
+    for(int i=0;i<28&&droplets_.size()<96;++i){
+        float angle=i*2.399963f,speed=(11.f+(i%5)*2.5f)*power;
+        V velocity{std::cos(angle)*speed,3.f+(i%4)*1.5f,std::sin(angle)*speed};
+        droplets_.push_back({at+V{0,.2f,0},velocity,0,true});
+    }
+    auto* audio=Engine::Audio::GetInstance();uint32_t sound=inkMode_?slimePressureSound_:coreSound_;
+    if(sound!=0xffffffff)audio->Play(sound,false,(.24f+.12f*proximity)*audio->GetMasterSEVolume(),.66f);
+}
+void ChronoSystem::DrawBossImpact(GameContext& ctx,const CreatureBoss& c){
+    if(c.impactAge>=.55f)return;
+    float fade=1.f-c.impactAge/.55f;
+    V at=c.impactPoint+V{0,.15f,0};
+    for(int ring=0;ring<2;++ring){
+        float age=std::max(0.f,c.impactAge-ring*.075f);
+        float radius=(2.f+age*(39.f+ring*13.f))*c.impactPower;
+        Engine::Vector4 color{(ring?1.2f:1.8f)*fade,(ring?.47f:.82f)*fade,.12f*fade,1};
+        for(int i=0;i<36;++i){float a=i*6.283185f/36.f,b=(i+1)*6.283185f/36.f;
+            ctx.renderer->DrawLine3D(EV(at+V{std::cos(a)*radius,0,std::sin(a)*radius}),
+                EV(at+V{std::cos(b)*radius,0,std::sin(b)*radius}),color);}
+    }
+}
 void ChronoSystem::UpdateCreature(entt::registry& r,Player& p,GameContext& ctx){
     auto& c=r.get<CreatureBoss>(boss_);auto& b=r.get<Boss>(boss_);float dt=ctx.dt*p.worldScale;
     c.age+=dt;c.timer+=dt;b.clock+=dt;
+    c.impactAge+=ctx.dt;
     c.recoil=std::max(0.f,c.recoil-dt);
-    // Cruise at a readable distance; freeze the root while an attack route is live.
-    bool cruising=c.stage==CreatureStage::Assemble||c.stage==CreatureStage::Descend||
-        (c.stage==CreatureStage::Snake&&(c.sweepPhase==0||(inkMode_&&c.sweepPhase==4)));
-    if(cruising){c.roam+=dt*.38f;V player=Read(r.get<TransformComponent>(player_).translate);
+    // Pick a flank, arrive, and hold it through the attack tell. Replanning every
+    // frame made the whole animal slide around the player without intent.
+    bool cruising=c.stage==CreatureStage::Snake&&(c.sweepPhase==0||(inkMode_&&c.sweepPhase==4));
+    if(cruising){
+        c.roam+=dt;
+        V player=Read(r.get<TransformComponent>(player_).translate),boss=Center(r,boss_);
+        if(!c.cruiseReady||c.roam>=2.8f||(inkMode_&&c.roam>.45f&&Length(player-boss)<165.f)){
+            c.cruiseGoal=CreatureCruisePoint(player,boss,c.cruiseStep++,inkMode_);
+            c.cruiseReady=true;c.roam=0;
+        }
         V base=EvaluateCreature(c.age,c.form).core;
-        V destination{std::clamp(player.x+std::sin(c.roam)*90.f,-200.f,200.f),0,
-            std::clamp(player.z+std::cos(c.roam)*90.f,-220.f,220.f)};
-        if(inkMode_)destination={std::clamp(player.x+std::sin(c.roam)*22.f,-120.f,120.f),0,
-            std::clamp(player.z+28+std::cos(c.roam)*12.f,-105.f,145.f)};
-        V goal=destination-V{base.x,0,base.z};V delta=goal-c.offset;
-        V velocity=Unit(delta)*std::min(32.f,Length(delta)*2.f);
-        c.moveVelocity=Lerp(c.moveVelocity,velocity,1-std::exp(-4*dt));c.offset=c.offset+c.moveVelocity*dt;
-    }else c.moveVelocity={};
+        V delta=c.cruiseGoal-V{base.x+c.offset.x,0,base.z+c.offset.z};
+        c.moveVelocity=CreatureCruiseVelocity(c.moveVelocity,delta,dt,inkMode_?45.f:40.f);
+        V step=c.moveVelocity*dt;
+        if(Length(step)>Length(delta))step=delta;
+        c.offset=c.offset+step;
+    }else{c.moveVelocity={};c.cruiseReady=false;}
     if(inkMode_&&cruising){V toward=Read(r.get<TransformComponent>(player_).translate)-Center(r,boss_);
         c.heading+=std::remainder(std::atan2(-toward.x,-toward.z)-c.heading,6.283185f)*(1-std::exp(-2*dt));}
     auto transition=[&](CreatureStage stage){c.stage=stage;c.timer=0;};
     if(c.stage==CreatureStage::Snake){c.form=0;b.phase=0;c.sweepTime+=dt;
         if(c.sweepPhase==0&&c.sweepTime>(inkMode_?3.5f:2.f)){
             auto previous=c.attack;
-            c.attack=static_cast<CreatureAttack>(c.attackCount%3);
-            if(c.attackCount>=3){auto at=Read(r.get<TransformComponent>(player_).translate);
+            c.attack=c.attackCount%4==0?CreatureAttack::HeadTail:
+                static_cast<CreatureAttack>((c.attackCount-1)%4);
+            if(c.attackCount>=4&&c.attackCount%4!=0){auto at=Read(r.get<TransformComponent>(player_).translate);
                 c.attack=at.y>5?CreatureAttack::Slam:Length(at-Center(r,boss_))>35?CreatureAttack::Charge:CreatureAttack::Sweep;
                 if(c.attack==previous)c.attack=static_cast<CreatureAttack>((static_cast<int>(previous)+1)%3);}
-            if(auto* control=r.try_get<ControlFrame>(player_);control&&control->attackPattern>=0)c.attack=static_cast<CreatureAttack>(std::min(2,control->attackPattern));
+            if(auto* control=r.try_get<ControlFrame>(player_);control&&control->attackPattern>=0)c.attack=static_cast<CreatureAttack>(std::min(4,control->attackPattern));
             ++c.attackCount;
             c.sweepCenter=Read(r.get<TransformComponent>(player_).translate);c.sweepCenter.y=inkMode_?InkGround(c.sweepCenter):0;
             c.sweepPhase=1;c.sweepTime=0;c.sweepHit=false;b.countered=false;
@@ -329,14 +421,25 @@ void ChronoSystem::UpdateCreature(entt::registry& r,Player& p,GameContext& ctx){
             if(inkMode_){const auto& ink=r.get<InkPlayer>(player_);
                 if(ink.dodgeAge<=.12f)contact|=AttackTouches(c.attack,ink.dodgeOrigin-c.sweepCenter,before,now);}
             if(!c.sweepHit&&contact&&(inkMode_||p.invincible<=0)){
-                c.sweepHit=true;p.damageReason=c.attack==CreatureAttack::Sweep?"HIT - SERPENT SWEEP":c.attack==CreatureAttack::Charge?"HIT - SERPENT CHARGE":"HIT - HEAD SLAM";Damage(r,p,22,ctx,c.sweepCenter);
+                c.sweepHit=true;p.damageReason=c.attack==CreatureAttack::Sweep?"HIT - SERPENT SWEEP":c.attack==CreatureAttack::Charge?"HIT - SERPENT CHARGE":c.attack==CreatureAttack::HeadTail?"HIT - SERPENT HEAD":"HIT - HEAD SLAM";Damage(r,p,22,ctx,c.sweepCenter);
             }
-            if(c.attack==CreatureAttack::Slam&&before<ActiveTime(c.attack)&&now>=ActiveTime(c.attack)){
-                float proximity=1.f/(1+Length(at)/25);ctx.camera->StartImpactShake(.28f,.34f*proximity,{.3f,1,.15f},6+12*proximity);
-                for(int i=0;i<20&&droplets_.size()<96;++i){float a=i*2.39996f;droplets_.push_back({c.sweepCenter,{std::cos(a)*20,6,std::sin(a)*20},0,true});}
-                auto* audio=Engine::Audio::GetInstance();audio->Play(coreSound_,false,.35f*audio->GetMasterSEVolume(),.65f);
+            if(before<ActiveTime(c.attack)&&now>=ActiveTime(c.attack)&&
+                (c.attack==CreatureAttack::Slam||c.attack==CreatureAttack::HeadTail||c.attack==CreatureAttack::Charge)){
+                V direction=c.attack==CreatureAttack::Slam?V{.25f,1.f,.1f}:V{0,.55f,-1.f};
+                BossImpact(r,ctx,c.sweepCenter,direction,c.attack==CreatureAttack::Slam?1.15f:1.f);
             }
-            if(c.sweepTime>=ActiveTime(c.attack)){c.sweepPhase=3;c.sweepTime=0;b.phase=3;}
+            if(c.sweepTime>=ActiveTime(c.attack)){
+                c.sweepPhase=c.attack==CreatureAttack::HeadTail?5:3;c.sweepTime=0;b.phase=3;}
+        }else if(c.sweepPhase==5){b.phase=1;
+            if(c.sweepTime>=TailWarningTime){c.sweepPhase=6;c.sweepTime=0;c.sweepHit=false;}
+        }else if(c.sweepPhase==6){b.phase=2;
+            V at=Read(r.get<TransformComponent>(player_).translate)-c.sweepCenter;
+            bool contact=TailTouches(at,std::max(0.f,c.sweepTime-dt),c.sweepTime);
+            if(inkMode_){const auto& ink=r.get<InkPlayer>(player_);
+                if(ink.dodgeAge<=.12f)contact|=TailTouches(ink.dodgeOrigin-c.sweepCenter,std::max(0.f,c.sweepTime-dt),c.sweepTime);}
+            if(!c.sweepHit&&contact){c.sweepHit=true;p.damageReason="HIT - SERPENT TAIL";Damage(r,p,18,ctx,c.sweepCenter);}
+            if(c.sweepTime>=TailActiveTime){BossImpact(r,ctx,c.sweepCenter,{1,.35f,0},.68f);
+                c.sweepPhase=3;c.sweepTime=0;b.phase=3;}
         }else if(c.sweepPhase==3){b.phase=3;
             if(c.sweepTime>=(inkMode_?1.5f:3.f)){c.sweepPhase=4;c.sweepTime=0;}
         }else if(c.sweepPhase==4){b.phase=3;
@@ -388,7 +491,7 @@ void ChronoSystem::UpdateCreature(entt::registry& r,Player& p,GameContext& ctx){
         (c.stage==CreatureStage::Snake&&c.sweepPhase==3&&!c.sweepHit));
     PoseCreature(r);
     for(auto e:r.view<SerpentRelay,TransformComponent>()){
-        bool live=c.stage==CreatureStage::Snake&&c.sweepPhase>=1&&c.sweepPhase<=3;
+        bool live=c.stage==CreatureStage::Snake&&c.sweepPhase>=1&&c.sweepPhase!=4;
         if(!live&&e!=p.target){r.get<Target>(e).active=false;r.get<MeshRendererComponent>(e).enabled=false;}
     }
 }
@@ -539,10 +642,11 @@ void ChronoSystem::Shoot(entt::registry& r,Player& p,GameContext& ctx){
 }
 void ChronoSystem::Damage(entt::registry& r,Player& p,float amount,GameContext& ctx,V source,float perfectWindow){
     if(inkMode_&&!finished_){auto& ink=r.get<InkPlayer>(player_);
-        if(ink.TryPerfectDodge(perfectWindow)){p.invincible=std::max(p.invincible,SlimePerfectInvincibility);p.worldScale=.15f;
+        if(ink.TryPerfectDodge(perfectWindow)){PerfectRogueLoop(r,p,ctx);p.invincible=std::max(p.invincible,SlimePerfectInvincibility);p.worldScale=.15f;
             ctx.camera->StartImpactShake(.10f,.08f,{0,1,0},12);return;}}
     if(p.invincible>0||finished_)return;
-    if(inkMode_)amount*=SlimeMaximumMass/100.f;
+    if(inkMode_)amount*=SlimeMaximumMass/100.f*r.get<InkPlayer>(player_).rogue.Mitigation();
+    if(inkMode_)r.get<InkPlayer>(player_).domainPath.Damage();
     p.chainDrive=1;p.lastChainHit=10;p.mass=std::max(0.0f,p.mass-amount);p.invincible=0.65f;++p.stats.hitsTaken;p.flow.Break();
     p.damageSource=source;p.damageAge=0;
     p.buffer=0;p.bufferedTarget=entt::null;
@@ -1064,6 +1168,12 @@ void ChronoSystem::Presentation(entt::registry& r,Player& p,GameContext& ctx){
     params.time=ctx.renderer->GetPostProcessParams().time;params.san=postStrength_;
     params.distortion=p.action==Action::Pulling?1.0f:0.65f;
     params.vignette=p.damageAge<.35f?1-p.damageAge/.35f:0;
+    if(inkMode_&&!finished_){
+        using namespace DirectX;XMFLOAT3 playerView,bossView;V boss=Center(r,boss_);
+        XMStoreFloat3(&playerView,XMVector3TransformCoord(XMVectorSet(player.x,player.y,player.z,1),ctx.camera->View()));
+        XMStoreFloat3(&bossView,XMVector3TransformCoord(XMVectorSet(boss.x,boss.y,boss.z,1),ctx.camera->View()));
+        params.dofFocus=std::max(8.f,playerView.z);params.dofRange=32;params.dofStrength=.75f;params.dofBossDepth=bossView.z;
+    }
     ctx.renderer->SetPostProcessParams(params);ctx.renderer->SetPostEffect("ChronoFocus");
 }
 void ChronoSystem::Finish(Player& p,bool win){
@@ -1132,6 +1242,7 @@ void ChronoSystem::Draw(entt::registry& r,GameContext& ctx){
     for(const auto& d:droplets_)sphere(d.position,(d.dust?.8f:.18f)*(1-d.age/.45f)+.035f,d.dust?Engine::Vector4{.65f,.48f,.26f,1}:Engine::Vector4{.18f,1.1f,.6f,1});
     if(creature_&&r.valid(boss_)){
         const auto& c=r.get<CreatureBoss>(boss_);
+        DrawBossImpact(ctx,c);
         if((c.stage==CreatureStage::Snake||c.stage==CreatureStage::Opening)&&(c.sweepPhase==1||c.sweepPhase==2)){
             auto color=c.sweepPhase==1?Engine::Vector4{1,.65f,.05f,1}:Engine::Vector4{2,.1f,.02f,1};
             V origin=c.sweepCenter+V{0,.12f,0};

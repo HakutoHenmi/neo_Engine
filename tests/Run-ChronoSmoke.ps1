@@ -1,4 +1,4 @@
-param([string]$Executable = '', [switch]$Ink, [switch]$SlimeBattle, [switch]$SlimeLow, [switch]$SlimePolish, [switch]$SlimeField, [switch]$Creature, [switch]$Snake, [ValidateRange(0,2)][int]$AttackPattern=0, [switch]$RecordMotion, [switch]$Portfolio)
+param([string]$Executable = '', [switch]$Ink, [switch]$Rogue, [switch]$Horde, [switch]$SceneryPerf, [switch]$DomainSkills, [switch]$DomainChain, [switch]$SlimeBattle, [switch]$SlimeLow, [switch]$SlimePolish, [switch]$SlimeField, [switch]$Creature, [switch]$Snake, [ValidateRange(0,2)][int]$AttackPattern=0, [switch]$RecordMotion, [switch]$Portfolio)
 $ErrorActionPreference = 'Stop'
 $repoPath = Split-Path $PSScriptRoot -Parent
 if (!$Executable) { $Executable = Join-Path $repoPath '../Generated/Outputs/Development/DirectXGameApp.exe' }
@@ -27,6 +27,11 @@ if ($SlimePolish) { $argument = '--ink-smoke --slime-polish'; $reportName = 'ink
 if ($SlimeField) { $argument = '--ink-smoke --slime-field'; $reportName = 'ink-smoke.txt' }
 if ($SlimeLow) { $argument = '--ink-smoke --slime-battle --slime-low'; $reportName = 'ink-smoke.txt' }
 if ($Portfolio) { $argument += ' --portfolio' }
+if ($DomainSkills) { $argument = '--ink-smoke --domain-skills'; $reportName = 'ink-smoke.txt' }
+if ($DomainChain) { $argument = '--ink-smoke --domain-chain'; $reportName = 'ink-smoke.txt' }
+if ($Horde) { $argument = '--ink-smoke --horde-smoke'; $reportName = 'ink-smoke.txt' }
+if ($Rogue) { $argument = '--ink-smoke --rogue-smoke'; $reportName = 'ink-smoke.txt' }
+if ($SceneryPerf) { $argument = '--ink-smoke --scenery-perf'; $reportName = 'ink-smoke.txt' }
 try {
     'RUNNING' | Set-Content -LiteralPath (Join-Path $outputPath $reportName)
     $process = Start-Process -FilePath $Executable -ArgumentList $argument -WorkingDirectory $repoPath -WindowStyle Hidden -PassThru
@@ -53,5 +58,3 @@ try {
     }
     # Backups are intentionally retained in ignored tests/out for recovery.
 }
-
-

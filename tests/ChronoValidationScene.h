@@ -1,4 +1,5 @@
 #pragma once
+#include "../Game/UI/RogueliteUI.h"
 #include "../Game/Scenes/GameScene.h"
 #include "../Game/Chrono/ChronoComponents.h"
 #include "../Game/Chrono/InkRules.h"
@@ -150,7 +151,8 @@ public:
         Engine::Renderer::GetInstance()->SetFluidProfilerEnabled(true);
         start_=std::chrono::steady_clock::now();trace_.open("tests/out/chrono-trace.txt");
         inkTest_=wcsstr(GetCommandLineW(),L"--ink-smoke")!=nullptr;
-        if(inkTest_)return;
+        if(inkTest_&&!wcsstr(GetCommandLineW(),L"--horde-smoke")&&!wcsstr(GetCommandLineW(),L"--rogue-smoke"))GetRegistry().get<Game::Chrono::InkPlayer>(player).hordeEnabled=false;
+        if(inkTest_){GetRegistry().get<Game::Chrono::InkPlayer>(player).rogue.enabled=wcsstr(GetCommandLineW(),L"--rogue-smoke")!=nullptr;return;}
         snakeTest_=wcsstr(GetCommandLineW(),L"--snake-smoke")!=nullptr;
         snakePattern_=wcsstr(GetCommandLineW(),L"--attack-pattern=2")?2:wcsstr(GetCommandLineW(),L"--attack-pattern=1")?1:0;
         creatureTest_=wcsstr(GetCommandLineW(),L"--creature-smoke")!=nullptr;
@@ -175,6 +177,7 @@ public:
             from=to;
         }
     }
+
     void DrawEditor()override{}
     void Update()override{
         if(inkTest_){UpdateInkTest();return;}

@@ -51,9 +51,10 @@ float CalcShadow(float3 worldPos) {
         return 1.0f;
     float shadow = 0.0f;
     float texelSize = 1.0f / 2048.0f;
+    float bias = 0.002f; // Z-fighting/shadow acne対策の手動バイアス
     for(int x = -1; x <= 1; ++x) {
         for(int y = -1; y <= 1; ++y) {
-            shadow += gShadowMap.SampleCmpLevelZero(gShadowSmp, projCoords.xy + float2(x, y) * texelSize, projCoords.z).r;
+            shadow += gShadowMap.SampleCmpLevelZero(gShadowSmp, projCoords.xy + float2(x, y) * texelSize, projCoords.z - bias).r;
         }
     }
     return shadow / 9.0f;

@@ -52,6 +52,12 @@ public:
         r_->DrawSprite(r_->LoadTexture2D(path),d);
     }
     void Fill(Rect b, Engine::Vector4 color) { Image("Resources/Textures/white1x1.png",b,color); }
+    void Line(float x,float y,float tx,float ty,float width,Engine::Vector4 color){
+        float dx=tx-x,dy=ty-y,length=std::sqrt(dx*dx+dy*dy);if(length<.01f)return;
+        Engine::Renderer::SpriteDesc d;d.x=ox_+((x+tx-length)*.5f)*s_;d.y=oy_+((y+ty-width)*.5f)*s_;
+        d.w=length*s_;d.h=width*s_;d.rotationRad=std::atan2(dy,dx);d.color=Tint(color);
+        r_->DrawSprite(r_->LoadTexture2D("Resources/Textures/white1x1.png"),d);
+    }
     void Panel(Rect b, Engine::Vector4 color=Ink, bool primary=false) {
         Engine::Renderer::Sprite9SliceDesc d;
         d.x=ox_+b.x*s_;d.y=oy_+b.y*s_;d.w=b.w*s_;d.h=b.h*s_;

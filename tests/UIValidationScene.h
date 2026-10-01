@@ -101,7 +101,8 @@ class BossValidationScene final : public Game::GameScene {
     Engine::WindowDX* window_=nullptr;
     unsigned frame_=0;
     bool moved_=false,volley_=false,held_=true,outside_=true,lock_=true,captured_=false;
-    bool morphHeld_=true,morphCaptured_=false,returned_=false;size_t peakFeathers_=0;
+    bool morphHeld_=true,morphCaptured_=false,returned_=false,tail_=false,dive_=false,radial_=false,diveCaptured_=false,snakeCaptured_=false,tailCaptured_=false;
+    bool headImpact_=false,diveImpact_=false,headImpactCaptured_=false,diveImpactCaptured_=false;size_t peakFeathers_=0;
 public:
     void Initialize(Engine::WindowDX* dx,const Engine::SceneParameters&)override {
         window_=dx;Engine::SceneParameters params;params.stagePath="Resources/Scenes/chrono.json";
@@ -127,7 +128,44 @@ public:
         if(waiting)held_&=Length(c.offset-before)<.01f;
         if(morphing&&c.stage==previousStage)morphHeld_&=Length(c.offset-before)<.01f;
         if(previousStage==CreatureStage::Descend&&c.stage==CreatureStage::Snake)returned_=true;
+        tail_|=c.stage==CreatureStage::Snake&&c.attack==CreatureAttack::HeadTail&&c.sweepPhase==6;
+        dive_|=c.stage==CreatureStage::Dive;
+        radial_|=c.stage==CreatureStage::Dive&&c.sweepPhase==3&&r.view<SlimeFeather>().size()>=18;
+        if(c.impactAge<.1f){
+            if(c.stage==CreatureStage::Snake)headImpact_|=GetContext().camera->IsShaking();
+            if(c.stage==CreatureStage::Dive)diveImpact_|=GetContext().camera->IsShaking();
+        }
         peakFeathers_=std::max(peakFeathers_,r.view<SlimeFeather>().size());
+        if(c.stage==CreatureStage::Snake&&c.sweepPhase==0&&c.timer>1.f&&!snakeCaptured_){
+            DirectX::ScratchImage image;
+            auto hr=DirectX::CaptureTexture(window_->Queue(),window_->GetCurrentBackBufferResource(),false,image,D3D12_RESOURCE_STATE_PRESENT,D3D12_RESOURCE_STATE_PRESENT);
+            if(SUCCEEDED(hr))hr=DirectX::SaveToWICFile(*image.GetImage(0,0,0),DirectX::WIC_FLAGS_NONE,DirectX::GetWICCodec(DirectX::WIC_CODEC_PNG),L"tests/out/boss-snake-idle.png");
+            snakeCaptured_=SUCCEEDED(hr);
+        }
+        if(c.stage==CreatureStage::Snake&&c.sweepPhase==6&&c.sweepTime>.18f&&!tailCaptured_){
+            DirectX::ScratchImage image;
+            auto hr=DirectX::CaptureTexture(window_->Queue(),window_->GetCurrentBackBufferResource(),false,image,D3D12_RESOURCE_STATE_PRESENT,D3D12_RESOURCE_STATE_PRESENT);
+            if(SUCCEEDED(hr))hr=DirectX::SaveToWICFile(*image.GetImage(0,0,0),DirectX::WIC_FLAGS_NONE,DirectX::GetWICCodec(DirectX::WIC_CODEC_PNG),L"tests/out/boss-tail-sweep.png");
+            tailCaptured_=SUCCEEDED(hr);
+        }
+        if(c.stage==CreatureStage::Dive&&c.sweepPhase==2&&c.sweepTime>.25f&&!diveCaptured_){
+            DirectX::ScratchImage image;
+            auto hr=DirectX::CaptureTexture(window_->Queue(),window_->GetCurrentBackBufferResource(),false,image,D3D12_RESOURCE_STATE_PRESENT,D3D12_RESOURCE_STATE_PRESENT);
+            if(SUCCEEDED(hr))hr=DirectX::SaveToWICFile(*image.GetImage(0,0,0),DirectX::WIC_FLAGS_NONE,DirectX::GetWICCodec(DirectX::WIC_CODEC_PNG),L"tests/out/boss-dive.png");
+            diveCaptured_=SUCCEEDED(hr);
+        }
+        if(c.stage==CreatureStage::Snake&&c.impactAge>.08f&&c.impactAge<.25f&&!headImpactCaptured_){
+            DirectX::ScratchImage image;
+            auto hr=DirectX::CaptureTexture(window_->Queue(),window_->GetCurrentBackBufferResource(),false,image,D3D12_RESOURCE_STATE_PRESENT,D3D12_RESOURCE_STATE_PRESENT);
+            if(SUCCEEDED(hr))hr=DirectX::SaveToWICFile(*image.GetImage(0,0,0),DirectX::WIC_FLAGS_NONE,DirectX::GetWICCodec(DirectX::WIC_CODEC_PNG),L"tests/out/boss-head-impact.png");
+            headImpactCaptured_=SUCCEEDED(hr);
+        }
+        if(c.stage==CreatureStage::Dive&&c.impactAge>.08f&&c.impactAge<.25f&&!diveImpactCaptured_){
+            DirectX::ScratchImage image;
+            auto hr=DirectX::CaptureTexture(window_->Queue(),window_->GetCurrentBackBufferResource(),false,image,D3D12_RESOURCE_STATE_PRESENT,D3D12_RESOURCE_STATE_PRESENT);
+            if(SUCCEEDED(hr))hr=DirectX::SaveToWICFile(*image.GetImage(0,0,0),DirectX::WIC_FLAGS_NONE,DirectX::GetWICCodec(DirectX::WIC_CODEC_PNG),L"tests/out/boss-dive-impact.png");
+            diveImpactCaptured_=SUCCEEDED(hr);
+        }
         if(c.stage==CreatureStage::Assemble&&c.timer>3.5f&&!morphCaptured_){
             DirectX::ScratchImage image;
             auto hr=DirectX::CaptureTexture(window_->Queue(),window_->GetCurrentBackBufferResource(),false,image,D3D12_RESOURCE_STATE_PRESENT,D3D12_RESOURCE_STATE_PRESENT);
@@ -136,7 +174,7 @@ public:
         }
         if(c.stage==CreatureStage::Opening){
             auto pos=r.get<TransformComponent>(boss).translate;
-            outside_&=(std::abs(pos.x)>140||pos.z< -130||pos.z>170)&&std::abs(pos.x)<290&&pos.z> -280&&pos.z<320;
+            outside_&=(std::abs(pos.x)>220||pos.z< -220||pos.z>260)&&std::abs(pos.x)<290&&pos.z> -280&&pos.z<320;
             volley_|=r.get<Boss>(boss).emitted>=180;
             if(!captured_&&r.get<Boss>(boss).emitted>=108){
                 DirectX::ScratchImage image;
@@ -147,8 +185,8 @@ public:
         }
         ++frame_;
         if((volley_&&returned_)||p.stats.seconds>65){
-            bool passed=moved_&&volley_&&held_&&outside_&&lock_&&captured_&&morphHeld_&&morphCaptured_&&returned_&&peakFeathers_>=80;
-            std::ofstream("tests/out/ui-smoke.txt")<<(passed?"PASS":"FAIL")<<" boss pursuit="<<moved_<<" volley="<<volley_<<" warning hold="<<held_<<" outer flight="<<outside_<<" lock toggle="<<lock_<<" capture="<<captured_<<" morph root fixed="<<morphHeld_<<" reform capture="<<morphCaptured_<<" returned="<<returned_<<" peak feathers="<<peakFeathers_;
+            bool passed=moved_&&volley_&&held_&&outside_&&lock_&&captured_&&morphHeld_&&morphCaptured_&&returned_&&tail_&&dive_&&radial_&&diveCaptured_&&snakeCaptured_&&tailCaptured_&&headImpact_&&diveImpact_&&headImpactCaptured_&&diveImpactCaptured_&&peakFeathers_>=80;
+            std::ofstream("tests/out/ui-smoke.txt")<<(passed?"PASS":"FAIL")<<" boss pursuit="<<moved_<<" volley="<<volley_<<" warning hold="<<held_<<" outer flight="<<outside_<<" lock toggle="<<lock_<<" capture="<<captured_<<" morph root fixed="<<morphHeld_<<" reform capture="<<morphCaptured_<<" returned="<<returned_<<" tail="<<tail_<<" dive="<<dive_<<" radial="<<radial_<<" dive capture="<<diveCaptured_<<" snake capture="<<snakeCaptured_<<" tail capture="<<tailCaptured_<<" head shake="<<headImpact_<<" dive shake="<<diveImpact_<<" impact captures="<<(headImpactCaptured_&&diveImpactCaptured_)<<" peak feathers="<<peakFeathers_;
             PostQuitMessage(passed?0:2);
         }
     }

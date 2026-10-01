@@ -146,7 +146,7 @@ void TitleScene::Draw() {
         ui.Panel({240,125,800,300});
         ui.Center("VERDANT BASIN",640,167,22,UI::Muted);
         ui.Center(UI::GameTitle,640,230,60,UI::Lime,UI::JapaneseFont);
-        ui.Center("MOVE. RECALL. RELEASE.",640,339,27);
+        ui.Center("DRAW. ENCIRCLE. UNLEASH.",640,339,27);
         ui.Button({440,520,400,66},"BEGIN EXPEDITION",true);
         ui.Prompt("keyboard_enter","ENTER / CLICK BEGIN",495,607);
         ui.Center("Music: Kevin MacLeod (incompetech.com) / CC BY 4.0",640,635,16,UI::Muted);
