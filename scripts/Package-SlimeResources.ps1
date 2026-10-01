@@ -12,6 +12,10 @@ if ([IO.Path]::GetFileName($targetRoot) -ne 'Resources' -or
     throw 'Destination must be Release/Resources or a Resources directory under this project tests/out or dist.'
 }
 $manifest = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'SlimeResources.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+# Runtime-compiled shaders and their includes must never be silently omitted
+# when gameplay adds a pipeline. Keep all shader sources in the Release package.
+$shaderFiles = @(Get-ChildItem -LiteralPath (Join-Path $sourceRoot 'shaders') -File -Recurse | Where-Object { $_.Extension -in '.hlsl','.hlsli' } | ForEach-Object { $_.FullName.Substring($sourceRoot.Length+1).Replace('\','/') })
+$manifest = @(($manifest + $shaderFiles) | Sort-Object -Unique)
 if ($manifest.Count -lt 20) { throw 'Resource manifest is unexpectedly empty.' }
 $keep = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
 $totalBytes = 0L

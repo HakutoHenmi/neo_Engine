@@ -140,6 +140,7 @@ public:
 
 	// 動的メッシュ初期化 (新規追加)
 	void InitializeDynamic(ID3D12Device* device, const std::vector<VertexData>& vertices, const std::vector<uint32_t>& indices);
+	bool InitializeStaticLOD(ID3D12Device* device,const Model& source,int grid,bool grassCards=false);
 	
 	// 動的メッシュ頂点更新 (新規追加)
 	void UpdateVertices(const std::vector<VertexData>& vertices);

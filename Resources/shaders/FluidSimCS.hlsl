@@ -536,6 +536,7 @@ void CalcDensity(uint3 DTid : SV_DispatchThreadID) {
         return;
     }
     
+    if(SortedParticles[i].type>=8.0f){SortedParticles[i].density=275;SortedParticles[i].pressure=0;return;}
     float3 pos_i = SortedParticles[i].position;
     float type_i = SortedParticles[i].type;
     
@@ -618,8 +619,10 @@ void CalcForce(uint3 DTid : SV_DispatchThreadID) {
     if (OriginalIndices[i] == 0xFFFFFFFF) return;
     
     Particle pi = SortedParticles[i];
+    if(pad7>.5f && OriginalIndices[i]>=uint(pad6.z)){SolverOutput[i]=pi;return;}
     if (pi.position.y < -500.0f) return;
     
+    if(pi.type>=8.0f){SolverOutput[i]=pi;return;} // Adhesive ink anchors, not ballistic spray.
     if(pi.type>=4.0f){
         // Coherent independent ink volume, matching the authoritative ballistic path.
         pi.position+=pi.velocity*dt+float3(0,-9*dt*dt,0);
@@ -1042,7 +1045,7 @@ void ApplyDeltaP(uint3 id : SV_DispatchThreadID) {
     if (i>=maxParticles || OriginalIndices[i]==0xffffffffU) return;
     Particle p=SortedParticles[i];
     if (p.position.y < -500 || p.color.a < 0.01f) return;
-    if(p.type>=4.0f){Particles[OriginalIndices[i]]=p;return;}
+    if((pad7>.5f&&OriginalIndices[i]>=uint(pad6.z))||p.type>=4.0f){Particles[OriginalIndices[i]]=p;return;}
     float3 corrected = ConstrainTether(p.position+SolverOutput[i].position, OriginalIndices[i], p.pad);
     p.position=ProjectCollisions(corrected,p.type);
     if(coreMode>=4.0f&&p.type<.5f){
@@ -1065,7 +1068,7 @@ void UpdateVelocity(uint3 id : SV_DispatchThreadID) {
     uint i=id.x;
     if (i>=maxParticles || OriginalIndices[i]==0xffffffffU) return;
     Particle p=SortedParticles[i];
-    if(p.type>=4.0f){SolverOutput[i]=p;return;}
+    if((pad7>.5f&&OriginalIndices[i]>=uint(pad6.z))||p.type>=4.0f){SolverOutput[i]=p;return;}
     float3 velocity=p.velocity, sum=0;
     float weightSum=0;
     int3 cell=GetCell(p.position);

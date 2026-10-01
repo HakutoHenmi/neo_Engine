@@ -1,5 +1,8 @@
 #pragma once
 #include "ChronoRules.h"
+#include "DomainRules.h"
+#include "SwarmRules.h"
+#include "RogueliteRules.h"
 #include <array>
 #include <cstdint>
 namespace Game::Chrono {
@@ -12,20 +15,7 @@ inline Vec InkLaunch(Vec delta){
     float planar=InkShotSpeed/std::sqrt(1+tangent*tangent);
     return {delta.x/horizontal*planar,tangent*planar,delta.z/horizontal*planar};
 }
-// Conservative terrain envelope, including advance clearance at the sides of
-// the ramps. Continuous ramps around the envelope prevent a limb snapping up.
-inline float InkBossSupport(Vec at,float radius){
-    float support=0;
-    for(float x:{-43.f,21.f}){
-        float dx=std::max({x-at.x,at.x-(x+22),0.f});
-        float dz=std::max({-22.f-at.z,at.z-68.f,0.f});
-        float margin=std::max(dx,dz)-radius;
-        float blend=std::clamp(1-margin/20.f,0.f,1.f);blend=blend*blend*(3-2*blend);
-        float height=18*std::clamp((at.z+radius+22)/62,0.f,1.f);
-        support=std::max(support,height*blend);
-    }
-    return support;
-}
+inline float InkBossSupport(Vec,float){return 0.f;}
 // Persistent UV coverage is the authority for both shading and movement.
 struct InkSurface {
     Vec origin{},u{1,0,0},v{0,0,1}; float width=1,depth=1;
@@ -70,11 +60,11 @@ inline constexpr float SlimeRed=.4f,SlimeGreen=.8f,SlimeBlue=.1f;
 enum class SlimePhase { Roaming, Charging, Firing, Returning };
 struct SlimeDissolvable { Vec center{},half{2,2,2};float integrity=30; };
 struct SlimeFeather { Vec velocity{};float life=6; };
-// A rounded rectangular flight path between the arena rim and distant scenery.
+// A rounded rectangular flight path beyond the expanded arena rim.
 inline Vec SlimeFlightPoint(float angle){
     float x=std::sin(angle),z=std::cos(angle);
-    float radius=1/std::max(std::abs(x)/205.f,std::abs(z)/225.f);
-    return {x*radius,58.f+std::sin(angle*2)*6,20+z*radius};
+    float radius=1/std::max(std::abs(x)/270.f,std::abs(z)/290.f);
+    return {x*radius,64.f+std::sin(angle*2)*7,20+z*radius};
 }
 inline float SlimeReserve(float total){return std::min(SlimeMinimumMass,std::max(1.f,total*.05f));}
 inline float SlimeCapacity(float total){return std::max(.01f,total-SlimeReserve(total));}
@@ -86,6 +76,19 @@ inline float SlimeDeposit(float& body,float distance,float rate,float reserve=Sl
 inline float SlimeMono(float age){return age<0||age>=.2f?0:age<.03f?age/.03f:age<.08f?1:1-(age-.08f)/.12f;}
 inline float SlimeActiveStep(float age,float duration,float dt){return std::min(dt,std::max(0.f,duration-age));}
 struct InkPlayer {
+    Roguelite rogue;
+    float rogueBossCorrosion=0,rogueBossBurn=0,rogueBossSlow=0;bool rogueBossPool=false;
+    bool hordeEnabled=true;
+    BattlePhase battlePhase=BattlePhase::Horde;
+    int swarmKills=0,swarmAlive=0,swarmCombo=0,swarmBestCombo=0,swarmSpawned=0,swarmDetonations=0,swarmStrikes=0,swarmActiveAttacks=0;
+    float battleAge=0,swarmComboAge=0;
+    DomainPath domainPath;
+    int domainVolleys=0,domainQueued=0,domainFlying=0,domainLastCount=0;
+    int domainLastEnclosures=0;
+    float domainLastArea=0,domainLastLength=0;
+    float cameraDomainView=0;
+    DomainShape domainLastShape=DomainShape::Loop;
+    std::array<int,4> domainSkillUses{};
     // charge is a credit on mass already inside the body, never extra HP.
     float tank=0,shotClock=0,coreHealth=100,hitFlash=0;
     float charge=0,spent=0,deployed=0,phaseAge=0,beamCharge=0,beamLength=0,beamRadius=0;

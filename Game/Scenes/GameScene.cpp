@@ -4,6 +4,7 @@
 #endif
 #include "./GameScene.h"
 #include "../UI/GameUI.h"
+#include "../UI/RogueliteUI.h"
 #include "../../Engine/FluidEmission.h"
 #include "../../Engine/Time/TimeManager.h"
 #include "../CanLoadout.h"
@@ -182,7 +183,7 @@ void GameScene::Initialize(Engine::WindowDX* dx, const Engine::SceneParameters& 
 		registry_.emplace<PlayerInputComponent>(player);
 		
 		auto& cmc = registry_.emplace<CharacterMovementComponent>(player);
-		cmc.speed = 8.0f; cmc.jumpPower = 10.0f; cmc.gravity = 9.8f; cmc.heightOffset = 0.4f;
+		cmc.speed = 8.0f; cmc.jumpPower = 10.0f; cmc.gravity = 9.8f; cmc.heightOffset = 0.75f;
 		
 		auto& ctc = registry_.emplace<CameraTargetComponent>(player);
 		ctc.distance = 16.0f; ctc.height = 2.5f; ctc.smoothSpeed = 8.0f;
@@ -204,7 +205,7 @@ void GameScene::Initialize(Engine::WindowDX* dx, const Engine::SceneParameters& 
 	EditorUI::Initialize(renderer_);
 #endif
 
-	if(auto sky=renderer_->LoadCubeMap("Resources/Textures/skybox.dds"))renderer_->SetSkyboxTexture(sky);
+	if(auto sky=renderer_->LoadCubeMap("Resources/Textures/PolyHaven/kloppenheim_06_puresky_8k_cube.dds"))renderer_->SetSkyboxTexture(sky);
 
 
 	// パーティクルエディターの初期化
@@ -381,32 +382,24 @@ void GameScene::Update() {
         if (!stageClear && isPaused_) {
             UI::Canvas ui(renderer_);
             auto* input=Engine::Input::GetInstance();
-            if (ui.Click(UI::Title) || input->Trigger(DIK_TAB)) {
+            bool roguePause=chronoMode_&&!registry_.view<Chrono::InkPlayer>().empty();
+            if (ui.Click(roguePause?UI::Rect{870,595,350,54}:UI::Title) || input->Trigger(DIK_TAB)) {
                 Engine::SceneManager::GetInstance()->RequestChange("Title");return;
             }
-            if (ui.Click(UI::Resume) || input->Trigger(DIK_RETURN)) {
-                isPaused_=false;
-                if(auto* audio=Engine::Audio::GetInstance())audio->SetBGMDucked(false);
-                Engine::WindowDX::SetCursorVisible(false);
+            if (ui.Click(roguePause?UI::Rect{870,530,350,54}:UI::Resume) || input->Trigger(DIK_RETURN)) {
+                SetPaused(false);
             }
         }
 		// ESCキーでポーズ切り替え (0x01 = DIK_ESCAPE)
 		if (!stageClear && Engine::Input::GetInstance()->Trigger(0x01)) {
-			isPaused_ = !isPaused_;
-            if(auto* audio=Engine::Audio::GetInstance())audio->SetBGMDucked(isPaused_);
-			if (isPaused_) {
-				Engine::WindowDX::SetCursorVisible(true);
-				CreatePauseMenu();
-			} else {
-				Engine::WindowDX::SetCursorVisible(false);
-				DestroyPauseMenu();
-			}
-		}
+            SetPaused(!isPaused_);
+        }
 
 		if (stageClear) {
 			Engine::WindowDX::SetCursorVisible(true);
 		} else if (!isPaused_) {
-			playTime_ += dt;
+			bool upgradeOpen=false;for(auto e:registry_.view<Chrono::InkPlayer>())upgradeOpen|=registry_.get<Chrono::InkPlayer>(e).rogue.menu;
+			if(!upgradeOpen)playTime_ += dt;
 			
 			// ★追加: ラジアルメニューが開いているかチェック
 			bool isRadialMenuOpen = false;
@@ -419,7 +412,8 @@ void GameScene::Update() {
 			}
 
 			// ★追加: Play中はマウスカーソルを画面中央に固定 (ラジアルメニューを開いていない場合)
-			if (!isRadialMenuOpen && dx_ && dx_->GetHwnd()) {
+			for(auto e:registry_.view<Chrono::InkPlayer>())if(registry_.get<Chrono::InkPlayer>(e).rogue.menu)isRadialMenuOpen=true;
+            if (!isRadialMenuOpen && dx_ && dx_->GetHwnd()) {
 				POINT center = { (LONG)Engine::WindowDX::kW / 2, (LONG)Engine::WindowDX::kH / 2 };
 				ClientToScreen(dx_->GetHwnd(), &center);
 				SetCursorPos(center.x, center.y);
@@ -1069,14 +1063,15 @@ void GameScene::Draw() {
 				if (chronoMode_) {
 					if(auto* ink=registry_.try_get<Chrono::InkPlayer>(playerEntity)){renderer_->SetSlimeGround({ink->groundSlope.x,ink->groundHeight,ink->groundSlope.z},registry_.get<Chrono::Player>(playerEntity).grounded);scaleVec={ink->fluidAspect,ink->airBlend,ink->fluidMotion};forward={ink->fluidDirection.x,0,ink->fluidDirection.z};}
 					float mass = registry_.get<HealthComponent>(playerEntity).hp;
-                    if(auto* ink=registry_.try_get<Chrono::InkPlayer>(playerEntity);ink&&ink->perfectAge>=0&&ink->perfectAge<.16f)
+                    if(auto* ink=registry_.try_get<Chrono::InkPlayer>(playerEntity);ink&&!ink->rogue.menu&&ink->perfectAge>=0&&ink->perfectAge<.16f)
                         mass*=.18f; // Brief visual compression; gameplay mass stays unchanged.
 					if(registry_.all_of<Chrono::InkPlayer>(playerEntity))mass*=100.f/Chrono::SlimeMaximumMass;
-					renderer_->SetGPUFluidCore(targetCore, attraction, scaleVec, forward, (registry_.all_of<Chrono::InkPlayer>(playerEntity) && registry_.get<Chrono::InkPlayer>(playerEntity).dodgeLiquid) ? 5.0f : (registry_.all_of<Chrono::InkPlayer>(playerEntity) ? 4.0f : 2.0f), mass);
+					renderer_->SetGPUFluidCore(targetCore, attraction, scaleVec, forward, (registry_.all_of<Chrono::InkPlayer>(playerEntity) && registry_.get<Chrono::InkPlayer>(playerEntity).dodgeLiquid && !registry_.get<Chrono::InkPlayer>(playerEntity).rogue.menu) ? 5.0f : (registry_.all_of<Chrono::InkPlayer>(playerEntity) ? 4.0f : 2.0f), mass);
 					if (auto* action = registry_.try_get<Chrono::Player>(playerEntity)) {
+						bool upgradeOpenForFluid=false;if(auto* ink=registry_.try_get<Chrono::InkPlayer>(playerEntity))upgradeOpenForFluid=ink->rogue.menu;
 						float flash=action->damageAge<.6f?(std::sin(action->damageAge*70)>0?.75f:0):0;
 						if(action->instability>75)flash=std::max(flash,.35f*(.5f+.5f*std::sin(action->stats.seconds*10)));
-						renderer_->SetChronoFluidPresentation(action->cameraOpacity,flash,action->hitStop>0);
+						renderer_->SetChronoFluidPresentation(action->cameraOpacity,flash,isPaused_||(action->hitStop>0&&!upgradeOpenForFluid));
 						bool tether = action->action == Chrono::Action::Extending || action->action == Chrono::Action::Pulling || action->action == Chrono::Action::Retracting;
 						renderer_->SetGPUFluidTether({action->hand.x, action->hand.y, action->hand.z}, tether);
 					}
@@ -1403,7 +1398,7 @@ void GameScene::Draw() {
 
     if (isPlaying_ && isPaused_) {
         UI::Canvas ui(renderer_);
-        ui.Pause();
+        if(chronoMode_&&!registry_.view<Chrono::InkPlayer>().empty()){auto view=registry_.view<Chrono::InkPlayer>();UI::RoguePalette(ui,view.get<Chrono::InkPlayer>(*view.begin()).rogue);}else ui.Pause();
         return;
     }
     for (auto& system : systems_) {
@@ -1748,6 +1743,14 @@ void GameScene::DrawLightGizmos() {
 	});
 }
 
+void GameScene::SetPaused(bool paused) {
+    isPaused_=paused;bool upgradeOpen=false;
+    for(auto e:registry_.view<Chrono::InkPlayer>())upgradeOpen|=registry_.get<Chrono::InkPlayer>(e).rogue.menu;
+    if(auto* audio=Engine::Audio::GetInstance())audio->SetBGMDucked(paused||upgradeOpen);
+    Engine::WindowDX::SetCursorVisible(paused||upgradeOpen);
+    if(renderer_)renderer_->SetRogueWorldFrozen(paused||upgradeOpen);
+    if(paused)CreatePauseMenu();else DestroyPauseMenu();
+}
 void GameScene::SetIsPlaying(bool play) {
 	if (isPlaying_ == play)
 		return;
@@ -1933,6 +1936,7 @@ void GameScene::SetTag(entt::entity entity, const std::string& tagStr) {
 }
 
 void GameScene::ClearScene() {
+    if(renderer_)renderer_->SetRogueWorldFrozen(false);
 	// 1. 各システムのリセット（システム側の状態をクリア）
 	for (auto& sys : systems_) {
 		if (auto* chrono = dynamic_cast<ChronoSystem*>(sys.get())) chrono->Invalidate();

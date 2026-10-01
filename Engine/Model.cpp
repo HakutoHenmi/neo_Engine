@@ -1,4 +1,5 @@
 #include "Model.h"
+#include "StaticLod.h"
 #include "Renderer.h"
 #include "WindowDX.h"
 #include "PathUtils.h"
@@ -882,6 +883,22 @@ bool Model::LoadAdditionalAnimation(const std::string& animPath) {
     return true;
 }
 
+bool Model::InitializeStaticLOD(ID3D12Device* device,const Model& source,int grid,bool grassCards){
+    if(!source.data_.bones.empty())return false;
+    std::vector<LodSubset> subsets;for(const auto& sub:source.data_.subsets)subsets.push_back({sub.indexStart,sub.indexCount,sub.materialIndex});
+    auto mesh=ReduceStaticMesh(source.data_.vertices,source.data_.indices,subsets,grid,grassCards);
+    if(mesh.indices.empty()||mesh.indices.size()>=source.data_.indices.size()*.95)return false;
+    data_.vertices=std::move(mesh.vertices);data_.indices=std::move(mesh.indices);data_.materials=source.data_.materials;
+    data_.min=source.data_.min;data_.max=source.data_.max;
+    for(const auto& sub:mesh.subsets)data_.subsets.push_back({sub.first,sub.count,sub.material});
+    srvGpus_=source.srvGpus_;texs_=source.texs_;
+    vb_=CreateBufferResource(device,sizeof(VertexData)*data_.vertices.size());ib_=CreateBufferResource(device,sizeof(uint32_t)*data_.indices.size());
+    if(!vb_||!ib_)return false;void* mapped=nullptr;
+    if(FAILED(vb_->Map(0,nullptr,&mapped)))return false;std::memcpy(mapped,data_.vertices.data(),sizeof(VertexData)*data_.vertices.size());vb_->Unmap(0,nullptr);
+    if(FAILED(ib_->Map(0,nullptr,&mapped)))return false;std::memcpy(mapped,data_.indices.data(),sizeof(uint32_t)*data_.indices.size());ib_->Unmap(0,nullptr);
+    vbv_={vb_->GetGPUVirtualAddress(),UINT(sizeof(VertexData)*data_.vertices.size()),sizeof(VertexData)};
+    ibv_={ib_->GetGPUVirtualAddress(),UINT(sizeof(uint32_t)*data_.indices.size()),DXGI_FORMAT_R32_UINT};indexCount_=uint32_t(data_.indices.size());return true;
+}
 void Model::InitializeDynamic(ID3D12Device* device, const std::vector<VertexData>& vertices, const std::vector<uint32_t>& indices) {
 	data_.vertices = vertices;
 	data_.indices = indices;

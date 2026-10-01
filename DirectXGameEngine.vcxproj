@@ -188,6 +188,8 @@
     <ClInclude Include="Engine\Matrix4x4.h" />
     <ClInclude Include="Engine\SceneParameters.h" />
     <ClInclude Include="Engine\Model.h" />
+    <ClInclude Include="Engine\StaticLod.h" />
+    <ClInclude Include="Engine\TopologyLod.h" />
     <ClInclude Include="Engine\Particle.h" />
     <ClInclude Include="Engine\GPUParticle.h" />
     <ClInclude Include="Engine\ParticleEmitter.h" />

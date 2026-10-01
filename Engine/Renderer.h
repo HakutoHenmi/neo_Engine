@@ -152,6 +152,7 @@ public:
 		float vignette = 0.0f;
 		float scanline = 0.0f;
 		float san = 0.0f;
+		float dofFocus=30.f,dofRange=30.f,dofStrength=0.f,dofBossDepth=-1000.f;
 	};
 
 public:
@@ -179,6 +180,11 @@ public:
 	ID3D12Device* GetDevice() const { return dev_; }
 	ID3D12GraphicsCommandList* GetCommandList() const { return list_; }
 	static Renderer* GetInstance() { return instance_; }
+	struct SceneryLodStats {uint64_t originalIndices=0,selectedIndices=0,originalVertices=0,selectedVertices=0;std::array<uint32_t,3> instances{};};
+	void PrepareDistanceLods(uint32_t mesh,bool grassCards=false);
+	void SetDistanceLodEnabled(bool enabled){distanceLodEnabled_=enabled;}
+	const SceneryLodStats& GetSceneryLodStats()const{return lastSceneryLodStats_;}
+	std::array<uint32_t,3> GetDistanceLodMeshes(uint32_t mesh)const;
 
 	void BeginFrame(const float clearColorRGBA[4]);
 	void EndFrame();
@@ -386,7 +392,11 @@ public:
     Vector3 slimeGround_{};bool slimeGrounded_=false;
     void SetSlimeGround(Vector3 slopeHeight,bool grounded){slimeGround_=slopeHeight;slimeGrounded_=grounded;}
 	static constexpr uint32_t kEffectFluidEnd = 28000;
-	uint32_t gpuFluidMaxParticles_ = 32000;
+	static constexpr uint32_t kTrailFluidStart = 32000, kTrailFluidCapacity = 16000;
+	uint32_t gpuFluidMaxParticles_ = kTrailFluidStart+kTrailFluidCapacity;
+	std::vector<GPUFluidParticle> guidedTrailParticles_;
+	uint32_t previousTrailParticleCount_=0;
+	void SetGuidedLiquidTrail(std::vector<GPUFluidParticle> particles){guidedTrailParticles_=std::move(particles);}
 	uint32_t gpuFluidEmitCursorPlayer_ = 0;
 	uint32_t gpuFluidEmitCursorSplash_ = kPlayerFluidParticles;
 	uint32_t gpuFluidExtractCursor_ = 0;
@@ -432,6 +442,7 @@ public:
 	void SetGPUFluidCore(const Vector3& pos, float attraction, const Vector3& scale = {1.0f, 1.0f, 1.0f}, const Vector3& forward = {0.0f, 0.0f, 1.0f}, float mode = 0.0f, float flowSpeed = 0.0f);
 	// Deforms existing player particles; no separate arm mesh or extra emission.
 	void SetGPUFluidTether(const Vector3& tip, bool active) { gpuFluidTetherTip_ = tip; gpuFluidTetherActive_ = active; }
+	void SetRogueWorldFrozen(bool value) { rogueWorldFrozen_=value; }
 	void SetChronoFluidPresentation(float opacity,float flash,bool paused) { chronoFluidOpacity_=opacity;chronoFluidFlash_=flash;chronoFluidPaused_=paused; }
 	Vector3 gpuFluidTetherTip_{};
 	bool gpuFluidTetherActive_ = false;
@@ -445,7 +456,7 @@ public:
 	Vector3 gpuFluidCoreForward_ = {0.0f, 0.0f, 1.0f};
 	float gpuFluidCoreMode_ = 0.0f;
 	float chronoFluidOpacity_=1,chronoFluidFlash_=0;
-	bool chronoFluidPaused_=false;
+	bool chronoFluidPaused_=false,rogueWorldFrozen_=false;
 	float gpuFluidCoreFlowSpeed_ = 0.0f;
 
 	// ★追加: デコイ用コア情報
@@ -862,6 +873,10 @@ private:
 
 	// ★変更: Mesh構造体ではなくModelクラスへのスマートポインタで管理
 	std::vector<std::shared_ptr<Model>> models_;
+	struct SceneryLods {std::array<uint32_t,3> meshes{};Vector3 center{};float radius=1;};
+	std::unordered_map<uint32_t,SceneryLods> sceneryLods_;
+	bool distanceLodEnabled_=true;SceneryLodStats sceneryLodStats_{},lastSceneryLodStats_{};
+	uint32_t SelectDistanceLod(uint32_t mesh,const Matrix4x4& world);
 	std::vector<Texture> textures_;
 
 	std::unordered_map<std::string, TextureHandle> textureCache_;

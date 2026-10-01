@@ -215,6 +215,12 @@ exit /b 0
     <ClInclude Include="Game\Systems\ChronoSystem.h" />
     <ClInclude Include="Game\Chrono\ChronoComponents.h" />
     <ClInclude Include="Game\Chrono\ChronoRules.h" />
+    <ClInclude Include="Game\Chrono\DomainRules.h" />
+    <ClInclude Include="Game\Chrono\LiquidTrail.h" />
+    <ClInclude Include="Game\Chrono\RogueliteRules.h" />
+    <ClInclude Include="Game\UI\RogueliteUI.h" />
+    <ClInclude Include="Game\Systems\RogueliteCombat.inl" />
+    <ClInclude Include="tests\RogueliteValidation.inl" />
     <ClInclude Include="Game\Scenes\GameOverScene.h" />
     <ClInclude Include="Game\Scenes\SelectScene.h" />
     <ClInclude Include="Game\Scenes\TitleScene.h" />

@@ -39,6 +39,13 @@ void BuildShapes(uint3 id : SV_DispatchThreadID) {
     if (originalIndices[i]==0xffffffffU) { shapes[i]=shape; return; }
     VolumeParticle p=particles[i];
     if (p.color.a<0.01f || p.position.y<-500 || !all(isfinite(p.position))) { shapes[i]=shape; return; }
+    if(p.type>=8.0f){
+        // Overlapping anisotropic kernels form one continuous liquid density
+        // surface; the player raymarch supplies the same normals and optics.
+        float width=max(.35f,p.pad.x),height=max(.28f,p.pad.y);
+        shape.row0=float4(1/width,0,0,p.position.x);shape.row1=float4(0,1/height,0,p.position.y);shape.row2=float4(0,0,1/width,p.position.z);
+        shape.info=float4(3.2f*p.color.a,width,0,1);shapes[i]=shape;return;
+    }
     bool water=VolumePhase(p.type)==2;
     bool supported=water && p.pad.z>0 &&
         abs(p.position.y-p.pad.y)<0.35f && abs(p.velocity.y)<2.5f;
@@ -143,6 +150,7 @@ void SplatDensity(uint3 id : SV_DispatchThreadID) {
         if(phase==0) InterlockedAdd(densityAccum[index].x,value);
         else if(phase==1) InterlockedAdd(densityAccum[index].y,value);
         else InterlockedAdd(densityAccum[index].z,value);
+        if(particle.type>=8.0f)InterlockedAdd(densityAccum[index].w,value);
         int weight=(int)round(min(density,1.0f)*128.0f);
         if (weight==0) continue;
         int3 momentum=(int3)round(clamp(particle.velocity,-30,30)*weight);
@@ -157,7 +165,7 @@ void SplatDensity(uint3 id : SV_DispatchThreadID) {
 void ResolveDensity(uint3 p : SV_DispatchThreadID) {
     if(any(p>=volumeSize)) return;
     uint index=VolumeIndex(p);
-    outputDensity[p]=float4(float3(densityAccum[index].xyz)/4096.0f,0);
+    outputDensity[p]=float4(densityAccum[index])/4096.0f;
     int4 momentum=momentumAccum[index];
     outputVelocity[p]=float4(float3(momentum.xyz)/max(momentum.w,1),0);
 }

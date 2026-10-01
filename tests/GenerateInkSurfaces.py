@@ -3,11 +3,7 @@ from pathlib import Path
 import math
 root=Path(__file__).resolve().parents[1]/'Resources/Models/Ink'
 root.mkdir(parents=True,exist_ok=True)
-surfaces=[((-140,0,-130),(280,0,0),(0,0,300))]
-for x in (-43,21):
-    surfaces.extend([((x,0,-22),(22,0,0),(0,18,62)),((x,18,40),(22,0,0),(0,0,28))])
-for x in (-43,21):
-    surfaces.extend([((x-.02,0,68),(0,0,-28),(0,18,0)),((x+22.02,0,40),(0,0,28),(0,18,0)),((x,0,39.98),(22,0,0),(0,18,0)),((x+22,0,68.02),(-22,0,0),(0,18,0))])
+surfaces=[((x,0,z),(220,0,0),(0,0,240)) for z in (-340,-100,140) for x in (-330,-110,110)]
 for i,(o,u,v) in enumerate(surfaces):
     positions=[o,tuple(o[j]+u[j] for j in range(3)),tuple(o[j]+u[j]+v[j] for j in range(3)),tuple(o[j]+v[j] for j in range(3))]
     # Importer mirrors X, reverses winding, and flips UV V.

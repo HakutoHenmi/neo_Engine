@@ -21,8 +21,9 @@ struct VolumeConstants {
     Vector3 previousOrigin; float historyValid;
     float dt, iso, axis, debug;
     Vector4 colors[3];
+    Vector3 playerBodyCenter; float playerDecoration;
 };
-static_assert(sizeof(VolumeConstants) == 28 * sizeof(UINT));
+static_assert(sizeof(VolumeConstants) == 32 * sizeof(UINT));
 static_assert(sizeof(Renderer::GPUFluidParticle) == 64);
 }
 
@@ -30,7 +31,7 @@ bool Renderer::InitFluidVolume() {
     if (!isGPUFluidReady_) return false;
     CD3DX12_ROOT_PARAMETER compute[13];
     CD3DX12_DESCRIPTOR_RANGE computeRanges[5];
-    compute[0].InitAsConstants(28, 1);
+    compute[0].InitAsConstants(32, 1);
     for (UINT i=0; i<4; ++i) compute[i+1].InitAsShaderResourceView(i);
     for (UINT i=0; i<3; ++i) compute[i+5].InitAsUnorderedAccessView(i);
     for (UINT i=0; i<5; ++i) {
@@ -52,7 +53,7 @@ bool Renderer::InitFluidVolume() {
     CD3DX12_ROOT_PARAMETER draw[10];
     CD3DX12_DESCRIPTOR_RANGE drawRanges[6];
     draw[0].InitAsConstantBufferView(0);
-    draw[1].InitAsConstants(28,1);
+    draw[1].InitAsConstants(32,1);
     for(UINT i=0;i<4;++i) {
         drawRanges[i].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV,1,i);
         draw[i+2].InitAsDescriptorTable(1,&drawRanges[i],D3D12_SHADER_VISIBILITY_PIXEL);
@@ -166,7 +167,10 @@ void Renderer::DrawFluidVolume() {
     float move=std::abs(origin.x-volumePreviousOrigin_.x)+std::abs(origin.y-volumePreviousOrigin_.y)+std::abs(origin.z-volumePreviousOrigin_.z);
     if(move>8) volumeHistoryValid_=false;
     VolumeConstants cb{origin,kVoxelSize,{kVolumeWidth,kVolumeHeight,kVolumeWidth},(std::min)(gpuFluidActiveParticleCount_,gpuFluidMaxParticles_),
-        volumePreviousOrigin_,volumeHistoryValid_?1.0f:0.0f,fluidSimulatedDt_,0.25f,0,static_cast<float>(fluidVolumeDebugMode_),{volumeColors_[0],volumeColors_[1],volumeColors_[2]}};
+        volumePreviousOrigin_,volumeHistoryValid_?1.0f:0.0f,fluidSimulatedDt_,0.25f,0,static_cast<float>(fluidVolumeDebugMode_),
+        {volumeColors_[0],volumeColors_[1],volumeColors_[2]},
+        {gpuFluidCorePos_.x,gpuFluidCorePos_.y-1.25f+0.8f*std::clamp(gpuFluidCoreScale_.y,0.0f,1.0f),gpuFluidCorePos_.z},
+        gpuFluidCoreMode_>=4.0f && gpuFluidCoreMode_<5.0f ? chronoFluidOpacity_ : 0.0f};
     if(gpuFluidCoreMode_>=2.0f){
         cb.colors[0].w=chronoFluidOpacity_;
         cb.colors[0].x+=(1-cb.colors[0].x)*chronoFluidFlash_;
@@ -181,7 +185,7 @@ void Renderer::DrawFluidVolume() {
     for(auto resource:simulationReads) transition(resource,D3D12_RESOURCE_STATE_UNORDERED_ACCESS,D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
     ID3D12DescriptorHeap* heaps[]={srvHeap_}; list_->SetDescriptorHeaps(1,heaps);
     list_->SetComputeRootSignature(rootSigVolumeCompute_.Get());
-    list_->SetComputeRoot32BitConstants(0,28,&cb,0);
+    list_->SetComputeRoot32BitConstants(0,32,&cb,0);
     for(UINT i=0;i<4;++i) list_->SetComputeRootShaderResourceView(i+1,simulationReads[i]->GetGPUVirtualAddress());
     list_->SetComputeRootUnorderedAccessView(5,volumeAccum_->GetGPUVirtualAddress());
     list_->SetComputeRootUnorderedAccessView(6,volumeMomentum_->GetGPUVirtualAddress());
@@ -207,7 +211,7 @@ void Renderer::DrawFluidVolume() {
     BeginFluidProfile(FluidFiltering);
     for(UINT axis=0;axis<3;++axis) {
         UINT source=axis%2, destination=1-source;
-        cb.axis=static_cast<float>(axis); list_->SetComputeRoot32BitConstants(0,28,&cb,0);
+        cb.axis=static_cast<float>(axis); list_->SetComputeRoot32BitConstants(0,32,&cb,0);
         list_->SetComputeRootDescriptorTable(10,volumeSrv_[source]);
         list_->SetComputeRootDescriptorTable(8,volumeUav_[destination]);
         transition(volumeTextures_[destination].Get(),kVolumeRead,D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
@@ -237,7 +241,7 @@ void Renderer::DrawFluidVolume() {
     list_->RSSetViewports(1,&viewport_); list_->RSSetScissorRects(1,&scissor_);
     list_->SetGraphicsRootSignature(rootSigVolumeDraw_.Get());
     list_->SetGraphicsRootConstantBufferView(0,cbFrameAddr_);
-    list_->SetGraphicsRoot32BitConstants(1,28,&cb,0);
+    list_->SetGraphicsRoot32BitConstants(1,32,&cb,0);
     list_->SetGraphicsRootDescriptorTable(2,volumeSrv_[historyDestination]);
     list_->SetGraphicsRootDescriptorTable(3,backdropSrv_);
     list_->SetGraphicsRootDescriptorTable(4,ppDepthSrvGpu_);
@@ -255,7 +259,8 @@ void Renderer::DrawFluidVolume() {
     list_->OMSetRenderTargets(1,&ppRtv_,FALSE,nullptr);
     if(fluidVolumeDebugMode_==0) {
         BeginFluidProfile(FluidImpostors);
-        list_->SetPipelineState(psoVolumeSpray_.Get()); list_->DrawInstanced(6,cb.count,0,0);
+        list_->SetPipelineState(psoVolumeSpray_.Get());
+        list_->DrawInstanced(6,cb.count+(cb.playerDecoration>0.001f?24:0),0,0);
         EndFluidProfile(FluidImpostors);
     }
     transition(ppSceneDepth_.Get(),ppDepthState_,D3D12_RESOURCE_STATE_DEPTH_WRITE);
