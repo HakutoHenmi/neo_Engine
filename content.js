@@ -1,0 +1,16 @@
+// ゲーム5作品と技術デモ1作品。説明・担当範囲・URLはこのファイルで編集できます。
+// 画像は ./assets/ 以下、紹介動画は YouTube の https:// URL を使用してください。
+window.PORTFOLIO = {
+  name: '逸見 珀斗', role: 'GAME PROGRAMMER',
+  bio: 'ゲームプログラマーの逸見 珀斗（へんみ はくと）です。\nプレイヤーが「動かしていて気持ちいい」と感じる体験を目指し、ゲーム制作と技術検証に取り組んでいます。\n個人制作・チーム制作での実装や工夫を、作品とともに紹介します。',
+  contacts: [{ label: 'GitHub', url: 'https://github.com/HakutoHenmi' }, { label: 'PDFポートフォリオ', url: './assets/portfolio.pdf' }],
+  projects: [
+    { id: '01', category: 'game', title: 'スライムアクション', subtitle: '3Dアクション / 個人制作', tags: ['GAME', '3D ACTION', '個人制作'], year: '', description: 'スライムを操作する3Dアクションゲームです。\n滑るような移動やドリフトを活かしたアクションを制作しました。\n詳しい作品説明は後から編集予定です。', responsibility: 'プログラム全般（設計・実装）', highlights: '操作感・移動挙動の調整。詳細は編集予定。', tools: 'C++20 / DirectX 12 / Visual Studio 2022', image: './assets/slime-action.jpg', video: 'https://youtu.be/9LPdZkU2k14', url: '' },
+    { id: '02', category: 'game', title: 'Defectory', subtitle: '3Dアクション / 5名でのチーム制作', tags: ['GAME', '3D ACTION', 'チーム制作'], year: '', description: '自作ゲームエンジンで制作した3Dアクションゲームです。\nモデル・パーティクル制御や、戦闘シーンの演出に取り組みました。\n詳しい作品説明は後から編集予定です。', responsibility: '自作ゲームエンジン（モデル・パーティクル制御）\n戦闘シーン全般（演出・ヒットエフェクト）', highlights: '描画負荷の検証と最適化。詳細は編集予定。', tools: 'C++20 / DirectX 12 / Visual Studio 2022', image: './assets/defectory.jpg', video: 'https://youtu.be/a_53uxHRYjE', url: '' },
+    { id: '03', category: 'game', title: '逃灯', subtitle: '3D FPSアクション / 個人制作', tags: ['GAME', 'FPS', '個人制作'], year: '', description: '3D FPSアクションゲームです。\nプレイヤーの制御とアイテムドロップの仕組みを制作しました。\n詳しい作品説明は後から編集予定です。', responsibility: 'プレイヤー機体の制御\nアイテムドロップシステムの実装', highlights: 'オブジェクトの生成・破棄とメモリ管理。詳細は編集予定。', tools: 'C++20 / DirectX 12 / Visual Studio 2022', image: './assets/toto.jpg', video: 'https://youtu.be/Bpxr4WtEc50', url: '' },
+    { id: '04', category: 'game', title: '削られ島でぶっ飛ばせ！', subtitle: '3Dアクション / チーム制作', tags: ['GAME', '3D ACTION', 'チーム制作'], year: '2025', description: '島を舞台にした3Dアクションゲームです。\nギミックの動作や演出の制御を担当しました。\n詳しい作品説明は後から編集予定です。', responsibility: 'プログラム全般（ギミックロジック）', highlights: 'イベントの実行順と状態遷移の整理。詳細は編集予定。', tools: '開発環境の詳細は後から編集予定', image: './assets/kezurarejima.jpg', video: 'https://youtu.be/ETOUy-4aSes', url: '' },
+    { id: '05', category: 'game', title: 'リビルド', subtitle: '2Dアクション / 1年次作品', tags: ['GAME', '2D ACTION'], year: '2024', description: '1年次に制作した2Dアクションゲームです。\n演出全般を担当しました。\n詳しい作品説明は後から編集予定です。', responsibility: '演出全般', highlights: '当たり判定と反射ベクトルの検証。詳細は編集予定。', tools: 'C言語 / Visual Studio 2022 / DXライブラリ / KAMATA ENGINE', image: './assets/rebuild.jpg', video: 'https://youtu.be/jxDLSSejB0I', url: '' },
+    { id: '06', category: 'tech', title: 'Nigi-Nigi（にぎにぎ）', subtitle: '集中と癒やしのポモドーロツール / Windows', tags: ['TECH DEMO', 'DirectX', 'DESKTOP TOOL'], year: '', description: '作業中の集中と休息を支える、ポモドーロ機能つきのデスクトップツールです。\nDirectXによる軽快な動作と、集中・休息を切り替えるUIを紹介します。\n詳細な技術解説は後から編集予定です。', responsibility: '担当範囲・制作工程は後から編集予定', highlights: 'DirectXを使用した動作と、集中・休息を支えるUIデザイン。', tools: 'DirectX / Windows 10・11（詳細は編集予定）', image: './assets/nigi-nigi.jpg', video: 'https://youtu.be/BFgeKeUAiSA', url: 'https://yurufuwa-lab.booth.pm/items/8531474', urlLabel: 'BOOTHで見る', sourceLabel: 'BOOTHの商品紹介をもとに掲載', sourceUrl: 'https://yurufuwa-lab.booth.pm/items/8531474' }
+  ]
+};
+

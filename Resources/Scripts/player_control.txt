@@ -1,3 +1,0 @@
-# player_control.txt
-# 左クリック(MouseL)で弾を発射する
-IF_KEY MouseL SHOOT
