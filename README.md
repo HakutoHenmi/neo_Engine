@@ -55,6 +55,10 @@ Nigi-Nigiの紹介は [BOOTHの商品ページ](https://yurufuwa-lab.booth.pm/it
 
 [GitHub公式の公開元設定手順](https://docs.github.com/en/pages/getting-started-with-github-pages/configuring-a-publishing-source-for-your-github-pages-site)
 
+## TECHNICAL FOCUS
+
+プログラム説明資料に基づき、レベルエディター、ECS・コンポーネント編集、シーン保存・再生制御、当たり判定・戦闘判定、パーティクル編集の5項目を掲載しています。各項目の「実装内容」を開くと詳細を読めます。
+
 ## UIの演出
 
 HPは装飾として100 / 100を表示します。EXPはスクロール進捗、レベルはLv.01〜03で変化します。深度も閲覧位置に応じた演出です。動きを減らす端末設定ではパララックス・光のアニメーション・スムーズスクロールを抑えます。
