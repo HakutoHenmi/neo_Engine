@@ -18,3 +18,9 @@ dialog{width:min(720px,calc(100% - 32px));max-height:86vh;padding:32px;border:1p
 @media(max-width:360px){.hud{left:auto;right:auto;padding-inline:18px;gap:8px}}
 .work-cover:has(.custom-cover){background:#101d29;aspect-ratio:16/9;padding:0}.work-cover .custom-cover{object-fit:cover}.detail-cover:has(.custom-cover){aspect-ratio:16/9}.work-card.tech .work-cover:has(.custom-cover){background:#d2e9e7}.work-card.tech .custom-cover{object-fit:contain}.work-grid:has(.work-card.tech:not([hidden])){grid-template-columns:repeat(2,minmax(0,1fr))}.detail-facts{margin:20px 0 0}.detail-source{font-size:9px;color:#abc3b5;line-height:1.8;margin-top:16px}.detail-source a{text-decoration:underline;text-underline-offset:3px}@media(max-width:650px){.work-grid:has(.work-card.tech:not([hidden])){grid-template-columns:1fr}}
 
+/* 自作エンジンの技術説明 */
+.ability-intro{padding:20px 21px 0;font-size:12px;line-height:1.9;color:var(--mint)}
+.ability-intro span{font-size:10px;color:#c7d3cc}.abilities .ability{align-items:flex-start;padding-block:22px}.ability-body{min-width:0;flex:1}.ability-index{padding-top:2px;flex-shrink:0}
+.ability-details{margin-top:12px;font-size:11px;line-height:1.9;color:#c7d3cc;overflow-wrap:anywhere}.ability-details summary{cursor:pointer;color:var(--mint);font-size:10px;padding:5px 0;list-style:none}.ability-details summary::-webkit-details-marker{display:none}.ability-details summary::before{content:'＋';display:inline-block;margin-right:8px;color:var(--gold)}.ability-details[open] summary::before{content:'−'}.ability-details summary:hover{color:var(--gold)}.ability-details summary:focus-visible{outline:2px solid var(--gold);outline-offset:4px}.ability-details ul{padding-left:17px;margin-top:9px}.ability-details li+li{margin-top:9px}
+@media(max-width:650px){.ability-intro{padding-inline:20px}.ability-details{font-size:11px}.ability-details summary{font-size:11px}}
+
