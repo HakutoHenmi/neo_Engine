@@ -49,7 +49,7 @@ bool ChronoSystem::UpdateCinematic(entt::registry& r,Player& p,GameContext& ctx)
     ctx.renderer->SetRogueWorldFrozen(true);ctx.camera->SetHandheld(0);
     Engine::WindowDX::SetCursorVisible(false);p.cameraOpacity=1;
     p.worldScale=p.aimScale=0;
-    if(ctx.combatFlow)ctx.combatFlow->enemyScale=0;
+    if(ctx.combatFlow)ctx.combatFlow->SetChronoEnemyScale(0);
     V player=Read(r.get<TransformComponent>(player_).translate),focus=player+V{0,1,0};
     CinematicPose pose;
     if(cinematicBoss_){

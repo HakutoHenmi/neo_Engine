@@ -7,7 +7,7 @@
 namespace Game {
 
 void CylinderEffectScript::Start(entt::entity entity, GameScene* scene) {
-	auto& registry = scene->GetRegistry();
+	auto& registry = scene->GetComponents();
 	
 	if (!registry.all_of<MeshRendererComponent>(entity)) {
 		auto& mr = registry.emplace<MeshRendererComponent>(entity);
@@ -16,9 +16,9 @@ void CylinderEffectScript::Start(entt::entity entity, GameScene* scene) {
 		mr.shaderName = "EnergyCylinder";
 		mr.color = { 0.2f, 0.5f, 1.0f, 1.0f }; // 青っぽいシリンダー
 
-		auto& context = scene->GetContext();
-		if (context.renderer) {
-			mr.modelHandle = context.renderer->LoadObjMesh(mr.modelPath);
+		auto* renderer = scene->GetRenderer();
+		if (renderer) {
+			mr.modelHandle = renderer->LoadObjMesh(mr.modelPath);
 			// テクスチャが必要であればロード
 		}
 	}
@@ -31,7 +31,7 @@ void CylinderEffectScript::Start(entt::entity entity, GameScene* scene) {
 
 void CylinderEffectScript::Update(entt::entity entity, GameScene* scene, float dt) {
 	timer_ += dt;
-	auto& registry = scene->GetRegistry();
+	auto& registry = scene->GetComponents();
 	
 	if (registry.all_of<TransformComponent>(entity) && registry.all_of<MeshRendererComponent>(entity)) {
 		auto& tc = registry.get<TransformComponent>(entity);

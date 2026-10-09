@@ -24,7 +24,7 @@ public:
 		for (auto entity : view) {
 			auto& pi = registry.get<PlayerInputComponent>(entity);
 			if (auto* hc = registry.try_get<HealthComponent>(entity)) {
-				if (hc->isDead || hc->hp <= 0.0f) {
+				if (hc->IsDead() || hc->Hp() <= 0.0f) {
 					pi.enabled = false;
 					pi.moveDir = {0.0f, 0.0f};
 					pi.jumpRequested = false;
@@ -82,7 +82,7 @@ public:
 
 					auto enemies = registry.view<TagComponent, TransformComponent, HealthComponent>();
 					for (auto e : enemies) {
-						if (enemies.get<TagComponent>(e).tag == TagType::Enemy && !enemies.get<HealthComponent>(e).isDead) {
+						if (enemies.get<TagComponent>(e).tag == TagType::Enemy && !enemies.get<HealthComponent>(e).IsDead()) {
 							auto& eTc = enemies.get<TransformComponent>(e);
 							float dx = eTc.translate.x - playerPos.x;
 							float dz = eTc.translate.z - playerPos.z; // 水平距離で判定
@@ -101,7 +101,7 @@ public:
 			// 対象が死んだり消えたりしたらロックオン解除
 			if (pi.lockedEnemy != entt::null) {
 				if (!registry.valid(pi.lockedEnemy) || 
-					(registry.all_of<HealthComponent>(pi.lockedEnemy) && registry.get<HealthComponent>(pi.lockedEnemy).isDead)) {
+					(registry.all_of<HealthComponent>(pi.lockedEnemy) && registry.get<HealthComponent>(pi.lockedEnemy).IsDead())) {
 					pi.lockedEnemy = entt::null;
 				}
 			}

@@ -34,7 +34,7 @@ public:
     void Initialize(Engine::WindowDX* dx,const Engine::SceneParameters&)override{
         window_=dx;std::filesystem::create_directories("RtLightingCheck");Engine::SceneParameters p;p.stagePath="Resources/Scenes/chrono.json";Game::GameScene::Initialize(dx,p);
         started_=std::chrono::steady_clock::now();
-        auto* r=Engine::Renderer::GetInstance();original_=r->GetGraphicsSettings();auto& s=r->GetGraphicsSettings();s.rtReflections=s.rtIndirect=false;s.rtShadows=true;s.dof=s.motionBlur=0;
+        auto* r=Engine::Renderer::GetInstance();original_=r->GetGraphicsSettings();auto s=r->GetGraphicsSettings();s.rtReflections=s.rtIndirect=false;s.rtShadows=true;s.dof=s.motionBlur=0;r->ApplyGraphicsSettings(s);
         passed_&=r->RtLightingAvailable();
         auto* rock=r->GetModel(r->LoadObjMesh("Resources/Models/PolyHaven/boulder_01_2k.fbx"));
         auto* grass=r->GetModel(r->LoadObjMesh("Resources/Models/PolyHaven/grass_medium_02_2k.fbx"));
@@ -50,33 +50,33 @@ public:
             // Freeze only after gameplay actually resumes, not mid-introduction.
             warmed_=std::chrono::duration<float>(std::chrono::steady_clock::now()-started_).count()>5&&!params.cinematicCamera;
             if(warmed_)passed_&=params.dofStrength==0;return;}
-        ++frame_;auto* r=Engine::Renderer::GetInstance();auto& s=r->GetGraphicsSettings();
-        if(frame_==45){Capture(L"RtLightingCheck/off.png");s.rtReflections=true;}
-        if(frame_==80){Capture(L"RtLightingCheck/reflections.png");reflectionPixels_=r->RtReflectionPixels();reflectionHits_=r->RtReflectionHits();passed_&=reflectionPixels_>0&&reflectionHits_>0&&r->RtIndirectPixels()==0;s.rtReflections=false;s.rtIndirect=true;}
-        if(frame_==115){Capture(L"RtLightingCheck/indirect.png");indirectPixels_=r->RtIndirectPixels();indirectHits_=r->RtIndirectHits();passed_&=indirectPixels_>0&&indirectHits_>0&&r->RtReflectionPixels()==0;s.rtReflections=true;}
-        if(frame_==150){Capture(L"RtLightingCheck/combined.png");shadowFrames_=r->RtShadowFrames();s.rtShadows=false;}
-        if(frame_==185){Capture(L"RtLightingCheck/oblique.png");passed_&=r->RtShadowFrames()==shadowFrames_&&r->RtReflectionHits()>0&&r->RtIndirectHits()>0;s.rtShadows=true;}
+        ++frame_;auto* r=Engine::Renderer::GetInstance();auto s=r->GetGraphicsSettings();
+        if(frame_==45){Capture(L"RtLightingCheck/off.png");s.rtReflections=true;r->ApplyGraphicsSettings(s);}
+        if(frame_==80){Capture(L"RtLightingCheck/reflections.png");reflectionPixels_=r->RtReflectionPixels();reflectionHits_=r->RtReflectionHits();passed_&=reflectionPixels_>0&&reflectionHits_>0&&r->RtIndirectPixels()==0;s.rtReflections=false;s.rtIndirect=true;r->ApplyGraphicsSettings(s);}
+        if(frame_==115){Capture(L"RtLightingCheck/indirect.png");indirectPixels_=r->RtIndirectPixels();indirectHits_=r->RtIndirectHits();passed_&=indirectPixels_>0&&indirectHits_>0&&r->RtReflectionPixels()==0;s.rtReflections=true;r->ApplyGraphicsSettings(s);}
+        if(frame_==150){Capture(L"RtLightingCheck/combined.png");shadowFrames_=r->RtShadowFrames();s.rtShadows=false;r->ApplyGraphicsSettings(s);}
+        if(frame_==185){Capture(L"RtLightingCheck/oblique.png");passed_&=r->RtShadowFrames()==shadowFrames_&&r->RtReflectionHits()>0&&r->RtIndirectHits()>0;s.rtShadows=true;r->ApplyGraphicsSettings(s);}
 #ifdef USE_IMGUI
         if(frame_==190){
             using namespace Game::UI;Canvas ui(r);auto& io=ImGui::GetIO();bool down=io.MouseDown[0];float duration=io.MouseDownDuration[0];io.MouseDown[0]=true;io.MouseDownDuration[0]=0;
-            auto click=[&](Game::UI::Rect b){ui.SetPointer((b.x+b.w*.5f)*1.5f,(b.y+b.h*.5f)*1.5f);UpdateGraphics(ui,*r);};
+            auto click=[&](Game::UI::Rect b){ui.SetPointer((b.x+b.w*.5f)*1.5f,(b.y+b.h*.5f)*1.5f);UpdateGraphics(ui,*r);s=r->GetGraphicsSettings();};
             click(RtReflectionOff);passed_&=!s.rtReflections&&s.rtIndirect;click(RtReflectionOn);passed_&=s.rtReflections&&s.rtIndirect;
             click(RtIndirectOff);passed_&=s.rtReflections&&!s.rtIndirect;click(RtIndirectOn);passed_&=s.rtReflections&&s.rtIndirect;
             bool quality=s.dlssQuality;click({546,617,240,54});passed_&=s.rtReflections&&s.rtIndirect&&s.rtShadows&&s.dlssQuality==quality;
             io.MouseDown[0]=down;io.MouseDownDuration[0]=duration;
         }
 #endif
-        if(frame_==210){Capture(L"RtLightingCheck/settings.png");s.motionBlur=.3f;s.dof=1;}
+        if(frame_==210){Capture(L"RtLightingCheck/settings.png");s.motionBlur=.3f;s.dof=1;r->ApplyGraphicsSettings(s);}
         if(frame_>=220&&frame_<=255&&frame_%5==0)MovingCapture(frame_);
         if(frame_==215)orbitBuilds_=r->RtTlasBuilds();
         if(frame_==260){stationaryBuilds_=r->RtTlasBuilds();orbitPassed_=stationaryBuilds_==orbitBuilds_;passed_&=orbitPassed_;
-            moved_=FindObjectByName("Chrono Foreground weathered stone");passed_&=GetRegistry().valid(moved_);
-            if(GetRegistry().valid(moved_))GetRegistry().get<Game::TransformComponent>(moved_).translate.x+=1;
+            moved_=FindObjectByName("Chrono Foreground weathered stone");passed_&=GetComponents().valid(moved_);
+            if(GetComponents().valid(moved_))GetComponents().get<Game::TransformComponent>(moved_).translate.x+=1;
             // Production Update invalidates cached world transforms. Most of
             // this fixture is frozen; resume one update for the explicit move.
             Game::GameScene::Update();}
         if(frame_==270){movePassed_=r->RtTlasBuilds()>stationaryBuilds_;passed_&=movePassed_;
-            if(GetRegistry().valid(moved_))GetRegistry().get<Game::TransformComponent>(moved_).translate.x-=1;
+            if(GetComponents().valid(moved_))GetComponents().get<Game::TransformComponent>(moved_).translate.x-=1;
             Game::GameScene::Update();}
         if(frame_==295)Capture(L"RtLightingCheck/scenery.png");
         if(frame_==300){passed_&=r->RtLightingFrames()>150&&floorMotionDelta_<.18;
@@ -87,7 +87,7 @@ public:
     }
     void Draw()override{
         if(frame_>=190&&frame_<=210){Game::UI::Canvas ui(Engine::Renderer::GetInstance());Game::UI::DrawGraphics(ui,*Engine::Renderer::GetInstance());return;}
-        auto player=FindObjectByName("Player");auto p=GetRegistry().get<Game::TransformComponent>(player).translate;
+        auto player=FindObjectByName("Player");auto p=GetComponents().get<Game::TransformComponent>(player).translate;
         auto& camera=GetCamera();camera.StopShake();camera.SetHandheld(0);camera.SetPosition(p.x,p.y+6,p.z-16);camera.LookAt(p.x,p.y+1,p.z+12,0,1,0);
         if(frame_>=150){camera.SetPosition(p.x+14,p.y+3,p.z-14);camera.LookAt(p.x,p.y+1,p.z,0,1,0);}
         if(frame_>210){float angle=(frame_-211)*.008f;camera.SetPosition(p.x+20*std::sin(.78f+angle),p.y+5,p.z-20*std::cos(.78f+angle));camera.LookAt(p.x,p.y-.4f,p.z+4,0,1,0);}

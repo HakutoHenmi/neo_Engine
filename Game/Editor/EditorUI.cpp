@@ -42,12 +42,11 @@ std::string EditorUI::currentScenePath = "Resources/Scenes/chrono.json";
 // シーン復元ヘルパー (ID保持とヒエラルキー解決)
 static std::vector<entt::entity> RestoreSceneFromJson(GameScene* scene, const json& j, bool append) {
 	if (!scene) return {};
-	auto& reg = scene->GetRegistry();
+	auto& reg = scene->GetComponents();
 	if (!append) {
 		OutputDebugStringA("[EditorUI] RestoreSceneFromJson: Clearing registry (FULL RELOAD)\n");
 		scene->ClearScene(); // ★修正: reg.clear() の代わりに ClearScene を呼び出し、内部の全キューとシステムをクリアする
-		scene->GetSelectedEntities().clear();
-		scene->SetSelectedEntity(entt::null);
+		scene->SelectEntity(entt::null);
 	}
 
 	// settings の復元
@@ -200,7 +199,7 @@ static std::vector<entt::entity> RestoreSceneFromJson(GameScene* scene, const js
 					c.intensity = comp.value("intensity", 1.0f); c.range = comp.value("range", 10.0f);
 				} else if (type == "Health") {
 					auto& c = reg.get_or_emplace<HealthComponent>(entity);
-					c.enabled = en; c.hp = comp.value("hp", 100.0f); c.maxHp = comp.value("maxHp", 100.0f); c.isDead = comp.value("isDead", false);
+					c.enabled = en; c.SetHp(comp.value("hp", 100.0f)); c.SetMaxHp(comp.value("maxHp", 100.0f)); c.SetDead(comp.value("isDead", false));
 				} else if (type == "Tag") {
 					auto& c = reg.get_or_emplace<TagComponent>(entity);
 					c.enabled = en; c.tag = StringToTag(comp.value("tag", "Untagged"));
@@ -433,13 +432,12 @@ static int currentAspect = 0;
 static const float aspectValues[] = { 0.0f, 16.0f/9.0f, 4.0f/3.0f, 1.0f/1.0f, -1.0f };
 static const char* aspects[] = { "Free", "16:9", "4:3", "1:1", "Auto" };
 
-GizmoMode currentGizmoMode = GizmoMode::Translate;
+EditorUI::GizmoState EditorUI::gizmo_;
 static std::deque<LogEntry> consoleLog;
 static constexpr size_t kMaxConsoleLines = 500;
 static float globalTime = 0.0f;
 
-bool gizmoDragging = false;
-int gizmoDragAxis = -1; 
+
 static ImVec2 gizmoDragStartMouse = {};
 static DirectX::XMFLOAT3 gizmoStartTranslate;
 static DirectX::XMFLOAT3 gizmoStartRotate;
@@ -470,7 +468,7 @@ static uint32_t nextObjectId = 1;
 EditorUI::Icons EditorUI::s_icons;
 static uint32_t GenerateId() { return nextObjectId++; }
 
-static std::string GenerateCopyName(const std::string& baseName, entt::registry& registry) {
+static std::string GenerateCopyName(const std::string& baseName, SceneComponents& registry) {
 	std::string base = baseName;
 	while (base.size() > 7 && base.substr(base.size() - 7) == " (Copy)")
 		base = base.substr(0, base.size() - 7);
@@ -568,7 +566,7 @@ static std::string EscapeJson(const std::string& s) {
 	return o;
 }
 
-static std::string SerializeEntity(entt::registry& registry, entt::entity entity) {
+static std::string SerializeEntity(SceneComponents& registry, entt::entity entity) {
 	std::stringstream ss;
 	ss << "    {\n";
 	uint32_t id = static_cast<uint32_t>(entt::to_entity(entity)); // ★修正: バージョン情報を除外し、純粋なインデックスのみを保存する
@@ -654,7 +652,7 @@ static std::string SerializeEntity(entt::registry& registry, entt::entity entity
 	}
 	if (auto* cp = registry.try_get<HealthComponent>(entity)) {
 		addComma();
-		ss << "        {\"type\": \"Health\", \"enabled\": " << (cp->enabled ? "true" : "false") << ", \"hp\": " << cp->hp << ", \"maxHp\": " << cp->maxHp << ", \"isDead\": " << (cp->isDead ? "true" : "false") << "}";
+		ss << "        {\"type\": \"Health\", \"enabled\": " << (cp->enabled ? "true" : "false") << ", \"hp\": " << cp->Hp() << ", \"maxHp\": " << cp->MaxHp() << ", \"isDead\": " << (cp->IsDead() ? "true" : "false") << "}";
 	}
 	if (auto* cp = registry.try_get<TagComponent>(entity)) {
 		addComma();
@@ -838,7 +836,7 @@ std::string EditorUI::SaveToMemory(GameScene* scene) {
 	ss << "  },\n";
 	ss << "  \"objects\": [\n";
 
-	auto& registry = scene->GetRegistry();
+	auto& registry = scene->GetComponents();
 	auto view = registry.view<NameComponent>();
 	std::vector<entt::entity> sortedEntities;
 	view.each([&](entt::entity e, const NameComponent& nc) {
@@ -858,8 +856,8 @@ static std::string s_clipboardJson;
 static void ExecuteCopy(GameScene* scene) {
 	if (!scene) return;
 	auto ent = scene->GetSelectedEntity();
-	if (ent == entt::null || !scene->GetRegistry().valid(ent)) return;
-	s_clipboardJson = SerializeEntity(scene->GetRegistry(), ent);
+	if (ent == entt::null || !scene->GetComponents().valid(ent)) return;
+	s_clipboardJson = SerializeEntity(scene->GetComponents(), ent);
 	EditorUI::Log("Copied Entity to Clipboard.");
 }
 
@@ -870,7 +868,7 @@ static void ExecutePaste(GameScene* scene) {
 		auto createdEnts = RestoreSceneFromJson(scene, j, true);
 		if (!createdEnts.empty()) {
 			auto e = createdEnts[0];
-			auto& reg = scene->GetRegistry();
+			auto& reg = scene->GetComponents();
 			if (reg.all_of<NameComponent>(e)) {
 				auto& nc = reg.get<NameComponent>(e);
 				nc.name = GenerateCopyName(nc.name, reg);
@@ -881,8 +879,7 @@ static void ExecutePaste(GameScene* scene) {
 				tc.translate.y += 0.5f;
 				tc.translate.z -= 0.5f;
 			}
-			scene->SetSelectedEntity(e);
-			scene->GetSelectedEntities() = {e};
+			scene->SelectEntity(e);
 			
 			std::string snap = s_clipboardJson;
 			uint32_t id = static_cast<uint32_t>(e);
@@ -1114,9 +1111,8 @@ void EditorUI::Show(Engine::Renderer* renderer, GameScene* gameScene) {
 			if (ImGui::IsKeyPressed(ImGuiKey_Z)) Undo();
 			if (ImGui::IsKeyPressed(ImGuiKey_Y)) Redo();
 			if (ImGui::IsKeyPressed(ImGuiKey_N)) {
-				gameScene->GetRegistry().clear();
-				gameScene->GetSelectedEntities().clear();
-				gameScene->SetSelectedEntity(entt::null);
+				gameScene->ClearScene();
+				gameScene->SelectEntity(entt::null);
 			}
 			if (ImGui::IsKeyPressed(ImGuiKey_O)) {
 				std::string path = OpenFileDialog("JSON Files (*.json)\0*.json\0All Files (*.*)\0*.*\0");
@@ -1126,18 +1122,17 @@ void EditorUI::Show(Engine::Renderer* renderer, GameScene* gameScene) {
 			if (ImGui::IsKeyPressed(ImGuiKey_V)) ExecutePaste(gameScene);
 			if (ImGui::IsKeyPressed(ImGuiKey_D)) ExecuteDuplicate(gameScene);
 		} else {
-			if (ImGui::IsKeyPressed(ImGuiKey_W)) currentGizmoMode = GizmoMode::Translate;
-			if (ImGui::IsKeyPressed(ImGuiKey_E)) currentGizmoMode = GizmoMode::Rotate;
-			if (ImGui::IsKeyPressed(ImGuiKey_R)) currentGizmoMode = GizmoMode::Scale;
+			if (ImGui::IsKeyPressed(ImGuiKey_W)) gizmo_.SetMode(GizmoMode::Translate);
+			if (ImGui::IsKeyPressed(ImGuiKey_E)) gizmo_.SetMode(GizmoMode::Rotate);
+			if (ImGui::IsKeyPressed(ImGuiKey_R)) gizmo_.SetMode(GizmoMode::Scale);
 		}
 	}
 
 	if (ImGui::BeginMenuBar()) {
 		if (ImGui::BeginMenu("File")) {
 			if (ImGui::MenuItem("New Scene", "Ctrl+N")) {
-				gameScene->GetRegistry().clear();
-				gameScene->GetSelectedEntities().clear();
-				gameScene->SetSelectedEntity(entt::null);
+				gameScene->ClearScene();
+				gameScene->SelectEntity(entt::null);
 				currentScenePath = "Resources/Scenes/chrono.json";
 			}
 			ImGui::Separator();
@@ -1186,9 +1181,9 @@ void EditorUI::Show(Engine::Renderer* renderer, GameScene* gameScene) {
 			if (ImGui::MenuItem("Paste", "Ctrl+V", false, !s_clipboardJson.empty())) ExecutePaste(gameScene);
 			if (ImGui::MenuItem("Duplicate", "Ctrl+D")) ExecuteDuplicate(gameScene);
 			ImGui::Separator();
-			if (ImGui::MenuItem("Translate", "W", currentGizmoMode == GizmoMode::Translate)) currentGizmoMode = GizmoMode::Translate;
-			if (ImGui::MenuItem("Rotate", "E", currentGizmoMode == GizmoMode::Rotate)) currentGizmoMode = GizmoMode::Rotate;
-			if (ImGui::MenuItem("Scale", "R", currentGizmoMode == GizmoMode::Scale)) currentGizmoMode = GizmoMode::Scale;
+			if (ImGui::MenuItem("Translate", "W", gizmo_.Mode() == GizmoMode::Translate)) gizmo_.SetMode(GizmoMode::Translate);
+			if (ImGui::MenuItem("Rotate", "E", gizmo_.Mode() == GizmoMode::Rotate)) gizmo_.SetMode(GizmoMode::Rotate);
+			if (ImGui::MenuItem("Scale", "R", gizmo_.Mode() == GizmoMode::Scale)) gizmo_.SetMode(GizmoMode::Scale);
 			ImGui::EndMenu();
 		}
 		if (ImGui::BeginMenu("Tools")) {
@@ -1329,16 +1324,12 @@ void EditorUI::Show(Engine::Renderer* renderer, GameScene* gameScene) {
 	gameImageMax = ImGui::GetItemRectMax();
 	
 	// ★追加: UISystemなどの座標変換用にコンテキストへ設定
-	auto& gctx = gameScene->GetContext();
-	gctx.viewportOffset = { gameImageMin.x, gameImageMin.y };
-	gctx.viewportSize = { renderW, renderH };
-	
-	// エディター上のマウス座標を内部解像度(1920x1080)に正確に変換して上書き
-	// ★修正: ピクセル中心(+0.5f)を基準に精密なマッピングを行う
+	// Preserve the existing pixel-center coordinate mapping.
 	ImVec2 mPos_img = ImGui::GetMousePos();
-	gctx.overrideMouseX = (mPos_img.x - gameImageMin.x) * (float)Engine::WindowDX::kW / renderW;
-	gctx.overrideMouseY = (mPos_img.y - gameImageMin.y) * (float)Engine::WindowDX::kH / renderH;
-	gctx.useOverrideMouse = true;
+	const float internalMouseX = (mPos_img.x - gameImageMin.x) * (float)Engine::WindowDX::kW / renderW;
+	const float internalMouseY = (mPos_img.y - gameImageMin.y) * (float)Engine::WindowDX::kH / renderH;
+	gameScene->SetEditorViewport({gameImageMin.x, gameImageMin.y}, {renderW, renderH},
+		internalMouseX, internalMouseY);
 
 	// Tool Editors Update & Draw (Overlays) - 画像の上にオーバーレイとして描画
 	s_pipeEditor.UpdateAndDraw(gameScene, renderer, gameImageMin, gameImageMax, renderW, renderH);
@@ -1351,12 +1342,12 @@ void EditorUI::Show(Engine::Renderer* renderer, GameScene* gameScene) {
 			std::replace(sPath.begin(), sPath.end(), '\\', '/'); // 正規化
 			if (sPath.find(".obj") != std::string::npos || sPath.find(".fbx") != std::string::npos) {
 				auto e = gameScene->CreateEntity(fs::path(sPath).stem().string());
-				auto& mr = gameScene->GetRegistry().emplace<MeshRendererComponent>(e);
+				auto& mr = gameScene->GetComponents().emplace<MeshRendererComponent>(e);
 				mr.modelPath = sPath;
 				mr.modelHandle = renderer->LoadObjMesh(sPath);
 				mr.texturePath = "Resources/Textures/white1x1.png";
 				mr.textureHandle = renderer->LoadTexture2D(mr.texturePath);
-				gameScene->SetSelectedEntity(e);
+				gameScene->SelectEntity(e);
 			}
 		}
 		ImGui::EndDragDropTarget();
@@ -1366,8 +1357,8 @@ void EditorUI::Show(Engine::Renderer* renderer, GameScene* gameScene) {
 	bool isPlaying = gameScene->GetIsPlaying();
 	auto selectedEnt = gameScene->GetSelectedEntity();
 
-	if (!isPlaying && selectedEnt != entt::null && gameScene->GetRegistry().valid(selectedEnt)) {
-		auto& reg = gameScene->GetRegistry();
+	if (!isPlaying && selectedEnt != entt::null && gameScene->GetComponents().valid(selectedEnt)) {
+		auto& reg = gameScene->GetComponents();
 		auto* mc = reg.try_get<MotionComponent>(selectedEnt);
 		auto& tc = reg.get<TransformComponent>(selectedEnt);
 		
@@ -1425,27 +1416,26 @@ void EditorUI::Show(Engine::Renderer* renderer, GameScene* gameScene) {
 			};
 
 			int hoveredAxis = -1;
-			if (!gizmoDragging) {
+			if (!gizmo_.Dragging()) {
 				if (distToSegment(mousePos, origin, endX) < hitRadius) hoveredAxis = 0;
 				else if (distToSegment(mousePos, origin, endY) < hitRadius) hoveredAxis = 1;
 				else if (distToSegment(mousePos, origin, endZ) < hitRadius) hoveredAxis = 2;
 			} else {
-				hoveredAxis = gizmoDragAxis;
+				hoveredAxis = gizmo_.Axis();
 			}
 
 			if (hoveredAxis != -1) gizmoHovered = true;
 
 			// Handle input
 			if (gizmoHovered && ImGui::IsMouseClicked(0)) {
-				gizmoDragging = true;
-				gizmoDragAxis = hoveredAxis;
+				gizmo_.BeginDrag(hoveredAxis);
 				gizmoDragStartMouse = mousePos;
 				gizmoStartTranslate = currentPos;
 				gizmoStartRotate = {0,0,0}; // Not needed for KFs yet
 				gizmoStartScale = {1,1,1};
 			}
 
-			if (gizmoDragging) {
+			if (gizmo_.Dragging()) {
 				if (ImGui::IsMouseReleased(0)) {
 					// Undo support
 					DirectX::XMFLOAT3 endT = tc.translate;
@@ -1458,13 +1448,13 @@ void EditorUI::Show(Engine::Renderer* renderer, GameScene* gameScene) {
 
 					PushUndo({
 						"Transform",
-						[=, &reg = gameScene->GetRegistry()]() {
+						[=, &reg = gameScene->GetComponents()]() {
 							if (reg.valid(e)) {
 								auto& t = reg.get<TransformComponent>(e);
 								t.translate = startT; t.rotate = startR; t.scale = startS;
 							}
 						},
-						[=, &reg = gameScene->GetRegistry()]() {
+						[=, &reg = gameScene->GetComponents()]() {
 							if (reg.valid(e)) {
 								auto& t = reg.get<TransformComponent>(e);
 								t.translate = endT; t.rotate = endR; t.scale = endS;
@@ -1472,18 +1462,17 @@ void EditorUI::Show(Engine::Renderer* renderer, GameScene* gameScene) {
 						}
 					});
 
-					gizmoDragging = false;
-					gizmoDragAxis = -1;
+					gizmo_.EndDrag();
 				} else if (ImGui::IsMouseDragging(0)) {
 					ImVec2 delta = ImGui::GetMouseDragDelta(0);
 					ImGui::ResetMouseDragDelta(0);
 					
-					ImVec2 axisDir = (gizmoDragAxis == 0) ? dirX : ((gizmoDragAxis == 1) ? dirY : dirZ);
+					ImVec2 axisDir = (gizmo_.Axis() == 0) ? dirX : ((gizmo_.Axis() == 1) ? dirY : dirZ);
 					float projMovement = delta.x * axisDir.x + delta.y * axisDir.y;
 					
 					// Simple sensitivity heuristic
-					float sensitivity = (currentGizmoMode == GizmoMode::Rotate) ? 0.02f : 0.05f;
-					if (currentGizmoMode == GizmoMode::Scale) sensitivity = 0.01f;
+					float sensitivity = (gizmo_.Mode() == GizmoMode::Rotate) ? 0.02f : 0.05f;
+					if (gizmo_.Mode() == GizmoMode::Scale) sensitivity = 0.01f;
 
 					DirectX::XMFLOAT3* targetPos = &reg.get<TransformComponent>(selectedEnt).translate;
 					if (mc && mc->selectedKeyframe >= 0 && mc->clips.count(mc->activeClip)) {
@@ -1495,18 +1484,18 @@ void EditorUI::Show(Engine::Renderer* renderer, GameScene* gameScene) {
 					auto* targetRot = &reg.get<TransformComponent>(selectedEnt).rotate;
 					auto* targetScale = &reg.get<TransformComponent>(selectedEnt).scale;
 
-					if (currentGizmoMode == GizmoMode::Translate) {
-						if (gizmoDragAxis == 0) targetPos->x += projMovement * sensitivity;
-						if (gizmoDragAxis == 1) targetPos->y -= projMovement * sensitivity; // Screen Y is inverted
-						if (gizmoDragAxis == 2) targetPos->z += projMovement * sensitivity;
-					} else if (currentGizmoMode == GizmoMode::Rotate && !mc) {
-						if (gizmoDragAxis == 0) targetRot->x += projMovement * sensitivity;
-						if (gizmoDragAxis == 1) targetRot->y -= projMovement * sensitivity;
-						if (gizmoDragAxis == 2) targetRot->z += projMovement * sensitivity;
-					} else if (currentGizmoMode == GizmoMode::Scale && !mc) {
-						if (gizmoDragAxis == 0) targetScale->x += projMovement * sensitivity;
-						if (gizmoDragAxis == 1) targetScale->y -= projMovement * sensitivity;
-						if (gizmoDragAxis == 2) targetScale->z += projMovement * sensitivity;
+					if (gizmo_.Mode() == GizmoMode::Translate) {
+						if (gizmo_.Axis() == 0) targetPos->x += projMovement * sensitivity;
+						if (gizmo_.Axis() == 1) targetPos->y -= projMovement * sensitivity; // Screen Y is inverted
+						if (gizmo_.Axis() == 2) targetPos->z += projMovement * sensitivity;
+					} else if (gizmo_.Mode() == GizmoMode::Rotate && !mc) {
+						if (gizmo_.Axis() == 0) targetRot->x += projMovement * sensitivity;
+						if (gizmo_.Axis() == 1) targetRot->y -= projMovement * sensitivity;
+						if (gizmo_.Axis() == 2) targetRot->z += projMovement * sensitivity;
+					} else if (gizmo_.Mode() == GizmoMode::Scale && !mc) {
+						if (gizmo_.Axis() == 0) targetScale->x += projMovement * sensitivity;
+						if (gizmo_.Axis() == 1) targetScale->y -= projMovement * sensitivity;
+						if (gizmo_.Axis() == 2) targetScale->z += projMovement * sensitivity;
 					}
 				}
 			}
@@ -1520,11 +1509,11 @@ void EditorUI::Show(Engine::Renderer* renderer, GameScene* gameScene) {
 			drawList->AddLine(origin, endY, colY, 3.0f);
 			drawList->AddLine(origin, endZ, colZ, 3.0f);
 			
-			if (currentGizmoMode == GizmoMode::Translate) {
+			if (gizmo_.Mode() == GizmoMode::Translate) {
 				drawList->AddTriangleFilled(endX, ImVec2(endX.x - dirX.x*10 - dirX.y*5, endX.y - dirX.y*10 + dirX.x*5), ImVec2(endX.x - dirX.x*10 + dirX.y*5, endX.y - dirX.y*10 - dirX.x*5), colX);
 				drawList->AddTriangleFilled(endY, ImVec2(endY.x - dirY.x*10 - dirY.y*5, endY.y - dirY.y*10 + dirY.x*5), ImVec2(endY.x - dirY.x*10 + dirY.y*5, endY.y - dirY.y*10 - dirY.x*5), colY);
 				drawList->AddTriangleFilled(endZ, ImVec2(endZ.x - dirZ.x*10 - dirZ.y*5, endZ.y - dirZ.y*10 + dirZ.x*5), ImVec2(endZ.x - dirZ.x*10 + dirZ.y*5, endZ.y - dirZ.y*10 - dirZ.x*5), colZ);
-			} else if (currentGizmoMode == GizmoMode::Scale) {
+			} else if (gizmo_.Mode() == GizmoMode::Scale) {
 				drawList->AddRectFilled(ImVec2(endX.x-4, endX.y-4), ImVec2(endX.x+4, endX.y+4), colX);
 				drawList->AddRectFilled(ImVec2(endY.x-4, endY.y-4), ImVec2(endY.x+4, endY.y+4), colY);
 				drawList->AddRectFilled(ImVec2(endZ.x-4, endZ.y-4), ImVec2(endZ.x+4, endZ.y+4), colZ);
@@ -1567,7 +1556,7 @@ void EditorUI::Show(Engine::Renderer* renderer, GameScene* gameScene) {
 		if (auto* rt = reg.try_get<RectTransformComponent>(selectedEnt)) {
 			ImDrawList* uiDrawList = ImGui::GetWindowDrawList();
 			ImVec2 mPos = ImGui::GetMousePos();
-				UISystem::WorldRect wr = UISystem::CalculateWorldRect(selectedEnt, reg, (float)Engine::WindowDX::kW, (float)Engine::WindowDX::kH);
+				UISystem::WorldRect wr = UISystem::CalculateWorldRect(selectedEnt, gameScene->GetRegistry(), (float)Engine::WindowDX::kW, (float)Engine::WindowDX::kH);
 				
 				// 内部解像度 (1920x1080) から実際の表示ピクセルへの変換スケーラー
 				float scaleX = renderW / (float)Engine::WindowDX::kW;
@@ -1696,20 +1685,18 @@ void EditorUI::Show(Engine::Renderer* renderer, GameScene* gameScene) {
 			float sy = mousePos.y - gameImageMin.y;
 			
 			if (sx >= 0 && sx <= renderW && sy >= 0 && sy <= renderH) {
-				float internalMouseX = gctx.overrideMouseX;
-				float internalMouseY = gctx.overrideMouseY;
 
 				entt::entity hitE = entt::null;
 				
 				// 1. UI Picking Pass (Priority)
 				int maxLayer = -10000;
-				gameScene->GetRegistry().view<RectTransformComponent>().each([&](entt::entity e, const RectTransformComponent&) {
+				gameScene->GetComponents().view<RectTransformComponent>().each([&](entt::entity e, const RectTransformComponent&) {
 					UISystem::WorldRect wr = UISystem::CalculateWorldRect(e, gameScene->GetRegistry(), (float)Engine::WindowDX::kW, (float)Engine::WindowDX::kH);
 					if (internalMouseX >= wr.x && internalMouseX <= wr.x + wr.w &&
 						internalMouseY >= wr.y && internalMouseY <= wr.y + wr.h) {
 						
 						int layer = 0;
-						if (auto* img = gameScene->GetRegistry().try_get<UIImageComponent>(e)) {
+						if (auto* img = gameScene->GetComponents().try_get<UIImageComponent>(e)) {
 							layer = img->layer;
 						}
 						// より手前（レイヤーが大きい）のUIを優先
@@ -1726,14 +1713,14 @@ void EditorUI::Show(Engine::Renderer* renderer, GameScene* gameScene) {
 					ScreenToWorldRay(sx, sy, (float)renderW, (float)renderH, gameScene->GetCamera().View(), gameScene->GetCamera().Proj(), rayOrig, rayDir);
 					
 					float minD = FLT_MAX;
-					gameScene->GetRegistry().view<MeshRendererComponent, TransformComponent>().each([&](entt::entity e, const MeshRendererComponent& mr, [[maybe_unused]] const TransformComponent& tc) {
+					gameScene->GetComponents().view<MeshRendererComponent, TransformComponent>().each([&](entt::entity e, const MeshRendererComponent& mr, [[maybe_unused]] const TransformComponent& tc) {
 						if (mr.modelHandle == 0) return;
 						auto* m = renderer->GetModel(mr.modelHandle);
 						if (!m) return;
 
 						float d; Engine::Vector3 p;
 						// ロックされているオブジェクトはピッキング（クリック選択）させない
-						if (auto* esc = gameScene->GetRegistry().try_get<EditorStateComponent>(e)) {
+						if (auto* esc = gameScene->GetComponents().try_get<EditorStateComponent>(e)) {
 							if (esc->locked) return;
 						}
 
@@ -1744,11 +1731,9 @@ void EditorUI::Show(Engine::Renderer* renderer, GameScene* gameScene) {
 				}
 
 				if (hitE != entt::null) {
-					gameScene->SetSelectedEntity(hitE);
-					gameScene->GetSelectedEntities() = {hitE};
+					gameScene->SelectEntity(hitE);
 				} else {
-					gameScene->SetSelectedEntity(entt::null);
-					gameScene->GetSelectedEntities().clear();
+					gameScene->SelectEntity(entt::null);
 				}
 			}
 		}
@@ -1817,7 +1802,7 @@ void EditorUI::Show(Engine::Renderer* renderer, GameScene* gameScene) {
 void EditorUI::ShowHierarchy(GameScene* scene) {
 	ImGui::Begin("Hierarchy");
 	if (scene) {
-		auto& registry = scene->GetRegistry();
+		auto& registry = scene->GetComponents();
 		
 		auto view = registry.view<NameComponent>();
 		for (auto entity : view) {
@@ -1838,8 +1823,7 @@ void EditorUI::ShowHierarchy(GameScene* scene) {
 			bool selected = (scene->GetSelectedEntity() == entity);
 			std::string name = view.get<NameComponent>(entity).name;
 			if (ImGui::Selectable((name + "##" + std::to_string((uint32_t)entity)).c_str(), selected)) {
-				scene->SetSelectedEntity(entity);
-				scene->GetSelectedEntities() = {entity};
+				scene->SelectEntity(entity);
 			}
 
 			// Right-click menu for a specific entity
@@ -1848,7 +1832,7 @@ void EditorUI::ShowHierarchy(GameScene* scene) {
 					uint32_t id = static_cast<uint32_t>(entity);
 					std::string snapshot = SerializeEntity(registry, entity);
 					PushUndo({"Delete Entity",
-						[=, &reg = scene->GetRegistry()](){ 
+						[=, &reg = scene->GetComponents()](){
 							// Restore from snapshot
 							json j = json::parse("{\"objects\": [" + snapshot + "]}");
 							RestoreSceneFromJson(scene, j, true);
@@ -1856,7 +1840,7 @@ void EditorUI::ShowHierarchy(GameScene* scene) {
 						[=](){ scene->DestroyObject(id); }
 					});
 					scene->DestroyObject(id);
-					if (scene->GetSelectedEntity() == entity) scene->SetSelectedEntity(entt::null);
+					if (scene->GetSelectedEntity() == entity) scene->SelectEntity(entt::null);
 				}
 				ImGui::Separator();
 				if (ImGui::MenuItem("Copy", "Ctrl+C")) ExecuteCopy(scene);
@@ -1875,7 +1859,7 @@ void EditorUI::ShowHierarchy(GameScene* scene) {
 		if (ImGui::BeginPopupContextWindow("HierarchyContextMenu", ImGuiPopupFlags_MouseButtonRight | ImGuiPopupFlags_NoOpenOverItems)) {
 			if (ImGui::MenuItem("Create Empty")) {
 				auto e = scene->CreateEntity("Empty");
-				scene->SetSelectedEntity(e);
+				scene->SelectEntity(e);
 			}
 			if (ImGui::MenuItem("Create Cube")) {
 				auto e = scene->CreateEntity("Cube");
@@ -1884,7 +1868,7 @@ void EditorUI::ShowHierarchy(GameScene* scene) {
 				mr.modelHandle = Engine::Renderer::GetInstance()->LoadObjMesh(mr.modelPath);
 				mr.texturePath = "Resources/Textures/white1x1.png";
 				mr.textureHandle = Engine::Renderer::GetInstance()->LoadTexture2D(mr.texturePath);
-				scene->SetSelectedEntity(e);
+				scene->SelectEntity(e);
 			}
 			if (ImGui::MenuItem("Create Sphere")) {
 				auto e = scene->CreateEntity("Sphere");
@@ -1893,7 +1877,7 @@ void EditorUI::ShowHierarchy(GameScene* scene) {
 				mr.modelHandle = Engine::Renderer::GetInstance()->LoadObjMesh(mr.modelPath);
 				mr.texturePath = "Resources/Textures/white1x1.png";
 				mr.textureHandle = Engine::Renderer::GetInstance()->LoadTexture2D(mr.texturePath);
-				scene->SetSelectedEntity(e);
+				scene->SelectEntity(e);
 			}
 			if (ImGui::MenuItem("Create Ring")) {
 				auto e = scene->CreateEntity("Ring");
@@ -1901,7 +1885,7 @@ void EditorUI::ShowHierarchy(GameScene* scene) {
 				mr.modelHandle = Engine::Renderer::GetInstance()->CreateRingMesh(2.0f, 1.0f, 32);
 				mr.texturePath = "Resources/Textures/white1x1.png";
 				mr.textureHandle = Engine::Renderer::GetInstance()->LoadTexture2D(mr.texturePath);
-				scene->SetSelectedEntity(e);
+				scene->SelectEntity(e);
 			}
 			if (ImGui::MenuItem("Create Cylinder")) {
 				auto e = scene->CreateEntity("Cylinder");
@@ -1909,7 +1893,7 @@ void EditorUI::ShowHierarchy(GameScene* scene) {
 				mr.modelHandle = Engine::Renderer::GetInstance()->CreateCylinderMesh(1.0f, 2.0f, 32);
 				mr.texturePath = "Resources/Textures/white1x1.png";
 				mr.textureHandle = Engine::Renderer::GetInstance()->LoadTexture2D(mr.texturePath);
-				scene->SetSelectedEntity(e);
+				scene->SelectEntity(e);
 			}
 			ImGui::EndPopup();
 		}
@@ -1922,7 +1906,7 @@ void EditorUI::ShowHierarchy(GameScene* scene) {
 		if (ImGui::BeginPopupContextItem("HierarchyContextMenuArea_Context")) {
 			if (ImGui::MenuItem("Create Empty")) {
 				auto e = scene->CreateEntity("Empty");
-				scene->SetSelectedEntity(e);
+				scene->SelectEntity(e);
 			}
 			if (ImGui::MenuItem("Create Cube")) {
 				auto e = scene->CreateEntity("Cube");
@@ -1931,7 +1915,7 @@ void EditorUI::ShowHierarchy(GameScene* scene) {
 				mr.modelHandle = Engine::Renderer::GetInstance()->LoadObjMesh(mr.modelPath);
 				mr.texturePath = "Resources/Textures/white1x1.png";
 				mr.textureHandle = Engine::Renderer::GetInstance()->LoadTexture2D(mr.texturePath);
-				scene->SetSelectedEntity(e);
+				scene->SelectEntity(e);
 			}
 			if (ImGui::MenuItem("Create Ring")) {
 				auto e = scene->CreateEntity("Ring");
@@ -1939,7 +1923,7 @@ void EditorUI::ShowHierarchy(GameScene* scene) {
 				mr.modelHandle = Engine::Renderer::GetInstance()->CreateRingMesh(2.0f, 1.0f, 32);
 				mr.texturePath = "Resources/Textures/white1x1.png";
 				mr.textureHandle = Engine::Renderer::GetInstance()->LoadTexture2D(mr.texturePath);
-				scene->SetSelectedEntity(e);
+				scene->SelectEntity(e);
 			}
 			if (ImGui::MenuItem("Create Cylinder")) {
 				auto e = scene->CreateEntity("Cylinder");
@@ -1947,7 +1931,7 @@ void EditorUI::ShowHierarchy(GameScene* scene) {
 				mr.modelHandle = Engine::Renderer::GetInstance()->CreateCylinderMesh(1.0f, 2.0f, 32);
 				mr.texturePath = "Resources/Textures/white1x1.png";
 				mr.textureHandle = Engine::Renderer::GetInstance()->LoadTexture2D(mr.texturePath);
-				scene->SetSelectedEntity(e);
+				scene->SelectEntity(e);
 			}
 			ImGui::EndPopup();
 		}
@@ -2056,10 +2040,10 @@ bool EditorUI::AssetField(const char* label, std::string& path, const std::vecto
 void EditorUI::ShowInspector(GameScene* scene) {
 	// Removed ImGui::Begin("Inspector") to support tab embedding
 	auto selected = scene->GetSelectedEntity();
-	if (scene && selected != entt::null && scene->GetRegistry().valid(selected)) {
+	if (scene && selected != entt::null && scene->GetComponents().valid(selected)) {
 		ImGui::PushID((int)selected);
 		auto entity = selected;
-		auto& registry = scene->GetRegistry();
+		auto& registry = scene->GetComponents();
 
 		if (auto* nc = registry.try_get<NameComponent>(entity)) {
 			char buf[256]; strcpy_s(buf, nc->name.c_str());
@@ -2097,8 +2081,8 @@ void EditorUI::ShowInspector(GameScene* scene) {
 				DirectX::XMFLOAT3 end = tc->translate;
 				entt::entity e = entity;
 				PushUndo({"Change Position",
-					[=, &reg = scene->GetRegistry()](){ if(reg.valid(e)) reg.get<TransformComponent>(e).translate = start; },
-					[=, &reg = scene->GetRegistry()](){ if(reg.valid(e)) reg.get<TransformComponent>(e).translate = end; }
+					[=, &reg = scene->GetComponents()](){ if(reg.valid(e)) reg.get<TransformComponent>(e).translate = start; },
+					[=, &reg = scene->GetComponents()](){ if(reg.valid(e)) reg.get<TransformComponent>(e).translate = end; }
 				});
 			}
 
@@ -2109,8 +2093,8 @@ void EditorUI::ShowInspector(GameScene* scene) {
 				DirectX::XMFLOAT3 end = tc->rotate;
 				entt::entity e = entity;
 				PushUndo({"Change Rotation",
-					[=, &reg = scene->GetRegistry()](){ if(reg.valid(e)) reg.get<TransformComponent>(e).rotate = start; },
-					[=, &reg = scene->GetRegistry()](){ if(reg.valid(e)) reg.get<TransformComponent>(e).rotate = end; }
+					[=, &reg = scene->GetComponents()](){ if(reg.valid(e)) reg.get<TransformComponent>(e).rotate = start; },
+					[=, &reg = scene->GetComponents()](){ if(reg.valid(e)) reg.get<TransformComponent>(e).rotate = end; }
 				});
 			}
 
@@ -2121,8 +2105,8 @@ void EditorUI::ShowInspector(GameScene* scene) {
 				DirectX::XMFLOAT3 end = tc->scale;
 				entt::entity e = entity;
 				PushUndo({"Change Scale",
-					[=, &reg = scene->GetRegistry()](){ if(reg.valid(e)) reg.get<TransformComponent>(e).scale = start; },
-					[=, &reg = scene->GetRegistry()](){ if(reg.valid(e)) reg.get<TransformComponent>(e).scale = end; }
+					[=, &reg = scene->GetComponents()](){ if(reg.valid(e)) reg.get<TransformComponent>(e).scale = start; },
+					[=, &reg = scene->GetComponents()](){ if(reg.valid(e)) reg.get<TransformComponent>(e).scale = end; }
 				});
 			}
 		}
@@ -2235,9 +2219,11 @@ void EditorUI::ShowInspector(GameScene* scene) {
 			if (auto* hp = registry.try_get<HealthComponent>(entity)) {
 				if (ImGui::CollapsingHeader("Health", ImGuiTreeNodeFlags_DefaultOpen)) {
 					ImGui::Checkbox("Enabled##HP", &hp->enabled);
-					ImGui::DragFloat("HP", &hp->hp, 1.0f, 0, hp->maxHp);
-					ImGui::DragFloat("Max HP", &hp->maxHp, 1.0f, 1, 10000);
-					ImGui::Checkbox("Is Dead", &hp->isDead);
+					float currentHp = hp->Hp(), maxHp = hp->MaxHp();
+                    bool dead = hp->IsDead();
+                    if (ImGui::DragFloat("HP", &currentHp, 1.0f, 0, maxHp)) hp->SetHp(currentHp);
+                    if (ImGui::DragFloat("Max HP", &maxHp, 1.0f, 1, 10000)) hp->SetMaxHp(maxHp);
+                    if (ImGui::Checkbox("Is Dead", &dead)) hp->SetDead(dead);
 					if (ImGui::Button("Remove##HP")) registry.remove<HealthComponent>(entity);
 				}
 			}
@@ -2954,7 +2940,7 @@ void EditorUI::ShowPlayModeMonitor([[maybe_unused]] GameScene* scene) {
 	ImGui::Separator();
 	
 	if (scene) {
-		auto& reg = scene->GetRegistry();
+		auto& reg = scene->GetComponents();
 		auto view = reg.view<PlayerInputComponent, TransformComponent>();
 		bool hasPlayer = false;
 		view.each([&hasPlayer](auto, auto&, auto&) { hasPlayer = true; });
@@ -2973,8 +2959,8 @@ void EditorUI::ShowPlayModeMonitor([[maybe_unused]] GameScene* scene) {
 					ImGui::Text("Speed: %.2f", speed);
 				}
 				if (auto* hp = reg.try_get<HealthComponent>(e)) {
-					ImGui::Text("HP: %.0f / %.0f", hp->hp, hp->maxHp);
-					ImGui::ProgressBar(hp->hp / hp->maxHp, ImVec2(-1, 0), "Health");
+					ImGui::Text("HP: %.0f / %.0f", hp->Hp(), hp->MaxHp());
+					ImGui::ProgressBar(hp->Hp() / hp->MaxHp(), ImVec2(-1, 0), "Health");
 				}
 			}
 		});

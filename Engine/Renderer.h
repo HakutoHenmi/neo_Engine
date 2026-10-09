@@ -159,7 +159,11 @@ public:
         float bloom=.16f,lensFlare=.035f,grading=.55f,ambientOcclusion=.5f,motionBlur=.2f,dof=1.f,exposure=1.05f;
         bool dlssQuality=false,rtShadows=false,rtReflections=false,rtIndirect=false;
     };
-    GraphicsSettings& GetGraphicsSettings(){return graphicsSettings_;}
+    void ApplyGraphicsSettings(GraphicsSettings settings);
+    void SetDlssQuality(bool enabled);
+    void SetRtShadows(bool enabled);
+    void SetRtReflections(bool enabled);
+    void SetRtIndirect(bool enabled);
     const GraphicsSettings& GetGraphicsSettings()const{return graphicsSettings_;}
     bool SaveGraphicsSettings() const;
     void LoadGraphicsSettings();

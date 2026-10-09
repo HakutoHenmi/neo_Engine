@@ -177,7 +177,7 @@ void GameScene::Initialize(Engine::WindowDX* dx, const Engine::SceneParameters& 
 		rb.useGravity = true; rb.isKinematic = true;
 		
 		auto& hc = registry_.emplace<HealthComponent>(player);
-		hc.hp = 100; hc.maxHp = 100;
+		hc.SetHp(100); hc.SetMaxHp(100);
 		
 		auto& tc = registry_.emplace<TagComponent>(player);
 		tc.tag = TagType::Player;
@@ -466,7 +466,7 @@ void GameScene::Update() {
 
 				if (anim.enabled && anim.isPlaying) {
 						const float animDt = (registry_.all_of<BossActionComponent>(entity) || registry_.all_of<Chrono::Boss>(entity))
-							? dt * combatFlow_.enemyScale : dt;
+							? dt * combatFlow_.EnemyScale() : dt;
 						anim.time += animDt * 60.0f * anim.speed;
 						if (anim.crossfadeTimer > 0.0f) {
 							anim.crossfadeTimer -= animDt;
@@ -615,9 +615,9 @@ void GameScene::Update() {
 #ifndef NDEBUG
 		const auto profileSystemBegin = std::chrono::steady_clock::now();
 #endif
-		if (dynamic_cast<BossActionSystem*>(system.get()) != nullptr && combatFlow_.combo >= 2) {
+		if (dynamic_cast<BossActionSystem*>(system.get()) != nullptr && combatFlow_.Combo() >= 2) {
 			GameContext bossContext = ctx_;
-			bossContext.dt *= combatFlow_.enemyScale;
+			bossContext.dt *= combatFlow_.EnemyScale();
 			system->Update(registry_, bossContext);
 		} else {
 			system->Update(registry_, ctx_);
@@ -702,7 +702,7 @@ void GameScene::Update() {
 	// ロックを外した状態で破棄を実行（OnDestroy から更に DestroyObject が呼ばれてもデッドロックしないようにする）
 	for (auto id : destroysToProcess) {
 		if (registry_.valid(id)) {
-			registry_.destroy(id);
+			RemoveEntity(id);
 		}
 	}
 
@@ -778,6 +778,44 @@ void GameScene::Update() {
 #ifndef NDEBUG
 	updateTimings_.push_back({"After systems", std::chrono::duration<float, std::milli>(std::chrono::steady_clock::now() - profileAfterSystems).count()});
 #endif
+}
+
+void GameScene::ClearSelection() {
+    selectedEntity_ = entt::null;
+    selectedEntities_.clear();
+}
+
+void GameScene::SelectEntity(entt::entity entity) {
+    ClearSelection();
+    if (registry_.valid(entity)) {
+        selectedEntity_ = entity;
+        selectedEntities_.insert(entity);
+    }
+}
+
+entt::entity GameScene::CreateEmptyEntity() {
+    std::lock_guard<std::mutex> lock(spawnMutex_);
+    return registry_.create();
+}
+
+void GameScene::DestroyEditorEntity(entt::entity entity) {
+    RemoveEntity(entity);
+}
+
+void GameScene::RemoveEntity(entt::entity entity) {
+    if (!registry_.valid(entity)) return;
+    selectedEntities_.erase(entity);
+    if (selectedEntity_ == entity) selectedEntity_ = selectedEntities_.empty() ? entt::null : *selectedEntities_.begin();
+    registry_.destroy(entity);
+    ClearMatrixCache();
+}
+
+void GameScene::SetEditorViewport(DirectX::XMFLOAT2 offset, DirectX::XMFLOAT2 size, float mouseX, float mouseY) {
+    ctx_.viewportOffset = offset;
+    ctx_.viewportSize = size;
+    ctx_.overrideMouseX = mouseX;
+    ctx_.overrideMouseY = mouseY;
+    ctx_.useOverrideMouse = true;
 }
 
 // ★ 汎用スポーン
@@ -977,7 +1015,7 @@ void GameScene::Draw() {
 		}
 		if (registry_.all_of<HealthComponent>(playerEntity)) {
 			const auto& hc = registry_.get<HealthComponent>(playerEntity);
-			isPlayerDead = hc.isDead || hc.hp <= 0.0f;
+			isPlayerDead = hc.IsDead() || hc.Hp() <= 0.0f;
 		}
 	}
 
@@ -1008,7 +1046,7 @@ void GameScene::Draw() {
 						healTimer += ctx_.dt;
 						if (healTimer > 0.05f) { // 0.05秒ごとに1回復 (1秒で20回復)
 							healTimer = 0.0f;
-							hc.hp = (std::min)(hc.hp + 1, hc.maxHp);
+							hc.RecoverHp(1);
 						}
 					}
 				}
@@ -1076,7 +1114,7 @@ void GameScene::Draw() {
 				}
 				if (chronoMode_) {
 					if(auto* ink=registry_.try_get<Chrono::InkPlayer>(playerEntity)){renderer_->SetSlimeGround({ink->groundSlope.x,ink->groundHeight,ink->groundSlope.z},registry_.get<Chrono::Player>(playerEntity).grounded);renderer_->SetSlimeFaceCamera(ink->rogue.MenuEase());scaleVec={ink->fluidAspect,ink->airBlend,ink->fluidMotion};forward={ink->fluidDirection.x,0,ink->fluidDirection.z};}
-					float mass = registry_.get<HealthComponent>(playerEntity).hp;
+					float mass = registry_.get<HealthComponent>(playerEntity).Hp();
                     if(auto* ink=registry_.try_get<Chrono::InkPlayer>(playerEntity);ink&&ink->perfectAge>=0&&ink->perfectAge<.16f)
                         mass*=.18f; // Brief visual compression; gameplay mass stays unchanged.
 					if(registry_.all_of<Chrono::InkPlayer>(playerEntity))mass*=100.f/Chrono::SlimeMaximumMass;
@@ -1424,7 +1462,6 @@ void GameScene::Draw() {
 	}
 }
 
-extern GizmoMode currentGizmoMode;
 void GameScene::DrawUI() {
 	if (!renderer_) return;
 
@@ -1459,8 +1496,6 @@ void GameScene::DrawUI() {
 	}
 }
 
-extern bool gizmoDragging;
-extern int gizmoDragAxis;
 
 bool GameScene::IsStageClear() const {
 	for (const auto& system : systems_) {
@@ -1630,7 +1665,7 @@ void GameScene::DrawSelectionHighlight() {
 		};
 
 		const float al = 2.0f, ar = 0.3f;
-		int dAxis = (gizmoDragging && entity == selectedEntity_) ? gizmoDragAxis : -1;
+		int dAxis = (EditorUI::IsGizmoDragging() && entity == selectedEntity_) ? EditorUI::GetGizmoDragAxis() : -1;
 		auto axCol = [](int axis, int drag) -> Engine::Vector4 {
 			bool a = (drag == axis);
 			switch (axis) {
@@ -1646,7 +1681,7 @@ void GameScene::DrawSelectionHighlight() {
 		};
 		auto cX = axCol(0, dAxis), cY = axCol(1, dAxis), cZ = axCol(2, dAxis);
 
-		if (currentGizmoMode == GizmoMode::Translate) {
+		if (EditorUI::GetGizmoMode() == GizmoMode::Translate) {
 			drawLocalLine({0, 0, 0}, {al, 0, 0}, cX);
 			drawLocalLine({al, 0, 0}, {al - ar, ar * .4f, 0}, cX);
 			drawLocalLine({al, 0, 0}, {al - ar, -ar * .4f, 0}, cX);
@@ -1656,7 +1691,7 @@ void GameScene::DrawSelectionHighlight() {
 			drawLocalLine({0, 0, 0}, {0, 0, al}, cZ);
 			drawLocalLine({0, 0, al}, {0, ar * .4f, al - ar}, cZ);
 			drawLocalLine({0, 0, al}, {0, -ar * .4f, al - ar}, cZ);
-		} else if (currentGizmoMode == GizmoMode::Rotate) {
+		} else if (EditorUI::GetGizmoMode() == GizmoMode::Rotate) {
 			const int seg = 32;
 			const float rad = 1.5f;
 			for (int i = 0; i < seg; ++i) {
@@ -1830,7 +1865,7 @@ void GameScene::SetIsPlaying(bool play) {
 		// プレイ停止時: Play ボタンを押した直前の状態 (`sceneSnapshot_`) に戻す
 		// 選択状態のエンティティ名を一時保存
 		std::vector<std::string> selectedNames;
-		auto& reg = GetRegistry();
+		auto& reg = registry_;
 		for (auto entity : selectedEntities_) {
 			if (reg.valid(entity) && reg.all_of<NameComponent>(entity)) {
 				selectedNames.push_back(reg.get<NameComponent>(entity).name);
@@ -1952,6 +1987,7 @@ void GameScene::SetTag(entt::entity entity, const std::string& tagStr) {
 }
 
 void GameScene::ClearScene() {
+    ClearSelection();
     if(renderer_)renderer_->SetRogueWorldFrozen(false);
 	// 1. 各システムのリセット（システム側の状態をクリア）
 	for (auto& sys : systems_) {

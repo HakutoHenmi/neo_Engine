@@ -23,14 +23,14 @@ public:
         Engine::Renderer::GetInstance()->SetFluidProfilerEnabled(true);
         if (collisionProbe_) {
             auto player = FindObjectByName("Player");
-            if (GetRegistry().valid(player) && GetRegistry().all_of<Game::TransformComponent>(player)) {
+            if (GetComponents().valid(player) && GetComponents().all_of<Game::TransformComponent>(player)) {
                 auto probe = CreateEntity("FluidCollisionProbe");
-                auto& position = GetRegistry().get<Game::TransformComponent>(probe);
-                position.translate = GetRegistry().get<Game::TransformComponent>(player).translate;
-                auto& body = GetRegistry().emplace<Game::RigidbodyComponent>(probe);
+                auto& position = GetComponents().get<Game::TransformComponent>(probe);
+                position.translate = GetComponents().get<Game::TransformComponent>(player).translate;
+                auto& body = GetComponents().emplace<Game::RigidbodyComponent>(probe);
                 body.isKinematic = false;
                 body.useGravity = false;
-                auto& box = GetRegistry().emplace<Game::BoxColliderComponent>(probe);
+                auto& box = GetComponents().emplace<Game::BoxColliderComponent>(probe);
                 box.size = {2.0f, 2.0f, 2.0f};
             }
         }

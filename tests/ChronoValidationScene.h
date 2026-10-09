@@ -40,7 +40,7 @@ class ChronoValidationScene final : public Game::GameScene {
     int snakeRound_=0,snakePrevious_=0;bool snakeDodged_=false;int snakeHits_=0,snakePattern_=0;
     void UpdateSnakeTest(){
         using namespace Game;using namespace Game::Chrono;
-        auto& r=GetRegistry();auto player=FindObjectByName("Player"),boss=FindObjectByName("Boss");
+        auto& r=GetComponents();auto player=FindObjectByName("Player"),boss=FindObjectByName("Boss");
         auto& input=r.get<ControlFrame>(player);input={};input.attackPattern=snakePattern_;
         if(frames_++==0){input.snake=true;Game::GameScene::Update();return;}
         auto& p=r.get<Player>(player);auto& t=r.get<TransformComponent>(player);auto& c=r.get<CreatureBoss>(boss);
@@ -78,7 +78,7 @@ class ChronoValidationScene final : public Game::GameScene {
     }
     void UpdateCreatureTest(){
         using namespace Game;using namespace Game::Chrono;
-        auto& r=GetRegistry();auto player=FindObjectByName("Player"),boss=FindObjectByName("Boss");
+        auto& r=GetComponents();auto player=FindObjectByName("Player"),boss=FindObjectByName("Boss");
         auto& input=r.get<ControlFrame>(player);input={};
         if(frames_==0){input.creature=true;Game::GameScene::Update();++frames_;return;}
         auto& p=r.get<Player>(player);auto& t=r.get<TransformComponent>(player);auto& c=r.get<CreatureBoss>(boss);
@@ -147,19 +147,19 @@ public:
     void Initialize(Engine::WindowDX* dx,const Engine::SceneParameters&)override{
         window_=dx;Engine::SceneParameters params;params.stagePath="Resources/Scenes/chrono.json";
         Game::GameScene::Initialize(dx,params);
-        auto player=FindObjectByName("Player");GetRegistry().emplace<Game::Chrono::ControlFrame>(player);
+        auto player=FindObjectByName("Player");GetComponents().emplace<Game::Chrono::ControlFrame>(player);
         Engine::Renderer::GetInstance()->SetFluidProfilerEnabled(true);
         start_=std::chrono::steady_clock::now();trace_.open("tests/out/chrono-trace.txt");
         inkTest_=wcsstr(GetCommandLineW(),L"--ink-smoke")!=nullptr;
-        if(inkTest_&&!wcsstr(GetCommandLineW(),L"--horde-smoke")&&!wcsstr(GetCommandLineW(),L"--rogue-smoke"))GetRegistry().get<Game::Chrono::InkPlayer>(player).hordeEnabled=false;
-        if(inkTest_){GetRegistry().get<Game::Chrono::InkPlayer>(player).rogue.enabled=wcsstr(GetCommandLineW(),L"--rogue-smoke")!=nullptr;return;}
+        if(inkTest_&&!wcsstr(GetCommandLineW(),L"--horde-smoke")&&!wcsstr(GetCommandLineW(),L"--rogue-smoke"))GetComponents().get<Game::Chrono::InkPlayer>(player).hordeEnabled=false;
+        if(inkTest_){GetComponents().get<Game::Chrono::InkPlayer>(player).rogue.enabled=wcsstr(GetCommandLineW(),L"--rogue-smoke")!=nullptr;return;}
         snakeTest_=wcsstr(GetCommandLineW(),L"--snake-smoke")!=nullptr;
         snakePattern_=wcsstr(GetCommandLineW(),L"--attack-pattern=2")?2:wcsstr(GetCommandLineW(),L"--attack-pattern=1")?1:0;
         creatureTest_=wcsstr(GetCommandLineW(),L"--creature-smoke")!=nullptr;
         recordMotion_=wcsstr(GetCommandLineW(),L"--record-motion")!=nullptr;
         // Check the shortcut route with the actual stage colliders and a finite body.
         using namespace Game;using namespace Game::Chrono;
-        auto& r=GetRegistry();V from{-25,1.21f,0};
+        auto& r=GetComponents();V from{-25,1.21f,0};
         for(int i=5;i<9;++i){
             auto e=FindObjectByName("Chrono Anchor "+std::to_string(i));
             const auto& t=r.get<TransformComponent>(e);const auto& target=r.get<Target>(e);
@@ -184,7 +184,7 @@ public:
         if(snakeTest_){UpdateSnakeTest();return;}
         if(creatureTest_){UpdateCreatureTest();return;}
         using namespace Game;using namespace Game::Chrono;
-        auto& r=GetRegistry();auto player=FindObjectByName("Player");auto boss=FindObjectByName("Boss");
+        auto& r=GetComponents();auto player=FindObjectByName("Player");auto boss=FindObjectByName("Boss");
         if(!r.valid(player)||!r.all_of<Player>(player)){std::ofstream("tests/out/chrono-smoke.txt")<<"FAIL missing player";PostQuitMessage(2);return;}
         auto& p=r.get<Player>(player);auto& t=r.get<TransformComponent>(player);
         auto& input=r.get<ControlFrame>(player);input=ControlFrame{};

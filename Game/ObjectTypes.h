@@ -415,15 +415,34 @@ struct HurtboxComponent : public Component {
 };
 
 // ★追加: Health コンポーネント (ステータス管理)
-struct HealthComponent : public Component {
-	float hp = 100.0f;               // 現在の体力
-	float maxHp = 100.0f;            // 最大体力
-	float stamina = 100.0f;          // スタミナ
-	float maxStamina = 100.0f;       // 最大スタミナ
+class HealthComponent : public Component {
+public:
+    float Hp() const { return hp_; }
+    float MaxHp() const { return maxHp_; }
+    float Stamina() const { return stamina_; }
+    float MaxStamina() const { return maxStamina_; }
+    bool IsDead() const { return isDead_; }
+
+    // Explicit assignment for initialization, editor changes and saved-state restore.
+    // Do not clamp here: existing scene files and sandbag values must round-trip.
+    void SetHp(float value) { hp_ = value; }
+    void SetMaxHp(float value) { maxHp_ = value; }
+    void SetDead(bool dead) { isDead_ = dead; }
+    void ApplyDamage(float damage) { hp_ = (std::max)(0.0f, hp_ - damage); }
+    void RecoverHp(float amount) { hp_ = (std::min)(maxHp_, hp_ + amount); }
+    void RecoverStamina(float amount) { stamina_ = (std::min)(maxStamina_, stamina_ + amount); }
+    bool TryConsumeHp(float cost) {
+        if (hp_ >= cost) {
+            hp_ -= cost;
+            return true;
+        }
+        return false;
+    }
+    void RestoreHpIfDepleted() { if (hp_ <= 0) hp_ = maxHp_; }
+
 	float recoverableFluid = 0.0f;   // 被弾で散った、回収可能な体液量
 	int damageTakenCount = 0;        // 被ダメージ回数（リザルト表示用）
 	float invincibleTime = 0.0f;     // 残り無敵時間（ゼロ以上なら無敵）
-	bool isDead = false;             // 死亡フラグ
 
 	// ★追加: ヒット演出用
 	float hitFlashTimer = 0.0f;      // ヒットフラッシュ（白く光る）
@@ -432,6 +451,12 @@ struct HealthComponent : public Component {
 	bool baseColorSaved = false;
 
 	HealthComponent() { type = ComponentType::Health; }
+private:
+    float hp_ = 100.0f;
+    float maxHp_ = 100.0f;
+    float stamina_ = 100.0f;
+    float maxStamina_ = 100.0f;
+    bool isDead_ = false;
 };
 
 // ★追加: UIコンポーネント

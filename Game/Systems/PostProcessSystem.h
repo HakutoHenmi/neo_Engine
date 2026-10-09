@@ -41,9 +41,9 @@ public:
 
         if (playerEntity != entt::null && registry.valid(playerEntity)) {
             if (auto* hc = registry.try_get<HealthComponent>(playerEntity)) {
-                const float maxHp = hc->maxHp > 0.0f ? hc->maxHp : 1.0f;
-                const float hpRate = std::clamp(hc->hp / maxHp, 0.0f, 1.0f);
-                isDead = hc->isDead || hc->hp <= 0.0f;
+                const float maxHp = hc->MaxHp() > 0.0f ? hc->MaxHp() : 1.0f;
+                const float hpRate = std::clamp(hc->Hp() / maxHp, 0.0f, 1.0f);
+                isDead = hc->IsDead() || hc->Hp() <= 0.0f;
                 isLowHealth = hpRate < 0.30f;
                 isHit = hc->hitFlashTimer > 0.0f;
             }

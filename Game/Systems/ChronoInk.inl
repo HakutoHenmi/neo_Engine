@@ -3,7 +3,7 @@ namespace Game {
 void ChronoSystem::BuildInk(entt::registry& r){
     r.emplace_or_replace<InkPlayer>(player_);auto& p=r.get<Player>(player_);p.mass=SlimeMaximumMass;p.automatic=false;
     // The opening shot runs before UpdateInk; rendering must already see the full body mass.
-    auto& health=r.get<HealthComponent>(player_);health.hp=p.mass;health.maxHp=SlimeMaximumMass;health.isDead=false;
+    auto& health=r.get<HealthComponent>(player_);health.SetHp(p.mass);health.SetMaxHp(SlimeMaximumMass);health.SetDead(false);
     r.get<InkPlayer>(player_).rogue.random=uint32_t(GetTickCount64())|1u;
     Engine::Renderer::GetInstance()->SetRogueWorldFrozen(false);
     Engine::Renderer::GetInstance()->SetDrawFluidDebugArrows(false);

@@ -23,7 +23,7 @@ public:
     static std::shared_ptr<T> GetScript(entt::entity entity, GameScene* scene) {
         if (!scene) return nullptr;
         
-        auto& registry = scene->GetRegistry();
+        auto& registry = scene->GetComponents();
         if (registry.all_of<ScriptComponent>(entity)) {
             auto& sc = registry.get<ScriptComponent>(entity);
             for (auto& entry : sc.scripts) {
@@ -45,7 +45,7 @@ public:
     static std::shared_ptr<T> FindScript(GameScene* scene) {
         if (!scene) return nullptr;
 
-        auto& registry = scene->GetRegistry();
+        auto& registry = scene->GetComponents();
         auto view = registry.view<ScriptComponent>();
         for (auto entity : view) {
             if (auto script = GetScript<T>(entity, scene)) {
@@ -66,7 +66,7 @@ public:
         std::vector<std::shared_ptr<T>> results;
         if (!scene) return results;
 
-        auto& registry = scene->GetRegistry();
+        auto& registry = scene->GetComponents();
         auto view = registry.view<ScriptComponent>();
         for (auto entity : view) {
             auto& sc = registry.get<ScriptComponent>(entity);

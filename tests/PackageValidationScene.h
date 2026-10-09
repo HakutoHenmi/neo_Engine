@@ -43,7 +43,7 @@ class PackageValidationScene final : public Engine::IScene {
     int page_=0,frame_=0;
     bool passed_=true;
     void Load(){
-        if(page_>=8){auto* game=static_cast<Game::GameScene*>(scene_.get());auto view=game->GetRegistry().view<Game::Chrono::InkPlayer>();auto& state=view.get<Game::Chrono::InkPlayer>(*view.begin()).rogue;
+        if(page_>=8){auto* game=static_cast<Game::GameScene*>(scene_.get());auto view=game->GetComponents().view<Game::Chrono::InkPlayer>();auto& state=view.get<Game::Chrono::InkPlayer>(*view.begin()).rogue;
             if(page_==8)state.Gain(20);else {for(auto& rank:state.ranks)rank=1;game->SetPaused(true);}return;}
         if(page_==0)scene_=std::make_unique<Game::TitleScene>();
         else if(page_==1)scene_=std::make_unique<Game::SelectScene>();

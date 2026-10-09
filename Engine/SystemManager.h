@@ -34,7 +34,7 @@ namespace ECS {
         void EntityDestroyed(Entity entity) {
             for (auto const& pair : m_systems) {
                 auto const& system = pair.second;
-                system->m_entities.erase(entity);
+                system->RemoveEntity(entity);
             }
         }
 
@@ -46,11 +46,11 @@ namespace ECS {
 
                 // If entity signature matches system signature, insert into set
                 if ((entitySignature & systemSignature) == systemSignature) {
-                    system->m_entities.insert(entity);
+                    system->AddEntity(entity);
                 }
                 // Otherwise erase from set
                 else {
-                    system->m_entities.erase(entity);
+                    system->RemoveEntity(entity);
                 }
             }
         }

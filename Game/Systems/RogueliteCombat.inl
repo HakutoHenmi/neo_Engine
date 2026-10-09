@@ -43,7 +43,7 @@ bool ChronoSystem::UpdateRogueMenu(entt::registry& r,Player& p,GameContext& ctx)
     if((control&&control->upgradeReroll)||UI::Pressed(DIK_R)||ui.Click(UI::RogueReroll)){state.Reroll();return true;}
     if((control&&control->upgradeSkip)||UI::Pressed(DIK_X)||ui.Click(UI::RogueSkip)){p.mass=std::min(SlimeMaximumMass,p.mass+60);state.Close();}
     else if(choice>=0)state.Choose(choice);
-    r.get<HealthComponent>(player_).hp=p.mass;
+    r.get<HealthComponent>(player_).SetHp(p.mass);
     return true;
 }
 void ChronoSystem::ActivateRogue(entt::registry& r,Player& p,GameContext&,HomingDomain& domain){

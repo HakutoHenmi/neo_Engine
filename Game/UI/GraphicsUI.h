@@ -8,7 +8,7 @@ inline constexpr Rect RtReflectionOn{988,409,88,38},RtReflectionOff{1090,409,88,
 inline constexpr Rect RtIndirectOn{988,477,88,38},RtIndirectOff{1090,477,88,38};
 inline Rect GraphicsRow(int i){return {70,166+float(i)*60,660,50};}
 inline bool UpdateGraphics(Canvas& ui,Engine::Renderer& renderer){
-    auto& s=renderer.GetGraphicsSettings();float* values[]={&s.bloom,&s.lensFlare,&s.grading,&s.ambientOcclusion,&s.motionBlur,&s.dof};
+    auto s=renderer.GetGraphicsSettings();float* values[]={&s.bloom,&s.lensFlare,&s.grading,&s.ambientOcclusion,&s.motionBlur,&s.dof};
     const float defaults[]={.16f,.035f,.55f,.5f,.2f,1};const bool quality=s.dlssQuality,shadows=s.rtShadows,reflection=s.rtReflections,indirect=s.rtIndirect;
     for(int i=0;i<6;++i)if(ui.Click(GraphicsRow(i))||Pressed(BYTE(DIK_1+i)))*values[i]=*values[i]>.001f?0:defaults[i];
     if(ui.Click({110,617,200,54}))s={.08f,0,.4f,0,0,0,1.05f};
@@ -18,14 +18,15 @@ inline bool UpdateGraphics(Canvas& ui,Engine::Renderer& renderer){
     s.rtShadows=shadows;s.rtReflections=reflection;s.rtIndirect=indirect;
     if(ui.Click({990,551,92,42}))s.exposure=std::max(.6f,s.exposure-.1f);
     if(ui.Click({1094,551,92,42}))s.exposure=std::min(1.6f,s.exposure+.1f);
-    if(ui.Click(RtOnButton)&&renderer.RtShadowsAvailable())s.rtShadows=true;
-    if(ui.Click(RtOffButton))s.rtShadows=false;
-    if(ui.Click(RtReflectionOn)&&renderer.RtLightingAvailable())s.rtReflections=true;
-    if(ui.Click(RtReflectionOff))s.rtReflections=false;
-    if(ui.Click(RtIndirectOn)&&renderer.RtLightingAvailable())s.rtIndirect=true;
-    if(ui.Click(RtIndirectOff))s.rtIndirect=false;
-    if(ui.Click(DlssQualityButton)&&renderer.SupportsDlss())s.dlssQuality=true;
-    if(ui.Click(DlssOffButton))s.dlssQuality=false;
+    renderer.ApplyGraphicsSettings(s);
+    if(ui.Click(RtOnButton))renderer.SetRtShadows(true);
+    if(ui.Click(RtOffButton))renderer.SetRtShadows(false);
+    if(ui.Click(RtReflectionOn))renderer.SetRtReflections(true);
+    if(ui.Click(RtReflectionOff))renderer.SetRtReflections(false);
+    if(ui.Click(RtIndirectOn))renderer.SetRtIndirect(true);
+    if(ui.Click(RtIndirectOff))renderer.SetRtIndirect(false);
+    if(ui.Click(DlssQualityButton))renderer.SetDlssQuality(true);
+    if(ui.Click(DlssOffButton))renderer.SetDlssQuality(false);
     return ui.Click(GraphicsBack)||Pressed(DIK_ESCAPE)||Pressed(DIK_G)||Pressed(DIK_F7);
 }
 inline void DrawGraphics(Canvas& ui,const Engine::Renderer& renderer){

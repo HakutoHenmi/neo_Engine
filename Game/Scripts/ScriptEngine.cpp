@@ -45,7 +45,7 @@ std::shared_ptr<IScript> ScriptEngine::CreateScript(const std::string& className
 
 void ScriptEngine::Execute(entt::entity entity, GameScene* scene, float dt) {
 	if (!scene) return;
-	auto& registry = scene->GetRegistry();
+	auto& registry = scene->GetComponents();
 	if (!registry.valid(entity) || !registry.all_of<ScriptComponent>(entity)) return;
 
 	auto& comp = registry.get<ScriptComponent>(entity);

@@ -137,7 +137,7 @@ void ChronoSystem::UpdateInk(entt::registry& r,Player& p,GameContext& ctx){
         UploadInk();inkUploadClock_=0;
     }
     ink.onInk=surface>=0&&p.grounded&&inkSurfaces_[surface].Painted({next.x,nextFloor,next.z});
-    auto& hp=r.get<HealthComponent>(player_);hp.hp=p.mass;hp.maxHp=SlimeMaximumMass;hp.isDead=p.mass<=0;
+    auto& hp=r.get<HealthComponent>(player_);hp.SetHp(p.mass);hp.SetMaxHp(SlimeMaximumMass);hp.SetDead(p.mass<=0);
     Presentation(r,p,ctx);
     if(!finished_&&ink.perfectAge>=0&&ink.perfectAge<.4f){auto params=ctx.renderer->GetPostProcessParams();
         params.san=1;params.vignette=.3f;params.chromaShift=SlimePerfectPulse(ink.perfectAge);

@@ -4,7 +4,7 @@
     float rogueFrozenTime_=0,rogueFrozenBattle_=0,rogueFrozenIdle_=0;bool rogueFreezeValid_=true,rogueResume_=false,rogueKillXP_=false;
     void UpdateRogueliteTest(){
         using namespace Game;using namespace Game::Chrono;
-        auto& registry=GetRegistry();auto player=FindObjectByName("Player");auto& ink=registry.get<InkPlayer>(player);auto& p=registry.get<Player>(player);
+        auto& registry=GetComponents();auto player=FindObjectByName("Player");auto& ink=registry.get<InkPlayer>(player);auto& p=registry.get<Player>(player);
         auto& state=ink.rogue;auto& input=registry.get<ControlFrame>(player);input={};input.pitch=.1f;p.invincible=1;
         // Start with an explicit earned level: this fixture must not depend on incidental spawn XP.
         if(frames_++==0){state.random=73192;state.Gain(state.Required());}

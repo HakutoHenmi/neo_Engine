@@ -23,7 +23,7 @@ namespace ECS {
         Engine::QuadTree tree(worldBounds);
 
         // 1. 全エンティティをQuadTreeに登録
-        for (auto const& entity : m_entities) {
+        for (auto const& entity : Entities()) {
             auto& transform = m_coordinator->GetComponent<TransformComponent>(entity);
             tree.Insert(entity, transform.translate);
         }
@@ -34,7 +34,7 @@ namespace ECS {
         uint32_t pairIndex = 0;
         std::set<std::pair<Entity, Entity>> processedPairs;
 
-        for (auto const& entityA : m_entities) {
+        for (auto const& entityA : Entities()) {
             auto& transformA = m_coordinator->GetComponent<TransformComponent>(entityA);
             
             // クエリ範囲（AABBの大きさに合わせる）

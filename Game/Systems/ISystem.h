@@ -11,10 +11,16 @@
 namespace Game {
 
 // The combo clock uses real time; only hostile AI consumes the reduced time scale.
-struct CombatFlowState {
+class CombatFlowState {
+private:
 	int combo = 0;
 	float remaining = 0.0f;
 	float enemyScale = 1.0f;
+public:
+    int Combo() const { return combo; }
+    float Remaining() const { return remaining; }
+    float EnemyScale() const { return enemyScale; }
+    void SetChronoEnemyScale(float scale) { enemyScale = scale; }
 
 	void Reset() { combo = 0; remaining = 0.0f; enemyScale = 1.0f; }
 	void Tick(float dt) {
