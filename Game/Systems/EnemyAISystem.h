@@ -69,7 +69,7 @@ public:
 			auto& ai = view.get<EnemyAIComponent>(entity);
 			auto& tc = view.get<TransformComponent>(entity);
 			if (!ai.enabled) continue;
-			const float aiDt = ctx.dt * (ctx.combatFlow ? ctx.combatFlow->enemyScale : 1.0f);
+			const float aiDt = ctx.dt * (ctx.combatFlow ? ctx.combatFlow->EnemyScale() : 1.0f);
 			if (ai.hopper && ai.groundY < -999.0f) ai.groundY = tc.translate.y;
 			if (const auto* status = registry.try_get<CanStatusComponent>(entity)) {
 				if (status->freezeTimer > 0.0f || status->bubbleTimer > 0.0f) {

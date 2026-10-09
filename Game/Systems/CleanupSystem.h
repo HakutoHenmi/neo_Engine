@@ -22,7 +22,7 @@ public:
 			               tc.translate.z * tc.translate.z;
 			if (distSq > 10000.0f) {
 				auto& hc = bulletView.get<HealthComponent>(entity);
-				hc.isDead = true;
+				hc.SetDead(true);
 			}
 		}
 
@@ -53,7 +53,7 @@ public:
 		auto healthView = registry.view<HealthComponent>();
 		for (auto entity : healthView) {
 			auto& hc = registry.get<HealthComponent>(entity);
-			if (hc.isDead && hc.enabled) {
+			if (hc.IsDead() && hc.enabled) {
 				// Player は破棄しない
 				if (registry.all_of<TagComponent>(entity)) {
 					auto& tag = registry.get<TagComponent>(entity);

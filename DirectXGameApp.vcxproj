@@ -230,6 +230,7 @@ exit /b 0
     <ClInclude Include="tests\UIValidationScene.h" />
     <ClInclude Include="Game\CanLoadout.h" />
     <ClInclude Include="Game\ObjectTypes.h" />
+    <ClInclude Include="Game\SceneComponents.h" />
     <ClInclude Include="Game\Scripts\BaseScript.h" />
     <ClInclude Include="Game\Scripts\IScript.h" />
     <ClInclude Include="Game\Scripts\WarningEffectScript.h" />

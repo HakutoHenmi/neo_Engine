@@ -31,7 +31,7 @@ void IScript::SubscribeVoid(GameScene* scene, const std::string& eventName, std:
 
 void IScript::SetVar(entt::entity entity, GameScene* scene, const std::string& key, float value) {
     if (!scene) return;
-    auto& registry = scene->GetRegistry();
+    auto& registry = scene->GetComponents();
     if (!registry.all_of<VariableComponent>(entity)) {
         registry.emplace<VariableComponent>(entity);
     }
@@ -40,7 +40,7 @@ void IScript::SetVar(entt::entity entity, GameScene* scene, const std::string& k
 
 void IScript::SetVarString(entt::entity entity, GameScene* scene, const std::string& key, const std::string& value) {
     if (!scene) return;
-    auto& registry = scene->GetRegistry();
+    auto& registry = scene->GetComponents();
     if (!registry.all_of<VariableComponent>(entity)) {
         registry.emplace<VariableComponent>(entity);
     }
@@ -49,7 +49,7 @@ void IScript::SetVarString(entt::entity entity, GameScene* scene, const std::str
 
 float IScript::GetVar(entt::entity entity, GameScene* scene, const std::string& key, float defaultVal) {
     if (!scene) return defaultVal;
-    auto& registry = scene->GetRegistry();
+    auto& registry = scene->GetComponents();
     if (registry.all_of<VariableComponent>(entity)) {
         return registry.get<VariableComponent>(entity).GetValue(key, defaultVal);
     }
@@ -58,7 +58,7 @@ float IScript::GetVar(entt::entity entity, GameScene* scene, const std::string& 
 
 std::string IScript::GetVarString(entt::entity entity, GameScene* scene, const std::string& key, const std::string& defaultVal) {
     if (!scene) return defaultVal;
-    auto& registry = scene->GetRegistry();
+    auto& registry = scene->GetComponents();
     if (registry.all_of<VariableComponent>(entity)) {
         return registry.get<VariableComponent>(entity).GetString(key, defaultVal);
     }

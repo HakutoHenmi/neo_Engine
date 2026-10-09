@@ -57,7 +57,10 @@ public:
 	static ImVec2 GetGameImageMax();
 
 	// ★ シーン保存/読み込み
-	static std::string currentScenePath;
+	static const std::string& GetCurrentScenePath() { return currentScenePath; }
+    static GizmoMode GetGizmoMode() { return gizmo_.Mode(); }
+    static bool IsGizmoDragging() { return gizmo_.Dragging(); }
+    static int GetGizmoDragAxis() { return gizmo_.Axis(); }
 	static void SaveScene(GameScene* scene, const std::string& path = "");
 	static std::string SaveToMemory(GameScene* scene);
 	static void LoadScene(GameScene* scene, const std::string& path);
@@ -72,6 +75,21 @@ public:
 	static void Initialize(Engine::Renderer* renderer);
 
 private:
+    class GizmoState {
+    public:
+        GizmoMode Mode() const { return mode_; }
+        bool Dragging() const { return dragging_; }
+        int Axis() const { return axis_; }
+        void SetMode(GizmoMode mode) { mode_ = mode; }
+        void BeginDrag(int axis) { dragging_ = true; axis_ = axis; }
+        void EndDrag() { dragging_ = false; axis_ = -1; }
+    private:
+        GizmoMode mode_ = GizmoMode::Translate;
+        bool dragging_ = false;
+        int axis_ = -1;
+    };
+    static GizmoState gizmo_;
+    static std::string currentScenePath;
 	// アイコン用テクスチャハンドル
 	struct Icons {
 		uint32_t folder = 0;

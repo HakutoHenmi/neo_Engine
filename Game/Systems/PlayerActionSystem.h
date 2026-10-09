@@ -374,9 +374,7 @@ public:
 					if (registry.all_of<HealthComponent>(entity)) {
 						auto& hc = registry.get<HealthComponent>(entity);
 						float cost = 5.0f; // 水の消費量
-						if (hc.hp >= cost) {
-							hc.hp -= cost;
-						} else {
+						if (!hc.TryConsumeHp(cost)) {
 							hasWater = false; // 水切れ
 						}
 					}
@@ -635,7 +633,7 @@ public:
 			// (すべての変形が終わった後に掛けることで、どの状態でも水量が反映される)
 			if (registry.all_of<HealthComponent>(entity)) {
 				auto& hc = registry.get<HealthComponent>(entity);
-				float waterScale = 0.4f + 0.6f * (std::max(0.0f, hc.hp) / hc.maxHp); // 最小で40%の大きさ
+				float waterScale = 0.4f + 0.6f * (std::max(0.0f, hc.Hp()) / hc.MaxHp()); // 最小で40%の大きさ
 				tc.scale.x *= waterScale;
 				tc.scale.y *= waterScale;
 				tc.scale.z *= waterScale;
@@ -908,8 +906,8 @@ public:
 				
 				// デコイが無敵で数秒耐えるようにする
 				auto& hc = registry.emplace<HealthComponent>(d);
-				hc.hp = 9999.0f;
-				hc.maxHp = 9999.0f;
+				hc.SetHp(9999.0f);
+				hc.SetMaxHp(9999.0f);
 				
 				// 5秒で自動消滅
 				registry.emplace<AutoDestroyComponent>(d).timer = 5.0f;
@@ -1360,7 +1358,7 @@ private:
 				for (auto target : enemies) {
 					if (enemies.get<TagComponent>(target).tag != TagType::Enemy) continue;
 					auto& health = enemies.get<HealthComponent>(target);
-					if (health.isDead || !health.enabled) continue;
+					if (health.IsDead() || !health.enabled) continue;
 					auto& targetTc = enemies.get<TransformComponent>(target);
 					float dx = tc.translate.x - targetTc.translate.x;
 					float dz = tc.translate.z - targetTc.translate.z;

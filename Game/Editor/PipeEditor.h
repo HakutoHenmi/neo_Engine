@@ -16,10 +16,10 @@ public:
     virtual ~IPipeBehavior() = default;
 
     // パイプ配置時に、モデルや特定のコンポーネントをSceneObjectに設定するためのフック
-    virtual void OnGeneratePipe(entt::registry& registry, entt::entity outPipe, const Engine::Vector3& start, const Engine::Vector3& end, float length, Engine::Renderer* renderer) = 0;
+    virtual void OnGeneratePipe(SceneComponents& registry, entt::entity outPipe, const Engine::Vector3& start, const Engine::Vector3& end, float length, Engine::Renderer* renderer) = 0;
     
     // ジョイント配置時に、モデルや特定のコンポーネントをSceneObjectに設定するためのフック
-    virtual void OnGenerateJoint(entt::registry& registry, entt::entity outJoint, const Engine::Vector3& position, Engine::Renderer* renderer) = 0;
+    virtual void OnGenerateJoint(SceneComponents& registry, entt::entity outJoint, const Engine::Vector3& position, Engine::Renderer* renderer) = 0;
     
     // ジョイントとパイプが接続された時など、配置確定時の処理
     virtual void OnPlacementComplete(GameScene* scene, const Engine::Vector3& start, const Engine::Vector3& end) = 0;
@@ -33,8 +33,8 @@ public:
 // デフォルトのパイプ挙動（単なる見た目のみの配置）
 class DefaultPipeBehavior : public IPipeBehavior {
 public:
-    void OnGeneratePipe(entt::registry& registry, entt::entity outPipe, const Engine::Vector3& start, const Engine::Vector3& end, float length, Engine::Renderer* renderer) override;
-    void OnGenerateJoint(entt::registry& registry, entt::entity outJoint, const Engine::Vector3& position, Engine::Renderer* renderer) override;
+    void OnGeneratePipe(SceneComponents& registry, entt::entity outPipe, const Engine::Vector3& start, const Engine::Vector3& end, float length, Engine::Renderer* renderer) override;
+    void OnGenerateJoint(SceneComponents& registry, entt::entity outJoint, const Engine::Vector3& position, Engine::Renderer* renderer) override;
     void OnPlacementComplete(GameScene* scene, const Engine::Vector3& start, const Engine::Vector3& end) override;
 };
 

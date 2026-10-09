@@ -15,7 +15,7 @@
         if(wcsstr(GetCommandLineW(),L"--slime-field")){UpdateSlimeFieldTest();return;}
         if(wcsstr(GetCommandLineW(),L"--slime-polish")){UpdateSlimePolishTest();return;}
         using namespace Game;using namespace Game::Chrono;
-        auto& r=GetRegistry();auto player=FindObjectByName("Player");
+        auto& r=GetComponents();auto player=FindObjectByName("Player");
         auto& p=r.get<Player>(player);auto& ink=r.get<InkPlayer>(player);auto& t=r.get<TransformComponent>(player);
         auto& input=r.get<ControlFrame>(player);input={};input.cameraInput=true;input.pitch=.55f;
         const float radii[]={8,16,28};float radius=radii[std::min(2,domainTestRound_)];
@@ -54,7 +54,7 @@
     int hordeNode_=1,hordeMaxAlive_=0,hordeSpawnAtBoss_=0,hordeMaxAttacks_=0;bool hordeEmerging_=false,hordeBoss_=false,hordeHidden_=true,hordeVolleyCapture_=false;float hordeBossAge_=0;
     void UpdateHordeTest(){
         using namespace Game;using namespace Game::Chrono;
-        auto& r=GetRegistry();auto player=FindObjectByName("Player");
+        auto& r=GetComponents();auto player=FindObjectByName("Player");
         auto& p=r.get<Player>(player);auto& ink=r.get<InkPlayer>(player);auto& t=r.get<TransformComponent>(player);
         auto& input=r.get<ControlFrame>(player);input={};input.cameraInput=true;input.pitch=.05f;p.invincible=1;
         if(frames_++==0){t.translate={12,1.25f,-12};p.velocity={};ink.domainPath.Clear();}
@@ -93,7 +93,7 @@
     void UpdateSceneryPerformanceTest(){
         using namespace Game;using namespace Game::Chrono;
         auto now=std::chrono::steady_clock::now();double seconds=sceneryPrevious_.time_since_epoch().count()?std::chrono::duration<double>(now-sceneryPrevious_).count():0;sceneryPrevious_=now;
-        auto* renderer=Engine::Renderer::GetInstance();auto& r=GetRegistry();auto player=FindObjectByName("Player");
+        auto* renderer=Engine::Renderer::GetInstance();auto& r=GetComponents();auto player=FindObjectByName("Player");
         auto& p=r.get<Player>(player);auto& t=r.get<TransformComponent>(player);auto& input=r.get<ControlFrame>(player);
         unsigned phase=std::min(2u,frames_/240),frame=frames_%240;
         if(frames_==0){t.translate={-60,1.25f,-45};p.velocity={};}
@@ -113,7 +113,7 @@
     }
     void UpdateDomainChainTest(){
         using namespace Game;using namespace Game::Chrono;
-        auto& r=GetRegistry();auto player=FindObjectByName("Player");
+        auto& r=GetComponents();auto player=FindObjectByName("Player");
         auto& p=r.get<Player>(player);auto& ink=r.get<InkPlayer>(player);auto& t=r.get<TransformComponent>(player);
         auto& input=r.get<ControlFrame>(player);input={};input.cameraInput=true;input.pitch=.7f;p.invincible=1;
         const Vec origin{-180,0,-160};
@@ -147,7 +147,7 @@
     int skillRound_=0,skillNode_=1,skillEscape_=0;bool skillWaiting_=false,skillRemote_=true;float skillWait_=0;
     void UpdateDomainSkillsTest(){
         using namespace Game;using namespace Game::Chrono;
-        auto& r=GetRegistry();auto player=FindObjectByName("Player");auto& p=r.get<Player>(player);
+        auto& r=GetComponents();auto player=FindObjectByName("Player");auto& p=r.get<Player>(player);
         auto& ink=r.get<InkPlayer>(player);auto& t=r.get<TransformComponent>(player);
         auto& input=r.get<ControlFrame>(player);input={};input.cameraInput=true;input.pitch=.4f;p.invincible=1;
         Vec origin{-180,0,-160},pos{t.translate.x,0,t.translate.z};
@@ -193,7 +193,7 @@
     }
     void UpdateSlimeFieldTest(){
         using namespace Game;using namespace Game::Chrono;
-        auto& r=GetRegistry();auto player=FindObjectByName("Player");auto& p=r.get<Player>(player);
+        auto& r=GetComponents();auto player=FindObjectByName("Player");auto& p=r.get<Player>(player);
         auto& t=r.get<TransformComponent>(player);auto& ink=r.get<InkPlayer>(player);
         auto& input=r.get<ControlFrame>(player);input={};input.cameraInput=true;
         // Four isolated boundary fixtures on the expanded floor, then an overview.
@@ -235,7 +235,7 @@
     float polishSupportMin_=100,polishSupportDelta_=0,polishPreviousSupport_=-1;float polishRestHeight_=0,polishAirHeight_=0,polishLandingHeight_=100;bool polishJump_=false,polishLand_=false,polishDown_=false,polishUp_=false,polishGrounded_=true;float polishLastY_=1.25f,polishMaxStep_=0;
     void UpdateSlimePolishTest(){
         using namespace Game;using namespace Game::Chrono;
-        auto& r=GetRegistry();auto player=FindObjectByName("Player");auto& p=r.get<Player>(player);auto& ink=r.get<InkPlayer>(player);auto& t=r.get<TransformComponent>(player);
+        auto& r=GetComponents();auto player=FindObjectByName("Player");auto& p=r.get<Player>(player);auto& ink=r.get<InkPlayer>(player);auto& t=r.get<TransformComponent>(player);
         auto& input=r.get<ControlFrame>(player);input={};input.cameraInput=true;input.pitch=.12f;
         if(frames_==0){t.translate={32,1.25f,-22};p.velocity={};}
         if(t.translate.z>60&&!polishDown_){polishDown_=true;polishUp_=true;Capture(L"tests/out/slime-dome-top.png");}

@@ -167,8 +167,8 @@ void UISystem::DrawPlayerHud(entt::registry& /*registry*/, entt::entity /*player
     const float y = 28.0f;
     const float panelW = 390.0f;
     const float panelH = 112.0f;
-    const float hpRate = pHealth.hp / (pHealth.maxHp > 0.0f ? pHealth.maxHp : 1.0f);
-    const float reserveRate = (pHealth.hp + pHealth.recoverableFluid) / (pHealth.maxHp > 0.0f ? pHealth.maxHp : 1.0f);
+    const float hpRate = pHealth.Hp() / (pHealth.MaxHp() > 0.0f ? pHealth.MaxHp() : 1.0f);
+    const float reserveRate = (pHealth.Hp() + pHealth.recoverableFluid) / (pHealth.MaxHp() > 0.0f ? pHealth.MaxHp() : 1.0f);
 
     DrawSpriteRect(renderer, whiteTexture_, x - 4.0f, y - 4.0f, panelW + 8.0f, panelH + 8.0f, {0.20f, 0.42f, 0.68f, 0.95f}, 180);
     DrawSpriteRect(renderer, whiteTexture_, x, y, panelW, panelH, {0.05f, 0.07f, 0.12f, 0.92f}, 181);
@@ -176,7 +176,7 @@ void UISystem::DrawPlayerHud(entt::registry& /*registry*/, entt::entity /*player
     renderer->DrawString("PLAYER", x + 18.0f, y + 18.0f, 0.42f, {0.86f, 0.94f, 1.0f, 1.0f}, UI::Font);
 
     char hpText[48];
-    std::snprintf(hpText, sizeof(hpText), "%.0f / %.0f", pHealth.hp, pHealth.maxHp);
+    std::snprintf(hpText, sizeof(hpText), "%.0f / %.0f", pHealth.Hp(), pHealth.MaxHp());
     renderer->DrawString(hpText, x + 268.0f, y + 20.0f, 0.34f, {0.80f, 1.0f, 0.84f, 1.0f}, UI::Font);
     DrawHudBar(renderer, x + 20.0f, y + 58.0f, panelW - 40.0f, 24.0f, hpRate, reserveRate, {0.22f, 1.0f, 0.58f, 1.0f}, 183);
 
@@ -250,7 +250,7 @@ void UISystem::DrawLockedEnemyHud(entt::registry& registry, PlayerInputComponent
     if (pi.lockedEnemy == entt::null || !registry.valid(pi.lockedEnemy) || !registry.all_of<HealthComponent>(pi.lockedEnemy)) return;
 
     const auto& enemyHealth = registry.get<HealthComponent>(pi.lockedEnemy);
-    if (enemyHealth.isDead || enemyHealth.maxHp <= 0.0f) return;
+    if (enemyHealth.IsDead() || enemyHealth.MaxHp() <= 0.0f) return;
 
     auto* renderer = ctx.renderer;
     const float viewW = ctx.viewportSize.x > 0.0f ? ctx.viewportSize.x : static_cast<float>(Engine::WindowDX::kW);
@@ -258,7 +258,7 @@ void UISystem::DrawLockedEnemyHud(entt::registry& registry, PlayerInputComponent
     const float panelH = 78.0f;
     const float x = viewW * 0.5f - panelW * 0.5f;
     const float y = 28.0f;
-    const float hpRate = enemyHealth.hp / enemyHealth.maxHp;
+    const float hpRate = enemyHealth.Hp() / enemyHealth.MaxHp();
 
     std::string enemyName = "ENEMY";
     if (auto* name = registry.try_get<NameComponent>(pi.lockedEnemy)) {
@@ -273,7 +273,7 @@ void UISystem::DrawLockedEnemyHud(entt::registry& registry, PlayerInputComponent
     DrawHudBar(renderer, x + 42.0f, y + 48.0f, panelW - 84.0f, 18.0f, hpRate, hpRate, {1.0f, 0.22f, 0.30f, 1.0f}, 193);
 }
 
-UISystem::WorldRect UISystem::CalculateWorldRect(entt::entity entity, entt::registry& registry, float screenW, float screenH) {
+UISystem::WorldRect UISystem::CalculateWorldRect(entt::entity entity, const entt::registry& registry, float screenW, float screenH) {
     if (!registry.all_of<RectTransformComponent>(entity)) return {0, 0, 0, 0};
 
     // 親を辿ってパスを構築
@@ -388,7 +388,7 @@ void UISystem::DrawGameplayHud(entt::registry& registry, GameContext& ctx) {
         const WorldSpaceUIComponent* uiComp = registry.try_get<WorldSpaceUIComponent>(e);
 
         // 1. HPバーの描画
-        if (hc.enabled && !hc.isDead) {
+        if (hc.enabled && !hc.IsDead()) {
             bool shouldShow = (!uiComp || uiComp->showHealthBar);
 
             if (shouldShow) {
@@ -440,7 +440,7 @@ void UISystem::DrawGameplayHud(entt::registry& registry, GameContext& ctx) {
 
                 // 最新のViewport（画像描画位置）を使用して投影
                 if (WorldToScreenWithView(pos, *ctx.camera, ctx.viewportOffset, ctx.viewportSize, sx, sy)) {
-                    float hpRate = hc.hp / (hc.maxHp > 0 ? hc.maxHp : 1.0f);
+                    float hpRate = hc.Hp() / (hc.MaxHp() > 0 ? hc.MaxHp() : 1.0f);
                     float localX = sx - ctx.viewportOffset.x;
                     float localY = sy - ctx.viewportOffset.y;
                     DrawHudBar(ctx.renderer, localX - barW * 0.5f, localY - barH * 0.5f, barW, barH, hpRate, hpRate, {1.0f, 0.22f, 0.30f, 1.0f}, 96);
@@ -521,22 +521,22 @@ void UISystem::DrawGameplayHud(entt::registry& registry, GameContext& ctx) {
         DrawLockedEnemyHud(registry, pi, ctx);
         DrawPlayerHud(registry, playerEnt, pi, pHealth, ctx);
         DrawEquippedCanHud(registry, playerEnt, pi, ctx);
-		if (ctx.combatFlow && ctx.combatFlow->combo >= 2 && !pHealth.isDead) {
+		if (ctx.combatFlow && ctx.combatFlow->Combo() >= 2 && !pHealth.IsDead()) {
 			const auto& flow = *ctx.combatFlow;
 			const float viewW = ctx.viewportSize.x > 0.0f ? ctx.viewportSize.x : static_cast<float>(Engine::WindowDX::kW);
 			const float x = viewW * 0.5f - 110.0f;
 			DrawSpriteRect(ctx.renderer, whiteTexture_, x, 95.0f, 220.0f, 56.0f,
 				{0.035f, 0.12f, 0.18f, 0.78f}, 120);
-			const std::string label = "FLOW COMBO x" + std::to_string(flow.combo);
+			const std::string label = "FLOW COMBO x" + std::to_string(flow.Combo());
 			DrawCenteredText(ctx.renderer, label, viewW * 0.5f, 103.0f, 0.65f,
 				{0.48f, 0.96f, 1.0f, 1.0f});
 			DrawSpriteRect(ctx.renderer, whiteTexture_, x + 12.0f, 137.0f,
-				196.0f * (std::min)(1.0f, flow.remaining / 1.8f), 4.0f,
+				196.0f * (std::min)(1.0f, flow.Remaining() / 1.8f), 4.0f,
 				{0.48f, 0.96f, 1.0f, 1.0f}, 121);
 		}
 
         // --- 4. ゲームオーバー（YOU DIED）画面 ---
-        if (pHealth.isDead) {
+        if (pHealth.IsDead()) {
             if (ctx.renderer) ctx.renderer->SetPostEffect("Smoothing");
             deathTimer_ += ctx.dt;
 

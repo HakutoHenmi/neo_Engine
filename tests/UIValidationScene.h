@@ -25,16 +25,16 @@ class ShadowValidationScene final : public Game::GameScene {
 public:
     void Initialize(Engine::WindowDX* dx,const Engine::SceneParameters&)override{
         window_=dx;Engine::SceneParameters params;params.stagePath="Resources/Scenes/chrono.json";Game::GameScene::Initialize(dx,params);
-        GetRegistry().emplace<Game::Chrono::ControlFrame>(FindObjectByName("Player"));
+        GetComponents().emplace<Game::Chrono::ControlFrame>(FindObjectByName("Player"));
         auto* r=Engine::Renderer::GetInstance();original_=r->GetGraphicsSettings();
-        auto& s=r->GetGraphicsSettings();s.ambientOcclusion=0;s.rtShadows=false;s.dof=s.motionBlur=0;
+        auto s=r->GetGraphicsSettings();s.ambientOcclusion=0;s.rtShadows=false;s.dof=s.motionBlur=0;r->ApplyGraphicsSettings(s);
     }
     void Update()override{
         if(frame_<34)Game::GameScene::Update();++frame_;
-        auto* r=Engine::Renderer::GetInstance();auto& s=r->GetGraphicsSettings();
-        if(frame_==35){Capture(L"tests/out/shadow-baseline.png");s.ambientOcclusion=1;}
-        if(frame_==65){Capture(L"tests/out/shadow-gtao.png");s.ambientOcclusion=0;s.rtShadows=true;}
-        if(frame_==95){Capture(L"tests/out/shadow-rt.png");s.ambientOcclusion=1;}
+        auto* r=Engine::Renderer::GetInstance();auto s=r->GetGraphicsSettings();
+        if(frame_==35){Capture(L"tests/out/shadow-baseline.png");s.ambientOcclusion=1;r->ApplyGraphicsSettings(s);}
+        if(frame_==65){Capture(L"tests/out/shadow-gtao.png");s.ambientOcclusion=0;s.rtShadows=true;r->ApplyGraphicsSettings(s);}
+        if(frame_==95){Capture(L"tests/out/shadow-rt.png");s.ambientOcclusion=1;r->ApplyGraphicsSettings(s);}
         if(frame_==125)Capture(L"tests/out/shadow-combined.png");
         if(frame_==126){
             passed_&=r->DlssActive()&&r->DlssEvaluatedFrames()>100&&r->RtShadowFrames()>50&&r->RtShadowPixels()>0&&r->RtLitPixels()>0;
@@ -58,7 +58,7 @@ class GraphicsValidationScene final : public Game::GameScene {
 public:
     void Initialize(Engine::WindowDX* dx,const Engine::SceneParameters&)override{
         window_=dx;Engine::SceneParameters params;params.stagePath="Resources/Scenes/chrono.json";Game::GameScene::Initialize(dx,params);
-        GetRegistry().emplace<Game::Chrono::ControlFrame>(FindObjectByName("Player"));auto* r=Engine::Renderer::GetInstance();original_=r->GetGraphicsSettings();
+        GetComponents().emplace<Game::Chrono::ControlFrame>(FindObjectByName("Player"));auto* r=Engine::Renderer::GetInstance();original_=r->GetGraphicsSettings();
         for(auto path:{"Resources/Textures/PBR/Grass004_NormalDX.jpg","Resources/Textures/PBR/Grass004_Roughness.jpg"})passed_&=r->TextureMipLevels(r->LoadTexture2D(path,false))==11;
         passed_&=r->TextureMipLevels(r->LoadTexture2D("Resources/Textures/AmbientCG/grass004_color_1k.jpg"))==11;
     }
@@ -73,7 +73,7 @@ public:
             io.MouseDown[0]=down;io.MouseDownDuration[0]=duration;
         }
         if(frame_==65)Capture(L"tests/out/graphics-settings.png");
-        if(frame_==66){renderer->GetGraphicsSettings()=original_;std::ofstream("tests/out/ui-smoke.txt")<<(passed_?"PASS":"FAIL")<<" graphics: full editor canvas, DLSS ON/OFF hit targets, color/data mip chains, GPU captures";PostQuitMessage(passed_?0:2);}
+        if(frame_==66){renderer->ApplyGraphicsSettings(original_);std::ofstream("tests/out/ui-smoke.txt")<<(passed_?"PASS":"FAIL")<<" graphics: full editor canvas, DLSS ON/OFF hit targets, color/data mip chains, GPU captures";PostQuitMessage(passed_?0:2);}
     }
     void Draw()override{if(frame_<35){Game::GameScene::Draw();return;}Game::UI::Canvas ui(Engine::Renderer::GetInstance(),1050,590);Game::UI::DrawGraphics(ui,*Engine::Renderer::GetInstance());}
     void DrawEditor()override{}
@@ -84,10 +84,10 @@ class BeamCameraValidationScene final : public Game::GameScene {
 public:
     void Initialize(Engine::WindowDX* dx,const Engine::SceneParameters&)override{
         window_=dx;Engine::SceneParameters params;params.stagePath="Resources/Scenes/chrono.json";
-        Game::GameScene::Initialize(dx,params);GetRegistry().emplace<Game::Chrono::ControlFrame>(FindObjectByName("Player"));
+        Game::GameScene::Initialize(dx,params);GetComponents().emplace<Game::Chrono::ControlFrame>(FindObjectByName("Player"));
     }
     void Update()override{
-        using namespace Game;using namespace Game::Chrono;auto& r=GetRegistry();auto player=FindObjectByName("Player");
+        using namespace Game;using namespace Game::Chrono;auto& r=GetComponents();auto player=FindObjectByName("Player");
         auto& ink=r.get<InkPlayer>(player);auto& p=r.get<Player>(player);auto& input=r.get<ControlFrame>(player);input={};input.pitch=-.15f;p.invincible=1;
         r.get<CreatureBoss>(FindObjectByName("Boss")).sweepTime=-100;
         if(!launched_){p.mass=800;ink.capacity=760;ink.reserve=40;ink.phase=SlimePhase::Charging;ink.charge=tier_==1?150.f:tier_==2?400.f:700.f;ink.previousAttack=true;launched_=true;start_=p.stats.seconds;}
@@ -117,20 +117,20 @@ public:
     void Initialize(Engine::WindowDX* dx,const Engine::SceneParameters&)override {
         Engine::SceneParameters params;params.stagePath="Resources/Scenes/chrono.json";
         Game::GameScene::Initialize(dx,params);
-        GetRegistry().emplace<Game::Chrono::ControlFrame>(FindObjectByName("Player"));
+        GetComponents().emplace<Game::Chrono::ControlFrame>(FindObjectByName("Player"));
     }
     void Update()override {
         using namespace Game;using namespace Game::Chrono;
-        auto& r=GetRegistry();auto player=FindObjectByName("Player"),boss=FindObjectByName("Boss");
+        auto& r=GetComponents();auto player=FindObjectByName("Player"),boss=FindObjectByName("Boss");
         auto& p=r.get<Player>(player);auto& ink=r.get<InkPlayer>(player);auto& input=r.get<ControlFrame>(player);input={};
         if(phase_==0)input.move={1,0,0};
         if(phase_==1)input.dodge=true; // A held button must not extend/retrigger liquefaction.
         if(phase_!=5)r.get<CreatureBoss>(boss).sweepTime=-100;
-        auto shoot=[&](){auto e=r.create();auto pos=r.get<TransformComponent>(player).translate;pos.z+=3;
+        auto shoot=[&](){auto e=CreateEmptyEntity();auto pos=r.get<TransformComponent>(player).translate;pos.z+=3;
             r.emplace<TransformComponent>(e).translate=pos;r.emplace<SlimeFeather>(e).velocity={0,0,-300};};
         if(phase_==0&&p.stats.seconds>.2f){input.dodge=true;phase_=1;start_=p.stats.seconds;}
         if(phase_==1&&p.stats.seconds-start_>.16f&&!grazeShot_){
-            auto e=r.create();auto pos=r.get<TransformComponent>(player).translate;pos.x+=3;pos.z+=3;
+            auto e=CreateEmptyEntity();auto pos=r.get<TransformComponent>(player).translate;pos.x+=3;pos.z+=3;
             r.emplace<TransformComponent>(e).translate=pos;r.emplace<SlimeFeather>(e).velocity={0,0,-300};grazeShot_=true;}
         if(phase_==1&&p.stats.seconds-start_>.62f&&!perfectFollowup_){shoot();perfectFollowup_=true;}
         if(phase_==1&&p.stats.seconds-start_>.7f){
@@ -174,11 +174,11 @@ public:
     void Initialize(Engine::WindowDX* dx,const Engine::SceneParameters&)override {
         window_=dx;Engine::SceneParameters params;params.stagePath="Resources/Scenes/chrono.json";
         Game::GameScene::Initialize(dx,params);
-        GetRegistry().emplace<Game::Chrono::ControlFrame>(FindObjectByName("Player"));
+        GetComponents().emplace<Game::Chrono::ControlFrame>(FindObjectByName("Player"));
     }
     void Update()override {
         using namespace Game;using namespace Game::Chrono;
-        auto& r=GetRegistry();auto player=FindObjectByName("Player"),boss=FindObjectByName("Boss");
+        auto& r=GetComponents();auto player=FindObjectByName("Player"),boss=FindObjectByName("Boss");
         auto& input=r.get<ControlFrame>(player);input={};
         input.lockOn=frame_==5||frame_==6||frame_==30||frame_==60;
         auto& p=r.get<Player>(player);p.invincible=1;
@@ -199,8 +199,8 @@ public:
         dive_|=c.stage==CreatureStage::Dive;
         radial_|=c.stage==CreatureStage::Dive&&c.sweepPhase==3&&r.view<SlimeFeather>().size()>=18;
         if(c.impactAge<.1f){
-            if(c.stage==CreatureStage::Snake)headImpact_|=GetContext().camera->IsShaking();
-            if(c.stage==CreatureStage::Dive)diveImpact_|=GetContext().camera->IsShaking();
+            if(c.stage==CreatureStage::Snake)headImpact_|=GetCamera().IsShaking();
+            if(c.stage==CreatureStage::Dive)diveImpact_|=GetCamera().IsShaking();
         }
         peakFeathers_=std::max(peakFeathers_,r.view<SlimeFeather>().size());
         if(c.stage==CreatureStage::Snake&&c.sweepPhase==0&&c.timer>1.f&&!snakeCaptured_){
@@ -267,8 +267,8 @@ public:
         Engine::SceneParameters params;params.stagePath="Resources/Scenes/chrono.json";
         Game::GameScene::Initialize(dx,params);
         auto player=FindObjectByName("Player");
-        GetRegistry().emplace<Game::Chrono::ControlFrame>(player);
-        GetRegistry().get<Game::Chrono::Player>(player).mass=0;
+        GetComponents().emplace<Game::Chrono::ControlFrame>(player);
+        GetComponents().get<Game::Chrono::Player>(player).mass=0;
     }
 };
 

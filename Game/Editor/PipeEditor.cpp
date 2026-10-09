@@ -6,7 +6,7 @@
 namespace Game {
 
 // ====== DefaultPipeBehavior ======
-void DefaultPipeBehavior::OnGeneratePipe(entt::registry& registry, entt::entity outPipe, const Engine::Vector3& start, const Engine::Vector3& end, float length, Engine::Renderer* renderer) {
+void DefaultPipeBehavior::OnGeneratePipe(SceneComponents& registry, entt::entity outPipe, const Engine::Vector3& start, const Engine::Vector3& end, float length, Engine::Renderer* renderer) {
     registry.emplace_or_replace<NameComponent>(outPipe).name = "PipeSegment";
     auto& tc = registry.emplace_or_replace<TransformComponent>(outPipe);
     
@@ -31,7 +31,7 @@ void DefaultPipeBehavior::OnGeneratePipe(entt::registry& registry, entt::entity 
     mr.shaderName = "Toon"; 
 }
 
-void DefaultPipeBehavior::OnGenerateJoint(entt::registry& registry, entt::entity outJoint, const Engine::Vector3& position, Engine::Renderer* renderer) {
+void DefaultPipeBehavior::OnGenerateJoint(SceneComponents& registry, entt::entity outJoint, const Engine::Vector3& position, Engine::Renderer* renderer) {
     registry.emplace_or_replace<NameComponent>(outJoint).name = "PipeJoint";
     auto& tc = registry.emplace_or_replace<TransformComponent>(outJoint);
     tc.translate = { position.x, position.y, position.z };
@@ -54,9 +54,9 @@ PipeEditor::PipeEditor() {
 }
 
 void PipeEditor::ClearPreview(GameScene* scene) {
-    auto& registry = scene->GetRegistry();
-    if (registry.valid(previewPipeId_)) registry.destroy(previewPipeId_);
-    if (registry.valid(previewJointId_)) registry.destroy(previewJointId_);
+    auto& registry = scene->GetComponents();
+    if (registry.valid(previewPipeId_)) scene->DestroyEditorEntity(previewPipeId_);
+    if (registry.valid(previewJointId_)) scene->DestroyEditorEntity(previewJointId_);
     previewPipeId_ = entt::null;
     previewJointId_ = entt::null;
 }
@@ -107,7 +107,7 @@ void PipeEditor::UpdateAndDraw(GameScene* scene, Engine::Renderer* renderer, con
         Engine::Vector3 hitPoint = {0, 0, 0};
         bool hitTerrain = false;
 
-        auto& registry = scene->GetRegistry();
+        auto& registry = scene->GetComponents();
         registry.view<NameComponent, TransformComponent>().each([&](entt::entity e, const NameComponent& nameC, const TransformComponent& tc) {
             bool isTerrain = (nameC.name.find("Terrain") != std::string::npos) || (nameC.name.find("Floor") != std::string::npos);
             if (!isTerrain) return;
@@ -195,7 +195,7 @@ void PipeEditor::UpdateAndDraw(GameScene* scene, Engine::Renderer* renderer, con
 
                 ClearPreview(scene);
 
-                entt::entity previewJoint = registry.create();
+                entt::entity previewJoint = scene->CreateEmptyEntity();
                 behavior_->OnGenerateJoint(registry, previewJoint, endNode, renderer);
                 registry.get<NameComponent>(previewJoint).name = "_PreviewJoint";
                 previewJointId_ = previewJoint;
@@ -205,7 +205,7 @@ void PipeEditor::UpdateAndDraw(GameScene* scene, Engine::Renderer* renderer, con
                     mr.shaderName = "SolidColor";
                 }
 
-                entt::entity previewPipe = registry.create();
+                entt::entity previewPipe = scene->CreateEmptyEntity();
                 behavior_->OnGeneratePipe(registry, previewPipe, startPos, endNode, length, renderer);
                 registry.get<NameComponent>(previewPipe).name = "_PreviewPipe";
                 previewPipeId_ = previewPipe;
@@ -218,10 +218,10 @@ void PipeEditor::UpdateAndDraw(GameScene* scene, Engine::Renderer* renderer, con
                 if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !ImGui::IsMouseDown(ImGuiMouseButton_Right)) {
                     ClearPreview(scene);
                     
-                    entt::entity finalJoint = registry.create();
+                    entt::entity finalJoint = scene->CreateEmptyEntity();
                     behavior_->OnGenerateJoint(registry, finalJoint, endNode, renderer);
 
-                    entt::entity finalPipe = registry.create();
+                    entt::entity finalPipe = scene->CreateEmptyEntity();
                     behavior_->OnGeneratePipe(registry, finalPipe, startPos, endNode, length, renderer);
                     
                     behavior_->OnPlacementComplete(scene, startPos, endNode);
@@ -233,7 +233,7 @@ void PipeEditor::UpdateAndDraw(GameScene* scene, Engine::Renderer* renderer, con
                     pipeStartNode_ = hitPoint;
                     hasPipeStart_ = true;
 
-                    entt::entity joint = registry.create();
+                    entt::entity joint = scene->CreateEmptyEntity();
                     behavior_->OnGenerateJoint(registry, joint, {hitPoint.x, hitPoint.y + 0.5f, hitPoint.z}, renderer);
                     EditorUI::Log("Pipe start placed.");
                 }

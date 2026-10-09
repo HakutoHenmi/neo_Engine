@@ -18,7 +18,7 @@ public:
 		auto view = registry.view<HealthComponent>();
 		for (auto entity : view) {
 			auto& hc = registry.get<HealthComponent>(entity);
-			if (!hc.enabled || hc.isDead) continue;
+			if (!hc.enabled || hc.IsDead()) continue;
 
 			// 演出タイマーの更新
 			if (hc.hitFlashTimer > 0.0f) {
@@ -55,7 +55,7 @@ public:
 			// ダメージ検知用の簡易ロジック
 			uint32_t eid = static_cast<uint32_t>(entity);
 			if (lastHp_.find(eid) != lastHp_.end()) {
-				float diff = lastHp_[eid] - hc.hp;
+				float diff = lastHp_[eid] - hc.Hp();
 				if (diff > 0.1f) {
 					// ダメージポップアップの生成
 					auto dmgEntity = registry.create();
@@ -76,9 +76,9 @@ public:
 					}
 				}
 			}
-			lastHp_[eid] = hc.hp;
+			lastHp_[eid] = hc.Hp();
 
-			if (hc.hp <= 0.0f && !hc.isDead) {
+			if (hc.Hp() <= 0.0f && !hc.IsDead()) {
 				bool isEnemy = false;
 				bool isPlayer = registry.all_of<PlayerInputComponent>(entity);
 				if (registry.all_of<TagComponent>(entity)) {
@@ -126,7 +126,7 @@ public:
 					if (isPlayer) {
 						BeginPlayerDeath(registry, entity, hc, ctx);
 					}
-					hc.isDead = true;
+					hc.SetDead(true);
 				}
 			}
 		}
@@ -181,8 +181,8 @@ public:
 				}
 
 				if (fluid.magnetDelay <= 0.0f && groundDistSq < fluid.collectRadius * fluid.collectRadius) {
-					playerHealth->hp = (std::min)(playerHealth->maxHp, playerHealth->hp + fluid.hpRestore);
-					playerHealth->stamina = (std::min)(playerHealth->maxStamina, playerHealth->stamina + fluid.staminaRestore);
+					playerHealth->RecoverHp(fluid.hpRestore);
+					playerHealth->RecoverStamina(fluid.staminaRestore);
 					if (ctx.renderer) {
 						ctx.renderer->AbsorbLostGPUFluidGroup(fluid.visualGroupId);
 					}
@@ -240,10 +240,10 @@ public:
 		for (auto entity : view) {
 			auto& hc = registry.get<HealthComponent>(entity);
 			hc.invincibleTime = 0.0f;
-			hc.isDead = false;
+			hc.SetDead(false);
 			hc.recoverableFluid = 0.0f;
 			hc.damageTakenCount = 0;
-			if (hc.hp <= 0) hc.hp = hc.maxHp;
+			hc.RestoreHpIfDepleted();
 		}
 		auto fluidView = registry.view<LostFluidPickupComponent>();
 		std::vector<entt::entity> fluidsToDestroy;

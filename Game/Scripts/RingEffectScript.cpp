@@ -7,7 +7,7 @@
 namespace Game {
 
 void RingEffectScript::Start(entt::entity entity, GameScene* scene) {
-	auto& registry = scene->GetRegistry();
+	auto& registry = scene->GetComponents();
 	
 	if (!registry.all_of<MeshRendererComponent>(entity)) {
 		auto& dmr = registry.emplace<MeshRendererComponent>(entity);
@@ -16,10 +16,10 @@ void RingEffectScript::Start(entt::entity entity, GameScene* scene) {
 		dmr.shaderName = "Distortion";
 		dmr.color = { 1.0f, 1.0f, 1.0f, 1.0f };
 
-		auto& context = scene->GetContext();
-		if (context.renderer) {
-			dmr.modelHandle = context.renderer->LoadObjMesh(dmr.modelPath);
-			dmr.textureHandle = context.renderer->LoadTexture2D(dmr.texturePath);
+		auto* renderer = scene->GetRenderer();
+		if (renderer) {
+			dmr.modelHandle = renderer->LoadObjMesh(dmr.modelPath);
+			dmr.textureHandle = renderer->LoadTexture2D(dmr.texturePath);
 		}
 	}
 	
@@ -27,9 +27,9 @@ void RingEffectScript::Start(entt::entity entity, GameScene* scene) {
 		auto& dtc = registry.emplace<TransformComponent>(entity);
 		dtc.scale = { 0.1f, 0.1f, 0.1f };
 		
-		auto& context = scene->GetContext();
-		if (context.camera) {
-			dtc.rotate = context.camera->Rotation();
+		auto* camera = &scene->GetCamera();
+		if (camera) {
+			dtc.rotate = camera->Rotation();
 			dtc.rotate.x -= DirectX::XM_PIDIV2;
 		} else {
 			dtc.rotate = { 0, 0, 0 };
@@ -40,7 +40,7 @@ void RingEffectScript::Start(entt::entity entity, GameScene* scene) {
 void RingEffectScript::Update(entt::entity entity, GameScene* scene, float dt) {
 	timer_ += dt;
 	
-	auto& registry = scene->GetRegistry();
+	auto& registry = scene->GetComponents();
 	if (registry.all_of<TransformComponent>(entity) && registry.all_of<MeshRendererComponent>(entity)) {
 		auto& tc = registry.get<TransformComponent>(entity);
 		auto& mr = registry.get<MeshRendererComponent>(entity);
@@ -53,9 +53,9 @@ void RingEffectScript::Update(entt::entity entity, GameScene* scene, float dt) {
 		tc.scale = { s, s, s };
 		mr.color.w = 1.0f - easeT;
 
-		auto& context = scene->GetContext();
-		if (isBillboard_ && context.camera) {
-			tc.rotate = context.camera->Rotation();
+		auto* camera = &scene->GetCamera();
+		if (isBillboard_ && camera) {
+			tc.rotate = camera->Rotation();
 			tc.rotate.x -= DirectX::XM_PIDIV2;
 		}
 		

@@ -546,7 +546,7 @@ void ChronoSystem::Reset(entt::registry& r){
     if(r.valid(boss_)){r.remove<CreatureBoss>(boss_);r.get<MeshRendererComponent>(boss_).enabled=true;}
     r.emplace_or_replace<Player>(player_);
     auto& pt=r.get<TransformComponent>(player_);pt.translate={0,1.3f,-27};pt.scale={1,1,1};
-    auto& hp=r.get<HealthComponent>(player_);hp.hp=100;hp.maxHp=200;hp.isDead=false;
+    auto& hp=r.get<HealthComponent>(player_);hp.SetHp(100);hp.SetMaxHp(200);hp.SetDead(false);
     auto& pi=r.get<PlayerInputComponent>(player_);pi.selectedCan=CanType::None;pi.lockedEnemy=entt::null;pi.isRadialMenuOpen=false;
     if(auto* box=r.try_get<BoxColliderComponent>(player_))box->enabled=false;
     auto* renderer=Engine::Renderer::GetInstance();white_=renderer->LoadTexture2D("Resources/Textures/white1x1.png");
@@ -656,7 +656,7 @@ void ChronoSystem::Damage(entt::registry& r,Player& p,float amount,GameContext& 
     p.buffer=0;p.bufferedTarget=entt::null;
     if(p.action!=Action::Collapsed){p.action=Action::Recovery;p.timer=0.12f;p.target=entt::null;}
     ctx.camera->StartImpactShake(.16f,.18f,Write(Unit(Read(r.get<TransformComponent>(player_).translate)-source)),10);
-    r.get<HealthComponent>(player_).hp=p.mass;
+    r.get<HealthComponent>(player_).SetHp(p.mass);
     if(p.mass<=0)Finish(p,false);
 }
 ChainFailure ChronoSystem::Failure(entt::registry& r,Player& p,GameContext& ctx){
@@ -1018,7 +1018,7 @@ void ChronoSystem::UpdatePlayer(entt::registry& r,Player& p,GameContext& ctx){
     if(p.action==Action::Dodge){t.scale.x*=1.15f;t.scale.y*=0.65f;t.scale.z*=1.3f;}
     if(p.action==Action::Collapsed){t.scale.x*=1.4f;t.scale.y*=0.35f;t.scale.z*=1.4f;}
     p.stats.maxMass=std::max(p.stats.maxMass,p.mass);
-    auto& hp=r.get<HealthComponent>(player_);hp.hp=p.mass;hp.maxHp=200;hp.isDead=p.mass<=0;
+    auto& hp=r.get<HealthComponent>(player_);hp.SetHp(p.mass);hp.SetMaxHp(200);hp.SetDead(p.mass<=0);
     Camera(r,p,ctx,dt);
     p.preview=(p.action==Action::Extending||p.action==Action::Pulling)?p.target:
         (p.aiming||p.automatic)?Choose(r,p,ctx,p.aiming):entt::null;
@@ -1231,7 +1231,7 @@ void ChronoSystem::Update(entt::registry& r,GameContext& ctx){
     ctx.camera->SetShakeStrength(shakeSetting_*.5f);
     UpdatePlayer(r,p,ctx);if(!finished_&&p.hitStop<=0)UpdateWorld(r,p,ctx);
     Presentation(r,p,ctx);
-    if(ctx.combatFlow)ctx.combatFlow->enemyScale=p.hitStop>0?0:p.worldScale;
+    if(ctx.combatFlow)ctx.combatFlow->SetChronoEnemyScale(p.hitStop>0?0:p.worldScale);
 }
 void ChronoSystem::Draw(entt::registry& r,GameContext& ctx){
     if(!initialized_||!ctx.isPlaying||!r.valid(player_)||!ctx.renderer)return;

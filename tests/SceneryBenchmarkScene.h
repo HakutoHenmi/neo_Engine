@@ -16,19 +16,19 @@ class SceneryBenchmarkScene final : public Game::GameScene {
     double frameMs_=0,cpuRender_=0,cpuLogic_=0;int samples_=0;
     std::ofstream report_;
     std::vector<entt::entity> scenery_;
-    void Configure(){auto& s=Engine::Renderer::GetInstance()->GetGraphicsSettings();
-        s.rtShadows=phase_>=2;s.rtReflections=s.rtIndirect=phase_>=3;
-        for(auto e:scenery_)GetRegistry().get<Game::MeshRendererComponent>(e).enabled=phase_!=1;
+    void Configure(){auto* r=Engine::Renderer::GetInstance();auto s=r->GetGraphicsSettings();
+        s.rtShadows=phase_>=2;s.rtReflections=s.rtIndirect=phase_>=3;r->ApplyGraphicsSettings(s);
+        for(auto e:scenery_)GetComponents().get<Game::MeshRendererComponent>(e).enabled=phase_!=1;
     }
 public:
     void Initialize(Engine::WindowDX* dx,const Engine::SceneParameters&)override{
         start_=Clock::now();Engine::SceneParameters p;p.stagePath="Resources/Scenes/chrono.json";Game::GameScene::Initialize(dx,p);
         auto* r=Engine::Renderer::GetInstance();original_=r->GetGraphicsSettings();r->SetFluidProfilerEnabled(true);
-        auto& s=r->GetGraphicsSettings();s.rtShadows=s.rtReflections=s.rtIndirect=false;
+        auto s=r->GetGraphicsSettings();s.rtShadows=s.rtReflections=s.rtIndirect=false;r->ApplyGraphicsSettings(s);
         std::filesystem::create_directories("SceneryBenchmark");report_.open("SceneryBenchmark/result.txt");
         report_<<"initialize_ms="<<std::chrono::duration<double,std::milli>(Clock::now()-start_).count()<<'\n';report_.flush();
-        for(auto e:GetRegistry().view<Game::MeshRendererComponent>()){
-            auto& mr=GetRegistry().get<Game::MeshRendererComponent>(e);
+        for(auto e:GetComponents().view<Game::MeshRendererComponent>()){
+            auto& mr=GetComponents().get<Game::MeshRendererComponent>(e);
             if(mr.enabled&&(mr.shaderName=="EnvironmentSurface"||mr.shaderName=="MeadowGrass"))scenery_.push_back(e);
         }
         previous_=Clock::now();
@@ -53,10 +53,10 @@ public:
         if(phase_==4)for(const auto& timing:GetUpdateTimings())report_<<"cpu_update "<<timing.name<<"="<<timing.ms<<'\n';
 #endif
         sum_.fill(0);samples_=frame_=0;frameMs_=cpuRender_=cpuLogic_=0;
-        if(++phase_==5){r->GetGraphicsSettings()=original_;report_<<"PASS\n";report_.close();PostQuitMessage(0);}else Configure();
+        if(++phase_==5){r->ApplyGraphicsSettings(original_);report_<<"PASS\n";report_.close();PostQuitMessage(0);}else Configure();
     }
     void Draw()override{
-        if(warmed_){auto player=FindObjectByName("Player");auto p=GetRegistry().get<Game::TransformComponent>(player).translate;
+        if(warmed_){auto player=FindObjectByName("Player");auto p=GetComponents().get<Game::TransformComponent>(player).translate;
             auto& camera=GetCamera();camera.StopShake();camera.SetHandheld(0);camera.SetPosition(p.x,p.y+6,p.z-16);camera.LookAt(p.x,p.y+1,p.z+12,0,1,0);}
         Game::GameScene::Draw();
     }

@@ -39,17 +39,30 @@ std::filesystem::path GraphicsSettingsPath(){
     return size>0&&size<32768?std::filesystem::path(path)/L"LiquidTime"/L"graphics-v1.txt":std::filesystem::path{};
 }
 }
+void Renderer::ApplyGraphicsSettings(GraphicsSettings value) {
+    for (float v : {value.bloom, value.lensFlare, value.grading, value.ambientOcclusion, value.motionBlur, value.dof, value.exposure})
+        if (!std::isfinite(v)) return;
+    value.bloom = std::clamp(value.bloom, 0.f, .5f);
+    value.lensFlare = std::clamp(value.lensFlare, 0.f, .1f);
+    value.grading = std::clamp(value.grading, 0.f, 1.f);
+    value.ambientOcclusion = std::clamp(value.ambientOcclusion, 0.f, 1.f);
+    value.motionBlur = std::clamp(value.motionBlur, 0.f, 1.f);
+    value.dof = std::clamp(value.dof, 0.f, 1.f);
+    value.exposure = std::clamp(value.exposure, .6f, 1.6f);
+    graphicsSettings_ = value;
+}
+void Renderer::SetDlssQuality(bool enabled) { graphicsSettings_.dlssQuality = enabled && SupportsDlss(); }
+void Renderer::SetRtShadows(bool enabled) { graphicsSettings_.rtShadows = enabled && RtShadowsAvailable(); }
+void Renderer::SetRtReflections(bool enabled) { graphicsSettings_.rtReflections = enabled && RtLightingAvailable(); }
+void Renderer::SetRtIndirect(bool enabled) { graphicsSettings_.rtIndirect = enabled && RtLightingAvailable(); }
+
 void Renderer::LoadGraphicsSettings(){
     std::ifstream file(GraphicsSettingsPath());GraphicsSettings value;
     if(!(file>>value.bloom>>value.lensFlare>>value.grading>>value.ambientOcclusion>>value.motionBlur>>value.dof>>value.exposure))return;
-    for(float v:{value.bloom,value.lensFlare,value.grading,value.ambientOcclusion,value.motionBlur,value.dof,value.exposure})if(!std::isfinite(v))return;
-    value.bloom=std::clamp(value.bloom,0.f,.5f);value.lensFlare=std::clamp(value.lensFlare,0.f,.1f);
-    value.grading=std::clamp(value.grading,0.f,1.f);value.ambientOcclusion=std::clamp(value.ambientOcclusion,0.f,1.f);
-    value.motionBlur=std::clamp(value.motionBlur,0.f,1.f);value.dof=std::clamp(value.dof,0.f,1.f);value.exposure=std::clamp(value.exposure,.6f,1.6f);
     int quality=0;if(file>>quality)value.dlssQuality=quality==1;
     int rt=0;if(file>>rt)value.rtShadows=rt==1;
     int reflection=0,indirect=0;if(file>>reflection)value.rtReflections=reflection==1;if(file>>indirect)value.rtIndirect=indirect==1;
-    graphicsSettings_=value;
+    ApplyGraphicsSettings(value);
 }
 bool Renderer::SaveGraphicsSettings()const{
     try{auto path=GraphicsSettingsPath();if(path.empty())return false;

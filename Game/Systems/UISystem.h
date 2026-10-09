@@ -16,7 +16,7 @@ public:
     void DrawUI(entt::registry& registry, GameContext& ctx) override;
     void Reset(entt::registry& registry) override;
 
-    static WorldRect CalculateWorldRect(entt::entity entity, entt::registry& registry, float screenW, float screenH);
+    static WorldRect CalculateWorldRect(entt::entity entity, const entt::registry& registry, float screenW, float screenH);
 
     // ★追加: 3Dワールド座標からスクリーン座標に変換 (Viewport考慮版)
     static bool WorldToScreen(const DirectX::XMFLOAT3& worldPos, const Engine::Camera& camera, float& screenX, float& screenY);

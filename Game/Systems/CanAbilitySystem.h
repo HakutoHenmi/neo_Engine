@@ -65,7 +65,7 @@ private:
 			for (auto target : targetView) {
 				if (targetView.get<TagComponent>(target).tag != TagType::Enemy) continue;
 				auto& health = targetView.get<HealthComponent>(target);
-				if (health.isDead || !health.enabled) continue;
+				if (health.IsDead() || !health.enabled) continue;
 				const auto& targetTc = targetView.get<TransformComponent>(target);
 				const float dx = targetTc.translate.x - poolTc.translate.x;
 				const float dz = targetTc.translate.z - poolTc.translate.z;
@@ -74,7 +74,7 @@ private:
 				auto& status = registry.get_or_emplace<CanStatusComponent>(target);
 				status.acidTimer = (std::max)(status.acidTimer, 5.5f);
 				if (!ctx.isSandbagMode) {
-					health.hp = (std::max)(0.0f, health.hp - 2.0f);
+					health.ApplyDamage(2.0f);
 				}
 				health.hitFlashTimer = (std::max)(health.hitFlashTimer, 0.05f);
 			}
@@ -101,12 +101,12 @@ private:
 			status.acidTimer = (std::max)(0.0f, status.acidTimer - ctx.dt);
 			status.bubbleTimer = (std::max)(0.0f, status.bubbleTimer - ctx.dt);
 
-			if (status.acidTimer > 0.0f && health && health->enabled && !health->isDead) {
+			if (status.acidTimer > 0.0f && health && health->enabled && !health->IsDead()) {
 				status.acidTickTimer -= ctx.dt;
 				if (status.acidTickTimer <= 0.0f) {
 					status.acidTickTimer = 0.6f;
 					if (!ctx.isSandbagMode && IsEnemy(registry, entity)) {
-						health->hp = (std::max)(0.0f, health->hp - 3.0f);
+						health->ApplyDamage(3.0f);
 					}
 					health->hitFlashTimer = (std::max)(health->hitFlashTimer, 0.04f);
 				}

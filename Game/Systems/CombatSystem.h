@@ -139,7 +139,7 @@ public:
 					registry.all_of<EnemyAIComponent, HealthComponent>(hrEntity) &&
 					registry.get<EnemyAIComponent>(hrEntity).hopper) {
 					const auto& health = registry.get<HealthComponent>(hrEntity);
-					ctx.combatFlow->RegisterHit(health.hp <= 0.0f);
+					ctx.combatFlow->RegisterHit(health.Hp() <= 0.0f);
 				}
 				if (canEffect) {
 					// 状態弾は接触そのものを成功とし、敵の無敵時間中でも固有効果を与える。
@@ -495,14 +495,14 @@ private:
 		
 		float appliedDamage = 0.0f;
 		if (!(ctx.isSandbagMode && isEnemyBase)) {
-			float beforeHp = hc.hp;
-			hc.hp = (std::max)(0.0f, hc.hp - damage);
-			appliedDamage = (std::max)(0.0f, beforeHp - hc.hp);
+			float beforeHp = hc.Hp();
+			hc.ApplyDamage(damage);
+			appliedDamage = (std::max)(0.0f, beforeHp - hc.Hp());
 		}
 
 		if (isRealPlayer && appliedDamage > 0.0f) {
 			hc.damageTakenCount++;
-			float missingHp = (std::max)(0.0f, hc.maxHp - hc.hp);
+			float missingHp = (std::max)(0.0f, hc.MaxHp() - hc.Hp());
 			hc.recoverableFluid = (std::min)(missingHp, hc.recoverableFluid + appliedDamage);
 			SpawnLostFluidPickups(registry, target, appliedDamage, hitPos, hitDir, ctx);
 		}

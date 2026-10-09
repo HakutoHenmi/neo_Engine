@@ -8,7 +8,7 @@
 namespace Game {
 
 void WarningEffectScript::Start(entt::entity entity, GameScene* scene) {
-	auto& registry = scene->GetRegistry();
+	auto& registry = scene->GetComponents();
 	if (registry.all_of<MeshRendererComponent>(entity)) {
 		auto& mr = registry.get<MeshRendererComponent>(entity);
 		origR_ = mr.color.x;
@@ -23,7 +23,7 @@ void WarningEffectScript::Update(entt::entity entity, GameScene* scene, float dt
 	if (isFinished_) return;
 	timer_ += dt;
 	
-	auto& registry = scene->GetRegistry();
+	auto& registry = scene->GetComponents();
 	if (registry.all_of<MeshRendererComponent>(entity)) {
 		auto& mr = registry.get<MeshRendererComponent>(entity);
 		
@@ -48,7 +48,7 @@ void WarningEffectScript::Update(entt::entity entity, GameScene* scene, float dt
 }
 
 void WarningEffectScript::OnDestroy(entt::entity entity, GameScene* scene) {
-	auto& registry = scene->GetRegistry();
+	auto& registry = scene->GetComponents();
 	if (originalColorSaved_ && registry.all_of<MeshRendererComponent>(entity)) {
 		auto& mr = registry.get<MeshRendererComponent>(entity);
 		mr.color = {origR_, origG_, origB_, origA_};

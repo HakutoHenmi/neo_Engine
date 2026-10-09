@@ -13,7 +13,7 @@ namespace Game {
 REGISTER_SCRIPT(BossTestScript);
 
 void BossTestScript::Start(entt::entity entity, GameScene* scene) {
-	auto& registry = scene->GetRegistry();
+	auto& registry = scene->GetComponents();
 
 	// 1. ボスコンポーネントの初期化（パラメータ設定）
 	if (!registry.all_of<BossActionComponent>(entity)) {
@@ -94,8 +94,8 @@ void BossTestScript::Start(entt::entity entity, GameScene* scene) {
 	// ★追加: ボス本体にHealthComponentがない場合は追加する（WaveSystem等で生存カウントするため）
 	if (!registry.all_of<HealthComponent>(entity)) {
 		auto& hc = registry.emplace<HealthComponent>(entity);
-		hc.hp = 250.0f;
-		hc.maxHp = 250.0f;
+		hc.SetHp(250.0f);
+		hc.SetMaxHp(250.0f);
 	}
 
 	// ボス本体にHurtboxComponentを追加する。
@@ -191,7 +191,7 @@ void BossTestScript::Start(entt::entity entity, GameScene* scene) {
 }
 
 void BossTestScript::Update(entt::entity entity, GameScene* scene, float /*dt*/) {
-	auto& registry = scene->GetRegistry();
+	auto& registry = scene->GetComponents();
 	if (!registry.all_of<BossActionComponent>(entity)) return;
 
 	auto& boss = registry.get<BossActionComponent>(entity);
@@ -458,7 +458,7 @@ void BossTestScript::Update(entt::entity entity, GameScene* scene, float /*dt*/)
 	// 前フレームがAttackで、今フレームがCooldownになった瞬間を着地と判定
 	if (prevBossState_ == BossState::Attack && boss.state == BossState::Cooldown) {
 		if (attackType == BossAttackType::JumpPress) {
-			entt::entity shockwave = registry.create();
+			entt::entity shockwave = scene->CreateEmptyEntity();
 			registry.emplace<TagComponent>(shockwave).tag = TagType::Enemy; // 敵の攻撃として扱う
 			
 			auto& swTc = registry.emplace<TransformComponent>(shockwave);
@@ -495,8 +495,8 @@ void BossTestScript::Update(entt::entity entity, GameScene* scene, float /*dt*/)
 			registry.emplace<AutoDestroyComponent>(shockwave).timer = pd.duration;
 
 			// カメラシェイク
-			if (scene->GetContext().camera) {
-				scene->GetContext().camera->StartShake(0.4f, 0.5f); // 激しく揺らす
+			if (scene) {
+				scene->GetCamera().StartShake(0.4f, 0.5f); // 激しく揺らす
 			}
 		}
 	}

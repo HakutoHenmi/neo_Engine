@@ -8,6 +8,7 @@
 #include "EventSystem.h" // ★追加: イベントシステム
 #include "../ObjectTypes.h"
 #include "../Systems/ISystem.h"
+#include "../SceneComponents.h"
 #include <mutex>
 #include <unordered_map>
 #include <string>
@@ -36,13 +37,15 @@ public:
     void DrawSelectionHighlight();
     void DrawLightGizmos();
 
-	// ★ 汎用スポーン（Registryを直接操作することを推奨）
+	// シーンがエンティティの生成・破棄を管理する
 	entt::entity CreateEntity(const std::string& name = "New Object");
 	// ★追加: オブジェクトをIDで破棄保留にする
 	void DestroyObject(uint32_t id);
 	void ClearScene(); // ★追加: シーンの完全クリアとキューのリセット
 
-    entt::registry& GetRegistry() { return registry_; }
+    SceneComponents& GetComponents() { return components_; }
+    entt::entity CreateEmptyEntity();
+    void DestroyEditorEntity(entt::entity entity);
     const entt::registry& GetRegistry() const { return registry_; }
 	Engine::EventSystem& GetEventSystem() { return eventSystem_; }
 	Engine::ParticleEditor& GetParticleEditor() { return particleEditor_; }
@@ -61,11 +64,12 @@ public:
 	Engine::Matrix4x4 GetWorldMatrixRecursive(entt::entity entity, int depth) const;
 	Engine::Camera& GetCamera() { return camera_; }
 	entt::entity GetSelectedEntity() const { return selectedEntity_; }
-	void SetSelectedEntity(entt::entity entity) { selectedEntity_ = entity; }
-	std::set<entt::entity>& GetSelectedEntities() { return selectedEntities_; }
+	void SelectEntity(entt::entity entity);
+	void ClearSelection();
+	const std::set<entt::entity>& GetSelectedEntities() const { return selectedEntities_; }
 
 	// ★追加: コンテキストへのアクセス
-	GameContext& GetContext() { return ctx_; }
+    void SetEditorViewport(DirectX::XMFLOAT2 offset, DirectX::XMFLOAT2 size, float mouseX, float mouseY);
 
 	// ★追加: 名前でオブジェクトを検索するヘルパー
 	entt::entity FindObjectByName(const std::string& name);
@@ -84,6 +88,7 @@ public:
 
 
 private:
+    void RemoveEntity(entt::entity entity);
 #ifndef NDEBUG
     std::vector<UpdateTiming> updateTimings_;
 #endif
@@ -113,6 +118,7 @@ private:
     Engine::Camera camera_;
     Engine::EventSystem eventSystem_; // ★追加: スクリプト間通信用
     entt::registry registry_;
+    SceneComponents components_{registry_};
 	CombatFlowState combatFlow_;
     std::set<entt::entity> selectedEntities_;
     entt::entity selectedEntity_ = entt::null;
@@ -160,7 +166,7 @@ private:
     bool wasLiquidated_ = false;
     bool gpuSlimeEmitted_ = false; // ★追加: GPUスライムの初回放出フラグ
 
-    friend class EditorUI;
+
 
 
 

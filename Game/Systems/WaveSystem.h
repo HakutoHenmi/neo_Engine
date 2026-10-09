@@ -74,7 +74,7 @@ public:
 		auto pView = registry.view<PlayerInputComponent, HealthComponent>();
 		if (pView.begin() != pView.end()) {
 			auto& hc = pView.get<HealthComponent>(*pView.begin());
-			if (!hc.isDead) playerAlive = true;
+			if (!hc.IsDead()) playerAlive = true;
 		}
 
 		if (!playerAlive) return;
@@ -88,7 +88,7 @@ public:
 		auto eView = registry.view<EnemyAIComponent>();
 		for (auto entity : eView) {
 			if (registry.all_of<HealthComponent>(entity)) {
-				if (!registry.get<HealthComponent>(entity).isDead) enemyCount++;
+				if (!registry.get<HealthComponent>(entity).IsDead()) enemyCount++;
 			} else {
 				enemyCount++; // Initialization pending
 			}
@@ -96,7 +96,7 @@ public:
 		auto bView = registry.view<BossActionComponent>();
 		for (auto entity : bView) {
 			if (registry.all_of<HealthComponent>(entity)) {
-				if (!registry.get<HealthComponent>(entity).isDead) enemyCount++;
+				if (!registry.get<HealthComponent>(entity).IsDead()) enemyCount++;
 			} else {
 				enemyCount++; // Initialization pending
 			}
@@ -191,8 +191,8 @@ private:
 		auto playerView = registry.view<PlayerInputComponent, HealthComponent>();
 		if (playerView.begin() != playerView.end()) {
 			const auto& health = playerView.get<HealthComponent>(*playerView.begin());
-			resultHp_ = health.hp;
-			resultMaxHp_ = health.maxHp > 0.0f ? health.maxHp : 100.0f;
+			resultHp_ = health.Hp();
+			resultMaxHp_ = health.MaxHp() > 0.0f ? health.MaxHp() : 100.0f;
 			resultDamageTaken_ = health.damageTakenCount;
 		}
 		resultRank_ = CalculateRank();

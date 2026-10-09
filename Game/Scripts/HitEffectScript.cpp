@@ -8,7 +8,7 @@
 namespace Game {
 
 void HitEffectScript::Start(entt::entity entity, GameScene* scene) {
-	auto& registry = scene->GetRegistry();
+	auto& registry = scene->GetComponents();
 	
 	DirectX::XMFLOAT3 pos = {0, 0, 0};
 	if (registry.all_of<TransformComponent>(entity)) {
@@ -63,7 +63,7 @@ void HitEffectScript::Start(entt::entity entity, GameScene* scene) {
 void HitEffectScript::Update(entt::entity entity, GameScene* scene, float dt) {
 	timer_ += dt;
 	
-	auto& registry = scene->GetRegistry();
+	auto& registry = scene->GetComponents();
 
 
 
@@ -305,7 +305,7 @@ void HitEffectScript::Update(entt::entity entity, GameScene* scene, float dt) {
 
 void HitEffectScript::OnDestroy(entt::entity /*entity*/, GameScene* scene) {
 	if (scene) {
-		auto& registry = scene->GetRegistry();
+		auto& registry = scene->GetComponents();
 		for (auto& fd : fragments_) {
 			if (fd.entity != entt::null && registry.valid(fd.entity)) {
 				scene->DestroyObject(static_cast<uint32_t>(fd.entity));
