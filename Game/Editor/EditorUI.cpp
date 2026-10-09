@@ -3,6 +3,9 @@
 #include "../../externals/imgui/imgui.h"
 #include "../../externals/imgui/imgui_internal.h"
 #include "../Scripts/IScript.h" // 循環参照を避けるため先にインクルード
+#include "../Scripts/ScriptLifecycle.h"
+#include "../Scripts/ScriptEdits.h"
+#include <optional>
 #include "../Scenes/GameScene.h"
 #include "../Systems/RiverSystem.h" 
 #include "../Systems/PlayerActionSystem.h" 
@@ -2039,6 +2042,8 @@ bool EditorUI::AssetField(const char* label, std::string& path, const std::vecto
 
 void EditorUI::ShowInspector(GameScene* scene) {
 	// Removed ImGui::Begin("Inspector") to support tab embedding
+	if (!scene) return;
+	std::optional<ScriptEdit> pendingScriptEdit;
 	auto selected = scene->GetSelectedEntity();
 	if (scene && selected != entt::null && scene->GetComponents().valid(selected)) {
 		ImGui::PushID((int)selected);
@@ -2340,9 +2345,8 @@ void EditorUI::ShowInspector(GameScene* scene) {
 									bool isSelected = (current == j);
 									if (ImGui::Selectable(scriptNames[j].c_str(), isSelected)) {
 										if (entry.scriptPath != scriptNames[j]) {
-											entry.scriptPath = scriptNames[j];
-											entry.instance = nullptr;
-											entry.parameterData = "{}"; // Reset parameters for new script type
+											pendingScriptEdit = ScriptEdit{ScriptEditKind::Replace, selected,
+												static_cast<size_t>(i), entry.scriptPath, entry.instance, scriptNames[j]};
 										}
 									}
 								}
@@ -2402,7 +2406,8 @@ void EditorUI::ShowInspector(GameScene* scene) {
 							}
 
 							if (ImGui::Button("Remove Script")) {
-								cp->scripts.erase(cp->scripts.begin() + i);
+								pendingScriptEdit = ScriptEdit{ScriptEditKind::Remove, selected,
+									static_cast<size_t>(i), entry.scriptPath, entry.instance, {}};
 								// i-- is not needed if we break or handle loop index correctly, but let's be safe
 								ImGui::TreePop();
 								ImGui::PopID();
@@ -2415,10 +2420,11 @@ void EditorUI::ShowInspector(GameScene* scene) {
 					}
 
 					if (ImGui::Button("Add Script")) {
-						cp->scripts.push_back({});
+						pendingScriptEdit = ScriptEdit{ScriptEditKind::Add, selected, 0, {}, {}, {}};
 					}
 					ImGui::SameLine();
-					if (ImGui::Button("Remove Component##SC")) registry.remove<ScriptComponent>(entity);
+					if (ImGui::Button("Remove Component##SC"))
+						pendingScriptEdit = ScriptEdit{ScriptEditKind::RemoveComponent, selected, 0, {}, {}, {}};
 				}
 			}
 			if (auto* dl = registry.try_get<DirectionalLightComponent>(entity)) {
@@ -2777,6 +2783,7 @@ void EditorUI::ShowInspector(GameScene* scene) {
 			if (ImGui::MenuItem("Variables")) std::ignore = registry.get_or_emplace<VariableComponent>(entity);
 			ImGui::EndPopup();
 		}
+		if (pendingScriptEdit) ApplyScriptEdit(registry, *pendingScriptEdit, scene);
 		ImGui::PopID();
 	} else {
 		ImGui::Text("No Selection");

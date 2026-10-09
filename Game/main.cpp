@@ -15,6 +15,7 @@
 #include "../tests/FluidGameBenchmarkScene.h"
 #include "../tests/ChronoValidationScene.h"
 #include "../tests/UIValidationScene.h"
+#include "../tests/ComponentValidationScene.h"
 #include <shellapi.h>
 #endif
 
@@ -76,6 +77,8 @@ int WINAPI WinMain(_In_ HINSTANCE hInst, _In_opt_ HINSTANCE, _In_ LPSTR commandL
 		sm.Register("GameOver", []() -> std::unique_ptr<Engine::IScene> { return std::unique_ptr<Engine::IScene>(new Game::GameOverScene()); });
 #ifndef NDEBUG
 		sm.Register("FluidValidation", []() -> std::unique_ptr<Engine::IScene> { return std::make_unique<FluidValidationScene>(); });
+		sm.Register("ComponentValidation", []() -> std::unique_ptr<Engine::IScene> { return std::make_unique<ComponentValidationScene>(); });
+		sm.Register("ComponentEditor", []() -> std::unique_ptr<Engine::IScene> { return std::make_unique<ComponentValidationScene>(true); });
 		sm.Register("UIResultValidation", []() -> std::unique_ptr<Engine::IScene> { return std::make_unique<UIResultValidationScene>(); });
         sm.Register("UIValidation", []() -> std::unique_ptr<Engine::IScene> { return std::make_unique<UIValidationScene>(); });
         sm.Register("GraphicsValidation", []() -> std::unique_ptr<Engine::IScene> { return std::make_unique<GraphicsValidationScene>(); });
@@ -103,6 +106,8 @@ int WINAPI WinMain(_In_ HINSTANCE hInst, _In_opt_ HINSTANCE, _In_ LPSTR commandL
 		for (int i = 1; i < argumentCount; ++i) {
 			if (wcscmp(arguments[i], L"--ui-result") == 0) app.SetInitialSceneKey("UIResultValidation");
             if (wcscmp(arguments[i], L"--ui-smoke") == 0) app.SetInitialSceneKey("UIValidation");
+            if (wcscmp(arguments[i], L"--component-smoke") == 0) app.SetInitialSceneKey("ComponentValidation");
+            if (wcscmp(arguments[i], L"--component-editor") == 0) app.SetInitialSceneKey("ComponentEditor");
             if (wcscmp(arguments[i], L"--graphics-ui-smoke") == 0) app.SetInitialSceneKey("GraphicsValidation");
             if (wcscmp(arguments[i], L"--shadow-band-smoke") == 0) app.SetInitialSceneKey("ShadowValidation");
             if (wcscmp(arguments[i], L"--boss-smoke") == 0) app.SetInitialSceneKey("BossValidation");

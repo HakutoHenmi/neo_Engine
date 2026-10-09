@@ -15,6 +15,7 @@
 #include "../../Engine/SceneManager.h"
 #include "../Editor/EditorUI.h"
 #include "../Scripts/ScriptEngine.h"
+#include "../Scripts/ScriptLifecycle.h"
 #include "../Systems/AudioSystem.h"
 #include "../Systems/CameraFollowSystem.h"
 #include "../Systems/CharacterMovementSystem.h"
@@ -69,6 +70,8 @@ GameScene::~GameScene() {
     registry_.on_destroy<TagComponent>().disconnect<&GameScene::OnTagRemoved>(this);
     registry_.on_destroy<ScriptComponent>().disconnect<&GameScene::OnScriptDestroyed>(this);
     systems_.clear();
+    chronoSystem_ = nullptr;
+    waveSystem_ = nullptr;
 
     Engine::NetworkProfiler::GetInstance().SetParameterUpdateCallback(nullptr);
     Engine::NetworkProfiler::GetInstance().SetParameterGetCallback(nullptr);
@@ -218,8 +221,12 @@ void GameScene::Initialize(Engine::WindowDX* dx, const Engine::SceneParameters& 
 
 	// ★ Systemの登録（順序が重要）
 	systems_.clear();
+	chronoSystem_ = nullptr;
+	waveSystem_ = nullptr;
 	if (chronoMode_) {
-		systems_.push_back(std::make_unique<ChronoSystem>(this));
+		auto chrono = std::make_unique<ChronoSystem>(this);
+		chronoSystem_ = chrono.get();
+		systems_.push_back(std::move(chrono));
 	} else {
 	systems_.push_back(std::make_unique<PlayerInputSystem>());
 	systems_.push_back(std::make_unique<PlayerActionSystem>());  // ★追加: 攻撃・パリィ・回避
@@ -232,7 +239,9 @@ void GameScene::Initialize(Engine::WindowDX* dx, const Engine::SceneParameters& 
 	systems_.push_back(std::make_unique<CombatSystem>());         // ★追加: Hitbox vs Hurtbox 判定
 	systems_.push_back(std::make_unique<CameraFollowSystem>());
 	systems_.push_back(std::make_unique<HealthSystem>());
-	systems_.push_back(std::make_unique<WaveSystem>());           // ★追加: ウェーブ管理
+	auto wave = std::make_unique<WaveSystem>();
+	waveSystem_ = wave.get();
+	systems_.push_back(std::move(wave));
 
 	auto scriptSys = std::make_unique<ScriptSystem>();
 	scriptSys->SetScene(this);
@@ -412,7 +421,7 @@ void GameScene::Update() {
 			Engine::WindowDX::SetCursorVisible(true);
 		} else if (!isPaused_) {
 			bool upgradeOpen=false;for(auto e:registry_.view<Chrono::InkPlayer>())upgradeOpen|=registry_.get<Chrono::InkPlayer>(e).rogue.menu;
-			bool cinematic=false;for(const auto& system:systems_)if(auto* chrono=dynamic_cast<ChronoSystem*>(system.get()))cinematic|=chrono->CinematicActive();
+			const bool cinematic = chronoSystem_ && chronoSystem_->CinematicActive();
 			if(!upgradeOpen&&!cinematic)playTime_ += dt;
 			
 			// ★追加: ラジアルメニューが開いているかチェック
@@ -610,18 +619,12 @@ void GameScene::Update() {
 		// リザルト遷移中などはシステムを動かさない (エンティティが削除されている可能性があるため)
 		if (!isPlaying_ || isPaused_)
 			break;
-		if (stageClear && dynamic_cast<WaveSystem*>(system.get()) == nullptr && dynamic_cast<ChronoSystem*>(system.get()) == nullptr)
+		if (stageClear && !system->UpdatesAfterStageClear())
 			continue;
 #ifndef NDEBUG
 		const auto profileSystemBegin = std::chrono::steady_clock::now();
 #endif
-		if (dynamic_cast<BossActionSystem*>(system.get()) != nullptr && combatFlow_.Combo() >= 2) {
-			GameContext bossContext = ctx_;
-			bossContext.dt *= combatFlow_.EnemyScale();
-			system->Update(registry_, bossContext);
-		} else {
-			system->Update(registry_, ctx_);
-		}
+		system->Update(registry_, ctx_);
 #ifndef NDEBUG
 		updateTimings_.push_back({typeid(*system).name(), std::chrono::duration<float, std::milli>(std::chrono::steady_clock::now() - profileSystemBegin).count()});
 #endif
@@ -1498,13 +1501,8 @@ void GameScene::DrawUI() {
 
 
 bool GameScene::IsStageClear() const {
-	for (const auto& system : systems_) {
-		if (const auto* chrono = dynamic_cast<const ChronoSystem*>(system.get())) return chrono->Finished();
-		if (const auto* wave = dynamic_cast<const WaveSystem*>(system.get())) {
-			return wave->state == WaveSystem::State::Clear;
-		}
-	}
-	return false;
+	if (chronoSystem_) return chronoSystem_->Finished();
+	return waveSystem_ && waveSystem_->state == WaveSystem::State::Clear;
 }
 
 void GameScene::DrawSelectionHighlight() {
@@ -1958,11 +1956,7 @@ void GameScene::OnTagRemoved(entt::registry& /*registry*/, entt::entity entity) 
 void GameScene::OnScriptDestroyed(entt::registry& registry, entt::entity entity) {
 	// スクリプトが破棄された時にC++スクリプトの OnDestroy を呼ぶ
 	if (auto* sc = registry.try_get<ScriptComponent>(entity)) {
-		for (auto& entry : sc->scripts) {
-			if (entry.instance) {
-				entry.instance->OnDestroy(entity, this);
-			}
-		}
+		StopScripts(*sc, entity, this);
 	}
 }
 
@@ -1989,10 +1983,10 @@ void GameScene::SetTag(entt::entity entity, const std::string& tagStr) {
 void GameScene::ClearScene() {
     ClearSelection();
     if(renderer_)renderer_->SetRogueWorldFrozen(false);
+	StopAllScripts(registry_, this);
 	// 1. 各システムのリセット（システム側の状態をクリア）
 	for (auto& sys : systems_) {
-		if (auto* chrono = dynamic_cast<ChronoSystem*>(sys.get())) chrono->Invalidate();
-		else sys->Reset(registry_);
+		sys->Clear(registry_);
 	}
 
 	// 2. 予約バッファやキャッシュの完全クリア

@@ -21,6 +21,7 @@ namespace Game {
 
 class WaveSystem : public ISystem {
 public:
+	WaveSystem() : ISystem(true) {}
 	enum class State {
 		Playing,
 		Clear

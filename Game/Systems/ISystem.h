@@ -61,11 +61,16 @@ struct GameContext {
 // System基底インターフェース
 class ISystem {
 public:
+	explicit ISystem(bool updateAfterStageClear = false) : updateAfterStageClear_(updateAfterStageClear) {}
+	bool UpdatesAfterStageClear() const { return updateAfterStageClear_; }
 	virtual ~ISystem() = default;
 	virtual void Update(entt::registry& registry, GameContext& ctx) = 0;
 	virtual void Draw(entt::registry& /*registry*/, GameContext& /*ctx*/) {} // 描画処理用
 	virtual void DrawUI(entt::registry& /*registry*/, GameContext& /*ctx*/) {} // ImGui等のUI処理用
 	virtual void Reset(entt::registry& /*registry*/) {} // Play開始時のリセット
+	virtual void Clear(entt::registry& registry) { Reset(registry); }
+private:
+	bool updateAfterStageClear_;
 };
 
 } // namespace Game
