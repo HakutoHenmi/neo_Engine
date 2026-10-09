@@ -20,6 +20,9 @@
 
 namespace Game {
 
+class ChronoSystem;
+class WaveSystem;
+
 class GameScene : public Engine::IScene {
 public:
     ~GameScene() override;
@@ -157,6 +160,8 @@ private:
 
     // ★ ECS風Systemリスト
     std::vector<std::unique_ptr<ISystem>> systems_;
+    ChronoSystem* chronoSystem_ = nullptr; // Observers; systems_ owns these instances.
+    WaveSystem* waveSystem_ = nullptr;
     GameContext ctx_;
 
     // パーティクルエディター

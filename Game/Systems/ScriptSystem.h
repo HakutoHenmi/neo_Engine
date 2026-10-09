@@ -1,5 +1,6 @@
 #pragma once
 #include "../Scripts/ScriptEngine.h"
+#include "../Scripts/ScriptLifecycle.h"
 #include "ISystem.h"
 #include "../../Engine/JobSystem.h"
 
@@ -31,14 +32,7 @@ public:
 	}
 
 	void Reset(entt::registry& registry) override {
-		auto view = registry.view<ScriptComponent>();
-		for (auto entity : view) {
-			auto& sc = registry.get<ScriptComponent>(entity);
-			for (auto& entry : sc.scripts) {
-				entry.instance = nullptr;
-				entry.isStarted = false;
-			}
-		}
+		StopAllScripts(registry, scene_);
 	}
 
 private:

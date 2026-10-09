@@ -251,6 +251,10 @@ exit /b 0
     <ClInclude Include="Game\Systems\HealthSystem.h" />
     <ClInclude Include="Game\Systems\AudioSystem.h" />
     <ClInclude Include="Game\Systems\ScriptSystem.h" />
+    <ClInclude Include="Game\Scripts\ScriptLifecycle.h" />
+    <ClInclude Include="Game\Scripts\ScriptEdits.h" />
+    <ClInclude Include="tests\ComponentValidationScene.h" />
+    <ClInclude Include="Game\CanHitEffects.h" />
     <ClInclude Include="Game\Systems\CleanupSystem.h" />
     <ClInclude Include="Game\Systems\RiverSystem.h" />
     <ClInclude Include="Game\Systems\MotionSystem.h" />

@@ -7,7 +7,9 @@ namespace Game {
 
 class BossActionSystem : public ISystem {
 public:
-	void Update(entt::registry& registry, GameContext& ctx) override {
+	void Update(entt::registry& registry, GameContext& inputContext) override {
+		GameContext ctx = inputContext;
+		if (ctx.combatFlow && ctx.combatFlow->Combo() >= 2) ctx.dt *= ctx.combatFlow->EnemyScale();
 		if (!ctx.isPlaying) return;
 
 		// プレイヤーの位置を取得

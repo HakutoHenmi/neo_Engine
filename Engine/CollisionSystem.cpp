@@ -12,7 +12,7 @@ namespace ECS {
         m_coordinator = coordinator;
     }
 
-    void CollisionSystem::Update() {
+    void CollisionSystem::Update(float /*dt*/) {
         if (!m_coordinator) return;
 
         auto* renderer = Engine::Renderer::GetInstance();

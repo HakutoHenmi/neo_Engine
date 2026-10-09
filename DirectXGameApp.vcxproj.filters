@@ -79,6 +79,9 @@
     <ClInclude Include="Game\CanLoadout.h">
       <Filter>Game</Filter>
     </ClInclude>
+    <ClInclude Include="Game\CanHitEffects.h">
+      <Filter>Game</Filter>
+    </ClInclude>
     <ClInclude Include="Game\Systems\UISystem.h">
       <Filter>Systems</Filter>
     </ClInclude>
@@ -89,6 +92,12 @@
       <Filter>Scripts</Filter>
     </ClInclude>
     <ClInclude Include="Game\Scripts\IScript.h">
+      <Filter>Scripts</Filter>
+    </ClInclude>
+    <ClInclude Include="Game\Scripts\ScriptLifecycle.h">
+      <Filter>Scripts</Filter>
+    </ClInclude>
+    <ClInclude Include="Game\Scripts\ScriptEdits.h">
       <Filter>Scripts</Filter>
     </ClInclude>
     <ClInclude Include="Game\Scripts\ScriptEngine.h">
@@ -1200,6 +1209,7 @@
   <ItemGroup>
     <ClCompile Include="Game\Systems\ChronoSystem.cpp" />
     <ClInclude Include="Game\Systems\ChronoSystem.h" />
+    <ClInclude Include="tests\ComponentValidationScene.h" />
     <ClInclude Include="Game\Chrono\ChronoComponents.h" />
     <ClInclude Include="Game\Chrono\ChronoRules.h" />
   </ItemGroup>

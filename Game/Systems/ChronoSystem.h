@@ -10,7 +10,7 @@ namespace Game {
 // Scene-level orchestration; all persistent actor state lives in ECS components.
 class ChronoSystem final : public ISystem {
 public:
-    explicit ChronoSystem(GameScene* scene):scene_(scene){}
+    explicit ChronoSystem(GameScene* scene):ISystem(true),scene_(scene){}
     void Reset(entt::registry&) override;
     void Update(entt::registry&,GameContext&) override;
     void Draw(entt::registry&,GameContext&) override;
@@ -18,6 +18,7 @@ public:
     bool Finished() const {return finished_;}
     bool CinematicActive() const {return cinematicActive_;}
     void Invalidate() {initialized_=false;}
+    void Clear(entt::registry&) override { Invalidate(); }
 private:
     bool inkMode_=true;
     struct InkShot {Chrono::Vec at,velocity;float age=0;};

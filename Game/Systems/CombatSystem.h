@@ -1,5 +1,6 @@
 #pragma once
 #include "ISystem.h"
+#include "../CanHitEffects.h"
 #include "EnemyAISystem.h" // ★追加: パリィ成功時の敵AI連携
 #include <cmath>
 #include <unordered_set>
@@ -251,33 +252,10 @@ private:
 		if (!registry.valid(target) || !registry.all_of<TagComponent, TransformComponent>(target)) return;
 		if (registry.get<TagComponent>(target).tag != TagType::Enemy) return;
 
-		auto& targetTc = registry.get<TransformComponent>(target);
-		if (effect.canType == CanType::Magnet) {
-			float dx = targetTc.translate.x - sourcePos.x;
-			float dz = targetTc.translate.z - sourcePos.z;
-			float len = std::sqrt(dx * dx + dz * dz);
-			if (len > 0.001f) {
-				const float strength = registry.all_of<BossActionComponent>(target) ? effect.strength * 0.35f : effect.strength;
-				targetTc.translate.x += (dx / len) * strength;
-				targetTc.translate.z += (dz / len) * strength;
-			}
-			return;
-		}
-
-		auto& status = registry.get_or_emplace<CanStatusComponent>(target);
-		if (effect.canType == CanType::Ice) {
-			const float duration = registry.all_of<BossActionComponent>(target) ? effect.duration * 0.55f : effect.duration;
-			status.freezeTimer = (std::max)(status.freezeTimer, duration);
-		} else if (effect.canType == CanType::Acid) {
-			status.acidTimer = (std::max)(status.acidTimer, effect.duration);
-			status.acidTickTimer = 0.0f;
-		} else if (effect.canType == CanType::Bubble) {
-			const float duration = registry.all_of<BossActionComponent>(target) ? effect.duration * 0.55f : effect.duration;
-			status.bubbleTimer = (std::max)(status.bubbleTimer, duration);
-			if (!status.bubblePositionSaved) {
-				status.bubbleBaseY = targetTc.translate.y;
-				status.bubblePositionSaved = true;
-			}
+		if (const auto* behavior = FindCanHitEffect(effect.canType)) {
+			behavior->Apply(registry, target, sourcePos, effect);
+		} else {
+			(void)registry.get_or_emplace<CanStatusComponent>(target);
 		}
 	}
 

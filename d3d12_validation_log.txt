@@ -75,3 +75,7 @@
 [GPU] Selected hardware: NVIDIA GeForce RTX 4060 Laptop GPU
 [DLSS] DLSS SR available
 [GPU] Selected hardware: NVIDIA GeForce RTX 4060 Laptop GPU
+[DLSS] DLSS SR available
+[GPU] Selected hardware: NVIDIA GeForce RTX 4060 Laptop GPU
+[DLSS] DLSS SR available
+[GPU] Selected hardware: NVIDIA GeForce RTX 4060 Laptop GPU
