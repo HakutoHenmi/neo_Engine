@@ -153,7 +153,31 @@ public:
 		float scanline = 0.0f;
 		float san = 0.0f;
 		float dofFocus=30.f,dofRange=30.f,dofStrength=0.f,dofBossDepth=-1000.f;
+        bool cinematicCamera=false;
 	};
+    struct GraphicsSettings {
+        float bloom=.16f,lensFlare=.035f,grading=.55f,ambientOcclusion=.5f,motionBlur=.2f,dof=1.f,exposure=1.05f;
+        bool dlssQuality=false,rtShadows=false,rtReflections=false,rtIndirect=false;
+    };
+    GraphicsSettings& GetGraphicsSettings(){return graphicsSettings_;}
+    const GraphicsSettings& GetGraphicsSettings()const{return graphicsSettings_;}
+    bool SaveGraphicsSettings() const;
+    void LoadGraphicsSettings();
+    bool SupportsRayTracing() const;
+    bool RtShadowsAvailable()const{return bool(psoRtShadow_);}
+    bool RtLightingAvailable()const{return bool(psoRtLighting_);}
+    uint32_t RtLightingFrames()const{return rtLightingFrames_;}
+    uint32_t RtReflectionPixels()const{return rtReflectionPixels_;}
+    uint32_t RtIndirectPixels()const{return rtIndirectPixels_;}
+    uint32_t RtReflectionHits()const{return rtReflectionHits_;}
+    uint32_t RtIndirectHits()const{return rtIndirectHits_;}
+    uint32_t RtShadowFrames()const{return rtShadowFrames_;}
+    uint32_t RtShadowPixels()const{return rtShadowPixels_;}
+    uint32_t RtLitPixels()const{return rtLitPixels_;}
+    bool SupportsDlss() const;
+    bool DlssActive() const{return dlssActive_&&SupportsDlss();}
+    uint32_t DlssEvaluatedFrames()const{return dlssEvaluatedFrames_;}
+    std::string DlssStatus()const;
 
 public:
 	Renderer() = default;
@@ -180,8 +204,9 @@ public:
 	ID3D12Device* GetDevice() const { return dev_; }
 	ID3D12GraphicsCommandList* GetCommandList() const { return list_; }
 	static Renderer* GetInstance() { return instance_; }
-	struct SceneryLodStats {uint64_t originalIndices=0,selectedIndices=0,originalVertices=0,selectedVertices=0;std::array<uint32_t,3> instances{};};
-	void PrepareDistanceLods(uint32_t mesh,bool grassCards=false);
+	struct SceneryLodStats {uint64_t originalIndices=0,selectedIndices=0,originalVertices=0,selectedVertices=0,visibleIndices=0,shadowIndices=0;std::array<uint32_t,3> instances{};};
+    uint32_t RtTlasBuilds()const{return rtTlasBuilds_;}
+	void PrepareDistanceLods(uint32_t mesh,bool grassCards=false,bool authoredLeaves=false);
 	void SetDistanceLodEnabled(bool enabled){distanceLodEnabled_=enabled;}
 	const SceneryLodStats& GetSceneryLodStats()const{return lastSceneryLodStats_;}
 	std::array<uint32_t,3> GetDistanceLodMeshes(uint32_t mesh)const;
@@ -207,10 +232,11 @@ public:
 	uint32_t GetParticleCount() const { return frameParticleCount_; }
 	Vector3 GetPlayerPos() const { return cbFrame_.playerPos; }
 
-	static constexpr uint32_t kFluidProfileStageCount = 8;
+	static constexpr uint32_t kFluidProfileStageCount = 12;
 	enum FluidProfileStage : uint32_t {
 		FluidSimulation, FluidShapes, FluidSplat, FluidFiltering,
-		FluidRaymarch, FluidImpostors, FluidShadow, SceneRender
+		FluidRaymarch, FluidImpostors, FluidShadow, SceneRender,
+        SceneryShadow, RtAcceleration, RtTrace, RtDenoise
 	};
 	struct FluidProfileStats {
 		bool available = false;
@@ -229,7 +255,7 @@ public:
 		std::array<float, 120> totalHistory{};
 		uint32_t historyCount = 0;
 	};
-	void SetFluidProfilerEnabled(bool enabled) { fluidProfilerEnabled_ = enabled && fluidProfilerAvailable_; }
+	void SetFluidProfilerEnabled(bool enabled) { if(enabled&&!fluidProfilerAvailable_)InitFluidProfiler();fluidProfilerEnabled_ = enabled && fluidProfilerAvailable_; }
 	bool IsFluidProfilerEnabled() const { return fluidProfilerEnabled_; }
 	const FluidProfileStats& GetFluidProfileStats() const { return fluidProfileStats_; }
 
@@ -321,6 +347,7 @@ public:
 	MeshHandle CreateCylinderMesh(float radius, float height, uint32_t segments);
 
 	// ★追加: テクスチャのSRVハンドルを取得 (ImGui::Imageでサムネイル表示用)
+    UINT TextureMipLevels(TextureHandle handle)const{return handle<textures_.size()&&textures_[handle].res?textures_[handle].res->GetDesc().MipLevels:0;}
 	D3D12_GPU_DESCRIPTOR_HANDLE GetTextureSrvGpu(TextureHandle handle) const {
 		if (handle < textures_.size()) return textures_[handle].srvGpu;
 		return D3D12_GPU_DESCRIPTOR_HANDLE{0};
@@ -334,7 +361,7 @@ public:
 	void DrawMeshInstanced(MeshHandle mesh, TextureHandle texture, const Transform& transform, const Vector4& mulColor, 
 						   const std::string& shaderName = "Default", const std::vector<TextureHandle>& extraTex = {});
 	void DrawMeshInstanced(MeshHandle mesh, TextureHandle texture, const Matrix4x4& worldMatrix, const Vector4& mulColor, 
-						   const std::string& shaderName = "Default", const std::vector<TextureHandle>& extraTex = {});
+						   const std::string& shaderName = "Default", const std::vector<TextureHandle>& extraTex = {},uint64_t motionId=0);
 
 	// ★追加: パーティクル インスタンス描画
 	void DrawParticleInstanced(MeshHandle mesh, TextureHandle texture, const Transform& transform, const Vector4& mulColor, const Vector4& uvScaleOffset, const std::string& shaderName = "Particle");
@@ -391,6 +418,8 @@ public:
     void QueueFluidBody();
     Vector3 slimeGround_{};bool slimeGrounded_=false;
     void SetSlimeGround(Vector3 slopeHeight,bool grounded){slimeGround_=slopeHeight;slimeGrounded_=grounded;}
+    float slimeFaceCamera_=0;
+    void SetSlimeFaceCamera(float blend){slimeFaceCamera_=blend;}
 	static constexpr uint32_t kEffectFluidEnd = 28000;
 	static constexpr uint32_t kTrailFluidStart = 32000, kTrailFluidCapacity = 16000;
 	uint32_t gpuFluidMaxParticles_ = kTrailFluidStart+kTrailFluidCapacity;
@@ -437,6 +466,7 @@ public:
 	bool fluidVolumeReady_ = false, volumeHistoryValid_ = false;
 	uint32_t volumeHistoryIndex_ = 0, fluidVolumeDebugMode_ = 0;
 	float fluidSimulatedDt_ = 0.0f;
+    float fluidDecorationTime_=0; // Visual bubbles continue while upgrade combat is frozen.
 	void DrawGPUFluidShadow(); // ★追加: シャドウパス描画用
 	void DrawGPUFluidDebug();
 	void SetGPUFluidCore(const Vector3& pos, float attraction, const Vector3& scale = {1.0f, 1.0f, 1.0f}, const Vector3& forward = {0.0f, 0.0f, 1.0f}, float mode = 0.0f, float flowSpeed = 0.0f);
@@ -788,6 +818,83 @@ private:
 
 	bool ppEnabled_ = true;
 	PostProcessParams ppParams_{};
+    GraphicsSettings graphicsSettings_{};
+    Matrix4x4 previousPostViewProjection_{};
+    Vector3 previousPostCamera_{};
+    bool postHistoryValid_=false;
+    TextureHandle cinematicLut_=0;
+    static constexpr UINT kBloomLevels=6;
+    struct BloomTarget {
+        Microsoft::WRL::ComPtr<ID3D12Resource> resource;
+        D3D12_CPU_DESCRIPTOR_HANDLE rtv{};
+        D3D12_GPU_DESCRIPTOR_HANDLE srv{};
+        UINT width=0,height=0;
+    };
+    BloomTarget bloomDown_[kBloomLevels],bloomUp_[kBloomLevels-1];
+    BloomTarget gtaoTarget_;
+    Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> bloomRtvHeap_;
+    Microsoft::WRL::ComPtr<ID3D12PipelineState> psoBloomDown_,psoBloomUp_;
+    Microsoft::WRL::ComPtr<ID3D12PipelineState> psoGtao_;
+    bool InitHdrBloom_();
+    void RenderHdrBloom_(uint32_t frame);
+    void RenderGtao_(uint32_t frame);
+    void BindPbrTextures_(const std::vector<TextureHandle>& textures);
+    TextureHandle neutralNormal_=0;
+    UINT sceneWidth_=WindowDX::kW,sceneHeight_=WindowDX::kH;
+    bool dlssActive_=false;uint32_t temporalFrame_=0;
+    uint32_t dlssEvaluatedFrames_=0;
+    Matrix4x4 unjitteredProjection_{},unjitteredViewProjection_{},previousTemporalViewProjection_{};
+    Vector2 temporalJitter_{};
+    Vector3 previousTemporalForward_{};
+    float previousTemporalFov_=0;
+    BloomTarget temporalMotion_,temporalDepth_,dlssOutput_;
+    D3D12_GPU_DESCRIPTOR_HANDLE postColorSrv_{};
+    Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> temporalRtvHeap_;
+    Microsoft::WRL::ComPtr<ID3D12RootSignature> rootSigTemporal_;
+    Microsoft::WRL::ComPtr<ID3D12PipelineState> psoTemporalPrepare_,psoTemporalObjects_;
+    std::unordered_map<uint64_t,Matrix4x4> temporalWorlds_;
+    struct MotionJob{uint64_t id;MeshHandle mesh;TextureHandle texture;Matrix4x4 world;};
+    std::vector<MotionJob> temporalJobs_;
+    bool InitTemporalInputs_();
+    bool EvaluateDlss_(uint32_t frame);
+    bool InitRtShadows_();
+    bool RenderRtShadows_(uint32_t frame);
+    struct RtTriangle{Vector4 p[3],n[3];}; // position/u and normal/v, 96 bytes
+    struct RtGeometry{Microsoft::WRL::ComPtr<ID3D12Resource> blas,scratch;uint32_t triangleOffset=0;};
+    struct RtInstance{MeshHandle mesh;Matrix4x4 world;TextureHandle albedo,normal,roughness;Vector4 color;bool ground;};
+    std::unordered_map<MeshHandle,RtGeometry> rtGeometry_;
+    std::vector<RtInstance> rtInstances_;
+    struct RtFrame{Microsoft::WRL::ComPtr<ID3D12Resource> tlas,scratch,instances,readback,triangles,triangleUpload,materials,lightingReadback,lightingCounters;std::vector<D3D12_RAYTRACING_INSTANCE_DESC> builtInstances;size_t triangleCount=0;bool pending=false,lightingPending=false;};
+    RtFrame rtFrames_[kFrameCount];
+    BloomTarget rtShadowTarget_;
+    D3D12_GPU_DESCRIPTOR_HANDLE rtShadowUav_{};
+    Microsoft::WRL::ComPtr<ID3D12RootSignature> rootSigRtShadow_;
+    Microsoft::WRL::ComPtr<ID3D12PipelineState> psoRtShadow_;
+    uint32_t rtShadowFrames_=0,rtShadowPixels_=0,rtLitPixels_=0;
+    bool rtShadowRendered_=false;
+    bool InitRtLighting_();
+    bool RenderRtLighting_(uint32_t frame,const std::vector<RtInstance>& instances);
+    void CompositeRtLighting_(uint32_t frame,float nearPlane,float farPlane,bool fluid);
+    std::vector<RtTriangle> rtTriangles_;
+    BloomTarget rtReflectionTarget_,rtIndirectTarget_;
+    D3D12_GPU_DESCRIPTOR_HANDLE rtReflectionUav_{},rtIndirectUav_{};
+    Microsoft::WRL::ComPtr<ID3D12RootSignature> rootSigRtLighting_;
+    Microsoft::WRL::ComPtr<ID3D12PipelineState> psoRtLighting_;
+    Microsoft::WRL::ComPtr<ID3D12PipelineState> psoRtLightingComposite_;
+    Microsoft::WRL::ComPtr<ID3D12Resource> rtLightingHdr_;
+    Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> rtLightingRtvHeap_;
+    uint32_t rtLightingFrames_=0,rtReflectionPixels_=0,rtIndirectPixels_=0;
+    uint32_t rtReflectionHits_=0,rtIndirectHits_=0;
+    bool rtLightingRendered_=false;
+    BloomTarget rtFilteredReflection_[2],rtFilteredIndirect_[2];
+    D3D12_GPU_DESCRIPTOR_HANDLE rtFilteredReflectionUav_[2]{},rtFilteredIndirectUav_[2]{};
+    Microsoft::WRL::ComPtr<ID3D12RootSignature> rootSigRtDenoise_;
+    Microsoft::WRL::ComPtr<ID3D12PipelineState> psoRtDenoise_;
+    Matrix4x4 previousRtViewProjection_{};
+    Vector3 previousRtCamera_{};
+    uint32_t rtHistoryIndex_=0,rtHistoryMask_=0;
+    bool rtLightingHistoryValid_=false;
+    void DenoiseRtLighting_(uint32_t frame,float nearPlane,float farPlane);
 
 	Microsoft::WRL::ComPtr<ID3D12Resource> ppSceneColor_;
 	Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> ppRtvHeap_;
@@ -825,6 +932,7 @@ private:
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> shadowPso_;
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> shadowSkinPso_;
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> shadowInstancedPso_;
+    Microsoft::WRL::ComPtr<ID3D12PipelineState> shadowCutoutPso_,shadowInstancedCutoutPso_;
 
 	// ★追加: Skybox / 環境マップ
 	Microsoft::WRL::ComPtr<ID3D12RootSignature> rootSigSkybox_;
@@ -873,10 +981,13 @@ private:
 
 	// ★変更: Mesh構造体ではなくModelクラスへのスマートポインタで管理
 	std::vector<std::shared_ptr<Model>> models_;
-	struct SceneryLods {std::array<uint32_t,3> meshes{};Vector3 center{};float radius=1;};
+	struct SceneryLods {std::array<uint32_t,3> meshes{};Vector3 center{};float radius=1;bool foliage=false;};
 	std::unordered_map<uint32_t,SceneryLods> sceneryLods_;
 	bool distanceLodEnabled_=true;SceneryLodStats sceneryLodStats_{},lastSceneryLodStats_{};
 	uint32_t SelectDistanceLod(uint32_t mesh,const Matrix4x4& world);
+    bool SceneryVisible(uint32_t mesh,const Matrix4x4& world,const Matrix4x4& viewProjection)const;
+    bool sceneryOptimized_=true;
+    uint32_t rtTlasBuilds_=0;
 	std::vector<Texture> textures_;
 
 	std::unordered_map<std::string, TextureHandle> textureCache_;

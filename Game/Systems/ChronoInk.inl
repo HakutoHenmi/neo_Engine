@@ -2,6 +2,8 @@
 namespace Game {
 void ChronoSystem::BuildInk(entt::registry& r){
     r.emplace_or_replace<InkPlayer>(player_);auto& p=r.get<Player>(player_);p.mass=SlimeMaximumMass;p.automatic=false;
+    // The opening shot runs before UpdateInk; rendering must already see the full body mass.
+    auto& health=r.get<HealthComponent>(player_);health.hp=p.mass;health.maxHp=SlimeMaximumMass;health.isDead=false;
     r.get<InkPlayer>(player_).rogue.random=uint32_t(GetTickCount64())|1u;
     Engine::Renderer::GetInstance()->SetRogueWorldFrozen(false);
     Engine::Renderer::GetInstance()->SetDrawFluidDebugArrows(false);
@@ -22,25 +24,47 @@ void ChronoSystem::BuildInk(entt::registry& r){
     auto* render=Engine::Renderer::GetInstance();
     render->CreateShaderPipeline("EnvironmentSurface",L"Resources/shaders/InstancedObjVS.hlsl",L"Resources/shaders/EnvironmentSurfacePS.hlsl");
     render->CreateShaderPipeline("MeadowGrass",L"Resources/shaders/InstancedObjVS.hlsl",L"Resources/shaders/MeadowGrassPS.hlsl");
-    const auto groundTex=render->LoadTexture2D("Resources/Textures/AmbientCG/grass004_color_1k.jpg");
-    const auto rockFaceTex=render->LoadTexture2D("Resources/Textures/PolyHaven/rock_face_02_diff_2k.jpg");
-    const auto boulderTex=render->LoadTexture2D("Resources/Textures/PolyHaven/namaqualand_boulders_01_diff_2k.jpg");
+    render->CreateShaderPipeline("MeadowGround",L"Resources/shaders/InstancedObjVS.hlsl",L"Resources/shaders/MeadowGroundPS.hlsl");
+    const auto groundTex=render->LoadTexture2D("Resources/Textures/PolyHaven/leafy_grass_diff_4k.jpg");
+    const auto rockFaceTex=render->LoadTexture2D("Resources/Textures/PolyHaven/boulder_01_diff_2k.jpg");
+    const auto boulderTex=render->LoadTexture2D("Resources/Textures/PolyHaven/namaqualand_boulder_02_diff_2k.jpg");
     const auto stoneTex=render->LoadTexture2D("Resources/Textures/PolyHaven/rock_09_diff_2k.jpg");
-    const auto grassTex=render->LoadTexture2D("Resources/Textures/PolyHaven/grass_bermuda_01_rgba_2k.png");
+    const auto grassTex=render->LoadTexture2D("Resources/Textures/PolyHaven/grass_medium_02_rgba_2k.png");
+    std::map<uint32_t,std::vector<uint32_t>> pbr;
+    auto maps=[&](uint32_t albedo,const std::string& prefix,const std::array<std::string,3>& suffix){
+        for(const auto& s:suffix)pbr[albedo].push_back(render->LoadTexture2D("Resources/Textures/PBR/"+prefix+s+".jpg",false));
+    };
+    auto freshMaps=[&](uint32_t albedo,const char* id){for(const char* map:{"nor_dx","Rough","AO"})pbr[albedo].push_back(render->LoadTexture2D(std::string("Resources/Textures/PolyHaven/")+id+"_"+map+"_2k.jpg",false));};
+    freshMaps(groundTex,"leafy_grass");freshMaps(rockFaceTex,"boulder_01");freshMaps(boulderTex,"namaqualand_boulder_02");freshMaps(grassTex,"grass_medium_02");
+    maps(stoneTex,"rock_09_",{"nor_dx","Rough","AO"});
     auto scenery=[&](const std::string& name,const std::string& path,auto texture,V at,V size,const char* shader="EnvironmentSurface"){
         auto e=Mesh(r,name,path,at,size);auto& mr=r.get<MeshRendererComponent>(e);
         mr.textureHandle=texture;mr.shaderName=shader;
+        if(pbr.count(texture))mr.extraTextureHandles=pbr[texture];
         r.remove<CameraOccluder>(e);return e;
     };
-    auto floor=scenery("Meadow ground","Resources/Models/Environment/meadow-floor.obj",groundTex,{0,-.08f,20},{1100,1,1160});
-    r.get<MeshRendererComponent>(floor).color={1,1,1,1};
+    auto floor=scenery("Meadow ground","Resources/Models/Environment/meadow-floor.obj",groundTex,{0,0,0},{1,1,1},"MeadowGround");
+    std::vector<Engine::VertexData> terrainVertices;std::vector<uint32_t> terrainIndices;
+    constexpr int grid=110;terrainVertices.reserve((grid+1)*(grid+1));
+    for(int iz=0;iz<=grid;++iz)for(int ix=0;ix<=grid;++ix){float x=-550.f+ix*10.f,z=-560.f+iz*(1160.f/grid);
+        float sx=(MeadowHeight(x+.5f,z)-MeadowHeight(x-.5f,z)),sz=(MeadowHeight(x,z+.5f)-MeadowHeight(x,z-.5f));V normal=Unit(V{-sx,1,-sz});
+        Engine::VertexData vertex{};vertex.position={x,MeadowHeight(x,z),z,1};vertex.texcoord={x/4.f,z/4.f};vertex.normal=Write(normal);terrainVertices.push_back(vertex);
+        if(ix<grid&&iz<grid){uint32_t a=iz*(grid+1)+ix,b=a+1,c=a+grid+1,d=c+1;terrainIndices.insert(terrainIndices.end(),{a,c,b,b,c,d});}
+    }
+    r.get<MeshRendererComponent>(floor).modelHandle=render->CreateDynamicMesh(terrainVertices,terrainIndices);
+    // Grid vertices are already in world units; the old flat mesh normalization
+    // would otherwise multiply terrain elevations by 1000.
+    auto& terrainTransform=r.get<TransformComponent>(floor);terrainTransform.scale={1,1,1};terrainTransform.translate={0,0,0};terrainTransform.rotate={0,0,0};
+    r.get<MeshRendererComponent>(floor).color={.76f,1.f,.78f,1};
     // Preserve each scanned model's proportions. The target width determines a
     // uniform scale, and its lowest vertex is placed on the flat arena floor.
     auto natural=[&](const std::string& name,const std::string& path,auto texture,V at,float width,float yaw,const char* shader="EnvironmentSurface"){
         auto e=scenery(name,path,texture,{0,0,0},{1,1,1},shader);
         auto* model=render->GetModel(r.get<MeshRendererComponent>(e).modelHandle);
         if(!model||model->GetData().vertices.empty())return e;
-        render->PrepareDistanceLods(r.get<MeshRendererComponent>(e).modelHandle,path=="Resources/Models/Environment/meadow-grass-patch.obj");
+        // Foliage LOD keeps complete connected leaves and their authored UVs.
+        bool foliage=std::string(shader)=="MeadowGrass";
+        render->PrepareDistanceLods(r.get<MeshRendererComponent>(e).modelHandle,foliage,foliage);
         V lo{1e9f,1e9f,1e9f},hi{-1e9f,-1e9f,-1e9f};
         for(const auto& v:model->GetData().vertices){
             lo={std::min(lo.x,v.position.x),std::min(lo.y,v.position.y),std::min(lo.z,v.position.z)};
@@ -49,45 +73,60 @@ void ChronoSystem::BuildInk(entt::registry& r){
         float scale=width/std::max({hi.x-lo.x,hi.z-lo.z,.001f});
         V mid=(lo+hi)*.5f;float cs=std::cos(yaw),sn=std::sin(yaw);
         auto& t=r.get<TransformComponent>(e);t.scale=Write({scale,scale,scale});t.rotate=Write({0,yaw,0});
-        t.translate=Write({at.x-(mid.x*cs+mid.z*sn)*scale,at.y-lo.y*scale,at.z-(-mid.x*sn+mid.z*cs)*scale});
+        t.translate=Write({at.x-(mid.x*cs+mid.z*sn)*scale,MeadowHeight(at.x,at.z)+at.y-lo.y*scale,at.z-(-mid.x*sn+mid.z*cs)*scale});
         return e;
     };
     auto noise=[](int seed){float n=std::sin(float(seed)*12.9898f)*43758.5453f;return n-std::floor(n);};
-    const std::string rockFaceMesh="Resources/Models/PolyHaven/rock_face_02_1k.fbx";
-    const std::string boulderMesh="Resources/Models/PolyHaven/namaqualand_boulders_01_1k.fbx";
+    const std::string rockFaceMesh="Resources/Models/PolyHaven/boulder_01_2k.fbx";
+    const std::string boulderMesh="Resources/Models/PolyHaven/namaqualand_boulder_02_2k.fbx";
     const std::string stoneMesh="Resources/Models/PolyHaven/rock_09_1k.fbx";
-    const std::string grassMesh="Resources/Models/PolyHaven/grass_bermuda_01_1k.fbx";
-    for(int side=0;side<4;++side)for(int i=0;i<3;++i){
-        float along=-300.f+i*300.f+(noise(side*31+i)*2-1)*18.f;
-        V at=side<2?V{along,-3,side==0?-375.f:415.f}:V{side==2?-365.f:365.f,-3,along+20};
-        natural("Scanned rock face",rockFaceMesh,rockFaceTex,at,83.f+noise(side*71+i)*34.f,noise(side*101+i)*6.28318f);
+    const std::string grassMesh="Resources/Models/PolyHaven/grass_medium_02_2k.fbx";
+    for(int side=0;side<4;++side)for(int i=0;i<5;++i){
+        float along=-300.f+i*150.f+(noise(side*31+i)*2-1)*22.f;
+        V at=side<2?V{along,-.6f,side==0?-380.f:420.f}:V{side==2?-380.f:380.f,-.6f,along+20};
+        natural("Weathered boulder",rockFaceMesh,rockFaceTex,at,20.f+noise(side*71+i)*16.f,noise(side*101+i)*6.28318f);
     }
     for(int side=0;side<4;++side)for(int i=0;i<3;++i){
         float along=-290.f+i*290.f+(noise(side*37+i)*2-1)*17.f;
         V at=side<2?V{along,-2,side==0?-352.f:392.f}:V{side==2?-348.f:348.f,-2,along+20};
-        natural("Border boulder",boulderMesh,boulderTex,at,49.f+noise(side*83+i)*35.f,noise(side*113+i)*6.28318f);
+        natural("Sandstone boulder",boulderMesh,boulderTex,at,12.f+noise(side*83+i)*13.f,noise(side*113+i)*6.28318f);
     }
     for(int i=0;i<8;++i){
         V at{-315.f+noise(i*3+1)*630.f,-.08f,-325.f+noise(i*3+2)*690.f};
         natural("Scanned field stone",stoneMesh,stoneTex,at,2.f+noise(i*3+3)*3.f,noise(i*5+4)*6.28318f);
     }
+    auto pebble=[&](V at,float width,float yaw){
+        auto e=natural("Scanned pebble",rockFaceMesh,rockFaceTex,at,width,yaw);
+        auto& mr=r.get<MeshRendererComponent>(e);
+        // A fixed detailed reduction is sufficient for small stones and keeps
+        // their raster/ray geometry identical as the camera moves.
+        mr.modelHandle=render->GetDistanceLodMeshes(mr.modelHandle)[2];
+        if(!wcsstr(GetCommandLineW(),L"--scenery-baseline"))for(int level=0;level<2;++level){
+            render->PrepareDistanceLods(mr.modelHandle);mr.modelHandle=render->GetDistanceLodMeshes(mr.modelHandle)[2];}
+    };
     for(int i=0;i<155;++i){
         V at{-315.f+noise(i*3+23)*630.f,-.08f,-325.f+noise(i*3+24)*690.f};
-        natural("Field pebble","Resources/Models/Environment/field-pebble.obj",stoneTex,at,.45f+noise(i*3+25)*1.5f,noise(i*5+26)*6.28318f);
+        pebble(at,.45f+noise(i*3+25)*1.5f,noise(i*5+26)*6.28318f);
     }
     for(int i=0;i<48;++i){
         V at{-78.f+noise(i*3+801)*156.f,-.08f,-105.f+noise(i*3+802)*180.f};
-        natural("Field pebble","Resources/Models/Environment/field-pebble.obj",stoneTex,at,.55f+noise(i*3+803)*1.25f,noise(i*5+804)*6.28318f);
+        pebble(at,.55f+noise(i*3+803)*1.25f,noise(i*5+804)*6.28318f);
     }
-    for(int z=0;z<16;++z)for(int x=0;x<17;++x){
-        int index=z*17+x;V at{-315.f+x*39.f+(noise(index*3+1)*2-1)*11.f,-.075f,
-            -325.f+z*43.f+(noise(index*3+2)*2-1)*11.f};
-        natural("Meadow grass patch","Resources/Models/Environment/meadow-grass-patch.obj",grassTex,at,24.f,noise(index*7+4)*6.28318f,"MeadowGrass");
+    for(int z=0;z<21;++z)for(int x=0;x<22;++x){
+        int index=z*22+x;V at{-320.f+x*30.f+(noise(index*3+1)*2-1)*9.f,-.015f,
+            -335.f+z*34.f+(noise(index*3+2)*2-1)*9.f};
+        natural("Scanned meadow tuft",grassMesh,grassTex,at,2.8f+noise(index*7+3)*2.f,noise(index*7+4)*6.28318f,"MeadowGrass");
     }
-    for(int i=0;i<16;++i){
-        V at{-78.f+noise(i*3+251)*156.f,-.075f,-90.f+noise(i*3+252)*180.f};
-        natural("Meadow grass",grassMesh,grassTex,at,2.2f+noise(i*3+253)*1.4f,noise(i*5+254)*6.28318f,"MeadowGrass");
+    for(int i=0;i<110;++i){
+        V at{-78.f+noise(i*3+251)*156.f,-.015f,-90.f+noise(i*3+252)*180.f};
+        if(std::abs(at.x)<6&&std::abs(at.z)<12)continue;
+        natural("Near meadow tuft",grassMesh,grassTex,at,1.4f+noise(i*3+253)*1.8f,noise(i*5+254)*6.28318f,"MeadowGrass");
     }
+    // Foreground accents frame the opening view without covering the player.
+    for(V at:{V{8,-.005f,-5},V{-9,-.005f,-2},V{14,-.005f,5},V{-16,-.005f,9}})
+        natural("Foreground meadow tuft",grassMesh,grassTex,at,4.5f,noise(int(at.x*19+at.z*13))*6.28318f,"MeadowGrass");
+    natural("Foreground weathered stone",rockFaceMesh,rockFaceTex,{-19,-.12f,18},4.8f,1.1f);
+    natural("Foreground sandstone",boulderMesh,boulderTex,{25,-.1f,32},5.5f,2.3f);
     render->CreateShaderPipeline("InkSurface",L"Resources/shaders/ObjVS.hlsl",L"Resources/shaders/InkSurfacePS.hlsl");
     for(int i=0;i<static_cast<int>(inkSurfaces_.size());++i)inkMeshes_.push_back(render->LoadObjMesh("Resources/Models/Ink/surface"+std::to_string(i)+".obj"));
     slimeTrails_.clear();homingDomains_.clear();domainMissiles_.clear();inkNeedsRebuild_=false;inkUploadClock_=0;inkDirty_=true;UploadInk();

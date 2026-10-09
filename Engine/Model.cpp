@@ -585,7 +585,8 @@ bool Model::LoadWithUFBX(ID3D12Device* device, ID3D12GraphicsCommandList* cmd, c
         objPath.find("\\Character\\") == std::string::npos &&
         objPath.find("/Enemies/") == std::string::npos &&
         objPath.find("\\Enemies\\") == std::string::npos;
-    if (quaterniusAsset) opts.target_unit_meters = 1.0;
+    const bool polyHavenAsset=objPath.find("/PolyHaven/")!=std::string::npos||objPath.find("\\PolyHaven\\")!=std::string::npos;
+    if (quaterniusAsset||polyHavenAsset) opts.target_unit_meters = 1.0;
     
     ufbx_error error;
     ufbx_scene* scene = ufbx_load_file(objPath.c_str(), &opts, &error);
@@ -619,7 +620,13 @@ bool Model::LoadWithUFBX(ID3D12Device* device, ID3D12GraphicsCommandList* cmd, c
         }
         if (!is_visible) continue;
 
-        const ufbx_node* instance = quaterniusAsset && mesh->instances.count > 0
+        // Poly Haven FBX stores Z-up conversion on the node, not in vertices.
+        // Its exported LODs may all be marked visible: never overlay them.
+        if(polyHavenAsset&&mesh->instances.count){
+            std::string name=mesh->instances.data[0]->name.data;size_t lod=name.find("_LOD");
+            if(lod!=std::string::npos&&name.substr(lod+4)!="0")continue;
+        }
+        const ufbx_node* instance = (quaterniusAsset||polyHavenAsset) && mesh->instances.count > 0
             ? mesh->instances.data[0] : nullptr;
         const ufbx_matrix normalMatrix = instance
             ? ufbx_matrix_for_normals(&instance->geometry_to_world) : ufbx_matrix{};
@@ -673,7 +680,7 @@ bool Model::LoadWithUFBX(ID3D12Device* device, ID3D12GraphicsCommandList* cmd, c
                         }
                         if (mesh->vertex_uv.exists) {
                             ufbx_vec2 uv = ufbx_get_vertex_vec2(&mesh->vertex_uv, index);
-                            v.texcoord = {(float)uv.x, (float)uv.y};
+                            v.texcoord = {(float)uv.x, polyHavenAsset?1.f-(float)uv.y:(float)uv.y};
                         }
                         
                         // Skinning
@@ -883,10 +890,11 @@ bool Model::LoadAdditionalAnimation(const std::string& animPath) {
     return true;
 }
 
-bool Model::InitializeStaticLOD(ID3D12Device* device,const Model& source,int grid,bool grassCards){
+bool Model::InitializeStaticLOD(ID3D12Device* device,const Model& source,int grid,bool grassCards,bool authoredLeaves){
     if(!source.data_.bones.empty())return false;
     std::vector<LodSubset> subsets;for(const auto& sub:source.data_.subsets)subsets.push_back({sub.indexStart,sub.indexCount,sub.materialIndex});
-    auto mesh=ReduceStaticMesh(source.data_.vertices,source.data_.indices,subsets,grid,grassCards);
+    auto mesh=authoredLeaves?ReduceLeafCards(source.data_.vertices,source.data_.indices,subsets,uint32_t(grid)):
+        ReduceStaticMesh(source.data_.vertices,source.data_.indices,subsets,grid,grassCards);
     if(mesh.indices.empty()||mesh.indices.size()>=source.data_.indices.size()*.95)return false;
     data_.vertices=std::move(mesh.vertices);data_.indices=std::move(mesh.indices);data_.materials=source.data_.materials;
     data_.min=source.data_.min;data_.max=source.data_.max;
@@ -899,7 +907,20 @@ bool Model::InitializeStaticLOD(ID3D12Device* device,const Model& source,int gri
     vbv_={vb_->GetGPUVirtualAddress(),UINT(sizeof(VertexData)*data_.vertices.size()),sizeof(VertexData)};
     ibv_={ib_->GetGPUVirtualAddress(),UINT(sizeof(uint32_t)*data_.indices.size()),DXGI_FORMAT_R32_UINT};indexCount_=uint32_t(data_.indices.size());return true;
 }
+bool Model::PromoteStaticGeometry(ID3D12Device* device,ID3D12GraphicsCommandList* commands){
+    if(staticGpuGeometry_)return true;if(!data_.bones.empty()||!vb_||!ib_)return false;
+    auto heap=CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
+    ComPtr<ID3D12Resource> gpu[2];ID3D12Resource* sources[]={vb_.Get(),ib_.Get()};
+    for(int i=0;i<2;++i){auto desc=CD3DX12_RESOURCE_DESC::Buffer(sources[i]->GetDesc().Width);
+        if(FAILED(device->CreateCommittedResource(&heap,D3D12_HEAP_FLAG_NONE,&desc,D3D12_RESOURCE_STATE_COPY_DEST,nullptr,IID_PPV_ARGS(&gpu[i]))))return false;}
+    for(int i=0;i<2;++i){commands->CopyBufferRegion(gpu[i].Get(),0,sources[i],0,sources[i]->GetDesc().Width);
+        auto state=(i==0?D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER:D3D12_RESOURCE_STATE_INDEX_BUFFER)|D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+        auto barrier=CD3DX12_RESOURCE_BARRIER::Transition(gpu[i].Get(),D3D12_RESOURCE_STATE_COPY_DEST,state);commands->ResourceBarrier(1,&barrier);}
+    uploads_.push_back(vb_);uploads_.push_back(ib_);vb_=gpu[0];ib_=gpu[1];
+    vbv_.BufferLocation=vb_->GetGPUVirtualAddress();ibv_.BufferLocation=ib_->GetGPUVirtualAddress();staticGpuGeometry_=true;return true;
+}
 void Model::InitializeDynamic(ID3D12Device* device, const std::vector<VertexData>& vertices, const std::vector<uint32_t>& indices) {
+    staticGpuGeometry_=false;
 	data_.vertices = vertices;
 	data_.indices = indices;
 
@@ -929,7 +950,7 @@ void Model::InitializeDynamic(ID3D12Device* device, const std::vector<VertexData
 }
 
 void Model::UpdateVertices(const std::vector<VertexData>& vertices) {
-	if (vertices.size() != data_.vertices.size() || !vb_) return; // 頂点数は固定前提
+	if (vertices.size() != data_.vertices.size() || !vb_ || staticGpuGeometry_) return; // Static scenery is immutable.
 	data_.vertices = vertices;
 	void* vmap = nullptr;
 	if (SUCCEEDED(vb_->Map(0, nullptr, &vmap))) {

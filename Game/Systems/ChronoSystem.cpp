@@ -1,9 +1,11 @@
 #include "../UI/SceneMusic.h"
 #include "ChronoSystem.h"
 #include <set>
+#include <unordered_map>
 #include "../UI/GameUI.h"
 #include "../UI/RogueliteUI.h"
 #include "../Chrono/CreatureMotion.h"
+#include "../Chrono/MeadowTerrain.h"
 #include "../Scenes/GameScene.h"
 #include "../../Engine/SceneManager.h"
 #include "../../Engine/Model.h"
@@ -538,6 +540,7 @@ void ChronoSystem::Reset(entt::registry& r){
     prevL_=Down(VK_LBUTTON);prevM_=Down(VK_MBUTTON);prevSpace_=Down(VK_SPACE);prevShift_=Down(VK_SHIFT);
     yaw_=0;pitch_=0.12f;zoom_=17;shoulder_=1.8f;chainCameraHold_=0;fov_=1.0472f;
     cameraReady_=false;zoomVelocity_=0;cameraBoom_=-1;composition_={};viewPitch_=pitch_;postStrength_=0;droplets_.clear();manualCameraHold_=0;
+    openingPending_=true;cinematicActive_=false;cinematicBoss_=false;cinematicAge_=0;
     if(!initialized_)return;
     Music::Play(Music::Battle, .30f);
     if(r.valid(boss_)){r.remove<CreatureBoss>(boss_);r.get<MeshRendererComponent>(boss_).enabled=true;}
@@ -552,6 +555,7 @@ void ChronoSystem::Reset(entt::registry& r){
     if(coreSound_==0xffffffff)coreSound_=Engine::Audio::GetInstance()->Load("Resources/Sound/kettei.mp3");
     renderer->SetPostEffect("Default");renderer->SetPostProcessParams({});
     Build(r);CacheSolids(r);
+    if(inkMode_)renderer->SetPostEffect("ChronoFocus");
     bestTime_=0;bestChain_=0;newTime_=newChain_=false;
     try{std::ifstream file(RecordPath());if(file){nlohmann::json j;file>>j;bestTime_=j.value("time",0.0f);bestChain_=j.value("chain",0);}}catch(...){}
     renderer->SetAmbientColor({0.65f,0.68f,0.75f});
@@ -1172,7 +1176,7 @@ void ChronoSystem::Presentation(entt::registry& r,Player& p,GameContext& ctx){
         using namespace DirectX;XMFLOAT3 playerView,bossView;V boss=Center(r,boss_);
         XMStoreFloat3(&playerView,XMVector3TransformCoord(XMVectorSet(player.x,player.y,player.z,1),ctx.camera->View()));
         XMStoreFloat3(&bossView,XMVector3TransformCoord(XMVectorSet(boss.x,boss.y,boss.z,1),ctx.camera->View()));
-        params.dofFocus=std::max(8.f,playerView.z);params.dofRange=32;params.dofStrength=.75f;params.dofBossDepth=bossView.z;
+        params.dofFocus=std::max(8.f,playerView.z);params.dofRange=32;params.dofStrength=0;params.dofBossDepth=bossView.z;
     }
     ctx.renderer->SetPostProcessParams(params);ctx.renderer->SetPostEffect("ChronoFocus");
 }
@@ -1422,4 +1426,5 @@ void ChronoSystem::DrawUI(entt::registry& r,GameContext& ctx){
 }
 } // namespace Game
 #include "ChronoInk.inl"
+#include "ChronoCinematic.inl"
 #include "SlimeAssault.inl"

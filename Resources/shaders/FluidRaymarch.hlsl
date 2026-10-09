@@ -65,47 +65,7 @@ float3 Reflection(float3 normal,float3 ray,float roughness) {
     float3 sky=lerp(float3(0.035f,0.055f,0.075f),float3(0.3f,0.43f,0.55f),saturate(r.y*0.5f+0.5f));
     return max(env,sky*0.3f);
 }
-float BubbleLayer(float2 facePoint, float density, float speed, float seed) {
-    float2 cellPoint=facePoint*density-float2(0,time*speed);
-    float2 cell=floor(cellPoint);
-    float2 random=float2(frac(sin(dot(cell+seed,float2(127.1f,311.7f)))*43758.5453f),
-                         frac(sin(dot(cell+seed,float2(269.5f,183.3f)))*43758.5453f));
-    float2 center=0.2f+random*0.6f;
-    float distanceToBubble=length(frac(cellPoint)-center);
-    float radius=lerp(0.10f,0.20f,random.y);
-    float bubble=1-smoothstep(radius-0.035f,radius+0.035f,distanceToBubble);
-    return bubble*step(0.38f,random.x);
-}
-float3 PlayerSurfaceDetail(float3 world, float3 normal, float3 color) {
-    float3 toCamera=cameraPosition-playerBodyCenter;
-    float2 front=normalize(toCamera.xz+float2(0.0001f,0));
-    float3 right=float3(front.y,0,-front.x);
-    float3 facing=float3(front.x,0,front.y);
-    float3 relative=world-playerBodyCenter;
-    float2 face=float2(dot(relative,right),relative.y);
-    float nearBody=saturate((3.2f-length(relative))*2.0f);
-    float frontal=smoothstep(0.1f,0.85f,dot(relative,facing));
-    float body=nearBody*frontal;
-    if(nearBody<=0) return color;
-
-    // Two soft luminous eyes stay readable while the SPH surface deforms.
-    float eyeLeft=length((face-float2(-0.52f,0.85f))/float2(0.18f,0.31f));
-    float eyeRight=length((face-float2(0.52f,0.85f))/float2(0.18f,0.31f));
-    float eyeDistance=min(eyeLeft,eyeRight);
-    float eye=1-smoothstep(0.77f,1.04f,eyeDistance);
-    float eyeGlow=1-smoothstep(0.9f,2.0f,eyeDistance);
-
-    // Small trapped bubbles drift upward independently of the body motion.
-    float surface=saturate(dot(normal,normalize(toCamera)));
-    float rim=pow(1-saturate(dot(normal,normalize(cameraPosition-world))),2.0f);
-    float bubbles=(BubbleLayer(face,6.0f,0.55f,1.3f)*0.55f+
-                   BubbleLayer(face,11.0f,0.95f,8.7f)*0.32f)*surface;
-    bubbles*=1-eyeGlow*0.9f;
-    color=lerp(color,float3(0.06f,0.72f,0.30f),rim*nearBody*0.65f);
-    color+=float3(0.14f,0.90f,0.67f)*bubbles*body;
-    color+=float3(0.20f,0.57f,0.13f)*eyeGlow*body;
-    return lerp(color,float3(1.0f,0.98f,0.67f),eye*body);
-}
+#include "SlimeDecoration.hlsli"
 struct FullscreenIn { float4 position:SV_POSITION; float2 uv:TEXCOORD0; };
 struct RayResult { float4 color:SV_Target0; float depth:SV_Target1; };
 
@@ -207,8 +167,9 @@ RayResult RaymarchPS(FullscreenIn input) {
         result=lerp(result,lerp(body,Reflection(n,ray,roughness),fresnel),opacity);
     }
     float3 nearestWorld=cameraPosition+ray*nearest;
-    if(playerDecoration>0.001f && nearestPhase==0)
-        result=lerp(result,PlayerSurfaceDetail(nearestWorld,normal,result),saturate(playerDecoration));
+    if(playerDecoration>0.001f && nearestPhase==0 &&
+       length(nearestWorld-playerBodyCenter)<max(playerRadii.x,playerRadii.z)*(1+.55f*playerMotion)*1.6f)
+        result=lerp(result,float3(.06f,.72f,.30f),pow(1-saturate(dot(normal,-ray)),2)*.28f*saturate(playerDecoration));
     output.color=float4(lerp(background,result,NearVolumeWeight(nearestWorld)),1);
     return output;
 }
@@ -222,21 +183,59 @@ struct SprayOut {
     nointerpolation uint shapeIndex:TEXCOORD3;
     nointerpolation uint distantBulk:TEXCOORD4;
     nointerpolation uint phase:TEXCOORD5;
+    float3 centerWorld:TEXCOORD6;
 };
 SprayOut SprayVS(uint vertex:SV_VertexID, uint instance:SV_InstanceID) {
     SprayOut o=(SprayOut)0;
     float2 corners[6]={float2(-1,-1),float2(-1,1),float2(1,-1),float2(1,-1),float2(-1,1),float2(1,1)};
     o.local=corners[vertex];
     if(instance>=particleCount) {
-        float id=(float)(instance-particleCount);
-        float3 jitter=frac(sin(float3(id*12.9898f+3.1f,id*78.233f+9.2f,id*39.346f+1.7f))*43758.5453f);
-        float age=frac(time*(0.24f+0.08f*jitter.y)+jitter.x);
-        float angle=id*2.39996323f;
-        float orbit=1.9f+0.95f*jitter.z;
-        float3 world=playerBodyCenter+float3(cos(angle)*orbit,-0.8f+age*3.4f,sin(angle)*orbit);
-        o.distantBulk=2;
+        uint id=instance-particleCount;
+        float3 world;float visibility=1;
+        if(id<slimeInteriorBubbles){
+            world=SlimeBubblePosition(id,o.radius,visibility);o.distantBulk=2;
+            if(Density(world).x<isoValue*.55f)visibility=0;
+        }else if(id<slimeInteriorBubbles+slimeEscapedBubbles){
+            float3 random=SlimeHash(float(id));float age=frac(time*(.32f+.14f*random.y)+random.x);
+            float angle=float(id)*2.39996323f;
+            float3 field=float3(cos(angle)*playerRadii.x*.48f,0,sin(angle)*playerRadii.z*.48f);
+            world=SlimeFieldPosition(field);o.radius=(.13f+.10f*random.y)*SlimeDecorationScale();
+            // Start above the reconstructed surface, including landing squash and sliding.
+            // An assumed ellipsoid can keep the entire plume buried inside the SPH body.
+            float extent=playerRadii.y*1.7f;float previous=extent;bool found=false;
+            [loop] for(uint step=0;step<=24;++step){
+                float height=extent*(1-float(step)/12);
+                if(Density(world+float3(0,height,0)).x>=isoValue){
+                    float outside=previous,inside=height;
+                    [unroll] for(uint refine=0;refine<4;++refine){float middle=(outside+inside)*.5f;
+                        if(Density(world+float3(0,middle,0)).x>=isoValue)inside=middle;else outside=middle;}
+                    world.y+=(outside+inside)*.5f+o.radius+age*2.8f*SlimeDecorationScale();found=true;break;
+                }previous=height;
+            }
+            world.xz+=float2(sin(time*1.6f+angle),cos(time*1.3f+angle))*.13f*age*SlimeDecorationScale();
+            visibility=found?smoothstep(0,.07f,age)*(1-smoothstep(.72f,1,age)):0;o.distantBulk=4;
+        }else{
+            uint eye=id-slimeInteriorBubbles-slimeEscapedBubbles;
+            float3 front=SlimeFaceForward(),guide=SlimeEyeGuide(eye);
+            float extent=max(playerRadii.x,playerRadii.z)*(1+.55f*playerMotion)*1.45f;
+            bool found=false;float previous=extent;
+            world=guide;
+            // Anchor each rigid eye to the actual reconstructed SPH boundary.
+            // This follows lagging/flapping fluid instead of an assumed ellipse.
+            [loop] for(uint step=0;step<40;++step){
+                float distance=extent*(1-float(step)/20);
+                if(Density(guide+front*distance).x>=isoValue){
+                    float outside=previous,inside=distance;
+                    [unroll] for(uint refine=0;refine<5;++refine){float middle=(outside+inside)*.5f;
+                        if(Density(guide+front*middle).x>=isoValue)inside=middle;else outside=middle;}
+                    world=guide+front*((outside+inside)*.5f+.045f*SlimeDecorationScale());found=true;break;
+                }previous=distance;
+            }
+            visibility=found?1:0;o.radius=SlimeEyeRadii().y*1.2f;o.distantBulk=3;
+        }
+        if(visibility<=0){o.position=float4(2,2,2,1);return o;}
+        o.color.a=visibility;o.centerWorld=world;
         o.centerView=mul(float4(world,1),view).xyz;
-        o.radius=0.07f+0.065f*jitter.y;
         o.position=mul(float4(o.centerView+float3(o.local*o.radius,0),1),projection);
         return o;
     }
@@ -255,19 +254,50 @@ SprayOut SprayVS(uint vertex:SV_VertexID, uint instance:SV_InstanceID) {
     return o;
 }
 float4 SprayPS(SprayOut input):SV_Target {
-    if(input.distantBulk==2) {
-        float r2=dot(input.local,input.local);
-        if(r2>=1) discard;
+    if(input.distantBulk>=2) {
         uint width,height; sceneDepth.GetDimensions(width,height);
         float2 uv=input.position.xy/float2(width,height);
-        float z=input.centerView.z-sqrt(1-r2)*input.radius;
+        float3 viewRay=normalize(float3((uv*float2(2,-2)+float2(-1,1))/float2(projection[0][0],projection[1][1]),1));
+        float3 ray=normalize(mul(viewRay,transpose((float3x3)view)));
+        bool eye=input.distantBulk==3;
+        float3 radii=eye?SlimeEyeRadii():float3(input.radius,input.radius,input.radius);
+        float distance;float3 normal;
+        bool halo=false;
+        if(!SlimeEllipsoidHit(cameraPosition,ray,input.centerWorld,radii,SlimeFaceForward(),distance,normal)){
+            if(!eye||!SlimeEllipsoidHit(cameraPosition,ray,input.centerWorld,radii*1.18f,SlimeFaceForward(),distance,normal))discard;
+            halo=true;
+        }
+        float z=distance*viewRay.z;
         if(z>ViewDepth(uv)) discard;
         float bulkDepth=fluidDepth.Load(int3((int2)input.position.xy,0));
-        if(bulkDepth>0 && z>bulkDepth) discard;
-        float ring=smoothstep(0.25f,0.62f,r2)*(1-smoothstep(0.75f,1.0f,r2));
-        float glint=1-smoothstep(0.02f,0.15f,length(input.local-float2(-0.35f,-0.35f)));
-        float coverage=saturate((1-r2)/max(fwidth(r2),0.001f));
-        return float4(0.35f,1.0f,0.64f,(ring*0.48f+glint*0.55f)*coverage*saturate(playerDecoration));
+        float depthInGel=bulkDepth>0?max(0,z-bulkDepth):0;
+        if(eye){
+            if(bulkDepth<=0 || depthInGel>.2f*SlimeDecorationScale())discard;
+            float facing=saturate(dot(normal,-ray));
+            float edge=smoothstep(0,.22f,facing);
+            if(halo)return float4(.68f,.90f,.26f,.14f*edge*input.color.a*saturate(playerDecoration));
+            return float4(lerp(float3(.75f,.85f,.20f),float3(1,.97f,.64f),pow(facing,.35f)),
+                edge*input.color.a*saturate(playerDecoration));
+        }
+        if(input.distantBulk==2 && bulkDepth<=0)discard;
+        if(input.distantBulk==4 && depthInGel>0)discard;
+        float facing=saturate(dot(normal,-ray));
+        float fresnel=.02f+.98f*pow(1-facing,5);
+        float3 light=normalize(float3(-.45f,.8f,-.35f));
+        float highlight=pow(saturate(dot(reflect(-light,normal),-ray)),90);
+        float3 viewNormal=mul(normal,(float3x3)view);
+        float2 refracted=clamp(uv+viewNormal.xy*float2(1,-1)*input.radius*.15f/max(z,1),.001f,.999f);
+        if(ViewDepth(refracted)<z)refracted=uv;
+        float3 reflection=Reflection(normal,ray,.035f);
+        float3 refractedColor=sceneColor.SampleLevel(linearClamp,refracted,0).rgb;
+        float transmission=exp(-depthInGel*.48f);
+        float3 tint=input.distantBulk==2?float3(.36f,.95f,.73f):float3(.9f,1,.96f);
+        float3 color=(reflection*3.f+float3(.24f,.39f,.33f))*tint+highlight*float3(2.3f,2.4f,2.25f);
+        color=lerp(refractedColor*tint*.55f,color,saturate(.18f+fresnel*.82f+highlight));
+        float coverage=smoothstep(0,.12f,facing);
+        float opacity=(input.distantBulk==4?.24f:.09f)+.7f*fresnel+.85f*highlight;
+        opacity*=transmission;
+        return float4(color,coverage*opacity*input.color.a*saturate(playerDecoration));
     }
     if(input.distantBulk!=0) {
         uint width,height; sceneDepth.GetDimensions(width,height);

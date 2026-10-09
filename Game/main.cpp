@@ -8,6 +8,8 @@
 #include <eh.h>
 #include "../Engine/PathUtils.h"
 #include "../tests/PackageValidationScene.h"
+#include "../tests/RtLightingValidationScene.h"
+#include "../tests/SceneryBenchmarkScene.h"
 #ifndef NDEBUG
 #include "../tests/FluidValidationScene.h"
 #include "../tests/FluidGameBenchmarkScene.h"
@@ -64,6 +66,9 @@ int WINAPI WinMain(_In_ HINSTANCE hInst, _In_opt_ HINSTANCE, _In_ LPSTR commandL
 	app.SetSceneRegistrar([](Engine::SceneManager& sm, Engine::WindowDX& dx) {
 		(void)dx;
         sm.Register("PackageValidation", []() -> std::unique_ptr<Engine::IScene> { return std::make_unique<PackageValidationScene>(); });
+        sm.Register("DlssPackageValidation", []() -> std::unique_ptr<Engine::IScene> { return std::make_unique<DlssPackageValidationScene>(); });
+        sm.Register("RtLightingValidation", []() -> std::unique_ptr<Engine::IScene> { return std::make_unique<RtLightingValidationScene>(); });
+        sm.Register("SceneryBenchmark", []() -> std::unique_ptr<Engine::IScene> { return std::make_unique<SceneryBenchmarkScene>(); });
 		sm.Register("Title", []() -> std::unique_ptr<Engine::IScene> { return std::unique_ptr<Engine::IScene>(new Game::TitleScene()); });
 		sm.Register("Select", []() -> std::unique_ptr<Engine::IScene> { return std::unique_ptr<Engine::IScene>(new Game::SelectScene()); });
 		sm.Register("Game", []() -> std::unique_ptr<Engine::IScene> { return std::unique_ptr<Engine::IScene>(new Game::GameScene()); });
@@ -73,6 +78,8 @@ int WINAPI WinMain(_In_ HINSTANCE hInst, _In_opt_ HINSTANCE, _In_ LPSTR commandL
 		sm.Register("FluidValidation", []() -> std::unique_ptr<Engine::IScene> { return std::make_unique<FluidValidationScene>(); });
 		sm.Register("UIResultValidation", []() -> std::unique_ptr<Engine::IScene> { return std::make_unique<UIResultValidationScene>(); });
         sm.Register("UIValidation", []() -> std::unique_ptr<Engine::IScene> { return std::make_unique<UIValidationScene>(); });
+        sm.Register("GraphicsValidation", []() -> std::unique_ptr<Engine::IScene> { return std::make_unique<GraphicsValidationScene>(); });
+        sm.Register("ShadowValidation", []() -> std::unique_ptr<Engine::IScene> { return std::make_unique<ShadowValidationScene>(); });
         sm.Register("BossValidation", []() -> std::unique_ptr<Engine::IScene> { return std::make_unique<BossValidationScene>(); });
         sm.Register("DodgeValidation", []() -> std::unique_ptr<Engine::IScene> { return std::make_unique<DodgeValidationScene>(); });
         sm.Register("BeamCameraValidation", []() -> std::unique_ptr<Engine::IScene> { return std::make_unique<BeamCameraValidationScene>(); });
@@ -86,6 +93,9 @@ int WINAPI WinMain(_In_ HINSTANCE hInst, _In_opt_ HINSTANCE, _In_ LPSTR commandL
 	// Default Scene
 	app.SetInitialSceneKey("Title");
     if(wcsstr(GetCommandLineW(),L"--package-smoke"))app.SetInitialSceneKey("PackageValidation");
+    if(wcsstr(GetCommandLineW(),L"--dlss-package-smoke"))app.SetInitialSceneKey("DlssPackageValidation");
+    if(wcsstr(GetCommandLineW(),L"--rt-lighting-smoke"))app.SetInitialSceneKey("RtLightingValidation");
+    if(wcsstr(GetCommandLineW(),L"--scenery-benchmark"))app.SetInitialSceneKey("SceneryBenchmark");
 #ifndef NDEBUG
 	int argumentCount = 0;
 	LPWSTR* arguments = CommandLineToArgvW(GetCommandLineW(), &argumentCount);
@@ -93,6 +103,8 @@ int WINAPI WinMain(_In_ HINSTANCE hInst, _In_opt_ HINSTANCE, _In_ LPSTR commandL
 		for (int i = 1; i < argumentCount; ++i) {
 			if (wcscmp(arguments[i], L"--ui-result") == 0) app.SetInitialSceneKey("UIResultValidation");
             if (wcscmp(arguments[i], L"--ui-smoke") == 0) app.SetInitialSceneKey("UIValidation");
+            if (wcscmp(arguments[i], L"--graphics-ui-smoke") == 0) app.SetInitialSceneKey("GraphicsValidation");
+            if (wcscmp(arguments[i], L"--shadow-band-smoke") == 0) app.SetInitialSceneKey("ShadowValidation");
             if (wcscmp(arguments[i], L"--boss-smoke") == 0) app.SetInitialSceneKey("BossValidation");
             if (wcscmp(arguments[i], L"--dodge-smoke") == 0) app.SetInitialSceneKey("DodgeValidation");
             if (wcscmp(arguments[i], L"--beam-camera-smoke") == 0) app.SetInitialSceneKey("BeamCameraValidation");

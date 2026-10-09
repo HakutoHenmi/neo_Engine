@@ -28,7 +28,7 @@ inline void DrawCredits(Canvas& ui, int page) {
         row(1,"Input Prompts (1.5A)","Kenney / www.kenney.nl / CC0 1.0");
         row(2,"Ultimate Platformer Pack","Quaternius / quaternius.com / CC0 1.0");
         row(3,"Slime effects & procedural sound effects","Generated for this game / GenerateSlimeMeshes & GenerateSlimeAudio");
-        row(4,"CC0 1.0 Universal","creativecommons.org/publicdomain/zero/1.0/");
+        row(4,"Photogrammetry scenery / Poly Haven","CC0 / polyhaven.com / sources: Resources/Credits/MeadowRefresh.md");
     }else if(page==2){
         heading("FONTS / SIL OPEN FONT LICENSE 1.1");
         row(0,"Rajdhani","Copyright (c) 2014 Indian Type Foundry");

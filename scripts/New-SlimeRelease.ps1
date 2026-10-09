@@ -7,5 +7,8 @@ $zip = Join-Path $repoRoot 'dist/SlimeAssault-Release.zip'
 [void][IO.Directory]::CreateDirectory($bundle)
 & (Join-Path $PSScriptRoot 'Package-SlimeResources.ps1') -Destination (Join-Path $bundle 'Resources')
 Copy-Item -LiteralPath $exe -Destination (Join-Path $bundle 'SlimeAssault.exe') -Force
-Compress-Archive -LiteralPath (Join-Path $bundle 'SlimeAssault.exe'),(Join-Path $bundle 'Resources') -DestinationPath $zip -Force
+& (Join-Path $PSScriptRoot 'Package-Streamline.ps1') -Destination (Join-Path $bundle 'Streamline')
+$content=@((Join-Path $bundle 'SlimeAssault.exe'),(Join-Path $bundle 'Resources'))
+if(Test-Path -LiteralPath (Join-Path $bundle 'Streamline')){$content+=Join-Path $bundle 'Streamline'}
+Compress-Archive -LiteralPath $content -DestinationPath $zip -Force
 Write-Output $zip

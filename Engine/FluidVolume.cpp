@@ -1,6 +1,7 @@
 #include "Renderer.h"
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <d3dcompiler.h>
 #include <d3dx12.h>
 
@@ -22,8 +23,13 @@ struct VolumeConstants {
     float dt, iso, axis, debug;
     Vector4 colors[3];
     Vector3 playerBodyCenter; float playerDecoration;
+    Vector3 playerForward; float playerFaceCamera;
+    Vector3 playerRadii; float playerMotion;
+    Vector3 playerSlope; float playerAir;
 };
-static_assert(sizeof(VolumeConstants) == 32 * sizeof(UINT));
+constexpr UINT kVolumeConstantCount=sizeof(VolumeConstants)/sizeof(UINT);
+static_assert(kVolumeConstantCount == 44);
+static_assert(kVolumeConstantCount+7*2+5<=64); // D3D12 compute root-signature budget.
 static_assert(sizeof(Renderer::GPUFluidParticle) == 64);
 }
 
@@ -31,7 +37,7 @@ bool Renderer::InitFluidVolume() {
     if (!isGPUFluidReady_) return false;
     CD3DX12_ROOT_PARAMETER compute[13];
     CD3DX12_DESCRIPTOR_RANGE computeRanges[5];
-    compute[0].InitAsConstants(32, 1);
+    compute[0].InitAsConstants(kVolumeConstantCount, 1);
     for (UINT i=0; i<4; ++i) compute[i+1].InitAsShaderResourceView(i);
     for (UINT i=0; i<3; ++i) compute[i+5].InitAsUnorderedAccessView(i);
     for (UINT i=0; i<5; ++i) {
@@ -53,10 +59,10 @@ bool Renderer::InitFluidVolume() {
     CD3DX12_ROOT_PARAMETER draw[10];
     CD3DX12_DESCRIPTOR_RANGE drawRanges[6];
     draw[0].InitAsConstantBufferView(0);
-    draw[1].InitAsConstants(32,1);
+    draw[1].InitAsConstants(kVolumeConstantCount,1);
     for(UINT i=0;i<4;++i) {
         drawRanges[i].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV,1,i);
-        draw[i+2].InitAsDescriptorTable(1,&drawRanges[i],D3D12_SHADER_VISIBILITY_PIXEL);
+        draw[i+2].InitAsDescriptorTable(1,&drawRanges[i],i==0?D3D12_SHADER_VISIBILITY_ALL:D3D12_SHADER_VISIBILITY_PIXEL);
     }
     draw[6].InitAsShaderResourceView(4);
     draw[7].InitAsShaderResourceView(5);
@@ -96,7 +102,7 @@ bool Renderer::InitFluidVolume() {
     graphics.SampleDesc.Count=1;
     graphics.SampleMask=UINT_MAX;
     graphics.NumRenderTargets=2;
-    graphics.RTVFormats[0]=DXGI_FORMAT_R8G8B8A8_UNORM;
+    graphics.RTVFormats[0]=DXGI_FORMAT_R16G16B16A16_FLOAT;
     graphics.RTVFormats[1]=DXGI_FORMAT_R32_FLOAT;
     if(FAILED(dev_->CreateGraphicsPipelineState(&graphics,IID_PPV_ARGS(&psoVolumeRaymarch_)))) return false;
     graphics.NumRenderTargets=1;
@@ -134,7 +140,7 @@ bool Renderer::InitFluidVolume() {
         dev_->CreateUnorderedAccessView(volumeTextures_[i].Get(),nullptr,&uav,window_->SRV_CPU_Master(index));
         volumeUav_[i]=window_->SRV_GPU(index);
     }
-    auto depthDesc=CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R32_FLOAT,WindowDX::kW,WindowDX::kH,1,1,1,0,D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET);
+    auto depthDesc=CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R32_FLOAT,sceneWidth_,sceneHeight_,1,1,1,0,D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET);
     if(FAILED(dev_->CreateCommittedResource(&heap,D3D12_HEAP_FLAG_NONE,&depthDesc,D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,nullptr,IID_PPV_ARGS(&volumeSurfaceDepth_)))) return false;
     D3D12_DESCRIPTOR_HEAP_DESC rtvHeap{};
     rtvHeap.Type=D3D12_DESCRIPTOR_HEAP_TYPE_RTV; rtvHeap.NumDescriptors=1;
@@ -170,7 +176,16 @@ void Renderer::DrawFluidVolume() {
         volumePreviousOrigin_,volumeHistoryValid_?1.0f:0.0f,fluidSimulatedDt_,0.25f,0,static_cast<float>(fluidVolumeDebugMode_),
         {volumeColors_[0],volumeColors_[1],volumeColors_[2]},
         {gpuFluidCorePos_.x,gpuFluidCorePos_.y-1.25f+0.8f*std::clamp(gpuFluidCoreScale_.y,0.0f,1.0f),gpuFluidCorePos_.z},
-        gpuFluidCoreMode_>=4.0f && gpuFluidCoreMode_<5.0f ? chronoFluidOpacity_ : 0.0f};
+        gpuFluidCoreMode_>=4.0f ? chronoFluidOpacity_ : 0.0f,
+        gpuFluidCoreForward_,slimeFaceCamera_,{},0,slimeGround_,std::clamp(gpuFluidCoreScale_.y,0.f,1.f)};
+    // Match the simulated containment field, including mass, landing squash and slide.
+    float scale=std::cbrt(std::clamp(gpuFluidCoreFlowSpeed_/100.f,.05f,2.f));
+    float aspect=gpuFluidCoreScale_.x>.1f?std::clamp(gpuFluidCoreScale_.x,.55f,1.6f):1.f;
+    float flatRadius=gpuFluidCoreMode_>=5.f?4.2f:2.55f,flatHeight=gpuFluidCoreMode_>=5.f?.66f:1.8f;
+    float horizontal=(flatRadius+(1.8f-flatRadius)*cb.playerAir)*scale/std::sqrt(aspect);
+    cb.playerRadii={horizontal,(flatHeight+(1.8f-flatHeight)*cb.playerAir)*scale*aspect,horizontal};
+    cb.playerMotion=std::clamp(gpuFluidCoreScale_.z,0.f,1.f)*(1-.75f*cb.playerAir);
+    cb.playerSlope.y=scale; // Decoration size depends on mass, never the body stretch.
     if(gpuFluidCoreMode_>=2.0f){
         cb.colors[0].w=chronoFluidOpacity_;
         cb.colors[0].x+=(1-cb.colors[0].x)*chronoFluidFlash_;
@@ -185,7 +200,7 @@ void Renderer::DrawFluidVolume() {
     for(auto resource:simulationReads) transition(resource,D3D12_RESOURCE_STATE_UNORDERED_ACCESS,D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
     ID3D12DescriptorHeap* heaps[]={srvHeap_}; list_->SetDescriptorHeaps(1,heaps);
     list_->SetComputeRootSignature(rootSigVolumeCompute_.Get());
-    list_->SetComputeRoot32BitConstants(0,32,&cb,0);
+    list_->SetComputeRoot32BitConstants(0,kVolumeConstantCount,&cb,0);
     for(UINT i=0;i<4;++i) list_->SetComputeRootShaderResourceView(i+1,simulationReads[i]->GetGPUVirtualAddress());
     list_->SetComputeRootUnorderedAccessView(5,volumeAccum_->GetGPUVirtualAddress());
     list_->SetComputeRootUnorderedAccessView(6,volumeMomentum_->GetGPUVirtualAddress());
@@ -211,7 +226,7 @@ void Renderer::DrawFluidVolume() {
     BeginFluidProfile(FluidFiltering);
     for(UINT axis=0;axis<3;++axis) {
         UINT source=axis%2, destination=1-source;
-        cb.axis=static_cast<float>(axis); list_->SetComputeRoot32BitConstants(0,32,&cb,0);
+        cb.axis=static_cast<float>(axis); list_->SetComputeRoot32BitConstants(0,kVolumeConstantCount,&cb,0);
         list_->SetComputeRootDescriptorTable(10,volumeSrv_[source]);
         list_->SetComputeRootDescriptorTable(8,volumeUav_[destination]);
         transition(volumeTextures_[destination].Get(),kVolumeRead,D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
@@ -240,8 +255,16 @@ void Renderer::DrawFluidVolume() {
     list_->OMSetRenderTargets(2,targets,FALSE,nullptr);
     list_->RSSetViewports(1,&viewport_); list_->RSSetScissorRects(1,&scissor_);
     list_->SetGraphicsRootSignature(rootSigVolumeDraw_.Get());
-    list_->SetGraphicsRootConstantBufferView(0,cbFrameAddr_);
-    list_->SetGraphicsRoot32BitConstants(1,32,&cb,0);
+    // Keep the world's material clock frozen, but give fluid decorations their
+    // own visual time so interior and escaped bubbles keep rising in the menu.
+    auto fluidCamera=cbFrame_;fluidCamera.time=fluidDecorationTime_;
+    auto& fluidUpload=upload_[window_->FrameIndex()];
+    uint32_t cameraOffset=fluidUpload.Allocate(sizeof(fluidCamera),256);
+    if(cameraOffset!=UINT32_MAX){
+        std::memcpy(fluidUpload.mapped+cameraOffset,&fluidCamera,sizeof(fluidCamera));
+        list_->SetGraphicsRootConstantBufferView(0,fluidUpload.buffer->GetGPUVirtualAddress()+cameraOffset);
+    }else list_->SetGraphicsRootConstantBufferView(0,cbFrameAddr_);
+    list_->SetGraphicsRoot32BitConstants(1,kVolumeConstantCount,&cb,0);
     list_->SetGraphicsRootDescriptorTable(2,volumeSrv_[historyDestination]);
     list_->SetGraphicsRootDescriptorTable(3,backdropSrv_);
     list_->SetGraphicsRootDescriptorTable(4,ppDepthSrvGpu_);
@@ -260,7 +283,7 @@ void Renderer::DrawFluidVolume() {
     if(fluidVolumeDebugMode_==0) {
         BeginFluidProfile(FluidImpostors);
         list_->SetPipelineState(psoVolumeSpray_.Get());
-        list_->DrawInstanced(6,cb.count+(cb.playerDecoration>0.001f?24:0),0,0);
+        list_->DrawInstanced(6,cb.count+(cb.playerDecoration>0.001f?224+24+2:0),0,0);
         EndFluidProfile(FluidImpostors);
     }
     transition(ppSceneDepth_.Get(),ppDepthState_,D3D12_RESOURCE_STATE_DEPTH_WRITE);

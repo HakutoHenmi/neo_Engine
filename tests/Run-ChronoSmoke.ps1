@@ -1,4 +1,4 @@
-param([string]$Executable = '', [switch]$Ink, [switch]$Rogue, [switch]$Horde, [switch]$SceneryPerf, [switch]$DomainSkills, [switch]$DomainChain, [switch]$SlimeBattle, [switch]$SlimeLow, [switch]$SlimePolish, [switch]$SlimeField, [switch]$Creature, [switch]$Snake, [ValidateRange(0,2)][int]$AttackPattern=0, [switch]$RecordMotion, [switch]$Portfolio)
+param([string]$Executable = '', [switch]$Ink, [switch]$Rogue, [switch]$Horde, [switch]$SceneryPerf, [switch]$DomainSkills, [switch]$DomainChain, [switch]$SlimeBattle, [switch]$SlimeLow, [switch]$SlimePolish, [switch]$SlimeField, [switch]$Creature, [switch]$Snake, [ValidateRange(0,2)][int]$AttackPattern=0, [switch]$RecordMotion, [switch]$Portfolio, [switch]$DLSS, [switch]$RT, [switch]$Validation)
 $ErrorActionPreference = 'Stop'
 $repoPath = Split-Path $PSScriptRoot -Parent
 if (!$Executable) { $Executable = Join-Path $repoPath '../Generated/Outputs/Development/DirectXGameApp.exe' }
@@ -32,6 +32,9 @@ if ($DomainChain) { $argument = '--ink-smoke --domain-chain'; $reportName = 'ink
 if ($Horde) { $argument = '--ink-smoke --horde-smoke'; $reportName = 'ink-smoke.txt' }
 if ($Rogue) { $argument = '--ink-smoke --rogue-smoke'; $reportName = 'ink-smoke.txt' }
 if ($SceneryPerf) { $argument = '--ink-smoke --scenery-perf'; $reportName = 'ink-smoke.txt' }
+if ($DLSS) { $argument += ' --dlss-smoke' }
+if ($RT) { $argument += ' --rt-smoke' }
+if ($Validation) { $argument += ' --graphics-validation' }
 try {
     'RUNNING' | Set-Content -LiteralPath (Join-Path $outputPath $reportName)
     $process = Start-Process -FilePath $Executable -ArgumentList $argument -WorkingDirectory $repoPath -WindowStyle Hidden -PassThru
@@ -43,6 +46,7 @@ try {
     Copy-Item -LiteralPath (Join-Path $repoPath 'error_log.txt') -Destination (Join-Path $outputPath 'chrono-smoke-run.txt')
     $runLog = Get-Content -Raw -LiteralPath (Join-Path $repoPath 'error_log.txt')
     if ($runLog -notmatch 'Chrono validation scene requested' -or $runLog -notmatch 'Shutting down') { throw 'Diagnostic scene or normal shutdown was not reached.' }
+    if ($Validation -and ($newValidation -join "`n") -notmatch 'Debug validation enabled'){throw 'D3D12 debug validation was not available.'}
     if ($newValidation -match '\[(ERROR|CORRUPTION)\]|Device removed') { throw 'D3D12 validation errors: see tests/out/chrono-d3d12-validation.txt.' }
     $report = Get-Content -Raw (Join-Path $outputPath $reportName)
     if ($report -notmatch '^PASS') { throw $report }

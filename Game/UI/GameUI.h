@@ -42,11 +42,14 @@ class Canvas {
     float pointerX_=0,pointerY_=0;
 public:
     Canvas(Engine::Renderer* r, float w=Engine::WindowDX::kW, float h=Engine::WindowDX::kH, float alpha=1)
-        : r_(r), s_((std::min)((w>0?w:1280)/1280,(h>0?h:720)/720)),
-          ox_(((w>0?w:1280)-1280*s_)*.5f), oy_(((h>0?h:720)-720*s_)*.5f), alpha_(alpha) {}
+        : r_(r), s_((std::min)(float(Engine::WindowDX::kW)/1280,float(Engine::WindowDX::kH)/720)),
+          ox_((Engine::WindowDX::kW-1280*s_)*.5f), oy_((Engine::WindowDX::kH-720*s_)*.5f), alpha_(alpha) {(void)w;(void)h;}
     static std::string Asset(const char* name) { return std::string("Resources/Textures/UI/kenney_ui-pack/PNG/")+name; }
+    // EditorUI already maps the Game-panel pointer into the full final texture.
+    // Sprite/text positions use that same texture; ImGui scales it exactly once.
     void SetPointer(float x,float y) { pointerOverride_=true;pointerX_=x;pointerY_=y; }
     Engine::Vector4 Tint(Engine::Vector4 c) const { c.w*=alpha_; return c; }
+    void MultiplyAlpha(float alpha) { alpha_*=std::clamp(alpha,0.f,1.f); }
     void Image(const std::string& path, Rect b, Engine::Vector4 color={1,1,1,1}) {
         Engine::Renderer::SpriteDesc d; d.x=ox_+b.x*s_;d.y=oy_+b.y*s_;d.w=b.w*s_;d.h=b.h*s_;d.color=Tint(color);
         r_->DrawSprite(r_->LoadTexture2D(path),d);
@@ -92,14 +95,25 @@ public:
         Center(label,b.x+b.w*.5f,b.y+(b.h-30)*.5f,30,primary?Ink:Paper);
         if(hover) Fill({b.x+16,b.y+b.h-8,b.w-32,2},Lime);
     }
-    void Prompt(const char* key,const std::string& label,float x,float y,float size=32) {
+    void Prompt(const char* key,const std::string& label,float x,float y,float size=32,float textSize=22) {
         Image(std::string("Resources/Textures/UI/kenney_input-prompts_1.5/Keyboard & Mouse/Default/")+key+".png",{x,y,size,size});
-        Text(label,x+size+8,y+4,22,Muted);
+        Text(label,x+size+8,y+4,textSize,Muted);
     }
     void Bar(Rect b,float ratio,Engine::Vector4 color=Lime) {
         Panel(b,{.2f,.28f,.21f,1});
         float width=(b.w-4)*std::clamp(ratio,0.f,1.f);
         if(width>0) Fill({b.x+2,b.y+2,width,b.h-4},color);
+    }
+    void Ring(float x,float y,float radius,float ratio,Engine::Vector4 color=Lime,float width=5) {
+        constexpr int segments=72;
+        auto arc=[&](float amount,Engine::Vector4 tint){
+            float sweep=6.2831853f*std::clamp(amount,0.f,1.f);
+            for(int i=0;i<segments;++i){float from=6.2831853f*float(i)/segments;if(from>=sweep)break;
+                float to=(std::min)(6.2831853f*float(i+1)/segments,sweep);
+                Line(x+std::sin(from)*radius,y-std::cos(from)*radius,
+                    x+std::sin(to)*radius,y-std::cos(to)*radius,width,tint);}
+        };
+        arc(1,{.20f,.29f,.23f,1});arc(ratio,color);
     }
     void Background(const char* section) {
         Fill({-ox_/s_,-oy_/s_,1280+2*ox_/s_,720+2*oy_/s_},{.022f,.045f,.035f,1});

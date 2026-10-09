@@ -3,6 +3,7 @@
 #include "../Game/Scenes/SelectScene.h"
 #include "../Game/Scenes/GameOverScene.h"
 #include "../Game/UI/GameUI.h"
+#include "../Game/UI/GraphicsUI.h"
 #include "../Game/UI/SceneMusic.h"
 #include "../Game/UI/CreditsUI.h"
 #include "../externals/DirectXTex/DirectXTex.h"
@@ -11,6 +12,72 @@
 #include "../Game/Scenes/GameScene.h"
 #include "../Game/Chrono/ChronoComponents.h"
 #include "../Game/Chrono/InkRules.h"
+
+// Freeze gameplay and compare each visibility pass from an identical camera.
+class ShadowValidationScene final : public Game::GameScene {
+    Engine::WindowDX* window_=nullptr;int frame_=0;bool passed_=true;
+    Engine::Renderer::GraphicsSettings original_{};
+    void Capture(const wchar_t* path){DirectX::ScratchImage image;
+        auto hr=DirectX::CaptureTexture(window_->Queue(),window_->GetCurrentBackBufferResource(),false,image,D3D12_RESOURCE_STATE_PRESENT,D3D12_RESOURCE_STATE_PRESENT);
+        if(SUCCEEDED(hr))hr=DirectX::SaveToWICFile(*image.GetImage(0,0,0),DirectX::WIC_FLAGS_NONE,DirectX::GetWICCodec(DirectX::WIC_CODEC_PNG),path);
+        passed_&=SUCCEEDED(hr);
+    }
+public:
+    void Initialize(Engine::WindowDX* dx,const Engine::SceneParameters&)override{
+        window_=dx;Engine::SceneParameters params;params.stagePath="Resources/Scenes/chrono.json";Game::GameScene::Initialize(dx,params);
+        GetRegistry().emplace<Game::Chrono::ControlFrame>(FindObjectByName("Player"));
+        auto* r=Engine::Renderer::GetInstance();original_=r->GetGraphicsSettings();
+        auto& s=r->GetGraphicsSettings();s.ambientOcclusion=0;s.rtShadows=false;s.dof=s.motionBlur=0;
+    }
+    void Update()override{
+        if(frame_<34)Game::GameScene::Update();++frame_;
+        auto* r=Engine::Renderer::GetInstance();auto& s=r->GetGraphicsSettings();
+        if(frame_==35){Capture(L"tests/out/shadow-baseline.png");s.ambientOcclusion=1;}
+        if(frame_==65){Capture(L"tests/out/shadow-gtao.png");s.ambientOcclusion=0;s.rtShadows=true;}
+        if(frame_==95){Capture(L"tests/out/shadow-rt.png");s.ambientOcclusion=1;}
+        if(frame_==125)Capture(L"tests/out/shadow-combined.png");
+        if(frame_==126){
+            passed_&=r->DlssActive()&&r->DlssEvaluatedFrames()>100&&r->RtShadowFrames()>50&&r->RtShadowPixels()>0&&r->RtLitPixels()>0;
+            s=original_;std::ofstream("tests/out/ui-smoke.txt")<<(passed_?"PASS":"FAIL")<<" shadow comparison: DLSS frames="<<r->DlssEvaluatedFrames()<<" RT frames="<<r->RtShadowFrames()<<" shadow pixels="<<r->RtShadowPixels()<<" lit pixels="<<r->RtLitPixels()<<" four fixed-camera captures";
+            PostQuitMessage(passed_?0:2);
+        }
+    }
+    void Draw()override{
+        auto& camera=GetCamera();camera.StopShake();camera.SetHandheld(0);camera.SetPosition(0,6,-16);camera.LookAt(0,1,20,0,1,0);
+        if(wcsstr(GetCommandLineW(),L"--shadow-oblique")){camera.SetPosition(14,3,-14);camera.LookAt(0,1,0,0,1,0);}
+        Game::GameScene::Draw();
+    }
+    void DrawEditor()override{}
+};
+
+class GraphicsValidationScene final : public Game::GameScene {
+    Engine::WindowDX* window_=nullptr;int frame_=0;bool passed_=true;
+    Engine::Renderer::GraphicsSettings original_{};
+    void Capture(const wchar_t* path){DirectX::ScratchImage image;auto hr=DirectX::CaptureTexture(window_->Queue(),window_->GetCurrentBackBufferResource(),false,image,D3D12_RESOURCE_STATE_PRESENT,D3D12_RESOURCE_STATE_PRESENT);
+        if(SUCCEEDED(hr))hr=DirectX::SaveToWICFile(*image.GetImage(0,0,0),DirectX::WIC_FLAGS_NONE,DirectX::GetWICCodec(DirectX::WIC_CODEC_PNG),path);passed_&=SUCCEEDED(hr);}
+public:
+    void Initialize(Engine::WindowDX* dx,const Engine::SceneParameters&)override{
+        window_=dx;Engine::SceneParameters params;params.stagePath="Resources/Scenes/chrono.json";Game::GameScene::Initialize(dx,params);
+        GetRegistry().emplace<Game::Chrono::ControlFrame>(FindObjectByName("Player"));auto* r=Engine::Renderer::GetInstance();original_=r->GetGraphicsSettings();
+        for(auto path:{"Resources/Textures/PBR/Grass004_NormalDX.jpg","Resources/Textures/PBR/Grass004_Roughness.jpg"})passed_&=r->TextureMipLevels(r->LoadTexture2D(path,false))==11;
+        passed_&=r->TextureMipLevels(r->LoadTexture2D("Resources/Textures/AmbientCG/grass004_color_1k.jpg"))==11;
+    }
+    void Update()override{
+        Game::GameScene::Update();++frame_;auto* renderer=Engine::Renderer::GetInstance();using namespace Game::UI;
+        if(frame_==35){Capture(L"tests/out/graphics-ground.png");SetPaused(true);}
+        if(frame_==37){
+            // EditorUI maps panel coordinates to output pixels before Canvas receives them.
+            for(auto size:{Engine::Vector2{640,360},Engine::Vector2{1050,590},Engine::Vector2{1600,900}}){Canvas ui(renderer,size.x,size.y);auto b=DlssQualityButton;ui.SetPointer((b.x+b.w*.5f)*1.5f,(b.y+b.h*.5f)*1.5f);passed_&=ui.Hover(b)&&!ui.Hover(DlssOffButton);}
+            Canvas ui(renderer,1050,590);auto& io=ImGui::GetIO();bool down=io.MouseDown[0];float duration=io.MouseDownDuration[0];io.MouseDown[0]=true;io.MouseDownDuration[0]=0;
+            for(auto b:{DlssQualityButton,DlssOffButton}){ui.SetPointer((b.x+b.w*.5f)*1.5f,(b.y+b.h*.5f)*1.5f);UpdateGraphics(ui,*renderer);passed_&=renderer->GetGraphicsSettings().dlssQuality==(b.x==DlssQualityButton.x&&renderer->SupportsDlss());}
+            io.MouseDown[0]=down;io.MouseDownDuration[0]=duration;
+        }
+        if(frame_==65)Capture(L"tests/out/graphics-settings.png");
+        if(frame_==66){renderer->GetGraphicsSettings()=original_;std::ofstream("tests/out/ui-smoke.txt")<<(passed_?"PASS":"FAIL")<<" graphics: full editor canvas, DLSS ON/OFF hit targets, color/data mip chains, GPU captures";PostQuitMessage(passed_?0:2);}
+    }
+    void Draw()override{if(frame_<35){Game::GameScene::Draw();return;}Game::UI::Canvas ui(Engine::Renderer::GetInstance(),1050,590);Game::UI::DrawGraphics(ui,*Engine::Renderer::GetInstance());}
+    void DrawEditor()override{}
+};
 
 class BeamCameraValidationScene final : public Game::GameScene {
     Engine::WindowDX* window_=nullptr;int tier_=1;float start_=0;bool launched_=false,captured_=false,passed_=true,chargeChecked_=false;

@@ -120,6 +120,8 @@ private:
     bool isPlaying_ = false;
     bool chronoMode_ = false;
     bool isPaused_ = false; // ★追加: ポーズ状態
+    bool graphicsOpen_=false;
+    bool graphicsSaveFailed_=false;
     entt::registry pendingSpawns_;
     std::vector<entt::entity> pendingDestroys_;
     std::mutex spawnMutex_; // ★追加: マルチスレッドから安全にスポーン・破棄登録を行えるようにする

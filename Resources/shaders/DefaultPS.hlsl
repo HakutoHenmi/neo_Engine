@@ -1,3 +1,4 @@
+#include "ShadowFrustum.hlsli"
 #include "ProceduralPaper.hlsli"
 
 Texture2D gTex : register(t0); 
@@ -63,7 +64,7 @@ float CalcShadow(float3 worldPos) {
             shadow += gShadowMap.SampleCmpLevelZero(gShadowSmp, projCoords.xy + float2(x, y) * texelSize, projCoords.z - bias).r;
         }
     }
-    return shadow / 9.0f;
+    return lerp(1,shadow/9.0f,ShadowFrustumWeight(projCoords));
 }
 
 float4 main(float4 svpos:SV_POSITION, float3 worldPos:TEXCOORD0, float3 normal:TEXCOORD1, float2 uv:TEXCOORD2) : SV_TARGET {

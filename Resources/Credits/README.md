@@ -8,6 +8,8 @@ Kevin MacLeod (https://incompetech.com/), CC BY 4.0.
 ../Sound/BGM/CC-BY-4.0.txt に同梱しています。音源は未加工、ゲーム内で音量調整・ループ再生します。
 
 ## Models / UI
+- Poly Haven: scenery, grass and PBR terrain — CC0. See MeadowRefresh.md,
+  MeadowRefreshSources.json, MeadowAssets.md and PBR-Materials.md for sources.
 - Kenney: UI Pack (2.0), Input Prompts (1.5A). https://www.kenney.nl/ — CC0 1.0.
   原文: ../Textures/UI/kenney_ui-pack/License.txt,
   ../Textures/UI/kenney_input-prompts_1.5/License.txt.

@@ -1,3 +1,4 @@
+#include "ShadowFrustum.hlsli"
 // EnhancedTerrainPS.hlsl
 #include "EnhancedTerrain.hlsli"
 
@@ -57,7 +58,7 @@ float CalcShadow(float3 worldPos) {
             shadow += gShadowMap.SampleCmpLevelZero(gShadowSmp, projCoords.xy + float2(x, y) * texelSize, projCoords.z - bias).r;
         }
     }
-    return shadow / 9.0f;
+    return lerp(1,shadow/9.0f,ShadowFrustumWeight(projCoords));
 }
 
 float4 main(VSOutput input) : SV_TARGET {

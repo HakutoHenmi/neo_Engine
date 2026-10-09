@@ -4,12 +4,39 @@
 #include "../Game/Scenes/GameScene.h"
 #include "../Game/Scenes/GameOverScene.h"
 #include "../Game/UI/CreditsUI.h"
+#include "../Game/UI/GraphicsUI.h"
 #include "../Game/Chrono/InkRules.h"
 #include "../externals/DirectXTex/DirectXTex.h"
 #include <filesystem>
 #include <fstream>
 
 // Explicit --package-smoke only: exercises the actual Release renderer and assets.
+// Runs in Release from the EXE directory, with no repository SDK lookup.
+class DlssPackageValidationScene final : public Engine::IScene {
+    Engine::WindowDX* window_=nullptr;Game::GameScene game_;int frame_=0;bool passed_=true;
+    void Capture(const wchar_t* path){DirectX::ScratchImage image;
+        auto hr=DirectX::CaptureTexture(window_->Queue(),window_->GetCurrentBackBufferResource(),false,image,D3D12_RESOURCE_STATE_PRESENT,D3D12_RESOURCE_STATE_PRESENT);
+        if(SUCCEEDED(hr))hr=DirectX::SaveToWICFile(*image.GetImage(0,0,0),DirectX::WIC_FLAGS_NONE,DirectX::GetWICCodec(DirectX::WIC_CODEC_PNG),path);passed_&=SUCCEEDED(hr);
+    }
+public:
+    void Initialize(Engine::WindowDX* dx,const Engine::SceneParameters&)override{
+        window_=dx;std::filesystem::create_directories("DlssCheck");
+        Engine::SceneParameters p;p.stagePath="Resources/Scenes/chrono.json";game_.Initialize(dx,p);
+    }
+    void Update()override{
+        if(frame_<90)game_.Update();++frame_;auto* r=Engine::Renderer::GetInstance();
+        if(frame_==80)Capture(L"DlssCheck/game.png");
+        if(frame_==120){Capture(L"DlssCheck/settings.png");
+            passed_&=r->SupportsDlss()&&r->DlssActive()&&r->DlssEvaluatedFrames()>60;
+            std::ofstream("DlssCheck/result.txt")<<(passed_?"PASS":"FAIL")<<" Release DLSS: frames="<<r->DlssEvaluatedFrames()<<" status="<<r->DlssStatus();
+            PostQuitMessage(passed_?0:2);
+        }
+    }
+    void Draw()override{
+        if(frame_<90)game_.Draw();else {Game::UI::Canvas ui(Engine::Renderer::GetInstance());Game::UI::DrawGraphics(ui,*Engine::Renderer::GetInstance());}
+    }
+};
+
 class PackageValidationScene final : public Engine::IScene {
     Engine::WindowDX* window_=nullptr;
     std::unique_ptr<Engine::IScene> scene_;

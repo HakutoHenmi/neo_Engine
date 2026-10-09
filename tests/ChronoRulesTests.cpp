@@ -11,6 +11,38 @@
 using namespace Game::Chrono;
 int main(){
     {
+        // Camera return is exact, and crossing +/-pi takes the short arc.
+        CinematicPose start{{2,3,4},{.2f,3.1f,0},.9f},end{{8,9,10},{.4f,-3.1f,0},1.2f};
+        auto pose=BlendShot(start,end,.5f);
+        assert(Length(pose.at-Vec{5,6,7})<.001f&&std::abs(pose.rotation.y-3.141593f)<.001f);
+        assert(Length(BlendShot(start,end,1).at-end.at)<.001f);
+        assert(ShotEase(-1,0,1)==0&&ShotEase(2,0,1)==1&&ShotEase(.5f,0,1)==.5f);
+        // A long off-center boss must fit throughout the orbit, including narrower viewports.
+        Bounds body{{-75,0,20},{40,85,240}};
+        for(float aspect:{16.f/9,4.f/3,.75f})for(int step=0;step<=100;++step){
+            float angle=step*.06283185f;
+            auto shot=FrameShot(body,{std::sin(angle),.25f,std::cos(angle)},.82f,aspect);
+            Vec forward{std::sin(shot.rotation.y)*std::cos(shot.rotation.x),-std::sin(shot.rotation.x),std::cos(shot.rotation.y)*std::cos(shot.rotation.x)};
+            Vec right{std::cos(shot.rotation.y),0,-std::sin(shot.rotation.y)};
+            Vec up{forward.y*right.z-forward.z*right.y,forward.z*right.x-forward.x*right.z,forward.x*right.y-forward.y*right.x};
+            for(float x:{body.min.x,body.max.x})for(float y:{body.min.y,body.max.y})for(float z:{body.min.z,body.max.z}){
+                Vec offset=Vec{x,y,z}-shot.at;float depth=Dot(offset,forward);
+                float nx=Dot(offset,right)/(depth*std::tan(shot.fov*.5f)*aspect);
+                float ny=Dot(offset,up)/(depth*std::tan(shot.fov*.5f));
+                assert(depth>0&&std::abs(nx)<=.84f&&ny>=-.48f&&ny<=.78f);
+            }
+        }
+        std::cout<<"PASS: full boss bounds stay inside letterbox/caption margins throughout camera orbit\n";
+        assert(CardReveal(.07f,0)>0&&CardReveal(.07f,1)==0&&CardReveal(.07f,2)==0);
+        for(int slot=0;slot<3;++slot)assert(CardReveal(CardRevealSeconds,slot)==1);
+        Roguelite state;state.Gain(300);state.Open();state.TickMenu(.7f);assert(state.CanChoose());
+        assert(state.Reroll());state.TickMenu(.15f);assert(!state.CanChoose()&&!state.Choose(0));
+        state.TickMenu(.15f);assert(state.CanChoose()&&state.Choose(0));
+        assert(state.pending==1&&state.cardAge==0&&!state.CanChoose());
+        state.TickMenu(.3f);assert(state.CanChoose());
+        std::cout<<"PASS: camera return, shortest yaw arc, staggered cards and reroll/continuous-choice input guards\n";
+    }
+    {
         Vec camera{0,0,0},hero{0,0,20};
         assert(SwarmCameraOpacity(camera,hero,{0,0,0},true)==0);
         assert(SwarmCameraOpacity(camera,hero,{0,1,10},true)<.04f);
@@ -35,11 +67,26 @@ int main(){
         assert(TickSwarm(bomber,{0,0,5},.05f)==SwarmEvent::None&&bomber.phase==SwarmPhase::Windup);
         int detonations=0;for(int i=0;i<100;++i)if(TickSwarm(bomber,{0,0,5},.05f)==SwarmEvent::Detonate)++detonations;
         assert(detonations==1&&!SwarmAlive(bomber));
-        Roguelite rogue;rogue.Gain(19);assert(rogue.level==1&&rogue.pending==0);rogue.Gain(32);assert(rogue.level==3&&rogue.pending==2&&rogue.xp==1);
+        Roguelite rogue;rogue.Gain(99);assert(rogue.level==1&&rogue.pending==0);rogue.Gain(152);assert(rogue.level==3&&rogue.pending==2&&rogue.xp==1);
+        assert(rogue.Ready());
         rogue.Open();assert(rogue.offers[0]!=rogue.offers[1]&&rogue.offers[1]!=rogue.offers[2]&&rogue.offers[0]!=rogue.offers[2]);
-        for(int i=0;i<3;++i)assert(rogue.Reroll());assert(!rogue.Reroll());int upgrade=rogue.offers[0];assert(rogue.Choose(0)&&rogue.ranks[size_t(upgrade)]==1&&rogue.pending==1&&!rogue.menu);
+        assert(rogue.MenuEase()==0&&!rogue.Choose(0));rogue.TickMenu(.325f);
+        assert(std::abs(rogue.MenuEase()-.5f)<.001f&&!rogue.CanChoose());rogue.TickMenu(.4f);
+        for(int i=0;i<3;++i){assert(rogue.Reroll());rogue.TickMenu(.3f);}assert(!rogue.Reroll());
+        int upgrade=rogue.offers[0];assert(rogue.Choose(0)&&rogue.ranks[size_t(upgrade)]==1&&rogue.pending==1&&rogue.menu&&!rogue.leaving);
+        assert(rogue.MenuEase()==1&&!rogue.Choose(0));rogue.TickMenu(.3f);assert(rogue.Choose(0));
+        assert(rogue.pending==0&&rogue.menu&&rogue.leaving);rogue.TickMenu(.275f);
+        assert(std::abs(rogue.MenuEase()-.5f)<.001f&&rogue.menu&&!rogue.CanChoose());rogue.TickMenu(.3f);
+        assert(!rogue.menu&&rogue.MenuEase()==0);rogue.Gain(200);assert(rogue.Ready());
         rogue.ranks.fill(0);rogue.ranks[0]=3;assert(rogue.Synergy(RogueTag::Rapid));rogue.ranks[17]=2;assert(rogue.Move()==.8f&&rogue.Power(4000)>1);
-        for(size_t i=0;i<rogue.ranks.size();++i)rogue.ranks[i]=RogueCards[i].maxRank;rogue.Open();assert(rogue.offers[0]==-1&&!rogue.Choose(0));rogue.Close();
+        for(size_t i=0;i<rogue.ranks.size();++i)rogue.ranks[i]=RogueCards[i].maxRank;rogue.Open();rogue.TickMenu(1);assert(rogue.offers[0]==-1&&!rogue.Choose(0));rogue.Close();
+        Roguelite opening;opening.Gain(SwarmCapacity);assert(opening.level==2&&opening.pending==1&&opening.xp==80);
+        Roguelite idle;idle.Gain(100);idle.Open();assert(idle.IdleAspect(.78f)==.78f);
+        idle.TickMenu(.7f);float firstPose=idle.IdleAspect(.78f);idle.TickMenu(.5f);
+        assert(std::abs(firstPose-idle.IdleAspect(.78f))>.02f&&idle.pending==1);
+        idle.Close();idle.TickMenu(.6f);assert(!idle.menu&&idle.IdleAspect(.78f)==.78f);
+        std::cout<<"PASS: upgrade-menu breathing advances without consuming rewards and restores the gameplay pose\n";
+        std::cout<<"PASS: opening XP pace, immediate level-up interruption, continuous choices, eased menu entry/return and input guard\n";
         assert(!SwarmBossReady(80)&&!SwarmBossReady(999)&&SwarmBossReady(1000)&&SwarmCapacity==180);
         int groundCount=0,airCount=0,bomberCount=0;
         for(uint32_t id=1;id<=100;++id){SwarmEnemy enemy;enemy.id=id;SwarmRole(enemy);
@@ -134,6 +181,17 @@ int main(){
             for(int j=0;j<4;++j)cards.push_back({{float(i*4+j%2),float(j/2),float(cross),1},{float(j%2),float(j/2)},{0,0,1}});
             cardIndices.insert(cardIndices.end(),{start,start+1,start+2,start+1,start+3,start+2});}
         auto thin=Engine::ReduceStaticMesh(cards,cardIndices,{},4,true);assert(thin.indices.size()==24&&thin.vertices.size()==16);
+        // Curved authored leaves have many triangles and split render vertices.
+        // They must be removed as whole connected strips, never in 12-index chunks.
+        std::vector<LodVertex> leaves;std::vector<uint32_t> leafIndices;
+        for(int leaf=0;leaf<12;++leaf)for(int segment=0;segment<3;++segment){
+            LodVertex p[4];for(int k=0;k<4;++k){float y=float(segment+k/2);p[k]={{leaf*2.f+float(k%2),y,.1f*y*y,1},{float(k%2),y/3},{0,0,1}};}
+            for(int k:{0,1,2,1,3,2}){leafIndices.push_back(uint32_t(leaves.size()));leaves.push_back(p[k]);}}
+        auto leafLod=Engine::ReduceLeafCards(leaves,leafIndices,{},4);
+        assert(leafLod.indices.size()==54);
+        std::map<int,int> leafTriangles;for(size_t i=0;i<leafLod.indices.size();i+=3){const auto& v=leafLod.vertices[leafLod.indices[i]];int leaf=int(v.position.x/2);++leafTriangles[leaf];}
+        assert(leafTriangles.size()==3);for(auto pair:leafTriangles)assert(pair.second==6);
+        for(const auto& v:leafLod.vertices)assert(std::abs(v.texcoord.y-v.position.y/3)<1e-6f);
         assert(Engine::DistanceLodLevel(30,2)==0&&Engine::DistanceLodLevel(70,2)==1&&Engine::DistanceLodLevel(200,2)==2);
         assert(Engine::DistanceLodLevel(70,40)==0&&Engine::DistanceLodLevel(150,40)==1&&Engine::DistanceLodLevel(250,40)==2);
         std::cout<<"PASS: static LOD reduction, closed oriented surface and handle preserved across normal splits, open borders unchanged, material boundaries, complete grass tufts\n";
