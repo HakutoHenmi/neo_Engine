@@ -19,6 +19,7 @@
 #include <string>
 #include <vector>
 #include <map>
+#include <fstream>
 using Microsoft::WRL::ComPtr;
 using namespace DirectX;
 using namespace DirectX::PackedVector;
@@ -26,8 +27,13 @@ void Check(HRESULT h) { if(FAILED(h)) { char msg[64]; sprintf_s(msg,"HRESULT 0x%
 void Require(bool value,const char* message) { if(!value) throw std::runtime_error(message); }
 struct Particle { XMFLOAT3 position; float density; XMFLOAT3 velocity; float pressure; XMFLOAT4 color; float type; XMFLOAT3 pad; };
 struct Shape { XMFLOAT4 r[3]; XMFLOAT4 info; };
-struct VolumeCB { XMFLOAT3 origin; float cell; UINT size[3],count; XMFLOAT3 previous; float history; float dt,iso,axis,debug; XMFLOAT4 colors[3]; };
-static_assert(sizeof(Particle)==64 && sizeof(Shape)==64 && sizeof(VolumeCB)==112);
+struct VolumeCB { XMFLOAT3 origin; float cell; UINT size[3],count; XMFLOAT3 previous; float history; float dt,iso,axis,debug; XMFLOAT4 colors[3];
+    XMFLOAT3 playerBodyCenter{}; float playerDecoration=0;
+    XMFLOAT3 playerForward{0,0,1}; float playerFaceCamera=0;
+    XMFLOAT3 playerRadii{2.55f,1.8f,2.55f}; float playerMotion=0;
+    XMFLOAT3 playerSlope{}; float playerAir=0;
+};
+static_assert(sizeof(Particle)==64 && sizeof(Shape)==64 && sizeof(VolumeCB)==176);
 struct Buffer { ComPtr<ID3D11Buffer> resource; ComPtr<ID3D11ShaderResourceView> srv; ComPtr<ID3D11UnorderedAccessView> uav; };
 struct Texture { ComPtr<ID3D11Texture3D> resource; ComPtr<ID3D11ShaderResourceView> srv; ComPtr<ID3D11UnorderedAccessView> uav; UINT size; };
 class Gpu {
@@ -43,9 +49,9 @@ public:
         Check(device->CreateSamplerState(&desc,&sampler));
         auto s=sampler.Get(); context->CSSetSamplers(0,1,&s); context->PSSetSamplers(0,1,&s);
     }
-    ComPtr<ID3DBlob> Compile(const wchar_t* file,const char* entry,const char* target) {
+    ComPtr<ID3DBlob> Compile(const wchar_t* file,const char* entry,const char* target,ID3DInclude* includes=D3D_COMPILE_STANDARD_FILE_INCLUDE) {
         ComPtr<ID3DBlob> code,error;
-        HRESULT h=D3DCompileFromFile(file,nullptr,D3D_COMPILE_STANDARD_FILE_INCLUDE,entry,target,D3DCOMPILE_ENABLE_STRICTNESS|D3DCOMPILE_OPTIMIZATION_LEVEL3,0,&code,&error);
+        HRESULT h=D3DCompileFromFile(file,nullptr,includes,entry,target,D3DCOMPILE_ENABLE_STRICTNESS|D3DCOMPILE_OPTIMIZATION_LEVEL3,0,&code,&error);
         if(FAILED(h) && error) fprintf(stderr,"%s\n",(const char*)error->GetBufferPointer());
         Check(h); return code;
     }
@@ -516,7 +522,14 @@ void WritePng(ID3D11Device* device,ID3D11DeviceContext* context,ID3D11Texture2D*
     ComPtr<IWICBitmapEncoder> encoder; Check(factory->CreateEncoder(GUID_ContainerFormatPng,nullptr,&encoder)); Check(encoder->Initialize(stream.Get(),WICBitmapEncoderNoCache));
     ComPtr<IWICBitmapFrameEncode> frame; Check(encoder->CreateNewFrame(&frame,nullptr)); Check(frame->Initialize(nullptr)); Check(frame->SetSize(d.Width,d.Height));
     WICPixelFormatGUID format=GUID_WICPixelFormat32bppRGBA; Check(frame->SetPixelFormat(&format));
-    Check(frame->WritePixels(d.Height,m.RowPitch,m.RowPitch*d.Height,(BYTE*)m.pData)); Check(frame->Commit()); Check(encoder->Commit()); context->Unmap(stage.Get(),0);
+    // WIC may negotiate BGRA for PNG even when RGBA was requested.
+    if(format==GUID_WICPixelFormat32bppBGRA&&d.Format==DXGI_FORMAT_R8G8B8A8_UNORM){
+        std::vector<BYTE> converted(d.Width*d.Height*4);
+        for(UINT y=0;y<d.Height;++y)for(UINT x=0;x<d.Width;++x){auto src=static_cast<const BYTE*>(m.pData)+y*m.RowPitch+x*4;auto dst=converted.data()+(y*d.Width+x)*4;
+            dst[0]=src[2];dst[1]=src[1];dst[2]=src[0];dst[3]=src[3];}
+        Check(frame->WritePixels(d.Height,d.Width*4,static_cast<UINT>(converted.size()),converted.data()));
+    }else Check(frame->WritePixels(d.Height,m.RowPitch,m.RowPitch*d.Height,(BYTE*)m.pData));
+    Check(frame->Commit()); Check(encoder->Commit()); context->Unmap(stage.Get(),0);
 }
 
 void TestVolume(Gpu& g, int waterLayers=2, float waterOffset=0, bool draw=true, float spacing=.2f, bool expandedSlime=false, const std::vector<Particle>* player=nullptr, float voxelSize=.25f) {
@@ -688,9 +701,14 @@ void TestVolume(Gpu& g, int waterLayers=2, float waterOffset=0, bool draw=true, 
     printf("PASS temporal: zero-support rejection\n");
 }
 #include "SlimeFluidTests.inl"
+#include "SlimeFaceTests.inl"
+#include "SlimeDecorationPreview.inl"
+#include "GraphicsPostValidation.inl"
 int main(int argc,char** argv) {
+    if(argc>1&&std::strcmp(argv[1],"--graphics-only")==0){try{Check(CoInitializeEx(nullptr,COINIT_MULTITHREADED));Gpu gpu;TestGraphicsPost(gpu);return 0;}catch(const std::exception& error){fprintf(stderr,"FAIL graphics: %s\n",error.what());return 2;}}
     try {
-        if(argc>1 && std::strcmp(argv[1],"--slime-only")==0){ Check(CoInitializeEx(nullptr,COINIT_MULTITHREADED)); Gpu gpu; TestSlimeFluid(gpu); return 0; }
+        if(argc>1 && std::strcmp(argv[1],"--face-only")==0){ Check(CoInitializeEx(nullptr,COINIT_MULTITHREADED)); Gpu gpu; TestPlayerFace(gpu);TestSlimeDecorationPreview(gpu); return 0; }
+        if(argc>1 && std::strcmp(argv[1],"--slime-only")==0){ Check(CoInitializeEx(nullptr,COINIT_MULTITHREADED)); Gpu gpu; TestSlimeFluid(gpu);TestPlayerFace(gpu); return 0; }
         if(argc>1 && std::strcmp(argv[1],"--chrono-only")==0) {
             Check(CoInitializeEx(nullptr,COINIT_MULTITHREADED));Gpu gpu;TestChronoLiquid(gpu);return 0;
         }
@@ -714,7 +732,7 @@ int main(int argc,char** argv) {
             for(int frame=0;frame<hz;++frame) emitted+=Engine::AccumulateFluidEmission(40,1.0f/hz,remainder);
             Require(std::abs(emitted-2400)<=1,"emission depends on render FPS");
         }
-        Check(CoInitializeEx(nullptr,COINIT_MULTITHREADED)); Gpu gpu; TestPbf(gpu); TestLiquefyRetention(gpu); TestReversalSymmetry(gpu); TestStreamEmission(gpu); TestVolume(gpu);
+        Check(CoInitializeEx(nullptr,COINIT_MULTITHREADED)); Gpu gpu; TestPlayerFace(gpu); TestPbf(gpu); TestLiquefyRetention(gpu); TestReversalSymmetry(gpu); TestStreamEmission(gpu); TestVolume(gpu);
         TestVolume(gpu,1,0,false,.4f);
         TestVolume(gpu,1,0,false,.6f);
         TestVolume(gpu,1,0,true,.6f,true);

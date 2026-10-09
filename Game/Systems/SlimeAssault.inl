@@ -3,9 +3,10 @@ namespace Game {
 void ChronoSystem::UpdateInk(entt::registry& r,Player& p,GameContext& ctx){
     auto& ink=r.get<InkPlayer>(player_);auto* control=r.try_get<ControlFrame>(player_);
     const float dt=std::min(ctx.dt,.05f);diagnostic_=control!=nullptr;
+    if(UpdateCinematic(r,p,ctx))return;
     if(UpdateRogueMenu(r,p,ctx))return;
     ink.domainPath.pointLimit=DomainPath::MaxPoints+size_t(384*ink.rogue.ranks[3]);
-    ink.rogue.returnDelay=std::max(0.f,ink.rogue.returnDelay-dt);
+    ink.rogue.TickGameplay(dt);
     ink.dodgeAge+=dt;
     if(ink.perfectAge>=0){ink.perfectAge+=dt;if(ink.perfectAge>1.2f)ink.perfectAge=-1;}
     bool attack=control?control->attack:Down(VK_LBUTTON);
@@ -107,7 +108,11 @@ void ChronoSystem::UpdateInk(entt::registry& r,Player& p,GameContext& ctx){
     ink.fluidAspect=std::clamp(ink.fluidAspect+ink.fluidAspectVelocity*dt,.55f,1.6f);
     ink.airBlend+=((p.grounded?0.f:1.f)-ink.airBlend)*(1-std::exp(-14*dt));
     V planar{p.velocity.x,0,p.velocity.z};float travelSpeed=Length(planar);
-    if(travelSpeed>.5f)ink.fluidDirection=Unit(Lerp(ink.fluidDirection,Unit(planar),1-std::exp(-9*dt)));
+    if(travelSpeed>.5f){
+        float heading=std::atan2(ink.fluidDirection.x,ink.fluidDirection.z);
+        heading+=std::remainder(std::atan2(planar.x,planar.z)-heading,6.283185f)*(1-std::exp(-12*dt));
+        ink.fluidDirection={std::sin(heading),0,std::cos(heading)};
+    }
     ink.fluidMotion+=(std::min(1.f,travelSpeed/18.f)-ink.fluidMotion)*(1-std::exp(-7*dt));
     t.translate=Write(next);float bodyScale=std::cbrt(std::max(1.f,p.mass)/SlimeMaximumMass);
     float pressure=ink.phase==SlimePhase::Charging?1+.15f*(ink.Power(ink.charge)):1;
@@ -115,6 +120,7 @@ void ChronoSystem::UpdateInk(entt::registry& r,Player& p,GameContext& ctx){
     t.scale={bodyScale*pressure*pulse,bodyScale*pressure/pulse,bodyScale*pressure*pulse};t.rotate.y=ink.phase==SlimePhase::Firing?ink.beamYaw:yaw_;
     InkCamera(r,p,ctx);
     UpdateSwarm(r,p,ctx);
+    if(!control&&ink.battlePhase==BattlePhase::Emerging){UpdateCinematic(r,p,ctx);return;}
     if(p.hitStop<=0&&ink.battlePhase==BattlePhase::Boss)UpdateInkBoss(r,p,ctx);
     if(finished_){ink.monoAge=-1;ink.phase=SlimePhase::Roaming;Presentation(r,p,ctx);return;}
     UpdateDomains(r,p,ctx);
@@ -144,65 +150,57 @@ void ChronoSystem::DrawInkUI(entt::registry& r,GameContext& ctx){
     const auto& p=r.get<Player>(player_);const auto& ink=r.get<InkPlayer>(player_);
     UI::Canvas ui(ctx.renderer,ctx.viewportSize.x,ctx.viewportSize.y);
     if(ctx.useOverrideMouse)ui.SetPointer(ctx.overrideMouseX,ctx.overrideMouseY);
-    if(ink.rogue.menu){UI::RogueSelection(ui,ink.rogue);return;}
-    ui.Panel({716,24,322,74});ui.Text("LV "+std::to_string(ink.rogue.level)+"   XP "+std::to_string(ink.rogue.xp)+" / "+std::to_string(ink.rogue.Required()),732,35,22,UI::Lime);
-    ui.Bar({732,70,285,8},float(ink.rogue.xp)/float(ink.rogue.Required()));
+    if(cinematicActive_){DrawCinematic(ctx);return;}
+    if(ink.rogue.menu){UI::Canvas selection(ctx.renderer,ctx.viewportSize.x,ctx.viewportSize.y,ink.rogue.MenuEase());
+        if(ctx.useOverrideMouse)selection.SetPointer(ctx.overrideMouseX,ctx.overrideMouseY);
+        UI::RogueSelection(selection,ink.rogue);return;}
     if(finished_){
         ui.Result(won_,"TIME  "+TimeText(p.stats.seconds),
             "KOs  "+std::to_string(ink.swarmKills)+"  |  BEST CHAIN  "+std::to_string(ink.swarmBestCombo)+"  |  CORES  "+std::to_string(p.stats.counters)+" / 3");
         return;
     }
     const bool open=r.get<Target>(weakpoint_).active;
-    // Keep the three status panels compact, anchored to the screen edges.
-    ui.Panel({24,24,448,93});
-    ui.Text("SLIME SWARM",40,35,21,UI::Lime);
+    // Mission at the top, vital gauges below, leaving the combat view open.
+    ui.Panel({24,24,420,90});
+    ui.Text("SLIME SWARM",40,34,20,UI::Lime);
     bool bossBattle=ink.battlePhase==BattlePhase::Boss;
-    ui.Text(bossBattle?"CORES "+std::to_string(p.stats.counters)+" / 3":"KOs "+std::to_string(ink.swarmKills)+" / "+std::to_string(SwarmBossKills),323,36,19);
+    ui.Text(bossBattle?"CORES "+std::to_string(p.stats.counters)+" / 3":"KOs "+std::to_string(ink.swarmKills)+" / "+std::to_string(SwarmBossKills),278,35,19);
     const auto& creature=r.get<CreatureBoss>(boss_);
     std::string warning=creature.stage==CreatureStage::Dive&&creature.sweepPhase<=2?"DIVE INCOMING / LEAVE THE MARK":
         creature.stage==CreatureStage::Dive&&creature.sweepPhase==3?"RADIAL FEATHERS / FIND A GAP":
         creature.stage==CreatureStage::Snake&&creature.attack==CreatureAttack::HeadTail&&creature.sweepPhase==1?"HEAD STRIKE / DODGE SIDEWAYS":
         creature.stage==CreatureStage::Snake&&creature.attack==CreatureAttack::HeadTail&&(creature.sweepPhase==5||creature.sweepPhase==6)?"TAIL SWEEP / JUMP OR BACKSTEP":"DRAW LOOPS / CHAIN BEFORE FIRING";
     std::string objective=ink.battlePhase==BattlePhase::Horde?"CLEAR THE SWARM / CHAIN YOUR LOOPS":ink.battlePhase==BattlePhase::Emerging?"SERPENT AWAKENING / KEEP MOVING":ink.downTimer>0?"ARMOR MELTED / CORE EXPOSED":open?"CORE OPEN / CLOSE YOUR LOOP":warning;
-    ui.Text(objective,40,66,18,open?UI::Gold:UI::Paper);
-    ui.Bar({40,97,416,8},bossBattle?1-ink.coreHealth/100:ink.battlePhase==BattlePhase::Horde?float(ink.swarmKills)/SwarmBossKills:ink.battleAge/SwarmEmergenceSeconds,UI::Gold);
-    ui.Panel({1050,24,206,74});
-    ui.Text(bossBattle?"ARMOR DISSOLVE":"SWARM ACTIVE",1066,35,16,UI::Muted);
-    ui.Text(bossBattle?std::to_string(int(ink.armor))+"%":std::to_string(ink.swarmAlive)+" ENEMIES",1066,58,21,UI::Lime);
-    ui.Panel({485,24,220,74});ui.Text("TOTAL KOs "+std::to_string(ink.swarmKills),501,35,18,UI::Paper);
-    ui.Text("CHAIN "+std::to_string(ink.swarmCombo),501,58,23,ink.swarmCombo>=20?UI::Gold:UI::Lime);
-    if(ink.battlePhase==BattlePhase::Emerging){ui.Panel({370,124,540,49});ui.Center("THE SERPENT RISES",640,140,26,UI::Gold);}
-    ui.Panel({1080,123,176,42});
-    ui.Prompt("keyboard_escape","PAUSE",1090,127);
-    ui.Panel({1030,174,226,42});
-    ui.Prompt("mouse_scroll",ink.lockedOn?"LOCK ON / OFF":"LOCK ON",1040,178);
+    ui.Text(objective,40,62,17,open?UI::Gold:UI::Paper);
+    ui.Bar({40,96,388,5},bossBattle?ink.coreHealth/100:ink.battlePhase==BattlePhase::Horde?float(ink.swarmKills)/SwarmBossKills:ink.battleAge/SwarmEmergenceSeconds,UI::Gold);
+    if(bossBattle)ui.Text("ARMOR DISSOLVE "+std::to_string(int(ink.armor))+"%",40,118,17,UI::Gold);
+    else if(ink.swarmCombo>=2&&ink.swarmComboAge>0)ui.Text("CHAIN "+std::to_string(ink.swarmCombo),40,118,22,ink.swarmCombo>=20?UI::Gold:UI::Lime);
+    if(ink.battlePhase==BattlePhase::Emerging){ui.Panel({460,24,360,56});ui.Center("THE SERPENT RISES",640,42,24,UI::Gold);}
     if(ink.perfectAge>=0)ui.Center("PERFECT DODGE",640,470,26,UI::Gold);
-    ui.Panel({414,574,452,86});
-    ui.Text("BODY  "+std::to_string(int(p.mass)),430,585,19);
+    ui.Panel({24,542,258,114});
+    const auto bodyColor=p.mass<=SlimeMaximumMass*.25f?UI::Gold:UI::Lime;
+    ui.Ring(84,600,42,p.mass/SlimeMaximumMass,bodyColor,6);
+    ui.Center(std::to_string(int(p.mass)),84,578,30,bodyColor);
+    ui.Center("BODY",84,613,15,UI::Muted);
+    ui.Ring(196,600,30,float(ink.rogue.xp)/float(ink.rogue.Required()),UI::Lime,4);
+    ui.Center("LV "+std::to_string(ink.rogue.level),196,586,22);
+    ui.Center("XP",196,634,15,UI::Muted);
     bool ready=ink.domainPath.candidate.Ready();
     int enclosures=ready?ink.domainPath.candidate.Enclosures():0;
-    ui.Text("LOOPS  "+std::to_string(enclosures),577,585,19,UI::Lime);
-    ui.Text("AIR  "+std::to_string(ink.domainFlying),726,585,19,UI::Muted);
-    ui.Bar({430,615,420,10},p.mass/SlimeMaximumMass);
-    int volley=ready?DomainAmmo(ink.domainPath.candidate)+12*ink.rogue.ranks[0]:ink.domainLastCount;
-    float power=DomainBulletPower(ready?enclosures:ink.domainLastEnclosures)*ink.rogue.Power(ready?ink.domainPath.candidate.area:ink.domainLastArea)+.5f*ink.rogue.ranks[2];
-    std::string powerText=std::to_string(power);powerText.resize(4);
-    ui.Text(std::string(ready?"READY ":"LAST ")+std::to_string(volley)+" / POWER x"+powerText,430,636,17,UI::Lime);
-    ui.Text("QUEUED  "+std::to_string(ink.domainQueued),716,636,17);
-    if(ready){ui.Panel({370,495,540,49});ui.Center(homingDomains_.size()>=6?"DOMAINS BUSY / KEEP EVADING":std::to_string(enclosures)+" LOOPS / KEEP DRAWING OR CLICK LMB",640,513,23,UI::Lime);}
-    else if(ink.regenerating||p.mass<=SlimeMaximumMass*.15f){ui.Panel({370,495,540,49});
-        ui.Center(ink.regenerating?"REGENERATING / KEEP EVADING":"LOW BODY / EVADE TO REGENERATE",640,513,23,UI::Gold);}
-    else if(ink.domainQueued>0&&ink.domainLastShape!=DomainShape::Loop){ui.Panel({370,495,540,49});
-        ui.Center(DomainSkillName(ink.domainLastShape),640,513,23,UI::Gold);}
+    if(ink.regenerating||p.mass<=SlimeMaximumMass*.15f){ui.Panel({408,610,464,42});
+        ui.Center(ink.regenerating?"REGENERATING / KEEP EVADING":"LOW BODY / EVADE TO REGENERATE",640,622,20,UI::Gold);}
+    else if(ready){ui.Panel({408,610,464,42});ui.Center(homingDomains_.size()>=6?"DOMAINS BUSY / KEEP EVADING":std::to_string(enclosures)+" LOOPS / CLICK TO FIRE",640,622,20,UI::Lime);}
     ui.Fill({631,359,18,2},ink.hitFlash>0?UI::Gold:UI::Lime);ui.Fill({639,351,2,18},UI::Lime);
-    ui.Panel({24,674,1232,40});
-    ui.Prompt("keyboard_w","WASD / AUTO SLIDE",44,678);
-    ui.Prompt("mouse_right","DODGE / JUST DODGE",340,678);
-    ui.Prompt("mouse_left","CHAIN LOOPS / CLICK: FIRE",652,678);
-    ui.Prompt("keyboard_space","JUMP",1090,678);
+    ui.Panel({24,674,1232,36});
+    ui.Prompt("keyboard_w","WASD / MOVE + DRAW",36,679,26,20);
+    ui.Prompt("mouse_right","DODGE / JUST DODGE",288,679,26,20);
+    ui.Prompt("mouse_left","FIRE LOOPS",556,679,26,20);
+    ui.Prompt("keyboard_space","JUMP",746,679,26,20);
+    ui.Prompt("mouse_scroll",ink.lockedOn?"LOCK ON / OFF":"LOCK ON",894,679,26,20);
+    ui.Prompt("keyboard_escape","PAUSE",1138,679,26,20);
     // North-up map: complete arena, live path and persistent selected loop.
-    ui.Panel({24,410,244,252});ui.Text("FIELD MAP",36,419,17,UI::Muted);ui.Text("N",246,419,17,UI::Paper);
-    const float mapX=42,mapY=444,mapScale=.275f;
+    ui.Panel({1080,24,176,184});ui.Text("N",1235,28,14,UI::Muted);
+    const float mapX=1097,mapY=48,mapScale=.2f;
     auto mapPoint=[&](V at){return V{mapX+(std::clamp(at.x,-330.f,330.f)+330)*mapScale,mapY+(380-std::clamp(at.z,-340.f,380.f))*mapScale,0};};
     ui.Fill({mapX,mapY,660*mapScale,720*mapScale},{.025f,.065f,.045f,1});
     for(int i=1;i<4;++i){ui.Line(mapX+i*165*mapScale,mapY,mapX+i*165*mapScale,mapY+720*mapScale,1,{.1f,.18f,.13f,1});
@@ -215,16 +213,12 @@ void ChronoSystem::DrawInkUI(entt::registry& r,GameContext& ctx){
     for(const auto& domain:homingDomains_)mapLine(domain.loop.points,{.22f,.46f,.27f,1},1.5f);
     mapLine(ink.domainPath.points,UI::Lime,1.5f);
     if(ready)mapLine(ink.domainPath.candidate.points,UI::Gold,2.3f);
-    for(const auto& enemy:swarm_)if(SwarmAlive(enemy)){V point=mapPoint(enemy.at);ui.Fill({point.x-1.5f,point.y-1.5f,3,3},enemy.bomber?UI::Gold:Engine::Vector4{1,.25f,.18f,1});}
+    for(const auto& enemy:swarm_)if(SwarmAlive(enemy)){V point=mapPoint(enemy.at);ui.Fill({point.x-1,point.y-1,2,2},enemy.bomber?UI::Gold:Engine::Vector4{.85f,.31f,.22f,1});}
     if(ink.battlePhase!=BattlePhase::Horde){V enemy=mapPoint(Center(r,boss_));ui.Fill({enemy.x-4,enemy.y-4,8,8},{1,.25f,.18f,1});}
     V marker=mapPoint(Read(r.get<TransformComponent>(player_).translate));
     V direction{std::sin(yaw_),-std::cos(yaw_),0},right{-direction.y,direction.x,0};
     V tip=marker+direction*6,left=marker-direction*4+right*4,rgt=marker-direction*4-right*4;
     ui.Line(tip.x,tip.y,left.x,left.y,2,UI::Paper);ui.Line(left.x,left.y,rgt.x,rgt.y,2,UI::Paper);ui.Line(rgt.x,rgt.y,tip.x,tip.y,2,UI::Paper);
-    if(ready)ui.Text(std::to_string(enclosures)+" LOOPS / POWER x"+powerText,36,641,15,UI::Gold);
-    else{ui.Fill({36,650,5,5},UI::Paper);ui.Text("YOU",46,641,15,UI::Muted);
-        ui.Fill({91,650,5,5},{1,.25f,.18f,1});ui.Text("ENEMY",101,641,15,UI::Muted);
-        ui.Fill({157,650,5,5},UI::Lime);ui.Text("LINE",167,641,15,UI::Muted);}
     if(open||ink.lockedOn){
         V target=Center(r,weakpoint_);
         if(ink.battlePhase!=BattlePhase::Boss){V from=Read(r.get<TransformComponent>(player_).translate);float nearest=1e9f;

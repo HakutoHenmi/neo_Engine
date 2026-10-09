@@ -4,6 +4,7 @@
 #include "../Chrono/InkRules.h"
 #include "../Chrono/LiquidTrail.h"
 #include "../Chrono/DomainHighlight.h"
+#include "../Chrono/CinematicRules.h"
 #include <vector>
 namespace Game {
 // Scene-level orchestration; all persistent actor state lives in ECS components.
@@ -15,6 +16,7 @@ public:
     void Draw(entt::registry&,GameContext&) override;
     void DrawUI(entt::registry&,GameContext&) override;
     bool Finished() const {return finished_;}
+    bool CinematicActive() const {return cinematicActive_;}
     void Invalidate() {initialized_=false;}
 private:
     bool inkMode_=true;
@@ -37,6 +39,9 @@ private:
     struct Familiar { Chrono::Vec at{};float age=0,clock=0,lifetime=12; };
     std::vector<Familiar> familiars_;
     float rogueDamageClock_=0;
+    Chrono::Vec rogueCameraPosition_{},rogueCameraRotation_{};
+    float rogueCameraFov_=1.13f,rogueDofFocus_=0,rogueDofRange_=0,rogueDofStrength_=0;
+    float rogueFluidAspect_=1,rogueFluidMotion_=0;
     bool UpdateRogueMenu(entt::registry&,Chrono::Player&,GameContext&);
     void UpdateRogueSkills(entt::registry&,Chrono::Player&,GameContext&);
     void ActivateRogue(entt::registry&,Chrono::Player&,GameContext&,HomingDomain&);
@@ -66,6 +71,13 @@ private:
     void DrawInk(entt::registry&,GameContext&);
     void DrawInkUI(entt::registry&,GameContext&);
     void InkCamera(entt::registry&,Chrono::Player&,GameContext&);
+    bool UpdateCinematic(entt::registry&,Chrono::Player&,GameContext&);
+    void DrawCinematic(GameContext&);
+    bool openingPending_=true,cinematicActive_=false,cinematicBoss_=false;
+    float cinematicAge_=0;
+    float cinematicDofFocus_=0,cinematicDofRange_=0,cinematicDofStrength_=0;
+    Chrono::CinematicPose cinematicReturn_{};
+    Chrono::Bounds cinematicBossBounds_{};
     float InkGround(Chrono::Vec,int* =nullptr)const;
     void UploadInk();
     using V=Chrono::Vec;

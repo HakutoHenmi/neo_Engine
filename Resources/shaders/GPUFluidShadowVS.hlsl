@@ -56,11 +56,12 @@ VSOut main(VSIn v, uint instanceID : SV_InstanceID) {
     // 影の隙間を埋めるため少し大きめに設定
     size *= 1.4f;
     
-    // gViewの右・上ベクトルを用いてカメラ向きビルボードを作成
-    float3 right = float3(gView[0][0], gView[1][0], gView[2][0]);
-    float3 up = float3(gView[0][1], gView[1][1], gView[2][1]);
-    
-    // シャドウ用なのでY軸回転だけでも十分だが、パーティクルの丸みを出すためにカメラ向きを採用
+    // gView still contains the gameplay camera during the shadow pass.
+    // Columns of the orthographic light VP give the light's right/up axes;
+    // normalize away projection scale so camera rotation cannot deform shadows.
+    float3 right = normalize(float3(gViewProj[0][0], gViewProj[1][0], gViewProj[2][0]));
+    float3 up = normalize(float3(gViewProj[0][1], gViewProj[1][1], gViewProj[2][1]));
+
     float3 localPos = right * localXY.x * size + up * localXY.y * size;
     float3 worldPos = p.position + localPos;
     

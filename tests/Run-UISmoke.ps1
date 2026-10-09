@@ -1,4 +1,4 @@
-param([string]$Executable = '', [switch]$Boss, [switch]$Dodge, [switch]$BeamCamera)
+param([string]$Executable = '', [switch]$Boss, [switch]$Dodge, [switch]$BeamCamera, [switch]$Graphics, [switch]$Shadows, [switch]$Oblique)
 $ErrorActionPreference = 'Stop'
 $repoPath = Split-Path $PSScriptRoot -Parent
 if (!$Executable) { $Executable = Join-Path $repoPath '../Generated/Outputs/Development/DirectXGameApp.exe' }
@@ -17,7 +17,8 @@ $previousLines = @(Get-Content $validation -ErrorAction SilentlyContinue).Count
 $process = $null
 try {
     'RUNNING' | Set-Content (Join-Path $outputPath 'ui-smoke.txt')
-    $argument = if ($BeamCamera) { '--beam-camera-smoke' } elseif ($Dodge) { '--dodge-smoke' } elseif ($Boss) { '--boss-smoke' } else { '--ui-smoke' }
+    $argument = if ($Shadows) { '--shadow-band-smoke --dlss-smoke --rt-smoke --graphics-validation' } elseif ($Graphics) { '--graphics-ui-smoke' } elseif ($BeamCamera) { '--beam-camera-smoke' } elseif ($Dodge) { '--dodge-smoke' } elseif ($Boss) { '--boss-smoke' } else { '--ui-smoke' }
+    if($Oblique){$argument+=' --shadow-oblique'}
     $process = Start-Process $Executable -ArgumentList $argument -WorkingDirectory $repoPath -WindowStyle Hidden -PassThru
     if (!$process.WaitForExit(95000)) { throw 'UI smoke timed out.' }
     $process.Refresh()

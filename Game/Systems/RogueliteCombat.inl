@@ -2,28 +2,48 @@
 bool ChronoSystem::UpdateRogueMenu(entt::registry& r,Player& p,GameContext& ctx){
     auto& ink=r.get<InkPlayer>(player_);auto& state=ink.rogue;
     if(!state.enabled||finished_){ctx.renderer->SetRogueWorldFrozen(false);return false;}
-    if(state.pending>0&&!state.menu){state.Open();auto* audio=Engine::Audio::GetInstance();audio->SetBGMDucked(true);}
+    // Pending growth interrupts immediately, even during a continuous volley.
+    if(state.Ready()){
+        rogueFluidAspect_=ink.fluidAspect;rogueFluidMotion_=ink.fluidMotion;
+        rogueCameraPosition_=Read(ctx.camera->Position());rogueCameraRotation_=Read(ctx.camera->Rotation());
+        rogueCameraFov_=2*std::atan(1/DirectX::XMVectorGetY(ctx.camera->Proj().r[1]));
+        auto params=ctx.renderer->GetPostProcessParams();rogueDofFocus_=params.dofFocus;rogueDofRange_=params.dofRange;rogueDofStrength_=params.dofStrength;
+        state.Open();Engine::Audio::GetInstance()->SetBGMDucked(true);
+    }
     if(!state.menu){ctx.renderer->SetRogueWorldFrozen(false);return false;}
     ctx.renderer->SetRogueWorldFrozen(true);Engine::WindowDX::SetCursorVisible(true);
-    state.idle+=std::min(ctx.dt,.05f);ink.fluidMotion=0;ink.fluidAspect=1+.035f*std::sin(state.idle*2.5f);
+    float dt=std::clamp(ctx.dt,0.f,.05f);state.TickMenu(dt);
+    // Let the player settle into a breathing idle, then restore the captured
+    // movement pose along the same eased path when combat resumes.
+    ink.fluidAspect=state.IdleAspect(rogueFluidAspect_);
+    ink.fluidMotion=rogueFluidMotion_*(1-state.MenuEase());
     p.cameraOpacity=1;
     V pos=Read(r.get<TransformComponent>(player_).translate),forward=Forward(yaw_,.08f),right{std::cos(yaw_),0,-std::sin(yaw_)};
     V camera=pos-forward*10+V{0,2.1f,0};V view=Unit(pos-right*4.1f+V{0,-.8f,0}-camera);
-    ctx.camera->SetPosition(Write(camera));ctx.camera->SetRotation(-std::asin(std::clamp(view.y,-1.f,1.f)),std::atan2(view.x,view.z),0);
-    ctx.camera->SetProjection(.9f,ctx.viewportSize.x/std::max(1.f,ctx.viewportSize.y),.1f,2000);ctx.camera->SetHandheld(0);
-    auto params=ctx.renderer->GetPostProcessParams();params.dofFocus=10;params.dofRange=8;params.dofStrength=.9f;ctx.renderer->SetPostProcessParams(params);
+    float blend=state.MenuEase();V rotation{-std::asin(std::clamp(view.y,-1.f,1.f)),std::atan2(view.x,view.z),0};
+    // The same captured gameplay pose is used at both ends; yaw takes the shortest arc.
+    rotation={rogueCameraRotation_.x+std::remainder(rotation.x-rogueCameraRotation_.x,6.283185f)*blend,
+        rogueCameraRotation_.y+std::remainder(rotation.y-rogueCameraRotation_.y,6.283185f)*blend,rogueCameraRotation_.z*(1-blend)};
+    ctx.camera->SetPosition(Write(Lerp(rogueCameraPosition_,camera,blend)));ctx.camera->SetRotation(Write(rotation));
+    ctx.camera->SetProjection(rogueCameraFov_+(.9f-rogueCameraFov_)*blend,ctx.viewportSize.x/std::max(1.f,ctx.viewportSize.y),.1f,2000);ctx.camera->SetHandheld(.008f*(1-blend));
+    auto params=ctx.renderer->GetPostProcessParams();params.cinematicCamera=true;params.dofFocus=rogueDofFocus_+(10-rogueDofFocus_)*blend;
+    params.dofRange=rogueDofRange_+(8-rogueDofRange_)*blend;params.dofStrength=rogueDofStrength_+(.9f-rogueDofStrength_)*blend;ctx.renderer->SetPostProcessParams(params);
+    if(!state.menu){
+        params.cinematicCamera=false;ctx.renderer->SetPostProcessParams(params);
+        ink.previousAttack=true;ctx.renderer->SetRogueWorldFrozen(false);Engine::Audio::GetInstance()->SetBGMDucked(false);
+        Engine::WindowDX::SetCursorVisible(false);return true;
+    }
+    if(!state.CanChoose())return true;
     UI::Canvas ui(ctx.renderer,ctx.viewportSize.x,ctx.viewportSize.y);if(ctx.useOverrideMouse)ui.SetPointer(ctx.overrideMouseX,ctx.overrideMouseY);
     auto* control=r.try_get<ControlFrame>(player_);int choice=control?control->upgradeChoice:-1;
     if(UI::Pressed(DIK_UP)||UI::Pressed(DIK_W))state.selected=(state.selected+2)%3;
     if(UI::Pressed(DIK_DOWN)||UI::Pressed(DIK_S))state.selected=(state.selected+1)%3;
     for(int i=0;i<3;++i)if(ui.Click(UI::RogueChoice(i))||UI::Pressed(BYTE(DIK_1+i)))choice=i;
     if(UI::Pressed(DIK_RETURN))choice=state.selected;
-    if((control&&control->upgradeReroll)||UI::Pressed(DIK_R)||ui.Click(UI::RogueReroll))state.Reroll();
+    if((control&&control->upgradeReroll)||UI::Pressed(DIK_R)||ui.Click(UI::RogueReroll)){state.Reroll();return true;}
     if((control&&control->upgradeSkip)||UI::Pressed(DIK_X)||ui.Click(UI::RogueSkip)){p.mass=std::min(SlimeMaximumMass,p.mass+60);state.Close();}
     else if(choice>=0)state.Choose(choice);
-    if(!state.menu&&state.pending>0)state.Open();
     r.get<HealthComponent>(player_).hp=p.mass;
-    if(!state.menu){state.returnDelay=.1f;ink.previousAttack=true;ctx.renderer->SetRogueWorldFrozen(false);Engine::Audio::GetInstance()->SetBGMDucked(false);cameraReady_=false;}
     return true;
 }
 void ChronoSystem::ActivateRogue(entt::registry& r,Player& p,GameContext&,HomingDomain& domain){

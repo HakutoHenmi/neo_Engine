@@ -1791,7 +1791,8 @@ void EditorUI::Show(Engine::Renderer* renderer, GameScene* gameScene) {
 				ImGui::TextUnformatted("GPU pass                                Last       Mean       Peak (ms)");
 				static const char* names[Engine::Renderer::kFluidProfileStageCount] = {
 					"Particle simulation", "Shape reconstruction", "Density splat + resolve",
-					"Filtering + occupancy", "Refraction + raymarch", "Distant impostors", "Fluid shadow", "Whole game render"
+					"Filtering + occupancy", "Refraction + raymarch", "Distant impostors", "Fluid shadow", "Whole game render",
+                    "Scenery shadow", "RT acceleration", "RT lighting rays", "RT radiance filter"
 				};
 				for (uint32_t i = 0; i < Engine::Renderer::kFluidProfileStageCount; ++i) {
 					if (!profile.sampledStages[i]) {

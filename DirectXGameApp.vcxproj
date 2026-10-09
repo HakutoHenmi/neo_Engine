@@ -140,6 +140,8 @@ exit /b 0
     </FxCompile>
     <PostBuildEvent>
       <Command>powershell -NoProfile -ExecutionPolicy Bypass -File "$(ProjectDir)scripts\Package-SlimeResources.ps1"
+if errorlevel 1 exit /b %ERRORLEVEL%
+powershell -NoProfile -ExecutionPolicy Bypass -File "$(ProjectDir)scripts\Package-Streamline.ps1" -Destination "$(TargetDir)Streamline"
 exit /b %ERRORLEVEL%</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>

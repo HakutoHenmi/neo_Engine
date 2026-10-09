@@ -1,0 +1,122 @@
+[
+  {
+    "url": "https://dl.polyhaven.org/file/ph-assets/Models/fbx/2k/boulder_01/boulder_01_2k.fbx",
+    "sha256": "B1125CD1E08A425FA89BC62B96279B40E9A921618E12BFBBE0D575CB78F53C95",
+    "md5": "e20c1ed68dc10e039761d6bda58c8ef4",
+    "path": "Resources/Models/PolyHaven/boulder_01_2k.fbx"
+  },
+  {
+    "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/2k/boulder_01/boulder_01_diff_2k.jpg",
+    "sha256": "90BBAA17C1FE0254D2B0B6E5148264FA834953A72724D566F14AF029EEBE3CA3",
+    "md5": "63571077317c9a2d1db95894e0268a07",
+    "path": "Resources/Textures/PolyHaven/boulder_01_diff_2k.jpg"
+  },
+  {
+    "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/2k/boulder_01/boulder_01_nor_dx_2k.jpg",
+    "sha256": "28EF2B9533EA62F1C1573F9299DCA5B42E987A6EB4924BCF590E3E7FD9C659C8",
+    "md5": "0a4d4bd0c6290d6f5bacc80ff05ffc38",
+    "path": "Resources/Textures/PolyHaven/boulder_01_nor_dx_2k.jpg"
+  },
+  {
+    "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/2k/boulder_01/boulder_01_rough_2k.jpg",
+    "sha256": "D32E0EDCB01D7248138F118638A9C73AC1A612E3F84A464FCBFFFE899EE205C9",
+    "md5": "5c581d60761efd6b00890ba9a520607b",
+    "path": "Resources/Textures/PolyHaven/boulder_01_Rough_2k.jpg"
+  },
+  {
+    "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/2k/boulder_01/boulder_01_ao_2k.jpg",
+    "sha256": "FDD41EAB852D005CC3772CD0F9F69000ABF2CF6C973C7E3C2BAB5AECEC8623B6",
+    "md5": "871b2cc0d4b46070520d101c1684eaef",
+    "path": "Resources/Textures/PolyHaven/boulder_01_AO_2k.jpg"
+  },
+  {
+    "url": "https://dl.polyhaven.org/file/ph-assets/Models/fbx/2k/namaqualand_boulder_02/namaqualand_boulder_02_2k.fbx",
+    "sha256": "EE43E9E5B274337C62B83B921ED472F5456F3441C393EC144C658FDD47CC430A",
+    "md5": "68c7309b72b32a7946a6d6a52d26fba7",
+    "path": "Resources/Models/PolyHaven/namaqualand_boulder_02_2k.fbx"
+  },
+  {
+    "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/2k/namaqualand_boulder_02/namaqualand_boulder_02_diff_2k.jpg",
+    "sha256": "0F81C51224DEB025079F10DAD21530E77E42BAAD541EB766922FE8FC6E46A88E",
+    "md5": "0f37f02ceb397383a0d0bddfaef4441d",
+    "path": "Resources/Textures/PolyHaven/namaqualand_boulder_02_diff_2k.jpg"
+  },
+  {
+    "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/2k/namaqualand_boulder_02/namaqualand_boulder_02_nor_dx_2k.jpg",
+    "sha256": "AC3D59D65D44C51CAF94F6FD6FE6053C755E6CC9727DFA1FA64B3AD628E3B039",
+    "md5": "5132c870e6aa9cb97ae0220e721384e3",
+    "path": "Resources/Textures/PolyHaven/namaqualand_boulder_02_nor_dx_2k.jpg"
+  },
+  {
+    "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/2k/namaqualand_boulder_02/namaqualand_boulder_02_rough_2k.jpg",
+    "sha256": "FF63A4AF3C5280BB1F3A1DE5EE33F15E27356CDBB092F368303D0328DB4F0E84",
+    "md5": "2221cfa46a10ab66718f711921fb4b98",
+    "path": "Resources/Textures/PolyHaven/namaqualand_boulder_02_Rough_2k.jpg"
+  },
+  {
+    "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/2k/namaqualand_boulder_02/namaqualand_boulder_02_ao_2k.jpg",
+    "sha256": "7FD21BCB549B80F9CAEE0E9C257E174661DB069E5185B7467A7E227516B25303",
+    "md5": "0d9c3b066bfad0ff6566fc2dc9c706fa",
+    "path": "Resources/Textures/PolyHaven/namaqualand_boulder_02_AO_2k.jpg"
+  },
+  {
+    "url": "https://dl.polyhaven.org/file/ph-assets/Models/fbx/2k/grass_medium_02/grass_medium_02_2k.fbx",
+    "sha256": "03B014B3F390C9EF9A215371327FAE56F03DD2F6DC0569D639C81BC46CCA50FC",
+    "md5": "35834c4b1e35ccd6042c0b992b8cfc1a",
+    "path": "Resources/Models/PolyHaven/grass_medium_02_2k.fbx"
+  },
+  {
+    "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/2k/grass_medium_02/grass_medium_02_diff_2k.jpg",
+    "sha256": "70C0E294FD94B980D01ED91BDE30AB19FE7EEED1F2717088CC88AB20BB115C87",
+    "md5": "3431e6de76f40f25bef48755f4c6a76a",
+    "path": "Resources/Textures/PolyHaven/grass_medium_02_diff_2k.jpg"
+  },
+  {
+    "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/2k/grass_medium_02/grass_medium_02_nor_dx_2k.jpg",
+    "sha256": "0992E5D32D8C077EDB7E272E6507B1EBCEEE1F15F025EEC287529287A9DAFE1C",
+    "md5": "7c8ed6db68df6cfb9ff11c93110aee72",
+    "path": "Resources/Textures/PolyHaven/grass_medium_02_nor_dx_2k.jpg"
+  },
+  {
+    "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/2k/grass_medium_02/grass_medium_02_rough_2k.jpg",
+    "sha256": "267556B0E0FF1A2DEC334224BC5AD904D25D1FFBEF1A527436626BA62E6B4640",
+    "md5": "5181550494cb1dfb53583eaa10aa2c7f",
+    "path": "Resources/Textures/PolyHaven/grass_medium_02_Rough_2k.jpg"
+  },
+  {
+    "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/2k/grass_medium_02/grass_medium_02_ao_2k.jpg",
+    "sha256": "5358C4847DA209AB845A2A998814D8E029AF4B50C5B6FAC4F29D2B9033E271FD",
+    "md5": "ced0ae1ec14d27f8276ae866c75ae1a0",
+    "path": "Resources/Textures/PolyHaven/grass_medium_02_AO_2k.jpg"
+  },
+  {
+    "url": "https://dl.polyhaven.org/file/ph-assets/Models/png/2k/grass_medium_02/grass_medium_02_alpha_2k.png",
+    "sha256": "C96ABF8DA86AA750FF6425B8DED78AA98CF61858834E3557AD2DCC5348359337",
+    "md5": "3b2ba296de3cffad18e8119e6ca693e5",
+    "path": "Resources/Textures/PolyHaven/grass_medium_02_alpha_2k.png"
+  },
+  {
+    "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/4k/leafy_grass/leafy_grass_diff_4k.jpg",
+    "sha256": "0E57A28949211E2F4A728B094598A4470CCE25BC07E138B9BAE295F97C5D67F1",
+    "md5": "d991caaf9c2e333a5a684faab488cbb9",
+    "path": "Resources/Textures/PolyHaven/leafy_grass_diff_4k.jpg"
+  },
+  {
+    "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/leafy_grass/leafy_grass_nor_dx_2k.jpg",
+    "sha256": "6AD4B29842CB68DD4CCADEAA14F76CC52E7717EDED3BAC41E537A166BE07356B",
+    "md5": "82936efe4dd20543414cb55d47a9f53c",
+    "path": "Resources/Textures/PolyHaven/leafy_grass_nor_dx_2k.jpg"
+  },
+  {
+    "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/leafy_grass/leafy_grass_rough_2k.jpg",
+    "sha256": "34E1733BF4064B6950A575FF57E78C8B7FF71B63749EB48A49221BD65DE6FB4F",
+    "md5": "b5c551ed91162aab5afbfb03b73ae3f5",
+    "path": "Resources/Textures/PolyHaven/leafy_grass_Rough_2k.jpg"
+  },
+  {
+    "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/leafy_grass/leafy_grass_ao_2k.jpg",
+    "sha256": "BCCE4368F6A1AFFE11B4A643E14CFED7DFB46ABF6BB9E6A28A3B87C2DE2DDB11",
+    "md5": "f25065162a26693b29a10587582df688",
+    "path": "Resources/Textures/PolyHaven/leafy_grass_AO_2k.jpg"
+  }
+]

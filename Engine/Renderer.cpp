@@ -1,6 +1,8 @@
 #include "Renderer.h"
+#include "DlssRuntime.h"
 #include "Model.h"
 #include "StaticLod.h"
+#include "ShadowCaster.h"
 #include "PathUtils.h"
 #include "Time/TimeManager.h"
 #include "../Game/ObjectTypes.h"
@@ -11,6 +13,8 @@
 #include <cmath>
 #include <cstring>
 #include <numeric>
+#include <fstream>
+#include <filesystem>
 
 #include <directxmath.h>
 #include <d3dcompiler.h>
@@ -29,6 +33,38 @@ using namespace DirectX;
 namespace Engine {
 
 Renderer* Renderer::instance_ = nullptr;
+namespace {
+std::filesystem::path GraphicsSettingsPath(){
+    wchar_t path[32768]{};auto size=GetEnvironmentVariableW(L"LOCALAPPDATA",path,32768);
+    return size>0&&size<32768?std::filesystem::path(path)/L"LiquidTime"/L"graphics-v1.txt":std::filesystem::path{};
+}
+}
+void Renderer::LoadGraphicsSettings(){
+    std::ifstream file(GraphicsSettingsPath());GraphicsSettings value;
+    if(!(file>>value.bloom>>value.lensFlare>>value.grading>>value.ambientOcclusion>>value.motionBlur>>value.dof>>value.exposure))return;
+    for(float v:{value.bloom,value.lensFlare,value.grading,value.ambientOcclusion,value.motionBlur,value.dof,value.exposure})if(!std::isfinite(v))return;
+    value.bloom=std::clamp(value.bloom,0.f,.5f);value.lensFlare=std::clamp(value.lensFlare,0.f,.1f);
+    value.grading=std::clamp(value.grading,0.f,1.f);value.ambientOcclusion=std::clamp(value.ambientOcclusion,0.f,1.f);
+    value.motionBlur=std::clamp(value.motionBlur,0.f,1.f);value.dof=std::clamp(value.dof,0.f,1.f);value.exposure=std::clamp(value.exposure,.6f,1.6f);
+    int quality=0;if(file>>quality)value.dlssQuality=quality==1;
+    int rt=0;if(file>>rt)value.rtShadows=rt==1;
+    int reflection=0,indirect=0;if(file>>reflection)value.rtReflections=reflection==1;if(file>>indirect)value.rtIndirect=indirect==1;
+    graphicsSettings_=value;
+}
+bool Renderer::SaveGraphicsSettings()const{
+    try{auto path=GraphicsSettingsPath();if(path.empty())return false;
+        std::filesystem::create_directories(path.parent_path());std::ofstream file(path);
+        const auto& s=graphicsSettings_;
+        file<<s.bloom<<' '<<s.lensFlare<<' '<<s.grading<<' '<<s.ambientOcclusion<<' '<<s.motionBlur<<' '<<s.dof<<' '<<s.exposure<<' '<<int(s.dlssQuality)<<' '<<int(s.rtShadows)<<' '<<int(s.rtReflections)<<' '<<int(s.rtIndirect);
+        return bool(file);
+    }catch(...){return false;}
+}
+bool Renderer::SupportsRayTracing()const{
+    D3D12_FEATURE_DATA_D3D12_OPTIONS5 feature{};
+    return dev_&&SUCCEEDED(dev_->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS5,&feature,sizeof(feature)))&&feature.RaytracingTier!=D3D12_RAYTRACING_TIER_NOT_SUPPORTED;
+}
+bool Renderer::SupportsDlss()const{return DlssRuntime::Get().Supported();}
+std::string Renderer::DlssStatus()const{return DlssRuntime::Get().Status();}
 
 // クリア値の定数定義
 static const float kPPSceneClearColor[] = { 0.1f, 0.25f, 0.5f, 1.0f };
@@ -57,6 +93,10 @@ Renderer::~Renderer() { Shutdown(); }
 
 bool Renderer::Initialize(WindowDX* window) {
 	instance_ = this;
+    LoadGraphicsSettings();postHistoryValid_=false;
+    if(wcsstr(GetCommandLineW(),L"--dlss-smoke"))graphicsSettings_.dlssQuality=true;
+    if(wcsstr(GetCommandLineW(),L"--native-smoke"))graphicsSettings_.dlssQuality=false;
+    dlssActive_=graphicsSettings_.dlssQuality&&DlssRuntime::Get().QualitySize(WindowDX::kW,WindowDX::kH,sceneWidth_,sceneHeight_);
 
 	window_ = window;
 	if (!window_)
@@ -217,6 +257,10 @@ bool Renderer::Initialize(WindowDX* window) {
 	// ★追加: GPU流体初期化
 	InitGPUFluid();
 	fluidVolumeReady_ = InitFluidVolume();
+    if(dlssActive_&&!InitTemporalInputs_())return false;
+    InitRtShadows_();
+    if(psoRtShadow_)InitRtLighting_();
+    if(wcsstr(GetCommandLineW(),L"--rt-smoke"))graphicsSettings_.rtShadows=true;
 	if (!fluidVolumeReady_) OutputDebugStringA("[Fluid] Volume initialization failed; using legacy fallback.\n");
 #ifndef NDEBUG
 	InitFluidProfiler();
@@ -292,6 +336,17 @@ void Renderer::Shutdown() {
 	psoPP_.Reset();
 	rootSigPP_.Reset();
 	ppSceneColor_.Reset();
+    for(auto& target:bloomDown_)target.resource.Reset();for(auto& target:bloomUp_)target.resource.Reset();
+    gtaoTarget_.resource.Reset();bloomRtvHeap_.Reset();psoBloomDown_.Reset();psoBloomUp_.Reset();psoGtao_.Reset();
+    temporalMotion_.resource.Reset();temporalDepth_.resource.Reset();dlssOutput_.resource.Reset();
+    temporalRtvHeap_.Reset();rootSigTemporal_.Reset();psoTemporalPrepare_.Reset();psoTemporalObjects_.Reset();
+    temporalWorlds_.clear();temporalJobs_.clear();
+    rtGeometry_.clear();rtInstances_.clear();for(auto& slot:rtFrames_)slot={};
+    rtShadowTarget_.resource.Reset();rootSigRtShadow_.Reset();psoRtShadow_.Reset();
+    rtReflectionTarget_.resource.Reset();rtIndirectTarget_.resource.Reset();rootSigRtLighting_.Reset();psoRtLighting_.Reset();rtTriangles_.clear();
+    psoRtLightingComposite_.Reset();rtLightingHdr_.Reset();rtLightingRtvHeap_.Reset();
+    for(auto& target:rtFilteredReflection_)target.resource.Reset();for(auto& target:rtFilteredIndirect_)target.resource.Reset();
+    rootSigRtDenoise_.Reset();psoRtDenoise_.Reset();rtLightingHistoryValid_=false;
 	ppRtvHeap_.Reset();
 	ppSrvGpu_ = {};
 	ppRtv_ = {};
@@ -384,6 +439,7 @@ void Renderer::BeginFrame(const float clearColorRGBA[4]) {
 
 	// インスタンス描画用のキューをクリア
 	instancedDrawCalls_.clear();                    
+    temporalJobs_.clear();rtInstances_.clear();
 	instancedParticleDrawCalls_.clear();            
 	liquidParticleDrawCalls_.clear(); // ★追加
 	lastIDCIndex_ = -1;
@@ -552,6 +608,7 @@ void Renderer::FlushDrawCalls() {
 			if (shadowSrv_.ptr != 0) list_->SetGraphicsRootDescriptorTable(4, shadowSrv_);
 		} else {
 			list_->SetGraphicsRootSignature(rootSig3D_.Get());
+            BindPbrTextures_(dc.extraTex);
 			list_->SetGraphicsRootConstantBufferView(0, cbFrameAddr_);
 			list_->SetGraphicsRootConstantBufferView(2, cbLightAddr_);
 			if (shadowSrv_.ptr != 0) list_->SetGraphicsRootDescriptorTable(5, shadowSrv_);
@@ -639,6 +696,12 @@ void Renderer::FlushDrawCalls() {
 		for (auto& idc : calls) {
 			auto* model = GetModel(idc.mesh);
 			if (!model || idc.instances.empty()) continue;
+            if(sceneryOptimized_&&(idc.shaderName=="EnvironmentSurface"||idc.shaderName=="MeadowGrass")){
+                auto& instances=idc.instances;
+                instances.erase(std::remove_if(instances.begin(),instances.end(),[&](const InstanceData& data){
+                    return !SceneryVisible(idc.mesh,data.world,cbFrame_.viewProj);}),instances.end());
+                if(instances.empty())continue;
+            }
 
 			if (defaultShaderName == "ParticleInstanced") {
 				frameParticleCount_ += static_cast<uint32_t>(idc.instances.size()); // ★追加
@@ -712,6 +775,7 @@ void Renderer::FlushDrawCalls() {
 					list_->SetGraphicsRootShaderResourceView(5, upload_[fi].buffer->GetGPUVirtualAddress() + offset);
 				} else {
 					list_->SetGraphicsRootSignature(rootSig3D_.Get());
+                    BindPbrTextures_(idc.extraTex);
 					list_->SetGraphicsRootConstantBufferView(0, cbFrameAddr_);
 					list_->SetGraphicsRootConstantBufferView(2, cbLightAddr_);
 					if (shadowSrv_.ptr != 0) list_->SetGraphicsRootDescriptorTable(5, shadowSrv_);
@@ -730,6 +794,8 @@ void Renderer::FlushDrawCalls() {
 				}
 			}
 
+            if(idc.shaderName=="EnvironmentSurface"||idc.shaderName=="MeadowGrass"||idc.shaderName=="MeadowGround")
+                sceneryLodStats_.visibleIndices+=uint64_t(model->GetIndexCount())*idc.instances.size();
 			model->DrawInstanced(list_, static_cast<uint32_t>(idc.instances.size()), 3, useModelTex);
 		}
 		calls.clear();
@@ -913,6 +979,8 @@ void Renderer::FlushDrawCalls() {
 void Renderer::EndFrame() {
     FlushPaintUploads();
 	const uint32_t fi = window_->FrameIndex();
+    auto outputViewport=viewport_;auto outputScissor=scissor_;
+    if(dlssActive_){viewport_={0,0,float(sceneWidth_),float(sceneHeight_),0,1};scissor_={0,0,LONG(sceneWidth_),LONG(sceneHeight_)};}
 
 	static int dbgFrameCounter = 0;
 	if (dbgFrameCounter++ < 5) { // 最初の数フレームだけログ出力
@@ -959,6 +1027,7 @@ void Renderer::EndFrame() {
 
 	// ====== 1. シャドウパス ======
 	if (shadowMap_) {
+        BeginFluidProfile(SceneryShadow);
 		auto b = CD3DX12_RESOURCE_BARRIER::Transition(shadowMap_.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_DEPTH_WRITE);
 		list_->ResourceBarrier(1, &b);
 		
@@ -980,12 +1049,14 @@ void Renderer::EndFrame() {
 		
 		// Normal Shadow Pass
 		for (const auto& dc : drawCalls_) {
-			if (dc.shaderName == "SlimeBeam" || dc.isParticle || dc.shaderName == "Particle" || dc.shaderName == "ParticleAdditive" || dc.shaderName == "ProceduralSmoke" || dc.shaderName == "ProceduralSmokeAdditive" || dc.shaderName == "2D" || dc.shaderName == "Distortion") continue;
+            if(dc.isParticle||!CastsOpaqueShadow(dc.shaderName))continue;
 
 			auto* model = GetModel(dc.mesh);
 			if (!model) continue;
 
-			list_->SetPipelineState(dc.isSkinned ? shadowSkinPso_.Get() : shadowPso_.Get());
+            bool cutout=dc.shaderName=="MeadowGrass"&&!dc.isSkinned;
+            list_->SetPipelineState(cutout?shadowCutoutPso_.Get():(dc.isSkinned?shadowSkinPso_.Get():shadowPso_.Get()));
+            if(cutout)list_->SetGraphicsRootDescriptorTable(3,textures_[dc.tex<textures_.size()?dc.tex:0].srvGpu);
 			list_->SetGraphicsRootConstantBufferView(0, sCbAddr);
 
 #ifdef _MSC_VER
@@ -1016,29 +1087,40 @@ void Renderer::EndFrame() {
 				list_->SetGraphicsRootConstantBufferView(4, upload_[fi].buffer->GetGPUVirtualAddress() + oOff);
 			}
 
-			model->Draw(list_, 3);
+            model->Draw(list_,3,!cutout);
 		}
 
 		// Instanced Shadow Pass
 		for (const auto& idc : instancedDrawCalls_) {
-			if (idc.shaderName == "HordeEffect" || idc.shaderName == "DomainFill" || idc.shaderName == "DomainGlow" || idc.shaderName == "LiquidTrail" || idc.shaderName == "Particle" || idc.shaderName == "ParticleInstanced" || idc.shaderName == "ProceduralSmoke" || idc.shaderName == "ProceduralSmokeInstanced" || idc.shaderName == "2D" || idc.shaderName == "Distortion") continue;
+            if(!CastsOpaqueShadow(idc.shaderName))continue;
 			
 			auto* model = GetModel(idc.mesh);
 			if (!model || idc.instances.empty()) continue;
+            std::vector<InstanceData> visible;
+            const auto* shadowInstances=&idc.instances;
+            if(sceneryOptimized_&&(idc.shaderName=="EnvironmentSurface"||idc.shaderName=="MeadowGrass")){
+                for(const auto& instance:idc.instances)if(SceneryVisible(idc.mesh,instance.world,lightVP))visible.push_back(instance);
+                shadowInstances=&visible;if(visible.empty())continue;
+            }
 
-			list_->SetPipelineState(shadowInstancedPso_.Get());
+            bool cutout=idc.shaderName=="MeadowGrass";
+            if(idc.shaderName=="EnvironmentSurface"||cutout||idc.shaderName=="MeadowGround")
+                sceneryLodStats_.shadowIndices+=uint64_t(model->GetIndexCount())*shadowInstances->size();
+            list_->SetPipelineState(cutout?shadowInstancedCutoutPso_.Get():shadowInstancedPso_.Get());
 			list_->SetGraphicsRootSignature(rootSig3D_.Get());
+            if(cutout)list_->SetGraphicsRootDescriptorTable(3,textures_[idc.tex<textures_.size()?idc.tex:0].srvGpu);
 			list_->SetGraphicsRootConstantBufferView(0, sCbAddr);
 
-			uint32_t dataSize = static_cast<uint32_t>(sizeof(InstanceData) * idc.instances.size());
+			uint32_t dataSize = static_cast<uint32_t>(sizeof(InstanceData) * shadowInstances->size());
 			uint32_t offset = upload_[fi].Allocate(dataSize, 256);
 			if (offset != UINT32_MAX) {
-				std::memcpy(upload_[fi].mapped + offset, idc.instances.data(), dataSize);
+				std::memcpy(upload_[fi].mapped + offset, shadowInstances->data(), dataSize);
 				list_->SetGraphicsRootShaderResourceView(6, upload_[fi].buffer->GetGPUVirtualAddress() + offset);
-				model->DrawInstanced(list_, static_cast<uint32_t>(idc.instances.size()));
+                model->DrawInstanced(list_,static_cast<uint32_t>(shadowInstances->size()),3,!cutout);
 			}
 		}
 
+        EndFluidProfile(SceneryShadow);
 		// ★追加: 流体の影を落とす
 		if (isGPUFluidReady_ && gpuFluidActiveParticleCount_ > 0) {
 			BeginFluidProfile(FluidShadow);
@@ -1181,8 +1263,20 @@ void Renderer::EndFrame() {
 	if (!postBars.empty()) {
 		list_->ResourceBarrier((UINT)postBars.size(), postBars.data());
 	}
+    postColorSrv_=ppSrvGpu_;
+    viewport_=outputViewport;scissor_=outputScissor;
+    if(!rtLightingRendered_)rtLightingHistoryValid_=false;
+    rtLightingRendered_=false;
+    bool rtReady=(graphicsSettings_.rtShadows||graphicsSettings_.rtReflections||graphicsSettings_.rtIndirect)&&framePPEnabled_&&psoPP_.Get()==pipelines_["ChronoFocus"].Get()&&RenderRtShadows_(fi);
+    rtShadowRendered_=rtReady&&graphicsSettings_.rtShadows;
+    if(dlssActive_ && framePPEnabled_ && psoPP_.Get()==pipelines_["ChronoFocus"].Get())
+        if(EvaluateDlss_(fi))postColorSrv_=dlssOutput_.srv;
 
 	// --- 2. finalSceneColor_ をRenderTargetStateに遷移し描画 ---
+    if(framePPEnabled_ && psoPP_.Get()==pipelines_["ChronoFocus"].Get() && graphicsSettings_.ambientOcclusion>.001f)
+        RenderGtao_(fi);
+    if(framePPEnabled_ && psoPP_.Get()==pipelines_["ChronoFocus"].Get() && graphicsSettings_.bloom>.001f)
+        RenderHdrBloom_(fi);
 	if (finalSceneState_ != D3D12_RESOURCE_STATE_RENDER_TARGET) {
 		auto b = CD3DX12_RESOURCE_BARRIER::Transition(finalSceneColor_.Get(), finalSceneState_, D3D12_RESOURCE_STATE_RENDER_TARGET);
 		list_->ResourceBarrier(1, &b);
@@ -1222,11 +1316,16 @@ void Renderer::EndFrame() {
 			float pad0;
 			float dofFocus,dofRange,dofStrength,dofNear;
 			float dofFar,texelX,texelY,dofBossDepth;
+            float bloom,lensFlare,grading,ambientOcclusion;
+            float motionBlur,exposure,projectionX,projectionY;
+            float useFluidDepth,rtStrength,rtReflection,rtIndirect;
+            Matrix4x4 inverseViewProjection,previousViewProjection;
 		};
 #ifdef _MSC_VER
 #pragma warning(pop)
 #endif
 		CBPost cb{};
+        static_assert(sizeof(CBPost)==256&&offsetof(CBPost,inverseViewProjection)==112,"Post shader layout mismatch");
 		cb.time = ppParams_.time;
 		cb.noiseStrength = ppParams_.noiseStrength;
 		cb.distortion = ppParams_.distortion;
@@ -1240,6 +1339,21 @@ void Renderer::EndFrame() {
 		cb.dofNear=std::abs(projB/(std::max)(.000001f,projA));
 		cb.dofFar=std::abs(projB/(std::abs(projA-1)>.000001f?projA-1:.000001f));
 		cb.texelX=1.f/(std::max)(1.f,viewport_.Width);cb.texelY=1.f/(std::max)(1.f,viewport_.Height);cb.dofBossDepth=ppParams_.dofBossDepth;
+        cb.dofStrength*=graphicsSettings_.dof;
+        cb.bloom=graphicsSettings_.bloom;cb.lensFlare=graphicsSettings_.lensFlare;cb.grading=graphicsSettings_.grading;
+        cb.ambientOcclusion=graphicsSettings_.ambientOcclusion;cb.exposure=graphicsSettings_.exposure;
+        auto cameraDelta=cbFrame_.cameraPos-previousPostCamera_;
+        float cameraTravel=std::sqrt(cameraDelta.x*cameraDelta.x+cameraDelta.y*cameraDelta.y+cameraDelta.z*cameraDelta.z);
+        // Camera blur belongs to authored introduction/boss shots. Combat floor
+        // detail must stay sharp when the player rotates or moves the camera.
+        cb.motionBlur=postHistoryValid_&&cameraTravel<40&&ppParams_.cinematicCamera?graphicsSettings_.motionBlur:0;
+        cb.projectionX=cbFrame_.proj.m[0][0];cb.projectionY=cbFrame_.proj.m[1][1];
+        cb.useFluidDepth=volumeSurfaceDepth_&&gpuFluidCoreMode_>=4&&fluidVolumeDebugMode_==0?1.f:0.f;
+        cb.rtStrength=rtShadowRendered_?.35f:0.f;
+        // RT radiance is already in the HDR scene before DLSS, bloom and DoF.
+        cb.rtReflection=cb.rtIndirect=0;
+        cb.inverseViewProjection=XMToM4(XMMatrixInverse(nullptr,XMLoadFloat4x4(reinterpret_cast<const XMFLOAT4X4*>(&cbFrame_.viewProj))));
+        cb.previousViewProjection=postHistoryValid_?previousPostViewProjection_:cbFrame_.viewProj;
 
 		const uint32_t off = upload_[fi].Allocate(sizeof(CBPost), 256);
 		if (off != UINT32_MAX) {
@@ -1255,17 +1369,23 @@ void Renderer::EndFrame() {
 		list_->SetGraphicsRootConstantBufferView(0, cbFrameAddr_);
 	}
 
-	list_->SetGraphicsRootDescriptorTable(1, ppSrvGpu_);
+	list_->SetGraphicsRootDescriptorTable(1, postColorSrv_);
 	// ★修正: 未初期化(0)の場合はダミーとして ppSrvGpu_ をバインドし、無効なSRVやTextureCubeがバインドされてDevice Hung(0x887A0006)になるのを防ぐ
-	list_->SetGraphicsRootDescriptorTable(2, sumiEPaperTex_ ? GetTextureSrvGpu(sumiEPaperTex_) : ppSrvGpu_);
-	list_->SetGraphicsRootDescriptorTable(3, sumiEVignetteTex_ ? GetTextureSrvGpu(sumiEVignetteTex_) : ppSrvGpu_);
+    const bool cinematicPost=psoPP_.Get()==pipelines_["ChronoFocus"].Get();
+	list_->SetGraphicsRootDescriptorTable(2, cinematicPost&&cinematicLut_?GetTextureSrvGpu(cinematicLut_):(sumiEPaperTex_ ? GetTextureSrvGpu(sumiEPaperTex_) : ppSrvGpu_));
+	list_->SetGraphicsRootDescriptorTable(3, cinematicPost?gtaoTarget_.srv:(sumiEVignetteTex_ ? GetTextureSrvGpu(sumiEVignetteTex_) : ppSrvGpu_));
 	// ★修正: 深度バッファを t3 にバインド (法線バッファは廃止)
 	list_->SetGraphicsRootDescriptorTable(4, ppDepthSrvGpu_);
-	list_->SetGraphicsRootDescriptorTable(5, ppSrvGpu_);
-	list_->SetGraphicsRootDescriptorTable(6, ppDepthSrvGpu_);
+	list_->SetGraphicsRootDescriptorTable(5, cinematicPost?bloomUp_[0].srv:ppSrvGpu_);
+	list_->SetGraphicsRootDescriptorTable(6, cinematicPost&&volumeSurfaceDepth_&&gpuFluidCoreMode_>=4&&fluidVolumeDebugMode_==0?volumeSurfaceDepthSrv_:ppDepthSrvGpu_);
 
+    list_->SetGraphicsRootDescriptorTable(7,rtShadowRendered_?rtShadowTarget_.srv:ppSrvGpu_);
+    list_->SetGraphicsRootDescriptorTable(8,rtLightingRendered_?rtReflectionTarget_.srv:ppSrvGpu_);
+    list_->SetGraphicsRootDescriptorTable(9,rtLightingRendered_?rtIndirectTarget_.srv:ppSrvGpu_);
 	list_->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 	list_->DrawInstanced(3, 1, 0, 0);
+    previousPostViewProjection_=cbFrame_.viewProj;previousPostCamera_=cbFrame_.cameraPos;postHistoryValid_=true;
+    previousTemporalViewProjection_=unjitteredViewProjection_;++temporalFrame_;
 
 	// ★UI描画順序の変更: ポストプロセス適用後のGameビュー用テクスチャにUIを直接描画することで、エディタ上でもUIが表示されるようにします。
 	FlushSprites();
@@ -1371,7 +1491,7 @@ void Renderer::CollectFluidProfile(uint32_t frameIndex) {
 				if (frame.used[stage] && ticks[stage * 2 + 1] >= ticks[stage * 2]) {
 					sample.ms[stage] = static_cast<float>(
 						(double(ticks[stage * 2 + 1] - ticks[stage * 2]) * 1000.0) / double(fluidProfilerFrequency_));
-					if (stage != SceneRender) sample.totalMs += sample.ms[stage];
+					if (stage < SceneRender) sample.totalMs += sample.ms[stage];
 				}
 			}
 			D3D12_RANGE noWrites{0, 0};
@@ -1411,6 +1531,11 @@ void Renderer::CollectFluidProfile(uint32_t frameIndex) {
 void Renderer::SetCamera(const Camera& camera) {
 	cbFrame_.view = XMToM4(camera.View());
 	cbFrame_.proj = XMToM4(camera.Proj());
+    unjitteredProjection_=cbFrame_.proj;unjitteredViewProjection_=Matrix4x4::Multiply(cbFrame_.view,cbFrame_.proj);
+    if(dlssActive_){auto halton=[](uint32_t index,uint32_t base){float result=0,weight=1;while(index){weight/=base;result+=weight*(index%base);index/=base;}return result;};
+        temporalJitter_={halton(temporalFrame_%32+1,2)-.5f,halton(temporalFrame_%32+1,3)-.5f};
+        cbFrame_.proj.m[2][0]+=temporalJitter_.x*2/sceneWidth_;cbFrame_.proj.m[2][1]-=temporalJitter_.y*2/sceneHeight_;
+    }
 	cbFrame_.viewProj = Matrix4x4::Multiply(cbFrame_.view, cbFrame_.proj);
 	auto p = camera.Position();
 	cbFrame_.cameraPos = Vector3{p.x, p.y, p.z};
@@ -1556,7 +1681,7 @@ bool Renderer::CreatePSO(const std::string& name, ID3DBlob* vsBlob, ID3DBlob* ps
 	pso.InputLayout = {layout, numElements};
 	pso.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
 	pso.NumRenderTargets = 1;
-	pso.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+	pso.RTVFormats[0] = DXGI_FORMAT_R16G16B16A16_FLOAT;
 	pso.SampleDesc.Count = 1;
 	pso.SampleMask = UINT_MAX;
 
@@ -1608,7 +1733,7 @@ bool Renderer::CreatePSO_Transparent(const std::string& name, ID3DBlob* vsBlob, 
 	pso.InputLayout = {layout, _countof(layout)};
 	pso.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
 	pso.NumRenderTargets = 1;
-	pso.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+	pso.RTVFormats[0] = DXGI_FORMAT_R16G16B16A16_FLOAT;
 	pso.SampleDesc.Count = 1;
 	pso.SampleMask = UINT_MAX;
 
@@ -1695,7 +1820,8 @@ bool Renderer::InitPipelines() {
 		CD3DX12_DESCRIPTOR_RANGE rangeEnvMapSRV;
 		rangeEnvMapSRV.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 3); // t3 (Environment CubeMap)
 
-		CD3DX12_ROOT_PARAMETER params[8]{};
+		CD3DX12_DESCRIPTOR_RANGE rangePbr;rangePbr.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV,3,4);
+		CD3DX12_ROOT_PARAMETER params[9]{};
 		params[0].InitAsConstantBufferView(0);                                        // b0: CBFrame
 		params[1].InitAsConstantBufferView(1);                                        // b1: CBObj
 		params[2].InitAsConstantBufferView(2);                                        // b2: CBLight
@@ -1704,10 +1830,11 @@ bool Renderer::InitPipelines() {
 		params[5].InitAsDescriptorTable(1, &rangeShadowSRV, D3D12_SHADER_VISIBILITY_PIXEL); // t1: ShadowMap
 		params[6].InitAsShaderResourceView(2, 0, D3D12_SHADER_VISIBILITY_VERTEX);       // t2: InstanceData (SRV)
 		params[7].InitAsDescriptorTable(1, &rangeEnvMapSRV, D3D12_SHADER_VISIBILITY_PIXEL); // t3: EnvMap (★追加)
+		params[8].InitAsDescriptorTable(1,&rangePbr,D3D12_SHADER_VISIBILITY_PIXEL);
 
 		// s0: 通常のテクスチャサンプラー, s1: 影比較用サンプラー
 		CD3DX12_STATIC_SAMPLER_DESC samp[2]{};
-		samp[0].Init(0, D3D12_FILTER_MIN_MAG_MIP_LINEAR);
+		samp[0].Init(0,D3D12_FILTER_ANISOTROPIC);samp[0].MaxAnisotropy=8;
 		samp[1].Init(1, D3D12_FILTER_COMPARISON_MIN_MAG_LINEAR_MIP_POINT, D3D12_TEXTURE_ADDRESS_MODE_BORDER, D3D12_TEXTURE_ADDRESS_MODE_BORDER, D3D12_TEXTURE_ADDRESS_MODE_BORDER);
 		samp[1].ComparisonFunc = D3D12_COMPARISON_FUNC_LESS_EQUAL;
 		samp[1].BorderColor = D3D12_STATIC_BORDER_COLOR_OPAQUE_WHITE;
@@ -1924,7 +2051,9 @@ float4 main(VSIn v, uint instanceID : SV_InstanceID) : SV_POSITION {
 		psoDesc.pRootSignature = rootSig3D_.Get();
 		psoDesc.VS = {vsShadow->GetBufferPointer(), vsShadow->GetBufferSize()};
 		psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
-		psoDesc.RasterizerState.DepthBias = 100000;
+        // D32 bias is measured in floating-point depth ULPs. 100000 moved
+        // a mid-range caster by about 0.6 world units in this 99-unit volume.
+        psoDesc.RasterizerState.DepthBias = 1500;
 		psoDesc.RasterizerState.DepthBiasClamp = 0.0f;
 		psoDesc.RasterizerState.SlopeScaledDepthBias = 2.0f;
 		psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
@@ -1955,6 +2084,19 @@ float4 main(VSIn v, uint instanceID : SV_InstanceID) : SV_POSITION {
 		};
 		psoDesc.InputLayout = {instLayout, _countof(instLayout)};
 		dev_->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&shadowInstancedPso_));
+        auto cutVs=CompileShaderFromFile(L"Resources/shaders/VegetationShadow.hlsl","VSMain","vs_5_0");
+        auto cutInstVs=CompileShaderFromFile(L"Resources/shaders/VegetationShadow.hlsl","VSInstanced","vs_5_0");
+        auto cutPs=CompileShaderFromFile(L"Resources/shaders/VegetationShadow.hlsl","PSMain","ps_5_0");
+        if(!cutVs||!cutInstVs||!cutPs)return false;
+        D3D12_INPUT_ELEMENT_DESC cutLayout[]={
+            {"POSITION",0,DXGI_FORMAT_R32G32B32A32_FLOAT,0,0,D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA,0},
+            {"TEXCOORD",0,DXGI_FORMAT_R32G32_FLOAT,0,16,D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA,0}};
+        psoDesc.InputLayout={cutLayout,2};psoDesc.RasterizerState.CullMode=D3D12_CULL_MODE_NONE;
+        psoDesc.PS={cutPs->GetBufferPointer(),cutPs->GetBufferSize()};
+        psoDesc.VS={cutVs->GetBufferPointer(),cutVs->GetBufferSize()};
+        if(FAILED(dev_->CreateGraphicsPipelineState(&psoDesc,IID_PPV_ARGS(&shadowCutoutPso_))))return false;
+        psoDesc.VS={cutInstVs->GetBufferPointer(),cutInstVs->GetBufferSize()};
+        if(FAILED(dev_->CreateGraphicsPipelineState(&psoDesc,IID_PPV_ARGS(&shadowInstancedCutoutPso_))))return false;
 	}
 
 	// 2D Shader (変更なし)
@@ -2049,7 +2191,7 @@ float4 main(PSIn i) : SV_TARGET { return i.color; }
 		pso.PS = {psBlob->GetBufferPointer(), psBlob->GetBufferSize()};
 		pso.InputLayout = {layout, _countof(layout)};
 		pso.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_LINE;
-		pso.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+		pso.RTVFormats[0] = DXGI_FORMAT_R16G16B16A16_FLOAT;
 		pso.NumRenderTargets = 1;
 		pso.SampleDesc.Count = 1;
 		pso.SampleMask = UINT_MAX;
@@ -2104,7 +2246,7 @@ float4 main(PSIn i) : SV_TARGET { return i.color; }
 			psoDesc.InputLayout = { skinLayout, _countof(skinLayout) }; // VertexData に合わせる
 			psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
 			psoDesc.NumRenderTargets = 1;
-			psoDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+			psoDesc.RTVFormats[0] = DXGI_FORMAT_R16G16B16A16_FLOAT;
 			psoDesc.DSVFormat = DXGI_FORMAT_D32_FLOAT;
 			psoDesc.SampleDesc.Count = 1;
 
@@ -2133,7 +2275,7 @@ float4 main(PSIn i) : SV_TARGET { return i.color; }
 			psoDesc.InputLayout = { skinLayout, _countof(skinLayout) };
 			psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
 			psoDesc.NumRenderTargets = 1;
-			psoDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+			psoDesc.RTVFormats[0] = DXGI_FORMAT_R16G16B16A16_FLOAT;
 			psoDesc.DSVFormat = DXGI_FORMAT_D32_FLOAT;
 			psoDesc.SampleDesc.Count = 1;
 
@@ -2175,7 +2317,7 @@ float4 main(PSIn i) : SV_TARGET { return i.color; }
 			psoDesc.PS = { psOutline->GetBufferPointer(), psOutline->GetBufferSize() };
 			psoDesc.InputLayout = { outlineLayout, _countof(outlineLayout) };
 			psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
-			psoDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+			psoDesc.RTVFormats[0] = DXGI_FORMAT_R16G16B16A16_FLOAT;
 			psoDesc.NumRenderTargets = 1;
 			psoDesc.SampleDesc.Count = 1;
 			psoDesc.SampleMask = UINT_MAX;
@@ -2217,7 +2359,7 @@ float4 main(PSIn i) : SV_TARGET { return i.color; }
 			psoDesc.PS = { psOutline->GetBufferPointer(), psOutline->GetBufferSize() };
 			psoDesc.InputLayout = { outlineSkinLayout, _countof(outlineSkinLayout) };
 			psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
-			psoDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+			psoDesc.RTVFormats[0] = DXGI_FORMAT_R16G16B16A16_FLOAT;
 			psoDesc.NumRenderTargets = 1;
 			psoDesc.SampleDesc.Count = 1;
 			psoDesc.SampleMask = UINT_MAX;
@@ -2300,7 +2442,7 @@ float4 main(PSIn i) : SV_TARGET { return i.color; }
 			pso.PS = {psRiver->GetBufferPointer(), psRiver->GetBufferSize()};
 			pso.InputLayout = {layout, _countof(layout)};
 			pso.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
-			pso.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+			pso.RTVFormats[0] = DXGI_FORMAT_R16G16B16A16_FLOAT;
 			pso.NumRenderTargets = 1;
 			pso.SampleDesc.Count = 1;
 			pso.SampleMask = UINT_MAX;
@@ -2340,7 +2482,7 @@ float4 main(PSIn i) : SV_TARGET { return i.color; }
 			psoDesc.InputLayout = { skinLayout, _countof(skinLayout) };
 			psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
 			psoDesc.NumRenderTargets = 1;
-			psoDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+			psoDesc.RTVFormats[0] = DXGI_FORMAT_R16G16B16A16_FLOAT;
 			psoDesc.DSVFormat = DXGI_FORMAT_D32_FLOAT;
 			psoDesc.SampleDesc.Count = 1;
 
@@ -2430,7 +2572,7 @@ Renderer::TextureHandle Renderer::LoadTexture2D(const std::string& filePath, boo
 		return 0;
 	
 	std::string unifiedPath = PathUtils::GetUnifiedPath(filePath);
-	auto it = textureCache_.find(unifiedPath);
+	auto it = textureCache_.find(unifiedPath+(sRGB?"#srgb":"#linear"));
 	if (it != textureCache_.end())
 		return it->second;
 
@@ -2453,10 +2595,16 @@ Renderer::TextureHandle Renderer::LoadTexture2D(const std::string& filePath, boo
 	}
 
 	const DXGI_FORMAT fmt = sRGB ? DXGI_FORMAT_R8G8B8A8_UNORM_SRGB : DXGI_FORMAT_R8G8B8A8_UNORM;
-	ComPtr<ID3D12Resource> tex;
+	// Filter radiance in linear space for color maps, data linearly for PBR maps.
+    DirectX::Image mipSource=*src;mipSource.format=fmt;
+    DirectX::ScratchImage mipChain;
+    hr=mipSource.width==1&&mipSource.height==1?mipChain.InitializeFromImage(mipSource):DirectX::GenerateMipMaps(mipSource,DirectX::TEX_FILTER_DEFAULT,0,mipChain);
+    if(FAILED(hr)){OutputDebugStringA(("Texture mip generation failed: "+unifiedPath+"\n").c_str());return 0;}
+    const UINT mipCount=UINT(mipChain.GetMetadata().mipLevels);
+    ComPtr<ID3D12Resource> tex;
 	{
 		CD3DX12_HEAP_PROPERTIES heapDefault(D3D12_HEAP_TYPE_DEFAULT);
-		CD3DX12_RESOURCE_DESC texDesc = CD3DX12_RESOURCE_DESC::Tex2D(fmt, (UINT64)src->width, (UINT)src->height, 1, 1);
+		CD3DX12_RESOURCE_DESC texDesc = CD3DX12_RESOURCE_DESC::Tex2D(fmt, (UINT64)src->width, (UINT)src->height, 1, UINT16(mipCount));
 		hr = dev_->CreateCommittedResource(&heapDefault, D3D12_HEAP_FLAG_NONE, &texDesc, D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&tex));
 		if (FAILED(hr))
 			return 0;
@@ -2466,7 +2614,7 @@ Renderer::TextureHandle Renderer::LoadTexture2D(const std::string& filePath, boo
 	UINT64 uploadSize = 0;
 	{
 		D3D12_RESOURCE_DESC texDesc = tex->GetDesc();
-		dev_->GetCopyableFootprints(&texDesc, 0, 1, 0, nullptr, nullptr, nullptr, &uploadSize);
+		dev_->GetCopyableFootprints(&texDesc, 0, mipCount, 0, nullptr, nullptr, nullptr, &uploadSize);
 		CD3DX12_HEAP_PROPERTIES heapUpload(D3D12_HEAP_TYPE_UPLOAD);
 		CD3DX12_RESOURCE_DESC upDesc = CD3DX12_RESOURCE_DESC::Buffer(uploadSize);
 		hr = dev_->CreateCommittedResource(&heapUpload, D3D12_HEAP_FLAG_NONE, &upDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&upload));
@@ -2480,11 +2628,9 @@ Renderer::TextureHandle Renderer::LoadTexture2D(const std::string& filePath, boo
 		dev_->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&alloc));
 		dev_->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, alloc.Get(), nullptr, IID_PPV_ARGS(&cl));
 
-		D3D12_SUBRESOURCE_DATA sub{};
-		sub.pData = src->pixels;
-		sub.RowPitch = (LONG_PTR)src->rowPitch;
-		sub.SlicePitch = (LONG_PTR)src->slicePitch;
-		UpdateSubresources(cl.Get(), tex.Get(), upload.Get(), 0, 0, 1, &sub);
+		std::vector<D3D12_SUBRESOURCE_DATA> sub(mipCount);
+        for(UINT level=0;level<mipCount;++level){auto* mip=mipChain.GetImage(level,0,0);sub[level].pData=mip->pixels;sub[level].RowPitch=LONG_PTR(mip->rowPitch);sub[level].SlicePitch=LONG_PTR(mip->slicePitch);}
+        UpdateSubresources(cl.Get(),tex.Get(),upload.Get(),0,0,mipCount,sub.data());
 		auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(tex.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
 		cl->ResourceBarrier(1, &barrier);
 		cl->Close();
@@ -2502,7 +2648,7 @@ Renderer::TextureHandle Renderer::LoadTexture2D(const std::string& filePath, boo
 	srv.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
 	srv.Format = fmt;
 	srv.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
-	srv.Texture2D.MipLevels = 1;
+	srv.Texture2D.MipLevels = mipCount;
 	dev_->CreateShaderResourceView(tex.Get(), &srv, cpu);
 	dev_->CreateShaderResourceView(tex.Get(), &srv, cpuMaster); // ★追加
 
@@ -2514,7 +2660,7 @@ Renderer::TextureHandle Renderer::LoadTexture2D(const std::string& filePath, boo
 
 	TextureHandle handle = (TextureHandle)textures_.size();
 	textures_.push_back(t);
-	textureCache_[unifiedPath] = handle;
+	textureCache_[unifiedPath+(sRGB?"#srgb":"#linear")] = handle;
 	return handle;
 }
 
@@ -2524,8 +2670,15 @@ void Renderer::DrawMeshInstanced(MeshHandle mesh, TextureHandle texture, const T
 }
 
 void Renderer::DrawMeshInstanced(MeshHandle mesh, TextureHandle texture, const Matrix4x4& worldMatrix, const Vector4& mulColor, 
-								 const std::string& shaderName, const std::vector<TextureHandle>& extraTex) {
-	mesh=SelectDistanceLod(mesh,worldMatrix);
+								 const std::string& shaderName, const std::vector<TextureHandle>& extraTex,uint64_t motionId) {
+    const bool scenery=shaderName=="EnvironmentSurface"||shaderName=="MeadowGround";
+    auto rtMesh=mesh; // Rays use a camera-independent shape.
+    if(sceneryOptimized_&&scenery&&shaderName!="MeadowGround")rtMesh=GetDistanceLodMeshes(mesh)[1];
+    if(scenery&&(graphicsSettings_.rtReflections||graphicsSettings_.rtIndirect))mesh=rtMesh;
+    else mesh=SelectDistanceLod(mesh,worldMatrix);
+    if((graphicsSettings_.rtShadows||graphicsSettings_.rtReflections||graphicsSettings_.rtIndirect)&&psoRtShadow_&&(shaderName=="EnvironmentSurface"||shaderName=="MeadowGround"))
+        rtInstances_.push_back({rtMesh,worldMatrix,texture,extraTex.empty()?neutralNormal_:extraTex[0],extraTex.size()>1?extraTex[1]:0,mulColor,shaderName=="MeadowGround"});
+    if(dlssActive_&&motionId)temporalJobs_.push_back({motionId,mesh,texture,worldMatrix});
 	// キャッシュチェック (前回のドローコールと同じアセットなら検索をスキップ)
 	if (lastIDCIndex_ != -1 && lastIDCIndex_ < (int)instancedDrawCalls_.size()) {
 		auto& last = instancedDrawCalls_[lastIDCIndex_];
@@ -2658,16 +2811,28 @@ Model* Renderer::GetModel(MeshHandle handle) {
 		return nullptr;
 	return models_[handle].get();
 }
-void Renderer::PrepareDistanceLods(uint32_t mesh,bool grassCards){
+void Renderer::PrepareDistanceLods(uint32_t mesh,bool grassCards,bool authoredLeaves){
+    sceneryOptimized_=wcsstr(GetCommandLineW(),L"--scenery-baseline")==nullptr;
+    if(authoredLeaves&&!sceneryOptimized_)return;
     if(sceneryLods_.count(mesh))return;auto* source=GetModel(mesh);if(!source||!source->GetData().bones.empty())return;
-    SceneryLods lod;lod.meshes.fill(mesh);Vector3 lo{1e30f,1e30f,1e30f},hi{-1e30f,-1e30f,-1e30f};
+    SceneryLods lod;lod.meshes.fill(mesh);lod.foliage=authoredLeaves;Vector3 lo{1e30f,1e30f,1e30f},hi{-1e30f,-1e30f,-1e30f};
     for(const auto& v:source->GetData().vertices){lo.x=(std::min)(lo.x,v.position.x);lo.y=(std::min)(lo.y,v.position.y);lo.z=(std::min)(lo.z,v.position.z);
         hi.x=(std::max)(hi.x,v.position.x);hi.y=(std::max)(hi.y,v.position.y);hi.z=(std::max)(hi.z,v.position.z);}
     lod.center=(lo+hi)*.5f;Vector3 half=(hi-lo)*.5f;lod.radius=std::sqrt(half.x*half.x+half.y*half.y+half.z*half.z);
     for(int level=1;level<=2;++level){auto reduced=std::make_shared<Model>();
-        if(reduced->InitializeStaticLOD(dev_,*source,grassCards?(level==1?2:4):(level==1?32:20),grassCards)){
+        int reduction=authoredLeaves?(level==1?4:12):grassCards?(level==1?2:4):(level==1?32:20);
+        if(reduced->InitializeStaticLOD(dev_,*source,reduction,grassCards,authoredLeaves)){
             lod.meshes[level]=uint32_t(models_.size());models_.push_back(reduced);
         }else lod.meshes[level]=lod.meshes[level-1];}
+    if(sceneryOptimized_){
+        ComPtr<ID3D12CommandAllocator> allocator;ComPtr<ID3D12GraphicsCommandList> commands;
+        if(SUCCEEDED(dev_->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT,IID_PPV_ARGS(&allocator)))&&
+            SUCCEEDED(dev_->CreateCommandList(0,D3D12_COMMAND_LIST_TYPE_DIRECT,allocator.Get(),nullptr,IID_PPV_ARGS(&commands)))){
+            for(auto handle:lod.meshes)models_[handle]->PromoteStaticGeometry(dev_,commands.Get());
+            if(SUCCEEDED(commands->Close())){ID3D12CommandList* lists[]={commands.Get()};queue_->ExecuteCommandLists(1,lists);WaitGPU();
+                for(auto handle:lod.meshes)models_[handle]->ReleaseUploadBuffers();}
+        }
+    }
     sceneryLods_.emplace(mesh,lod);
 }
 std::array<uint32_t,3> Renderer::GetDistanceLodMeshes(uint32_t mesh)const{
@@ -2681,10 +2846,21 @@ uint32_t Renderer::SelectDistanceLod(uint32_t mesh,const Matrix4x4& world){
         center.x*world.m[0][2]+center.y*world.m[1][2]+center.z*world.m[2][2]+world.m[3][2]};
     float scale=0;for(int a=0;a<3;++a)scale=(std::max)(scale,std::sqrt(world.m[a][0]*world.m[a][0]+world.m[a][1]*world.m[a][1]+world.m[a][2]*world.m[a][2]));
     Vector3 delta=point-cbFrame_.cameraPos;float distance=std::sqrt(delta.x*delta.x+delta.y*delta.y+delta.z*delta.z);
-    int level=distanceLodEnabled_?DistanceLodLevel(distance,lod.radius*scale):0;uint32_t selected=lod.meshes[level];
+    int level=distanceLodEnabled_?(lod.foliage?(distance>60?2:distance>22?1:0):DistanceLodLevel(distance,lod.radius*scale)):0;uint32_t selected=lod.meshes[level];
     sceneryLodStats_.originalIndices+=models_[mesh]->GetIndexCount();sceneryLodStats_.selectedIndices+=models_[selected]->GetIndexCount();
     sceneryLodStats_.originalVertices+=models_[mesh]->GetVertexCount();sceneryLodStats_.selectedVertices+=models_[selected]->GetVertexCount();
     ++sceneryLodStats_.instances[level];return selected;
+}
+bool Renderer::SceneryVisible(uint32_t mesh,const Matrix4x4& world,const Matrix4x4& viewProjection)const{
+    if(!mesh||mesh>=models_.size())return true;const auto& data=models_[mesh]->GetData();
+    auto transform=M4ToXM(world)*M4ToXM(viewProjection);
+    uint32_t outside=63;
+    for(int i=0;i<8;++i){auto p=DirectX::XMVectorSet(i&1?data.max.x:data.min.x,i&2?data.max.y:data.min.y,i&4?data.max.z:data.min.z,1);
+        DirectX::XMFLOAT4 clip;DirectX::XMStoreFloat4(&clip,DirectX::XMVector4Transform(p,transform));
+        uint32_t mask=(clip.x<-clip.w?1u:0u)|(clip.x>clip.w?2u:0u)|(clip.y<-clip.w?4u:0u)|(clip.y>clip.w?8u:0u)|(clip.z<0?16u:0u)|(clip.z>clip.w?32u:0u);
+        outside&=mask;
+    }
+    return outside==0;
 }
 
 bool Renderer::LoadAdditionalAnimation(MeshHandle handle, const std::string& animPath) {
@@ -3218,21 +3394,25 @@ void Renderer::FlushLines() {
 	lineVerticesXRay_.clear();
 }
 
+#include "HdrBloom.inl"
+#include "TemporalInputs.inl"
+#include "RtShadows.inl"
+#include "RtLighting.inl"
 bool Renderer::InitPostProcess_() {
 	{
-		const UINT W = Engine::WindowDX::kW;
-		const UINT H = Engine::WindowDX::kH;
+		const UINT W = sceneWidth_;
+		const UINT H = sceneHeight_;
 		D3D12_RESOURCE_DESC rd{};
 		rd.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
 		rd.Width = W;
 		rd.Height = H;
 		rd.DepthOrArraySize = 1;
 		rd.MipLevels = 1;
-		rd.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+		rd.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
 		rd.SampleDesc.Count = 1;
 		rd.Flags = D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
 		D3D12_CLEAR_VALUE cv{};
-		cv.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+		cv.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
 		std::memcpy(cv.Color, kPPSceneClearColor, sizeof(float) * 4);
 
 		CD3DX12_HEAP_PROPERTIES heap(D3D12_HEAP_TYPE_DEFAULT);
@@ -3326,7 +3506,9 @@ float4 main(float4 svpos:SV_POSITION, float2 uv:TEXCOORD0) : SV_TARGET {
 		CD3DX12_DESCRIPTOR_RANGE rangeFluidDepth2;
 		rangeFluidDepth2.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 5); // t5
 
-		CD3DX12_ROOT_PARAMETER params[7]{};
+		CD3DX12_DESCRIPTOR_RANGE rangeRt;rangeRt.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV,1,6);
+		CD3DX12_DESCRIPTOR_RANGE rangeReflection,rangeIndirect;rangeReflection.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV,1,7);rangeIndirect.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV,1,8);
+		CD3DX12_ROOT_PARAMETER params[10]{};
 		params[0].InitAsConstantBufferView(0); // b0
 		params[1].InitAsDescriptorTable(1, &rangeSRV, D3D12_SHADER_VISIBILITY_PIXEL); // t0
 		params[2].InitAsDescriptorTable(1, &rangePaper, D3D12_SHADER_VISIBILITY_PIXEL); // t1
@@ -3334,6 +3516,9 @@ float4 main(float4 svpos:SV_POSITION, float2 uv:TEXCOORD0) : SV_TARGET {
 		params[4].InitAsDescriptorTable(1, &rangeDepth, D3D12_SHADER_VISIBILITY_PIXEL); // t3
 		params[5].InitAsDescriptorTable(1, &rangeFluidColor2, D3D12_SHADER_VISIBILITY_PIXEL); // t4
 		params[6].InitAsDescriptorTable(1, &rangeFluidDepth2, D3D12_SHADER_VISIBILITY_PIXEL); // t5
+        params[7].InitAsDescriptorTable(1,&rangeRt,D3D12_SHADER_VISIBILITY_PIXEL);
+        params[8].InitAsDescriptorTable(1,&rangeReflection,D3D12_SHADER_VISIBILITY_PIXEL);
+        params[9].InitAsDescriptorTable(1,&rangeIndirect,D3D12_SHADER_VISIBILITY_PIXEL);
 
 		CD3DX12_STATIC_SAMPLER_DESC samp(0, D3D12_FILTER_MIN_MAG_MIP_LINEAR);
 		CD3DX12_ROOT_SIGNATURE_DESC rs{};
@@ -3365,6 +3550,9 @@ float4 main(float4 svpos:SV_POSITION, float2 uv:TEXCOORD0) : SV_TARGET {
 		if (!psChrono) return false;
 		pso.PS={psChrono->GetBufferPointer(),psChrono->GetBufferSize()};
 		if(FAILED(dev_->CreateGraphicsPipelineState(&pso,IID_PPV_ARGS(&pipelines_["ChronoFocus"]))))return false;
+        cinematicLut_=LoadTexture2D("Resources/Textures/ColorGrading/CinematicLUT.png",false);
+        if(!cinematicLut_)return false;
+        if(!InitHdrBloom_())return false;
 		auto psCopy = CompileShaderFromFile(L"Resources/shaders/CopyPS.hlsl", "main", "ps_5_0");
 		if (psCopy) {
 			pso.PS = { psCopy->GetBufferPointer(), psCopy->GetBufferSize() };
@@ -3540,6 +3728,7 @@ float4 main(float4 svpos:SV_POSITION, float2 uv:TEXCOORD0) : SV_TARGET {
 		if (psMetaball) {
 			// Background transmission and all fluid layers are composed in the PS.
 			D3D12_GRAPHICS_PIPELINE_STATE_DESC psoMeta = pso;
+			psoMeta.RTVFormats[0] = DXGI_FORMAT_R16G16B16A16_FLOAT;
 			psoMeta.pRootSignature = rootSigLiquid_.Get();
 			psoMeta.PS = { psMetaball->GetBufferPointer(), psMetaball->GetBufferSize() };
 			auto& rt = psoMeta.BlendState.RenderTarget[0];
@@ -3600,11 +3789,11 @@ float4 main(float4 svpos:SV_POSITION, float2 uv:TEXCOORD0) : SV_TARGET {
 
 	// ★追加: Distortion用バックドロップテクスチャの作成
 	{
-		const UINT W = Engine::WindowDX::kW;
-		const UINT H = Engine::WindowDX::kH;
-		D3D12_RESOURCE_DESC rd = CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R8G8B8A8_UNORM, W, H, 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET);
+		const UINT W = sceneWidth_;
+		const UINT H = sceneHeight_;
+		D3D12_RESOURCE_DESC rd = CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R16G16B16A16_FLOAT, W, H, 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET);
 		CD3DX12_HEAP_PROPERTIES heap(D3D12_HEAP_TYPE_DEFAULT);
-		D3D12_CLEAR_VALUE cv = { DXGI_FORMAT_R8G8B8A8_UNORM, {0,0,0,1} };
+		D3D12_CLEAR_VALUE cv = { DXGI_FORMAT_R16G16B16A16_FLOAT, {0,0,0,1} };
 		HRESULT hr = dev_->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &rd, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, &cv, IID_PPV_ARGS(&backdropColor_));
 		if (FAILED(hr)) {
 			// 歪み用バックドロップの生成失敗は致命的ではないが警告を出す
@@ -3616,7 +3805,7 @@ float4 main(float4 svpos:SV_POSITION, float2 uv:TEXCOORD0) : SV_TARGET {
 		backdropSrvCpu_ = window_->SRV_CPU((int)sIdx);
 		backdropSrvCpuMaster_ = window_->SRV_CPU_Master((int)sIdx); // ★追加
 		D3D12_SHADER_RESOURCE_VIEW_DESC srv{};
-		srv.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+		srv.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
 		srv.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
 		srv.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
 		srv.Texture2D.MipLevels = 1;
@@ -3658,7 +3847,7 @@ float4 main(float4 svpos:SV_POSITION, float2 uv:TEXCOORD0) : SV_TARGET {
 			psoDesc.SampleMask = UINT_MAX;
 			psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
 			psoDesc.NumRenderTargets = 1;
-			psoDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+			psoDesc.RTVFormats[0] = DXGI_FORMAT_R16G16B16A16_FLOAT;
 			psoDesc.DSVFormat = DXGI_FORMAT_D32_FLOAT;
 			psoDesc.SampleDesc.Count = 1;
 
@@ -3670,8 +3859,8 @@ float4 main(float4 svpos:SV_POSITION, float2 uv:TEXCOORD0) : SV_TARGET {
 
 	// ★追加: 液体メタボール用の専用レンダーターゲット作成
 	{
-		const UINT W = Engine::WindowDX::kW;
-		const UINT H = Engine::WindowDX::kH;
+		const UINT W = sceneWidth_;
+		const UINT H = sceneHeight_;
 		CD3DX12_HEAP_PROPERTIES heap(D3D12_HEAP_TYPE_DEFAULT);
 		const UINT rtvStride = dev_->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
 		D3D12_SHADER_RESOURCE_VIEW_DESC nullCube{};
@@ -3764,6 +3953,7 @@ float4 main(float4 svpos:SV_POSITION, float2 uv:TEXCOORD0) : SV_TARGET {
 void Renderer::SetPostEffect(const std::string& name) {
 	// 空文字または "Default" の場合はパススルー（コピー）にする
 	if (name.empty() || name == "Default") {
+        postHistoryValid_=false;
 		if (psoCopy_) {
 			psoPP_ = psoCopy_;
 			ppEnabled_ = false; // ★修正: メモリ不足によるバインド漏れ（Device Removed）を防ぐため false に
@@ -3774,6 +3964,7 @@ void Renderer::SetPostEffect(const std::string& name) {
 	// パイプラインマップから検索
 	auto it = pipelines_.find(name);
 	if (it != pipelines_.end()) {
+        if(psoPP_.Get()!=it->second.Get())postHistoryValid_=false;
 		psoPP_ = it->second; // パイプラインステートを切り替え
 		ppEnabled_ = true;   // 有効化
 	}
@@ -3792,12 +3983,12 @@ Renderer::CustomRenderTarget Renderer::CreateRenderTarget(uint32_t width, uint32
 	rd.Height = height;
 	rd.DepthOrArraySize = 1;
 	rd.MipLevels = 1;
-	rd.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+	rd.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
 	rd.SampleDesc.Count = 1;
 	rd.Flags = D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
 
 	D3D12_CLEAR_VALUE cv{};
-	cv.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+	cv.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
 	static const float kClearColor[] = {0.1f, 0.1f, 0.1f, 1.0f};
 	std::memcpy(cv.Color, kClearColor, sizeof(float) * 4);
 
@@ -3824,7 +4015,7 @@ Renderer::CustomRenderTarget Renderer::CreateRenderTarget(uint32_t width, uint32
 	uint32_t srvIdx = AllocateSrvIndex();
 	target.srvGpu = CD3DX12_GPU_DESCRIPTOR_HANDLE(srvHeap_->GetGPUDescriptorHandleForHeapStart(), srvIdx, srvInc_);
 	D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc{};
-	srvDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+	srvDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
 	srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
 	srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
 	srvDesc.Texture2D.MipLevels = 1;
@@ -4477,7 +4668,7 @@ bool Renderer::InitSkyboxPipeline() {
 	pso.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ZERO; // 深度書き込みOFF
 	pso.SampleMask = UINT_MAX;
 	pso.NumRenderTargets = 1;
-	pso.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+	pso.RTVFormats[0] = DXGI_FORMAT_R16G16B16A16_FLOAT;
 	pso.DSVFormat = DXGI_FORMAT_D32_FLOAT;
 	pso.SampleDesc.Count = 1;
 	pso.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
@@ -4843,7 +5034,7 @@ void Renderer::InitGPUFluid() {
 		psoDesc.PS = {psDebug->GetBufferPointer(), psDebug->GetBufferSize()};
 		psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_LINE;
 		psoDesc.NumRenderTargets = 1;
-		psoDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+		psoDesc.RTVFormats[0] = DXGI_FORMAT_R16G16B16A16_FLOAT;
 		psoDesc.SampleDesc.Count = 1;
 		psoDesc.SampleMask = UINT_MAX;
 		psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
@@ -4956,6 +5147,7 @@ void Renderer::ResetGPUFluid() {
 }
 
 void Renderer::UpdateGPUFluid(float dt) {
+    if(!chronoFluidPaused_&&std::isfinite(dt))fluidDecorationTime_+=(std::clamp)(dt,0.f,.1f);
     // CPU pressure waves guide the permanent ink spine. Use the same GPU
     // particle pool, density reconstruction and optical material as the player.
     if(isGPUFluidInitialized_&&gpuFluidBuffer_){

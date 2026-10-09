@@ -13,17 +13,21 @@ inline void RogueIcon(Canvas& ui,float x,float y,int attribute){auto color=Rogue
 inline void RogueSelection(Canvas& ui,const Chrono::Roguelite& state){
     ui.Fill({0,0,770,720},{.025f,.045f,.04f,.88f});ui.Text("SLIME EVOLUTION",44,32,32,Lime);
     ui.Text("LEVEL "+std::to_string(state.level)+"  /  残り強化 "+std::to_string(state.pending),44,76,22,Paper,JapaneseFont);
-    ui.Text("粘液パレットを1枚選択",44,110,22,Muted,JapaneseFont);
+    ui.Text(state.leaving?"ゲームプレイに戻ります":state.pending>1?"連続強化：残りを選んでからゲームプレイへ":"粘液パレットを1枚選択",44,110,22,Muted,JapaneseFont);
     for(int i=0;i<3;++i){int id=state.offers[size_t(i)];if(id<0)continue;const auto& card=Chrono::RogueCards[size_t(id)];auto b=RogueChoice(i);
+        float reveal=Chrono::CardReveal(state.cardAge,i),ease=1-std::pow(1-reveal,3.f);
+        b.x-=740*(1-ease);b.x+=12*std::sin(reveal*3.141593f)*(1-reveal);
+        if(state.leaving)b.x-=160*(1-state.MenuEase());
+        Canvas cardUI=ui;cardUI.MultiplyAlpha(reveal);
         Engine::Vector4 frame=card.rarity==2?Gold:card.rarity==1?Engine::Vector4{.3f,.66f,1,1}:Paper;
-        bool active=i==state.selected||ui.Hover(b);ui.Panel(b,frame);ui.Panel({b.x+3,b.y+3,b.w-6,b.h-6},active?Engine::Vector4{.12f,.22f,.19f,1}:Ink);
-        RogueIcon(ui,b.x+14,b.y+17,card.attribute);
-        ui.Text(std::to_string(i+1)+"  "+card.name,b.x+72,b.y+13,24,frame,JapaneseFont);
-        ui.Text("【"+std::string(Chrono::RogueTags[int(card.tag)])+"】  Rank "+std::to_string(state.ranks[size_t(id)]+1),b.x+450,b.y+16,17,RogueColor(card.attribute),JapaneseFont);
-        ui.Text(card.effect,b.x+72,b.y+51,18,Paper,JapaneseFont);
-        ui.Text(card.flavor,b.x+72,b.y+88,16,Muted,JapaneseFont);
-        const char* attributes[]={"軌跡","ホーミング弾","スライム本体","状態異常"};ui.Text(attributes[card.attribute],b.x+450,b.y+89,16,RogueColor(card.attribute),JapaneseFont);
-        ui.Text(card.rarity==2?"LEGEND":card.rarity==1?"RARE":"COMMON",b.x+14,b.y+82,12,frame);
+        bool active=state.CanChoose()&&(i==state.selected||ui.Hover(b));cardUI.Panel(b,frame);cardUI.Panel({b.x+3,b.y+3,b.w-6,b.h-6},active?Engine::Vector4{.12f,.22f,.19f,1}:Ink);
+        RogueIcon(cardUI,b.x+14,b.y+17,card.attribute);
+        cardUI.Text(std::to_string(i+1)+"  "+card.name,b.x+72,b.y+13,24,frame,JapaneseFont);
+        cardUI.Text("【"+std::string(Chrono::RogueTags[int(card.tag)])+"】  Rank "+std::to_string(state.ranks[size_t(id)]+1),b.x+450,b.y+16,17,RogueColor(card.attribute),JapaneseFont);
+        cardUI.Text(card.effect,b.x+72,b.y+51,18,Paper,JapaneseFont);
+        cardUI.Text(card.flavor,b.x+72,b.y+88,16,Muted,JapaneseFont);
+        const char* attributes[]={"軌跡","ホーミング弾","スライム本体","状態異常"};cardUI.Text(attributes[card.attribute],b.x+450,b.y+89,16,RogueColor(card.attribute),JapaneseFont);
+        cardUI.Text(card.rarity==2?"LEGEND":card.rarity==1?"RARE":"COMMON",b.x+14,b.y+82,12,frame);
     }
     ui.Button(RogueReroll,"R: REROLL  "+std::to_string(state.rerolls));ui.Button(RogueSkip,"X: SKIP / +60 BODY");
     ui.Text("1 / 2 / 3 : CHOOSE    ENTER : CONFIRM",44,689,17,Muted);

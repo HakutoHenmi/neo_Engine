@@ -40,4 +40,32 @@ template<class Vertex> ReducedStaticMesh<Vertex> ReduceStaticMesh(const std::vec
     return out;
 }
 inline int DistanceLodLevel(float distance,float radius){return distance>(std::max)(110.f,radius*6)?2:distance>(std::max)(45.f,radius*3)?1:0;}
+
+// Authored curved leaves are connected strips, not twelve-index generated
+// crossed cards. Keep or remove whole connected leaves, preserving every UV,
+// normal and triangle on the surviving strips.
+template<class Vertex> ReducedStaticMesh<Vertex> ReduceLeafCards(const std::vector<Vertex>& vertices,
+    const std::vector<uint32_t>& indices,std::vector<LodSubset> subsets,uint32_t stride){
+    ReducedStaticMesh<Vertex> out;if(vertices.empty()||indices.size()<3||stride<1)return out;
+    for(auto id:indices)if(id>=vertices.size())return out;
+    if(subsets.empty())subsets.push_back({0,uint32_t(indices.size()),-1});
+    std::vector<uint32_t> parent(vertices.size());for(uint32_t i=0;i<parent.size();++i)parent[i]=i;
+    auto root=[&](uint32_t id){while(parent[id]!=id){parent[id]=parent[parent[id]];id=parent[id];}return id;};
+    std::map<std::array<float,5>,uint32_t> welded;
+    for(uint32_t i=0;i<vertices.size();++i){const auto& v=vertices[i];
+        auto inserted=welded.emplace(std::array<float,5>{v.position.x,v.position.y,v.position.z,v.texcoord.x,v.texcoord.y},i);
+        if(!inserted.second)parent[i]=inserted.first->second;}
+    for(size_t i=0;i+2<indices.size();i+=3){uint32_t a=root(indices[i]);for(int k=1;k<3;++k){uint32_t b=root(indices[i+k]);if(a!=b){parent[b]=a;}}}
+    std::vector<uint32_t> remap(vertices.size(),UINT32_MAX);
+    for(const auto& sub:subsets){if(size_t(sub.first)+sub.count>indices.size()||sub.count%3)continue;
+        uint32_t start=uint32_t(out.indices.size());std::map<uint32_t,bool> kept;uint32_t ordinal=0;
+        for(uint32_t i=0;i<sub.count;i+=3){uint32_t component=root(indices[sub.first+i]);auto found=kept.find(component);
+            if(found==kept.end()){found=kept.emplace(component,ordinal%stride==0).first;++ordinal;}
+            if(!found->second)continue;
+            for(int k=0;k<3;++k){uint32_t id=indices[sub.first+i+k];if(remap[id]==UINT32_MAX){remap[id]=uint32_t(out.vertices.size());out.vertices.push_back(vertices[id]);}out.indices.push_back(remap[id]);}
+        }
+        uint32_t count=uint32_t(out.indices.size())-start;if(count)out.subsets.push_back({start,count,sub.material});
+    }
+    return out;
+}
 }

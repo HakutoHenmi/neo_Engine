@@ -140,7 +140,9 @@ public:
 
 	// 動的メッシュ初期化 (新規追加)
 	void InitializeDynamic(ID3D12Device* device, const std::vector<VertexData>& vertices, const std::vector<uint32_t>& indices);
-	bool InitializeStaticLOD(ID3D12Device* device,const Model& source,int grid,bool grassCards=false);
+	bool InitializeStaticLOD(ID3D12Device* device,const Model& source,int grid,bool grassCards=false,bool authoredLeaves=false);
+    bool PromoteStaticGeometry(ID3D12Device* device,ID3D12GraphicsCommandList* commands);
+    void ReleaseUploadBuffers(){uploads_.clear();}
 	
 	// 動的メッシュ頂点更新 (新規追加)
 	void UpdateVertices(const std::vector<VertexData>& vertices);
@@ -228,6 +230,7 @@ private:
 	D3D12_VERTEX_BUFFER_VIEW skinnedVbv_{};
 	D3D12_INDEX_BUFFER_VIEW ibv_{}; // 追加
 	uint32_t indexCount_ = 0;       // 追加
+    bool staticGpuGeometry_=false;
 
 	// ★追加: GPU用BVHバッファ
 	Microsoft::WRL::ComPtr<ID3D12Resource> vbBvhNodes_;

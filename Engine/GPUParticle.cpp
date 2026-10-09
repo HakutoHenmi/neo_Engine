@@ -133,7 +133,7 @@ bool GPUParticleSystem::CreatePipelines(ID3D12Device* device) {
     gpsd.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ZERO;
     gpsd.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
     gpsd.NumRenderTargets = 1;
-    gpsd.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+    gpsd.RTVFormats[0] = DXGI_FORMAT_R16G16B16A16_FLOAT;
     gpsd.DSVFormat = DXGI_FORMAT_D32_FLOAT;
     gpsd.SampleDesc.Count = 1;
 

@@ -17,6 +17,9 @@ cbuffer VolumeSettings : register(b1) {
     float frameDt; float isoValue; float filterAxis; float debugMode;
     float4 phaseColor[3];
     float3 playerBodyCenter; float playerDecoration;
+    float3 playerForward; float playerFaceCamera;
+    float3 playerRadii; float playerMotion;
+    float3 playerSlope; float playerAir; // x/z: terrain slope; y: rigid decoration mass scale.
 };
 uint VolumePhase(float type) {
     if (type < 0.5f || (type > 2.5f && type < 3.5f) || type>=4.0f) return 0;

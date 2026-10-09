@@ -1,4 +1,6 @@
 #include "WindowDX.h"
+#include "DlssRuntime.h"
+#include "../externals/Streamline/include/sl_security.h"
 
 #include <cassert>
 #include <d3d12sdklayers.h>
@@ -17,6 +19,20 @@
 extern LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
 namespace Engine {
+#pragma comment(lib,"wintrust.lib")
+#pragma comment(lib,"crypt32.lib")
+bool VerifyDlssDll(const wchar_t* path){
+    if(std::filesystem::path(path).filename()!=L"nvngx_dlss.dll")return sl::security::verifyEmbeddedSignature(path);
+    // NGX has a standard NVIDIA Authenticode signature, not the secondary SL key.
+    WINTRUST_FILE_INFO file{};file.cbStruct=sizeof(file);file.pcwszFilePath=path;
+    WINTRUST_DATA trust{};trust.cbStruct=sizeof(trust);trust.dwUIChoice=WTD_UI_NONE;trust.fdwRevocationChecks=WTD_REVOKE_NONE;
+    trust.dwUnionChoice=WTD_CHOICE_FILE;trust.pFile=&file;trust.dwStateAction=WTD_STATEACTION_VERIFY;
+    GUID policy=WINTRUST_ACTION_GENERIC_VERIFY_V2;bool valid=WinVerifyTrust(nullptr,&policy,&trust)==ERROR_SUCCESS;
+    if(valid){auto* data=WTHelperProvDataFromStateData(trust.hWVTStateData);auto* signer=data?WTHelperGetProvSignerFromChain(data,0,FALSE,0):nullptr;
+        wchar_t name[256]{};if(!signer||!signer->csCertChain)valid=false;
+        else{CertGetNameStringW(signer->pasCertChain[0].pCert,CERT_NAME_SIMPLE_DISPLAY_TYPE,0,nullptr,name,256);valid=wcscmp(name,L"NVIDIA Corporation")==0;}}
+    trust.dwStateAction=WTD_STATEACTION_CLOSE;WinVerifyTrust(nullptr,&policy,&trust);return valid;
+}
 
 // 静的変数の実体定義（初期値は "Resources"）
 std::string WindowDX::s_DropDirectory = "Resources";
@@ -43,7 +59,6 @@ static const char* SeverityName(D3D12_MESSAGE_SEVERITY severity) {
 }
 
 static void DumpD3D12InfoQueue(ID3D12Device* device, const char* phase) {
-#ifdef _DEBUG
 	if (!device) return;
 
 	Microsoft::WRL::ComPtr<ID3D12InfoQueue> infoQueue;
@@ -77,10 +92,6 @@ static void DumpD3D12InfoQueue(ID3D12Device* device, const char* phase) {
 	}
 
 	infoQueue->ClearStoredMessages();
-#else
-	(void)device;
-	(void)phase;
-#endif
 }
 
 static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wp, LPARAM lp) {
@@ -287,6 +298,7 @@ void WindowDX::SetCursorVisible(bool visible) {
 
 void WindowDX::Shutdown() {
 	WaitGPU();
+    DlssRuntime::Get().Shutdown();
 
 	if (fev_) {
 		CloseHandle(fev_);
@@ -309,6 +321,7 @@ void WindowDX::Shutdown() {
 	fence_.Reset();
 	dev_.Reset();
 	factory_.Reset();
+    DlssRuntime::Get().Unload();
 
 	if (hwnd_) {
 		UnregisterClass(wc_.lpszClassName, hInst_);
@@ -367,23 +380,22 @@ bool WindowDX::InitWindow_(HINSTANCE hInst, int cmdShow, HWND& outHwnd) {
 }
 
 bool WindowDX::InitDX_() {
+    DlssRuntime::Get().Initialize();
+    bool validate=wcsstr(GetCommandLineW(),L"--graphics-validation")!=nullptr;
 #ifdef _DEBUG
-	{
-		Microsoft::WRL::ComPtr<ID3D12Debug1> debug;
-		if (SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(&debug)))) {
-			debug->EnableDebugLayer();
-			debug->SetEnableGPUBasedValidation(true);
-			AppendDebugLog("[D3D12] Debug layer + GPU-based validation enabled.\n");
-		}
-	}
+    validate=true;
 #endif
-
-	UINT factoryFlags = 0;
-#ifdef _DEBUG
-	factoryFlags |= DXGI_CREATE_FACTORY_DEBUG;
-#endif
+    UINT factoryFlags=0;
+    if(validate){Microsoft::WRL::ComPtr<ID3D12Debug1> debug;
+        if(SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(&debug)))){
+            debug->EnableDebugLayer();
+            if(wcsstr(GetCommandLineW(),L"--gpu-validation"))debug->SetEnableGPUBasedValidation(true);
+            AppendDebugLog("[D3D12] Debug validation enabled.\n");factoryFlags|=DXGI_CREATE_FACTORY_DEBUG;
+        }else AppendDebugLog("[D3D12] Debug validation unavailable.\n");
+    }
 	if (FAILED(CreateDXGIFactory2(factoryFlags, IID_PPV_ARGS(&factory_))))
 		return false;
+    DlssRuntime::Get().UpgradeFactory(factory_);
 	// Prefer the OS high-performance ordering, not the default display adapter.
 	Microsoft::WRL::ComPtr<IDXGIAdapter1> selectedAdapter;
 	for (UINT index = 0; ; ++index) {
@@ -405,6 +417,8 @@ bool WindowDX::InitDX_() {
 	}
 	DXGI_ADAPTER_DESC1 selectedDesc{};
 	selectedAdapter->GetDesc1(&selectedDesc);
+    DlssRuntime::Get().SetDevice(dev_.Get(),selectedDesc.AdapterLuid);
+    AppendDebugLog(("[DLSS] "+DlssRuntime::Get().Status()+"\n").c_str());
 	char gpuName[512]{};
 	WideCharToMultiByte(CP_UTF8, 0, selectedDesc.Description, -1, gpuName, sizeof(gpuName), nullptr, nullptr);
 	AppendDebugLog((std::string("[GPU] Selected hardware: ") + gpuName + "\n").c_str());
@@ -515,7 +529,7 @@ bool WindowDX::CreateCommand_() {
 	}
 	D3D12_COMMAND_QUEUE_DESC qd{};
 	qd.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
-	if (FAILED(dev_->CreateCommandQueue(&qd, IID_PPV_ARGS(&que_))))
+	if (FAILED(DlssRuntime::Get().CreateQueue(dev_.Get(),qd,que_.GetAddressOf())))
 		return false;
 	if (FAILED(dev_->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, alloc_[0].Get(), nullptr, IID_PPV_ARGS(&list_))))
 		return false;

@@ -388,3 +388,4 @@ temp_play.json
 /out_*.txt
 /dist/
 /PackageCheck/
+/externals/Streamline/bin/*.dll
