@@ -3,6 +3,7 @@
 #include "Model.h"
 #include "StaticLod.h"
 #include "ShadowCaster.h"
+#include "CameraMatrices.h"
 #include "PathUtils.h"
 #include "Time/TimeManager.h"
 #include "../Game/ObjectTypes.h"
@@ -106,7 +107,7 @@ Renderer::~Renderer() { Shutdown(); }
 
 bool Renderer::Initialize(WindowDX* window) {
 	instance_ = this;
-    LoadGraphicsSettings();postHistoryValid_=false;
+    LoadGraphicsSettings();postHistoryValid_=dlssHistoryValid_=false;
     if(wcsstr(GetCommandLineW(),L"--dlss-smoke"))graphicsSettings_.dlssQuality=true;
     if(wcsstr(GetCommandLineW(),L"--native-smoke"))graphicsSettings_.dlssQuality=false;
     dlssActive_=graphicsSettings_.dlssQuality&&DlssRuntime::Get().QualitySize(WindowDX::kW,WindowDX::kH,sceneWidth_,sceneHeight_);
@@ -125,6 +126,7 @@ bool Renderer::Initialize(WindowDX* window) {
 		return false;
 
 	srvDynamicCursor_ = kSrvStaticMax;
+    srvDynamicEnd_ = srvDynamicCursor_ + WindowDX::kSrvDynamicCountPerFrame;
 
 	viewport_.TopLeftX = 0.0f;
 	viewport_.TopLeftY = 0.0f;
@@ -351,7 +353,7 @@ void Renderer::Shutdown() {
 	ppSceneColor_.Reset();
     for(auto& target:bloomDown_)target.resource.Reset();for(auto& target:bloomUp_)target.resource.Reset();
     gtaoTarget_.resource.Reset();bloomRtvHeap_.Reset();psoBloomDown_.Reset();psoBloomUp_.Reset();psoGtao_.Reset();
-    temporalMotion_.resource.Reset();temporalDepth_.resource.Reset();dlssOutput_.resource.Reset();
+    temporalMotion_.resource.Reset();temporalDepth_.resource.Reset();dlssOutput_.resource.Reset();temporalExposure_.resource.Reset();dlssHistoryValid_=false;
     temporalRtvHeap_.Reset();rootSigTemporal_.Reset();psoTemporalPrepare_.Reset();psoTemporalObjects_.Reset();
     temporalWorlds_.clear();temporalJobs_.clear();
     rtGeometry_.clear();rtInstances_.clear();for(auto& slot:rtFrames_)slot={};
@@ -453,10 +455,14 @@ void Renderer::BeginFrame(const float clearColorRGBA[4]) {
 	// インスタンス描画用のキューをクリア
 	instancedDrawCalls_.clear();                    
     temporalJobs_.clear();rtInstances_.clear();
+    sceneCameraSet_=false;
 	instancedParticleDrawCalls_.clear();            
 	liquidParticleDrawCalls_.clear(); // ★追加
 	lastIDCIndex_ = -1;
-	srvDynamicCursor_ = kSrvStaticMax; // 動的SRVカーソルをリセット
+    // WindowDX has waited for this slot's fence. Other slots can still be
+    // executing: never overwrite their PBR/RT descriptor tables from the CPU.
+    srvDynamicCursor_ = kSrvStaticMax + fi * WindowDX::kSrvDynamicCountPerFrame;
+    srvDynamicEnd_ = srvDynamicCursor_ + WindowDX::kSrvDynamicCountPerFrame;
 	spriteDrawCalls_.clear(); // ★スプライトもクリア
 
 	cbFrameAddr_ = 0;
@@ -569,7 +575,7 @@ void Renderer::FlushDrawCalls() {
 
 	for (const auto& dc : drawCalls_) {
 		if (dc.shaderName == "Distortion") continue; // 空間のゆがみは EndFrame で別途描画
-		if (dc.shaderName == "Slime" || dc.shaderName == "SlimeNoFace" || dc.shaderName == "SlimeNoFaceNoDepth" || dc.shaderName == "Hologram" || dc.shaderName == "ForceField" || dc.shaderName == "Reflection" || dc.shaderName == "EnergyBeam" || dc.shaderName == "SlimeBeam" || dc.shaderName == "EnergyCylinder" || dc.shaderName == "Particle" || dc.shaderName == "ParticleAdditive" || dc.isParticle) continue;
+		if (dc.shaderName == "Slime" || dc.shaderName == "SlimeNoFace" || dc.shaderName == "SlimeNoFaceNoDepth" || dc.shaderName == "Hologram" || dc.shaderName == "ForceField" || dc.shaderName == "Reflection" || dc.shaderName == "Glass" || dc.shaderName == "EnergyBeam" || dc.shaderName == "SlimeBeam" || dc.shaderName == "EnergyCylinder" || dc.shaderName == "Particle" || dc.shaderName == "ParticleAdditive" || dc.isParticle) continue;
 
 		auto* model = GetModel(dc.mesh);
 		if (!model) continue;
@@ -862,9 +868,24 @@ void Renderer::FlushDrawCalls() {
 		if (drawFluidDebugArrows_) DrawGPUFluidDebug();
 	}
 
+	// Far glass panels first; water has already published its surface depth.
+	std::vector<DrawCall> glassCalls;
+	for (const auto& dc : drawCalls_) if (dc.shaderName == "Glass") glassCalls.push_back(dc);
+	auto glassDistance = [&](const DrawCall& dc) {
+		const float x=dc.worldMatrix.m[3][0]-cbFrame_.cameraPos.x;
+		const float y=dc.worldMatrix.m[3][1]-cbFrame_.cameraPos.y;
+		const float z=dc.worldMatrix.m[3][2]-cbFrame_.cameraPos.z;
+		return x*x+y*y+z*z;
+	};
+	std::stable_sort(glassCalls.begin(), glassCalls.end(), [&](const DrawCall& a, const DrawCall& b) {
+		return glassDistance(a)>glassDistance(b);
+	});
+	size_t glassIndex=0;
+	for (auto& dc : drawCalls_) if (dc.shaderName == "Glass") dc=glassCalls[glassIndex++];
+
 	// --- 半透明オブジェクトの描画 (不透明オブジェクトの後に描画する) ---
 	for (const auto& dc : drawCalls_) {
-		if (dc.shaderName != "Slime" && dc.shaderName != "SlimeNoFace" && dc.shaderName != "SlimeNoFaceNoDepth" && dc.shaderName != "Hologram" && dc.shaderName != "ForceField" && dc.shaderName != "Reflection" && dc.shaderName != "EnergyBeam" && dc.shaderName != "SlimeBeam" && dc.shaderName != "EnergyCylinder" && dc.shaderName != "Particle" && dc.shaderName != "ParticleAdditive" && !dc.isParticle) continue;
+		if (dc.shaderName != "Slime" && dc.shaderName != "SlimeNoFace" && dc.shaderName != "SlimeNoFaceNoDepth" && dc.shaderName != "Hologram" && dc.shaderName != "ForceField" && dc.shaderName != "Reflection" && dc.shaderName != "Glass" && dc.shaderName != "EnergyBeam" && dc.shaderName != "SlimeBeam" && dc.shaderName != "EnergyCylinder" && dc.shaderName != "Particle" && dc.shaderName != "ParticleAdditive" && !dc.isParticle) continue;
 
 		auto* model = GetModel(dc.mesh);
 		if (!model) continue;
@@ -993,7 +1014,7 @@ void Renderer::EndFrame() {
     FlushPaintUploads();
 	const uint32_t fi = window_->FrameIndex();
     auto outputViewport=viewport_;auto outputScissor=scissor_;
-    if(dlssActive_){viewport_={0,0,float(sceneWidth_),float(sceneHeight_),0,1};scissor_={0,0,LONG(sceneWidth_),LONG(sceneHeight_)};}
+    if(sceneWidth_!=WindowDX::kW||sceneHeight_!=WindowDX::kH){viewport_={0,0,float(sceneWidth_),float(sceneHeight_),0,1};scissor_={0,0,LONG(sceneWidth_),LONG(sceneHeight_)};}
 
 	static int dbgFrameCounter = 0;
 	if (dbgFrameCounter++ < 5) { // 最初の数フレームだけログ出力
@@ -1280,10 +1301,14 @@ void Renderer::EndFrame() {
     viewport_=outputViewport;scissor_=outputScissor;
     if(!rtLightingRendered_)rtLightingHistoryValid_=false;
     rtLightingRendered_=false;
-    bool rtReady=(graphicsSettings_.rtShadows||graphicsSettings_.rtReflections||graphicsSettings_.rtIndirect)&&framePPEnabled_&&psoPP_.Get()==pipelines_["ChronoFocus"].Get()&&RenderRtShadows_(fi);
+    const bool temporalScene=sceneCameraSet_&&frameDrawCalls_>0&&framePPEnabled_&&psoPP_.Get()==pipelines_["ChronoFocus"].Get();
+    bool rtReady=temporalScene&&(graphicsSettings_.rtShadows||graphicsSettings_.rtReflections||graphicsSettings_.rtIndirect)&&RenderRtShadows_(fi);
     rtShadowRendered_=rtReady&&graphicsSettings_.rtShadows;
-    if(dlssActive_ && framePPEnabled_ && psoPP_.Get()==pipelines_["ChronoFocus"].Get())
-        if(EvaluateDlss_(fi))postColorSrv_=dlssOutput_.srv;
+    if(dlssActive_&&temporalScene){
+        dlssHistoryValid_=EvaluateDlss_(fi);
+        if(dlssHistoryValid_)postColorSrv_=dlssOutput_.srv;
+        else if(!SupportsDlss())dlssActive_=false;
+    }else dlssHistoryValid_=false;
 
 	// --- 2. finalSceneColor_ をRenderTargetStateに遷移し描画 ---
     if(framePPEnabled_ && psoPP_.Get()==pipelines_["ChronoFocus"].Get() && graphicsSettings_.ambientOcclusion>.001f)
@@ -1365,7 +1390,7 @@ void Renderer::EndFrame() {
         cb.rtStrength=rtShadowRendered_?.35f:0.f;
         // RT radiance is already in the HDR scene before DLSS, bloom and DoF.
         cb.rtReflection=cb.rtIndirect=0;
-        cb.inverseViewProjection=XMToM4(XMMatrixInverse(nullptr,XMLoadFloat4x4(reinterpret_cast<const XMFLOAT4X4*>(&cbFrame_.viewProj))));
+        cb.inverseViewProjection=XMToM4(InverseCameraViewProjection(M4ToXM(cbFrame_.view),M4ToXM(cbFrame_.proj)));
         cb.previousViewProjection=postHistoryValid_?previousPostViewProjection_:cbFrame_.viewProj;
 
 		const uint32_t off = upload_[fi].Allocate(sizeof(CBPost), 256);
@@ -1397,7 +1422,7 @@ void Renderer::EndFrame() {
     list_->SetGraphicsRootDescriptorTable(9,rtLightingRendered_?rtIndirectTarget_.srv:ppSrvGpu_);
 	list_->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 	list_->DrawInstanced(3, 1, 0, 0);
-    previousPostViewProjection_=cbFrame_.viewProj;previousPostCamera_=cbFrame_.cameraPos;postHistoryValid_=true;
+    previousPostViewProjection_=cbFrame_.viewProj;previousPostCamera_=cbFrame_.cameraPos;postHistoryValid_=temporalScene;
     previousTemporalViewProjection_=unjitteredViewProjection_;++temporalFrame_;
 
 	// ★UI描画順序の変更: ポストプロセス適用後のGameビュー用テクスチャにUIを直接描画することで、エディタ上でもUIが表示されるようにします。
@@ -1542,9 +1567,11 @@ void Renderer::CollectFluidProfile(uint32_t frameIndex) {
 }
 
 void Renderer::SetCamera(const Camera& camera) {
+    sceneCameraSet_=true;
 	cbFrame_.view = XMToM4(camera.View());
 	cbFrame_.proj = XMToM4(camera.Proj());
     unjitteredProjection_=cbFrame_.proj;unjitteredViewProjection_=Matrix4x4::Multiply(cbFrame_.view,cbFrame_.proj);
+    temporalJitter_={};
     if(dlssActive_){auto halton=[](uint32_t index,uint32_t base){float result=0,weight=1;while(index){weight/=base;result+=weight*(index%base);index/=base;}return result;};
         temporalJitter_={halton(temporalFrame_%32+1,2)-.5f,halton(temporalFrame_%32+1,3)-.5f};
         cbFrame_.proj.m[2][0]+=temporalJitter_.x*2/sceneWidth_;cbFrame_.proj.m[2][1]-=temporalJitter_.y*2/sceneHeight_;
@@ -1624,7 +1651,7 @@ void Renderer::SnapshotSceneForRefraction(ID3D12GraphicsCommandList* list) {
 }
 
 uint32_t Renderer::AllocateDynamicSrvIndex(uint32_t count) {
-	if (srvDynamicCursor_ + count > kSrvHeapTotal) {
+	if (count > srvDynamicEnd_ - srvDynamicCursor_) {
 		return UINT32_MAX; // 溢れた
 	}
 	uint32_t idx = srvDynamicCursor_;
@@ -2521,6 +2548,7 @@ float4 main(PSIn i) : SV_TARGET { return i.color; }
 	CreateShaderPipelineTransparent("Heathaze", L"Resources/shaders/HeathazeVS.hlsl", L"Resources/shaders/HeathazePS.hlsl", false);
 	CreateShaderPipelineTransparent("Lift", L"Resources/shaders/LiftVS.hlsl", L"Resources/shaders/LiftPS.hlsl", false);
 	CreateShaderPipelineTransparent("TimedBlock", L"Resources/shaders/TimedBlockVS.hlsl", L"Resources/shaders/TimedBlockPS.hlsl", false);
+	CreateShaderPipelineTransparent("Glass", L"Resources/shaders/GlassVS.hlsl", L"Resources/shaders/GlassPS.hlsl", false);
 
 	return true;
 }
@@ -3966,7 +3994,7 @@ float4 main(float4 svpos:SV_POSITION, float2 uv:TEXCOORD0) : SV_TARGET {
 void Renderer::SetPostEffect(const std::string& name) {
 	// 空文字または "Default" の場合はパススルー（コピー）にする
 	if (name.empty() || name == "Default") {
-        postHistoryValid_=false;
+        postHistoryValid_=dlssHistoryValid_=false;
 		if (psoCopy_) {
 			psoPP_ = psoCopy_;
 			ppEnabled_ = false; // ★修正: メモリ不足によるバインド漏れ（Device Removed）を防ぐため false に
@@ -3977,7 +4005,7 @@ void Renderer::SetPostEffect(const std::string& name) {
 	// パイプラインマップから検索
 	auto it = pipelines_.find(name);
 	if (it != pipelines_.end()) {
-        if(psoPP_.Get()!=it->second.Get())postHistoryValid_=false;
+        if(psoPP_.Get()!=it->second.Get())postHistoryValid_=dlssHistoryValid_=false;
 		psoPP_ = it->second; // パイプラインステートを切り替え
 		ppEnabled_ = true;   // 有効化
 	}
@@ -5405,7 +5433,7 @@ void Renderer::QueueFluidBody(){
     list_->ResourceBarrier(1,&barrier);fluidBodyReadbackCore_[frame]=gpuFluidCorePos_;fluidBodyPending_[frame]=true;
 }
 
-void Renderer::EmitGPUFluid(const Vector3& pos, const Vector3& velocityDir, const Vector4& color, int count, float type) {
+void Renderer::EmitGPUFluid(const Vector3& pos, const Vector3& velocityDir, const Vector4& color, int count, float type, bool retainWater) {
 	if (!isGPUFluidReady_ || !psoFluidEmit_ || !gpuFluidBuffer_) return;
 	if (count <= 0) return;
 	if (!isGPUFluidInitialized_ && psoFluidInit_) {
@@ -5482,7 +5510,7 @@ void Renderer::EmitGPUFluid(const Vector3& pos, const Vector3& velocityDir, cons
 	cb.emitEndIndex = endIndex; cb.pad3 = {0,0,0};
 	cb.coreScale = gpuFluidCoreScale_; cb.pad4 = gpuFluidCoreFlowSpeed_;
 	cb.coreForward = gpuFluidCoreForward_; cb.pad5 = gpuFluidCoreMode_;
-	cb.aabbCount = 0; cb.pad6 = {0,0,0};
+	cb.aabbCount = 0; cb.pad6 = {retainWater ? 1.0f : 0.0f,0,0};
 	cb.decoyPos = gpuFluidDecoyPos_; cb.decoyAttraction = gpuFluidDecoyAttraction_;
 	cb.decoyScale = gpuFluidDecoyScale_; cb.pad7 = rogueWorldFrozen_?1.f:0.0f;
 	cb.decoyForward = gpuFluidDecoyForward_; cb.pad8 = 0.0f;
@@ -5502,9 +5530,10 @@ void Renderer::EmitGPUFluid(const Vector3& pos, const Vector3& velocityDir, cons
 	auto barrier = CD3DX12_RESOURCE_BARRIER::UAV(gpuFluidBuffer_.Get());
 	list_->ResourceBarrier(1, &barrier);
 	
+	const uint32_t emittedEnd = (std::min)(endIndex, *cursorPtr + emitCount);
 	*cursorPtr = startIndex + ((*cursorPtr - startIndex + emitCount) % rangeSize);
 	if (type > 0.5f) {
-		gpuFluidActiveParticleCount_ = (std::min)(effectParticleEnd, (std::max)(gpuFluidActiveParticleCount_, *cursorPtr));
+		gpuFluidActiveParticleCount_ = (std::min)(effectParticleEnd, (std::max)(gpuFluidActiveParticleCount_, emittedEnd));
 	} else {
 		gpuFluidActiveParticleCount_ = (std::max)(gpuFluidActiveParticleCount_, (std::min)(endIndex, startIndex + emitCount));
 	}

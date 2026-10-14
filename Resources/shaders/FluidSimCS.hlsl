@@ -137,7 +137,7 @@ void Emit(uint3 DTid : SV_DispatchThreadID) {
                 p.pad = localOffset; 
             } else {
                 // 水飛沫の場合: タイマー初期化
-                p.pad = float3(0, 0, 0);
+                p.pad = float3(pad6.x>0.5f ? -1.0f : 0.0f, 0, 0);
             }
             
             Particles[i] = p;
@@ -919,8 +919,12 @@ void CalcForce(uint3 DTid : SV_DispatchThreadID) {
     if (FluidIsWater(pi.type)) {
         pi.pad.z=max(0,pi.pad.z-dt);
         if (groundContact) { pi.pad.y=pi.position.y; pi.pad.z=0.08f; }
-        if (groundContact || pi.pad.x>0) pi.pad.x+=dt;
-        if (pi.pad.x>WATER_GROUND_LIFETIME) { pi.color.a=0; pi.position.y=-1000; }
+        // A negative contact age opts a preview particle out of expiry.
+        // Support height and contact grace still update for surface reconstruction.
+        if (pi.pad.x>=0) {
+            if (groundContact || pi.pad.x>0) pi.pad.x+=dt;
+            if (pi.pad.x>WATER_GROUND_LIFETIME) { pi.color.a=0; pi.position.y=-1000; }
+        }
     }
     // ★追加: 液状化したデコイ（引力がなくなったデコイ）の消滅処理
     if (pi.type > 1.5f && pi.type < 2.5f && decoyAttraction <= 0.01f) {

@@ -507,7 +507,7 @@ bool WindowDX::CreateRTVDSV_() {
 	{
 		D3D12_DESCRIPTOR_HEAP_DESC d{};
 		d.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-		d.NumDescriptors = 2048;
+		d.NumDescriptors = kSrvDescriptorCount;
 		d.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
 		if (FAILED(dev_->CreateDescriptorHeap(&d, IID_PPV_ARGS(&srvH_))))
 			return false;

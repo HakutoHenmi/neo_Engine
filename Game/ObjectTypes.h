@@ -707,6 +707,9 @@ using Entity = entt::entity;
 struct FluidEmitterComponent : public Component {
 	int emitCountPerFrame = 400;
 	float emissionRemainder = 0.0f; // Runtime-only fractional particle count.
+	bool retainWater = false; // Water preview: keep settled particles until reset.
+	int particleLimit = 0; // 0 preserves the existing continuous emitter behavior.
+	int emittedParticles = 0; // Runtime-only count since the last fluid reset.
 	DirectX::XMFLOAT4 color = {0.2f, 0.8f, 1.0f, 1.0f}; // 湧き水の色
 	DirectX::XMFLOAT3 velocity = {0.0f, -5.0f, 0.0f};
 	float fluidType = 1.0f; // 0=プレイヤーコア, 1=水しぶき

@@ -69,7 +69,13 @@ void TestFluidShadowCamera(Gpu& g){
     Require(coverage>100,"fluid shadow disappeared");Require(!changed,"fluid shadow changes when only camera orientation changes");
 }
 
+#include "TemporalInputsTests.inl"
+#include "RayConeTextureTests.inl"
+#include "ReceiverDepthTests.inl"
 void TestGraphicsPost(Gpu& g){
+    TestReceiverDepth(g);
+    TestRayConeTextures(g);
+    TestTemporalInputs(g);
     TestRtLightingDenoise(g);
     TestVegetationShadow(g);
     TestFluidShadowCamera(g);
@@ -207,4 +213,33 @@ void TestGraphicsPost(Gpu& g){
     D3D11_MAPPED_SUBRESOURCE plane{};Check(g.context->Map(staging.Get(),0,D3D11_MAP_READ,0,&plane));float lo=1,hi=0;
     for(UINT y=4;y<h-4;++y)for(UINT x=4;x<w-4;++x){float value=reinterpret_cast<const XMFLOAT4*>(static_cast<const BYTE*>(plane.pData)+y*plane.RowPitch)[x].x;lo=std::min(lo,value);hi=std::max(hi,value);}
     g.context->Unmap(staging.Get(),0);Require(lo>.179f&&hi<.181f,"RT reconstruction creates horizontal bands on steep perspective ground");printf("PASS RT HDR steep-plane reconstruction %.4f..%.4f\n",lo,hi);
+    // A uniformly shadowed sloping receiver must remain uniformly shadowed at
+    // every output row. The RT mask uses half-resolution input pixel centers.
+    std::vector<XMFLOAT2> steepMask(w*h/4);
+    for(UINT y=0;y<h/2;++y)for(UINT x=0;x<w/2;++x)steepMask[y*w/2+x]={0,400.f/(2*y+1.5f)};
+    auto steepShadow=texture(w/2,h/2,DXGI_FORMAT_R32G32_FLOAT,steepMask.data(),w/2*8);
+    cb.data[26]=cb.data[27]=0;cb.data[25]=.35f;
+    g.context->UpdateSubresource(constants.Get(),0,nullptr,&cb,0,0);g.context->PSSetConstantBuffers(0,1,&buffer);
+    ID3D11ShaderResourceView* shadowViews[]={scene.srv.Get(),lut.srv.Get(),ao.srv.Get(),depth.srv.Get(),up[0].srv.Get(),fluidDepth.srv.Get(),steepShadow.srv.Get()};
+    g.context->PSSetShaderResources(0,7,shadowViews);g.context->OMSetRenderTargets(1,&target,nullptr);g.context->PSSetShader(ps.Get(),nullptr,0);g.context->Draw(3,0);g.Unbind();g.context->CopyResource(staging.Get(),result.Get());
+    Check(g.context->Map(staging.Get(),0,D3D11_MAP_READ,0,&plane));lo=1;hi=0;
+    for(UINT y=4;y<h-4;++y)for(UINT x=4;x<w-4;++x){float value=reinterpret_cast<const XMFLOAT4*>(static_cast<const BYTE*>(plane.pData)+y*plane.RowPitch)[x].x;lo=std::min(lo,value);hi=std::max(hi,value);}
+    g.context->Unmap(staging.Get(),0);printf("RT shadow steep-plane display %.4f..%.4f\n",lo,hi);
+    Require(hi-lo<.002f,"RT shadow reconstruction creates alternating lit rows at grazing angles");
+    // The display runs at 1.5x DLSS input size. Pixel depth belongs to the
+    // input texel center, not the fractional UV of the output pixel.
+    auto scaled=createTarget(w*3/2,h*3/2);
+    for(float shift:{0.f,.35f,.75f}){
+        for(UINT y=0;y<h;++y)for(UINT x=0;x<w;++x){float z=400.f/(float(y)+.5f+shift);depths[y*w+x]=1000.f/999.9f-100.f/999.9f/z;}
+        for(UINT y=0;y<h/2;++y)for(UINT x=0;x<w/2;++x)steepMask[y*w/2+x]={0,400.f/(2*y+1.5f+shift)};
+        g.context->UpdateSubresource(depth.resource.Get(),0,nullptr,depths.data(),w*4,w*h*4);
+        g.context->UpdateSubresource(steepShadow.resource.Get(),0,nullptr,steepMask.data(),w/2*8,w*h*2);
+        g.Unbind();g.context->UpdateSubresource(constants.Get(),0,nullptr,&cb,0,0);g.context->PSSetConstantBuffers(0,1,&buffer);
+        g.context->PSSetShaderResources(0,7,shadowViews);auto scaledRtv=scaled.rtv.Get();g.context->OMSetRenderTargets(1,&scaledRtv,nullptr);
+        D3D11_VIEWPORT vp{0,0,float(scaled.width),float(scaled.height),0,1};g.context->RSSetViewports(1,&vp);
+        g.context->PSSetShader(ps.Get(),nullptr,0);g.context->Draw(3,0);g.Unbind();auto data=readTarget(scaled);lo=1;hi=0;
+        for(UINT y=6;y<scaled.height-6;++y)for(UINT x=6;x<scaled.width-6;++x){lo=std::min(lo,data[y*scaled.width+x].x);hi=std::max(hi,data[y*scaled.width+x].x);}
+        printf("DLSS RT shadow plane shift %.2f range %.4f..%.4f\n",shift,lo,hi);
+        Require(hi-lo<.002f,"DLSS shadow upsampling changes illumination with fractional input pixel centers");
+    }
 }

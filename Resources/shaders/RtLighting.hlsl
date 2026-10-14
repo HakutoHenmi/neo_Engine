@@ -1,5 +1,7 @@
 // Single-bounce diffuse transport and glossy reflections of opaque scenery.
 // Closest hits use real mesh UVs, albedo/normal/roughness maps and sun visibility.
+#include "RayConeTextureLod.hlsli"
+#include "ReceiverDepthTolerance.hlsli"
 RaytracingAccelerationStructure geometry : register(t0);
 Texture2D<float> opaqueDepth : register(t1);
 Texture2D<float> fluidDepth : register(t2);
@@ -21,10 +23,15 @@ cbuffer Camera : register(b0) {
     float2 dimensions; float includeFluid; float sunEnabled;
     float3 sunColor; float reflectionEnabled;
     float3 ambientColor; float indirectEnabled;
-    uint recordDiagnostics; float3 diagnosticPad;
+    uint recordDiagnostics; float pixelSpread; float2 diagnosticPad;
 };
 static const float PI=3.14159265;
-struct Surface {float3 p,n,albedo; float roughness;};
+struct Surface {float3 p,n,albedo; float roughness,footprint;};
+float4 MaterialSample(uint index,float2 uv,float2 density,float footprint){
+    uint w,h,levels;maps[NonUniformResourceIndex(index)].GetDimensions(0,w,h,levels);
+    float lod=min(float(levels-1),RayConeMipLevel(density,footprint,float2(w,h)));
+    return maps[NonUniformResourceIndex(index)].SampleLevel(wrapSampler,uv,lod);
+}
 float3 SafeNormal(float3 n,float3 fallback){return dot(n,n)>1e-10?normalize(n):fallback;}
 float3 Sky(float3 direction,float roughness){
     uint w,h,levels;environmentMap.GetDimensions(0,w,h,levels);
@@ -32,7 +39,7 @@ float3 Sky(float3 direction,float roughness){
     float3 fallback=lerp(float3(.035,.055,.075),float3(.3,.43,.55),saturate(direction.y*.5+.5));
     return max(env,fallback*.3);
 }
-bool TraceSurface(float3 origin,float3 direction,float maximum,out Surface surface,out float distance){
+bool TraceSurface(float3 origin,float3 direction,float maximum,float footprint,out Surface surface,out float distance){
     surface=(Surface)0;distance=maximum;
     RayDesc ray;ray.Origin=origin;ray.Direction=direction;ray.TMin=.025;ray.TMax=maximum;
     RayQuery<RAY_FLAG_FORCE_OPAQUE> query;query.TraceRayInline(geometry,0,1,ray);while(query.Proceed()){}
@@ -48,16 +55,19 @@ bool TraceSurface(float3 origin,float3 direction,float maximum,out Surface surfa
     float2 uvA=float2(tri.p[1].w-tri.p[0].w,tri.n[1].w-tri.n[0].w),uvB=float2(tri.p[2].w-tri.p[0].w,tri.n[2].w-tri.n[0].w);
     float determinant=uvA.x*uvB.y-uvA.y*uvB.x;
     float3x3 toWorld=(float3x3)query.CommittedObjectToWorld3x4();
+    float3 edge1=mul(toWorld,tri.p[1].xyz-tri.p[0].xyz),edge2=mul(toWorld,tri.p[2].xyz-tri.p[0].xyz);
+    float2 density=RayConeUVDensity(edge1,edge2,uvA,uvB);
+    surface.footprint=max(.00001,footprint+distance*pixelSpread)/max(.05,abs(dot(n,direction)));
     if(abs(determinant)>1e-7){
         float3 tangent=mul(toWorld,((tri.p[1].xyz-tri.p[0].xyz)*uvB.y-(tri.p[2].xyz-tri.p[0].xyz)*uvA.y)/determinant);
         tangent=SafeNormal(tangent-n*dot(n,tangent),float3(1,0,0));float3 bitangent=SafeNormal(cross(n,tangent),float3(0,0,1))*sign(determinant);
-        float3 map=maps[NonUniformResourceIndex(material.normal)].SampleLevel(wrapSampler,uv,2).xyz*2-1;map.y=-map.y;
+        float3 map=MaterialSample(material.normal,uv,density,surface.footprint).xyz*2-1;map.y=-map.y;
         map.xy*=material.ground!=0?.35:1;
         n=SafeNormal(tangent*map.x+bitangent*map.y+n*map.z,n);
     }
     if(dot(n,-direction)<0)n=-n;surface.n=n;
-    surface.albedo=maps[NonUniformResourceIndex(material.albedo)].SampleLevel(wrapSampler,uv,2).rgb*material.tint.rgb;
-    surface.roughness=clamp(maps[NonUniformResourceIndex(material.roughness)].SampleLevel(wrapSampler,uv,2).r,.12,1);
+    surface.albedo=MaterialSample(material.albedo,uv,density,surface.footprint).rgb*material.tint.rgb;
+    surface.roughness=clamp(MaterialSample(material.roughness,uv,density,surface.footprint).r,.12,1);
     if(material.ground!=0)surface.roughness=max(.78,surface.roughness);
     return true;
 }
@@ -67,8 +77,8 @@ float SunVisibility(float3 p,float3 n){
     RayQuery<RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH|RAY_FLAG_FORCE_OPAQUE> query;query.TraceRayInline(geometry,0,1,ray);while(query.Proceed()){}
     return query.CommittedStatus()==COMMITTED_TRIANGLE_HIT?0:1;
 }
-float3 Incoming(float3 origin,float3 direction,float roughness,out bool hit){
-    Surface surface;float distance;hit=TraceSurface(origin,direction,1600,surface,distance);
+float3 Incoming(float3 origin,float3 direction,float roughness,float footprint,out bool hit){
+    Surface surface;float distance;hit=TraceSurface(origin,direction,1600,footprint,surface,distance);
     if(!hit)return Sky(direction,roughness);
     // Radiance from one diffuse bounce; its direct sun term has its own shadow ray.
     float3 illumination=sunColor*saturate(dot(surface.n,towardSun))*SunVisibility(surface.p,surface.n);
@@ -107,8 +117,8 @@ void main(uint3 id:SV_DispatchThreadID){
     float z=nearPlane*farPlane/max(.0001,farPlane-raw*(farPlane-nearPlane));
     reflections[p]=0;indirectLight[p]=0;if(raw>=.99999)return;
     float3 world=Position(p,raw),view=SafeNormal(cameraPosition-world,float3(0,0,-1));Surface receiver;float distance;
-    if(fluid){receiver.p=world;receiver.n=DepthNormal(p,raw,world);receiver.roughness=.16;receiver.albedo=0;}
-    else if(!TraceSurface(cameraPosition,-view,length(world-cameraPosition)+.3,receiver,distance)||abs(distance-length(world-cameraPosition))>max(.2,z*.002))return;
+    if(fluid){receiver.p=world;receiver.n=DepthNormal(p,raw,world);receiver.roughness=.16;receiver.albedo=0;receiver.footprint=length(world-cameraPosition)*pixelSpread;}
+    else if(!TraceSurface(cameraPosition,-view,ReceiverTraceMaximum(length(world-cameraPosition),z),0,receiver,distance)||abs(distance-length(world-cameraPosition))>ReceiverDepthTolerance(z))return;
     float3 origin=receiver.p+receiver.n*.06;
     // A camera-invariant low-discrepancy sequence avoids random rotations at
     // every half-meter boundary. The radiance filter supplies spatial smoothing.
@@ -118,7 +128,7 @@ void main(uint3 id:SV_DispatchThreadID){
         float fresnel=f0+(1-f0)*pow(1-saturate(dot(receiver.n,view)),5);
         [unroll]for(uint i=0;i<2;++i){float3 micro=SafeNormal(lerp(receiver.n,Hemisphere(receiver.n,Sequence(i,2,rotation)),receiver.roughness*receiver.roughness),receiver.n);
             float3 direction=reflect(-view,micro);if(dot(direction,receiver.n)<=0)direction=reflected;
-            bool hit;float3 light=Incoming(origin,direction,receiver.roughness,hit);
+            bool hit;float3 light=Incoming(origin,direction,receiver.roughness,receiver.footprint,hit);
             if(recordDiagnostics!=0&&hit)InterlockedAdd(diagnostics[0],1);
             // Fluid already has cubemap reflection: replace only rays that hit scenery.
             if(fluid)light=hit?light-Sky(direction,receiver.roughness):0;
@@ -129,7 +139,7 @@ void main(uint3 id:SV_DispatchThreadID){
     }
     if(indirectEnabled>.5&&!fluid){
         float3 irradiance=0;
-        [unroll]for(uint i=0;i<8;++i){bool hit;irradiance+=Incoming(origin,Hemisphere(receiver.n,Sequence(i,8,rotation)),1,hit);if(recordDiagnostics!=0&&hit)InterlockedAdd(diagnostics[1],1);}
+        [unroll]for(uint i=0;i<8;++i){bool hit;irradiance+=Incoming(origin,Hemisphere(receiver.n,Sequence(i,8,rotation)),1,receiver.footprint,hit);if(recordDiagnostics!=0&&hit)InterlockedAdd(diagnostics[1],1);}
         // Replace the existing constant ambient term partially, preserving direct lighting.
         float3 bounce=receiver.albedo*(irradiance/8-ambientColor*.32)*.45;
         indirectLight[p]=float4(clamp(bounce,-.4,2),z);

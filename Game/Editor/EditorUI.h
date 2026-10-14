@@ -73,6 +73,7 @@ public:
 
 	// ★追加: 初期化（アイコンのロードなど）
 	static void Initialize(Engine::Renderer* renderer);
+	static void OpenFluidSandbox();
 
 private:
     class GizmoState {
@@ -106,6 +107,7 @@ private:
 	static void ShowInspector(GameScene* scene);
 	static void ShowProject(Engine::Renderer* renderer, GameScene* scene);
 	static void ShowSceneSettings(Engine::Renderer* renderer);
+	static void ShowFluidSandbox(Engine::Renderer* renderer, GameScene* scene);
 	static void ShowAnimationWindow(Engine::Renderer* renderer, GameScene* scene);
 	static void ShowConsole();
 	static void ShowPlayModeMonitor(GameScene* scene); // ★追加

@@ -1,9 +1,11 @@
+#include <limits>
 void TestRtLightingDenoise(Gpu& g){
     constexpr UINT w=48,h=32;
     struct Image{ComPtr<ID3D11Texture2D> tex;ComPtr<ID3D11ShaderResourceView> srv;ComPtr<ID3D11UnorderedAccessView> uav;};
-    auto image=[&](DXGI_FORMAT format,const void* pixels,UINT pitch,bool output=false){Image result;D3D11_TEXTURE2D_DESC d{};
-        d.Width=w;d.Height=h;d.MipLevels=d.ArraySize=1;d.SampleDesc.Count=1;d.Format=format;d.BindFlags=D3D11_BIND_SHADER_RESOURCE|(output?D3D11_BIND_UNORDERED_ACCESS:0);
-        D3D11_SUBRESOURCE_DATA initial{pixels,pitch,pitch*h};Check(g.device->CreateTexture2D(&d,pixels?&initial:nullptr,&result.tex));Check(g.device->CreateShaderResourceView(result.tex.Get(),nullptr,&result.srv));
+    auto image=[&](DXGI_FORMAT format,const void* pixels,UINT pitch,bool output=false,UINT width=0,UINT height=0){Image result;D3D11_TEXTURE2D_DESC d{};
+        if(!width)width=w;if(!height)height=h;
+        d.Width=width;d.Height=height;d.MipLevels=d.ArraySize=1;d.SampleDesc.Count=1;d.Format=format;d.BindFlags=D3D11_BIND_SHADER_RESOURCE|(output?D3D11_BIND_UNORDERED_ACCESS:0);
+        D3D11_SUBRESOURCE_DATA initial{pixels,pitch,pitch*height};Check(g.device->CreateTexture2D(&d,pixels?&initial:nullptr,&result.tex));Check(g.device->CreateShaderResourceView(result.tex.Get(),nullptr,&result.srv));
         if(output)Check(g.device->CreateUnorderedAccessView(result.tex.Get(),nullptr,&result.uav));return result;};
     std::vector<XMFLOAT4> noise(w*h),history(w*h);std::vector<float> raw(w*h);
     for(UINT y=0;y<h;++y)for(UINT x=0;x<w;++x){float v=((x+y)%2)?.5f:.1f;noise[y*w+x]={v,v,v,20};history[y*w+x]={.3f,.3f,.3f,20};raw[y*w+x]=100.f/99.9f-10.f/99.9f/20;}
@@ -20,6 +22,19 @@ void TestRtLightingDenoise(Gpu& g){
     auto error=[&](const std::vector<XMFLOAT4>& data){double sum=0;for(UINT y=3;y<h-3;++y)for(UINT x=3;x<w-3;++x){float v=data[y*w+x].x-.3f;sum+=v*v;}return sum;};
     auto spatial=run();cb.valid=1;auto temporal=run();double variance=error(temporal)/error(noise);
     Require(variance<.01,"RT denoiser failed to suppress changing radiance noise");
+    // A rejected tap must not poison the sum through NaN * zero. This also
+    // covers corrupt/uninitialized history and a single invalid trace result.
+    auto savedNoise=noise,savedHistory=history;
+    const float nan=std::numeric_limits<float>::quiet_NaN(),inf=std::numeric_limits<float>::infinity();
+    noise[16*w+24]={nan,inf,nan,0};noise[16*w+25]={inf,nan,inf,20};
+    history[16*w+23]={nan,inf,nan,20};history[16*w+24]={1,1,1,nan};
+    g.context->UpdateSubresource(current.tex.Get(),0,nullptr,noise.data(),w*16,0);
+    g.context->UpdateSubresource(previous.tex.Get(),0,nullptr,history.data(),w*16,0);
+    auto invalid=run();for(auto p:invalid)Require(std::isfinite(p.x)&&std::isfinite(p.y)&&std::isfinite(p.z)&&std::isfinite(p.w),"invalid RT samples cause a radiance flash");
+    Require(invalid[16*w+22].x>.1f&&invalid[16*w+22].x<.5f,"rejecting invalid RT samples erased valid neighboring lighting");
+    noise=savedNoise;history=savedHistory;
+    g.context->UpdateSubresource(current.tex.Get(),0,nullptr,noise.data(),w*16,0);
+    g.context->UpdateSubresource(previous.tex.Get(),0,nullptr,history.data(),w*16,0);
     for(auto& p:history)p={20,20,20,100};g.context->UpdateSubresource(previous.tex.Get(),0,nullptr,history.data(),w*16,0);auto rejected=run();
     for(size_t i=0;i<rejected.size();++i)Require(std::abs(rejected[i].x-spatial[i].x)<1e-5,"RT history leaked across disocclusion");
     for(auto& p:history)p.w=20;g.context->UpdateSubresource(previous.tex.Get(),0,nullptr,history.data(),w*16,0);auto clamped=run();
@@ -32,4 +47,19 @@ void TestRtLightingDenoise(Gpu& g){
     auto stationary=run();XMStoreFloat4x4(&cb.previous,XMMatrixTranslation(40.f/(w*XMVectorGetX(projection.r[0])),0,0)*projection);auto moving=run();
     float difference=moving[16*w+24].x-stationary[16*w+24].x;Require(difference>.005f&&difference<.03f,"RT history did not reproject during camera motion");
     printf("RT radiance denoiser: noise variance ratio %.6f, disocclusion/clamp/fluid PASS, moving reprojection %.6f\n",variance,difference);
+    // Real RT is half the depth resolution and samples source centers at
+    // (2*x+1.5, 2*y+1.5). A stationary steep plane with subpixel jitter must
+    // retain history, rather than alternately rejecting it on neighboring rows.
+    std::vector<float> steepRaw(w*h*4);const float jitter=.35f;
+    for(UINT y=0;y<h*2;++y)for(UINT x=0;x<w*2;++x){float z=500/(float(y)+.5f-jitter+8);steepRaw[y*w*2+x]=100.f/99.9f-10.f/99.9f/z;}
+    depth=image(DXGI_FORMAT_R32_FLOAT,steepRaw.data(),w*8,false,w*2,h*2);
+    for(UINT y=0;y<h;++y)for(UINT x=0;x<w;++x){float z=500/(2*y+1.5f-jitter+8),oldZ=500/(2*y+1.5f+8);
+        noise[y*w+x]={float((x+y)%2),0,0,z};history[y*w+x]={.3f,0,0,oldZ};}
+    g.context->UpdateSubresource(current.tex.Get(),0,nullptr,noise.data(),w*16,0);g.context->UpdateSubresource(previous.tex.Get(),0,nullptr,history.data(),w*16,0);
+    XMFLOAT4X4 jittered;XMStoreFloat4x4(&jittered,projection);jittered._32-=jitter*2/(h*2);
+    XMStoreFloat4x4(&cb.inverse,XMMatrixInverse(nullptr,XMLoadFloat4x4(&jittered)));XMStoreFloat4x4(&cb.previous,projection);
+    cb.valid=1;auto slope=run();double mean=0;UINT count=0;float low=1,high=0;
+    for(UINT y=3;y<h-3;++y)for(UINT x=3;x<w-3;++x){float v=slope[y*w+x].x;mean+=v;++count;low=std::min(low,v);high=std::max(high,v);}
+    printf("RT jittered steep-plane history: mean %.4f, range %.4f..%.4f\n",mean/count,low,high);
+    Require(mean/count<.35&&high-low<.04,"RT history is rejected on a stationary grazing plane under DLSS jitter");
 }

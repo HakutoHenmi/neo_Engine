@@ -156,3 +156,35 @@ RTX 4060 Laptop、1920×1080、Release、開始演出完了後、同一カメラ
 測定スクリプトは `tests/Run-SceneryBenchmark.ps1`。結果は `tests/out/scenery-before.txt`、`scenery-final-native.txt`、`scenery-final-dlss.txt`。診断条件は永続設定を変更しない。CPU回帰検証で葉の単位を保ったLOD、ゲームルール、カメラ演出が通過した。
 
 Release／Development x64ビルド成功。実機RT検証はNative／DLSSとも照明234フレームで通過し、DLSS評価576フレームを確認。カメラ回転前後のTLAS構築数は2回のままで、実際に岩を移動した後には再構築された。床の移動差はNative 0.04628、DLSS 0.02844（閾値0.18）。RTの独立切替と設定UI操作も通過し、D3D12 ERROR／CORRUPTIONなし（既存ID1328警告は残る）。最終配布ZIPは更新したRelease実行ファイル、280リソース、署名確認済みのDLSS DLLを同梱する。
+
+## DLSS・RTのちらつき対策と個別GPU計測（2026-10-13）
+
+DLSSの入力パスは1280×720の深度／動きテクスチャへ、EndFrameで復元した1920×1080の出力Viewportを使って描画していた。深度のLoad位置と再投影用UVが一致せず、動く物体の動きパスも通常描画と異なる位置へ描画される。入力サイズのViewport／Scissorを明示し、SDK呼び出し後は出力のViewportを復元する。
+
+DLSS専用の履歴有効フラグを追加し、評価が成功した連続した3Dフレームだけで履歴を使用する。設定画面では前の流体が描画キューに残るため、DrawCall数だけでは3D描画の有無を判定できなかった。そのフレームでカメラを設定したことも確認し、UIだけのフレームでは評価を休止、復帰時にリセットする。SDK評価失敗後はジッターを止め、低解像度のシーンを通常拡大する。DLSS設定の反映には従来どおりアプリ再起動が必要。
+
+ゲームはDLSSの後で固定露出を適用している。1×1・R32_FLOATの露出1.0を明示してDLSSの自動露出を停止し、入力を未露出の線形HDRとして扱う。これはゲームの露出スライダーを二重適用する変更ではない。露出タグと自動露出の条件は[NVIDIAのStreamline DLSSガイド](https://github.com/NVIDIA-RTX/Streamline/blob/main/docs/ProgrammingGuideDLSS.md)に従った。
+
+RTの空間／履歴フィルターには、拒否したサンプルでもNaN×0が周囲へ伝播する問題があった。現在・近傍・履歴の色／深度を計算前に検証し、HDR合成にも同じ拒否を追加する。合成深度の流体デバッグ条件を通常描画と一致させ、動きベクトルの非有限値を除外する。フィルターの定数領域を確保できなかった場合は古いフィルター結果を使わず、そのフレームの生のRT結果へフォールバックする。
+
+RT影・反射・間接光と履歴テクスチャをシーン入力の半解像度に合わせる。Nativeは960×540、DLSS QUALITYでは640×360。QUALITY時のレイ計算画素数を約56%削減し、サンプル数・BLAS／TLASキャッシュは維持する。細かいRT照明の空間解像度は下がるため、深度による復元と履歴フィルターで補う。GPUプロファイラーに「DLSS depth + motion inputs」「DLSS super resolution」「RT HDR composite」を追加し、最終シーン時間と別に各処理のLast／Mean／Peakを確認できるようにする。
+
+回帰検証：tests/Run-FluidTests.ps1 -Case --graphics-only が通過。実TemporalPrepareシェーダーをCPUの独立した投影計算と比較し、ジッター・カメラ回転／移動・流体の深度と速度・停止中の流体を検証した。動きの最大誤差は約9e-8。RTへNaN／Infを注入したテストは修正前に失敗、修正後に通過した。既存のノイズ抑制・深度拒否・流体の残像防止・影・GTAO・HDR合成テストも通過。
+
+個別計測で、静止した景観まで動きベクトル用に再描画していることを確認した。深度からのカメラ再投影が同じ動きを生成するため、前フレームとワールド変換が同じ物体の追加描画を省略する。履歴には全物体の変換を記録し、静止していた物体が動いた次のフレームは追加描画する。実TemporalObjectシェーダーでも静止時は深度再投影と一致し、移動時は非ゼロの動きが出ることを確認した。
+
+Release実機検証（RTX 4060 Laptop、1920×1080）：tests/Run-RtLightingSmoke.ps1をDLSS ON／Nativeの両方で実行。RT照明234フレーム、DLSS ONの最終版は評価612フレーム、履歴リセット2回。設定画面での評価休止と復帰時リセット、RT独立切替、TLASの再利用と物体移動による再構築が通過。床の静止差はDLSS 0.001760／Native 0.000141、移動差は0.03114／0.04624。静止16フレームと設定復帰9フレームを連続取得し、白い画素の最大割合はDLSS 0／Native 0.00000443。D3D12 ERROR／CORRUPTIONなし。既存のID1328警告は残る。これは診断シーンでの短時間確認であり、ユーザーの白いフラッシュを同じプレイ状態で再現したものではない。
+
+負荷比較：tests/Run-SceneryBenchmark.ps1 -Dlssで、開始演出完了後の同じ固定シーンを各条件40フレーム平均した。DLSS＋RT全有効のレイ計算は0.727→0.337ms、RTフィルターは0.258→0.130msで、合計を約53%短縮した。個別計測の導入時に2.40msだった動き生成は、静止物体の追加描画を省いた最終版では0.025ms。DLSSのSDK評価自体は約1.57ms、RTのHDR合成は約0.26msだった。全体は18.58→13.12ms（53.83→76.24 FPS）、通常更新中は18.67→13.01ms（53.56→76.85 FPS）。DLSS ON・RT OFFも63.54→82.53 FPS。比較結果はtests/out/scenery-stability-before-dlss.txtとscenery-stability-final-dlss.txt、個別計測導入時はscenery-stability-profile-dlss.txt。電源・GPUクロックは固定しておらず、長時間戦闘や別GPUで同じFPS向上を保証する測定ではない。
+
+最終Release／Development x64ビルドが成功。追加のGPU計測はtests/Run-SceneryBenchmark.ps1 -Label stability-final-validation-dlss -Dlss -Validationでも実行し、D3D12 ERROR／CORRUPTIONなし、各パスのGPU時間取得を確認した。スクリプトは検証ログを保存し、Validation指定時はエラーを失敗として扱う。配布フォルダーとdist/SlimeAssault-Release.zipを更新し、ZIPの298エントリー、修正シェーダー、4つのDLSS DLLと実行ファイルの存在を確認。配布EXEのSHA-256は検証したReleaseビルドと一致した。
+
+tests/Run-DlssPackageSmoke.ps1 -Executable ./dist/SlimeAssault/SlimeAssault.exeも通過。配布フォルダーから起動して同梱SDKでDLSS評価89フレーム、DLSS SR available、D3D12 ERROR／CORRUPTIONなしを確認した。git diff --check通過。
+
+## 動画で残っていた角度依存のちらつき・RT影の縞（2026-10-13）
+
+ユーザー提供の約75秒・60fpsのエディタ録画を解析し、RT影の傾斜面復元、RT照明履歴のサンプル位置と深度判定、距離によらないMip 2の材質読み取りを修正した。各問題を実シェーダーの描画テストで再現・検証した。ReleaseのDLSS ON／OFF各24条件と、動画と同じエディタ内Gameビューの36条件が通過。解析した場面、数値、再実行方法と確認範囲は [動画解析記録](GraphicsVideoAnalysis-2026-10-13.md) に記載。
+
+## 移動中の地面の白化・遠景の乱れ（追加録画）
+
+11:29:52の録画の約51.13秒で地面の一時的な白化を確認。フレーム間の動的SRV参照表の共有を解消し、遠景の逆行列計算を分解し、RT探索の終点と深度判定の許容幅を揃えた。数値再現・移動検査・確認範囲は [地面の移動解析記録](GraphicsGroundTravelAnalysis-2026-10-13.md) に記載。

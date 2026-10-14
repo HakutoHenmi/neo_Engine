@@ -11,6 +11,8 @@
 #include "../tests/RtLightingValidationScene.h"
 #include "../tests/SceneryBenchmarkScene.h"
 #ifndef NDEBUG
+#include "../tests/FluidSandboxValidationScene.h"
+#include "../tests/RigidbodyValidationScene.h"
 #include "../tests/FluidValidationScene.h"
 #include "../tests/FluidGameBenchmarkScene.h"
 #include "../tests/ChronoValidationScene.h"
@@ -77,6 +79,9 @@ int WINAPI WinMain(_In_ HINSTANCE hInst, _In_opt_ HINSTANCE, _In_ LPSTR commandL
 		sm.Register("GameOver", []() -> std::unique_ptr<Engine::IScene> { return std::unique_ptr<Engine::IScene>(new Game::GameOverScene()); });
 #ifndef NDEBUG
 		sm.Register("FluidValidation", []() -> std::unique_ptr<Engine::IScene> { return std::make_unique<FluidValidationScene>(); });
+		sm.Register("FluidSandboxValidation", []() -> std::unique_ptr<Engine::IScene> { return std::make_unique<FluidSandboxValidationScene>(); });
+		sm.Register("RigidbodyValidation", []() -> std::unique_ptr<Engine::IScene> { return std::make_unique<RigidbodyValidationScene>(); });
+		sm.Register("RigidbodyLegacyValidation", []() -> std::unique_ptr<Engine::IScene> { return std::make_unique<RigidbodyValidationScene>(false); });
 		sm.Register("ComponentValidation", []() -> std::unique_ptr<Engine::IScene> { return std::make_unique<ComponentValidationScene>(); });
 		sm.Register("ComponentEditor", []() -> std::unique_ptr<Engine::IScene> { return std::make_unique<ComponentValidationScene>(true); });
 		sm.Register("UIResultValidation", []() -> std::unique_ptr<Engine::IScene> { return std::make_unique<UIResultValidationScene>(); });
@@ -121,6 +126,16 @@ int WINAPI WinMain(_In_ HINSTANCE hInst, _In_opt_ HINSTANCE, _In_ LPSTR commandL
 			if (wcscmp(arguments[i], L"--fluid-smoke") == 0) {
 				app.SetInitialSceneKey("FluidValidation");
 				LogFileMain("Fluid smoke scene requested");
+			}
+			if (wcscmp(arguments[i], L"--fluid-sandbox-smoke") == 0) {
+				app.SetInitialSceneKey("FluidSandboxValidation");
+				LogFileMain("Fluid sandbox smoke scene requested");
+			}
+			if (wcscmp(arguments[i], L"--rigidbody-smoke") == 0) {
+				app.SetInitialSceneKey("RigidbodyValidation");LogFileMain("Rigidbody smoke scene requested");
+			}
+			if (wcscmp(arguments[i], L"--rigidbody-legacy-smoke") == 0) {
+				app.SetInitialSceneKey("RigidbodyLegacyValidation");LogFileMain("Rigidbody legacy smoke scene requested");
 			}
 			if (wcscmp(arguments[i], L"--fluid-game-benchmark") == 0) {
 				app.SetInitialSceneKey("FluidGameBenchmark");

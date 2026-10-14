@@ -1,0 +1,477 @@
+{
+  "settings": {
+    "postProcessEnabled": true,
+    "ambientColor": [
+      0.35,
+      0.4,
+      0.48
+    ]
+  },
+  "objects": [
+    {
+      "id": 100,
+      "parentId": 4294967295,
+      "name": "Glass Tank",
+      "locked": false,
+      "translate": [
+        0,
+        0.6,
+        0
+      ],
+      "rotate": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "components": [
+        {
+          "type": "Variable",
+          "enabled": true,
+          "values": {
+            "fluidTank": 1,
+            "width": 6,
+            "height": 5,
+            "depth": 5,
+            "thickness": 0.25
+          }
+        }
+      ]
+    },
+    {
+      "id": 101,
+      "parentId": 100,
+      "name": "Glass Bottom",
+      "locked": false,
+      "translate": [
+        0,
+        -0.125,
+        0
+      ],
+      "rotate": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        3.25,
+        0.125,
+        2.75
+      ],
+      "components": [
+        {
+          "type": "MeshRenderer",
+          "enabled": true,
+          "modelPath": "Resources/Models/cube/cube.obj",
+          "shaderName": "Glass",
+          "color": [
+            0.72,
+            0.9,
+            1,
+            0.08
+          ],
+          "reflectivity": 0.65,
+          "useCubemap": false
+        },
+        {
+          "type": "BoxCollider",
+          "enabled": true,
+          "center": [
+            0,
+            0,
+            0
+          ],
+          "size": [
+            2,
+            2,
+            2
+          ],
+          "isTrigger": false
+        },
+        {
+          "type": "Tag",
+          "tag": "Wall"
+        },
+        {
+          "type": "Variable",
+          "enabled": true,
+          "values": {
+            "fluidTankPanel": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": 102,
+      "parentId": 100,
+      "name": "Glass Left",
+      "locked": false,
+      "translate": [
+        -3.125,
+        2.5,
+        0
+      ],
+      "rotate": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        0.125,
+        2.5,
+        2.75
+      ],
+      "components": [
+        {
+          "type": "MeshRenderer",
+          "enabled": true,
+          "modelPath": "Resources/Models/cube/cube.obj",
+          "shaderName": "Glass",
+          "color": [
+            0.72,
+            0.9,
+            1,
+            0.08
+          ],
+          "reflectivity": 0.65,
+          "useCubemap": false
+        },
+        {
+          "type": "BoxCollider",
+          "enabled": true,
+          "center": [
+            0,
+            0,
+            0
+          ],
+          "size": [
+            2,
+            2,
+            2
+          ],
+          "isTrigger": false
+        },
+        {
+          "type": "Tag",
+          "tag": "Wall"
+        },
+        {
+          "type": "Variable",
+          "enabled": true,
+          "values": {
+            "fluidTankPanel": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": 103,
+      "parentId": 100,
+      "name": "Glass Right",
+      "locked": false,
+      "translate": [
+        3.125,
+        2.5,
+        0
+      ],
+      "rotate": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        0.125,
+        2.5,
+        2.75
+      ],
+      "components": [
+        {
+          "type": "MeshRenderer",
+          "enabled": true,
+          "modelPath": "Resources/Models/cube/cube.obj",
+          "shaderName": "Glass",
+          "color": [
+            0.72,
+            0.9,
+            1,
+            0.08
+          ],
+          "reflectivity": 0.65,
+          "useCubemap": false
+        },
+        {
+          "type": "BoxCollider",
+          "enabled": true,
+          "center": [
+            0,
+            0,
+            0
+          ],
+          "size": [
+            2,
+            2,
+            2
+          ],
+          "isTrigger": false
+        },
+        {
+          "type": "Tag",
+          "tag": "Wall"
+        },
+        {
+          "type": "Variable",
+          "enabled": true,
+          "values": {
+            "fluidTankPanel": 2
+          }
+        }
+      ]
+    },
+    {
+      "id": 104,
+      "parentId": 100,
+      "name": "Glass Back",
+      "locked": false,
+      "translate": [
+        0,
+        2.5,
+        -2.625
+      ],
+      "rotate": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        3,
+        2.5,
+        0.125
+      ],
+      "components": [
+        {
+          "type": "MeshRenderer",
+          "enabled": true,
+          "modelPath": "Resources/Models/cube/cube.obj",
+          "shaderName": "Glass",
+          "color": [
+            0.72,
+            0.9,
+            1,
+            0.08
+          ],
+          "reflectivity": 0.65,
+          "useCubemap": false
+        },
+        {
+          "type": "BoxCollider",
+          "enabled": true,
+          "center": [
+            0,
+            0,
+            0
+          ],
+          "size": [
+            2,
+            2,
+            2
+          ],
+          "isTrigger": false
+        },
+        {
+          "type": "Tag",
+          "tag": "Wall"
+        },
+        {
+          "type": "Variable",
+          "enabled": true,
+          "values": {
+            "fluidTankPanel": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": 105,
+      "parentId": 100,
+      "name": "Glass Front",
+      "locked": false,
+      "translate": [
+        0,
+        2.5,
+        2.625
+      ],
+      "rotate": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        3,
+        2.5,
+        0.125
+      ],
+      "components": [
+        {
+          "type": "MeshRenderer",
+          "enabled": true,
+          "modelPath": "Resources/Models/cube/cube.obj",
+          "shaderName": "Glass",
+          "color": [
+            0.72,
+            0.9,
+            1,
+            0.08
+          ],
+          "reflectivity": 0.65,
+          "useCubemap": false
+        },
+        {
+          "type": "BoxCollider",
+          "enabled": true,
+          "center": [
+            0,
+            0,
+            0
+          ],
+          "size": [
+            2,
+            2,
+            2
+          ],
+          "isTrigger": false
+        },
+        {
+          "type": "Tag",
+          "tag": "Wall"
+        },
+        {
+          "type": "Variable",
+          "enabled": true,
+          "values": {
+            "fluidTankPanel": 4
+          }
+        }
+      ]
+    },
+    {
+      "id": 106,
+      "parentId": 100,
+      "name": "Water Emitter",
+      "locked": false,
+      "translate": [
+        0,
+        6,
+        0
+      ],
+      "rotate": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "components": [
+        {
+          "type": "FluidEmitter",
+          "enabled": false,
+          "emitCountPerFrame": 20,
+          "retainWater": true,
+          "particleLimit": 16000,
+          "color": [
+            0.2,
+            0.8,
+            1,
+            1
+          ],
+          "velocity": [
+            0,
+            -0.8,
+            0
+          ],
+          "fluidType": 1
+        }
+      ]
+    },
+    {
+      "id": 107,
+      "parentId": 4294967295,
+      "name": "Preview Ground",
+      "locked": false,
+      "translate": [
+        0,
+        -0.2,
+        0
+      ],
+      "rotate": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        12,
+        0.2,
+        12
+      ],
+      "components": [
+        {
+          "type": "MeshRenderer",
+          "enabled": true,
+          "modelPath": "Resources/Models/cube/cube.obj",
+          "shaderName": "Default",
+          "color": [
+            0.22,
+            0.26,
+            0.3,
+            1
+          ],
+          "reflectivity": 0,
+          "useCubemap": false
+        },
+        {
+          "type": "Tag",
+          "tag": "Default"
+        }
+      ]
+    },
+    {
+      "id": 108,
+      "parentId": 4294967295,
+      "name": "Preview Light",
+      "locked": false,
+      "translate": [
+        0,
+        0,
+        0
+      ],
+      "rotate": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "components": [
+        {
+          "type": "DirectionalLight",
+          "enabled": true,
+          "color": [
+            1,
+            0.96,
+            0.9
+          ],
+          "intensity": 1
+        }
+      ]
+    }
+  ]
+}

@@ -14,7 +14,7 @@ bool Renderer::InitRtShadows_(){
     D3D12_COMPUTE_PIPELINE_STATE_DESC pso{};pso.pRootSignature=rootSigRtShadow_.Get();pso.CS={shader.data(),shader.size()};
     if(FAILED(dev_->CreateComputePipelineState(&pso,IID_PPV_ARGS(&psoRtShadow_))))return false;
     auto heap=CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
-    rtShadowTarget_.width=WindowDX::kW/2;rtShadowTarget_.height=WindowDX::kH/2;
+    rtShadowTarget_.width=(std::max)(1u,sceneWidth_/2);rtShadowTarget_.height=(std::max)(1u,sceneHeight_/2);
     auto desc=CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R32G32_FLOAT,rtShadowTarget_.width,rtShadowTarget_.height,1,1,1,0,D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
     if(FAILED(dev_->CreateCommittedResource(&heap,D3D12_HEAP_FLAG_NONE,&desc,D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,nullptr,IID_PPV_ARGS(&rtShadowTarget_.resource)))){psoRtShadow_.Reset();return false;}
     UINT srv=AllocateSrvIndex();rtShadowTarget_.srv=window_->SRV_GPU(srv);dev_->CreateShaderResourceView(rtShadowTarget_.resource.Get(),nullptr,window_->SRV_CPU(srv));dev_->CreateShaderResourceView(rtShadowTarget_.resource.Get(),nullptr,window_->SRV_CPU_Master(srv));
@@ -71,7 +71,7 @@ bool Renderer::RenderRtShadows_(uint32_t frame){
     EndFluidProfile(RtAcceleration);
     if(!graphicsSettings_.rtShadows){rtLightingRendered_=RenderRtLighting_(frame,surfaces);return rtLightingRendered_;}
     struct Constants{Matrix4x4 inverse;Vector3 sun;float nearPlane;Vector3 camera;float farPlane;Vector2 dimensions;float fluid,enabled;} cb{};
-    cb.inverse=XMToM4(XMMatrixInverse(nullptr,M4ToXM(cbFrame_.viewProj)));auto direction=lightCB_.dirLights[0].direction;float length=std::sqrt(direction.x*direction.x+direction.y*direction.y+direction.z*direction.z);cb.sun=direction*(-1.f/(std::max)(length,.001f));cb.enabled=lightCB_.dirLights[0].enabled?1.f:0.f;
+    cb.inverse=XMToM4(InverseCameraViewProjection(M4ToXM(cbFrame_.view),M4ToXM(cbFrame_.proj)));auto direction=lightCB_.dirLights[0].direction;float length=std::sqrt(direction.x*direction.x+direction.y*direction.y+direction.z*direction.z);cb.sun=direction*(-1.f/(std::max)(length,.001f));cb.enabled=lightCB_.dirLights[0].enabled?1.f:0.f;
     float a=cbFrame_.proj.m[2][2],projectionB=cbFrame_.proj.m[3][2];cb.nearPlane=std::abs(projectionB/a);cb.farPlane=std::abs(projectionB/(a-1));cb.camera=cbFrame_.cameraPos;cb.dimensions={float(rtShadowTarget_.width),float(rtShadowTarget_.height)};cb.fluid=volumeSurfaceDepth_&&gpuFluidCoreMode_>=4&&fluidVolumeDebugMode_==0?1.f:0.f;
     UINT offset=upload_[frame].Allocate(256,256);if(offset==UINT32_MAX)return false;std::memcpy(upload_[frame].mapped+offset,&cb,sizeof(cb));
     auto transition=[&](D3D12_RESOURCE_STATES from,D3D12_RESOURCE_STATES to){auto b=CD3DX12_RESOURCE_BARRIER::Transition(rtShadowTarget_.resource.Get(),from,to);list_->ResourceBarrier(1,&b);};

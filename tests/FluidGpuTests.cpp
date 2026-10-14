@@ -704,9 +704,11 @@ void TestVolume(Gpu& g, int waterLayers=2, float waterOffset=0, bool draw=true, 
 #include "SlimeFaceTests.inl"
 #include "SlimeDecorationPreview.inl"
 #include "GraphicsPostValidation.inl"
+#include "FluidSandboxTests.inl"
 int main(int argc,char** argv) {
     if(argc>1&&std::strcmp(argv[1],"--graphics-only")==0){try{Check(CoInitializeEx(nullptr,COINIT_MULTITHREADED));Gpu gpu;TestGraphicsPost(gpu);return 0;}catch(const std::exception& error){fprintf(stderr,"FAIL graphics: %s\n",error.what());return 2;}}
     try {
+        if(argc>1 && std::strcmp(argv[1],"--sandbox-only")==0) { Check(CoInitializeEx(nullptr,COINIT_MULTITHREADED));Gpu gpu;TestFluidSandbox(gpu);return 0; }
         if(argc>1 && std::strcmp(argv[1],"--face-only")==0){ Check(CoInitializeEx(nullptr,COINIT_MULTITHREADED)); Gpu gpu; TestPlayerFace(gpu);TestSlimeDecorationPreview(gpu); return 0; }
         if(argc>1 && std::strcmp(argv[1],"--slime-only")==0){ Check(CoInitializeEx(nullptr,COINIT_MULTITHREADED)); Gpu gpu; TestSlimeFluid(gpu);TestPlayerFace(gpu); return 0; }
         if(argc>1 && std::strcmp(argv[1],"--chrono-only")==0) {
