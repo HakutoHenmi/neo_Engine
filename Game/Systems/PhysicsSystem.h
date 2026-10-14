@@ -23,6 +23,7 @@ public:
 			if (!ctx.renderer->GetCollisionResult(req.resultIdx, ci)) continue;
 			auto& tc = registry.get<TransformComponent>(req.entity);
 			auto& rb = registry.get<RigidbodyComponent>(req.entity);
+			if (!rb.enabled) continue;
 			if (ci.depth > 0.0f && !rb.isKinematic) {
 				tc.translate.x += ci.normal.x * ci.depth;
 				tc.translate.y += ci.normal.y * ci.depth;
@@ -38,22 +39,17 @@ public:
 		}
 		frameRequests.clear();
 
-		// --- 事前準備: エンティティのフィルタリングとAABB事前計算 ---
-		m_dynamics.clear();
-		m_statics.clear();
-
-		// 動的オブジェクト (Rigidbody + BoxCollider + Transform)
-		auto dynamicView = registry.view<RigidbodyComponent, BoxColliderComponent, TransformComponent>();
+		// Motion belongs to Rigidbody, independent of optional collision shapes.
+		auto dynamicView = registry.view<RigidbodyComponent, TransformComponent>();
 		for (auto entity : dynamicView) {
 			auto& rb = dynamicView.get<RigidbodyComponent>(entity);
-			auto& bc = dynamicView.get<BoxColliderComponent>(entity);
 			auto& tc = dynamicView.get<TransformComponent>(entity);
-			if (!rb.enabled || !bc.enabled) continue;
+			if (!rb.enabled || rb.isKinematic) continue;
 
 			float damping = 3.0f;
 			bool isGrounded = false;
 			bool hasCMS = false;
-			if (auto* cm = registry.try_get<CharacterMovementComponent>(entity)) {
+			if (auto* cm = registry.try_get<CharacterMovementComponent>(entity); cm && cm->enabled) {
 				isGrounded = cm->isGrounded;
 				hasCMS = true;
 			}
@@ -72,6 +68,18 @@ public:
 				}
 				tc.translate.z += rb.velocity.z * ctx.dt;
 			}
+		}
+		if (ctx.scene) ctx.scene->InvalidateWorldMatrices();
+
+		// Solid boxes without a Rigidbody are static obstacles. Disabled/trigger
+		// colliders do not suppress gravity and do not create contact responses.
+		m_dynamics.clear();
+		m_statics.clear();
+		auto boxes = registry.view<BoxColliderComponent, TransformComponent>();
+		for (auto entity : boxes) {
+			auto& bc = boxes.get<BoxColliderComponent>(entity);
+			auto& tc = boxes.get<TransformComponent>(entity);
+			if (!bc.enabled || bc.isTrigger) continue;
 
 			CollidableBox cb;
 			cb.entity = entity;
@@ -90,6 +98,11 @@ public:
 			}
 			m_dynamics.push_back(cb);
 		}
+		const bool hasDynamicBox = std::any_of(m_dynamics.begin(), m_dynamics.end(), [&](const CollidableBox& box) {
+			const auto* body = registry.try_get<RigidbodyComponent>(box.entity);
+			return body && body->enabled && !body->isKinematic;
+		});
+		if (!hasDynamicBox) return;
 
 		// 静的オブジェクト (GpuMeshCollider + Transform)
 		auto staticView = registry.view<GpuMeshColliderComponent, TransformComponent>();
@@ -144,6 +157,11 @@ public:
 				for (uint32_t j : m_nearbyEntities) {
 					if (j <= i) continue;
 					auto& d2 = m_dynamics[j];
+					auto* rb1 = registry.try_get<RigidbodyComponent>(d1.entity);
+					auto* rb2 = registry.try_get<RigidbodyComponent>(d2.entity);
+					const bool dynamic1 = rb1 && rb1->enabled && !rb1->isKinematic;
+					const bool dynamic2 = rb2 && rb2->enabled && !rb2->isKinematic;
+					if (!dynamic1 && !dynamic2) continue;
 
 					float dx = d1.center.x - d2.center.x, dy = d1.center.y - d2.center.y, dz = d1.center.z - d2.center.z;
 					float distSq = dx * dx + dy * dy + dz * dz;
@@ -220,10 +238,8 @@ public:
 					}
 
 					if (collision) {
-						auto& rb1 = registry.get<RigidbodyComponent>(d1.entity);
-						auto& rb2 = registry.get<RigidbodyComponent>(d2.entity);
-						float move1 = rb1.isKinematic ? 0.0f : (rb2.isKinematic ? 1.0f : 0.5f);
-						float move2 = rb2.isKinematic ? 0.0f : (rb1.isKinematic ? 1.0f : 0.5f);
+						float move1 = !dynamic1 ? 0.0f : (!dynamic2 ? 1.0f : 0.5f);
+						float move2 = !dynamic2 ? 0.0f : (!dynamic1 ? 1.0f : 0.5f);
 
 						if (isC1 && isC2) {
 							mtv.y = 0;
@@ -242,14 +258,14 @@ public:
 							d2.center.x -= mtv.x * minOverlap * move2; d2.center.y -= mtv.y * minOverlap * move2; d2.center.z -= mtv.z * minOverlap * move2;
 						}
 
-						DirectX::XMVECTOR v1 = rb1.isKinematic ? DirectX::XMVectorZero() : DirectX::XMLoadFloat3(reinterpret_cast<const DirectX::XMFLOAT3*>(&rb1.velocity));
-						DirectX::XMVECTOR v2 = rb2.isKinematic ? DirectX::XMVectorZero() : DirectX::XMLoadFloat3(reinterpret_cast<const DirectX::XMFLOAT3*>(&rb2.velocity));
+						DirectX::XMVECTOR v1 = !dynamic1 ? DirectX::XMVectorZero() : DirectX::XMLoadFloat3(&rb1->velocity);
+						DirectX::XMVECTOR v2 = !dynamic2 ? DirectX::XMVectorZero() : DirectX::XMLoadFloat3(&rb2->velocity);
 						DirectX::XMVECTOR n = DirectX::XMLoadFloat3(reinterpret_cast<const DirectX::XMFLOAT3*>(&mtv));
 						float relVel = DirectX::XMVectorGetX(DirectX::XMVector3Dot(DirectX::XMVectorSubtract(v1, v2), n));
 						if (relVel < 0) {
-							DirectX::XMVECTOR impulse = DirectX::XMVectorScale(n, -relVel * 0.5f);
-							if (!rb1.isKinematic) DirectX::XMStoreFloat3(reinterpret_cast<DirectX::XMFLOAT3*>(&rb1.velocity), DirectX::XMVectorAdd(v1, impulse));
-							if (!rb2.isKinematic) DirectX::XMStoreFloat3(reinterpret_cast<DirectX::XMFLOAT3*>(&rb2.velocity), DirectX::XMVectorSubtract(v2, impulse));
+							DirectX::XMVECTOR impulse = DirectX::XMVectorScale(n, -relVel / ((dynamic1 ? 1.f : 0.f) + (dynamic2 ? 1.f : 0.f)));
+							if (dynamic1) DirectX::XMStoreFloat3(&rb1->velocity, DirectX::XMVectorAdd(v1, impulse));
+							if (dynamic2) DirectX::XMStoreFloat3(&rb2->velocity, DirectX::XMVectorSubtract(v2, impulse));
 						}
 					}
 				}
@@ -264,11 +280,12 @@ public:
 
 			for (auto& d : m_dynamics) {
 				// Kinematic bodies never consume the GPU contact response.
-				if (registry.get<RigidbodyComponent>(d.entity).isKinematic) continue;
+				const auto* body = registry.try_get<RigidbodyComponent>(d.entity);
+				if (!body || !body->enabled || body->isKinematic) continue;
 				// CharacterMovementSystem already resolves terrain height and walls
 				// with mesh raycasts. A second BVH test on the GPU duplicates that
 				// work and delays the character response by a frame-slot cycle.
-				if (registry.all_of<CharacterMovementComponent>(d.entity)) continue;
+				if (const auto* movement = registry.try_get<CharacterMovementComponent>(d.entity); movement && movement->enabled) continue;
 				auto& tc = registry.get<TransformComponent>(d.entity);
 				auto& bc = registry.get<BoxColliderComponent>(d.entity);
 				
@@ -304,6 +321,7 @@ public:
 			ctx.renderer->EndCollisionCheck();
 
 		}
+		if (ctx.scene) ctx.scene->InvalidateWorldMatrices();
 	}
 
 	void Reset(entt::registry& registry) override {

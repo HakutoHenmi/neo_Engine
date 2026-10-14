@@ -21,6 +21,9 @@ public:
 	static constexpr uint32_t kW = 1920;
 	static constexpr uint32_t kH = 1080;
 	static constexpr uint32_t kBackBufferCount = 2;
+    static constexpr uint32_t kSrvStaticCount = 1000;
+    static constexpr uint32_t kSrvDynamicCountPerFrame = 1048;
+    static constexpr uint32_t kSrvDescriptorCount = kSrvStaticCount + kBackBufferCount * kSrvDynamicCountPerFrame;
 
 	// 現在のドロップ先ディレクトリを保持する静的変数
 	static std::string s_DropDirectory;

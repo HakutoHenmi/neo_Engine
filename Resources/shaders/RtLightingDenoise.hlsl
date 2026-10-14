@@ -12,33 +12,53 @@ cbuffer Filter : register(b0){
     float2 dimensions; float nearPlane,farPlane;
     float historyValid; float3 pad;
 };
+bool ValidLight(float4 light){return all(isfinite(light))&&abs(light.a)>1e-6;}
+float PredictedHistoryDepth(Texture2D<float4> history,int2 q,float4 center,float2 delta,int2 limit){
+    float inv=1/center.a;
+    float4 l=history[max(q-int2(1,0),0)],r=history[min(q+int2(1,0),limit)];
+    float4 u=history[max(q-int2(0,1),0)],d=history[min(q+int2(0,1),limit)];
+    float left=ValidLight(l)&&l.a>0?1/l.a:inv,right=ValidLight(r)&&r.a>0?1/r.a:inv;
+    float up=ValidLight(u)&&u.a>0?1/u.a:inv,down=ValidLight(d)&&d.a>0?1/d.a:inv;
+    float2 gradient=float2(abs(left-inv)<abs(right-inv)?inv-left:right-inv,abs(up-inv)<abs(down-inv)?inv-up:down-inv);
+    return 1/max(1e-6,inv+dot(gradient,delta));
+}
 float4 FilterLight(Texture2D<float4> current,Texture2D<float4> history,uint2 p,float2 oldUV,float oldZ){
-    float4 center=current[p];if(center.a==0)return 0;
+    float4 center=current[p];if(!ValidLight(center))return 0;
     float3 sum=0,lo=1e10,hi=-1e10;float weights=0;
     // Reciprocal depth predicts steep ground across neighboring half-res texels.
     float inv=1/abs(center.a);int2 limit=int2(dimensions)-1;
-    float l=abs(current[max(int2(p)-int2(1,0),0)].a),r=abs(current[min(int2(p)+int2(1,0),limit)].a);
-    float u=abs(current[max(int2(p)-int2(0,1),0)].a),d=abs(current[min(int2(p)+int2(0,1),limit)].a);
+    float4 left=current[max(int2(p)-int2(1,0),0)],right=current[min(int2(p)+int2(1,0),limit)];
+    float4 up=current[max(int2(p)-int2(0,1),0)],down=current[min(int2(p)+int2(0,1),limit)];
+    float l=ValidLight(left)?abs(left.a):0,r=ValidLight(right)?abs(right.a):0;
+    float u=ValidLight(up)?abs(up.a):0,d=ValidLight(down)?abs(down.a):0;
     float dx=l>0&&r>0?(abs(1/l-inv)<abs(1/r-inv)?inv-1/l:1/r-inv):0;
     float dy=u>0&&d>0?(abs(1/u-inv)<abs(1/d-inv)?inv-1/u:1/d-inv):0;
     [unroll]for(int y=-2;y<=2;++y)[unroll]for(int x=-2;x<=2;++x){
         float4 tap=current[clamp(int2(p)+int2(x,y),0,limit)];
+        // Reject before arithmetic: multiplying NaN/Inf radiance by zero still
+        // contaminates the entire neighborhood and later DLSS/bloom history.
+        if(!ValidLight(tap)||(tap.a<0)!=(center.a<0))continue;
         float predicted=1/max(1e-6,inv+dx*x+dy*y);
         float w=exp(-abs(abs(tap.a)-predicted)/max(.08,abs(center.a)*.004))*exp(-(x*x+y*y)*.35);
-        if(tap.a==0||(tap.a<0)!=(center.a<0))w=0;
         sum+=tap.rgb*w;weights+=w;
         if(w>.1){lo=min(lo,tap.rgb);hi=max(hi,tap.rgb);}
     }
     float3 spatial=weights>1e-5?sum/weights:center.rgb;
     // Fluid shape animates independently of the camera: spatial filtering only.
     if(historyValid>.5&&center.a>0&&all(oldUV>0)&&all(oldUV<1)&&oldZ>0){
-        float2 at=oldUV*dimensions-.5;int2 base=int2(floor(at));float2 f=frac(at);
+        uint dw,dh;depth.GetDimensions(dw,dh);float2 ratio=float2(dw,dh)/dimensions;
+        // Trace samples are source-depth pixel centers, not the centers of the
+        // half-resolution texture: for a 2:1 ratio their offset is .75, not .5.
+        float2 sampleOffset=(floor(ratio*.5)+.5)/ratio;
+        float2 at=oldUV*dimensions-sampleOffset;int2 base=int2(floor(at));float2 f=frac(at);
         float3 prior=0;float valid=0;
         [unroll]for(int j=0;j<2;++j)[unroll]for(int i=0;i<2;++i){
             int2 q=clamp(base+int2(i,j),0,limit);float4 h=history[q];
+            if(!ValidLight(h)||h.a<=0)continue;
+            float predicted=PredictedHistoryDepth(history,q,h,at-float2(q),limit);
+            if(abs(predicted-oldZ)>=max(.12,oldZ*.006))continue;
             float w=(i?f.x:1-f.x)*(j?f.y:1-f.y);
             // Explicit view-depth test prevents lighting leaking across objects.
-            w*=h.a>0&&abs(h.a-oldZ)<max(.12,oldZ*.006)?1:0;
             prior+=h.rgb*w;valid+=w;
         }
         if(valid>.5){float3 margin=max(float3(.005,.005,.005),(hi-lo)*.1);

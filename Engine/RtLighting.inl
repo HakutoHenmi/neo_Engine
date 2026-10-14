@@ -15,7 +15,7 @@ bool Renderer::InitRtLighting_(){
     if(FAILED(dev_->CreateComputePipelineState(&pso,IID_PPV_ARGS(&psoRtLighting_))))return false;
     auto heap=CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
     auto create=[&](BloomTarget& target,D3D12_GPU_DESCRIPTOR_HANDLE& uav){
-        target.width=WindowDX::kW/2;target.height=WindowDX::kH/2;
+        target.width=(std::max)(1u,sceneWidth_/2);target.height=(std::max)(1u,sceneHeight_/2);
         auto rd=CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R32G32B32A32_FLOAT,target.width,target.height,1,1,1,0,D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
         if(FAILED(dev_->CreateCommittedResource(&heap,D3D12_HEAP_FLAG_NONE,&rd,D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,nullptr,IID_PPV_ARGS(&target.resource))))return false;
         UINT srv=AllocateSrvIndex();target.srv=window_->SRV_GPU(srv);dev_->CreateShaderResourceView(target.resource.Get(),nullptr,window_->SRV_CPU(srv));dev_->CreateShaderResourceView(target.resource.Get(),nullptr,window_->SRV_CPU_Master(srv));
@@ -78,11 +78,12 @@ bool Renderer::RenderRtLighting_(uint32_t frame,const std::vector<RtInstance>& i
     UINT table=AllocateDynamicSrvIndex(32);if(table==UINT32_MAX)return false;
     for(UINT i=0;i<32;++i)dev_->CopyDescriptorsSimple(1,window_->SRV_CPU(table+i),textures_[i<textures.size()?textures[i]:0].srvCpuMaster,D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
     bool diagnostic=wcsstr(GetCommandLineW(),L"--rt-lighting-smoke")!=nullptr;
-    struct Constants{Matrix4x4 inverse;Vector3 sun;float nearPlane;Vector3 camera;float farPlane;Vector2 dimensions;float fluid,enabled;Vector3 sunColor;float reflection;Vector3 ambient;float indirect;uint32_t diagnostics;float pad[3];} cb{};
-    cb.inverse=XMToM4(XMMatrixInverse(nullptr,M4ToXM(cbFrame_.viewProj)));auto direction=lightCB_.dirLights[0].direction;
+    struct Constants{Matrix4x4 inverse;Vector3 sun;float nearPlane;Vector3 camera;float farPlane;Vector2 dimensions;float fluid,enabled;Vector3 sunColor;float reflection;Vector3 ambient;float indirect;uint32_t diagnostics;float pixelSpread,pad[2];} cb{};
+    cb.inverse=XMToM4(InverseCameraViewProjection(M4ToXM(cbFrame_.view),M4ToXM(cbFrame_.proj)));auto direction=lightCB_.dirLights[0].direction;
     float length=std::sqrt(direction.x*direction.x+direction.y*direction.y+direction.z*direction.z);cb.sun=direction*(-1.f/(std::max)(length,.001f));cb.enabled=lightCB_.dirLights[0].enabled?1.f:0.f;cb.sunColor=lightCB_.dirLights[0].color;
     cb.ambient=lightCB_.ambientColor;cb.reflection=graphicsSettings_.rtReflections?1.f:0.f;cb.indirect=graphicsSettings_.rtIndirect?1.f:0.f;
     cb.diagnostics=diagnostic?1u:0u;
+    cb.pixelSpread=2.f/(cbFrame_.proj.m[1][1]*rtReflectionTarget_.height);
     float a=cbFrame_.proj.m[2][2],b=cbFrame_.proj.m[3][2];cb.nearPlane=std::abs(b/a);cb.farPlane=std::abs(b/(a-1));cb.camera=cbFrame_.cameraPos;cb.dimensions={float(rtReflectionTarget_.width),float(rtReflectionTarget_.height)};
     cb.fluid=volumeSurfaceDepth_&&gpuFluidCoreMode_>=4&&fluidVolumeDebugMode_==0?1.f:0.f;
     UINT offset=upload_[frame].Allocate(256,256);if(offset==UINT32_MAX)return false;std::memcpy(upload_[frame].mapped+offset,&cb,sizeof(cb));
@@ -114,7 +115,9 @@ bool Renderer::RenderRtLighting_(uint32_t frame,const std::vector<RtInstance>& i
     BeginFluidProfile(RtDenoise);
     DenoiseRtLighting_(frame,cb.nearPlane,cb.farPlane);
     EndFluidProfile(RtDenoise);
+    BeginFluidProfile(RtComposite);
     CompositeRtLighting_(frame,cb.nearPlane,cb.farPlane,cb.fluid>.5f);
+    EndFluidProfile(RtComposite);
     ++rtLightingFrames_;return true;
 }
 void Renderer::DenoiseRtLighting_(uint32_t frame,float nearPlane,float farPlane){
@@ -122,10 +125,10 @@ void Renderer::DenoiseRtLighting_(uint32_t frame,float nearPlane,float farPlane)
     uint32_t mask=(graphicsSettings_.rtReflections?1u:0u)|(graphicsSettings_.rtIndirect?2u:0u);
     auto delta=cbFrame_.cameraPos-previousRtCamera_;float travel=std::sqrt(delta.x*delta.x+delta.y*delta.y+delta.z*delta.z);
     struct Constants{Matrix4x4 inverse,previous;Vector2 dimensions;float nearPlane,farPlane,valid,pad[3];} cb{};
-    cb.inverse=XMToM4(XMMatrixInverse(nullptr,M4ToXM(cbFrame_.viewProj)));cb.previous=previousRtViewProjection_;
+    cb.inverse=XMToM4(InverseCameraViewProjection(M4ToXM(cbFrame_.view),M4ToXM(cbFrame_.proj)));cb.previous=previousRtViewProjection_;
     cb.dimensions={float(rtReflectionTarget_.width),float(rtReflectionTarget_.height)};cb.nearPlane=nearPlane;cb.farPlane=farPlane;
     cb.valid=rtLightingHistoryValid_&&postHistoryValid_&&mask==rtHistoryMask_&&travel<5?1.f:0.f;
-    UINT offset=upload_[frame].Allocate(256,256);if(offset==UINT32_MAX)return;std::memcpy(upload_[frame].mapped+offset,&cb,sizeof(cb));
+    UINT offset=upload_[frame].Allocate(256,256);if(offset==UINT32_MAX){rtLightingHistoryValid_=false;return;}std::memcpy(upload_[frame].mapped+offset,&cb,sizeof(cb));
     auto transition=[&](ID3D12Resource* resource,D3D12_RESOURCE_STATES from,D3D12_RESOURCE_STATES to){auto b=CD3DX12_RESOURCE_BARRIER::Transition(resource,from,to);list_->ResourceBarrier(1,&b);};
     BloomTarget* inputs[]={&rtReflectionTarget_,&rtIndirectTarget_,&rtFilteredReflection_[previous],&rtFilteredIndirect_[previous]};
     for(auto* input:inputs)transition(input->resource.Get(),D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
@@ -152,7 +155,7 @@ void Renderer::CompositeRtLighting_(uint32_t frame,float nearPlane,float farPlan
     D3D12_VIEWPORT vp{0,0,float(sceneWidth_),float(sceneHeight_),0,1};D3D12_RECT scissor{0,0,LONG(sceneWidth_),LONG(sceneHeight_)};list_->RSSetViewports(1,&vp);list_->RSSetScissorRects(1,&scissor);
     list_->SetGraphicsRootConstantBufferView(0,upload_[frame].buffer->GetGPUVirtualAddress()+offset);
     for(UINT i=1;i<10;++i)list_->SetGraphicsRootDescriptorTable(i,ppSrvGpu_);
-    list_->SetGraphicsRootDescriptorTable(4,ppDepthSrvGpu_);list_->SetGraphicsRootDescriptorTable(6,fluid?volumeSurfaceDepthSrv_:ppDepthSrvGpu_);list_->SetGraphicsRootDescriptorTable(8,rtFilteredReflection_[rtHistoryIndex_].srv);list_->SetGraphicsRootDescriptorTable(9,rtFilteredIndirect_[rtHistoryIndex_].srv);
+    list_->SetGraphicsRootDescriptorTable(4,ppDepthSrvGpu_);list_->SetGraphicsRootDescriptorTable(6,fluid?volumeSurfaceDepthSrv_:ppDepthSrvGpu_);list_->SetGraphicsRootDescriptorTable(8,rtLightingHistoryValid_?rtFilteredReflection_[rtHistoryIndex_].srv:rtReflectionTarget_.srv);list_->SetGraphicsRootDescriptorTable(9,rtLightingHistoryValid_?rtFilteredIndirect_[rtHistoryIndex_].srv:rtIndirectTarget_.srv);
     list_->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);list_->DrawInstanced(3,1,0,0);
     D3D12_RESOURCE_BARRIER copies[]={CD3DX12_RESOURCE_BARRIER::Transition(rtLightingHdr_.Get(),D3D12_RESOURCE_STATE_RENDER_TARGET,D3D12_RESOURCE_STATE_COPY_SOURCE),CD3DX12_RESOURCE_BARRIER::Transition(ppSceneColor_.Get(),D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,D3D12_RESOURCE_STATE_COPY_DEST)};list_->ResourceBarrier(2,copies);
     list_->CopyResource(ppSceneColor_.Get(),rtLightingHdr_.Get());auto toRead=CD3DX12_RESOURCE_BARRIER::Transition(ppSceneColor_.Get(),D3D12_RESOURCE_STATE_COPY_DEST,D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);list_->ResourceBarrier(1,&toRead);

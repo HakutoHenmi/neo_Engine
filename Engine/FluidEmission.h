@@ -10,4 +10,11 @@ inline int AccumulateFluidEmission(int referenceCount, float dt, float& remainde
     remainder-=count;
     return count;
 }
+inline int LimitFluidEmission(int count, int limit, int& emitted) {
+    count=(std::max)(0,count);
+    if(limit>0) count=(std::min)(count,(std::max)(0,limit-emitted));
+    // Unlimited emitters do not need a counter that can eventually overflow.
+    if(limit>0) emitted+=count;
+    return count;
+}
 }

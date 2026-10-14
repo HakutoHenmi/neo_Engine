@@ -32,6 +32,7 @@ namespace Engine {
 
 class Renderer final {
 public:
+    std::array<uint32_t,2> DynamicSrvFrameRange() const { return {srvDynamicEnd_ - WindowDX::kSrvDynamicCountPerFrame,srvDynamicEnd_}; }
 	using MeshHandle = uint32_t;
 	using TextureHandle = uint32_t;
 
@@ -181,6 +182,7 @@ public:
     bool SupportsDlss() const;
     bool DlssActive() const{return dlssActive_&&SupportsDlss();}
     uint32_t DlssEvaluatedFrames()const{return dlssEvaluatedFrames_;}
+    uint32_t DlssHistoryResets()const{return dlssHistoryResets_;}
     std::string DlssStatus()const;
 
 public:
@@ -236,11 +238,12 @@ public:
 	uint32_t GetParticleCount() const { return frameParticleCount_; }
 	Vector3 GetPlayerPos() const { return cbFrame_.playerPos; }
 
-	static constexpr uint32_t kFluidProfileStageCount = 12;
+	static constexpr uint32_t kFluidProfileStageCount = 15;
 	enum FluidProfileStage : uint32_t {
 		FluidSimulation, FluidShapes, FluidSplat, FluidFiltering,
 		FluidRaymarch, FluidImpostors, FluidShadow, SceneRender,
-        SceneryShadow, RtAcceleration, RtTrace, RtDenoise
+        SceneryShadow, RtAcceleration, RtTrace, RtDenoise,
+        DlssPrepare, DlssUpscale, RtComposite
 	};
 	struct FluidProfileStats {
 		bool available = false;
@@ -444,7 +447,7 @@ public:
 	void UpdateGPUFluid(float dt);
 	void ResetGPUFluid();
 	void ClearGPUFluid() { gpuFluidActiveParticleCount_ = 0; gpuFluidPhaseMask_ = 0; volumeHistoryValid_ = false; isGPUFluidInitialized_ = false; }
-	void EmitGPUFluid(const Vector3& pos, const Vector3& velocityDir, const Vector4& color, int count, float type = 0.0f);
+	void EmitGPUFluid(const Vector3& pos, const Vector3& velocityDir, const Vector4& color, int count, float type = 0.0f, bool retainWater = false);
 	uint32_t ExtractGPUFluidFromPlayer(const Vector3& pos, const Vector3& velocityDir, int count);
 	void SyncLostGPUFluidGroup(uint32_t groupId, const Vector3& pos);
 	void AbsorbLostGPUFluidGroup(uint32_t groupId);
@@ -733,8 +736,8 @@ private:
 
 	uint32_t srvCursor_ = 10;
 	uint32_t srvDynamicCursor_ = 0;
-	static constexpr uint32_t kSrvStaticMax = 1000;
-	static constexpr uint32_t kSrvHeapTotal = 2048;
+    uint32_t srvDynamicEnd_ = 0;
+	static constexpr uint32_t kSrvStaticMax = WindowDX::kSrvStaticCount;
 
 	// ★追加: RTV割り当て用
 	uint32_t rtvCursor_ = 1; // 0番目は finalSceneColor_ 用
@@ -847,11 +850,14 @@ private:
     UINT sceneWidth_=WindowDX::kW,sceneHeight_=WindowDX::kH;
     bool dlssActive_=false;uint32_t temporalFrame_=0;
     uint32_t dlssEvaluatedFrames_=0;
+    bool dlssHistoryValid_=false;
+    bool sceneCameraSet_=false;
+    uint32_t dlssHistoryResets_=0;
     Matrix4x4 unjitteredProjection_{},unjitteredViewProjection_{},previousTemporalViewProjection_{};
     Vector2 temporalJitter_{};
     Vector3 previousTemporalForward_{};
     float previousTemporalFov_=0;
-    BloomTarget temporalMotion_,temporalDepth_,dlssOutput_;
+    BloomTarget temporalMotion_,temporalDepth_,dlssOutput_,temporalExposure_;
     D3D12_GPU_DESCRIPTOR_HANDLE postColorSrv_{};
     Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> temporalRtvHeap_;
     Microsoft::WRL::ComPtr<ID3D12RootSignature> rootSigTemporal_;

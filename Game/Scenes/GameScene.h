@@ -42,11 +42,13 @@ public:
 
 	// シーンがエンティティの生成・破棄を管理する
 	entt::entity CreateEntity(const std::string& name = "New Object");
+	void ResetFluidPreview();
 	// ★追加: オブジェクトをIDで破棄保留にする
 	void DestroyObject(uint32_t id);
 	void ClearScene(); // ★追加: シーンの完全クリアとキューのリセット
 
     SceneComponents& GetComponents() { return components_; }
+    void InvalidateWorldMatrices() const { ClearMatrixCache(); }
     entt::entity CreateEmptyEntity();
     void DestroyEditorEntity(entt::entity entity);
     const entt::registry& GetRegistry() const { return registry_; }

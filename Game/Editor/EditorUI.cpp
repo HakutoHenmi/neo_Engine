@@ -20,6 +20,7 @@
 #include <tuple> // 追加
 #include "PipeEditor.h"
 #include "EnemySpawnerEditor.h"
+#include "../../Engine/FluidTank.h"
 #include "SceneManager.h"
 #include "WindowDX.h"
 #include <algorithm>
@@ -98,12 +99,9 @@ static std::vector<entt::entity> RestoreSceneFromJson(GameScene* scene, const js
 		auto& hc = reg.get_or_emplace<HierarchyComponent>(entity);
 		uint32_t savedParentId = obj.value("parentId", (uint32_t)entt::null);
 		
-		// 過去のバグで parentId が 0 で保存されていた場合の救済措置
-		if (savedParentId == 0) {
-			savedParentId = static_cast<uint32_t>(entt::null);
-		}
-
-		if (savedParentId != (uint32_t)entt::null && idMap.find(savedParentId) != idMap.end()) {
+		// EnTT entity 0 is a valid parent (e.g. a standalone tank). Reject
+		// missing legacy IDs and self links without discarding valid zero IDs.
+		if (savedParentId != (uint32_t)entt::null && idMap.find(savedParentId) != idMap.end() && idMap[savedParentId] != entity) {
 			hc.parentId = idMap[savedParentId];
 		} else {
 			hc.parentId = entt::null;
@@ -252,6 +250,8 @@ static std::vector<entt::entity> RestoreSceneFromJson(GameScene* scene, const js
 					auto& c = reg.get_or_emplace<FluidEmitterComponent>(entity);
 					c.enabled = en;
 					c.emitCountPerFrame = comp.value("emitCountPerFrame", 80);
+					c.retainWater = comp.value("retainWater", false);
+					c.particleLimit = (std::max)(0, comp.value("particleLimit", 0));
 					if (comp.contains("color") && comp["color"].size() >= 4) {
 						c.color = {comp["color"][0], comp["color"][1], comp["color"][2], comp["color"][3]};
 					}
@@ -746,6 +746,8 @@ static std::string SerializeEntity(SceneComponents& registry, entt::entity entit
 		addComma();
 		ss << "        {\"type\": \"FluidEmitter\", \"enabled\": " << (fec->enabled ? "true" : "false")
 		   << ", \"emitCountPerFrame\": " << fec->emitCountPerFrame
+		   << ", \"retainWater\": " << (fec->retainWater ? "true" : "false")
+		   << ", \"particleLimit\": " << fec->particleLimit
 		   << ", \"color\": [" << fec->color.x << "," << fec->color.y << "," << fec->color.z << "," << fec->color.w << "]"
 		   << ", \"velocity\": [" << fec->velocity.x << "," << fec->velocity.y << "," << fec->velocity.z << "]"
 		   << ", \"fluidType\": " << fec->fluidType << "}";
@@ -1071,6 +1073,8 @@ void EditorUI::Initialize(Engine::Renderer* renderer) {
 }
 
 // ====== Main UI ======
+#include "FluidSandbox.inl"
+
 void EditorUI::Show(Engine::Renderer* renderer, GameScene* gameScene) {
 	globalTime += ImGui::GetIO().DeltaTime;
 	static bool fluidProfilerOpen = false;
@@ -1190,6 +1194,7 @@ void EditorUI::Show(Engine::Renderer* renderer, GameScene* gameScene) {
 			ImGui::EndMenu();
 		}
 		if (ImGui::BeginMenu("Tools")) {
+			if (ImGui::MenuItem("Fluid Sandbox")) OpenFluidSandbox();
 			ImGui::MenuItem("Fluid Profiler", nullptr, &fluidProfilerOpen);
 			if (ImGui::BeginMenu("Fluid diagnostics")) {
 				if (renderer) {
@@ -1272,6 +1277,11 @@ void EditorUI::Show(Engine::Renderer* renderer, GameScene* gameScene) {
 		}
 		if (ImGui::BeginTabItem("Particle Editor")) {
 			gameScene->GetParticleEditor().DrawUI();
+			ImGui::EndTabItem();
+		}
+		if (ImGui::BeginTabItem("Fluid Sandbox", nullptr, fluidSandboxOpen ? ImGuiTabItemFlags_SetSelected : 0)) {
+			fluidSandboxOpen = false;
+			ShowFluidSandbox(renderer, gameScene);
 			ImGui::EndTabItem();
 		}
 		if (ImGui::BeginTabItem("Play Monitor")) {
@@ -1780,7 +1790,8 @@ void EditorUI::Show(Engine::Renderer* renderer, GameScene* gameScene) {
 				static const char* names[Engine::Renderer::kFluidProfileStageCount] = {
 					"Particle simulation", "Shape reconstruction", "Density splat + resolve",
 					"Filtering + occupancy", "Refraction + raymarch", "Distant impostors", "Fluid shadow", "Whole game render",
-                    "Scenery shadow", "RT acceleration", "RT lighting rays", "RT radiance filter"
+                    "Scenery shadow", "RT acceleration", "RT lighting rays", "RT radiance filter",
+                    "DLSS depth + motion inputs", "DLSS super resolution", "RT HDR composite"
 				};
 				for (uint32_t i = 0; i < Engine::Renderer::kFluidProfileStageCount; ++i) {
 					if (!profile.sampledStages[i]) {
@@ -2511,6 +2522,9 @@ void EditorUI::ShowInspector(GameScene* scene) {
 				if (ImGui::CollapsingHeader("FluidEmitter", ImGuiTreeNodeFlags_DefaultOpen)) {
 					ImGui::Checkbox("Enabled##FEC", &fec->enabled);
 					ImGui::DragInt("Emit Rate", &fec->emitCountPerFrame, 1, 0, 1000);
+					ImGui::Text("%d particles / second", fec->emitCountPerFrame * 60);
+					ImGui::Checkbox("Retain water", &fec->retainWater);
+					ImGui::DragInt("Particle limit (0 = continuous)", &fec->particleLimit, 100, 0, 25000);
 					ImGui::ColorEdit4("Color", &fec->color.x);
 					ImGui::DragFloat3("Velocity", &fec->velocity.x, 0.1f);
 					ImGui::DragFloat("Fluid Type", &fec->fluidType, 0.1f, 0.0f, 1.0f);

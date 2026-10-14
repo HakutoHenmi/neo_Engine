@@ -10,5 +10,6 @@ float2 PSMain(VSOutput input):SV_TARGET{
     int2 pixel=int2(input.position.xy);float raw=opaqueDepth.Load(int3(pixel,0));clip(.00001-abs(input.position.z-raw));
     clip(albedo.Sample(linearClamp,input.uv).a-.42);
     if(includeFluid>.5){float z=nearPlane*farPlane/max(.00001,farPlane-raw*(farPlane-nearPlane));float f=fluidDepth.Load(int3(pixel,0));if(f>0&&f<z)discard;}
-    return input.old.w>.001?(input.old.xy/input.old.w-input.now.xy/input.now.w)*float2(.5,-.5):0;
+    float2 motion=input.old.w>.001&&input.now.w>.001?(input.old.xy/input.old.w-input.now.xy/input.now.w)*float2(.5,-.5):0;
+    return all(isfinite(motion))?motion:0;
 }

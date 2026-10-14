@@ -1,3 +1,4 @@
+﻿#include <cfloat>
 #include "../UI/SceneMusic.h"
 #ifndef NOMINMAX
 #define NOMINMAX
@@ -227,6 +228,8 @@ void GameScene::Initialize(Engine::WindowDX* dx, const Engine::SceneParameters& 
 		auto chrono = std::make_unique<ChronoSystem>(this);
 		chronoSystem_ = chrono.get();
 		systems_.push_back(std::move(chrono));
+		// Editor-added rigidbodies also simulate in the default Chrono scene.
+		systems_.push_back(std::make_unique<PhysicsSystem>());
 	} else {
 	systems_.push_back(std::make_unique<PlayerInputSystem>());
 	systems_.push_back(std::make_unique<PlayerActionSystem>());  // ★追加: 攻撃・パリィ・回避
@@ -1022,21 +1025,61 @@ void GameScene::Draw() {
 		}
 	}
 
+	// All fluid emitters need collision geometry, including player-free previews.
+	std::vector<Engine::Renderer::FluidAABB> fluidAABBs;
+	auto aabbView = registry_.view<TransformComponent, BoxColliderComponent>();
+	aabbView.each([&](entt::entity entity, TransformComponent&, BoxColliderComponent& bc) {
+		if (!bc.enabled || bc.isTrigger) return;
+		const auto* tag = registry_.try_get<TagComponent>(entity);
+		if (!tag || (tag->tag != TagType::Wall && tag->tag != TagType::Default)) return;
+		const auto matrix = GetWorldMatrix(static_cast<int>(entity));
+		const auto world = DirectX::XMLoadFloat4x4(reinterpret_cast<const DirectX::XMFLOAT4X4*>(&matrix));
+		DirectX::XMVECTOR lo = DirectX::XMVectorReplicate(FLT_MAX);
+		DirectX::XMVECTOR hi = DirectX::XMVectorReplicate(-FLT_MAX);
+		for (int corner = 0; corner < 8; ++corner) {
+			const auto local = DirectX::XMVectorSet(
+				bc.center.x + ((corner & 1) ? .5f : -.5f) * bc.size.x,
+				bc.center.y + ((corner & 2) ? .5f : -.5f) * bc.size.y,
+				bc.center.z + ((corner & 4) ? .5f : -.5f) * bc.size.z, 1);
+			const auto point = DirectX::XMVector3TransformCoord(local, world);
+			lo = DirectX::XMVectorMin(lo, point); hi = DirectX::XMVectorMax(hi, point);
+		}
+		Engine::Renderer::FluidAABB box{};
+		DirectX::XMStoreFloat3(reinterpret_cast<DirectX::XMFLOAT3*>(&box.min), lo);
+		DirectX::XMStoreFloat3(reinterpret_cast<DirectX::XMFLOAT3*>(&box.max), hi);
+		fluidAABBs.push_back(box);
+	});
+	renderer_->SetFluidAABBs(fluidAABBs);
+
+	if (!registry_.valid(playerEntity)) {
+		// Keep high-quality reconstruction around the preview even without a player.
+		auto sources = registry_.view<TransformComponent, FluidEmitterComponent>();
+		if (sources.begin() != sources.end()) {
+			const auto source = *sources.begin();
+			const auto matrix = GetWorldMatrix(static_cast<int>(source));
+			corePos = {matrix.m[3][0], matrix.m[3][1] - 3, matrix.m[3][2]};
+		}
+		renderer_->SetGPUFluidCore({corePos.x, corePos.y, corePos.z}, 0);
+		renderer_->SetGPUFluidDecoy({0,-1000,0}, 0, {1,1,1}, {0,0,1});
+		renderer_->SetGPUFluidTether({}, false);
+		renderer_->SetChronoFluidPresentation(1, 0, false);
+	}
+
 	// ★追加: エディター上で自由に配置・変更できる流体エミッターの処理 (プレイヤーの存在や非表示に依存しないよう外側に配置)
 	{
 		auto emitterView = registry_.view<TransformComponent, FluidEmitterComponent>();
-		emitterView.each([&](entt::entity e, TransformComponent& tc, FluidEmitterComponent& fec) {
-			(void)e;
+		emitterView.each([&](entt::entity e, TransformComponent&, FluidEmitterComponent& fec) {
 			if (!fec.enabled || fec.emitCountPerFrame <= 0) return;
 
-			Engine::Vector3 pos = { tc.translate.x, tc.translate.y, tc.translate.z };
+			const auto world = GetWorldMatrix(static_cast<int>(e));
+			Engine::Vector3 pos = {world.m[3][0], world.m[3][1], world.m[3][2]};
 			Engine::Vector3 vel = { fec.velocity.x, fec.velocity.y, fec.velocity.z };
 			Engine::Vector4 col = { fec.color.x, fec.color.y, fec.color.z, fec.color.w };
 
 			// 毎フレームエミットを実行
-			const int emitCount=Engine::AccumulateFluidEmission(fec.emitCountPerFrame,
-				Engine::TimeManager::GetInstance().GetDeltaTime(),fec.emissionRemainder);
-			renderer_->EmitGPUFluid(pos, vel, col, emitCount, fec.fluidType);
+			const int emitCount=Engine::LimitFluidEmission(Engine::AccumulateFluidEmission(fec.emitCountPerFrame,
+				Engine::TimeManager::GetInstance().GetDeltaTime(),fec.emissionRemainder), fec.particleLimit, fec.emittedParticles);
+			renderer_->EmitGPUFluid(pos, vel, col, emitCount, fec.fluidType, fec.retainWater);
 
 			// スプラッシュ（水: fluidType >= 0.5f）の場合、プレイヤーが下（半径1.5m以内）にいればHPを回復する
 			if (isPlaying_ && !isPaused_ && fec.fluidType >= 0.5f && registry_.valid(playerEntity)) {
@@ -1171,40 +1214,7 @@ void GameScene::Draw() {
 					renderer_->SetGPUFluidDecoy({0,-1000,0}, 0.0f, {1,1,1}, {0,0,1});
 				}
 
-				// ★追加: 流体シミュレーション用のAABBコリジョンを収集してレンダラーに送る
-				std::vector<Engine::Renderer::FluidAABB> fluidAABBs;
-				auto aabbView = registry_.view<TransformComponent, BoxColliderComponent>();
-				aabbView.each([&](entt::entity entity, TransformComponent& tc, BoxColliderComponent& bc) {
-					// トリガーは当たり判定にしない
-					if (bc.isTrigger) return;
-					
-					// ★変更: 地形(Wall, Default)のみを流体の障害物として扱う
-					bool isStaticObstacle = false;
-					if (registry_.all_of<TagComponent>(entity)) {
-						auto tag = registry_.get<TagComponent>(entity).tag;
-						if (tag == TagType::Wall || tag == TagType::Default) {
-							isStaticObstacle = true;
-						}
-					}
-					
-					if (!isStaticObstacle) return;
-					
-					Engine::Vector3 scale = {tc.scale.x * bc.size.x, tc.scale.y * bc.size.y, tc.scale.z * bc.size.z};
-					// 簡易的なワールド座標（回転を無視したAABB）
-					Engine::Vector3 pos = {
-						tc.translate.x + bc.center.x * tc.scale.x, 
-						tc.translate.y + bc.center.y * tc.scale.y, 
-						tc.translate.z + bc.center.z * tc.scale.z
-					};
-					
-					Engine::Renderer::FluidAABB aabb;
-					aabb.min = {pos.x - scale.x * 0.5f, pos.y - scale.y * 0.5f, pos.z - scale.z * 0.5f};
-					aabb.pad0 = 0.0f;
-					aabb.max = {pos.x + scale.x * 0.5f, pos.y + scale.y * 0.5f, pos.z + scale.z * 0.5f};
-					aabb.pad1 = 0.0f;
-					fluidAABBs.push_back(aabb);
-				});
-				renderer_->SetFluidAABBs(fluidAABBs);
+
 			}
 			// ----------------------------------------
 			
@@ -1388,7 +1398,7 @@ void GameScene::Draw() {
 						continue;
 					}
 					if (mr.shaderName == "Toon" || mr.shaderName == "ToonSkinning" || mr.shaderName == "Hologram" || mr.shaderName == "EmissiveGlow" || mr.shaderName == "ForceField" ||
-					    mr.shaderName == "Dissolve" || mr.shaderName == "Distortion" || mr.shaderName == "Reflection") {
+					    mr.shaderName == "Dissolve" || mr.shaderName == "Distortion" || mr.shaderName == "Reflection" || mr.shaderName == "Glass") {
 						renderer_->DrawMesh(mr.modelHandle, mr.textureHandle, world, {color.x * mr.color.x, color.y * mr.color.y, color.z * mr.color.z, color.w * mr.color.w}, mr.shaderName, mr.reflectivity, mr.useCubemap);
 					} else {
 						renderer_->DrawMeshInstanced(
@@ -1805,8 +1815,8 @@ void GameScene::SetIsPlaying(bool play) {
 		return;
 
 	wasLiquidated_ = false;
+	if (play || chronoMode_) ResetFluidPreview();
 	if (chronoMode_) {
-		renderer_->ResetGPUFluid();
 		gpuSlimeEmitted_ = false;
 		renderer_->SetPostEffect("Default");renderer_->SetPostProcessParams({});
 	}
@@ -1980,7 +1990,19 @@ void GameScene::SetTag(entt::entity entity, const std::string& tagStr) {
 	SetTag(entity, StringToTag(tagStr));
 }
 
+void GameScene::ResetFluidPreview() {
+	if (renderer_) renderer_->ResetGPUFluid();
+	gpuSlimeEmitted_ = false;
+	auto emitters = registry_.view<FluidEmitterComponent>();
+	for (auto entity : emitters) {
+		auto& emitter = emitters.get<FluidEmitterComponent>(entity);
+		emitter.emittedParticles = 0;
+		emitter.emissionRemainder = 0;
+	}
+}
+
 void GameScene::ClearScene() {
+	gpuSlimeEmitted_ = false;
     ClearSelection();
     if(renderer_)renderer_->SetRogueWorldFrozen(false);
 	StopAllScripts(registry_, this);

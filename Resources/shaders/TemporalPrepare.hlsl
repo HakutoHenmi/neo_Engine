@@ -15,6 +15,7 @@ Output main(float4 position:SV_POSITION,float2 uv:TEXCOORD0){
     if(includeFluid>.5){float f=fluidDepth.Load(int3(pixel,0));if(f>0&&f<z){z=f;raw=farPlane/(farPlane-nearPlane)-nearPlane*farPlane/((farPlane-nearPlane)*z);fluid=true;}}
     float4 world=mul(float4(uv*float2(2,-2)+float2(-1,1),raw,1),inverseCurrent);world/=world.w;
     float4 present=mul(world,current);
-    if(fluid){float3 coordinate=(world.xyz-volumeOrigin)/(cell*dimensions);world.xyz-=fluidVelocity.SampleLevel(linearClamp,saturate(coordinate),0).xyz*dt;}
-    float4 old=mul(world,previous);Output result;result.motion=old.w>.001?(old.xy/old.w-present.xy/present.w)*float2(.5,-.5):0;result.depth=raw;return result;
+    if(fluid&&dt>0){float3 coordinate=(world.xyz-volumeOrigin)/(cell*dimensions);world.xyz-=fluidVelocity.SampleLevel(linearClamp,saturate(coordinate),0).xyz*dt;}
+    float4 old=mul(world,previous);Output result;result.motion=old.w>.001&&present.w>.001?(old.xy/old.w-present.xy/present.w)*float2(.5,-.5):0;
+    if(!all(isfinite(result.motion)))result.motion=0;result.depth=raw;return result;
 }

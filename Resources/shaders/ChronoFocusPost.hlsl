@@ -41,6 +41,12 @@ float3 highLight(float2 at){float3 c=scene.SampleLevel(linearClamp,saturate(at),
 float3 lutGrade(float3 c){float3 p=saturate(c)*15;float low=floor(p.b),high=min(15,low+1);
     float2 a=float2(low*16+p.r+.5,p.g+.5)/float2(256,16),b=float2(high*16+p.r+.5,p.g+.5)/float2(256,16);
     return lerp(colorLut.SampleLevel(linearClamp,a,0).rgb,colorLut.SampleLevel(linearClamp,b,0).rgb,frac(p.b));}
+float2 inverseDepthGradient(float2 uv,float z,float2 depthSize){
+    float inv=1/max(z,.001);
+    float left=1/viewDepth(uv-float2(1/depthSize.x,0)),right=1/viewDepth(uv+float2(1/depthSize.x,0));
+    float up=1/viewDepth(uv-float2(0,1/depthSize.y)),down=1/viewDepth(uv+float2(0,1/depthSize.y));
+    return float2(abs(left-inv)<abs(right-inv)?inv-left:right-inv,abs(up-inv)<abs(down-inv)?inv-up:down-inv);
+}
 float3 rayLighting(Texture2D<float4> light,float2 uv,float z){
     uint w,h;light.GetDimensions(w,h);int2 center=int2(uv*float2(w,h));float3 sum=0;float weights=0;
     float raw=dofFar/(dofFar-dofNear)-dofNear*dofFar/(dofFar-dofNear)/max(z,.001);
@@ -49,11 +55,10 @@ float3 rayLighting(Texture2D<float4> light,float2 uv,float z){
     // Reciprocal view depth is affine on a projected plane. Predict each tap's
     // depth on that plane so steep distant ground does not alternate lit rows.
     float centerInverse=1/max(z,.001);
-    float left=1/viewDepth(uv-float2(1.0/dw,0)),right=1/viewDepth(uv+float2(1.0/dw,0));
-    float up=1/viewDepth(uv-float2(0,1.0/dh)),down=1/viewDepth(uv+float2(0,1.0/dh));
-    float2 gradient=float2(abs(left-centerInverse)<abs(right-centerInverse)?centerInverse-left:right-centerInverse,abs(up-centerInverse)<abs(down-centerInverse)?centerInverse-up:down-centerInverse);
+    float2 gradient=inverseDepthGradient(uv,z,float2(dw,dh));
     [unroll]for(int y=-2;y<=2;++y)[unroll]for(int x=-2;x<=2;++x){
         int2 at=clamp(center+int2(x,y),0,int2(w,h)-1);float4 tap=light.Load(int3(at,0));
+        if(!all(isfinite(tap))||tap.a==0||((tap.a<0)!=fluid))continue;
         float2 tapUV=(floor((float2(at)+.5)/float2(w,h)*float2(dw,dh))+.5)/float2(dw,dh);
         float expected=1/max(.000001,centerInverse+dot(gradient,(tapUV-uv)*float2(dw,dh)));
         float weight=exp(-abs(abs(tap.a)-expected)/max(.06,z*.003))*exp(-float(x*x+y*y)*.3);
@@ -107,8 +112,14 @@ float4 main(float4 position:SV_POSITION,float2 uv:TEXCOORD0):SV_TARGET {
     }
     [branch]if(rtStrength>.001&&centerZ<dofFar*.95){float visibility=0,weights=0;
         uint w,h;rtVisibility.GetDimensions(w,h);int2 center=int2(uv*float2(w,h));
+        uint dw,dh;sceneDepth.GetDimensions(dw,dh);float2 depthSize=float2(dw,dh);
+        float2 gradient=inverseDepthGradient(uv,centerZ,depthSize);
         [unroll]for(int y=-1;y<=1;++y)[unroll]for(int x=-1;x<=1;++x){int2 at=clamp(center+int2(x,y),int2(0,0),int2(w-1,h-1));float2 tap=rtVisibility.Load(int3(at,0));
-            float weight=exp(-abs(tap.y-centerZ)/max(.15,centerZ*.008));visibility+=tap.x*weight;weights+=weight;}
+            if(!all(isfinite(tap))||tap.y<=0)continue;
+            float2 tapUV=(floor((float2(at)+.5)/float2(w,h)*depthSize)+.5)/depthSize;
+            float expected=1/max(.000001,1/centerZ+dot(gradient,(tapUV-uv)*depthSize));
+            float weight=exp(-abs(tap.y-expected)/max(.15,centerZ*.008))*(x==0?2:1)*(y==0?2:1);
+            visibility+=saturate(tap.x)*weight;weights+=weight;}
         color*=lerp(1,weights>.0001?saturate(visibility/weights):1,rtStrength);
     }
     [branch]if(ambientOcclusion>.001)color*=ambientShadow(uv,centerZ);

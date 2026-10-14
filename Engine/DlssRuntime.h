@@ -77,20 +77,22 @@ public:
         sl::DLSSOptimalSettings settings{};if(optimal_(options,settings)!=sl::Result::eOk)return false;
         inputWidth=settings.optimalRenderWidth;inputHeight=settings.optimalRenderHeight;return inputWidth>0&&inputHeight>0;
     }
-    bool Evaluate(ID3D12GraphicsCommandList* list,ID3D12Resource* color,ID3D12Resource* depth,ID3D12Resource* motion,ID3D12Resource* output,const sl::Constants& camera,UINT width,UINT height){
+    bool Evaluate(ID3D12GraphicsCommandList* list,ID3D12Resource* color,ID3D12Resource* depth,ID3D12Resource* motion,ID3D12Resource* output,ID3D12Resource* exposure,const sl::Constants& camera,UINT width,UINT height){
         if(!supported_)return false;sl::ViewportHandle viewport(0);sl::DLSSOptions options{};options.mode=sl::DLSSMode::eMaxQuality;
-        options.outputWidth=width;options.outputHeight=height;options.colorBuffersHDR=sl::Boolean::eTrue;options.useAutoExposure=sl::Boolean::eTrue;
+        options.outputWidth=width;options.outputHeight=height;options.colorBuffersHDR=sl::Boolean::eTrue;options.useAutoExposure=sl::Boolean::eFalse;
         sl::FrameToken* frame=nullptr;uint32_t index=frame_++;
         auto result=options_(viewport,options);if(result==sl::Result::eOk)result=token_(frame,&index);
         if(result==sl::Result::eOk)result=constants_(camera,*frame,viewport);
         sl::Resource input(sl::ResourceType::eTex2d,color,D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
         sl::Resource d(sl::ResourceType::eTex2d,depth,D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE),mv(sl::ResourceType::eTex2d,motion,D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
         sl::Resource out(sl::ResourceType::eTex2d,output,D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
-        auto rd=color->GetDesc();sl::Extent inputExtent{0,0,UINT(rd.Width),rd.Height},outExtent{0,0,width,height};
+        sl::Resource exp(sl::ResourceType::eTex2d,exposure,D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+        auto rd=color->GetDesc();sl::Extent inputExtent{0,0,UINT(rd.Width),rd.Height},outExtent{0,0,width,height},exposureExtent{0,0,1,1};
         sl::ResourceTag tags[]={ {&input,sl::kBufferTypeScalingInputColor,sl::ResourceLifecycle::eOnlyValidNow,&inputExtent},
             {&d,sl::kBufferTypeDepth,sl::ResourceLifecycle::eOnlyValidNow,&inputExtent},{&mv,sl::kBufferTypeMotionVectors,sl::ResourceLifecycle::eOnlyValidNow,&inputExtent},
-            {&out,sl::kBufferTypeScalingOutputColor,sl::ResourceLifecycle::eOnlyValidNow,&outExtent} };
-        if(result==sl::Result::eOk)result=tag_(*frame,viewport,tags,4,list);
+            {&out,sl::kBufferTypeScalingOutputColor,sl::ResourceLifecycle::eOnlyValidNow,&outExtent},
+            {&exp,sl::kBufferTypeExposure,sl::ResourceLifecycle::eOnlyValidNow,&exposureExtent} };
+        if(result==sl::Result::eOk)result=tag_(*frame,viewport,tags,5,list);
         const sl::BaseStructure* inputs[]={&viewport};if(result==sl::Result::eOk)result=evaluate_(sl::kFeatureDLSS,*frame,inputs,1,list);
         if(result!=sl::Result::eOk){supported_=false;status_="DLSS evaluation failed ("+std::to_string(uint32_t(result))+")";OutputDebugStringA((status_+"\n").c_str());return false;}
         return true;
