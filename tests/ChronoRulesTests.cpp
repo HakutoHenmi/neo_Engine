@@ -453,7 +453,7 @@ int main(){
         assert(figureEight.candidate.Ready()&&figureEight.candidate.shape==DomainShape::Infinity&&figureEight.candidate.area>200);
         auto retraced=polygon({{0,0,0},{20,0,0},{20,0,20},{0,0,20},{0,0,0},{20,0,0},{20,0,20},{0,0,20},{0,0,0}});
         assert(retraced.candidate.shape!=DomainShape::Infinity);
-        assert(DomainAmmo(triangle.candidate)>DomainNormalAmmo(triangle.candidate.Enclosures()));
+        assert(DomainAmmo(triangle.candidate)>DomainAreaAmmo(triangle.candidate.area));
         assert(std::abs(slow.candidate.area-400)<3&&std::abs(fast.candidate.area-400)<3);
         assert(slow.candidate.Enclosures()==fast.candidate.Enclosures());
         assert(DomainAmmo(slow.candidate)==DomainAmmo(fast.candidate));
@@ -467,14 +467,20 @@ int main(){
         for(int i=1;i<=20;++i)elevated.Append({20-float(i),i*.15f,20});
         for(int i=1;i<=20;++i)elevated.Append({0,3,20-float(i)});assert(!elevated.candidate.Ready());
         DomainPath bounded;for(int i=0;i<2000;++i)bounded.Append({float(i),0,0});assert(bounded.points.size()<=DomainPath::MaxPoints);
-        assert(DomainNormalAmmo(1)==48&&DomainNormalAmmo(2)>DomainNormalAmmo(1));
+        // Ammo follows area: a minimum ring barely fires, a large sweep fires a storm.
+        assert(DomainAreaAmmo(8)==6&&DomainAreaAmmo(300)>DomainAreaAmmo(60)&&DomainAreaAmmo(1e6f)==180);
+        assert(DomainAmmo(roundLoop.candidate)>DomainAmmo(triangle.candidate)/2&&DomainAmmo(fast.candidate)>5*DomainAreaAmmo(8));
         assert(DomainBulletPower(1)==1&&DomainBulletPower(3)>DomainBulletPower(2));
-        assert(DomainNormalAmmo(10000)==256&&DomainBulletPower(10000)<3);
+        assert(DomainBulletPower(10000)<3);
+        // Reach grows with the loop: a 20 m ring reaches farther than a 3 m one.
+        {auto big=DomainReach(roundLoop.candidate);assert(big.radius>30&&big.radius<45&&Length(big.center)<1);
+         DomainPath tiny;tiny.Append({2,0,0});for(int i=1;i<=80;++i){float angle=i*6.283185f/80;tiny.Append({2*std::cos(angle),0,2*std::sin(angle)});}
+         assert(tiny.candidate.Ready()&&DomainReach(tiny.candidate).radius<14&&DomainAmmo(tiny.candidate)<=8);}
         assert(retraced.candidate.Enclosures()==1); // No farming by tracing the same rim.
         auto chain=polygon({{0,0,0},{-20,0,0},{-20,0,20},{0,0,20},{0,0,0},
             {20,0,0},{20,0,20},{0,0,20},{0,0,0},{20,0,0},{40,0,0},{40,0,20},{20,0,20},{20,0,0}});
         assert(chain.candidate.Ready()&&chain.candidate.Enclosures()==3&&chain.candidate.shape==DomainShape::Loop);
-        assert(DomainAmmo(chain.candidate)>DomainNormalAmmo(1)&&DomainBulletPower(chain.candidate.Enclosures())>1);
+        assert(DomainAmmo(chain.candidate)>DomainAreaAmmo(400)&&DomainBulletPower(chain.candidate.Enclosures())>1);
         assert(DomainContains(chain.candidate,{-10,0,10})&&DomainContains(chain.candidate,{10,0,10})&&DomainContains(chain.candidate,{30,0,10}));
         assert(!DomainContains(chain.candidate,{50,0,10}));
         auto subdivided=DomainStrokeRegions({{0,0,0},{20,0,0},{20,0,20},{0,0,20},{0,0,0},{20,0,20}});
@@ -509,7 +515,7 @@ int main(){
                 if(age>.9f&&Length(at-target)<4.5f){arrived=true;break;}}
             assert(arrived);
         }
-        std::cout<<"PASS: one-stroke enclosure accumulation, shared edges, subdivision, retracing, count-based ammo/power, hidden skills, sampling invariance, partial loss, height rejection, bounds, moving-target homing\n";
+        std::cout<<"PASS: one-stroke enclosure accumulation, shared edges, subdivision, retracing, area-based ammo, loop reach, enclosure power, hidden skills, sampling invariance, partial loss, height rejection, bounds, moving-target homing\n";
     }
     auto referencePose=EvaluateCreature(0,0);
     for(int part=0;part<referencePose.count;++part){

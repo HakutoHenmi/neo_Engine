@@ -4,6 +4,7 @@
 #include "TitleScene.h"
 #include "SelectScene.h"
 #include "AssignmentScene.h"
+#include "UI/LoadingUI.h"
 #include <fstream>
 #include <eh.h>
 #include "../Engine/PathUtils.h"
@@ -17,6 +18,7 @@
 #include "../tests/FluidGameBenchmarkScene.h"
 #include "../tests/ChronoValidationScene.h"
 #include "../tests/UIValidationScene.h"
+#include "../tests/UIGalleryScene.h"
 #include "../tests/ComponentValidationScene.h"
 #include <shellapi.h>
 #endif
@@ -66,8 +68,11 @@ int WINAPI WinMain(_In_ HINSTANCE hInst, _In_opt_ HINSTANCE, _In_ LPSTR commandL
 
 	Engine::App app;
 
+	// Loading screen first: it also covers the engine's own startup.
+	Game::UI::Loading::InstallPresentation();
 	app.SetSceneRegistrar([](Engine::SceneManager& sm, Engine::WindowDX& dx) {
 		(void)dx;
+		Game::UI::Loading::InstallTransitions(sm);
         sm.Register("PackageValidation", []() -> std::unique_ptr<Engine::IScene> { return std::make_unique<PackageValidationScene>(); });
         sm.Register("DlssPackageValidation", []() -> std::unique_ptr<Engine::IScene> { return std::make_unique<DlssPackageValidationScene>(); });
         sm.Register("RtLightingValidation", []() -> std::unique_ptr<Engine::IScene> { return std::make_unique<RtLightingValidationScene>(); });
@@ -86,6 +91,7 @@ int WINAPI WinMain(_In_ HINSTANCE hInst, _In_opt_ HINSTANCE, _In_ LPSTR commandL
 		sm.Register("ComponentEditor", []() -> std::unique_ptr<Engine::IScene> { return std::make_unique<ComponentValidationScene>(true); });
 		sm.Register("UIResultValidation", []() -> std::unique_ptr<Engine::IScene> { return std::make_unique<UIResultValidationScene>(); });
         sm.Register("UIValidation", []() -> std::unique_ptr<Engine::IScene> { return std::make_unique<UIValidationScene>(); });
+        sm.Register("UIGallery", []() -> std::unique_ptr<Engine::IScene> { return std::make_unique<UIGalleryScene>(); });
         sm.Register("GraphicsValidation", []() -> std::unique_ptr<Engine::IScene> { return std::make_unique<GraphicsValidationScene>(); });
         sm.Register("ShadowValidation", []() -> std::unique_ptr<Engine::IScene> { return std::make_unique<ShadowValidationScene>(); });
         sm.Register("BossValidation", []() -> std::unique_ptr<Engine::IScene> { return std::make_unique<BossValidationScene>(); });
@@ -111,6 +117,7 @@ int WINAPI WinMain(_In_ HINSTANCE hInst, _In_opt_ HINSTANCE, _In_ LPSTR commandL
 		for (int i = 1; i < argumentCount; ++i) {
 			if (wcscmp(arguments[i], L"--ui-result") == 0) app.SetInitialSceneKey("UIResultValidation");
             if (wcscmp(arguments[i], L"--ui-smoke") == 0) app.SetInitialSceneKey("UIValidation");
+            if (wcscmp(arguments[i], L"--ui-gallery") == 0) app.SetInitialSceneKey("UIGallery");
             if (wcscmp(arguments[i], L"--component-smoke") == 0) app.SetInitialSceneKey("ComponentValidation");
             if (wcscmp(arguments[i], L"--component-editor") == 0) app.SetInitialSceneKey("ComponentEditor");
             if (wcscmp(arguments[i], L"--graphics-ui-smoke") == 0) app.SetInitialSceneKey("GraphicsValidation");

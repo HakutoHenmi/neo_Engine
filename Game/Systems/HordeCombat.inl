@@ -51,13 +51,16 @@ void ChronoSystem::HitSwarm(entt::registry& r,Player& p,GameContext& ctx,uint32_
     }
     (void)ctx;
 }
-uint32_t ChronoSystem::ChooseSwarmTarget(entt::registry& r,V from,bool preferBoss){
+uint32_t ChronoSystem::ChooseSwarmTarget(entt::registry& r,V from,bool preferBoss,V origin,float reach){
     const auto& ink=r.get<InkPlayer>(player_);bool bossAvailable=ink.battlePhase==BattlePhase::Boss&&!r.get<Boss>(boss_).countered;
     if(!ink.hordeEnabled)return bossAvailable?0:SwarmNoTarget;
     if(preferBoss&&bossAvailable)return 0;
-    V player=Read(r.get<TransformComponent>(player_).translate);float best=1e9f;uint32_t target=SwarmNoTarget;
+    const bool ranged=reach<1e8f;
+    // Loop shots favor enemies near their loop; other shots favor enemies near the player.
+    V anchor=ranged?origin:Read(r.get<TransformComponent>(player_).translate);float best=1e9f;uint32_t target=SwarmNoTarget;
     for(const auto& enemy:swarm_)if(SwarmAlive(enemy)){
-        float score=DomainDistance(player,enemy.at)+DomainDistance(from,enemy.at)*.04f+(enemy.reserved>=enemy.health?10000.f:0.f);
+        if(ranged&&DomainDistance(origin,enemy.at)>reach)continue;
+        float score=DomainDistance(anchor,enemy.at)+DomainDistance(from,enemy.at)*.04f+(enemy.reserved>=enemy.health?10000.f:0.f);
         if(enemy.bomber&&enemy.phase==SwarmPhase::Windup)score-=15;
         if(score<best){best=score;target=enemy.id;}
     }

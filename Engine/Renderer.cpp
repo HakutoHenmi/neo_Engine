@@ -1,4 +1,5 @@
 #include "Renderer.h"
+#include "LoadingScreen.h"
 #include "DlssRuntime.h"
 #include "Model.h"
 #include "StaticLod.h"
@@ -87,6 +88,10 @@ static const float kCustomTargetClearColor[] = { 0.1f, 0.1f, 0.12f, 1.0f };
 
 static uint32_t AlignUp(uint32_t v, uint32_t a) { return (v + (a - 1)) & ~(a - 1); }
 
+thread_local ID3D12GraphicsCommandList* Renderer::tUiList_ = nullptr;
+thread_local Renderer::UploadRing* Renderer::tUiUpload_ = nullptr;
+thread_local bool Renderer::tUiThread_ = false;
+
 uint32_t Renderer::UploadRing::Allocate(uint32_t bytes, uint32_t alignment) {
 	const uint32_t aligned = AlignUp(offset, alignment);
 	if (aligned + bytes > sizeBytes)
@@ -127,6 +132,8 @@ bool Renderer::Initialize(WindowDX* window) {
 
 	srvDynamicCursor_ = kSrvStaticMax;
     srvDynamicEnd_ = srvDynamicCursor_ + WindowDX::kSrvDynamicCountPerFrame;
+	// Never reallocated: the loading thread reads entries while loads append new ones.
+	textures_.reserve(16384);
 
 	viewport_.TopLeftX = 0.0f;
 	viewport_.TopLeftY = 0.0f;
@@ -218,6 +225,9 @@ bool Renderer::Initialize(WindowDX* window) {
 		}
 		upload_[i].offset = 0;
 	}
+	if (!InitSpritePipeline_())
+		return false;
+	LoadingScreen::Pump();
 
 	lightCB_.ambientColor = Vector3{0.1f, 0.1f, 0.1f};
 
@@ -263,6 +273,16 @@ bool Renderer::Initialize(WindowDX* window) {
 		shadowSrv_ = window_->SRV_GPU((int)sIdx);
 	}
 
+	if (!InitUIFrame_())
+		return false;
+	return true;
+}
+
+// Everything only the 3D world needs. Run once, under the loading screen of the
+// first scene that renders the world (Title / Select are UI-only).
+bool Renderer::InitializeDeferred() {
+	if (ready3D_)
+		return true;
 	if (!InitPipelines())
 		return false;
 
@@ -298,6 +318,7 @@ bool Renderer::Initialize(WindowDX* window) {
 		}
 	}
 
+	ready3D_ = true;
 	return true;
 }
 
@@ -429,6 +450,8 @@ void Renderer::WaitGPU() {
 		WaitForSingleObject(tempEvent, INFINITE);
 	}
 	CloseHandle(tempEvent);
+	// Every synchronous upload ends here: keep the loading screen alive between loads.
+	LoadingScreen::Pump();
 }
 
 void Renderer::BeginFrame(const float clearColorRGBA[4]) {
@@ -464,6 +487,7 @@ void Renderer::BeginFrame(const float clearColorRGBA[4]) {
     srvDynamicCursor_ = kSrvStaticMax + fi * WindowDX::kSrvDynamicCountPerFrame;
     srvDynamicEnd_ = srvDynamicCursor_ + WindowDX::kSrvDynamicCountPerFrame;
 	spriteDrawCalls_.clear(); // ★スプライトもクリア
+	overlaySprites_.clear();overlayText_.clear();overlayQueue_=false;
 
 	cbFrameAddr_ = 0;
 	backBufferBarrierState_ = false;
@@ -1428,6 +1452,7 @@ void Renderer::EndFrame() {
 	// ★UI描画順序の変更: ポストプロセス適用後のGameビュー用テクスチャにUIを直接描画することで、エディタ上でもUIが表示されるようにします。
 	FlushSprites();
 	FlushText();
+	FlushOverlayQueue();
 
 	if (finalSceneState_ != D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE) {
 		auto b = CD3DX12_RESOURCE_BARRIER::Transition(finalSceneColor_.Get(), finalSceneState_, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
@@ -1629,6 +1654,7 @@ void Renderer::SetAreaLight(int index, const Vector3& pos, const Vector3& color,
 }
 
 uint32_t Renderer::AllocateSrvIndex(uint32_t count) {
+	std::lock_guard<std::mutex> lock(srvMutex_);
 	uint32_t idx = srvCursor_;
 	srvCursor_ += count;
 	return idx;
@@ -1671,6 +1697,7 @@ ComPtr<ID3DBlob> Renderer::CompileShader(const char* src, const char* entry, con
 			::MessageBoxA(nullptr, (const char*)err->GetBufferPointer(), "HLSL Compile Error", MB_OK);
 		return nullptr;
 	}
+	LoadingScreen::Pump();
 	return blob;
 }
 
@@ -1692,6 +1719,7 @@ ComPtr<ID3DBlob> Renderer::CompileShaderFromFile(const wchar_t* filePath, const 
 		}
 		return nullptr;
 	}
+	LoadingScreen::Pump();
 	return blob;
 }
 
@@ -1840,6 +1868,66 @@ bool Renderer::CreateShaderPipelineTransparent(const std::string& shaderName, co
 		return false;
 
 	return CreatePSO_Transparent(shaderName, vs.Get(), ps.Get(), additive, depthTest);
+}
+
+// The sprite pipeline is the only one a loading frame needs; it is built before
+// the long shader compiles so the startup loading screen can appear early.
+bool Renderer::InitSpritePipeline_() {
+	ComPtr<ID3DBlob> shaderBlob, shaderError;
+		static const char* kVS2D =
+		    R"(cbuffer CBSprite : register(b0) { float4x4 gMVP; float4 gColor; }; struct VSIn { float2 pos : POSITION; float2 uv : TEXCOORD0; }; struct VSOut { float4 svpos : SV_POSITION; float2 uv : TEXCOORD0; }; VSOut main(VSIn v) { VSOut o; o.svpos = mul(float4(v.pos, 0, 1), gMVP); o.uv = v.uv; return o; })";
+		static const char* kPS2D =
+		    R"(Texture2D gTex : register(t0); SamplerState gSmp : register(s0); cbuffer CBSprite : register(b0) { float4x4 gMVP; float4 gColor; }; float4 main(float4 svpos:SV_POSITION, float2 uv:TEXCOORD0) : SV_TARGET { return gTex.Sample(gSmp, uv) * gColor; })";
+		auto vs2d = CompileShader(kVS2D, "main", "vs_5_0");
+		auto ps2d = CompileShader(kPS2D, "main", "ps_5_0");
+		if (!vs2d || !ps2d)
+			return false;
+
+		CD3DX12_DESCRIPTOR_RANGE rangeSRV;
+		rangeSRV.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);
+		CD3DX12_ROOT_PARAMETER params[2]{};
+		params[0].InitAsConstantBufferView(0);
+		params[1].InitAsDescriptorTable(1, &rangeSRV, D3D12_SHADER_VISIBILITY_PIXEL);
+		CD3DX12_STATIC_SAMPLER_DESC samp(0, D3D12_FILTER_MIN_MAG_MIP_LINEAR);
+		CD3DX12_ROOT_SIGNATURE_DESC rsDesc;
+		rsDesc.Init(_countof(params), params, 1, &samp, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+		if (FAILED(D3D12SerializeRootSignature(&rsDesc, D3D_ROOT_SIGNATURE_VERSION_1, &shaderBlob, &shaderError)))
+			return false;
+		if (FAILED(dev_->CreateRootSignature(0, shaderBlob->GetBufferPointer(), shaderBlob->GetBufferSize(), IID_PPV_ARGS(&rootSig2D_))))
+			return false;
+
+		D3D12_INPUT_ELEMENT_DESC layout[] = {
+		    {"POSITION", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+		    {"TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 8, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+		};
+		D3D12_GRAPHICS_PIPELINE_STATE_DESC pso{};
+		pso.pRootSignature = rootSig2D_.Get();
+		pso.VS = {vs2d->GetBufferPointer(), vs2d->GetBufferSize()};
+		pso.PS = {ps2d->GetBufferPointer(), ps2d->GetBufferSize()};
+		pso.InputLayout = {layout, _countof(layout)};
+		pso.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+		pso.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+		pso.NumRenderTargets = 1;
+		pso.SampleDesc.Count = 1;
+		pso.SampleMask = UINT_MAX;
+		pso.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
+		auto blend = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
+		blend.RenderTarget[0].BlendEnable = TRUE;
+		blend.RenderTarget[0].SrcBlend = D3D12_BLEND_SRC_ALPHA;
+		blend.RenderTarget[0].DestBlend = D3D12_BLEND_INV_SRC_ALPHA;
+		blend.RenderTarget[0].BlendOp = D3D12_BLEND_OP_ADD;
+		// ★修正: アルファチャネルは常に最大値を維持し、スプライトのアルファ値でRTのアルファを破壊しない
+		blend.RenderTarget[0].SrcBlendAlpha = D3D12_BLEND_ZERO;
+		blend.RenderTarget[0].DestBlendAlpha = D3D12_BLEND_ONE;
+		blend.RenderTarget[0].BlendOpAlpha = D3D12_BLEND_OP_ADD;
+		blend.RenderTarget[0].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
+		pso.BlendState = blend;
+		pso.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
+		pso.DepthStencilState.DepthEnable = FALSE;
+		pso.DSVFormat = DXGI_FORMAT_UNKNOWN;
+		if (FAILED(dev_->CreateGraphicsPipelineState(&pso, IID_PPV_ARGS(&pso2D_))))
+			return false;
+	return true;
 }
 
 bool Renderer::InitPipelines() {
@@ -2139,62 +2227,9 @@ float4 main(VSIn v, uint instanceID : SV_InstanceID) : SV_POSITION {
         if(FAILED(dev_->CreateGraphicsPipelineState(&psoDesc,IID_PPV_ARGS(&shadowInstancedCutoutPso_))))return false;
 	}
 
-	// 2D Shader (変更なし)
-	{
-		static const char* kVS2D =
-		    R"(cbuffer CBSprite : register(b0) { float4x4 gMVP; float4 gColor; }; struct VSIn { float2 pos : POSITION; float2 uv : TEXCOORD0; }; struct VSOut { float4 svpos : SV_POSITION; float2 uv : TEXCOORD0; }; VSOut main(VSIn v) { VSOut o; o.svpos = mul(float4(v.pos, 0, 1), gMVP); o.uv = v.uv; return o; })";
-		static const char* kPS2D =
-		    R"(Texture2D gTex : register(t0); SamplerState gSmp : register(s0); cbuffer CBSprite : register(b0) { float4x4 gMVP; float4 gColor; }; float4 main(float4 svpos:SV_POSITION, float2 uv:TEXCOORD0) : SV_TARGET { return gTex.Sample(gSmp, uv) * gColor; })";
-		auto vs2d = CompileShader(kVS2D, "main", "vs_5_0");
-		auto ps2d = CompileShader(kPS2D, "main", "ps_5_0");
-		if (!vs2d || !ps2d)
-			return false;
-
-		CD3DX12_DESCRIPTOR_RANGE rangeSRV;
-		rangeSRV.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);
-		CD3DX12_ROOT_PARAMETER params[2]{};
-		params[0].InitAsConstantBufferView(0);
-		params[1].InitAsDescriptorTable(1, &rangeSRV, D3D12_SHADER_VISIBILITY_PIXEL);
-		CD3DX12_STATIC_SAMPLER_DESC samp(0, D3D12_FILTER_MIN_MAG_MIP_LINEAR);
-		CD3DX12_ROOT_SIGNATURE_DESC rsDesc;
-		rsDesc.Init(_countof(params), params, 1, &samp, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
-		if (FAILED(D3D12SerializeRootSignature(&rsDesc, D3D_ROOT_SIGNATURE_VERSION_1, &shaderBlob, &shaderError)))
-			return false;
-		if (FAILED(dev_->CreateRootSignature(0, shaderBlob->GetBufferPointer(), shaderBlob->GetBufferSize(), IID_PPV_ARGS(&rootSig2D_))))
-			return false;
-
-		D3D12_INPUT_ELEMENT_DESC layout[] = {
-		    {"POSITION", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
-		    {"TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 8, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
-		};
-		D3D12_GRAPHICS_PIPELINE_STATE_DESC pso{};
-		pso.pRootSignature = rootSig2D_.Get();
-		pso.VS = {vs2d->GetBufferPointer(), vs2d->GetBufferSize()};
-		pso.PS = {ps2d->GetBufferPointer(), ps2d->GetBufferSize()};
-		pso.InputLayout = {layout, _countof(layout)};
-		pso.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
-		pso.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
-		pso.NumRenderTargets = 1;
-		pso.SampleDesc.Count = 1;
-		pso.SampleMask = UINT_MAX;
-		pso.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
-		auto blend = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
-		blend.RenderTarget[0].BlendEnable = TRUE;
-		blend.RenderTarget[0].SrcBlend = D3D12_BLEND_SRC_ALPHA;
-		blend.RenderTarget[0].DestBlend = D3D12_BLEND_INV_SRC_ALPHA;
-		blend.RenderTarget[0].BlendOp = D3D12_BLEND_OP_ADD;
-		// ★修正: アルファチャネルは常に最大値を維持し、スプライトのアルファ値でRTのアルファを破壊しない
-		blend.RenderTarget[0].SrcBlendAlpha = D3D12_BLEND_ZERO;
-		blend.RenderTarget[0].DestBlendAlpha = D3D12_BLEND_ONE;
-		blend.RenderTarget[0].BlendOpAlpha = D3D12_BLEND_OP_ADD;
-		blend.RenderTarget[0].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
-		pso.BlendState = blend;
-		pso.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
-		pso.DepthStencilState.DepthEnable = FALSE;
-		pso.DSVFormat = DXGI_FORMAT_UNKNOWN;
-		if (FAILED(dev_->CreateGraphicsPipelineState(&pso, IID_PPV_ARGS(&pso2D_))))
-			return false;
-	}
+	// 2D sprites are created first by InitSpritePipeline_() so loading screens can draw early.
+	if (!pso2D_ && !InitSpritePipeline_())
+		return false;
 
 	// ---------------------------------------------------------
 	// ★追加: 3Dライン描画用パイプライン (Position + Color)
@@ -2609,6 +2644,18 @@ void Renderer::FlushPaintUploads(){
     pendingPaint_.clear();
 }
 Renderer::TextureHandle Renderer::LoadTexture2D(const std::string& filePath, bool sRGB) {
+	const std::string key = filePath + (sRGB ? "#srgb" : "#linear");
+	// The loading thread never loads: it only sees what its warm-up frame cached.
+	if (tUiThread_) {
+		auto found = uiTextures_.find(key);
+		return found != uiTextures_.end() ? found->second : 0;
+	}
+	const TextureHandle handle = LoadTexture2DUncached_(filePath, sRGB);
+	if (recordUITextures_ && handle) uiTextures_[key] = handle;
+	return handle;
+}
+
+Renderer::TextureHandle Renderer::LoadTexture2DUncached_(const std::string& filePath, bool sRGB) {
 	if (filePath.empty())
 		return 0;
 	
@@ -2977,7 +3024,8 @@ void Renderer::DrawSkinnedMesh(MeshHandle meshH, TextureHandle texH, const Matri
 
 void Renderer::DrawSprite(TextureHandle texH, const SpriteDesc& s) {
 	if (texH == 0 || texH >= textures_.size()) return;
-	spriteDrawCalls_.push_back({ texH, s });
+	if (uiThreadActive_ && !tUiThread_) return;
+	(overlayQueue_ ? overlaySprites_ : spriteDrawCalls_).push_back({ texH, s });
 }
 
 void Renderer::DrawSprite9Slice(TextureHandle texH, const Sprite9SliceDesc& s) {
@@ -3012,7 +3060,82 @@ void Renderer::DrawSprite9Slice(TextureHandle texH, const Sprite9SliceDesc& s) {
 	}
 }
 
+void Renderer::FlushOverlayQueue() {
+	if (overlaySprites_.empty() && overlayText_.empty()) return;
+	spriteDrawCalls_.swap(overlaySprites_);
+	overlaySprites_.clear();
+	textVerticesMap_.swap(overlayText_);
+	overlayText_.clear();
+	FlushSprites();
+	FlushText();
+	spriteDrawCalls_.clear();
+}
+
+bool Renderer::InitUIFrame_() {
+	for (uint32_t i = 0; i < kFrameCount; ++i) {
+		if (FAILED(dev_->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&uiAlloc_[i]))))
+			return false;
+		uiUpload_[i].sizeBytes = 4 * 1024 * 1024;
+		CD3DX12_HEAP_PROPERTIES heap(D3D12_HEAP_TYPE_UPLOAD);
+		CD3DX12_RESOURCE_DESC desc = CD3DX12_RESOURCE_DESC::Buffer(uiUpload_[i].sizeBytes);
+		if (FAILED(dev_->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &desc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&uiUpload_[i].buffer))))
+			return false;
+		if (FAILED(uiUpload_[i].buffer->Map(0, nullptr, (void**)&uiUpload_[i].mapped)))
+			return false;
+	}
+	if (FAILED(dev_->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, uiAlloc_[0].Get(), nullptr, IID_PPV_ARGS(&uiList_))))
+		return false;
+	uiList_->Close();
+	return true;
+}
+
+void Renderer::RenderUIFrame(const std::function<void()>& draw) {
+	const uint32_t fi = window_->FrameIndex();
+	uiAlloc_[fi]->Reset();
+	uiList_->Reset(uiAlloc_[fi].Get(), nullptr);
+	uiUpload_[fi].Reset();
+	srvDynamicCursor_ = kSrvStaticMax + fi * WindowDX::kSrvDynamicCountPerFrame;
+	srvDynamicEnd_ = srvDynamicCursor_ + WindowDX::kSrvDynamicCountPerFrame;
+	spriteDrawCalls_.clear();
+	textVerticesMap_.clear();
+	overlaySprites_.clear();
+	overlayText_.clear();
+	overlayQueue_ = false;
+	tUiList_ = uiList_.Get();
+	tUiUpload_ = &uiUpload_[fi];
+	ID3D12DescriptorHeap* heaps[] = {srvHeap_};
+	uiList_->SetDescriptorHeaps(1, heaps);
+	if (draw)
+		draw();
+
+	const D3D12_VIEWPORT fullVP = {0.0f, 0.0f, static_cast<float>(window_->kW), static_cast<float>(window_->kH), 0.0f, 1.0f};
+	const D3D12_RECT fullScissor = {0, 0, static_cast<LONG>(window_->kW), static_cast<LONG>(window_->kH)};
+	ID3D12Resource* backBuffer = window_->GetCurrentBackBufferResource();
+	auto toTarget = CD3DX12_RESOURCE_BARRIER::Transition(backBuffer, D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET);
+	uiList_->ResourceBarrier(1, &toTarget);
+	auto rtvBack = window_->GetCurrentRTV();
+	const float clear[] = {0.022f, 0.045f, 0.035f, 1.0f};
+	uiList_->OMSetRenderTargets(1, &rtvBack, FALSE, nullptr);
+	uiList_->ClearRenderTargetView(rtvBack, clear, 0, nullptr);
+	// The editor may have narrowed the sprite viewport to its Game panel.
+	const D3D12_VIEWPORT savedViewport = viewport_;
+	const D3D12_RECT savedScissor = scissor_;
+	viewport_ = fullVP;
+	scissor_ = fullScissor;
+	FlushSprites();
+	FlushText();
+	FlushOverlayQueue();
+	spriteDrawCalls_.clear();
+	viewport_ = savedViewport;
+	scissor_ = savedScissor;
+	tUiList_ = nullptr;
+	tUiUpload_ = nullptr;
+	window_->PresentList(uiList_.Get());
+}
+
 void Renderer::FlushSprites() {
+	ID3D12GraphicsCommandList* cl = tUiList_ ? tUiList_ : list_;
+	UploadRing& up = tUiUpload_ ? *tUiUpload_ : upload_[window_->FrameIndex()];
 	if (spriteDrawCalls_.empty()) return;
 
 	// ★追加: レイヤー値で安定ソート（小さい値が先 = 奥に描画）
@@ -3022,15 +3145,14 @@ void Renderer::FlushSprites() {
 
 	const float W = (float)Engine::WindowDX::kW;
 	const float H = (float)Engine::WindowDX::kH;
-	const uint32_t fi = window_->FrameIndex();
 
 	ID3D12DescriptorHeap* heaps[] = { srvHeap_ };
-	list_->SetDescriptorHeaps(1, heaps);
-	list_->SetPipelineState(pso2D_.Get());
-	list_->SetGraphicsRootSignature(rootSig2D_.Get());
-	list_->RSSetViewports(1, &viewport_);
-	list_->RSSetScissorRects(1, &scissor_);
-	list_->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+	cl->SetDescriptorHeaps(1, heaps);
+	cl->SetPipelineState(pso2D_.Get());
+	cl->SetGraphicsRootSignature(rootSig2D_.Get());
+	cl->RSSetViewports(1, &viewport_);
+	cl->RSSetScissorRects(1, &scissor_);
+	cl->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
 	for (const auto& dc : spriteDrawCalls_) {
 		const auto& s = dc.desc;
@@ -3055,11 +3177,11 @@ void Renderer::FlushSprites() {
 		cb.color[2] = s.color.z;
 		cb.color[3] = s.color.w;
 
-		const uint32_t cbOff = upload_[fi].Allocate(sizeof(CBSprite), 256);
+		const uint32_t cbOff = up.Allocate(sizeof(CBSprite), 256);
 		if (cbOff == UINT32_MAX)
 			continue;
-		std::memcpy(upload_[fi].mapped + cbOff, &cb, sizeof(CBSprite));
-		list_->SetGraphicsRootConstantBufferView(0, upload_[fi].buffer->GetGPUVirtualAddress() + cbOff);
+		std::memcpy(up.mapped + cbOff, &cb, sizeof(CBSprite));
+		cl->SetGraphicsRootConstantBufferView(0, up.buffer->GetGPUVirtualAddress() + cbOff);
 
 		auto ToNDCX = [&](float x) { return (x / W) * 2.0f - 1.0f; };
 		auto ToNDCY = [&](float y) { return 1.0f - (y / H) * 2.0f; };
@@ -3098,25 +3220,26 @@ void Renderer::FlushSprites() {
 			{p11.first, p11.second, 1 * s.uvScaleOffset.x + s.uvScaleOffset.z, 1 * s.uvScaleOffset.y + s.uvScaleOffset.w},
 		};
 
-		const uint32_t vbOff = upload_[fi].Allocate(sizeof(vtx), 16);
+		const uint32_t vbOff = up.Allocate(sizeof(vtx), 16);
 		if (vbOff == UINT32_MAX)
 			continue;
-		std::memcpy(upload_[fi].mapped + vbOff, vtx, sizeof(vtx));
+		std::memcpy(up.mapped + vbOff, vtx, sizeof(vtx));
 
 		D3D12_VERTEX_BUFFER_VIEW vbv{};
-		vbv.BufferLocation = upload_[fi].buffer->GetGPUVirtualAddress() + vbOff;
+		vbv.BufferLocation = up.buffer->GetGPUVirtualAddress() + vbOff;
 		vbv.SizeInBytes = sizeof(vtx);
 		vbv.StrideInBytes = sizeof(V);
 
-		list_->IASetVertexBuffers(0, 1, &vbv);
-		list_->SetGraphicsRootDescriptorTable(1, textures_[texH].srvGpu);
-		list_->DrawInstanced(6, 1, 0, 0);
+		cl->IASetVertexBuffers(0, 1, &vbv);
+		cl->SetGraphicsRootDescriptorTable(1, textures_[texH].srvGpu);
+		cl->DrawInstanced(6, 1, 0, 0);
 	}
 }
 
 // ★追加: テキスト描画システム
 
 bool Renderer::InitTextSystem(const std::string& fontPath, float pixelHeight) {
+	std::lock_guard<std::recursive_mutex> lock(textMutex_);
 	// 既にこのフォントがロード済みなら何もしない
 	if (glyphCaches_.count(fontPath)) return true;
 
@@ -3196,6 +3319,8 @@ float4 main(PSIn i) : SV_TARGET {
 }
 
 void Renderer::DrawString(const std::string& text, float x, float y, float scale, const Vector4& color, const std::string& fontPath) {
+	if (uiThreadActive_ && !tUiThread_) return;
+	std::lock_guard<std::recursive_mutex> lock(textMutex_);
 	// フォントが未ロードなら遅延初期化
 	if (!glyphCaches_.count(fontPath)) {
 		if (!InitTextSystem(fontPath, 64.0f)) return;
@@ -3214,7 +3339,7 @@ void Renderer::DrawString(const std::string& text, float x, float y, float scale
 	int ascent = cache->GetAscent();
 	float scaledAscent = ascent * scale;
 
-	auto& vertices = textVerticesMap_[fontPath];
+	auto& vertices = (overlayQueue_ ? overlayText_ : textVerticesMap_)[fontPath];
 
 	for (uint32_t cp : codepoints) {
 		// 改行処理
@@ -3272,17 +3397,19 @@ void Renderer::DrawString(const std::string& text, float x, float y, float scale
 }
 
 void Renderer::FlushText() {
+	std::lock_guard<std::recursive_mutex> lock(textMutex_);
+	ID3D12GraphicsCommandList* cl = tUiList_ ? tUiList_ : list_;
+	UploadRing& up = tUiUpload_ ? *tUiUpload_ : upload_[window_->FrameIndex()];
 	if (textVerticesMap_.empty() || !psoText_) return;
 
-	const uint32_t fi = window_->FrameIndex();
 
 	ID3D12DescriptorHeap* heaps[] = { srvHeap_ };
-	list_->SetDescriptorHeaps(1, heaps);
-	list_->SetPipelineState(psoText_.Get());
-	list_->SetGraphicsRootSignature(rootSig2D_.Get());
-	list_->RSSetViewports(1, &viewport_);
-	list_->RSSetScissorRects(1, &scissor_);
-	list_->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+	cl->SetDescriptorHeaps(1, heaps);
+	cl->SetPipelineState(psoText_.Get());
+	cl->SetGraphicsRootSignature(rootSig2D_.Get());
+	cl->RSSetViewports(1, &viewport_);
+	cl->RSSetScissorRects(1, &scissor_);
+	cl->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
 	// b0: ダミーのCBSprite
 #ifdef _MSC_VER
@@ -3299,10 +3426,10 @@ void Renderer::FlushText() {
 	CBSprite cb{};
 	cb.mvp = Matrix4x4::Identity();
 	cb.color[0] = cb.color[1] = cb.color[2] = cb.color[3] = 1.0f;
-	const uint32_t cbOff = upload_[fi].Allocate(sizeof(CBSprite), 256);
+	const uint32_t cbOff = up.Allocate(sizeof(CBSprite), 256);
 	if (cbOff != UINT32_MAX) {
-		std::memcpy(upload_[fi].mapped + cbOff, &cb, sizeof(CBSprite));
-		list_->SetGraphicsRootConstantBufferView(0, upload_[fi].buffer->GetGPUVirtualAddress() + cbOff);
+		std::memcpy(up.mapped + cbOff, &cb, sizeof(CBSprite));
+		cl->SetGraphicsRootConstantBufferView(0, up.buffer->GetGPUVirtualAddress() + cbOff);
 	}
 
 	// フォントごとにアトラスSRVをバインドして描画
@@ -3315,10 +3442,10 @@ void Renderer::FlushText() {
 		const uint32_t vertCount = static_cast<uint32_t>(vertices.size());
 		const uint32_t bytesNeeded = vertCount * sizeof(TextVertex);
 
-		const uint32_t vbOff = upload_[fi].Allocate(bytesNeeded, 16);
+		const uint32_t vbOff = up.Allocate(bytesNeeded, 16);
 		if (vbOff == UINT32_MAX) continue;
 
-		std::memcpy(upload_[fi].mapped + vbOff, vertices.data(), bytesNeeded);
+		std::memcpy(up.mapped + vbOff, vertices.data(), bytesNeeded);
 
 		// このフォントのアトラスSRVをバインド
 		uint32_t texIdx = AllocateDynamicSrvIndex(1);
@@ -3326,22 +3453,23 @@ void Renderer::FlushText() {
 			D3D12_CPU_DESCRIPTOR_HANDLE dest = window_->SRV_CPU(static_cast<int>(texIdx));
 			dev_->CopyDescriptorsSimple(1, dest, it->second->GetAtlasSrvCpuMaster(),
 			                            D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-			list_->SetGraphicsRootDescriptorTable(1, window_->SRV_GPU(static_cast<int>(texIdx)));
+			cl->SetGraphicsRootDescriptorTable(1, window_->SRV_GPU(static_cast<int>(texIdx)));
 		}
 
 		D3D12_VERTEX_BUFFER_VIEW vbv{};
-		vbv.BufferLocation = upload_[fi].buffer->GetGPUVirtualAddress() + vbOff;
+		vbv.BufferLocation = up.buffer->GetGPUVirtualAddress() + vbOff;
 		vbv.SizeInBytes = bytesNeeded;
 		vbv.StrideInBytes = sizeof(TextVertex);
 
-		list_->IASetVertexBuffers(0, 1, &vbv);
-		list_->DrawInstanced(vertCount, 1, 0, 0);
+		cl->IASetVertexBuffers(0, 1, &vbv);
+		cl->DrawInstanced(vertCount, 1, 0, 0);
 	}
 
 	textVerticesMap_.clear();
 }
 
 float Renderer::MeasureTextWidth(const std::string& text, float scale, const std::string& fontPath) {
+	std::lock_guard<std::recursive_mutex> lock(textMutex_);
 	// フォントが未ロードなら遅延初期化
 	if (!glyphCaches_.count(fontPath)) {
 		if (!InitTextSystem(fontPath, 64.0f)) return 0.0f;

@@ -323,6 +323,12 @@ void ChronoSystem::DrawInk(entt::registry& r,GameContext& ctx){
     Engine::Transform identity;
     for(auto mesh:inkMeshes_)ctx.renderer->DrawMesh(mesh,inkTexture_,identity,{1,1,1,1},"InkSurface",.4f,false);
     DrawSwarm(r,ctx);
+    // Dashed ring on the ground: how far the candidate loop's shots will reach.
+    if(const auto& candidate=r.get<InkPlayer>(player_).domainPath.candidate;candidate.Ready()&&!finished_){
+        const auto reach=DomainReach(candidate);
+        auto ring=[&](float angle){V at=reach.center+V{std::cos(angle)*reach.radius,0,std::sin(angle)*reach.radius};at.y=InkGround(at)+.3f;return at;};
+        for(int i=0;i<72;i+=2)ctx.renderer->DrawLine3D(EV(ring(float(i)*6.283185f/72)),EV(ring(float(i+1)*6.283185f/72)),{.35f,1,.85f,1});
+    }
     if(r.get<InkPlayer>(player_).battlePhase!=BattlePhase::Boss)return;
     const auto& c=r.get<CreatureBoss>(boss_);
     if(c.stage==CreatureStage::Snake){

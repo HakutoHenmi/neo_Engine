@@ -1209,6 +1209,8 @@
   <ItemGroup>
     <ClCompile Include="Game\Systems\ChronoSystem.cpp" />
     <ClInclude Include="Game\Systems\ChronoSystem.h" />
+    <ClInclude Include="Game\Systems\GameControls.h" />
+    <ClInclude Include="Game\Systems\BossDefeat.inl" />
     <ClInclude Include="tests\ComponentValidationScene.h" />
     <ClInclude Include="Game\Chrono\ChronoComponents.h" />
     <ClInclude Include="Game\Chrono\ChronoRules.h" />

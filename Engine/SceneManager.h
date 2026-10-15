@@ -8,6 +8,7 @@
 // ==================================================
 #include "IScene.h"
 #include "WindowDX.h"
+#include <chrono>
 #include <functional>
 #include <memory>
 #include <string>
@@ -25,6 +26,19 @@ public:
 	static SceneManager* GetInstance();
 
 	using Factory = std::function<std::unique_ptr<IScene>()>;
+
+	// Scene transition: RequestChange first covers the screen, swaps the scene
+	// (showing the loading screen while it initializes) and then reveals it.
+	struct Transition {
+		enum class Phase { Cover, Reveal } phase = Phase::Cover;
+		float progress = 0;        // 0..1 within the phase
+		float seconds = 0;         // phase duration
+		bool loadingShown = false; // the loading screen was on screen for the swap
+		std::string from, to;
+	};
+	using TransitionDrawer = std::function<void(const Transition&)>;
+	void SetTransitionDrawer(TransitionDrawer drawer) { transitionDrawer_ = std::move(drawer); }
+	bool InTransition() const { return transitionActive_; }
 
 public:
 	void Register(const std::string& name, Factory factory);
@@ -57,6 +71,13 @@ private:
 	std::string pendingNext_;
 	SceneParameters pendingParams_;
 	WindowDX* dx_ = nullptr;
+
+	TransitionDrawer transitionDrawer_;
+	Transition transition_;
+	bool transitionActive_ = false;
+	std::chrono::steady_clock::time_point transitionClock_{};
+	static constexpr float kCoverSeconds = 0.6f, kRevealSeconds = 0.75f;
+	void BeginReveal(const std::string& from, bool loadingShown);
 
 	static SceneManager* instance_;
 };

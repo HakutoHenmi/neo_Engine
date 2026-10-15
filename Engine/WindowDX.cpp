@@ -1,5 +1,6 @@
 #include "WindowDX.h"
 #include "DlssRuntime.h"
+#include "Input.h"
 #include "../externals/Streamline/include/sl_security.h"
 
 #include <cassert>
@@ -183,17 +184,19 @@ void WindowDX::BeginFrame() {
 	list_->Reset(alloc_[fi_].Get(), nullptr);
 }
 
-void WindowDX::EndFrame() {
+void WindowDX::EndFrame() { PresentList(list_.Get()); }
+
+void WindowDX::PresentList(ID3D12GraphicsCommandList* list) {
 	auto res = back_[swap_->GetCurrentBackBufferIndex()].Get();
 	D3D12_RESOURCE_BARRIER barrier = CD3DX12_RESOURCE_BARRIER::Transition(res, D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT);
-	list_->ResourceBarrier(1, &barrier);
+	list->ResourceBarrier(1, &barrier);
 
-	HRESULT hr = list_->Close();
+	HRESULT hr = list->Close();
 	if (FAILED(hr)) {
 		OutputDebugStringA("[WindowDX] ERROR: CommandList->Close() failed!\n");
 	}
 
-	ID3D12CommandList* lists[] = {list_.Get()};
+	ID3D12CommandList* lists[] = {list};
 	que_->ExecuteCommandLists(1, lists);
 	DumpD3D12InfoQueue(dev_.Get(), "After ExecuteCommandLists");
 
@@ -279,7 +282,16 @@ void WindowDX::ToggleFullscreen() {
 	}
 }
 
+namespace {
+bool cursorRequested = true;
+}
+
 void WindowDX::SetCursorVisible(bool visible) {
+	cursorRequested = visible;
+	// ゲームパッド操作中はUIもフォーカス移動で扱うため、カーソルは出さない
+	if (auto* input = Input::GetInstance(); input && input->UsingGamepad()) {
+		visible = false;
+	}
 	CURSORINFO cursorInfo{};
 	cursorInfo.cbSize = sizeof(cursorInfo);
 	if (GetCursorInfo(&cursorInfo)) {
@@ -295,6 +307,8 @@ void WindowDX::SetCursorVisible(bool visible) {
 		while (ShowCursor(FALSE) >= 0) {}
 	}
 }
+
+void WindowDX::RefreshCursor() { SetCursorVisible(cursorRequested); }
 
 void WindowDX::Shutdown() {
 	WaitGPU();
@@ -339,6 +353,7 @@ bool WindowDX::InitWindow_(HINSTANCE hInst, int cmdShow, HWND& outHwnd) {
 	wc_.hInstance = hInst;
 	wc_.hCursor = LoadCursor(nullptr, IDC_ARROW);
 	wc_.style = CS_VREDRAW | CS_HREDRAW;
+	wc_.hbrBackground = CreateSolidBrush(RGB(6, 11, 9));
 
 	RegisterClassEx(&wc_);
 

@@ -83,7 +83,7 @@ bool ChronoSystem::UpdateCinematic(entt::registry& r,Player& p,GameContext& ctx)
     params.dofFocus=Length((cinematicBoss_?(cinematicBossBounds_.min+cinematicBossBounds_.max)*.5f:focus)-pose.at);
     params.dofBossDepth=cinematicBoss_?params.dofFocus:-1000;ctx.renderer->SetPostProcessParams(params);
     // Consume held action edges so a reveal cannot accidentally fire or dodge on resume.
-    ink.previousAttack=Down(VK_LBUTTON);ink.previousDodge=Down(VK_RBUTTON);ink.previousLock=Down(VK_MBUTTON);prevSpace_=Down(VK_SPACE);
+    ink.previousAttack=Controls::Fire();ink.previousDodge=Controls::Dodge();ink.previousLock=Controls::LockOn();prevSpace_=Controls::Jump();
     if(cinematicAge_>=duration){
         cinematicActive_=false;
         p.worldScale=p.aimScale=1;
@@ -103,8 +103,10 @@ void ChronoSystem::DrawCinematic(GameContext& ctx){
     ui.Fill({0,0,1280,52*fade},{.01f,.025f,.025f,1});
     ui.Fill({0,720-52*fade,1280,52*fade},{.01f,.025f,.025f,1});
     ui.MultiplyAlpha(fade);
-    ui.Fill({480,554,320,2},cinematicBoss_?UI::Gold:UI::Lime);
-    ui.Center(cinematicBoss_?"THE SERPENT AWAKENS":"SLIME SWARM",640,574,38,cinematicBoss_?UI::Gold:UI::Lime);
-    ui.Center(cinematicBoss_?"巨影、目覚める":"軌跡を描け。囲って、撃ち放て。",640,622,21,UI::Paper,UI::JapaneseFont);
+    const char* title=cinematicBoss_?"THE SERPENT AWAKENS":"SLIME SWARM";
+    const float w=ui.Width(title,40);
+    ui.Brush({640-w*.5f-60,560,w+120,64},UI::WithAlpha(cinematicBoss_?UI::Gold:UI::Lime,.94f),-.025f);
+    ui.Center(title,640,569,40,UI::Ink);
+    ui.Bold(cinematicBoss_?"巨影、目覚める":"軌跡を描け。囲って、撃ち放て。",640-ui.Width(cinematicBoss_?"巨影、目覚める":"軌跡を描け。囲って、撃ち放て。",21,UI::JapaneseFont)*.5f,634,21,UI::Paper,UI::JapaneseFont);
 }
 }

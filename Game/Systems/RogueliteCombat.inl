@@ -9,6 +9,8 @@ bool ChronoSystem::UpdateRogueMenu(entt::registry& r,Player& p,GameContext& ctx)
         rogueCameraFov_=2*std::atan(1/DirectX::XMVectorGetY(ctx.camera->Proj().r[1]));
         auto params=ctx.renderer->GetPostProcessParams();rogueDofFocus_=params.dofFocus;rogueDofRange_=params.dofRange;rogueDofStrength_=params.dofStrength;
         state.Open();Engine::Audio::GetInstance()->SetBGMDucked(true);
+        // Open on the cards, never on a button left focused by an earlier menu.
+        UI::Nav().hasFocus=false;
     }
     if(!state.menu){ctx.renderer->SetRogueWorldFrozen(false);return false;}
     ctx.renderer->SetRogueWorldFrozen(true);Engine::WindowDX::SetCursorVisible(true);
@@ -30,7 +32,9 @@ bool ChronoSystem::UpdateRogueMenu(entt::registry& r,Player& p,GameContext& ctx)
     params.dofRange=rogueDofRange_+(8-rogueDofRange_)*blend;params.dofStrength=rogueDofStrength_+(.9f-rogueDofStrength_)*blend;ctx.renderer->SetPostProcessParams(params);
     if(!state.menu){
         params.cinematicCamera=false;ctx.renderer->SetPostProcessParams(params);
-        ink.previousAttack=true;ctx.renderer->SetRogueWorldFrozen(false);Engine::Audio::GetInstance()->SetBGMDucked(false);
+        ink.previousAttack=true;ink.previousDodge=Controls::Dodge();prevSpace_=Controls::Jump();
+        if(ctx.input)ctx.input->LatchPad();
+        ctx.renderer->SetRogueWorldFrozen(false);Engine::Audio::GetInstance()->SetBGMDucked(false);
         Engine::WindowDX::SetCursorVisible(false);return true;
     }
     if(!state.CanChoose())return true;
@@ -38,10 +42,11 @@ bool ChronoSystem::UpdateRogueMenu(entt::registry& r,Player& p,GameContext& ctx)
     auto* control=r.try_get<ControlFrame>(player_);int choice=control?control->upgradeChoice:-1;
     if(UI::Pressed(DIK_UP)||UI::Pressed(DIK_W))state.selected=(state.selected+2)%3;
     if(UI::Pressed(DIK_DOWN)||UI::Pressed(DIK_S))state.selected=(state.selected+1)%3;
-    for(int i=0;i<3;++i)if(ui.Click(UI::RogueChoice(i))||UI::Pressed(BYTE(DIK_1+i)))choice=i;
+    for(int i=0;i<3;++i){if(ui.Focused(UI::RogueChoice(i)))state.selected=i;
+        if(ui.Click(UI::RogueChoice(i))||UI::Pressed(BYTE(DIK_1+i)))choice=i;}
     if(UI::Pressed(DIK_RETURN))choice=state.selected;
-    if((control&&control->upgradeReroll)||UI::Pressed(DIK_R)||ui.Click(UI::RogueReroll)){state.Reroll();return true;}
-    if((control&&control->upgradeSkip)||UI::Pressed(DIK_X)||ui.Click(UI::RogueSkip)){p.mass=std::min(SlimeMaximumMass,p.mass+60);state.Close();}
+    if((control&&control->upgradeReroll)||UI::Pressed(DIK_R)||UI::PadPressed(XINPUT_GAMEPAD_Y)||(!UI::UsingPad()&&ui.Click(UI::RogueReroll))){state.Reroll();return true;}
+    if((control&&control->upgradeSkip)||UI::Pressed(DIK_X)||UI::PadPressed(XINPUT_GAMEPAD_X)||(!UI::UsingPad()&&ui.Click(UI::RogueSkip))){p.mass=std::min(SlimeMaximumMass,p.mass+60);state.Close();}
     else if(choice>=0)state.Choose(choice);
     r.get<HealthComponent>(player_).SetHp(p.mass);
     return true;
@@ -64,7 +69,7 @@ void ChronoSystem::PerfectRogueLoop(entt::registry& r,Player& p,GameContext& ctx
     HomingDomain domain;V pos=Read(r.get<TransformComponent>(player_).translate);auto& loop=domain.loop;
     for(int i=0;i<=32;++i){float angle=float(i)*6.283185f/32;V point=pos+V{std::cos(angle)*5,0,std::sin(angle)*5};point.y=InkGround(point)+.16f;loop.points.push_back(point);}
     loop.area=78.54f;loop.length=31.416f;domain.total=48;domain.remaining=48;domain.highlight=DomainHighlight(loop);domain.liquid.Sync(loop.points);
-    ActivateRogue(r,p,ctx,domain);homingDomains_.push_back(std::move(domain));
+    domain.reach=DomainReach(loop);ActivateRogue(r,p,ctx,domain);homingDomains_.push_back(std::move(domain));
 }
 void ChronoSystem::UpdateRogueSkills(entt::registry& r,Player& p,GameContext& ctx){
     auto& ink=r.get<InkPlayer>(player_);auto& state=ink.rogue;if(!state.enabled)return;

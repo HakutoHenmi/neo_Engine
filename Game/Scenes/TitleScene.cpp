@@ -12,6 +12,7 @@
 #include "../Systems/UISystem.h"
 #include "../ObjectTypes.h"
 #include "../../externals/imgui/imgui.h"
+#include <array>
 #include <cmath>
 #include <algorithm>
 #include <filesystem>
@@ -112,9 +113,9 @@ void TitleScene::Update() {
     if (input) {
         UI::Canvas ui(renderer_);
         if(creditsOpen_){
-            if(UI::Pressed(DIK_ESCAPE)||ui.Click(UI::CreditsBack))creditsOpen_=false;
-            else if(creditsPage_>0&&ui.Click(UI::CreditsPrev))--creditsPage_;
-            else if(creditsPage_+1<UI::CreditsPageCount&&ui.Click(UI::CreditsNext))++creditsPage_;
+            if(UI::BackPressed()||ui.Click(UI::CreditsBack))creditsOpen_=false;
+            else if(creditsPage_>0&&(ui.Click(UI::CreditsPrev)||UI::PadPressed(XINPUT_GAMEPAD_LEFT_SHOULDER)))--creditsPage_;
+            else if(creditsPage_+1<UI::CreditsPageCount&&(ui.Click(UI::CreditsNext)||UI::PadPressed(XINPUT_GAMEPAD_RIGHT_SHOULDER)))++creditsPage_;
             renderer_->SetCamera(camera_);
             return; // Enter never starts the game while reading credits.
         }
@@ -123,7 +124,7 @@ void TitleScene::Update() {
             renderer_->SetCamera(camera_);
             return;
         }
-        bool start=UI::Pressed(DIK_RETURN)||UI::Canvas(renderer_).Click({440,520,400,66});
+        bool start=UI::Pressed(DIK_RETURN)||UI::PadPressed(XINPUT_GAMEPAD_START)||UI::Canvas(renderer_).Click(UI::TitleStart);
         if(start){
             Engine::SceneManager::GetInstance()->RequestChange("Select");
             return;
@@ -143,14 +144,27 @@ void TitleScene::Draw() {
     UI::Canvas ui(renderer_, Engine::WindowDX::kW, Engine::WindowDX::kH, uiAlpha_);
     if (uiAlpha_ > .01f) {
         ui.Background("FIELD OPERATIONS");
-        ui.Panel({240,125,800,300});
-        ui.Center("VERDANT BASIN",640,167,22,UI::Muted);
-        ui.Center(UI::GameTitle,640,230,60,UI::Lime,UI::JapaneseFont);
-        ui.Center("DRAW. ENCIRCLE. UNLEASH.",640,339,27);
-        ui.Button({440,520,400,66},"BEGIN EXPEDITION",true);
-        ui.Prompt("keyboard_enter","ENTER / CLICK BEGIN",495,607);
-        ui.Center("Music: Kevin MacLeod (incompetech.com) / CC BY 4.0",640,635,16,UI::Muted);
+        const float t=UI::Seconds();
+        // Hero: the slime itself, tracing an infinity loop off to the right.
+        const float cx=990,cy=330;
+        ui.Splat(cx+30,cy+40,310,UI::WithAlpha(UI::Lime,.05f),.6f);
+        ui.Halo(cx,cy,320,UI::WithAlpha(UI::Lime,.09f));
+        ui.Halo(cx,cy+142,190,UI::WithAlpha(UI::Night,.7f));
+        auto loop=[&](float s){return std::array<float,2>{cx+std::cos(s)*215,cy+70+std::sin(s*2)*62};};
+        for(int k=90;k>=0;--k){const float s=t*.85f-float(k)*.034f,fade=1-float(k)/90;auto p=loop(s);
+            ui.Dot(p[0],p[1],2+7*fade,k==0?UI::Paper:UI::WithAlpha(UI::Lime,.1f+.7f*fade));}
+        ui.SlimeMark(cx,cy+8*std::sin(t*1.7f),112);
+        // Title block: big, left-weighted, one line painted over with slime.
+        ui.Label("A SLIME DOMAIN ACTION",98,148,14,UI::WithAlpha(UI::Lime,.9f),3.4f);
+        ui.Text("スライム、",86,168,88,UI::Paper,UI::JapaneseFont);
+        ui.Brush({52,258,710,148},UI::WithAlpha(UI::Lime,.95f),-.028f);
+        ui.Text("跡で本気出す。",86,282,88,UI::Ink,UI::JapaneseFont);
+        ui.Label("DRAW.   ENCIRCLE.   UNLEASH.",100,414,17,UI::WithAlpha(UI::Paper,.85f),5.f);
+        ui.Button(UI::TitleStart,"BEGIN EXPEDITION",true);
         ui.Button(UI::CreditsButton,"CREDITS");
+        ui.Prompt("keyboard_enter","ENTER","xbox_button_a","PRESS A",338,594,28,17);
+        const std::string music="MUSIC  KEVIN MACLEOD (INCOMPETECH.COM)  CC BY 4.0";
+        ui.Label(music,1232-ui.SpacedWidth(music,11,1.6f),664,11,UI::WithAlpha(UI::Muted,.7f),1.6f);
     }
     if (inkAlpha_ > .01f) {
         UI::Canvas transition(renderer_);

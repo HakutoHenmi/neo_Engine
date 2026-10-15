@@ -8,6 +8,8 @@
 #include <unordered_map>
 #include <vector>
 #include <functional>
+#include <atomic>
+#include <mutex>
 
 // ★追加: テキスト描画用
 #include "DynamicGlyphCache.h"
@@ -574,6 +576,24 @@ public:
 	void DrawSprite(TextureHandle texH, const SpriteDesc& s);
 	void DrawSprite9Slice(TextureHandle texH, const Sprite9SliceDesc& s); // ★追加
 	void FlushSprites(); // スプライトの描画実行
+	// Sprites / text queued while the overlay queue is on are drawn after every
+	// scene sprite and text (scene transitions, loading screens).
+	void SetOverlayQueue(bool on) { overlayQueue_ = on; }
+	// A frame that draws only queued 2D UI straight into the back buffer, using the
+	// renderer's private UI command list and upload ring. Title / select screens use
+	// it before the 3D pipeline exists, and the loading screen calls it from its own
+	// thread while the main thread keeps loading.
+	void RenderUIFrame(const std::function<void()>& draw);
+	bool UIReady() const { return pso2D_.Get() != nullptr && uiList_ != nullptr; }
+	// The heavy 3D setup (pipelines, post-process, fluid, ray tracing, sky) is
+	// deferred until the first scene that renders the world needs it.
+	bool InitializeDeferred();
+	bool Ready3D() const { return ready3D_; }
+	// Loading-thread support. While the UI thread is active, 2D draws from other
+	// threads are ignored and the UI thread only reads textures cached for it.
+	void BeginUIThread() { tUiThread_ = true; }
+	void SetUIThreadActive(bool active) { uiThreadActive_ = active; }
+	void SetRecordUITextures(bool record) { recordUITextures_ = record; }
 
 	// ★追加: テキスト描画
 	// text: UTF-8 文字列
@@ -745,6 +765,8 @@ private:
 
 
 	UploadRing upload_[kFrameCount]{};
+	UploadRing uiUpload_[kFrameCount]{};
+	static thread_local UploadRing* tUiUpload_;
 	struct FluidProfileFrame {
 		bool pending = false;
 		std::array<bool, kFluidProfileStageCount> used{};
@@ -988,6 +1010,23 @@ private:
 	std::vector<InstancedDrawCall> instancedParticleDrawCalls_; // ★追加: パーティクル用
 	std::vector<InstancedDrawCall> liquidParticleDrawCalls_; // ★追加: 液体パーティクル用
 	std::vector<SpriteDrawCall> spriteDrawCalls_; // ★追加: スプライト用
+	std::vector<SpriteDrawCall> overlaySprites_;
+	std::unordered_map<std::string, std::vector<TextVertex>> overlayText_;
+	bool overlayQueue_ = false;
+	void FlushOverlayQueue();
+	bool InitSpritePipeline_();
+	bool InitUIFrame_();
+	TextureHandle LoadTexture2DUncached_(const std::string& filePath, bool sRGB);
+	Microsoft::WRL::ComPtr<ID3D12CommandAllocator> uiAlloc_[2];
+	Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> uiList_;
+	std::atomic<bool> uiThreadActive_{false};
+	bool recordUITextures_ = false;
+	bool ready3D_ = false;
+	std::unordered_map<std::string, TextureHandle> uiTextures_;
+	std::recursive_mutex textMutex_;
+	std::mutex srvMutex_;
+	static thread_local ID3D12GraphicsCommandList* tUiList_;
+	static thread_local bool tUiThread_;
 
 	// ★変更: Mesh構造体ではなくModelクラスへのスマートポインタで管理
 	std::vector<std::shared_ptr<Model>> models_;

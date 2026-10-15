@@ -3,6 +3,7 @@
 #include <chrono>
 #include <fstream>
 #include "JobSystem.h"
+#include "LoadingScreen.h"
 #include "Time/TimeManager.h" // ★追加
 #include "NetworkProfiler.h"
 #include <psapi.h> // ★追加: メモリ使用量取得用
@@ -34,12 +35,17 @@ bool App::Initialize(HINSTANCE hInst, int cmdShow) {
 	LogFile("Step 3: NetworkProfiler::Initialize");
 	NetworkProfiler::GetInstance().Initialize(8080);
 
-	LogFile("Step 4: renderer_.Initialize");
-	if (!renderer_.Initialize(&dx_))
-		return false;
-
+	// Input comes before the renderer so the startup loading screen can be operated.
 	LogFile("Step 5: input_.Initialize");
 	input_.Initialize(hInst, hwnd_);
+	LogFile("Step 4: renderer_.Initialize");
+	// Only the renderer core (2D sprites / text) is built here; the 3D pipeline is
+	// compiled under the loading screen of the first world scene. The startup
+	// splash covers the rest of startup.
+	if (!renderer_.Initialize(&dx_))
+		return false;
+	LoadingScreen::Begin("Startup", true);
+
 	LogFile("Step 6: camera_.Initialize");
 	camera_.Initialize();
 	LogFile("Step 7: audio_.Initialize");
@@ -69,6 +75,7 @@ bool App::Initialize(HINSTANCE hInst, int cmdShow) {
 			sceneManager_.Change(first);
 	}
 
+	LoadingScreen::End();
 	LogFile("App::Initialize complete");
 	return true;
 }
@@ -170,6 +177,18 @@ void App::Run() {
 
 			// ★追加: シーン切り替えをBeginFrame前に処理（GPUフェンス不整合を防ぐ）
 		sceneManager_.ProcessPendingChange();
+
+		// Until a world scene has been loaded the 3D pipeline does not exist yet:
+		// UI-only scenes (title / select) draw through the lightweight UI frame.
+		if (!renderer_.Ready3D()) {
+			renderer_.RenderUIFrame([&] {
+				sceneManager_.Update();
+				sceneManager_.Draw();
+				if (auto* scene = sceneManager_.Current()) scene->DrawUI();
+			});
+			NetworkProfiler::GetInstance().CommitFrame();
+			continue;
+		}
 
 		try {
 		dx_.BeginFrame();

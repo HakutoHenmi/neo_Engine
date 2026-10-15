@@ -1,7 +1,9 @@
 // Included inside namespace Game by SlimeAssault.inl.
 void ChronoSystem::HitDomainMissile(entt::registry& r,Player& p,GameContext& ctx,V at,bool enclosed,float power){
     auto& ink=r.get<InkPlayer>(player_);auto& target=r.get<Target>(weakpoint_);auto& boss=r.get<Boss>(boss_);
-    if(boss.countered||finished_)return;
+    if(boss.countered||finished_||bossDefeat_)return;
+    // Re-arm only after the previous pulse has mostly faded so continuous volleys flicker.
+    if(bossFlash_<.04f)bossFlash_=.14f;
     // Retain the existing armor/exposed-core progression and phase victories.
     float damage=power*(ink.rogueBossPool?1.25f:1.f)*(enclosed?1.4f:1.f)*(ink.hordeEnabled?4.f:1.f);
     if(!target.active){
@@ -14,7 +16,7 @@ void ChronoSystem::HitDomainMissile(entt::registry& r,Player& p,GameContext& ctx
         if(ink.coreHealth<=0){
             ++p.stats.counters;ink.coreHealth=100;ink.armor=0;boss.countered=true;target.active=false;ink.downTimer=0;
             p.mass=SlimeMaximumMass;r.get<CreatureBoss>(boss_).recoil=.6f;Feedback(p,at,true);
-            if(p.stats.counters>=3)Finish(p,true);
+            if(p.stats.counters>=3){if(diagnostic_)Finish(p,true);else StartBossDefeat(r,p,ctx);}
         }
     }
     if(ink.shotClock<=0){
@@ -44,7 +46,8 @@ void ChronoSystem::UpdateDomains(entt::registry& r,Player& p,GameContext& ctx){
             if(spear||domain.loop.shape==DomainShape::Square)missile.at=domain.loop.corners[size_t(domain.launched)%(spear?3:4)]+V{0,1.5f,0};
             if(spear)missile.power=float(domain.total)/3*domain.bulletPower;
             missile.seed=domain.launched*2.399963f+domain.age;missile.enclosed=domain.enclosesBoss;
-            missile.target=ChooseSwarmTarget(r,missile.at,domain.launched%5==0);
+            missile.origin=domain.reach.center;missile.reach=domain.reach.radius;
+            missile.target=ChooseSwarmTarget(r,missile.at,domain.launched%5==0,missile.origin,missile.reach);
             for(auto& enemy:swarm_)if(enemy.id==missile.target){enemy.reserved+=missile.power*4;break;}
             missile.velocity={std::cos(missile.seed)*8,55,std::sin(missile.seed)*8};
             missile.tail.fill(missile.at);domainMissiles_.push_back(missile);
@@ -68,11 +71,13 @@ void ChronoSystem::UpdateDomains(entt::registry& r,Player& p,GameContext& ctx){
         auto mob=std::find_if(swarm_.begin(),swarm_.end(),[&](const SwarmEnemy& enemy){return enemy.id==missile.target&&SwarmAlive(enemy);});
         bool bossAvailable=ink.battlePhase==BattlePhase::Boss&&!r.get<Boss>(boss_).countered;
         if((missile.target==0&&!bossAvailable)||(missile.target!=0&&mob==swarm_.end())){
-            missile.target=ChooseSwarmTarget(r,before,false);
+            missile.target=ChooseSwarmTarget(r,before,false,missile.origin,missile.reach);
             mob=std::find_if(swarm_.begin(),swarm_.end(),[&](const SwarmEnemy& enemy){return enemy.id==missile.target&&SwarmAlive(enemy);});
             if(mob!=swarm_.end())mob->reserved+=missile.power*4;
         }
         bool hasTarget=(missile.target==0&&bossAvailable)||mob!=swarm_.end();
+        // Nothing left within the loop's reach: the shot pops instead of drifting for seconds.
+        if(!hasTarget&&missile.age>1.6f){if(swarmEffects_.size()<128)swarmEffects_.push_back({before,0,2,2});missile.age=12;continue;}
         V target=missile.target==0?Center(r,weakpoint_):mob!=swarm_.end()?mob->at:before+V{0,10,0};
         V aim=target;
         if(missile.shape==DomainShape::Infinity&&missile.age>.5f&&missile.age<4){
