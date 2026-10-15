@@ -405,19 +405,19 @@ void GameScene::Update() {
 		// ポーズメニューのボタン入力判定
         if (!stageClear && isPaused_) {
             UI::Canvas ui(renderer_,ctx_.viewportSize.x,ctx_.viewportSize.y);if(ctx_.useOverrideMouse)ui.SetPointer(ctx_.overrideMouseX,ctx_.overrideMouseY);
-            if(ui.Click(UI::GraphicsButton)||UI::Pressed(DIK_G)){graphicsOpen_=true;return;}
+            if(ui.Click(UI::GraphicsButton)||UI::Pressed(DIK_G)||UI::PadPressed(XINPUT_GAMEPAD_BACK)){graphicsOpen_=true;return;}
             auto* input=Engine::Input::GetInstance();
             bool roguePause=chronoMode_&&!registry_.view<Chrono::InkPlayer>().empty();
-            if (ui.Click(roguePause?UI::Rect{870,595,350,54}:UI::Title) || input->Trigger(DIK_TAB)) {
+            if (ui.Click(roguePause?UI::PaletteTitle:UI::Title) || input->Trigger(DIK_TAB)) {
                 Engine::SceneManager::GetInstance()->RequestChange("Title");return;
             }
-            if (ui.Click(roguePause?UI::Rect{870,530,350,54}:UI::Resume) || input->Trigger(DIK_RETURN)) {
-                SetPaused(false);
+            if (ui.Click(roguePause?UI::PaletteResume:UI::Resume) || input->Trigger(DIK_RETURN) || input->PadTrigger(XINPUT_GAMEPAD_B)) {
+                SetPaused(false);input->LatchPad();
             }
         }
 		// ESCキーでポーズ切り替え (0x01 = DIK_ESCAPE)
-		if (!stageClear && Engine::Input::GetInstance()->Trigger(0x01)) {
-            SetPaused(!isPaused_);
+		if (!stageClear && (Engine::Input::GetInstance()->Trigger(0x01) || Engine::Input::GetInstance()->PadTrigger(XINPUT_GAMEPAD_START))) {
+            SetPaused(!isPaused_);Engine::Input::GetInstance()->LatchPad();
         }
 
 		if (stageClear) {
@@ -1465,7 +1465,7 @@ void GameScene::Draw() {
         UI::Canvas ui(renderer_,ctx_.viewportSize.x,ctx_.viewportSize.y);if(ctx_.useOverrideMouse)ui.SetPointer(ctx_.overrideMouseX,ctx_.overrideMouseY);
         if(graphicsOpen_){UI::DrawGraphics(ui,*renderer_);if(graphicsSaveFailed_)ui.Text("設定の保存に失敗しました（今回のプレイには適用済み）",110,689,17,UI::Gold,UI::JapaneseFont);return;}
         if(chronoMode_&&!registry_.view<Chrono::InkPlayer>().empty()){auto view=registry_.view<Chrono::InkPlayer>();UI::RoguePalette(ui,view.get<Chrono::InkPlayer>(*view.begin()).rogue);}else ui.Pause();
-        ui.Button(UI::GraphicsButton,"G: GRAPHICS");
+        ui.Button(UI::GraphicsButton,UI::UsingPad()?"GRAPHICS":"G: GRAPHICS",false,"xbox_button_view");
         return;
     }
     for (auto& system : systems_) {

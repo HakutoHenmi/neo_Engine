@@ -22,6 +22,8 @@ public:
     TitleScene() = default;
     ~TitleScene() override = default;
 
+    // UI-only: runs before the 3D renderer is initialized.
+    bool RequiresFullRenderer() const override { return false; }
     void Initialize(Engine::WindowDX* dx, const Engine::SceneParameters& params) override;
     void Update() override;
     void Draw() override;

@@ -1,5 +1,6 @@
 #include "../UI/SceneMusic.h"
 #include "ChronoSystem.h"
+#include "GameControls.h"
 #include <set>
 #include <unordered_map>
 #include "../UI/GameUI.h"
@@ -334,6 +335,7 @@ void ChronoSystem::PoseCreature(entt::registry& r){
         auto& o=r.get<CameraOccluder>(e);o.center=piece.position;
         float extent=std::max({piece.size.x,piece.size.y,piece.size.z});o.size={extent,extent,extent};
     }
+    if(inkMode_)FlashBoss(r);
     // The logical boss and visible core share the same evaluated position.
     auto& bossTransform=r.get<TransformComponent>(boss_);bossTransform.translate=Write(pose.core);
     r.get<Target>(boss_).offset={};
@@ -536,8 +538,10 @@ void ChronoSystem::Reset(entt::registry& r){
     for(auto e:r.view<NameComponent>()){
         const auto& n=r.get<NameComponent>(e).name;if(n=="Player")player_=e;if(n=="Boss")boss_=e;
     }
+    bossDefeat_=defeatBurst_=false;defeatAge_=bossFlash_=0;bossDebris_.clear();
+    candidateCapture_=captureShown_=0;captureScanClock_=0;captureAge_=10;
     initialized_=r.valid(player_);finished_=won_=false;finishAge_=0;sparks_.clear();creatureSolids_.clear();
-    prevL_=Down(VK_LBUTTON);prevM_=Down(VK_MBUTTON);prevSpace_=Down(VK_SPACE);prevShift_=Down(VK_SHIFT);
+    prevL_=Down(VK_LBUTTON);prevM_=Down(VK_MBUTTON);prevSpace_=Controls::Jump();prevShift_=Down(VK_SHIFT);
     yaw_=0;pitch_=0.12f;zoom_=17;shoulder_=1.8f;chainCameraHold_=0;fov_=1.0472f;
     cameraReady_=false;zoomVelocity_=0;cameraBoom_=-1;composition_={};viewPitch_=pitch_;postStrength_=0;droplets_.clear();manualCameraHold_=0;
     openingPending_=true;cinematicActive_=false;cinematicBoss_=false;cinematicAge_=0;
@@ -1198,22 +1202,26 @@ void ChronoSystem::Update(entt::registry& r,GameContext& ctx){
     if(!initialized_||!r.valid(player_))return;
     if(finished_){
         auto& p=r.get<Player>(player_);
-        if(inkMode_){
-            auto& ink=r.get<InkPlayer>(player_);
-            ink.monoAge=-1;ink.phase=SlimePhase::Roaming;ink.charge=ink.spent=0;
-            InkCamera(r,p,ctx);
+        // After a boss kill the camera keeps orbiting the scattered wreck behind the report.
+        if(inkMode_&&bossDefeat_)UpdateBossDefeat(r,p,ctx);
+        else{
+            if(inkMode_){
+                auto& ink=r.get<InkPlayer>(player_);
+                ink.monoAge=-1;ink.phase=SlimePhase::Roaming;ink.charge=ink.spent=0;
+                InkCamera(r,p,ctx);
+            }
+            Presentation(r,p,ctx);
         }
-        Presentation(r,p,ctx);
         finishAge_+=ctx.dt;Engine::WindowDX::SetCursorVisible(true);
         if(finishAge_>0.2f&&ctx.input){
             UI::Canvas ui(ctx.renderer,ctx.viewportSize.x,ctx.viewportSize.y);
             if(ctx.useOverrideMouse)ui.SetPointer(ctx.overrideMouseX,ctx.overrideMouseY);
-            if(UI::Pressed(DIK_R)||UI::Pressed(DIK_RETURN)||ui.Click(UI::Retry)){
+            if(UI::Pressed(DIK_R)||UI::Pressed(DIK_RETURN)||UI::PadPressed(XINPUT_GAMEPAD_X)||ui.Click(UI::Retry)){
                 if(inkMode_||arena_||creature_){Reset(r);return;}
                 Engine::SceneParameters params;params.stagePath="Resources/Scenes/chrono.json";
                 Engine::SceneManager::GetInstance()->RequestChange("Game",params);
             }
-            if(UI::Pressed(DIK_TAB)||ui.Click(UI::Select))Engine::SceneManager::GetInstance()->RequestChange("Select");
+            if(UI::Pressed(DIK_TAB)||UI::PadPressed(XINPUT_GAMEPAD_Y)||ui.Click(UI::Select))Engine::SceneManager::GetInstance()->RequestChange("Select");
         }
         return;
     }
@@ -1324,7 +1332,7 @@ void ChronoSystem::DrawUI(entt::registry& r,GameContext& ctx){
         text("BEST  "+TimeText(bestTime_)+"    CHAIN  "+std::to_string(bestChain_),290,455,0.31f,cyan);
         rect(290,520,320,62,{0.07f,0.35f,0.48f,1});rect(650,520,320,62,{0.14f,0.17f,0.26f,1});
         UI::Canvas ui(render,w,h);ui.Button(UI::Retry,"RETRY",true);ui.Button(UI::Select,"STAGE SELECT");
-        ui.Prompt("keyboard_r","RETRY",310,475);ui.Prompt("keyboard_tab","STAGE SELECT",710,475);
+        ui.Prompt("keyboard_r","RETRY","xbox_button_x","RETRY",310,475);ui.Prompt("keyboard_tab","STAGE SELECT","xbox_button_y","STAGE SELECT",710,475);
         return;
     }
     rect(422,610,436,76,bg);

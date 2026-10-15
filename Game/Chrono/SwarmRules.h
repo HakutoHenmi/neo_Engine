@@ -6,6 +6,8 @@ enum class BattlePhase {Horde,Emerging,Boss};
 enum class SwarmPhase {Spawn,Chase,Windup,Dash,Recover,Dead};
 enum class SwarmEvent {None,Detonate};
 inline constexpr int SwarmBossKills=1000,SwarmCapacity=180;
+// Loops capture enemies up to this height above the ground: walkers, diving flyers, falling bombers.
+inline constexpr float SwarmCaptureHeight=8.f;
 inline constexpr float SwarmEmergenceSeconds=3.2f;
 inline constexpr uint32_t SwarmNoTarget=0xffffffffu;
 struct SwarmEnemy {

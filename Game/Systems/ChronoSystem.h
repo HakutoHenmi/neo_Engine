@@ -25,8 +25,8 @@ private:
     std::vector<InkShot> inkShots_;
     struct SlimeTrail {Chrono::Vec at;int surface;float mass,radius;std::array<float,32> footprint{};float originalMass=0;bool bonus=false;};
     std::vector<SlimeTrail> slimeTrails_;
-    struct HomingDomain {Chrono::DomainLoop loop;Chrono::LiquidTrail liquid;std::vector<std::array<Chrono::Vec,3>> highlight;float age=0,clock=0,afterglow=0,bulletPower=1,lifetime=1.2f;int remaining=0,launched=0,total=0;bool enclosesBoss=false,meteor=false;};
-    struct DomainMissile {Chrono::Vec at{},velocity{};std::array<Chrono::Vec,8> tail{};float age=0,seed=0,tailClock=0,power=1;int tailCount=0,lane=1;entt::entity projectile=entt::null;uint32_t target=Chrono::SwarmNoTarget;bool enclosed=false,meteor=false;Chrono::DomainShape shape=Chrono::DomainShape::Loop;};
+    struct HomingDomain {Chrono::DomainLoop loop;Chrono::LiquidTrail liquid;std::vector<std::array<Chrono::Vec,3>> highlight;float age=0,clock=0,afterglow=0,bulletPower=1,lifetime=1.2f;int remaining=0,launched=0,total=0;bool enclosesBoss=false,meteor=false;Chrono::DomainReachArea reach{};};
+    struct DomainMissile {Chrono::Vec at{},velocity{};std::array<Chrono::Vec,8> tail{};float age=0,seed=0,tailClock=0,power=1;int tailCount=0,lane=1;entt::entity projectile=entt::null;uint32_t target=Chrono::SwarmNoTarget;bool enclosed=false,meteor=false;Chrono::DomainShape shape=Chrono::DomainShape::Loop;Chrono::Vec origin{};float reach=1e9f;};
     std::vector<HomingDomain> homingDomains_;
     std::vector<DomainMissile> domainMissiles_;
     std::vector<Chrono::SwarmEnemy> swarm_;
@@ -52,7 +52,10 @@ private:
     void DrawSwarm(entt::registry&,GameContext&);
     void SetSwarmBossVisible(entt::registry&,bool,float=0);
     void HitSwarm(entt::registry&,Chrono::Player&,GameContext&,uint32_t,float,bool=true);
-    uint32_t ChooseSwarmTarget(entt::registry&,Chrono::Vec,bool);
+    // reach < 1e8: only enemies within that horizontal distance of origin (the firing loop).
+    uint32_t ChooseSwarmTarget(entt::registry&,Chrono::Vec,bool,Chrono::Vec origin={},float reach=1e9f);
+    // Capture: enemies inside a fired loop dissolve at once.
+    int candidateCapture_=0,captureShown_=0;float captureScanClock_=0,captureAge_=10;
     Chrono::LiquidTrail trailLiquid_,candidateLiquid_;
     std::vector<Chrono::Vec> highlightedCandidate_;
     std::vector<std::array<Chrono::Vec,3>> candidateHighlight_;
@@ -72,6 +75,15 @@ private:
     void DrawInk(entt::registry&,GameContext&);
     void DrawInkUI(entt::registry&,GameContext&);
     void InkCamera(entt::registry&,Chrono::Player&,GameContext&);
+    // Boss hit reaction and defeat sequence (BossDefeat.inl).
+    struct BossDebris {entt::entity part=entt::null;Chrono::Vec rest{},velocity{},spin{};DirectX::XMFLOAT4 color{};float clearance=.5f;};
+    std::vector<BossDebris> bossDebris_;
+    float bossFlash_=0,defeatAge_=0,defeatPulse_=0;bool bossDefeat_=false,defeatBurst_=false;
+    Chrono::Bounds defeatBounds_{};Chrono::Vec defeatOutward_{};Chrono::CinematicPose defeatReturn_{};
+    void FlashBoss(entt::registry&);
+    void StartBossDefeat(entt::registry&,Chrono::Player&,GameContext&);
+    void UpdateBossDefeat(entt::registry&,Chrono::Player&,GameContext&);
+    void DrawBossDefeat(GameContext&);
     bool UpdateCinematic(entt::registry&,Chrono::Player&,GameContext&);
     void DrawCinematic(GameContext&);
     bool openingPending_=true,cinematicActive_=false,cinematicBoss_=false;

@@ -14,10 +14,10 @@ void GameOverScene::Initialize(Engine::WindowDX* dx, const Engine::SceneParamete
 void GameOverScene::Update() {
     auto* input=Engine::Input::GetInstance(); if(!input)return;
     UI::Canvas ui(Engine::Renderer::GetInstance());
-    if(input->Trigger(DIK_R)||input->Trigger(DIK_RETURN)||ui.Click(UI::Retry)){
+    if(input->Trigger(DIK_R)||input->Trigger(DIK_RETURN)||input->PadTrigger(XINPUT_GAMEPAD_X)||ui.Click(UI::Retry)){
         Engine::SceneParameters params;params.stagePath="Resources/Scenes/chrono.json";
         Engine::SceneManager::GetInstance()->RequestChange("Game",params);
-    } else if(input->Trigger(DIK_TAB)||ui.Click(UI::Select)) {
+    } else if(input->Trigger(DIK_TAB)||input->PadTrigger(XINPUT_GAMEPAD_Y)||ui.Click(UI::Select)) {
         Engine::SceneManager::GetInstance()->RequestChange("Select");
     }
 }

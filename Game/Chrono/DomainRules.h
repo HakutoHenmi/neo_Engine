@@ -70,11 +70,24 @@ struct DomainLoop {
         for(size_t i=0;i<simplified.size();++i)corners[i]=simplified[i];
     }
 };
-inline int DomainNormalAmmo(int enclosures){return 48+16*std::clamp(enclosures-1,0,13);}
+// Ammo follows the enclosed area: a minimum ring (8 m2) fires 6 shots, a sweep
+// around a crowd (~540 m2, a 26 m circle) fires the 180-shot maximum.
+inline int DomainAreaAmmo(float area){return std::clamp(int(std::round(area/3.f)),6,180);}
 inline float DomainBulletPower(int enclosures){return 1+.45f*std::sqrt(float(std::clamp(enclosures-1,0,13)));}
 inline int DomainAmmo(const DomainLoop& loop){
     float multiplier=loop.shape==DomainShape::Infinity?1.3f:loop.shape==DomainShape::Square?1.15f:loop.shape==DomainShape::Triangle?1.35f:1.f;
-    return int(DomainNormalAmmo(loop.Enclosures())*multiplier);
+    return int(float(DomainAreaAmmo(loop.area)+8*std::clamp(loop.Enclosures()-1,0,13))*multiplier);
+}
+// Shots only seek enemies near the loop that fired them: the reach grows with the
+// loop's size, so where (and around what) the player draws matters.
+struct DomainReachArea { Vec center{}; float radius=0; };
+inline DomainReachArea DomainReach(const DomainLoop& loop){
+    DomainReachArea reach;if(loop.points.empty())return reach;
+    for(auto p:loop.points)reach.center=reach.center+p;
+    reach.center=reach.center*(1.f/float(loop.points.size()));
+    float extent=0;for(auto p:loop.points)extent=std::max(extent,DomainDistance(reach.center,p));
+    reach.radius=10+1.3f*extent;
+    return reach;
 }
 inline bool DomainContains(const DomainLoop& loop,Vec p){
     if(!loop.regions.empty()){

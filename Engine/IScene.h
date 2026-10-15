@@ -35,6 +35,10 @@ public:
 	// ※ ゲーム側が任意の条件で true を返す
 	virtual bool IsEnd() const { return false; }
 
+	// Scenes that draw the 3D world need the full renderer. UI-only scenes return
+	// false so the engine can start without compiling the 3D pipeline first.
+	virtual bool RequiresFullRenderer() const { return true; }
+
 	// 次に遷移するシーン名（IsEnd()==true の時に参照）
 	// 例: "Title", "Game", "Result" など
 	virtual std::string Next() const { return std::string(); }

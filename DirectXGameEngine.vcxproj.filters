@@ -76,6 +76,9 @@
     <ClCompile Include="Engine\SceneManager.cpp">
       <Filter>Scene</Filter>
     </ClCompile>
+    <ClCompile Include="Engine\LoadingScreen.cpp">
+      <Filter>Scene</Filter>
+    </ClCompile>
     <ClCompile Include="Engine\EntityManager.cpp">
       <Filter>ECS</Filter>
     </ClCompile>
@@ -158,6 +161,9 @@
       <Filter>Particle</Filter>
     </ClInclude>
     <ClInclude Include="Engine\SceneManager.h">
+      <Filter>Scene</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\LoadingScreen.h">
       <Filter>Scene</Filter>
     </ClInclude>
     <ClInclude Include="Engine\IScene.h">

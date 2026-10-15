@@ -34,6 +34,8 @@ public:
 
 	void BeginFrame();
 	void EndFrame();
+	// Closes, submits and presents a command list that recorded into the current back buffer.
+	void PresentList(ID3D12GraphicsCommandList* list);
 
 	void WaitGPU(); // nullptr安全
 	void WaitIdle() { WaitGPU(); }
@@ -61,6 +63,8 @@ public:
 	void ToggleFullscreen();
 	bool IsFullscreen() const { return isFullscreen_; }
 	static void SetCursorVisible(bool visible);
+	// 入力デバイスの切り替え時に、最後に要求された表示状態を再適用する
+	static void RefreshCursor();
 
 private:
 	bool InitWindow_(HINSTANCE hInst, int cmdShow, HWND& outHwnd);
