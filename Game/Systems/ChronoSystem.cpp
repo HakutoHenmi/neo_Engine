@@ -1,3 +1,6 @@
+#include "../../Engine/FluidMorphShape.h"
+#include "../../Engine/SlimeEngulfShape.h"
+#include <map>
 #include "../UI/SceneMusic.h"
 #include "ChronoSystem.h"
 #include "GameControls.h"
@@ -530,6 +533,8 @@ void ChronoSystem::BuildArena(entt::registry& r){
 void ChronoSystem::Reset(entt::registry& r){
     // Legacy diagnostic fixtures remain runnable; normal play always uses the new shooter.
     inkMode_=!wcsstr(GetCommandLineW(),L"--chrono-smoke")&&!wcsstr(GetCommandLineW(),L"--creature-smoke")&&!wcsstr(GetCommandLineW(),L"--snake-smoke");
+    slimeLife_=inkMode_&&(!wcsstr(GetCommandLineW(),L"-smoke")||wcsstr(GetCommandLineW(),L"--slime-life-smoke"))&&!wcsstr(GetCommandLineW(),L"--legacy-domain");
+    Engine::Renderer::GetInstance()->SetFluidMorphTargets({},0);
     if(inkMode_){creature_=true;arena_=false;inkShots_.clear();inkSurfaces_.clear();inkMeshes_.clear();inkDirty_=true;}
     std::vector<entt::entity> remove;
     for(auto e:r.view<NameComponent>())if(r.get<NameComponent>(e).name.rfind("Chrono ",0)==0)remove.push_back(e);
@@ -649,6 +654,9 @@ void ChronoSystem::Shoot(entt::registry& r,Player& p,GameContext& ctx){
     p.action=Action::Extending;p.timer=0;p.buffer=0;
 }
 void ChronoSystem::Damage(entt::registry& r,Player& p,float amount,GameContext& ctx,V source,float perfectWindow){
+    if(slimeLife_){
+        DamageSlimeLife(r,p,amount,ctx,source);return;
+    }
     if(inkMode_&&!finished_){auto& ink=r.get<InkPlayer>(player_);
         if(ink.TryPerfectDodge(perfectWindow)){PerfectRogueLoop(r,p,ctx);p.invincible=std::max(p.invincible,SlimePerfectInvincibility);p.worldScale=.15f;
             ctx.camera->StartImpactShake(.10f,.08f,{0,1,0},12);return;}}
@@ -1200,6 +1208,7 @@ void ChronoSystem::Finish(Player& p,bool win){
 }
 void ChronoSystem::Update(entt::registry& r,GameContext& ctx){
     if(!initialized_||!r.valid(player_))return;
+    if(slimeLife_){const auto* control=r.try_get<ControlFrame>(player_);if(control&&control->restart){Reset(r);return;}}
     if(finished_){
         auto& p=r.get<Player>(player_);
         // After a boss kill the camera keeps orbiting the scattered wreck behind the report.
@@ -1436,3 +1445,5 @@ void ChronoSystem::DrawUI(entt::registry& r,GameContext& ctx){
 #include "ChronoInk.inl"
 #include "ChronoCinematic.inl"
 #include "SlimeAssault.inl"
+
+#include "SlimeLife.inl"

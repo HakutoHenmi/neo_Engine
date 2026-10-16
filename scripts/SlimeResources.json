@@ -256,5 +256,13 @@
   "Textures/PolyHaven/leafy_grass_diff_4k.jpg",
   "Textures/PolyHaven/leafy_grass_nor_dx_2k.jpg",
   "Textures/PolyHaven/leafy_grass_Rough_2k.jpg",
-  "Textures/PolyHaven/leafy_grass_AO_2k.jpg"
+  "Textures/PolyHaven/leafy_grass_AO_2k.jpg",
+  "Models/SlimeLife/hammer.obj",
+  "Models/SlimeLife/sword.obj",
+  "Models/SlimeLife/plane.obj",
+  "Sound/slime-life-split-0.wav",
+  "Sound/slime-life-split-1.wav",
+  "Sound/slime-life-split-2.wav",
+  "Sound/slime-life-engulf.wav",
+  "Sound/slime-life-merge.wav"
 ]

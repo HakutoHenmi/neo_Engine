@@ -48,6 +48,7 @@ public:
 	void ClearScene(); // ★追加: シーンの完全クリアとキューのリセット
 
     SceneComponents& GetComponents() { return components_; }
+    ChronoSystem* GetChronoSystem()const {return chronoSystem_;}
     void InvalidateWorldMatrices() const { ClearMatrixCache(); }
     entt::entity CreateEmptyEntity();
     void DestroyEditorEntity(entt::entity entity);

@@ -83,7 +83,7 @@ void SelectScene::DrawMenu() {
     ui.Text("VERDANT BASIN",90,192,96,UI::Paper);
     ui.Text("群れを一掃し、地中の大蛇を呼び覚ませ。",98,308,24,UI::Paper,UI::JapaneseFont);
     float chipX=98;
-    for(auto [label,color]:{std::pair<const char*,Engine::Vector4>{"1000 KO",UI::Lime},{"BOSS : SERPENT",UI::Gold},{"LOOP COMBAT",UI::Teal}}){
+    for(auto [label,color]:{std::pair<const char*,Engine::Vector4>{"18 ENEMIES",UI::Lime},{"MEADOW EXPEDITION",UI::Gold},{"SLIME MORPH",UI::Teal}}){
         const float w=ui.SpacedWidth(label,13,2)+30;
         ui.Rounded({chipX,364,w,32},UI::WithAlpha(color,.12f),16);ui.RoundedRing({chipX,364,w,32},UI::WithAlpha(color,.55f),16);
         ui.Label(label,chipX+15,372,13,color,2);chipX+=w+10;
@@ -106,7 +106,7 @@ void SelectScene::DrawMenu() {
         auto at=[&](float s){const float a=s*6.283185f;return std::array<float,2>{mx+40+std::cos(a)*95,my+10+std::sin(a)*64};};
         auto p0=at(s0),p1=at((std::min)(s1,draw));ui.Line(p0[0],p0[1],p1[0],p1[1],5,UI::Lime);}
     ui.SlimeMark(mx+40+std::cos(draw*6.283185f)*95,my+10+std::sin(draw*6.283185f)*64,11);
-    ui.Text("広い草原。囲える場所は、どこにでもある。",map.x+24,map.y+map.h-56,17,UI::Muted,UI::JapaneseFont);
+    ui.Text("いつもの草原で、分裂・取り込み・変形を楽しもう。",map.x+24,map.y+map.h-56,17,UI::Muted,UI::JapaneseFont);
     ui.Button(UI::Stage,"DEPLOY TO VERDANT BASIN",true);
     ui.Prompt("mouse_left","CLICK","xbox_button_a","DEPLOY",100,592,26,17);
     ui.Prompt("keyboard_enter","DEPLOY","xbox_button_menu","DEPLOY",220,592,26,17);

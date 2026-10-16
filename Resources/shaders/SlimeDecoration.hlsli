@@ -8,6 +8,21 @@ float3 SlimeHash(float id) {
     return frac(sin(float3(id*12.9898f+3.1f,id*78.233f+9.2f,id*39.346f+1.7f))*43758.5453f);
 }
 float SlimeDecorationScale() { return playerSlope.y>0 ? playerSlope.y : 1; }
+bool SlimeCoreActive() {
+#ifdef FLUID_VOLUME_CORE
+    return playerLiquidCore.w>.5f;
+#else
+    return false;
+#endif
+}
+float3 SlimeCorePosition() {
+#ifdef FLUID_VOLUME_CORE
+    if(SlimeCoreActive())return playerLiquidCore.xyz;
+#endif
+    return playerBodyCenter;
+}
+float3 SlimeCoreRadii(){float s=SlimeDecorationScale(),pulse=1+.035f*sin(time*3.1f);
+    return float3(min(playerRadii.x*.34f,.95f*s)*pulse,max(.18f*s,playerRadii.y*.37f)/pulse,min(playerRadii.z*.34f,1.05f*s));}
 float3 SlimeTravelForward() { return normalize(float3(playerForward.x,0,playerForward.z)+float3(0,0,1e-6f)); }
 float3 SlimeFaceForward() {
     float3 forward=SlimeTravelForward(),right=float3(forward.z,0,-forward.x);
@@ -26,6 +41,7 @@ float3 SlimeFieldPosition(float3 field) {
 float3 SlimeEyeRadii() { return float3(.145f,.285f,.105f)*SlimeDecorationScale(); }
 float3 SlimeEyeGuide(uint eye) {
     float3 front=SlimeFaceForward(),right=float3(front.z,0,-front.x);
+    if(SlimeCoreActive())return SlimeCorePosition()+right*((eye==0?-1:1)*.46f*SlimeDecorationScale())+front*(SlimeCoreRadii().z*.86f)+float3(0,.09f*SlimeDecorationScale(),0);
     return playerBodyCenter+right*((eye==0?-1:1)*.46f*SlimeDecorationScale())+float3(0,playerRadii.y*.48f,0);
 }
 float3 SlimeBubblePosition(uint id,out float radius,out float visibility) {

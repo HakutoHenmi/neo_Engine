@@ -48,11 +48,12 @@ void TestSlimeDecorationPreview(Gpu& g) {
     blend.RenderTarget[0].DestBlend=D3D11_BLEND_INV_SRC_ALPHA;blend.RenderTarget[0].BlendOp=D3D11_BLEND_OP_ADD;
     blend.RenderTarget[0].SrcBlendAlpha=D3D11_BLEND_ONE;blend.RenderTarget[0].DestBlendAlpha=D3D11_BLEND_ZERO;blend.RenderTarget[0].BlendOpAlpha=D3D11_BLEND_OP_ADD;blend.RenderTarget[0].RenderTargetWriteMask=D3D11_COLOR_WRITE_ENABLE_ALL;
     ComPtr<ID3D11BlendState> alpha;Check(g.device->CreateBlendState(&blend,&alpha));
-    for(int stage=0;stage<3;++stage){
+    for(int stage=0;stage<4;++stage){
         VolumeCB cb{};cb.origin={-6.4f,-4,-6.4f};cb.cell=.2f;cb.size[0]=cb.size[1]=cb.size[2]=size;cb.iso=.25f;cb.playerDecoration=1;
         cb.colors[0]={.06f,.78f,.29f,1};cb.playerForward={0,0,-1};cb.playerSlope={0,1,0};
         cb.playerRadii=stage==0?XMFLOAT3{2.55f,1.8f,2.55f}:stage==1?XMFLOAT3{3.4f,1.f,3.4f}:XMFLOAT3{4.2f,.66f,4.2f};
         cb.playerMotion=stage>0?1.f:0;
+        if(stage==3){cb.playerMotion=0;cb.playerLiquidCore={.75f,cb.playerRadii.y*.43f,-.4f,1};}
         std::vector<HALF> samples(size*size*size*4);
         for(UINT z=0;z<size;++z)for(UINT y=0;y<size;++y)for(UINT x=0;x<size;++x){
             XMFLOAT3 world{cb.origin.x+(x+.5f)*cb.cell,cb.origin.y+(y+.5f)*cb.cell,cb.origin.z+(z+.5f)*cb.cell};
@@ -88,14 +89,16 @@ void TestSlimeDecorationPreview(Gpu& g) {
         inputs[6]=surfaceSrv.Get();g.context->VSSetShaderResources(0,8,inputs);g.context->PSSetShaderResources(0,8,inputs);
         auto target=colorRtv.Get();g.context->OMSetRenderTargets(1,&target,nullptr);g.context->OMSetBlendState(alpha.Get(),nullptr,UINT_MAX);
         g.context->VSSetShader(dvs.Get(),nullptr,0);g.context->PSSetShader(dps.Get(),nullptr,0);g.context->DrawInstanced(6,250,0,0);g.Unbind();
-        const wchar_t* names[]={L"tests/out/slime-decorations-rest.png",L"tests/out/slime-decorations-stretch.png",L"tests/out/slime-decorations-flat.png"};
+        const wchar_t* names[]={L"tests/out/slime-decorations-rest.png",L"tests/out/slime-decorations-stretch.png",L"tests/out/slime-decorations-flat.png",L"tests/out/slime-decorations-core.png"};
         WritePng(g.device.Get(),g.context.Get(),color.Get(),names[stage]);
         D3D11_TEXTURE2D_DESC readDesc; color->GetDesc(&readDesc);readDesc.BindFlags=0;readDesc.Usage=D3D11_USAGE_STAGING;readDesc.CPUAccessFlags=D3D11_CPU_ACCESS_READ;
         ComPtr<ID3D11Texture2D> readback;Check(g.device->CreateTexture2D(&readDesc,nullptr,&readback));g.context->CopyResource(readback.Get(),color.Get());
         D3D11_MAPPED_SUBRESOURCE mapped{};Check(g.context->Map(readback.Get(),0,D3D11_MAP_READ,0,&mapped));
-        UINT leftEye=0,rightEye=0,escapedPixels=0;
+        UINT leftEye=0,rightEye=0,escapedPixels=0;float eyeMid=float(w)*.5f;
+        if(stage==3){float coreRadiusZ=std::min(cb.playerRadii.z*.34f,1.05f);auto eyeGuide=XMVectorSet(.75f,cb.playerLiquidCore.y+.09f,-.4f-coreRadiusZ*.86f,1);
+            eyeMid=(1+XMVectorGetX(XMVector3TransformCoord(eyeGuide,view*projection)))*w*.5f;}
         for(UINT y=0;y<h;++y)for(UINT x=0;x<w;++x){auto pixel=static_cast<const BYTE*>(mapped.pData)+y*mapped.RowPitch+x*4;
-            if(pixel[0]>210&&pixel[1]>210&&pixel[2]>70&&pixel[2]<200){if(x<w/2)++leftEye;else ++rightEye;}
+            if(pixel[0]>210&&pixel[1]>210&&pixel[2]>70&&pixel[2]<200){if(x<eyeMid)++leftEye;else ++rightEye;}
             auto base=basePixels.data()+(y*w+x)*4;
             int difference=std::max({std::abs(int(pixel[0])-int(base[0])),std::abs(int(pixel[1])-int(base[1])),std::abs(int(pixel[2])-int(base[2]))});
             if(bodyDepth[y*w+x]<=0&&difference>=6)++escapedPixels;}

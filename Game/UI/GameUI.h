@@ -43,7 +43,7 @@ inline bool BackPressed(BYTE key=DIK_ESCAPE) { return Pressed(key)||PadPressed(X
 
 inline constexpr const char* Font = "Resources/Fonts/Rajdhani/Rajdhani-SemiBold.ttf";
 inline constexpr const char* JapaneseFont = "Resources/Fonts/MPLUSRounded1c/MPLUSRounded1c-ExtraBold.ttf";
-inline constexpr const char* GameTitle = "スライム、跡で本気出す。";
+inline constexpr const char* GameTitle = "スライム、まるごと育てよう。";
 // Field-kit palette: mossy night, glossy lime slime, toxic teal, amber warnings, cream ink.
 inline const Engine::Vector4 Night{.032f,.052f,.043f,1}, Ink{.045f,.078f,.063f,1}, Moss{.085f,.135f,.105f,1},
     Paper{.94f,.96f,.86f,1}, Muted{.56f,.67f,.58f,1}, Lime{.74f,.95f,.33f,1}, Teal{.3f,.94f,.78f,1},
@@ -165,6 +165,10 @@ public:
     // EditorUI already maps the Game-panel pointer into the full final texture.
     // Sprite/text positions use that same texture; ImGui scales it exactly once.
     void SetPointer(float x,float y) { pointerOverride_=true;pointerX_=x;pointerY_=y; }
+    std::array<float,2> Pointer()const {
+        float x=0,y=0;if(auto* input=Engine::Input::GetInstance())input->GetMousePos(x,y);
+        if(pointerOverride_){x=pointerX_;y=pointerY_;}return {(x-ox_)/s_,(y-oy_)/s_};
+    }
     Engine::Vector4 Tint(Engine::Vector4 c) const { c.w*=alpha_; return c; }
     void MultiplyAlpha(float alpha) { alpha_*=std::clamp(alpha,0.f,1.f); }
     void Image(const std::string& path, Rect b, Engine::Vector4 color={1,1,1,1}) { Sprite(path.c_str(),b,color); }

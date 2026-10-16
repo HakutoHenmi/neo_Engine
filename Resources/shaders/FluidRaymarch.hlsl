@@ -1,3 +1,4 @@
+#define FLUID_VOLUME_CORE
 #include "FluidVolumeCommon.hlsli"
 cbuffer Camera : register(b0) {
     row_major float4x4 view;
@@ -169,7 +170,7 @@ RayResult RaymarchPS(FullscreenIn input) {
     float3 nearestWorld=cameraPosition+ray*nearest;
     if(playerDecoration>0.001f && nearestPhase==0 &&
        length(nearestWorld-playerBodyCenter)<max(playerRadii.x,playerRadii.z)*(1+.55f*playerMotion)*1.6f)
-        result=lerp(result,float3(.06f,.72f,.30f),pow(1-saturate(dot(normal,-ray)),2)*.28f*saturate(playerDecoration));
+        result=lerp(result,lerp(phaseColor[0].rgb,1.f,.12f),pow(1-saturate(dot(normal,-ray)),2)*.28f*saturate(playerDecoration));
     output.color=float4(lerp(background,result,NearVolumeWeight(nearestWorld)),1);
     return output;
 }
@@ -222,7 +223,7 @@ SprayOut SprayVS(uint vertex:SV_VertexID, uint instance:SV_InstanceID) {
             world=guide;
             // Anchor each rigid eye to the actual reconstructed SPH boundary.
             // This follows lagging/flapping fluid instead of an assumed ellipse.
-            [loop] for(uint step=0;step<40;++step){
+            [loop] for(uint step=0;step<40&&!SlimeCoreActive();++step){
                 float distance=extent*(1-float(step)/20);
                 if(Density(guide+front*distance).x>=isoValue){
                     float outside=previous,inside=distance;
@@ -231,6 +232,7 @@ SprayOut SprayVS(uint vertex:SV_VertexID, uint instance:SV_InstanceID) {
                     world=guide+front*((outside+inside)*.5f+.045f*SlimeDecorationScale());found=true;break;
                 }previous=distance;
             }
+            if(SlimeCoreActive()){world=guide;found=Density(SlimeCorePosition()).x>isoValue*.25f;}
             visibility=found?1:0;o.radius=SlimeEyeRadii().y*1.2f;o.distantBulk=3;
         }
         if(visibility<=0){o.position=float4(2,2,2,1);return o;}
@@ -272,9 +274,10 @@ float4 SprayPS(SprayOut input):SV_Target {
         float bulkDepth=fluidDepth.Load(int3((int2)input.position.xy,0));
         float depthInGel=bulkDepth>0?max(0,z-bulkDepth):0;
         if(eye){
-            if(bulkDepth<=0 || depthInGel>.2f*SlimeDecorationScale())discard;
+            if(bulkDepth<=0 || (!SlimeCoreActive()&&depthInGel>.2f*SlimeDecorationScale()))discard;
             float facing=saturate(dot(normal,-ray));
             float edge=smoothstep(0,.22f,facing);
+            if(SlimeCoreActive())edge*=exp(-depthInGel*.055f)*smoothstep(-.15f,.25f,dot(normalize(cameraPosition-SlimeCorePosition()),SlimeFaceForward()));
             if(halo)return float4(.68f,.90f,.26f,.14f*edge*input.color.a*saturate(playerDecoration));
             return float4(lerp(float3(.75f,.85f,.20f),float3(1,.97f,.64f),pow(facing,.35f)),
                 edge*input.color.a*saturate(playerDecoration));

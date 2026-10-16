@@ -7,6 +7,7 @@
 #include "../Scripts/ScriptEdits.h"
 #include <optional>
 #include "../Scenes/GameScene.h"
+#include "../Systems/ChronoSystem.h"
 #include "../Systems/RiverSystem.h" 
 #include "../Systems/PlayerActionSystem.h" 
 #include "../Systems/EnemyAISystem.h"      
@@ -1100,7 +1101,8 @@ void EditorUI::Show(Engine::Renderer* renderer, GameScene* gameScene) {
 	}
 
 	// ★追加: Play中はImGuiのカーソルを消す
-	if (gameScene->GetIsPlaying() && !gameScene->IsPaused() && !gameScene->IsResultShowing()) {
+	const bool slimeLabOpen=gameScene->GetChronoSystem()&&gameScene->GetChronoSystem()->SlimeLabOpen();
+	if (gameScene->GetIsPlaying() && !gameScene->IsPaused() && !gameScene->IsResultShowing() && !slimeLabOpen) {
 		ImGui::SetMouseCursor(ImGuiMouseCursor_None);
 	} else {
 		ImGui::SetMouseCursor(ImGuiMouseCursor_Arrow);

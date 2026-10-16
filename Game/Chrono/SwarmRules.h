@@ -11,6 +11,7 @@ inline constexpr float SwarmCaptureHeight=8.f;
 inline constexpr float SwarmEmergenceSeconds=3.2f;
 inline constexpr uint32_t SwarmNoTarget=0xffffffffu;
 struct SwarmEnemy {
+    uint64_t lifeHitRevision=0;
     uint32_t id=0,attacks=0;Vec at{},heading{0,0,1},attackAt{};float health=3,age=0,clock=0,reserved=0,flash=0,attackDelay=0,cameraOpacity=1,corrosion=0,burn=0,slow=0;bool inPool=false;
     bool bomber=false,flying=false,struck=false;SwarmPhase phase=SwarmPhase::Spawn;
 };

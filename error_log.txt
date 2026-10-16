@@ -169,21 +169,4 @@ Running App...
 === Frame 8880 ===
 === Frame 8940 ===
 === Frame 9000 ===
-=== Frame 9060 ===
-=== Frame 9120 ===
-=== Frame 9180 ===
-=== Frame 9240 ===
-=== Frame 9300 ===
-=== Frame 9360 ===
-=== Frame 9420 ===
-=== Frame 9480 ===
-=== Frame 9540 ===
-=== Frame 9600 ===
-=== Frame 9660 ===
-=== Frame 9720 ===
-=== Frame 9780 ===
-=== Frame 9840 ===
-=== Frame 9900 ===
-=== Frame 9960 ===
-=== Frame 10020 ===
 Shutting down...
