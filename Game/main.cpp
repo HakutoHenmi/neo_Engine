@@ -11,6 +11,7 @@
 #include "../tests/PackageValidationScene.h"
 #include "../tests/RtLightingValidationScene.h"
 #include "../tests/SceneryBenchmarkScene.h"
+#include "../tests/SlimeLifeValidationScene.h"
 #ifndef NDEBUG
 #include "../tests/FluidSandboxValidationScene.h"
 #include "../tests/RigidbodyValidationScene.h"
@@ -77,6 +78,7 @@ int WINAPI WinMain(_In_ HINSTANCE hInst, _In_opt_ HINSTANCE, _In_ LPSTR commandL
         sm.Register("DlssPackageValidation", []() -> std::unique_ptr<Engine::IScene> { return std::make_unique<DlssPackageValidationScene>(); });
         sm.Register("RtLightingValidation", []() -> std::unique_ptr<Engine::IScene> { return std::make_unique<RtLightingValidationScene>(); });
         sm.Register("SceneryBenchmark", []() -> std::unique_ptr<Engine::IScene> { return std::make_unique<SceneryBenchmarkScene>(); });
+        sm.Register("SlimeLifeValidation", []() -> std::unique_ptr<Engine::IScene> { return std::make_unique<SlimeLifeValidationScene>(); });
 		sm.Register("Title", []() -> std::unique_ptr<Engine::IScene> { return std::unique_ptr<Engine::IScene>(new Game::TitleScene()); });
 		sm.Register("Select", []() -> std::unique_ptr<Engine::IScene> { return std::unique_ptr<Engine::IScene>(new Game::SelectScene()); });
 		sm.Register("Game", []() -> std::unique_ptr<Engine::IScene> { return std::unique_ptr<Engine::IScene>(new Game::GameScene()); });
@@ -110,6 +112,7 @@ int WINAPI WinMain(_In_ HINSTANCE hInst, _In_opt_ HINSTANCE, _In_ LPSTR commandL
     if(wcsstr(GetCommandLineW(),L"--dlss-package-smoke"))app.SetInitialSceneKey("DlssPackageValidation");
     if(wcsstr(GetCommandLineW(),L"--rt-lighting-smoke"))app.SetInitialSceneKey("RtLightingValidation");
     if(wcsstr(GetCommandLineW(),L"--scenery-benchmark"))app.SetInitialSceneKey("SceneryBenchmark");
+    if(wcsstr(GetCommandLineW(),L"--slime-life-smoke"))app.SetInitialSceneKey("SlimeLifeValidation");
 #ifndef NDEBUG
 	int argumentCount = 0;
 	LPWSTR* arguments = CommandLineToArgvW(GetCommandLineW(), &argumentCount);

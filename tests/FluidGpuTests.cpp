@@ -1,6 +1,8 @@
 // Headless SM5 regression tests. Executes the production HLSL on D3D11 WARP;
 // tests numerical kernels independently of game content and the D3D12 renderer.
 #define NOMINMAX
+#include "../Engine/FluidMorphShape.h"
+#include "../Engine/SlimeEngulfShape.h"
 #include "../Engine/FluidEmission.h"
 #include <windows.h>
 #include <d3d11.h>
@@ -32,8 +34,9 @@ struct VolumeCB { XMFLOAT3 origin; float cell; UINT size[3],count; XMFLOAT3 prev
     XMFLOAT3 playerForward{0,0,1}; float playerFaceCamera=0;
     XMFLOAT3 playerRadii{2.55f,1.8f,2.55f}; float playerMotion=0;
     XMFLOAT3 playerSlope{}; float playerAir=0;
+    XMFLOAT4 playerLiquidCore{};
 };
-static_assert(sizeof(Particle)==64 && sizeof(Shape)==64 && sizeof(VolumeCB)==176);
+static_assert(sizeof(Particle)==64 && sizeof(Shape)==64 && sizeof(VolumeCB)==192);
 struct Buffer { ComPtr<ID3D11Buffer> resource; ComPtr<ID3D11ShaderResourceView> srv; ComPtr<ID3D11UnorderedAccessView> uav; };
 struct Texture { ComPtr<ID3D11Texture3D> resource; ComPtr<ID3D11ShaderResourceView> srv; ComPtr<ID3D11UnorderedAccessView> uav; UINT size; };
 class Gpu {
@@ -701,6 +704,7 @@ void TestVolume(Gpu& g, int waterLayers=2, float waterOffset=0, bool draw=true, 
     printf("PASS temporal: zero-support rejection\n");
 }
 #include "SlimeFluidTests.inl"
+#include "FluidMorphTests.inl"
 #include "SlimeFaceTests.inl"
 #include "SlimeDecorationPreview.inl"
 #include "GraphicsPostValidation.inl"
@@ -710,6 +714,7 @@ int main(int argc,char** argv) {
     try {
         if(argc>1 && std::strcmp(argv[1],"--sandbox-only")==0) { Check(CoInitializeEx(nullptr,COINIT_MULTITHREADED));Gpu gpu;TestFluidSandbox(gpu);return 0; }
         if(argc>1 && std::strcmp(argv[1],"--face-only")==0){ Check(CoInitializeEx(nullptr,COINIT_MULTITHREADED)); Gpu gpu; TestPlayerFace(gpu);TestSlimeDecorationPreview(gpu); return 0; }
+        if(argc>1 && std::strcmp(argv[1],"--morph-only")==0){Check(CoInitializeEx(nullptr,COINIT_MULTITHREADED));Gpu gpu;TestFluidMorph(gpu);return 0;}
         if(argc>1 && std::strcmp(argv[1],"--slime-only")==0){ Check(CoInitializeEx(nullptr,COINIT_MULTITHREADED)); Gpu gpu; TestSlimeFluid(gpu);TestPlayerFace(gpu); return 0; }
         if(argc>1 && std::strcmp(argv[1],"--chrono-only")==0) {
             Check(CoInitializeEx(nullptr,COINIT_MULTITHREADED));Gpu gpu;TestChronoLiquid(gpu);return 0;
@@ -729,6 +734,7 @@ int main(int argc,char** argv) {
             TestVolume(gpu,1,0,true,.4f,false,nullptr,.56f);
             return 0;
         }
+        if(argc>1 && std::strcmp(argv[1],"--near-volume-only")==0){Check(CoInitializeEx(nullptr,COINIT_MULTITHREADED));Gpu gpu;TestVolume(gpu,1,0,true,.4f,false,nullptr,.18f);return 0;}
         for(int hz: {30,60,120}) {
             float remainder=0; int emitted=0;
             for(int frame=0;frame<hz;++frame) emitted+=Engine::AccumulateFluidEmission(40,1.0f/hz,remainder);

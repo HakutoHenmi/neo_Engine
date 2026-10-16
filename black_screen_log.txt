@@ -2083,3 +2083,278 @@
   DrawCalls=9, InstancedDrawCalls=13
   PostProcess Enabled=1
   psoPP_ exists=1
+[RendererDebug] Frame 1:
+  CameraPos=(1.500000, 7.948046, -43.337944)
+  DrawCalls=1, InstancedDrawCalls=14
+  PostProcess Enabled=1
+  psoPP_ exists=1
+[RendererDebug] Frame 2:
+  CameraPos=(1.500000, 7.948046, -43.337944)
+  DrawCalls=1, InstancedDrawCalls=14
+  PostProcess Enabled=1
+  psoPP_ exists=1
+[RendererDebug] Frame 3:
+  CameraPos=(1.500000, 7.948046, -43.337944)
+  DrawCalls=1, InstancedDrawCalls=14
+  PostProcess Enabled=1
+  psoPP_ exists=1
+[RendererDebug] Frame 4:
+  CameraPos=(1.500000, 7.948046, -43.337944)
+  DrawCalls=1, InstancedDrawCalls=14
+  PostProcess Enabled=1
+  psoPP_ exists=1
+[RendererDebug] Frame 5:
+  CameraPos=(1.500000, 7.948046, -43.337944)
+  DrawCalls=1, InstancedDrawCalls=14
+  PostProcess Enabled=1
+  psoPP_ exists=1
+[RendererDebug] Frame 1:
+  CameraPos=(1.500000, 7.948046, -43.337944)
+  DrawCalls=0, InstancedDrawCalls=14
+  PostProcess Enabled=1
+  psoPP_ exists=1
+[RendererDebug] Frame 2:
+  CameraPos=(1.500000, 7.948046, -43.337944)
+  DrawCalls=0, InstancedDrawCalls=14
+  PostProcess Enabled=1
+  psoPP_ exists=1
+[RendererDebug] Frame 3:
+  CameraPos=(1.500000, 7.948046, -43.337944)
+  DrawCalls=0, InstancedDrawCalls=14
+  PostProcess Enabled=1
+  psoPP_ exists=1
+[RendererDebug] Frame 4:
+  CameraPos=(1.500000, 7.948046, -43.337944)
+  DrawCalls=0, InstancedDrawCalls=14
+  PostProcess Enabled=1
+  psoPP_ exists=1
+[RendererDebug] Frame 5:
+  CameraPos=(1.500000, 7.948046, -43.337944)
+  DrawCalls=0, InstancedDrawCalls=14
+  PostProcess Enabled=1
+  psoPP_ exists=1
+[RendererDebug] Frame 1:
+  CameraPos=(0.000000, 1206.400024, -15.000000)
+  DrawCalls=2, InstancedDrawCalls=0
+  PostProcess Enabled=1
+  psoPP_ exists=1
+[RendererDebug] Frame 2:
+  CameraPos=(0.000000, 1206.400024, -15.000000)
+  DrawCalls=2, InstancedDrawCalls=0
+  PostProcess Enabled=1
+  psoPP_ exists=1
+[RendererDebug] Frame 3:
+  CameraPos=(0.000000, 1206.400024, -15.000000)
+  DrawCalls=2, InstancedDrawCalls=0
+  PostProcess Enabled=1
+  psoPP_ exists=1
+[RendererDebug] Frame 4:
+  CameraPos=(0.000000, 1206.400024, -15.000000)
+  DrawCalls=2, InstancedDrawCalls=0
+  PostProcess Enabled=1
+  psoPP_ exists=1
+[RendererDebug] Frame 5:
+  CameraPos=(0.000000, 1206.400024, -15.000000)
+  DrawCalls=2, InstancedDrawCalls=0
+  PostProcess Enabled=1
+  psoPP_ exists=1
+[RendererDebug] Frame 1:
+  CameraPos=(0.000000, 1206.400024, -15.000000)
+  DrawCalls=2, InstancedDrawCalls=0
+  PostProcess Enabled=1
+  psoPP_ exists=1
+[RendererDebug] Frame 2:
+  CameraPos=(0.000000, 1206.400024, -15.000000)
+  DrawCalls=2, InstancedDrawCalls=0
+  PostProcess Enabled=1
+  psoPP_ exists=1
+[RendererDebug] Frame 3:
+  CameraPos=(0.000000, 1206.400024, -15.000000)
+  DrawCalls=2, InstancedDrawCalls=0
+  PostProcess Enabled=1
+  psoPP_ exists=1
+[RendererDebug] Frame 4:
+  CameraPos=(0.000000, 1206.400024, -15.000000)
+  DrawCalls=2, InstancedDrawCalls=0
+  PostProcess Enabled=1
+  psoPP_ exists=1
+[RendererDebug] Frame 5:
+  CameraPos=(0.000000, 1206.400024, -15.000000)
+  DrawCalls=2, InstancedDrawCalls=0
+  PostProcess Enabled=1
+  psoPP_ exists=1
+[RendererDebug] Frame 1:
+  CameraPos=(0.000000, 1206.438110, -21.737658)
+  DrawCalls=2, InstancedDrawCalls=0
+  PostProcess Enabled=1
+  psoPP_ exists=1
+[RendererDebug] Frame 2:
+  CameraPos=(0.000000, 1206.635742, -22.457813)
+  DrawCalls=2, InstancedDrawCalls=0
+  PostProcess Enabled=1
+  psoPP_ exists=1
+[RendererDebug] Frame 3:
+  CameraPos=(0.000000, 1206.640259, -22.472025)
+  DrawCalls=2, InstancedDrawCalls=0
+  PostProcess Enabled=1
+  psoPP_ exists=1
+[RendererDebug] Frame 4:
+  CameraPos=(0.024526, 1206.856323, -22.922388)
+  DrawCalls=2, InstancedDrawCalls=0
+  PostProcess Enabled=1
+  psoPP_ exists=1
+[RendererDebug] Frame 5:
+  CameraPos=(0.017280, 1206.877808, -22.927742)
+  DrawCalls=2, InstancedDrawCalls=0
+  PostProcess Enabled=1
+  psoPP_ exists=1
+[RendererDebug] Frame 1:
+  CameraPos=(0.000000, 1206.438110, -21.737658)
+  DrawCalls=2, InstancedDrawCalls=0
+  PostProcess Enabled=1
+  psoPP_ exists=1
+[RendererDebug] Frame 2:
+  CameraPos=(0.000000, 1206.438110, -21.737658)
+  DrawCalls=2, InstancedDrawCalls=0
+  PostProcess Enabled=1
+  psoPP_ exists=1
+[RendererDebug] Frame 3:
+  CameraPos=(0.000000, 1206.438110, -21.737658)
+  DrawCalls=2, InstancedDrawCalls=0
+  PostProcess Enabled=1
+  psoPP_ exists=1
+[RendererDebug] Frame 4:
+  CameraPos=(0.009988, 1206.656494, -22.382687)
+  DrawCalls=2, InstancedDrawCalls=0
+  PostProcess Enabled=1
+  psoPP_ exists=1
+[RendererDebug] Frame 5:
+  CameraPos=(-0.005022, 1206.673340, -22.234867)
+  DrawCalls=2, InstancedDrawCalls=0
+  PostProcess Enabled=1
+  psoPP_ exists=1
+[RendererDebug] Frame 1:
+  CameraPos=(0.000000, 1206.438110, -21.737658)
+  DrawCalls=2, InstancedDrawCalls=0
+  PostProcess Enabled=1
+  psoPP_ exists=1
+[RendererDebug] Frame 2:
+  CameraPos=(0.000000, 1206.438110, -21.737658)
+  DrawCalls=2, InstancedDrawCalls=0
+  PostProcess Enabled=1
+  psoPP_ exists=1
+[RendererDebug] Frame 3:
+  CameraPos=(0.000000, 1206.438110, -21.737658)
+  DrawCalls=2, InstancedDrawCalls=0
+  PostProcess Enabled=1
+  psoPP_ exists=1
+[RendererDebug] Frame 4:
+  CameraPos=(0.024088, 1206.634399, -22.167723)
+  DrawCalls=2, InstancedDrawCalls=0
+  PostProcess Enabled=1
+  psoPP_ exists=1
+[RendererDebug] Frame 5:
+  CameraPos=(0.019125, 1206.630249, -21.979237)
+  DrawCalls=2, InstancedDrawCalls=0
+  PostProcess Enabled=1
+  psoPP_ exists=1
+[RendererDebug] Frame 1:
+  CameraPos=(0.000000, 1206.438110, -21.737658)
+  DrawCalls=2, InstancedDrawCalls=0
+  PostProcess Enabled=1
+  psoPP_ exists=1
+[RendererDebug] Frame 2:
+  CameraPos=(0.000000, 1206.635742, -22.457813)
+  DrawCalls=2, InstancedDrawCalls=0
+  PostProcess Enabled=1
+  psoPP_ exists=1
+[RendererDebug] Frame 3:
+  CameraPos=(0.000000, 1206.641113, -22.471792)
+  DrawCalls=2, InstancedDrawCalls=0
+  PostProcess Enabled=1
+  psoPP_ exists=1
+[RendererDebug] Frame 4:
+  CameraPos=(0.024439, 1206.848267, -22.915163)
+  DrawCalls=2, InstancedDrawCalls=0
+  PostProcess Enabled=1
+  psoPP_ exists=1
+[RendererDebug] Frame 5:
+  CameraPos=(0.016162, 1206.872070, -22.892620)
+  DrawCalls=2, InstancedDrawCalls=0
+  PostProcess Enabled=1
+  psoPP_ exists=1
+[RendererDebug] Frame 1:
+  CameraPos=(0.000000, 1206.438110, -21.737658)
+  DrawCalls=2, InstancedDrawCalls=0
+  PostProcess Enabled=1
+  psoPP_ exists=1
+[RendererDebug] Frame 2:
+  CameraPos=(0.000000, 1206.438110, -21.737658)
+  DrawCalls=2, InstancedDrawCalls=0
+  PostProcess Enabled=1
+  psoPP_ exists=1
+[RendererDebug] Frame 3:
+  CameraPos=(0.000000, 1206.438110, -21.737658)
+  DrawCalls=2, InstancedDrawCalls=0
+  PostProcess Enabled=1
+  psoPP_ exists=1
+[RendererDebug] Frame 4:
+  CameraPos=(0.030497, 1206.670654, -22.266058)
+  DrawCalls=2, InstancedDrawCalls=0
+  PostProcess Enabled=1
+  psoPP_ exists=1
+[RendererDebug] Frame 5:
+  CameraPos=(0.022389, 1206.695190, -22.298067)
+  DrawCalls=2, InstancedDrawCalls=0
+  PostProcess Enabled=1
+  psoPP_ exists=1
+[RendererDebug] Frame 1:
+  CameraPos=(0.000000, 1206.438110, -21.737658)
+  DrawCalls=2, InstancedDrawCalls=0
+  PostProcess Enabled=1
+  psoPP_ exists=1
+[RendererDebug] Frame 2:
+  CameraPos=(0.000000, 1206.438110, -21.737658)
+  DrawCalls=2, InstancedDrawCalls=0
+  PostProcess Enabled=1
+  psoPP_ exists=1
+[RendererDebug] Frame 3:
+  CameraPos=(0.000000, 1206.438110, -21.737658)
+  DrawCalls=2, InstancedDrawCalls=0
+  PostProcess Enabled=1
+  psoPP_ exists=1
+[RendererDebug] Frame 4:
+  CameraPos=(0.009306, 1206.652832, -22.381151)
+  DrawCalls=2, InstancedDrawCalls=0
+  PostProcess Enabled=1
+  psoPP_ exists=1
+[RendererDebug] Frame 5:
+  CameraPos=(-0.005502, 1206.675293, -22.249437)
+  DrawCalls=2, InstancedDrawCalls=0
+  PostProcess Enabled=1
+  psoPP_ exists=1
+[RendererDebug] Frame 1:
+  CameraPos=(0.000000, 1206.170654, -19.498177)
+  DrawCalls=2, InstancedDrawCalls=0
+  PostProcess Enabled=1
+  psoPP_ exists=1
+[RendererDebug] Frame 2:
+  CameraPos=(0.000000, 1206.170654, -19.498177)
+  DrawCalls=2, InstancedDrawCalls=0
+  PostProcess Enabled=1
+  psoPP_ exists=1
+[RendererDebug] Frame 3:
+  CameraPos=(0.000000, 1206.170654, -19.498177)
+  DrawCalls=2, InstancedDrawCalls=0
+  PostProcess Enabled=1
+  psoPP_ exists=1
+[RendererDebug] Frame 4:
+  CameraPos=(-0.002314, 1206.341919, -20.054893)
+  DrawCalls=2, InstancedDrawCalls=0
+  PostProcess Enabled=1
+  psoPP_ exists=1
+[RendererDebug] Frame 5:
+  CameraPos=(0.003770, 1206.394165, -20.026651)
+  DrawCalls=2, InstancedDrawCalls=0
+  PostProcess Enabled=1
+  psoPP_ exists=1

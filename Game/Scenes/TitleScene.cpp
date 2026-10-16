@@ -155,7 +155,7 @@ void TitleScene::Draw() {
             ui.Dot(p[0],p[1],2+7*fade,k==0?UI::Paper:UI::WithAlpha(UI::Lime,.1f+.7f*fade));}
         ui.SlimeMark(cx,cy+8*std::sin(t*1.7f),112);
         // Title block: big, left-weighted, one line painted over with slime.
-        ui.Label("A SLIME DOMAIN ACTION",98,148,14,UI::WithAlpha(UI::Lime,.9f),3.4f);
+        ui.Label("MIX / SPLIT / GROW",98,148,14,UI::WithAlpha(UI::Lime,.9f),3.4f);
         ui.Text("スライム、",86,168,88,UI::Paper,UI::JapaneseFont);
         ui.Brush({52,258,710,148},UI::WithAlpha(UI::Lime,.95f),-.028f);
         ui.Text("跡で本気出す。",86,282,88,UI::Ink,UI::JapaneseFont);

@@ -106,12 +106,12 @@ inline void LogoMark(Canvas& ui,float cx,float cy,float alpha) {
 struct Page { const char* title; std::array<const char*,4> lines; const char *key,*keyLabel,*pad,*padLabel; };
 inline const std::array<Page,6>& Pages() {
     static const std::array<Page,6> pages{{
-        {"軌跡を描く",{"地面を移動すると、スライムの軌跡が残ります。","止まらずに描き続けるのが基本です。","ジャンプ中は線が途切れるので注意。",""},"keyboard_w","MOVE","xbox_stick_l","MOVE"},
-        {"ループで囲む",{"軌跡を交差させて囲いを作ると","囲いが青緑色に光ります。","一筆でたくさん囲うほど弾数と威力が増えます。",""},nullptr,nullptr,nullptr,nullptr},
-        {"撃ち放つ",{"光っている囲いを確定すると、","囲いから弾が飛び出して周囲の敵へ殺到。","発射中も移動して次のループを描けます。",""},"mouse_left","FIRE","xbox_rt","FIRE"},
-        {"回避する",{"攻撃の予告が出たら回避で切り抜けよう。","ギリギリで避けるとパーフェクト回避。","地上の回避も軌跡を描きます。",""},"mouse_right","DODGE","xbox_button_b","DODGE"},
-        {"スライム進化",{"敵を倒してレベルが上がると","強化カードを1枚選べます。","同じタグを3枚集めるとシナジーが発動。",""},"keyboard_enter","CHOOSE","xbox_button_a","CHOOSE"},
-        {"大蛇を倒せ",{"1000体倒すと大蛇が地中から現れます。","弾で装甲を溶かし、露出したコアを撃ち抜こう。","コアを3回破壊すれば勝利です。",""},nullptr,nullptr,nullptr,nullptr},
+        {"自分だけのスライム",{"水分・弾力・粘りを混ぜてスライムを作ろう。","配合と素材の解放は保存されます。","大きさはステージごとに元に戻ります。",""},nullptr,nullptr,nullptr,nullptr},
+        {"ガバッと取り込む",{"対象へ近づいて取り込みボタンを押そう。","前側を左右に開き、包み込んで飲み込みます。","敵は弱らせてから。大きな物には成長が必要。",""},nullptr,"F / ABSORB","xbox_button_x","ABSORB"},
+        {"被弾すると自然分裂",{"攻撃を受けると体の一部が子に分かれます。","子は自動で敵を探して戦います。","分裂と集合を指示する操作はありません。",""},nullptr,nullptr,nullptr,nullptr},
+        {"本体のHPを守ろう",{"被弾と分裂で本体のHPが減ります。","子が残っていても本体のHPがゼロなら終了。","子を合体させてHPを戻すことはできません。",""},nullptr,nullptr,nullptr,nullptr},
+        {"体そのものを変形",{"ハンマー・剣・飛行機へ変形して攻撃。","キーボードの1・2・3で形を選べます。","ジャンプ中にもう一度ジャンプで踏みつけ。",""},"mouse_left","MORPH","xbox_rt","MORPH"},
+        {"草原を攻略しよう",{"本体を操作し、子の自動戦闘を助けよう。","地上の敵をすべて倒すとクリアです。","Tab / BACKで調合画面を開けます。",""},nullptr,nullptr,nullptr,nullptr},
     }};
     return pages;
 }
@@ -127,68 +127,30 @@ inline void MiniSlime(Canvas& ui,float x,float y,float r) {
 }
 // Each page is a small looping diagram inside a 400 x 300 box.
 inline void Illustration(Canvas& ui,int page,float ox,float oy,float time) {
-    std::vector<std::array<float,2>> path;
+    const float pulse=.5f+.5f*std::sin(time*2.8f);
     if(page==0){
-        const float u=std::fmod(time*.22f,1.f);
-        for(int i=0;i<=60;++i){float s=float(i)/60*u;path.push_back({ox+30+340*s,oy+150+70*std::sin(s*7.5f)});}
-        Trail(ui,path,10,Alpha(Lime,.85f));
-        MiniSlime(ui,path.back()[0],path.back()[1]-4,16);
-    }else if(page==1||page==2){
-        const float cycle=page==1?3.2f:3.6f,u=std::fmod(time/cycle,1.f);
-        const float draw=page==1?std::min(1.f,u/.75f):1.f;
-        auto at=[&](float s){float a=-2.4f+s*7.2f,r=88-18*s;return std::array<float,2>{ox+200+std::cos(a)*r*1.25f,oy+160+std::sin(a)*r};};
-        for(int i=0;i<=80;++i)path.push_back(at(float(i)/80*draw));
-        const bool closed=page==2||u>.75f;
-        if(closed){float pulse=page==1?1-Smooth(.75f,1.f,u)*.6f:.55f+.15f*std::sin(time*6);
-            Halo(ui,ox+200,oy+160,120,Alpha(Engine::Vector4{.2f,1,.8f,1},.35f*pulse));}
-        Trail(ui,path,10,closed?Engine::Vector4{.35f,1,.85f,1}:Alpha(Lime,.85f));
-        if(page==1){MiniSlime(ui,path.back()[0],path.back()[1]-4,15);
-            if(closed)ui.Center("LOOP!",ox+200,oy+140,30,Gold);}
-        else{
-            const float enemies[3][2]={{70,52},{200,40},{330,52}};
-            for(auto& e:enemies)Dot(ui,ox+e[0],oy+e[1],11,Engine::Vector4{.85f,.35f,.22f,1});
-            for(int k=0;k<14;++k){
-                float p=std::fmod(time*.9f+float(k)/14,1.f);auto from=at(float(k)/14);const auto& e=enemies[k%3];
-                float x=from[0]+(ox+e[0]-from[0])*p,y=std::max(oy+14,from[1]+(oy+e[1]-from[1])*p-std::sin(p*3.14159f)*50);
-                Dot(ui,x,y,4.5f,Alpha(Engine::Vector4{.4f,1,.9f,1},1-p*.5f));
-            }
-        }
+        for(int i=0;i<3;++i){auto c=i==0?Teal:i==1?Lime:Gold;Dot(ui,ox+100+float(i)*100,oy+65,22,c);
+            Dot(ui,ox+100+float(i)*100,oy+100+std::fmod(time*70+float(i)*35,85.f),7,Alpha(c,.7f));}
+        MiniSlime(ui,ox+200,oy+225,55);ui.LabelCenter("MIX YOUR SLIME",ox+200,oy+280,16,Lime);
+    }else if(page==1){
+        MiniSlime(ui,ox+200,oy+215,58);float open=Smooth(0,.5f,pulse);
+        for(float sign:{-1.f,1.f}){float x=ox+200+sign*(24+75*open);Dot(ui,x,oy+150,25,Lime);
+            ui.Line(ox+200+sign*25,oy+205,x,oy+150,24,Lime);}
+        Dot(ui,ox+200,oy+142,14,Gold);ui.LabelCenter("OPEN / WRAP / ABSORB",ox+200,oy+280,16,Lime);
+    }else if(page==2){
+        MiniSlime(ui,ox+200,oy+180,48);float spread=pulse*115;
+        for(float sign:{-1.f,1.f})MiniSlime(ui,ox+200+sign*spread,oy+215,23);
+        ui.LabelCenter("HIT / SPLIT / AUTO FIGHT",ox+200,oy+280,16,Lime);
     }else if(page==3){
-        const float u=std::fmod(time/2.6f,1.f),dash=Smooth(.48f,.62f,u);
-        const float warn=u<.55f?1.f:1-Smooth(.55f,.7f,u);
-        ui.Fill({ox+120,oy+90,160,120},Alpha(Gold,.12f*warn));
-        for(float y:{oy+90.f,oy+210.f})ui.Fill({ox+120,y,160,3},Alpha(Gold,warn));
-        for(float x:{ox+120.f,ox+277.f})ui.Fill({x,oy+90,3,120},Alpha(Gold,warn));
-        const float x=ox+200+dash*140;
-        for(int k=3;k>0;--k)Dot(ui,x-float(k)*28*dash,oy+150,15,Alpha(Lime,.12f*float(4-k)*dash));
-        MiniSlime(ui,x,oy+150,16);
-        if(u>.6f&&u<.9f)ui.Center("PERFECT DODGE",ox+200,oy+240,24,Gold);
+        MiniSlime(ui,ox+200,oy+180,42);for(float sign:{-1.f,1.f})MiniSlime(ui,ox+200+sign*115,oy+215,23);
+        ui.Bar({ox+120,oy+245,160,10},1-pulse,Gold);
+        ui.LabelCenter("PROTECT YOUR BODY HP",ox+200,oy+280,16,Gold);
     }else if(page==4){
-        const int chosen=int(time/1.3f)%3;
-        for(int i=0;i<3;++i){
-            const float lift=i==chosen?12*Smooth(0,.25f,std::fmod(time,1.3f)):0.f;
-            Rect card{ox+28+float(i)*122,oy+60-lift,108,170};
-            ui.Panel(card,i==chosen?Lime:Engine::Vector4{.18f,.30f,.22f,1});
-            ui.Panel({card.x+3,card.y+3,card.w-6,card.h-6},Ink);
-            Dot(ui,card.x+54,card.y+60,22,i==0?Engine::Vector4{.2f,1,.75f,1}:i==1?Gold:Lime);
-            ui.Center(i==0?"TRAIL":i==1?"SHOT":"BODY",card.x+54,card.y+108,18,Paper);
-        }
-        ui.Center("x3  SYNERGY",ox+200,oy+250,22,Gold);
+        MiniSlime(ui,ox+200,oy+235,42);ui.Line(ox+200,oy+210,ox+200,oy+115,22,Lime);
+        ui.Rounded({ox+130,oy+64,140,65},Lime,22);ui.LabelCenter("BECOME THE HAMMER",ox+200,oy+280,16,Lime);
     }else{
-        for(int i=11;i>=0;--i){
-            const float s=float(i)/11,x=ox+40+320*s,y=oy+170+std::sin(time*2.2f-s*5)*36;
-            Dot(ui,x,y,24-12*s,Engine::Vector4{.16f,.22f,.27f,1});
-            Dot(ui,x,y-6+2*s,8-4*s,Engine::Vector4{.27f,.34f,.39f,1});
-        }
-        const float hy=oy+170+std::sin(time*2.2f)*36;
-        Dot(ui,ox+40,hy,28,Engine::Vector4{.2f,.26f,.31f,1});
-        Dot(ui,ox+50,hy-8,4,Engine::Vector4{.6f,.9f,1,1});
-        const float core=.6f+.4f*std::sin(time*5);
-        const float cy=oy+170+std::sin(time*2.2f-2.2f)*36;
-        Halo(ui,ox+180,cy,46,Alpha(Gold,.5f*core));Dot(ui,ox+180,cy,10,Gold);
-        for(int k=0;k<6;++k){float p=std::fmod(time*1.2f+float(k)/6,1.f);
-            Dot(ui,ox+180+(float(k)-2.5f)*40*(1-p),oy+290-(290-(cy-oy))*p,4,Alpha(Engine::Vector4{.4f,1,.9f,1},1-p*.4f));}
-        ui.Bar({ox+90,oy+262,220,8},1-std::fmod(time*.2f,1.f),Gold);
+        MiniSlime(ui,ox+200,oy+210,52);for(float sign:{-1.f,1.f})MiniSlime(ui,ox+200+sign*100,oy+235,22);
+        ui.LabelCenter("GROW TOGETHER",ox+200,oy+280,16,Lime);
     }
 }
 

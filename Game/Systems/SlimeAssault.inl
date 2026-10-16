@@ -1,6 +1,7 @@
 // Production loop-drawing / homing-domain combat.
 namespace Game {
 void ChronoSystem::UpdateInk(entt::registry& r,Player& p,GameContext& ctx){
+    if(slimeLife_){UpdateSlimeLife(r,p,ctx);return;}
     auto& ink=r.get<InkPlayer>(player_);auto* control=r.try_get<ControlFrame>(player_);
     const float dt=std::min(ctx.dt,.05f);diagnostic_=control!=nullptr;
     if(UpdateCinematic(r,p,ctx))return;
@@ -172,6 +173,7 @@ void ChronoSystem::UpdateInk(entt::registry& r,Player& p,GameContext& ctx){
 }
 
 void ChronoSystem::DrawInkUI(entt::registry& r,GameContext& ctx){
+    if(slimeLife_){DrawSlimeLifeUI(r,ctx);return;}
     const auto& p=r.get<Player>(player_);const auto& ink=r.get<InkPlayer>(player_);
     UI::Canvas ui(ctx.renderer,ctx.viewportSize.x,ctx.viewportSize.y);
     if(ctx.useOverrideMouse)ui.SetPointer(ctx.overrideMouseX,ctx.overrideMouseY);

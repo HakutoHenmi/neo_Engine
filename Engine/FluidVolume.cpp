@@ -26,10 +26,13 @@ struct VolumeConstants {
     Vector3 playerForward; float playerFaceCamera;
     Vector3 playerRadii; float playerMotion;
     Vector3 playerSlope; float playerAir;
+    Vector4 playerLiquidCore; // Graphics-only: position and activation.
 };
-constexpr UINT kVolumeConstantCount=sizeof(VolumeConstants)/sizeof(UINT);
-static_assert(kVolumeConstantCount == 44);
-static_assert(kVolumeConstantCount+7*2+5<=64); // D3D12 compute root-signature budget.
+constexpr UINT kVolumeComputeConstantCount=44;
+constexpr UINT kVolumeDrawConstantCount=sizeof(VolumeConstants)/sizeof(UINT);
+static_assert(kVolumeDrawConstantCount==48);
+static_assert(kVolumeComputeConstantCount+7*2+5<=64);
+static_assert(kVolumeDrawConstantCount+2+2*2+6<=64);
 static_assert(sizeof(Renderer::GPUFluidParticle) == 64);
 }
 
@@ -37,7 +40,7 @@ bool Renderer::InitFluidVolume() {
     if (!isGPUFluidReady_) return false;
     CD3DX12_ROOT_PARAMETER compute[13];
     CD3DX12_DESCRIPTOR_RANGE computeRanges[5];
-    compute[0].InitAsConstants(kVolumeConstantCount, 1);
+    compute[0].InitAsConstants(kVolumeComputeConstantCount, 1);
     for (UINT i=0; i<4; ++i) compute[i+1].InitAsShaderResourceView(i);
     for (UINT i=0; i<3; ++i) compute[i+5].InitAsUnorderedAccessView(i);
     for (UINT i=0; i<5; ++i) {
@@ -59,7 +62,7 @@ bool Renderer::InitFluidVolume() {
     CD3DX12_ROOT_PARAMETER draw[10];
     CD3DX12_DESCRIPTOR_RANGE drawRanges[6];
     draw[0].InitAsConstantBufferView(0);
-    draw[1].InitAsConstants(kVolumeConstantCount,1);
+    draw[1].InitAsConstants(kVolumeDrawConstantCount,1);
     for(UINT i=0;i<4;++i) {
         drawRanges[i].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV,1,i);
         draw[i+2].InitAsDescriptorTable(1,&drawRanges[i],i==0?D3D12_SHADER_VISIBILITY_ALL:D3D12_SHADER_VISIBILITY_PIXEL);
@@ -170,9 +173,29 @@ void Renderer::DrawFluidVolume() {
         const float low = (std::min)(center.y, center.y + (gpuFluidTetherTip_.y - center.y) * gpuFluidTetherBlend_);
         origin.y = std::floor(low / kVoxelSize) * kVoxelSize - 4;
     }
+    float cell=kVoxelSize;
+    if(!fluidMorphTargets_.empty()){
+        // The former 0.56-unit cells leave a watery body only one or two voxels
+        // thick. Fit a finer domain to all active bodies and the real surface.
+        Vector3 lo{1e9f,1e9f,1e9f},hi{-1e9f,-1e9f,-1e9f};
+        auto include=[&](Vector3 p){lo={(std::min)(lo.x,p.x),(std::min)(lo.y,p.y),(std::min)(lo.z,p.z)};hi={(std::max)(hi.x,p.x),(std::max)(hi.y,p.y),(std::max)(hi.z,p.z)};};
+        uint32_t owners=0;
+        for(const auto& t:fluidMorphTargets_){
+            uint32_t owner=uint32_t(t.forward.y);
+            if(t.shape.w>.5f){if(owners&(1u<<owner))continue;owners|=1u<<owner;float stretch=1+.55f*t.blend;
+                Vector3 extent{t.shape.x*stretch*1.5f,t.shape.y,t.shape.z*stretch*1.5f};include(t.origin-extent);include(t.origin+extent);
+            }else {include(t.origin+Vector3{t.forward.z*t.local.x+t.forward.x*t.local.z,t.local.y,-t.forward.x*t.local.x+t.forward.z*t.local.z});}}
+        for(const auto& p:fluidBodySnapshot_.offsets){auto world=p+fluidBodySnapshot_.core;if(std::isfinite(world.x)&&std::isfinite(world.y)&&std::isfinite(world.z)&&std::abs(world.x-center.x)<100&&std::abs(world.y-center.y)<100&&std::abs(world.z-center.z)<100)include(world);}
+        lo=lo-Vector3{1.6f,1.6f,1.6f};hi=hi+Vector3{1.6f,1.6f,1.6f};
+        cell=(std::max)({.18f,(hi.x-lo.x)/(kVolumeWidth-2),(hi.z-lo.z)/(kVolumeWidth-2),(hi.y-lo.y)/(kVolumeHeight-2)});
+        auto middle=(lo+hi)*.5f;
+        origin={std::floor(middle.x/cell)*cell-kVolumeWidth*cell*.5f,std::floor(middle.y/cell)*cell-kVolumeHeight*cell*.5f,std::floor(middle.z/cell)*cell-kVolumeWidth*cell*.5f};
+    }
+    if(std::abs(volumePreviousVoxelSize_-cell)>1e-5f)volumeHistoryValid_=false;
+    volumePreviousVoxelSize_=cell;
     float move=std::abs(origin.x-volumePreviousOrigin_.x)+std::abs(origin.y-volumePreviousOrigin_.y)+std::abs(origin.z-volumePreviousOrigin_.z);
     if(move>8) volumeHistoryValid_=false;
-    VolumeConstants cb{origin,kVoxelSize,{kVolumeWidth,kVolumeHeight,kVolumeWidth},(std::min)(gpuFluidActiveParticleCount_,gpuFluidMaxParticles_),
+    VolumeConstants cb{origin,cell,{kVolumeWidth,kVolumeHeight,kVolumeWidth},(std::min)(gpuFluidActiveParticleCount_,gpuFluidMaxParticles_),
         volumePreviousOrigin_,volumeHistoryValid_?1.0f:0.0f,fluidSimulatedDt_,0.25f,0,static_cast<float>(fluidVolumeDebugMode_),
         {volumeColors_[0],volumeColors_[1],volumeColors_[2]},
         {gpuFluidCorePos_.x,gpuFluidCorePos_.y-1.25f+0.8f*std::clamp(gpuFluidCoreScale_.y,0.0f,1.0f),gpuFluidCorePos_.z},
@@ -185,6 +208,8 @@ void Renderer::DrawFluidVolume() {
     float horizontal=(flatRadius+(1.8f-flatRadius)*cb.playerAir)*scale/std::sqrt(aspect);
     cb.playerRadii={horizontal,(flatHeight+(1.8f-flatHeight)*cb.playerAir)*scale*aspect,horizontal};
     cb.playerMotion=std::clamp(gpuFluidCoreScale_.z,0.f,1.f)*(1-.75f*cb.playerAir);
+    if(!fluidMorphTargets_.empty()&&fluidMorphTargets_[0].shape.w>.5f){const auto& t=fluidMorphTargets_[0];cb.playerBodyCenter=t.origin;cb.playerRadii={t.shape.x,t.shape.y,t.shape.z};cb.playerForward={t.forward.x,0,t.forward.z};cb.playerMotion=0;
+        cb.playerLiquidCore={t.origin.x+t.reserved.z,t.origin.y+t.shape.y*.43f,t.origin.z+t.reserved.w,1};}
     cb.playerSlope.y=scale; // Decoration size depends on mass, never the body stretch.
     if(gpuFluidCoreMode_>=2.0f){
         cb.colors[0].w=chronoFluidOpacity_;
@@ -200,7 +225,7 @@ void Renderer::DrawFluidVolume() {
     for(auto resource:simulationReads) transition(resource,D3D12_RESOURCE_STATE_UNORDERED_ACCESS,D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
     ID3D12DescriptorHeap* heaps[]={srvHeap_}; list_->SetDescriptorHeaps(1,heaps);
     list_->SetComputeRootSignature(rootSigVolumeCompute_.Get());
-    list_->SetComputeRoot32BitConstants(0,kVolumeConstantCount,&cb,0);
+    list_->SetComputeRoot32BitConstants(0,kVolumeComputeConstantCount,&cb,0);
     for(UINT i=0;i<4;++i) list_->SetComputeRootShaderResourceView(i+1,simulationReads[i]->GetGPUVirtualAddress());
     list_->SetComputeRootUnorderedAccessView(5,volumeAccum_->GetGPUVirtualAddress());
     list_->SetComputeRootUnorderedAccessView(6,volumeMomentum_->GetGPUVirtualAddress());
@@ -226,7 +251,7 @@ void Renderer::DrawFluidVolume() {
     BeginFluidProfile(FluidFiltering);
     for(UINT axis=0;axis<3;++axis) {
         UINT source=axis%2, destination=1-source;
-        cb.axis=static_cast<float>(axis); list_->SetComputeRoot32BitConstants(0,kVolumeConstantCount,&cb,0);
+        cb.axis=static_cast<float>(axis); list_->SetComputeRoot32BitConstants(0,kVolumeComputeConstantCount,&cb,0);
         list_->SetComputeRootDescriptorTable(10,volumeSrv_[source]);
         list_->SetComputeRootDescriptorTable(8,volumeUav_[destination]);
         transition(volumeTextures_[destination].Get(),kVolumeRead,D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
@@ -264,7 +289,7 @@ void Renderer::DrawFluidVolume() {
         std::memcpy(fluidUpload.mapped+cameraOffset,&fluidCamera,sizeof(fluidCamera));
         list_->SetGraphicsRootConstantBufferView(0,fluidUpload.buffer->GetGPUVirtualAddress()+cameraOffset);
     }else list_->SetGraphicsRootConstantBufferView(0,cbFrameAddr_);
-    list_->SetGraphicsRoot32BitConstants(1,kVolumeConstantCount,&cb,0);
+    list_->SetGraphicsRoot32BitConstants(1,kVolumeDrawConstantCount,&cb,0);
     list_->SetGraphicsRootDescriptorTable(2,volumeSrv_[historyDestination]);
     list_->SetGraphicsRootDescriptorTable(3,backdropSrv_);
     list_->SetGraphicsRootDescriptorTable(4,ppDepthSrvGpu_);

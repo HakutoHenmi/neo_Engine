@@ -5,6 +5,7 @@
 #include "../Chrono/LiquidTrail.h"
 #include "../Chrono/DomainHighlight.h"
 #include "../Chrono/CinematicRules.h"
+#include "../Chrono/SlimeLifeRules.h"
 #include <vector>
 namespace Game {
 // Scene-level orchestration; all persistent actor state lives in ECS components.
@@ -17,10 +18,34 @@ public:
     void DrawUI(entt::registry&,GameContext&) override;
     bool Finished() const {return finished_;}
     bool CinematicActive() const {return cinematicActive_;}
+    bool SlimeLabOpen() const {return slimeLife_&&life_.lab&&!finished_;}
+    const Chrono::SlimeLife& LifeState()const {return life_;}
+    const std::vector<Chrono::SwarmEnemy>& LifeEnemies()const {return swarm_;}
+    void DrawSlimeLab(entt::registry&,GameContext&);
     void Invalidate() {initialized_=false;}
     void Clear(entt::registry&) override { Invalidate(); }
 private:
     bool inkMode_=true;
+    bool slimeLife_=true,lifeLoaded_=false;
+    Chrono::SlimeLife life_;
+    std::array<Chrono::SlimeRecipe,3> lifeRecipes_{};
+    int lifeRecipeSlot_=0,lifeMaterials_=3,lifeClears_=0;
+    std::array<int,4> lifeLastAction_{{-1,-1,-1,-1}};
+    std::array<uint32_t,4> lifeLastCounts_{};
+    bool lifeWasLab_=false,lifeReseed_=true,lifePreviewEmitted_=false;
+    void SetSlimeLabOpen(bool);
+    void UpdateSlimeLab(GameContext&);
+      void StartSlimeTrial(Chrono::SlimeTrial);
+    uint32_t lifeSplitSounds_[3]{0xffffffffu,0xffffffffu,0xffffffffu},lifeEngulfSound_=0xffffffffu;
+    void BuildSlimeLife(entt::registry&);
+    void UpdateSlimeLife(entt::registry&,Chrono::Player&,GameContext&);
+    void DrawSlimeLife(entt::registry&,GameContext&);
+    void DrawSlimeLifeUI(entt::registry&,GameContext&);
+    void SyncSlimeBodies(GameContext&);
+    void DamageSlimeLife(entt::registry&,Chrono::Player&,float,GameContext&,Chrono::Vec);
+    void LifeHit(entt::registry&,Chrono::Player&,GameContext&,uint32_t,float);
+    bool StartLifeAbsorb(int);
+    bool SaveSlimeLab();
     struct InkShot {Chrono::Vec at,velocity;float age=0;};
     std::vector<InkShot> inkShots_;
     struct SlimeTrail {Chrono::Vec at;int surface;float mass,radius;std::array<float,32> footprint{};float originalMass=0;bool bonus=false;};

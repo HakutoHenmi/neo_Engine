@@ -142,6 +142,7 @@ void ChronoSystem::BuildInk(entt::registry& r){
     if(slimePressureSound_==0xffffffff){auto* audio=Engine::Audio::GetInstance();
         slimePressureSound_=audio->Load("Resources/Sound/slime-pressure.wav");slimeRecallSound_=audio->Load("Resources/Sound/slime-recall.wav");slimeAcidSound_=audio->Load("Resources/Sound/slime-acid.wav");}
     BuildSwarm(r);
+    if(slimeLife_)BuildSlimeLife(r);
 }
 void ChronoSystem::UploadInk(){
     constexpr int tile=InkSurface::Resolution,size=tile*4;std::vector<uint8_t> pixels(size*size*4,0);
@@ -319,6 +320,7 @@ void ChronoSystem::UpdateInkBoss(entt::registry& r,Player& p,GameContext& contex
     PoseCreature(r);
 }
 void ChronoSystem::DrawInk(entt::registry& r,GameContext& ctx){
+    if(slimeLife_){DrawSlimeLife(r,ctx);return;}
     DrawSlimeBeam(r,ctx);
     Engine::Transform identity;
     for(auto mesh:inkMeshes_)ctx.renderer->DrawMesh(mesh,inkTexture_,identity,{1,1,1,1},"InkSurface",.4f,false);

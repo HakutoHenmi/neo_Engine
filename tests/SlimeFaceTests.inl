@@ -14,13 +14,15 @@ void TestPlayerFace(Gpu& g) {
     struct Camera { XMFLOAT4X4 view{},proj{},vp{}; XMFLOAT3 pos{0,3,-10}; float time=2; } camera;
     auto cameraCb=g.Constant(sizeof(camera)),volumeCb=g.Constant(sizeof(VolumeCB));
     std::vector<XMFLOAT4> restingBubbles;
-    for(int stage=0;stage<8;++stage){
+    std::vector<XMFLOAT4> coreEyes;
+    for(int stage=0;stage<10;++stage){
         camera.time=stage==7?3.f:2.f;
         VolumeCB cb{};cb.playerRadii=stage==1?XMFLOAT3{3.4f,1.f,3.4f}:stage==2?XMFLOAT3{1.5f,.9f,1.5f}:
             stage==3?XMFLOAT3{1.7f,2.8f,1.7f}:stage==6?XMFLOAT3{4.2f,.66f,4.2f}:XMFLOAT3{2.55f,1.8f,2.55f};
         cb.playerForward=stage==4?XMFLOAT3{1,0,0}:XMFLOAT3{0,0,1};cb.playerMotion=stage==1||stage==4?1.f:0;
         cb.playerSlope=stage==1?XMFLOAT3{.2f,1,-.15f}:XMFLOAT3{0,stage==2?.6f:1.f,0};cb.playerAir=stage==3?1.f:0;
         cb.playerFaceCamera=stage==5?1.f:0;
+        if(stage>=8){cb.playerLiquidCore={1.2f,.75f,-.4f,1};if(stage==9)cb.playerBodyCenter={5,0,0};}
         auto output=g.MakeBuffer(230,16);
         g.Unbind();g.context->UpdateSubresource(cameraCb.Get(),0,nullptr,&camera,0,0);g.context->UpdateSubresource(volumeCb.Get(),0,nullptr,&cb,0,0);
         ID3D11Buffer* constants[]={cameraCb.Get(),volumeCb.Get()};g.context->CSSetConstantBuffers(0,2,constants);
@@ -32,6 +34,8 @@ void TestPlayerFace(Gpu& g) {
         Require(std::abs(separation-.92f*scale)<.0001f,"body pose sheared the eye pair");
         Require(result[228].w==1&&result[229].w==0&&std::abs(result[228].x-(3-.105f*scale))<.001f,"analytic eye silhouette/hit depth is incorrect");
         if(stage==0)restingBubbles=result;
+        if(stage==8){coreEyes=result;Require(std::abs((result[1].x+result[2].x)*.5f-1.2f)<.0001f,"eye pair does not lead with the liquid core");}
+        if(stage==9)for(int eye=1;eye<=2;++eye)Require(XMVectorGetX(XMVector3Length(XMVectorSubtract(XMLoadFloat4(&result[size_t(eye)]),XMLoadFloat4(&coreEyes[size_t(eye)]))))<.0001f,"outer-body position drags eyes away from their core");
         for(int i=4;i<228;++i){Require(std::isfinite(result[size_t(i)].x)&&result[size_t(i)].w>0,"bubble geometry became invalid");
             Require(std::abs(result[size_t(i)].w-restingBubbles[size_t(i)].w*scale)<.0001f,"body stretch scaled a spherical bubble");}
         if(stage==4)Require(result[3].x>.99f,"gameplay eyes do not face movement");

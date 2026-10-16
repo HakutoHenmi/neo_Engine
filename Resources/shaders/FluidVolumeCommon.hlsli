@@ -20,6 +20,9 @@ cbuffer VolumeSettings : register(b1) {
     float3 playerForward; float playerFaceCamera;
     float3 playerRadii; float playerMotion;
     float3 playerSlope; float playerAir; // x/z: terrain slope; y: rigid decoration mass scale.
+#ifdef FLUID_VOLUME_CORE
+    float4 playerLiquidCore; // Only graphics reads the extra four constants.
+#endif
 };
 uint VolumePhase(float type) {
     if (type < 0.5f || (type > 2.5f && type < 3.5f) || type>=4.0f) return 0;

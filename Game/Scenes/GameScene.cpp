@@ -424,6 +424,7 @@ void GameScene::Update() {
 			Engine::WindowDX::SetCursorVisible(true);
 		} else if (!isPaused_) {
 			bool upgradeOpen=false;for(auto e:registry_.view<Chrono::InkPlayer>())upgradeOpen|=registry_.get<Chrono::InkPlayer>(e).rogue.menu;
+			upgradeOpen|=chronoSystem_&&chronoSystem_->SlimeLabOpen();
 			const bool cinematic = chronoSystem_ && chronoSystem_->CinematicActive();
 			if(!upgradeOpen&&!cinematic)playTime_ += dt;
 			
@@ -439,7 +440,7 @@ void GameScene::Update() {
 
 			// ★追加: Play中はマウスカーソルを画面中央に固定 (ラジアルメニューを開いていない場合)
 			for(auto e:registry_.view<Chrono::InkPlayer>())if(registry_.get<Chrono::InkPlayer>(e).rogue.menu)isRadialMenuOpen=true;
-            if (!isRadialMenuOpen && dx_ && dx_->GetHwnd()) {
+            if (!upgradeOpen && !isRadialMenuOpen && dx_ && dx_->GetHwnd()) {
 				POINT center = { (LONG)Engine::WindowDX::kW / 2, (LONG)Engine::WindowDX::kH / 2 };
 				ClientToScreen(dx_->GetHwnd(), &center);
 				SetCursorPos(center.x, center.y);
@@ -603,7 +604,7 @@ void GameScene::Update() {
 					ctx_.renderer->DrawString(canName, px - tw * 0.5f, py - 12.0f, 0.3f, {1.0f, 1.0f, 1.0f, 1.0f});
 				}
 			} else {
-				if (!isPaused_ && !stageClear) Engine::WindowDX::SetCursorVisible(false);
+				if (!isPaused_ && !stageClear) Engine::WindowDX::SetCursorVisible(chronoSystem_&&chronoSystem_->SlimeLabOpen());
 			}
 		}
 	}
@@ -995,6 +996,9 @@ Engine::Matrix4x4 GameScene::GetWorldMatrixRecursive(entt::entity e, int depth) 
 void GameScene::Draw() {
 	if (!renderer_)
 		return;
+    if(isPlaying_&&!isPaused_&&chronoSystem_&&chronoSystem_->SlimeLabOpen()){
+        chronoSystem_->DrawSlimeLab(registry_,ctx_);return;
+    }
 
 	DirectX::XMFLOAT3 corePos = { 0.0f, 1.0f, 0.0f };
 	DirectX::XMFLOAT3 blobRadii = { 1.2f, 0.85f, 1.2f };
@@ -1137,6 +1141,7 @@ void GameScene::Draw() {
 				if (!gpuSlimeEmitted_) {
 					// プレイヤー初期化時に1回だけ、大量のGPUパーティクルをコア位置に放出する
 					Engine::Vector4 pColor = {Chrono::SlimeRed, Chrono::SlimeGreen, Chrono::SlimeBlue, 1.0f};
+                    if(!renderer_->fluidMorphTargets_.empty())pColor=renderer_->fluidMorphTargets_.front().color;
 					renderer_->EmitGPUFluid({corePos.x, corePos.y, corePos.z}, {0, -2, 0}, pColor, Engine::Renderer::kPlayerFluidParticles);
 					gpuSlimeEmitted_ = true;
 				}
@@ -1161,6 +1166,7 @@ void GameScene::Draw() {
 				if (chronoMode_) {
 					if(auto* ink=registry_.try_get<Chrono::InkPlayer>(playerEntity)){renderer_->SetSlimeGround({ink->groundSlope.x,ink->groundHeight,ink->groundSlope.z},registry_.get<Chrono::Player>(playerEntity).grounded);renderer_->SetSlimeFaceCamera(ink->rogue.MenuEase());scaleVec={ink->fluidAspect,ink->airBlend,ink->fluidMotion};forward={ink->fluidDirection.x,0,ink->fluidDirection.z};}
 					float mass = registry_.get<HealthComponent>(playerEntity).Hp();
+                    if(!renderer_->fluidMorphTargets_.empty())mass=Chrono::SlimeMaximumMass;
                     if(auto* ink=registry_.try_get<Chrono::InkPlayer>(playerEntity);ink&&ink->perfectAge>=0&&ink->perfectAge<.16f)
                         mass*=.18f; // Brief visual compression; gameplay mass stays unchanged.
 					if(registry_.all_of<Chrono::InkPlayer>(playerEntity))mass*=100.f/Chrono::SlimeMaximumMass;
@@ -1805,6 +1811,7 @@ void GameScene::DrawLightGizmos() {
 void GameScene::SetPaused(bool paused) {
     isPaused_=paused;bool upgradeOpen=false;
     for(auto e:registry_.view<Chrono::InkPlayer>())upgradeOpen|=registry_.get<Chrono::InkPlayer>(e).rogue.menu;
+    upgradeOpen|=chronoSystem_&&chronoSystem_->SlimeLabOpen();
     if(auto* audio=Engine::Audio::GetInstance())audio->SetBGMDucked(paused||upgradeOpen);
     Engine::WindowDX::SetCursorVisible(paused||upgradeOpen);
     if(renderer_)renderer_->SetRogueWorldFrozen(paused||upgradeOpen);

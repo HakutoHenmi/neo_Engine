@@ -38,6 +38,8 @@ struct ControlFrame {
     int upgradeChoice=-1;bool upgradeReroll=false,upgradeSkip=false;
     int attackPattern=-1; // Validation override; normal play selects by situation.
     bool cameraInput=false; // Scripted view changes have the same priority as mouse motion.
+    bool absorb=false,lab=false,restart=false;
+    int morphForm=0;
     float yaw=0, pitch=0;
 };
 struct Boss {

@@ -40,6 +40,8 @@ cbuffer CBCompute : register(b0) {
     float3 decoyForward; float pad8;
 }
 
+#include "FluidMorph.hlsli"
+
 // 疑似乱数ジェネレーター
 float hash(uint n) {
     n = (n << 13U) ^ n;
@@ -165,7 +167,8 @@ static const float H_POWER_9 = 0.000262144f; // SMOOTHING_RADIUS^9
 static const float POLY6_COEFF = 315.0f / (64.0f * PI * H_POWER_9);
 static const float SPIKY_COEFF = 45.0f / (PI * H_POWER_6);
 
-float RestDensity(float type) {
+float RestDensity(float type,uint original) {
+    if(type<.5f&&pad8>.5f)return MorphTargets[MorphData[8192+original].target].density;
     // Assault mass changes the active particle count, not each particle's mass.
     if(type<0.5f && coreMode>=4.0f) return FluidRestDensity(type);
     // Above baseline mass, keep the same particle budget and increase volume.
@@ -268,6 +271,11 @@ uint GetFluidPhase(float type) {
 
 bool CanFluidsInteract(float typeA, float typeB) {
     return GetFluidPhase(typeA) == GetFluidPhase(typeB);
+}
+bool CanParticlePairInteract(uint i,uint j,float a,float b){
+    if(!CanFluidsInteract(a,b))return false;
+    if(pad8>.5f&&a<.5f&&b<.5f)return MorphData[8192+OriginalIndices[i]].owner==MorphData[8192+OriginalIndices[j]].owner;
+    return true;
 }
 
 // ==========================================
@@ -544,7 +552,7 @@ void CalcDensity(uint3 DTid : SV_DispatchThreadID) {
     float3 gradientSum = 0;
     float3 surfaceGradientSum = 0;
     float gradientSquaredSum = 0;
-    float rest = RestDensity(type_i);
+    float rest = RestDensity(type_i,OriginalIndices[i]);
     
     // 空間ハッシュグリッドで近傍のパーティクルのみを探索
     int3 cell = GetCell(pos_i);
@@ -567,7 +575,7 @@ void CalcDensity(uint3 DTid : SV_DispatchThreadID) {
                             // sphere. Reject distant candidates before the
                             // floor/division needed to disambiguate hash hits.
                             if (any(GetCell(SortedParticles[j].position) != cell + int3(x,y,z))) continue;
-                            if (!CanFluidsInteract(type_i, SortedParticles[j].type)) continue;
+                            if (!CanParticlePairInteract(i,j,type_i, SortedParticles[j].type)) continue;
                             float w = H2 - r2;
                             density += PARTICLE_MASS * POLY6_COEFF * w * w * w;
                             float3 gradient = KernelGradient(diff) / rest;
@@ -635,6 +643,7 @@ void CalcForce(uint3 DTid : SV_DispatchThreadID) {
     bool isSlimeType = (pi.type < 0.5f || (pi.type > 1.5f && pi.type < 3.5f));
     float surfaceTension = pi.type < 0.5f ? 50.0f :
         (isSlimeType ? SLIME_SURFACE_TENSION : WATER_SURFACE_TENSION);
+    if(pad8>.5f&&pi.type<.5f)surfaceTension=MorphTargets[MorphData[8192+OriginalIndices[i]].target].material.z;
     float3 force = SolverOutput[i].position * (surfaceTension / (SPIKY_COEFF * H2));
 
     // 加速度
@@ -676,7 +685,7 @@ void CalcForce(uint3 DTid : SV_DispatchThreadID) {
     // The controller moves the core; player particles keep their own positions.
     // Density projection and collisions determine the occupied volume and base.
     bool isCurrentLiquefiedPlayer = pi.type < 0.5f && coreMode > 0.5f && coreMode < 1.5f;
-    if (pi.type < 0.5f && coreAttraction > 0.0f) {
+    if (pi.type < 0.5f && coreAttraction > 0.0f && pad8<.5f) {
         if(coreMode>=4.0f){
             float3 radii=SlimeFieldRadii();
             float3 local=pi.position-SlimeSupportOrigin();
@@ -711,7 +720,7 @@ void CalcForce(uint3 DTid : SV_DispatchThreadID) {
             // PBF handles most outward push; this extra term reinforces it
             // under heavy compression without producing a permanent repulsion
             // that would hollow the crown.
-            float compression = max(pi.density / RestDensity(pi.type) - 1.0f, 0.0f);
+            float compression = max(pi.density / RestDensity(pi.type,OriginalIndices[i]) - 1.0f, 0.0f);
             float outwardPressure = min(coreAttraction * 0.5f * compression, 12.0f);
 
             // --- Cohesion: always-on with no dead zone ---
@@ -799,7 +808,10 @@ void CalcForce(uint3 DTid : SV_DispatchThreadID) {
     acceleration.y += pi.type>=4.0f ? -18.0f : GRAVITY;
     
     // 積分 (Symplectic Euler)
-    pi.velocity += acceleration * dt;
+    if(pad8>.5f&&pi.type<.5f){
+        pi.velocity=MorphIntegrate(OriginalIndices[i],pi.position,pi.velocity,acceleration,dt);
+        pi.color=MorphTargets[MorphData[8192+OriginalIndices[i]].target].color;
+    }else pi.velocity += acceleration * dt;
     
     // ★発散防止のため速度をクランプ
     float speed = length(pi.velocity);
@@ -809,7 +821,7 @@ void CalcForce(uint3 DTid : SV_DispatchThreadID) {
     }
     
     pi.position += pi.velocity * dt;
-    pi.position = ConstrainTether(pi.position, OriginalIndices[i], pi.pad);
+    pi.position = (pad8>.5f?pi.position:ConstrainTether(pi.position, OriginalIndices[i], pi.pad));
     
     // Only the decoy retains a rest-shape safety boundary.
     if (pi.type > 1.5f && pi.type < 2.5f && decoyAttraction > 0.0f) {
@@ -962,7 +974,12 @@ void WriteBack(uint3 DTid : SV_DispatchThreadID) {
 [numthreads(64, 1, 1)]
 void SavePrevious(uint3 id : SV_DispatchThreadID) {
     if (id.x >= maxParticles) return;
-    if (pad6.x > 0.5f && id.x < (uint)pad6.z) {
+    if(pad8>.5f&&id.x<(uint)pad6.z){
+        Particle p=Particles[id.x];
+        if(p.color.a<=.01f||p.position.y < -500){MorphTarget t=MorphTargets[MorphData[8192+id.x].target];p.position=MorphWorld(t.local,t);p.velocity=0;p.color=t.color;p.type=0;Particles[id.x]=p;}
+        else {MorphTarget t=MorphTargets[MorphData[8192+id.x].target];if(t.shape.w>.5f){p.position.y+=t.motion.y*lerp(.9f,.65f,t.motion.w)*dt;Particles[id.x]=p;}}
+    }
+    if (pad8<.5f && pad6.x > 0.5f && id.x < (uint)pad6.z) {
         Particle p = Particles[id.x];
         if (id.x >= (uint)pad6.y) { p.position=float3(0,-1000,0); p.color.a=0; }
         else {
@@ -1002,7 +1019,7 @@ void CalcDeltaP(uint3 id : SV_DispatchThreadID) {
     Particle p = SortedParticles[i];
     float3 correction = 0;
     int3 cell = GetCell(p.position);
-    float rest = RestDensity(p.type);
+    float rest = RestDensity(p.type,OriginalIndices[i]);
     [loop] for (int z=-1; z<=1; ++z) [loop] for (int y=-1; y<=1; ++y) [loop] for (int x=-1; x<=1; ++x) {
         int3 query = cell + int3(x,y,z);
         uint h = GetGridHash(query);
@@ -1012,7 +1029,7 @@ void CalcDeltaP(uint3 id : SV_DispatchThreadID) {
             Particle q = SortedParticles[j];
             float3 d = p.position-q.position;
             if (dot(d,d)>=H2) continue;
-            if (any(GetCell(q.position)!=query) || !CanFluidsInteract(p.type,q.type)) continue;
+            if (any(GetCell(q.position)!=query) || !CanParticlePairInteract(i,j,p.type,q.type)) continue;
             // A small artificial pressure discourages tensile pairing without
             // turning dilute particles into large repulsive bubbles.
             float ratio = Kernel(d) / Kernel(float3(0.12f,0,0));
@@ -1039,7 +1056,7 @@ float3 ProjectCollisions(float3 position, float particleType) {
             else position.z = a.z < b.z ? lo.z : hi.z;
         }
     }
-    if(coreMode>=4&&particleType<.5f&&emitStartIndex!=0)position.y=max(position.y,SlimeGroundHeight(position)+.18f);
+    if(pad8<.5f&&coreMode>=4&&particleType<.5f&&emitStartIndex!=0)position.y=max(position.y,SlimeGroundHeight(position)+.18f);
     return position;
 }
 
@@ -1050,9 +1067,19 @@ void ApplyDeltaP(uint3 id : SV_DispatchThreadID) {
     Particle p=SortedParticles[i];
     if (p.position.y < -500 || p.color.a < 0.01f) return;
     if((pad7>.5f&&OriginalIndices[i]>=uint(pad6.z))||p.type>=4.0f){Particles[OriginalIndices[i]]=p;return;}
-    float3 corrected = ConstrainTether(p.position+SolverOutput[i].position, OriginalIndices[i], p.pad);
+    float3 corrected = p.position+SolverOutput[i].position;
+    if(pad8<.5f)corrected=ConstrainTether(corrected, OriginalIndices[i], p.pad);
     p.position=ProjectCollisions(corrected,p.type);
-    if(coreMode>=4.0f&&p.type<.5f){
+    if(pad8>.5f&&p.type<.5f){MorphTarget body=MorphTargets[MorphData[8192+OriginalIndices[i]].target];
+        if(body.shape.w>.5f){
+            float3 field=MorphField(MorphLocal(p.position,body),body);float extent=length(field/max(body.shape.xyz,.1f));
+            if(extent>1)field=lerp(field,field/extent,lerp(.10f,.025f,body.motion.w));
+            p.position=MorphWorld(MorphFromField(field,body),body);
+        }
+        // The actual ground stays below a jumping body; never clamp to its moving origin.
+        p.position.y=max(p.position.y,body.material.w+.15f);
+    }
+    if(coreMode>=4.0f&&p.type<.5f&&pad8<.5f){
         float3 origin=SlimeSupportOrigin(),local=p.position-origin;
         float3 field=SlimeToField(local);float extent=length(field/SlimeFieldRadii());
         // Compliant PBF containment leaves a soft moving surface rather than
@@ -1084,14 +1111,16 @@ void UpdateVelocity(uint3 id : SV_DispatchThreadID) {
             Particle q=SortedParticles[j];
             float3 d=p.position-q.position;
             if (dot(d,d)>=H2) continue;
-            if (any(GetCell(q.position)!=query) || !CanFluidsInteract(p.type,q.type)) continue;
+            if (any(GetCell(q.position)!=query) || !CanParticlePairInteract(i,j,p.type,q.type)) continue;
             float w=Kernel(d);
             sum += q.velocity*w;
             weightSum += w;
         }
     }
     bool water=p.type>0.5f && p.type<1.5f;
-    float blend=1.0f-exp(-(water ? 2.0f : 40.0f)*dt);
+    float viscosity=water?2.f:40.f;
+    if(pad8>.5f&&p.type<.5f)viscosity=MorphTargets[MorphData[8192+OriginalIndices[i]].target].material.y;
+    float blend=1.0f-exp(-viscosity*dt);
     p.velocity=weightSum>1e-6f ? lerp(velocity,sum/weightSum,blend) : velocity;
     if (coreMode >= 2.0f && p.type < 0.5f && emitType > 0.001f) {
         float recovery = 1.0f - TetherShapeWeight();

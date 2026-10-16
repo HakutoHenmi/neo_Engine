@@ -1,3 +1,4 @@
+#include <stdexcept>
 #include "Renderer.h"
 #include "LoadingScreen.h"
 #include "DlssRuntime.h"
@@ -463,6 +464,7 @@ void Renderer::BeginFrame(const float clearColorRGBA[4]) {
 	const uint32_t fi = window_->FrameIndex();
 	CollectFluidProfile(fi);
     CollectFluidBody(fi);
+    CollectMorphMeasure(fi);
 	BeginFluidProfile(SceneRender);
 	upload_[fi].Reset();
 
@@ -5016,7 +5018,10 @@ void Renderer::InitGPUFluid() {
 	computeParams[3].InitAsUnorderedAccessView(2); // u2 (GridOffset)
 	computeParams[4].InitAsUnorderedAccessView(3); // u3 (SortedParticles)
 	computeParams[5].InitAsUnorderedAccessView(4); // u4 (OriginalIndices)
-	computeParams[6].InitAsShaderResourceView(0);  // t0 (AABBs)
+	CD3DX12_DESCRIPTOR_RANGE morphRanges[2]{};
+    morphRanges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV,2,0);
+    morphRanges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV,1,7);
+    computeParams[6].InitAsDescriptorTable(2,morphRanges); // t0 AABBs, t1 targets, u7 assignments
 	computeParams[7].InitAsUnorderedAccessView(5); // previous positions (immutable during solve)
 	computeParams[8].InitAsUnorderedAccessView(6); // Jacobi output, never read/write neighbours in place
 
@@ -5251,6 +5256,7 @@ void Renderer::InitGPUFluid() {
 	auto aabbDesc = CD3DX12_RESOURCE_DESC::Buffer(sizeof(FluidAABB) * 128); // 最大128個まで対応
 	dev_->CreateCommittedResource(&hpAABB, D3D12_HEAP_FLAG_NONE, &aabbDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&gpuFluidAABBBuffer_));
 
+	InitFluidMorph();
 	isGPUFluidReady_ = psoFluidSavePrevious_ && psoFluidDelta_ && psoFluidApply_ && psoFluidVelocity_
 		&& psoFluidSortVelocity_ && gpuFluidPreviousBuffer_ && gpuFluidScratchBuffer_;
 }
@@ -5287,6 +5293,7 @@ void Renderer::SetGPUFluidDecoy(const Vector3& pos, float attraction, const Vect
 }
 
 void Renderer::ResetGPUFluid() {
+    fluidMorphApplied_=~uint64_t(0);fluidMorphRetargetMask_=15;fluidMorphTargets_.clear();fluidMorphSeedPending_=false;
     guidedTrailParticles_.clear();previousTrailParticleCount_=0;
     fluidBodySnapshot_={};
     for(auto& pending:fluidBodyPending_)pending=false;
@@ -5395,9 +5402,18 @@ void Renderer::UpdateGPUFluid(float dt) {
 		cb.emitPos = gpuFluidTetherTip_;
 		cb.emitType = gpuFluidTetherBlend_;
 	}
+    fluidMorphFrame_=nullptr;
+    const bool morphActive=fluidMorphTargets_.size()==kPlayerFluidParticles;
+    if(morphActive){
+        fluidMorphOffset_=fluidUpload.Allocate(kPlayerFluidParticles*sizeof(FluidMorphTarget),256);
+        if(fluidMorphOffset_==UINT32_MAX)return;
+        memcpy(fluidUpload.mapped+fluidMorphOffset_,fluidMorphTargets_.data(),kPlayerFluidParticles*sizeof(FluidMorphTarget));
+        fluidMorphFrame_=fluidUpload.buffer.Get();
+        cb.pad6={fluidMorphSeedPending_?1.f:0.f,float(kPlayerFluidParticles),float(kPlayerFluidParticles)};
+    }
 	cb.decoyPos = gpuFluidDecoyPos_; cb.decoyAttraction = gpuFluidDecoyAttraction_;
 	cb.decoyScale = gpuFluidDecoyScale_; cb.pad7 = rogueWorldFrozen_?1.f:0.0f;
-	cb.decoyForward = gpuFluidDecoyForward_; cb.pad8 = 0.0f;
+	cb.decoyForward = gpuFluidDecoyForward_; cb.pad8 = morphActive?1.f:0.f;
 	if(gpuFluidCoreMode_>=4){cb.emitDir=slimeGround_;cb.emitStartIndex=slimeGrounded_?1U:0U;}
 	
 	list_->SetComputeRootSignature(rootSigFluid_.Get());
@@ -5408,7 +5424,7 @@ void Renderer::UpdateGPUFluid(float dt) {
 	list_->SetComputeRootUnorderedAccessView(3, gpuFluidGridOffsetBuffer_->GetGPUVirtualAddress());
 	list_->SetComputeRootUnorderedAccessView(4, gpuFluidSortedParticlesBuffer_->GetGPUVirtualAddress());
 	list_->SetComputeRootUnorderedAccessView(5, gpuFluidOriginalIndicesBuffer_->GetGPUVirtualAddress());
-	list_->SetComputeRootShaderResourceView(6, fluidUpload.buffer->GetGPUVirtualAddress() + aabbOffset);
+	BindFluidMorphResources(fluidUpload.buffer.Get(),aabbOffset);
 	list_->SetComputeRootUnorderedAccessView(7, gpuFluidPreviousBuffer_->GetGPUVirtualAddress());
 	list_->SetComputeRootUnorderedAccessView(8, gpuFluidScratchBuffer_->GetGPUVirtualAddress());
 
@@ -5478,13 +5494,25 @@ void Renderer::UpdateGPUFluid(float dt) {
 	};
 	list_->ResourceBarrier(3, bSort);
 	};
+    if(morphActive&&fluidMorphApplied_!=fluidMorphRevision_){
+        cb.emitType=float(fluidMorphRetargetMask_);
+        list_->SetPipelineState(psoMorphKeys_.Get());list_->Dispatch(128,1,1);uavBarrier(nullptr);
+        list_->SetPipelineState(psoMorphSort_.Get());
+        for(uint32_t width=2;width<=8192;width*=2)for(uint32_t stride=width/2;stride;stride/=2){
+            cb.emitCursor=stride;cb.emitCount=width;list_->SetComputeRoot32BitConstants(0,48,&cb,0);
+            list_->Dispatch(128,1,1);uavBarrier(nullptr);
+        }
+        cb.emitCursor=cb.emitCount=0;list_->SetComputeRoot32BitConstants(0,48,&cb,0);
+        list_->SetPipelineState(psoMorphAssign_.Get());list_->Dispatch((kPlayerFluidParticles+63)/64,1,1);uavBarrier(nullptr);
+        fluidMorphApplied_=fluidMorphRevision_;fluidMorphRetargetMask_=0;fluidMorphSeedPending_=false;cb.emitType=0;cb.pad6.x=0;list_->SetComputeRoot32BitConstants(0,48,&cb,0);
+    }
 	// Even during hitstop, build a current grid for surface reconstruction.
 	if (cb.dt <= 0.0f) { rebuildGrid(); return; }
 	if (gpuFluidCoreMode_ < 2.0f) rebuildGrid();
 	for (uint32_t step = 0; step < substeps; ++step) {
         // Each solver step targets the corresponding point on the controller's
         // path, rather than constraining all substeps to the frame-end height.
-        if(gpuFluidCoreMode_>=4){
+        if(gpuFluidCoreMode_>=4&&!morphActive){
             float remaining=fluidSimulatedDt_-cb.dt*(step+1);
             cb.corePos=gpuFluidCorePos_-gpuFluidCoreVelocity_*remaining;
             cb.emitDir.y=slimeGround_.y-(slimeGround_.x*gpuFluidCoreVelocity_.x+slimeGround_.z*gpuFluidCoreVelocity_.z)*remaining;
@@ -5528,6 +5556,7 @@ void Renderer::UpdateGPUFluid(float dt) {
 	// Velocity writeback changes sorted data too; make it visible to volume CS.
 	auto sortedReady = CD3DX12_RESOURCE_BARRIER::UAV(gpuFluidSortedParticlesBuffer_.Get());
 	list_->ResourceBarrier(1, &sortedReady);
+    QueueMorphMeasure();
     QueueFluidBody();
 }
 
@@ -5587,7 +5616,7 @@ void Renderer::EmitGPUFluid(const Vector3& pos, const Vector3& velocityDir, cons
 		list_->SetComputeRootUnorderedAccessView(3, gpuFluidGridOffsetBuffer_->GetGPUVirtualAddress());
 		list_->SetComputeRootUnorderedAccessView(4, gpuFluidSortedParticlesBuffer_->GetGPUVirtualAddress());
 		list_->SetComputeRootUnorderedAccessView(5, gpuFluidOriginalIndicesBuffer_->GetGPUVirtualAddress());
-		if (gpuFluidAABBBuffer_) list_->SetComputeRootShaderResourceView(6, gpuFluidAABBBuffer_->GetGPUVirtualAddress());
+		if (gpuFluidAABBBuffer_) BindFluidMorphResources(gpuFluidAABBBuffer_.Get());
 		list_->SetPipelineState(psoFluidInit_.Get());
 		list_->Dispatch((gpuFluidMaxParticles_ + 63) / 64, 1, 1);
 		auto initBarrier = CD3DX12_RESOURCE_BARRIER::UAV(gpuFluidBuffer_.Get());
@@ -5650,7 +5679,7 @@ void Renderer::EmitGPUFluid(const Vector3& pos, const Vector3& velocityDir, cons
 	list_->SetComputeRootUnorderedAccessView(3, gpuFluidGridOffsetBuffer_->GetGPUVirtualAddress());
 	list_->SetComputeRootUnorderedAccessView(4, gpuFluidSortedParticlesBuffer_->GetGPUVirtualAddress());
 	list_->SetComputeRootUnorderedAccessView(5, gpuFluidOriginalIndicesBuffer_->GetGPUVirtualAddress());
-	if (gpuFluidAABBBuffer_) list_->SetComputeRootShaderResourceView(6, gpuFluidAABBBuffer_->GetGPUVirtualAddress());
+	if (gpuFluidAABBBuffer_) BindFluidMorphResources(gpuFluidAABBBuffer_.Get());
 	
 	uint32_t threadGroups = (emitCount + 63) / 64;
 	list_->Dispatch(threadGroups, 1, 1);
@@ -5693,7 +5722,7 @@ uint32_t Renderer::ExtractGPUFluidFromPlayer(const Vector3& pos, const Vector3& 
 		list_->SetComputeRootUnorderedAccessView(3, gpuFluidGridOffsetBuffer_->GetGPUVirtualAddress());
 		list_->SetComputeRootUnorderedAccessView(4, gpuFluidSortedParticlesBuffer_->GetGPUVirtualAddress());
 		list_->SetComputeRootUnorderedAccessView(5, gpuFluidOriginalIndicesBuffer_->GetGPUVirtualAddress());
-		if (gpuFluidAABBBuffer_) list_->SetComputeRootShaderResourceView(6, gpuFluidAABBBuffer_->GetGPUVirtualAddress());
+		if (gpuFluidAABBBuffer_) BindFluidMorphResources(gpuFluidAABBBuffer_.Get());
 		list_->SetPipelineState(psoFluidInit_.Get());
 		list_->Dispatch((gpuFluidMaxParticles_ + 63) / 64, 1, 1);
 		auto initBarrier = CD3DX12_RESOURCE_BARRIER::UAV(gpuFluidBuffer_.Get());
@@ -5759,7 +5788,7 @@ uint32_t Renderer::ExtractGPUFluidFromPlayer(const Vector3& pos, const Vector3& 
 	list_->SetComputeRootUnorderedAccessView(3, gpuFluidGridOffsetBuffer_->GetGPUVirtualAddress());
 	list_->SetComputeRootUnorderedAccessView(4, gpuFluidSortedParticlesBuffer_->GetGPUVirtualAddress());
 	list_->SetComputeRootUnorderedAccessView(5, gpuFluidOriginalIndicesBuffer_->GetGPUVirtualAddress());
-	if (gpuFluidAABBBuffer_) list_->SetComputeRootShaderResourceView(6, gpuFluidAABBBuffer_->GetGPUVirtualAddress());
+	if (gpuFluidAABBBuffer_) BindFluidMorphResources(gpuFluidAABBBuffer_.Get());
 
 	list_->Dispatch((extractCount + 63) / 64, 1, 1);
 
@@ -5810,7 +5839,7 @@ void Renderer::SyncLostGPUFluidGroup(uint32_t groupId, const Vector3& pos) {
 	list_->SetComputeRootUnorderedAccessView(3, gpuFluidGridOffsetBuffer_->GetGPUVirtualAddress());
 	list_->SetComputeRootUnorderedAccessView(4, gpuFluidSortedParticlesBuffer_->GetGPUVirtualAddress());
 	list_->SetComputeRootUnorderedAccessView(5, gpuFluidOriginalIndicesBuffer_->GetGPUVirtualAddress());
-	if (gpuFluidAABBBuffer_) list_->SetComputeRootShaderResourceView(6, gpuFluidAABBBuffer_->GetGPUVirtualAddress());
+	if (gpuFluidAABBBuffer_) BindFluidMorphResources(gpuFluidAABBBuffer_.Get());
 	list_->Dispatch(1, 1, 1);
 
 	auto barrier = CD3DX12_RESOURCE_BARRIER::UAV(gpuFluidBuffer_.Get());
@@ -5854,7 +5883,7 @@ void Renderer::AbsorbLostGPUFluidGroup(uint32_t groupId) {
 	list_->SetComputeRootUnorderedAccessView(3, gpuFluidGridOffsetBuffer_->GetGPUVirtualAddress());
 	list_->SetComputeRootUnorderedAccessView(4, gpuFluidSortedParticlesBuffer_->GetGPUVirtualAddress());
 	list_->SetComputeRootUnorderedAccessView(5, gpuFluidOriginalIndicesBuffer_->GetGPUVirtualAddress());
-	if (gpuFluidAABBBuffer_) list_->SetComputeRootShaderResourceView(6, gpuFluidAABBBuffer_->GetGPUVirtualAddress());
+	if (gpuFluidAABBBuffer_) BindFluidMorphResources(gpuFluidAABBBuffer_.Get());
 	list_->Dispatch(1, 1, 1);
 
 	auto barrier = CD3DX12_RESOURCE_BARRIER::UAV(gpuFluidBuffer_.Get());
@@ -5962,5 +5991,7 @@ void Renderer::DrawGPUFluidShadow() {
 		D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 	list_->ResourceBarrier(1, &toWrite);
 }
+
+#include "FluidMorph.inl"
 
 } // namespace Engine

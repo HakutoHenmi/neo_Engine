@@ -385,6 +385,30 @@ public:
 		Vector4 color;
 		float type; Vector3 pad2; // ★追加: 0=プレイヤー, 1=水しぶき
 	};
+	// Targets are immutable per frame; assignments live on the GPU by original particle slot.
+	struct FluidMorphTarget { Vector3 local;float blend;Vector3 origin;float density;Vector3 forward;float omega;Vector4 color;
+        Vector4 material; // damping, viscosity, surface tension, ground height
+        Vector4 motion;   // velocity xyz, airborne blend
+        Vector4 shape;    // compliant field radii xyz, 1=free liquid / 0=point spring
+        Vector4 reserved; // 128-byte stride divides the upload ring's 256-byte alignment.
+    };
+	static_assert(sizeof(FluidMorphTarget)==128);
+	std::vector<FluidMorphTarget> fluidMorphTargets_;
+	uint64_t fluidMorphRevision_=0,fluidMorphApplied_=~uint64_t(0);
+	Microsoft::WRL::ComPtr<ID3D12Resource> fluidMorphScratch_,fluidMorphDummy_;
+	Microsoft::WRL::ComPtr<ID3D12PipelineState> psoMorphKeys_,psoMorphSort_,psoMorphAssign_;
+	ID3D12Resource* fluidMorphFrame_=nullptr;uint32_t fluidMorphOffset_=0;
+	void InitFluidMorph();
+	void BindFluidMorphResources(ID3D12Resource* aabb,uint32_t offset=0);
+	uint32_t fluidMorphRetargetMask_=15;
+	bool fluidMorphSeedPending_=false;
+	void SetFluidMorphTargets(std::vector<FluidMorphTarget> targets,uint64_t revision,uint32_t mask=15,bool seed=false){fluidMorphTargets_=std::move(targets);fluidMorphRevision_=revision;fluidMorphRetargetMask_|=mask;fluidMorphSeedPending_|=seed;}
+	Microsoft::WRL::ComPtr<ID3D12PipelineState> psoMorphMeasure_;
+	Microsoft::WRL::ComPtr<ID3D12Resource> morphReadback_[2];
+	bool morphPending_[2]{};uint64_t morphReadbackRevision_[2]{},morphMeasuredRevision_=0;
+	std::array<float,4> morphErrors_{{1000,1000,1000,1000}};
+	void QueueMorphMeasure();void CollectMorphMeasure(uint32_t frame);
+	bool FluidMorphReady(uint64_t revision,size_t body,float tolerance)const{return morphMeasuredRevision_==revision&&body<4&&morphErrors_[body]<tolerance;}
 
 	Microsoft::WRL::ComPtr<ID3D12RootSignature> rootSigFluid_;
 	Microsoft::WRL::ComPtr<ID3D12Resource> gpuFluidBuffer_;
@@ -448,7 +472,7 @@ public:
 	void InitGPUFluid();
 	void UpdateGPUFluid(float dt);
 	void ResetGPUFluid();
-	void ClearGPUFluid() { gpuFluidActiveParticleCount_ = 0; gpuFluidPhaseMask_ = 0; volumeHistoryValid_ = false; isGPUFluidInitialized_ = false; }
+	void ClearGPUFluid() { gpuFluidActiveParticleCount_ = 0; gpuFluidPhaseMask_ = 0; volumeHistoryValid_ = false; isGPUFluidInitialized_ = false;fluidMorphTargets_.clear();fluidMorphApplied_=~uint64_t(0);fluidMorphRetargetMask_=15; }
 	void EmitGPUFluid(const Vector3& pos, const Vector3& velocityDir, const Vector4& color, int count, float type = 0.0f, bool retainWater = false);
 	uint32_t ExtractGPUFluidFromPlayer(const Vector3& pos, const Vector3& velocityDir, int count);
 	void SyncLostGPUFluidGroup(uint32_t groupId, const Vector3& pos);
@@ -472,6 +496,8 @@ public:
 	D3D12_GPU_DESCRIPTOR_HANDLE volumeSurfaceDepthSrv_{};
 	Vector3 volumePreviousOrigin_{};
 	Vector4 volumeColors_[3] = { {0.02f,0.8f,0.06f,1}, {1,0.9f,0.1f,1}, {0.1f,0.65f,1,1} };
+    void SetSlimeColor(Vector4 color){volumeColors_[0]=color;}
+    float volumePreviousVoxelSize_=0;
 	bool fluidVolumeReady_ = false, volumeHistoryValid_ = false;
 	uint32_t volumeHistoryIndex_ = 0, fluidVolumeDebugMode_ = 0;
 	float fluidSimulatedDt_ = 0.0f;
