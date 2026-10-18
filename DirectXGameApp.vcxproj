@@ -577,6 +577,13 @@ exit /b 0
       <Project>{371b9fa9-4c90-4ac6-a123-aced756d6c77}</Project>
     </ProjectReference>
   </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="Game\States\EntityStateContext.h" />
+    <ClInclude Include="Game\States\PlayerActionStates.inl" />
+    <ClInclude Include="Game\States\EnemyAIStates.inl" />
+    <ClInclude Include="Game\States\BossActionStates.inl" />
+    <ClInclude Include="Game\Chrono\SwarmStates.inl" />
+  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>

@@ -1,7 +1,8 @@
 #pragma once
-#include "ISystem.h"
 #include "../Scenes/GameScene.h"
+#include "BossActionSystem.h"
 #include "EnemyAISystem.h"
+#include "ISystem.h"
 #include "PlayerActionSystem.h"
 #include <algorithm>
 #include <cmath>
@@ -92,9 +93,8 @@ public:
 						// ボスの場合は専用の死亡ステートに移行する（BossTestScript側でアニメーションを再生して消去する）
 						auto& boss = registry.get<BossActionComponent>(entity);
 						if (boss.state != BossState::Dead) {
-							boss.state = BossState::Dead;
-							boss.stateTimer = 0.0f;
-							
+							BossActionSystem::ChangeState(registry, entity, BossState::Dead);
+
 							if (registry.all_of<HurtboxComponent>(entity)) registry.get<HurtboxComponent>(entity).enabled = false;
 							if (registry.all_of<HitboxComponent>(entity)) registry.get<HitboxComponent>(entity).isActive = false;
 							if (registry.all_of<BoxColliderComponent>(entity)) registry.get<BoxColliderComponent>(entity).enabled = false;
@@ -278,9 +278,7 @@ private:
 		}
 		if (auto* pa = registry.try_get<PlayerActionComponent>(entity)) {
 			pa->enabled = false;
-			pa->state = PlayerActionState::Idle;
-			pa->stateTimer = 0.0f;
-			pa->stateDuration = 0.0f;
+			PlayerActionSystem::ChangeState(registry, entity, PlayerActionState::Idle);
 			pa->sodaAiming = false;
 			pa->sodaDriftVelocity = {0.0f, 0.0f, 0.0f};
 		}
