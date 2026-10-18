@@ -1,6 +1,8 @@
 #pragma once
+#include "../../Engine/IState.h"
 #include "ChronoRules.h"
 #include <cstdint>
+#include <iterator>
 namespace Game::Chrono {
 enum class BattlePhase {Horde,Emerging,Boss};
 enum class SwarmPhase {Spawn,Chase,Windup,Dash,Recover,Dead};
@@ -37,40 +39,25 @@ inline float SwarmCameraOpacity(Vec camera,Vec player,Vec enemy,bool flying){
             opacity=std::min(opacity,.03f+.97f*ease((side-radius)/2));}}
     return opacity;
 }
+inline void ChangeSwarmPhase(SwarmEnemy& enemy, SwarmPhase next) {
+	enemy.phase = next;
+	enemy.clock = 0;
+}
+#include "SwarmStates.inl"
+
 inline SwarmEvent TickSwarm(SwarmEnemy& enemy,Vec player,float dt,float ground=0,bool canAttack=true){
     if(!SwarmAlive(enemy))return SwarmEvent::None;
     dt=std::clamp(dt,0.f,.05f);enemy.age+=dt;enemy.clock+=dt;enemy.flash=std::max(0.f,enemy.flash-dt);
     Vec delta=player-enemy.at;Vec planar=delta;planar.y=0;float distance=Length(planar);
     if(!enemy.flying)delta.y=0;
-    auto phase=[&](SwarmPhase next){enemy.phase=next;enemy.clock=0;};
-    if(enemy.phase==SwarmPhase::Spawn){if(enemy.clock>=.6f)phase(SwarmPhase::Chase);}
-    else if(enemy.phase==SwarmPhase::Chase){
-        enemy.attackDelay=std::max(0.f,enemy.attackDelay-dt);bool ready=canAttack&&enemy.attackDelay<=0;Vec approach=delta;
-        if(!ready){float hold=enemy.flying?(enemy.bomber?22.f:27.f):8.f;
-            Vec radial=distance>.01f?Unit(planar):Vec{std::cos(float(enemy.id)),0,std::sin(float(enemy.id))};Vec side{radial.z,0,-radial.x};
-            approach=radial*(distance-hold)+side*(enemy.flying?(enemy.id%2?5.f:-5.f):0.f);}
-        if(enemy.flying)approach.y=ground+14+float(enemy.id%5)*2+std::sin(enemy.age*2+float(enemy.id))*1.5f-enemy.at.y;
-        enemy.heading=Unit(Lerp(enemy.heading,Unit(approach),1-std::exp(-9*dt)));
-        float speed=(enemy.flying?10.f:6.f)+SwarmVariation(enemy.id)*2;
-        enemy.at=enemy.at+Unit(approach)*std::min(Length(approach),speed*dt);
-        if(ready&&distance<(enemy.flying?(enemy.bomber?28.f:32.f):9.f)){enemy.heading=Unit(delta);enemy.attackAt=player;
-            if(!enemy.flying)enemy.attackAt.y=enemy.at.y;
-            ++enemy.attacks;enemy.struck=false;phase(SwarmPhase::Windup);}
-    }else if(enemy.phase==SwarmPhase::Windup){
-        if(enemy.bomber){enemy.heading=Unit(delta);
-            if(enemy.clock>.7f)enemy.at=enemy.at+enemy.heading*std::min(std::max(0.f,Length(delta)-1.5f),(12+SwarmVariation(enemy.id,enemy.attacks)*3)*dt);
-            if(enemy.clock>=SwarmWindup(enemy)){phase(SwarmPhase::Dead);return SwarmEvent::Detonate;}}
-        else if(enemy.clock>=SwarmWindup(enemy))phase(SwarmPhase::Dash);
-    }else if(enemy.phase==SwarmPhase::Dash){float remaining=Length(enemy.attackAt-enemy.at);
-        enemy.at=enemy.at+enemy.heading*std::min(remaining,SwarmDashSpeed(enemy)*dt);
-        if(remaining<.3f||enemy.clock>=2){phase(SwarmPhase::Recover);enemy.attackDelay=1.5f+SwarmVariation(enemy.id,enemy.attacks+1)*2;}}
-    else if(enemy.phase==SwarmPhase::Recover){
-        if(enemy.flying){enemy.at.y+=std::min(std::max(0.f,ground+18-enemy.at.y),20*dt);enemy.heading.y*=std::exp(-8*dt);}
-        if(enemy.clock>=3+SwarmVariation(enemy.id,enemy.attacks)*2)phase(SwarmPhase::Chase);
-    }
-    if(enemy.flying)enemy.at.y=std::max(ground+1.2f,enemy.at.y);
-    return SwarmEvent::None;
+	SwarmStates::Context context{enemy, player, delta, distance, dt, ground, canAttack};
+	SwarmStates::Get(enemy.phase).Update(context);
+	if (context.event == SwarmEvent::Detonate)
+		return context.event;
+	if(enemy.flying)enemy.at.y=std::max(ground+1.2f,enemy.at.y);
+	return context.event;
 }
+
 inline bool SwarmBossReady(int creditedKills){return creditedKills>=SwarmBossKills;}
 inline Vec SwarmCross(Vec a,Vec b){return {a.y*b.z-a.z*b.y,a.z*b.x-a.x*b.z,a.x*b.y-a.y*b.x};}
 }

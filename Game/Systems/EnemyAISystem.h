@@ -1,7 +1,8 @@
 #pragma once
+#include "../Scripts/WarningEffectScript.h"
+#include "../States/EntityStateContext.h"
 #include "ISystem.h"
 #include <cmath>
-#include "../Scripts/WarningEffectScript.h"
 
 namespace Game {
 
@@ -47,6 +48,15 @@ struct EnemyAIComponent : public Component {
 // ★ EnemyAISystem: 敵の簡易AIステートマシン
 class EnemyAISystem : public ISystem {
 public:
+	static void ChangeState(entt::registry& registry, entt::entity entity, EnemyAIState next) {
+		auto& ai = registry.get<EnemyAIComponent>(entity);
+		EntityStateContext frame{registry, entity};
+		GetState(ai.state).Exit(frame);
+		ai.state = next;
+		ai.stateTimer = 0.0f;
+		GetState(next).Enter(frame);
+	}
+
 	void Update(entt::registry& registry, GameContext& ctx) override {
 		if (!ctx.isPlaying) return;
 
@@ -94,144 +104,8 @@ public:
 			ai.stateTimer += aiDt;
 
 			// --- ステートマシン ---
-			switch (ai.state) {
-
-			case EnemyAIState::Idle:
-				// プレイヤーの方を向く
-				SmoothRotate(tc, targetAngle, ai.rotationSpeed, aiDt);
-
-				ai.idleTimer += aiDt;
-
-				// 距離が遠い → 追跡
-				if (dist > ai.chaseRange && (!ai.hopper || dist <= ai.aggroRange)) {
-					TransitionTo(entity, registry, ai, EnemyAIState::Chase);
-				}
-				// 攻撃間隔が経過 & 攻撃範囲内 → 攻撃予備動作
-				else if (ai.idleTimer >= ai.attackInterval && dist <= ai.attackRange) {
-					ai.idleTimer = 0.0f;
-					TransitionTo(entity, registry, ai, EnemyAIState::WindUp);
-
-					// ★ 予備動作の視覚フィードバック: スケールを少し膨らませる
-					if (registry.all_of<MeshRendererComponent>(entity)) {
-						auto& mr = registry.get<MeshRendererComponent>(entity);
-						mr.color = {1.0f, 0.8f, 0.0f, 1.0f}; // 黄色に光る（警告色）
-					}
-				}
-				break;
-
-			case EnemyAIState::Chase:
-				if (ai.hopper && dist > ai.aggroRange * 1.25f) {
-					TransitionTo(entity, registry, ai, EnemyAIState::Idle);
-					break;
-				}
-				// プレイヤーの方を向きながら近づく
-				SmoothRotate(tc, targetAngle, ai.rotationSpeed, aiDt);
-
-				if (dist > 0.5f) {
-					float moveSpeed = ai.chaseSpeed * aiDt;
-					float nx = dx / dist;
-					float nz = dz / dist;
-					if (ai.hopper && ctx.scene) {
-						const float next = ctx.scene->GetHeightAt(tc.translate.x + nx * moveSpeed, tc.translate.z + nz * moveSpeed,
-							ai.groundY + 3.0f, static_cast<uint32_t>(entity));
-						// A hopping enemy must not run off a ledge or climb a tall wall.
-						if (next > -999.0f && std::abs(next - ai.groundY) < 1.1f) {
-							tc.translate.x += nx * moveSpeed;
-							tc.translate.z += nz * moveSpeed;
-							ai.groundY = next;
-						}
-					} else {
-						tc.translate.x += nx * moveSpeed;
-						tc.translate.z += nz * moveSpeed;
-					}
-				}
-
-				// 攻撃範囲に入ったらIdleへ
-				if (dist <= ai.attackRange) {
-					ai.idleTimer = ai.attackInterval * 0.5f; // 少し待ってから攻撃
-					TransitionTo(entity, registry, ai, EnemyAIState::Idle);
-				}
-				break;
-
-			case EnemyAIState::WindUp:
-				// 予備動作中: プレイヤーをロックオン
-				SmoothRotate(tc, targetAngle, ai.rotationSpeed * 0.5f, aiDt);
-
-				if (ai.stateTimer >= ai.windUpDuration) {
-					// 攻撃開始！
-					TransitionTo(entity, registry, ai, EnemyAIState::Attack);
-
-					// Hitbox有効化
-					if (registry.all_of<HitboxComponent>(entity)) {
-						auto& hb = registry.get<HitboxComponent>(entity);
-						hb.isActive = true;
-						hb.hitTargets.clear(); // 多段ヒット防止の履歴をクリア
-					}
-					// スケール戻す
-					if (!ai.hopper) { tc.scale.x = 2.0f; tc.scale.z = 2.0f; }
-					if (ai.hopper && registry.all_of<MeshRendererComponent>(entity))
-						registry.get<MeshRendererComponent>(entity).color = {1, 1, 1, 1};
-				}
-				break;
-
-			case EnemyAIState::Attack:
-				// 攻撃中: 前方に少し突進
-				{
-					float facing = tc.rotate.y;
-					float thrust = (ai.hopper ? 5.0f : 8.0f) * aiDt;
-					const float nextX = tc.translate.x + std::sin(facing) * thrust;
-					const float nextZ = tc.translate.z + std::cos(facing) * thrust;
-					if (ai.hopper && ctx.scene) {
-						const float next = ctx.scene->GetHeightAt(nextX, nextZ, ai.groundY + 3.0f, static_cast<uint32_t>(entity));
-						if (next > -999.0f && std::abs(next - ai.groundY) < 1.1f) {
-							tc.translate.x = nextX; tc.translate.z = nextZ; ai.groundY = next;
-						}
-					} else {
-						tc.translate.x = nextX; tc.translate.z = nextZ;
-					}
-				}
-
-				if (ai.stateTimer >= ai.attackDuration) {
-					// 攻撃終了 → クールダウン
-					TransitionTo(entity, registry, ai, EnemyAIState::Cooldown);
-
-					// Hitbox無効化
-					if (registry.all_of<HitboxComponent>(entity)) {
-						registry.get<HitboxComponent>(entity).isActive = false;
-					}
-					// 通常色に戻す
-					if (registry.all_of<MeshRendererComponent>(entity)) {
-						auto& mr = registry.get<MeshRendererComponent>(entity);
-						mr.color = ai.hopper ? DirectX::XMFLOAT4{1, 1, 1, 1} : DirectX::XMFLOAT4{1.0f, 0.2f, 0.2f, 1.0f};
-					}
-				}
-				break;
-
-			case EnemyAIState::Cooldown:
-				// 攻撃後の隙（プレイヤーの反撃チャンス）
-				if (ai.stateTimer >= ai.cooldownDuration) {
-					TransitionTo(entity, registry, ai, EnemyAIState::Idle);
-				}
-				break;
-
-			case EnemyAIState::Stunned:
-				// パリィされてスタン中（CombatSystemが設定する）
-				// 色を青白く
-				if (ai.stateTimer < 0.1f && registry.all_of<MeshRendererComponent>(entity)) {
-					auto& mr = registry.get<MeshRendererComponent>(entity);
-					mr.color = {0.5f, 0.5f, 1.0f, 1.0f}; // スタン色
-				}
-
-				if (ai.stateTimer >= ai.stunDuration) {
-					TransitionTo(entity, registry, ai, EnemyAIState::Idle);
-					// 色を戻す
-					if (registry.all_of<MeshRendererComponent>(entity)) {
-						auto& mr = registry.get<MeshRendererComponent>(entity);
-						mr.color = ai.hopper ? DirectX::XMFLOAT4{1, 1, 1, 1} : DirectX::XMFLOAT4{1.0f, 0.2f, 0.2f, 1.0f};
-					}
-				}
-				break;
-			}
+			StateContext frame{*this, registry, entity, ctx, aiDt, dx, dz, dist, targetAngle};
+			GetState(ai.state).Update(frame);
 			if (ai.hopper) {
 				if (ai.groundY > -999.0f) {
 					if (ai.state == EnemyAIState::Chase || ai.state == EnemyAIState::Attack) {
@@ -252,8 +126,7 @@ public:
 		auto view = registry.view<EnemyAIComponent>();
 		for (auto entity : view) {
 			auto& ai = registry.get<EnemyAIComponent>(entity);
-			ai.state = EnemyAIState::Idle;
-			ai.stateTimer = 0.0f;
+			ChangeState(registry, entity, EnemyAIState::Idle);
 			ai.idleTimer = 0.0f;
 			ai.hopTimer = 0.0f;
 			ai.groundY = registry.all_of<TransformComponent>(entity) ? registry.get<TransformComponent>(entity).translate.y : -10000.0f;
@@ -335,11 +208,13 @@ private:
 		}
 	}
 
-	void TransitionTo(entt::entity entity, entt::registry& registry, EnemyAIComponent& ai, EnemyAIState newState) {
-		ai.state = newState;
-		ai.stateTimer = 0.0f;
-
-		if (newState == EnemyAIState::WindUp && !ai.hopper) {
+	static void SetNormalColor(EntityStateContext& frame) {
+		if (auto* mesh = frame.registry.try_get<MeshRendererComponent>(frame.entity)) {
+			mesh->color = frame.registry.get<EnemyAIComponent>(frame.entity).hopper ? DirectX::XMFLOAT4{1, 1, 1, 1} : DirectX::XMFLOAT4{1, .2f, .2f, 1};
+		}
+	}
+	static void ShowWarningEffect(entt::registry& registry, entt::entity entity, float duration) {
+		{
 			if (!registry.all_of<ScriptComponent>(entity)) {
 				registry.emplace<ScriptComponent>(entity);
 			}
@@ -351,7 +226,7 @@ private:
 				if (entry.scriptPath == "WarningEffectScript") hasWarning = true;
 			}
 			if (!hasWarning) {
-				sc.scripts.push_back({"WarningEffectScript", "{ \"duration\": " + std::to_string(ai.windUpDuration) + " }", std::make_shared<WarningEffectScript>(), false});
+				sc.scripts.push_back({"WarningEffectScript", "{ \"duration\": " + std::to_string(duration) + " }", std::make_shared<WarningEffectScript>(), false});
 			}
 		}
 	}
@@ -362,6 +237,7 @@ private:
 		while (diff < -DirectX::XM_PI) diff += DirectX::XM_2PI;
 		tc.rotate.y += diff * std::min(1.0f, speed * dt);
 	}
+#include "../States/EnemyAIStates.inl"
 };
 
 } // namespace Game

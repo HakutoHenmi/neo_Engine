@@ -3,6 +3,52 @@
 このプロジェクトで追加・拡張した評価課題要素をまとめます。
 主な確認シーンは `AssignmentScene` です。タイトルの Select Scene から `Assignment Scene` を選ぶと、スキニングモデル、アニメーション補間、骨デバッグ、武器追従、手から出るパーティクル、GPU Particle をまとめて確認できます。
 
+## State Patternによる状態管理の見直し（2026-10-16）
+
+授業資料を基準に戦闘の状態管理をレビューし、プレイヤー・通常敵・ボス・群れ敵の4系統、合計32状態を状態クラスへ分割しました。詳しい指摘・設計・変更範囲は [State Patternレビュー記録](Docs/StatePatternReview.md) にまとめています。
+
+### どこをどう変えたか
+
+| 対象 | 変更前 | 変更後・主な実装先 |
+| --- | --- | --- |
+| 従来モードのプレイヤー（11状態） | `PlayerActionSystem::Update` の大きなswitchで待機・攻撃・回避・液状化などを処理 | [PlayerActionStates.inl](Game/States/PlayerActionStates.inl) の状態クラスへ分割。攻撃判定と回避へのキャンセル条件も状態側に移動 |
+| 従来モードの通常敵（6状態） | `EnemyAISystem::Update` のswitchで追跡・攻撃予告・攻撃・スタンを処理 | [EnemyAIStates.inl](Game/States/EnemyAIStates.inl) へ分割。攻撃判定の開始・終了、警告色・スタン色をEnter / Exitへ整理 |
+| 従来モードのボス（9状態） | `BossActionSystem::Update` のswitch内で行動・パターン選択・攻撃の後始末を処理 | [BossActionStates.inl](Game/States/BossActionStates.inl) へ分割。攻撃パターンの選択を共通化し、攻撃中断時も後始末を実行 |
+| SlimeLifeなどで使用する群れ敵（6状態） | `TickSwarm` のif列で出現・追跡・予告・突進・回復・死亡を処理 | [SwarmStates.inl](Game/Chrono/SwarmStates.inl) へ分割。各状態クラスが行動と次状態を決定 |
+
+共通の基底クラスは [Engine/IState.h](Engine/IState.h) です。Systemは現在の状態の仮想関数を呼び、通常の遷移先は状態クラスが決めます。プレイヤー・通常敵・ボスの `ChangeState` は「旧状態のExit → 状態とタイマーの更新 → 新状態のEnter」の順で処理します。被弾・死亡を扱う [CombatSystem](Game/Systems/CombatSystem.h) と [HealthSystem](Game/Systems/HealthSystem.h) もこの経路を使います。
+
+状態クラスのインスタンスは共有し、タイマーや入力履歴は各エンティティのコンポーネントに保持します。既存の状態の列挙値、保存形式、Systemの更新順序、基本的なダメージ・行動時間は維持しています。
+
+### レビューで見つけて修正した不具合
+
+| 発生条件・以前の問題 | 修正内容 |
+| --- | --- |
+| ボスのジャンプ攻撃が未登録のときに `patterns[-1]` を参照する。選択済みインデックスの上限も未確認 | 有効な代替パターンを選択し、選択中のパターンが削除された場合もIdleに戻す |
+| ボスが攻撃中にダウン・死亡すると、通常の攻撃終了処理を通らずビームが残る | 状態のExit / Enterで本体とビームの攻撃・描画・放出を停止。実体は戦闘の反復終了後にCleanupSystemで破棄 |
+| ワープ中のプレイヤーが被弾すると、移動処理が無効のままになる | ワープのEnterで元の有効状態を保存し、被弾・着地・リセット時のExitで復元 |
+| 短いフレームの直後に長いフレームが来ると、Shootが複数回発射してHPも重複消費する | 初回フレームの時間による推測をやめ、状態に入るたびに一度だけ発射 |
+| 複数プレイヤーの入力履歴をSystem全体で共有し、押し始めの判定が干渉する | 前回の攻撃・ハンマー・回避入力を各PlayerActionComponentで管理 |
+| HPが減った状態でのけぞると、HP倍率が毎フレーム累積して体が縮み続ける | StaggerのUpdateで基準姿勢を設定してからHP倍率を適用 |
+| ボスが通常攻撃中に凍結・泡で止まると、解除後も本体の攻撃判定が戻らない | Attack継続中は本体とビームの判定を復帰。既に命中した対象の履歴は維持 |
+
+### 検証方法と確認結果
+
+リポジトリのルートで次を実行できます。
+
+```powershell
+./tests/Run-StatePatternTests.ps1
+./tests/Run-ChronoTests.ps1
+./tests/Run-SlimeLifeTests.ps1
+./tests/Run-EncapsulationTests.ps1
+```
+
+`Run-StatePatternTests.ps1` は、生成物を `build/state-pattern` に置いてDebugアプリ全体をビルドし、実際のゲーム実装をリンクした回帰テストを実行します。リソースのコピーとゲーム画面の起動は行いません。同じソースで全体ビルドを確認済みの場合は `-SkipBuild` でテストのビルド・実行だけを再実行できます。
+
+2026-10-16にDebug全体ビルドが **警告0件・エラー0件** で成功し、追加した7組の状態遷移テストと上記の既存テストが通過しました。SlimeLifeの検証には、既存のGPU変形・取り込み表現のテストも含まれます。ゲーム画面での手動操作による確認は未実施です。
+
+今回の変更範囲は上記4系統です。Chronoの大型ボスの変形・演出やSlimeLife本体の取り込み・変形攻撃など、別の状態管理の扱いはレビュー記録に記載しています。
+
 ## 操作方法
 
 - `W / A / S / D`: モデル移動。移動開始・停止で Idle と Walking を補間します。

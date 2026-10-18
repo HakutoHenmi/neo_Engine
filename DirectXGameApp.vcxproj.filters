@@ -1215,4 +1215,11 @@
     <ClInclude Include="Game\Chrono\ChronoComponents.h" />
     <ClInclude Include="Game\Chrono\ChronoRules.h" />
   </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="Game\States\EntityStateContext.h" />
+    <ClInclude Include="Game\States\PlayerActionStates.inl" />
+    <ClInclude Include="Game\States\EnemyAIStates.inl" />
+    <ClInclude Include="Game\States\BossActionStates.inl" />
+    <ClInclude Include="Game\Chrono\SwarmStates.inl" />
+  </ItemGroup>
 </Project>

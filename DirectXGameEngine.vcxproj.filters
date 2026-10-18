@@ -254,4 +254,7 @@
   <ItemGroup>
     <None Include="assessment.md" />
   </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="Engine\IState.h" />
+  </ItemGroup>
 </Project>

@@ -113,7 +113,7 @@ void ChronoSystem::LifeHit(entt::registry& r,Player& p,GameContext& ctx,uint32_t
         enemy.health-=damage;enemy.flash=.15f;
         if(enemy.health<=0){enemy.phase=SwarmPhase::Dead;++r.get<InkPlayer>(player_).swarmKills;
             life_.props.push_back({enemy.at,15,12,true});if(swarmEffects_.size()<128)swarmEffects_.push_back({enemy.at,0,3,2});}
-        else {enemy.phase=SwarmPhase::Recover;enemy.clock=0;}
+        else {ChangeSwarmPhase(enemy,SwarmPhase::Recover);}
         (void)p;(void)ctx;return;
     }
 }

@@ -1,7 +1,9 @@
 #pragma once
-#include "ISystem.h"
 #include "../CanHitEffects.h"
+#include "BossActionSystem.h"
 #include "EnemyAISystem.h" // ★追加: パリィ成功時の敵AI連携
+#include "ISystem.h"
+#include "PlayerActionSystem.h"
 #include <cmath>
 #include <unordered_set>
 
@@ -353,9 +355,7 @@ private:
 				
 				// 部位破壊時のイベント：親（ボス）を大ダウン状態にする
 				if (registry.valid(part.parentEntity) && registry.all_of<BossActionComponent>(part.parentEntity)) {
-					auto& boss = registry.get<BossActionComponent>(part.parentEntity);
-					boss.state = BossState::Down;
-					boss.stateTimer = 0.0f;
+					BossActionSystem::ChangeState(registry, part.parentEntity, BossState::Down);
 				}
 				
 				// 破壊エフェクトやHurtbox無効化
@@ -497,10 +497,7 @@ private:
 
 		// プレイヤーが被弾した場合、のけぞりステートへ
 		if (registry.all_of<PlayerActionComponent>(target)) {
-			auto& pa = registry.get<PlayerActionComponent>(target);
-			pa.state = PlayerActionState::Stagger;
-			pa.stateTimer = 0.0f;
-			pa.stateDuration = 0.3f;
+			PlayerActionSystem::ChangeState(registry, target, PlayerActionState::Stagger, 0.3f);
 		}
 
         return true;
