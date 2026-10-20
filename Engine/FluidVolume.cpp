@@ -1,4 +1,5 @@
 #include "Renderer.h"
+#include "FluidVolumeDomain.h"
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -27,12 +28,12 @@ struct VolumeConstants {
     Vector3 playerRadii; float playerMotion;
     Vector3 playerSlope; float playerAir;
     Vector4 playerLiquidCore; // Graphics-only: position and activation.
+    Vector4 playerMorph; // Form, physical mass scale, main particle count, enabled.
 };
 constexpr UINT kVolumeComputeConstantCount=44;
-constexpr UINT kVolumeDrawConstantCount=sizeof(VolumeConstants)/sizeof(UINT);
-static_assert(kVolumeDrawConstantCount==48);
+static_assert(sizeof(VolumeConstants)==208);
 static_assert(kVolumeComputeConstantCount+7*2+5<=64);
-static_assert(kVolumeDrawConstantCount+2+2*2+6<=64);
+static_assert(2*2+3*2+6<=64); // Two CBVs, three structured SRVs, six tables.
 static_assert(sizeof(Renderer::GPUFluidParticle) == 64);
 }
 
@@ -59,10 +60,10 @@ bool Renderer::InitFluidVolume() {
         return SUCCEEDED(dev_->CreateRootSignature(0,blob->GetBufferPointer(),blob->GetBufferSize(),IID_PPV_ARGS(&result)));
     };
     if(!root(compute,_countof(compute),rootSigVolumeCompute_)) return false;
-    CD3DX12_ROOT_PARAMETER draw[10];
+    CD3DX12_ROOT_PARAMETER draw[11];
     CD3DX12_DESCRIPTOR_RANGE drawRanges[6];
     draw[0].InitAsConstantBufferView(0);
-    draw[1].InitAsConstants(kVolumeDrawConstantCount,1);
+    draw[1].InitAsConstantBufferView(1);
     for(UINT i=0;i<4;++i) {
         drawRanges[i].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV,1,i);
         draw[i+2].InitAsDescriptorTable(1,&drawRanges[i],i==0?D3D12_SHADER_VISIBILITY_ALL:D3D12_SHADER_VISIBILITY_PIXEL);
@@ -73,7 +74,21 @@ bool Renderer::InitFluidVolume() {
         drawRanges[i].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV,1,i+2);
         draw[i+4].InitAsDescriptorTable(1,&drawRanges[i],D3D12_SHADER_VISIBILITY_PIXEL);
     }
+    draw[10].InitAsShaderResourceView(8);
     if(!root(draw,_countof(draw),rootSigVolumeDraw_)) return false;
+    CD3DX12_ROOT_PARAMETER shadow[4];CD3DX12_DESCRIPTOR_RANGE shadowRanges[2];
+    shadow[0].InitAsConstantBufferView(0);shadow[1].InitAsConstantBufferView(1);
+    for(UINT i=0;i<2;++i){shadowRanges[i].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV,1,i);shadow[i+2].InitAsDescriptorTable(1,&shadowRanges[i],D3D12_SHADER_VISIBILITY_PIXEL);}
+    if(!root(shadow,_countof(shadow),rootSigVolumeShadow_))return false;
+    auto shadowVS=CompileShaderFromFile(L"Resources/shaders/FluidShadow.hlsl","ShadowVS","vs_5_0");
+    auto shadowPS=CompileShaderFromFile(L"Resources/shaders/FluidShadow.hlsl","ShadowPS","ps_5_0");
+    if(!shadowVS||!shadowPS)return false;
+    D3D12_GRAPHICS_PIPELINE_STATE_DESC shadowPso{};
+    shadowPso.pRootSignature=rootSigVolumeShadow_.Get();shadowPso.VS={shadowVS->GetBufferPointer(),shadowVS->GetBufferSize()};shadowPso.PS={shadowPS->GetBufferPointer(),shadowPS->GetBufferSize()};
+    shadowPso.RasterizerState=CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);shadowPso.RasterizerState.CullMode=D3D12_CULL_MODE_NONE;
+    shadowPso.BlendState=CD3DX12_BLEND_DESC(D3D12_DEFAULT);shadowPso.DepthStencilState=CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
+    shadowPso.PrimitiveTopologyType=D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;shadowPso.SampleDesc.Count=1;shadowPso.SampleMask=UINT_MAX;shadowPso.DSVFormat=DXGI_FORMAT_D32_FLOAT;
+    if(FAILED(dev_->CreateGraphicsPipelineState(&shadowPso,IID_PPV_ARGS(&psoVolumeShadow_))))return false;
     auto computePso = [&](const char* entry,ComPtr<ID3D12PipelineState>& pso) {
         auto cs=CompileShaderFromFile(L"Resources/shaders/FluidVolumeCS.hlsl",entry,"cs_5_0");
         if(!cs) return false;
@@ -160,7 +175,27 @@ bool Renderer::InitFluidVolume() {
     return true;
 }
 
-void Renderer::DrawFluidVolume() {
+void Renderer::DrawFluidVolumeShadow(const Matrix4x4& lightVP) {
+    if(!volumeFrameSettings_||!psoVolumeShadow_||(gpuFluidPhaseMask_&3u)==0)return;
+    struct ShadowConstants {Matrix4x4 vp,inverse;Vector4 bounds;} cb{};
+    cb.vp=lightVP;
+    DirectX::XMFLOAT4X4 matrix{};std::memcpy(&matrix,&lightVP,sizeof(matrix));
+    auto vp=DirectX::XMLoadFloat4x4(&matrix);DirectX::XMStoreFloat4x4(&matrix,DirectX::XMMatrixInverse(nullptr,vp));std::memcpy(&cb.inverse,&matrix,sizeof(matrix));
+    cb.bounds={1,1,-1,-1};
+    for(UINT i=0;i<8;++i){auto lo=volumeShadowLow_,hi=volumeShadowHigh_;auto p=DirectX::XMVectorSet(i&1?hi.x:lo.x,i&2?hi.y:lo.y,i&4?hi.z:lo.z,1);
+        DirectX::XMFLOAT3 clip{};DirectX::XMStoreFloat3(&clip,DirectX::XMVector3TransformCoord(p,vp));
+        cb.bounds.x=(std::min)(cb.bounds.x,clip.x);cb.bounds.y=(std::min)(cb.bounds.y,clip.y);cb.bounds.z=(std::max)(cb.bounds.z,clip.x);cb.bounds.w=(std::max)(cb.bounds.w,clip.y);}
+    cb.bounds.x=(std::max)(-1.f,cb.bounds.x);cb.bounds.y=(std::max)(-1.f,cb.bounds.y);cb.bounds.z=(std::min)(1.f,cb.bounds.z);cb.bounds.w=(std::min)(1.f,cb.bounds.w);
+    if(cb.bounds.x>=cb.bounds.z||cb.bounds.y>=cb.bounds.w)return;
+    auto& ring=upload_[window_->FrameIndex()];UINT offset=ring.Allocate(sizeof(cb),256);if(offset==UINT32_MAX)return;
+    std::memcpy(ring.mapped+offset,&cb,sizeof(cb));
+    list_->SetGraphicsRootSignature(rootSigVolumeShadow_.Get());list_->SetPipelineState(psoVolumeShadow_.Get());
+    list_->SetGraphicsRootConstantBufferView(0,ring.buffer->GetGPUVirtualAddress()+offset);list_->SetGraphicsRootConstantBufferView(1,volumeFrameSettings_);
+    list_->SetGraphicsRootDescriptorTable(2,volumeSrv_[2+volumeHistoryIndex_]);list_->SetGraphicsRootDescriptorTable(3,volumeSrv_[5]);
+    list_->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);list_->DrawInstanced(6,1,0,0);
+}
+
+void Renderer::PrepareFluidVolume() {
     if(!fluidVolumeReady_ || !cbFrameAddr_ || !gpuFluidActiveParticleCount_) return;
     // Player-local domain, snapped to voxel boundaries. Covers y=-8..27.84
     // at ground level; never put the entire grid below the collision floor.
@@ -174,6 +209,7 @@ void Renderer::DrawFluidVolume() {
         origin.y = std::floor(low / kVoxelSize) * kVoxelSize - 4;
     }
     float cell=kVoxelSize;
+    volumeShadowLow_=origin;volumeShadowHigh_=origin+Vector3{kVolumeWidth*cell,kVolumeHeight*cell,kVolumeWidth*cell};
     if(!fluidMorphTargets_.empty()){
         // The former 0.56-unit cells leave a watery body only one or two voxels
         // thick. Fit a finer domain to all active bodies and the real surface.
@@ -186,10 +222,10 @@ void Renderer::DrawFluidVolume() {
                 Vector3 extent{t.shape.x*stretch*1.5f,t.shape.y,t.shape.z*stretch*1.5f};include(t.origin-extent);include(t.origin+extent);
             }else {include(t.origin+Vector3{t.forward.z*t.local.x+t.forward.x*t.local.z,t.local.y,-t.forward.x*t.local.x+t.forward.z*t.local.z});}}
         for(const auto& p:fluidBodySnapshot_.offsets){auto world=p+fluidBodySnapshot_.core;if(std::isfinite(world.x)&&std::isfinite(world.y)&&std::isfinite(world.z)&&std::abs(world.x-center.x)<100&&std::abs(world.y-center.y)<100&&std::abs(world.z-center.z)<100)include(world);}
-        lo=lo-Vector3{1.6f,1.6f,1.6f};hi=hi+Vector3{1.6f,1.6f,1.6f};
-        cell=(std::max)({.18f,(hi.x-lo.x)/(kVolumeWidth-2),(hi.z-lo.z)/(kVolumeWidth-2),(hi.y-lo.y)/(kVolumeHeight-2)});
-        auto middle=(lo+hi)*.5f;
-        origin={std::floor(middle.x/cell)*cell-kVolumeWidth*cell*.5f,std::floor(middle.y/cell)*cell-kVolumeHeight*cell*.5f,std::floor(middle.z/cell)*cell-kVolumeWidth*cell*.5f};
+        const float shadowMargin=1.2f*fluidSamplingScale_;
+        volumeShadowLow_=lo-Vector3{shadowMargin,shadowMargin,shadowMargin};volumeShadowHigh_=hi+Vector3{shadowMargin,shadowMargin,shadowMargin};
+        cell=FluidVolumeDomain::StableCell(FluidVolumeDomain::FitCell(hi.x-lo.x,hi.y-lo.y,hi.z-lo.z,kVolumeWidth,kVolumeHeight,.8f*fluidSamplingScale_,.2f*fluidSamplingScale_),volumeHistoryValid_?volumePreviousVoxelSize_:0);
+        origin={FluidVolumeDomain::Origin(lo.x,hi.x,cell,kVolumeWidth),FluidVolumeDomain::Origin(lo.y,hi.y,cell,kVolumeHeight),FluidVolumeDomain::Origin(lo.z,hi.z,cell,kVolumeWidth)};
     }
     if(std::abs(volumePreviousVoxelSize_-cell)>1e-5f)volumeHistoryValid_=false;
     volumePreviousVoxelSize_=cell;
@@ -201,6 +237,7 @@ void Renderer::DrawFluidVolume() {
         {gpuFluidCorePos_.x,gpuFluidCorePos_.y-1.25f+0.8f*std::clamp(gpuFluidCoreScale_.y,0.0f,1.0f),gpuFluidCorePos_.z},
         gpuFluidCoreMode_>=4.0f ? chronoFluidOpacity_ : 0.0f,
         gpuFluidCoreForward_,slimeFaceCamera_,{},0,slimeGround_,std::clamp(gpuFluidCoreScale_.y,0.f,1.f)};
+    cb.axis=fluidMorphTargets_.empty()?.4f:-.4f; // Non-morph particles use the unscaled hash; filtering resets axis.
     // Match the simulated containment field, including mass, landing squash and slide.
     float scale=std::cbrt(std::clamp(gpuFluidCoreFlowSpeed_/100.f,.05f,2.f));
     float aspect=gpuFluidCoreScale_.x>.1f?std::clamp(gpuFluidCoreScale_.x,.55f,1.6f):1.f;
@@ -208,8 +245,25 @@ void Renderer::DrawFluidVolume() {
     float horizontal=(flatRadius+(1.8f-flatRadius)*cb.playerAir)*scale/std::sqrt(aspect);
     cb.playerRadii={horizontal,(flatHeight+(1.8f-flatHeight)*cb.playerAir)*scale*aspect,horizontal};
     cb.playerMotion=std::clamp(gpuFluidCoreScale_.z,0.f,1.f)*(1-.75f*cb.playerAir);
-    if(!fluidMorphTargets_.empty()&&fluidMorphTargets_[0].shape.w>.5f){const auto& t=fluidMorphTargets_[0];cb.playerBodyCenter=t.origin;cb.playerRadii={t.shape.x,t.shape.y,t.shape.z};cb.playerForward={t.forward.x,0,t.forward.z};cb.playerMotion=0;
-        cb.playerLiquidCore={t.origin.x+t.reserved.z,t.origin.y+t.shape.y*.43f,t.origin.z+t.reserved.w,1};}
+    if(!fluidMorphTargets_.empty()){
+        const auto& t=fluidMorphTargets_[0];
+        UINT mainCount=0;for(const auto& target:fluidMorphTargets_){if(target.forward.y!=0)break;++mainCount;}
+        scale=std::cbrt(275.f*mainCount/(6600.f*(std::max)(t.density,.1f)));
+        cb.playerMorph={t.shape.w,scale,float(mainCount),1};
+        cb.playerFaceCamera=slimeFaceCamera_;cb.playerForward={t.forward.x,0,t.forward.z};cb.playerMotion=0;
+        if(t.shape.w>.5f){
+            cb.playerBodyCenter=t.origin;cb.playerRadii={t.shape.x,t.shape.y,t.shape.z};
+            cb.playerLiquidCore={t.origin.x+t.reserved.z,t.origin.y+t.shape.y*.43f,t.origin.z+t.reserved.w,1};
+        }else{
+            Vector3 lo{1e9f,1e9f,1e9f},hi{-1e9f,-1e9f,-1e9f};
+            for(UINT i=0;i<mainCount;++i){const auto& target=fluidMorphTargets_[i];
+                auto p=target.origin+Vector3{target.forward.z*target.local.x+target.forward.x*target.local.z,target.local.y,-target.forward.x*target.local.x+target.forward.z*target.local.z};
+                lo={(std::min)(lo.x,p.x),(std::min)(lo.y,p.y),(std::min)(lo.z,p.z)};
+                hi={(std::max)(hi.x,p.x),(std::max)(hi.y,p.y),(std::max)(hi.z,p.z)};
+            }
+            cb.playerBodyCenter=(lo+hi)*.5f;cb.playerRadii=(hi-lo)*.5f;
+        }
+    }
     cb.playerSlope.y=scale; // Decoration size depends on mass, never the body stretch.
     if(gpuFluidCoreMode_>=2.0f){
         cb.colors[0].w=chronoFluidOpacity_;
@@ -217,11 +271,14 @@ void Renderer::DrawFluidVolume() {
         cb.colors[0].y+=(1-cb.colors[0].y)*chronoFluidFlash_;
         cb.colors[0].z+=(1-cb.colors[0].z)*chronoFluidFlash_;
     }
+    auto& fluidUpload=upload_[window_->FrameIndex()];
+    uint32_t settingsOffset=fluidUpload.Allocate(sizeof(cb),256);
+    if(settingsOffset==UINT32_MAX)return;
     auto transition=[&](ID3D12Resource* resource,D3D12_RESOURCE_STATES before,D3D12_RESOURCE_STATES after) {
         auto b=CD3DX12_RESOURCE_BARRIER::Transition(resource,before,after); list_->ResourceBarrier(1,&b);
     };
     auto uavBarrier=[&]() { auto b=CD3DX12_RESOURCE_BARRIER::UAV(nullptr); list_->ResourceBarrier(1,&b); };
-    ID3D12Resource* simulationReads[]={gpuFluidSortedParticlesBuffer_.Get(),gpuFluidOriginalIndicesBuffer_.Get(),gpuFluidGridCountBuffer_.Get(),gpuFluidGridOffsetBuffer_.Get()};
+    ID3D12Resource* simulationReads[]={gpuFluidSortedParticlesBuffer_.Get(),gpuFluidOriginalIndicesBuffer_.Get(),gpuFluidGridCountBuffer_.Get(),gpuFluidGridOffsetBuffer_.Get(),gpuFluidBuffer_.Get()};
     for(auto resource:simulationReads) transition(resource,D3D12_RESOURCE_STATE_UNORDERED_ACCESS,D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
     ID3D12DescriptorHeap* heaps[]={srvHeap_}; list_->SetDescriptorHeaps(1,heaps);
     list_->SetComputeRootSignature(rootSigVolumeCompute_.Get());
@@ -269,8 +326,22 @@ void Renderer::DrawFluidVolume() {
     transition(volumeTextures_[5].Get(),kVolumeRead,D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
     list_->SetPipelineState(psoVolumeOccupancy_.Get()); list_->Dispatch(kVolumeWidth/16,kVolumeHeight/16,kVolumeWidth/16);
     transition(volumeTextures_[5].Get(),D3D12_RESOURCE_STATE_UNORDERED_ACCESS,kVolumeRead);
-    transition(volumeShapes_.Get(),D3D12_RESOURCE_STATE_UNORDERED_ACCESS,kVolumeRead);
     EndFluidProfile(FluidFiltering);
+    std::memcpy(fluidUpload.mapped+settingsOffset,&cb,sizeof(cb));
+    volumeFrameSettings_=fluidUpload.buffer->GetGPUVirtualAddress()+settingsOffset;
+    volumeDrawCount_=cb.count+(cb.playerDecoration>0.001f?224+24+2:0);
+    for(auto resource:simulationReads)transition(resource,D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+    volumeHistoryIndex_=1-volumeHistoryIndex_;volumePreviousOrigin_=origin;volumeHistoryValid_=true;
+}
+
+void Renderer::DrawFluidVolume() {
+    if(!volumeFrameSettings_)return;
+    auto transition=[&](ID3D12Resource* resource,D3D12_RESOURCE_STATES before,D3D12_RESOURCE_STATES after){auto b=CD3DX12_RESOURCE_BARRIER::Transition(resource,before,after);list_->ResourceBarrier(1,&b);};
+    auto& fluidUpload=upload_[window_->FrameIndex()];
+    ID3D12Resource* simulationReads[]={gpuFluidSortedParticlesBuffer_.Get(),gpuFluidBuffer_.Get()};
+    for(auto resource:simulationReads)transition(resource,D3D12_RESOURCE_STATE_UNORDERED_ACCESS,kVolumeRead);
+    transition(volumeShapes_.Get(),D3D12_RESOURCE_STATE_UNORDERED_ACCESS,kVolumeRead);
+    const UINT historyDestination=2+volumeHistoryIndex_;
     BeginFluidProfile(FluidRaymarch);
     SnapshotSceneForRefraction(list_);
     transition(ppSceneDepth_.Get(),ppDepthState_,D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
@@ -283,13 +354,12 @@ void Renderer::DrawFluidVolume() {
     // Keep the world's material clock frozen, but give fluid decorations their
     // own visual time so interior and escaped bubbles keep rising in the menu.
     auto fluidCamera=cbFrame_;fluidCamera.time=fluidDecorationTime_;
-    auto& fluidUpload=upload_[window_->FrameIndex()];
     uint32_t cameraOffset=fluidUpload.Allocate(sizeof(fluidCamera),256);
     if(cameraOffset!=UINT32_MAX){
         std::memcpy(fluidUpload.mapped+cameraOffset,&fluidCamera,sizeof(fluidCamera));
         list_->SetGraphicsRootConstantBufferView(0,fluidUpload.buffer->GetGPUVirtualAddress()+cameraOffset);
     }else list_->SetGraphicsRootConstantBufferView(0,cbFrameAddr_);
-    list_->SetGraphicsRoot32BitConstants(1,kVolumeDrawConstantCount,&cb,0);
+    list_->SetGraphicsRootConstantBufferView(1,volumeFrameSettings_);
     list_->SetGraphicsRootDescriptorTable(2,volumeSrv_[historyDestination]);
     list_->SetGraphicsRootDescriptorTable(3,backdropSrv_);
     list_->SetGraphicsRootDescriptorTable(4,ppDepthSrvGpu_);
@@ -299,6 +369,7 @@ void Renderer::DrawFluidVolume() {
     // RaymarchPS does not reference t6; SprayPS uses it after the RTV transition.
     list_->SetGraphicsRootDescriptorTable(8,volumeSurfaceDepthSrv_);
     list_->SetGraphicsRootDescriptorTable(9,volumeSrv_[5]);
+    list_->SetGraphicsRootShaderResourceView(10,gpuFluidBuffer_->GetGPUVirtualAddress());
     list_->SetPipelineState(psoVolumeRaymarch_.Get());
     list_->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     list_->DrawInstanced(3,1,0,0);
@@ -308,17 +379,15 @@ void Renderer::DrawFluidVolume() {
     if(fluidVolumeDebugMode_==0) {
         BeginFluidProfile(FluidImpostors);
         list_->SetPipelineState(psoVolumeSpray_.Get());
-        list_->DrawInstanced(6,cb.count+(cb.playerDecoration>0.001f?224+24+2:0),0,0);
+        list_->DrawInstanced(6,volumeDrawCount_,0,0);
         EndFluidProfile(FluidImpostors);
     }
     transition(ppSceneDepth_.Get(),ppDepthState_,D3D12_RESOURCE_STATE_DEPTH_WRITE);
     ppDepthState_=D3D12_RESOURCE_STATE_DEPTH_WRITE;
     list_->OMSetRenderTargets(1,&ppRtv_,FALSE,&ppDepthDsv_);
-    for(auto resource:simulationReads) transition(resource,D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+    for(auto resource:simulationReads) transition(resource,kVolumeRead,D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
     transition(volumeShapes_.Get(),kVolumeRead,D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-    volumeHistoryIndex_=1-volumeHistoryIndex_;
-    volumePreviousOrigin_=origin;
-    volumeHistoryValid_=true;
+
     list_->SetGraphicsRootSignature(rootSig3D_.Get());
     list_->SetGraphicsRootConstantBufferView(0,cbFrameAddr_);
     list_->SetGraphicsRootConstantBufferView(2,cbLightAddr_);

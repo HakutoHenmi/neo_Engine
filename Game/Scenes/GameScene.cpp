@@ -384,6 +384,9 @@ void GameScene::Update() {
 
 	if (dt > 1.0f / 10.0f)
 		dt = 1.0f / 60.0f; // 極端なラグ対策
+	// Chrono's controller, camera and uploaded fluid targets share the engine clock.
+	// A second stopwatch also included variable BeginFrame/editor work in movement.
+	if(chronoMode_)dt=std::clamp(Engine::TimeManager::GetInstance().GetUnscaledDeltaTime(),0.f,.05f);
 
 	// コンテキストを更新
 	ctx_.dt = dt;

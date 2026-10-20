@@ -26,6 +26,141 @@ class SlimeLifeValidationScene final:public Game::GameScene {
     bool engulfVolume_=false;
     std::array<bool,4> handImages_{};
     std::ofstream trace_;
+    std::array<bool,3> growthForms_{};
+    std::array<int,3> growthSwings_{},growthHits_{};
+    uint64_t growthLastSwing_=0;
+    bool growthSingleSweep_=true,growthHammerAttackImage_=false,growthSwordAttackImage_=false;
+    bool growthPersistent_=true,growthManualReturn_=true;
+    bool growthTackle_=false,growthInitial_=false,growthEarlyImage_=false,growthLateImage_=false;
+    float growthStartScale_=1;
+    int stressPhase_=0,stressFrame_=0;
+    std::vector<double> stressTimes_;
+    std::array<double,Engine::Renderer::kFluidProfileStageCount> stressGpu_{};
+    std::chrono::steady_clock::time_point stressPrevious_{};
+    std::ofstream stressReport_;
+    int motionPhase_=0,motionFrame_=0;
+    Game::Chrono::Vec motionOrigin_{},motionPrevious_{};
+    float motionDistance_=0;
+    float motionAge_=0,motionCameraError_=0,motionClockError_=0,motionMinDt_=1,motionMaxDt_=0;
+    void UpdateMotion(){
+        using namespace Game;using namespace Game::Chrono;
+        constexpr float masses[]={100,544,1200,544,1200,1200,1200};
+        constexpr LifeAction forms[]={LifeAction::Idle,LifeAction::Idle,LifeAction::Idle,LifeAction::Hammer,LifeAction::Hammer,LifeAction::Sword,LifeAction::Plane};
+        auto player=FindObjectByName("Player");auto& input=GetComponents().get<ControlFrame>(player);input={};input.pitch=.3f;input.move={.25f,0,1};
+        auto& life=const_cast<SlimeLife&>(GetChronoSystem()->LifeState());
+        if(motionFrame_==0){if(motionPhase_==0)motionOrigin_=life.bodies[0].at;life.bodies={};auto& body=life.bodies[0];body.at=motionOrigin_;body.mass=masses[motionPhase_];body.health=body.maxHealth=100;body.particles=6600;body.age=2;
+            GetComponents().get<Player>(player).velocity={};motionPrevious_=motionOrigin_;motionDistance_=0;
+            if(forms[motionPhase_]!=LifeAction::Idle)LifeEnterWeapon(body,forms[motionPhase_],{0,0,1});
+            life.absorbedMass=masses[motionPhase_]-100;GetComponents().get<InkPlayer>(player).swarmKills=0;
+            life.props.clear();++life.revision;motionAge_=0;motionCameraError_=motionClockError_=0;motionMinDt_=1;motionMaxDt_=0;}
+        GetComponents().get<Player>(player).invincible=60;
+        float before=life.age;Game::GameScene::Update();float dt=life.age-before;motionAge_+=dt;++motionFrame_;
+        motionDistance_+=LifeDistance(motionPrevious_,life.bodies[0].at);motionPrevious_=life.bodies[0].at;
+        auto* renderer=GetRenderer();if(motionFrame_==1){renderer->fluidMorphSeedPending_=true;renderer->fluidMorphRetargetMask_=Engine::Renderer::kFluidMorphAllBodies;}
+        if(motionAge_>2){float wanted=std::max(0.f,(LifeScale(masses[motionPhase_])-1)*6);
+            motionCameraError_=std::max(motionCameraError_,std::abs(GetComponents().get<InkPlayer>(player).cameraPullback-wanted));
+            motionClockError_=std::max(motionClockError_,std::abs(renderer->fluidMorphDt_-dt));motionMinDt_=std::min(motionMinDt_,dt);motionMaxDt_=std::max(motionMaxDt_,dt);}
+        if(motionFrame_==190&&motionPhase_==3)Capture(L"tests/out/slime-life-shadow-moving.png");
+        if(motionFrame_<200){Sleep(motionFrame_%2?3:18);return;}
+        bool pass=motionCameraError_<.002f&&motionClockError_<.00001f&&motionDistance_>20;
+        std::ofstream report("tests/out/slime-life-motion.txt",motionPhase_?std::ios::app:std::ios::out);
+        report<<"phase="<<motionPhase_<<" mass="<<masses[motionPhase_]<<" form="<<int(forms[motionPhase_])<<" distance="<<motionDistance_<<" dt_min="<<motionMinDt_<<" dt_max="<<motionMaxDt_<<" camera_distance_error="<<motionCameraError_<<" fluid_clock_error="<<motionClockError_<<" pass="<<pass<<'\n';
+        if(!pass){report<<"FAIL movement camera/solver clocks\n";report.flush();PostQuitMessage(2);return;}
+        if(++motionPhase_==7){report<<"PASS variable-frame movement, growth camera and fluid clocks\n";report.flush();PostQuitMessage(0);return;}motionFrame_=0;
+    }
+    void UpdateStress(){
+        using namespace Game;using namespace Game::Chrono;
+        constexpr float masses[]={100,300,600,1200,1200,1200,960};
+        auto now=std::chrono::steady_clock::now();double ms=stressPrevious_.time_since_epoch().count()?std::chrono::duration<double,std::milli>(now-stressPrevious_).count():0;stressPrevious_=now;
+        auto player=FindObjectByName("Player");auto& input=GetComponents().get<ControlFrame>(player);input={};input.pitch=.3f;
+        auto& life=const_cast<SlimeLife&>(GetChronoSystem()->LifeState());
+        if(stressFrame_==0){
+            if(!stressReport_.is_open())stressReport_.open("tests/out/slime-life-stress.txt");
+            auto at=life.bodies[0].at;life.bodies={};auto& body=life.bodies[0];body.at=at;body.mass=masses[stressPhase_];body.health=body.maxHealth=100;body.particles=6600;body.age=2;
+            if(stressPhase_==4||stressPhase_==5)LifeEnterWeapon(body,stressPhase_==4?LifeAction::Hammer:LifeAction::Sword,{0,0,1});
+            if(stressPhase_==6){body.particles=4200;for(size_t i=1;i<LifeBodyCount;++i){auto& child=life.bodies[i];float angle=float(i)*6.2831853f/12;child.at=at+Vec{std::sin(angle)*12,0,std::cos(angle)*12};child.mass=20;child.health=child.maxHealth=20;child.particles=200;child.cooldown=60;}}
+            life.absorbedMass=life.TotalMass()-100;life.props.clear();++life.revision;stressTimes_.clear();stressGpu_={};
+        }
+        GetComponents().get<Player>(player).invincible=60;
+        if(stressFrame_>=60&&stressFrame_<120){input.move={.35f,0,1};input.yaw=float(stressFrame_-60)*.012f;}
+        Game::GameScene::Update();++stressFrame_;
+        auto* renderer=GetRenderer();renderer->SetFluidProfilerEnabled(true);
+        if(stressFrame_==1){renderer->fluidMorphSeedPending_=true;renderer->fluidMorphRetargetMask_=Engine::Renderer::kFluidMorphAllBodies;}
+        if(stressFrame_>48){stressTimes_.push_back(ms);const auto& gpu=renderer->GetFluidProfileStats();for(size_t i=0;i<stressGpu_.size();++i)stressGpu_[i]+=gpu.lastMs[i];}
+        if(stressFrame_<160)return;
+        std::sort(stressTimes_.begin(),stressTimes_.end());double total=0;for(auto t:stressTimes_)total+=t;
+        bool finite=true;for(auto p:renderer->GetFluidBodySnapshot().offsets)finite&=std::isfinite(p.x)&&std::isfinite(p.y)&&std::isfinite(p.z)&&std::abs(p.x)<100&&std::abs(p.y)<100&&std::abs(p.z)<100;
+        stressReport_<<"phase="<<stressPhase_<<" mass="<<masses[stressPhase_]<<" samples="<<stressTimes_.size()<<" frame_mean="<<total/stressTimes_.size()<<" frame_p95="<<stressTimes_[stressTimes_.size()*95/100]<<" cell="<<renderer->volumePreviousVoxelSize_<<" finite="<<finite;
+        for(size_t i=0;i<stressGpu_.size();++i)stressReport_<<" gpu"<<i<<"="<<stressGpu_[i]/stressTimes_.size();stressReport_<<'\n';stressReport_.flush();
+        if(stressPhase_==3)Capture(L"tests/out/slime-life-max-size.png");
+        if(!finite){stressReport_<<"FAIL nonfinite/escaped particles\n";stressReport_.flush();PostQuitMessage(2);return;}
+        if(++stressPhase_==7){stressReport_<<"PASS all growth/weapon/12-child stress phases\n";stressReport_.flush();PostQuitMessage(0);return;}stressFrame_=0;
+    }
+    void UpdateGrowth(){
+        using namespace Game;using namespace Game::Chrono;
+        auto player=FindObjectByName("Player");auto& input=GetComponents().get<ControlFrame>(player);input={};input.pitch=.3f;
+        const auto& before=GetChronoSystem()->LifeState();const auto& body=before.bodies[0];
+        auto beforeAction=body.action;float beforeActionAge=body.actionAge;int beforeHits=before.hammerHits;
+        GetComponents().get<Player>(player).invincible=60; // Observe progression without damage splits changing size.
+        if(LifeWeaponForm(body.action)){
+            const SwarmEnemy* target=nullptr;float nearest=1e9f;
+            for(const auto& enemy:GetChronoSystem()->LifeEnemies())if(SwarmAlive(enemy)){float d=LifeDistance(enemy.at,body.at);if(d<nearest){target=&enemy;nearest=d;}}
+            if(target){auto direction=target->at-body.at;input.yaw=std::atan2(direction.x,direction.z)+(body.action==LifeAction::Plane?3.14159265f:0);}
+            int form=int(body.action)-int(LifeAction::Hammer);
+            if(body.actionAge<1.1f||(body.actionAge>2&&body.actionAge<3.5f))input.move={.2f,0,.6f};
+            if(body.actionAge>1.5f){
+                input.attack=body.action==LifeAction::Hammer?body.actionAge<4.5f:frames_%6<2;
+                if(body.actionAge>4.8f&&growthSwings_[size_t(form)]>=3)input.returnToSlime=true;
+            }
+        }
+        if(frames_==0){growthInitial_=before.ChildCount()==0&&before.ChildLimit()==2&&body.mass==LifeStartMass;growthStartScale_=LifeScale(body.mass);}
+        if(frames_==2){input.attack=true;input.morphForm=3;}
+        else if(frames_>10&&body.action==LifeAction::Idle&&body.cooldown<=0){
+            int test=-1;for(int i=0;i<3;++i)if(!growthForms_[size_t(i)]&&LifeCanMorph(body.mass,LifeAction(int(LifeAction::Hammer)+i))){test=i;break;}
+            if(test>=0){input.morphForm=test+1;input.attack=!before.previousFire;}
+            else {const LifeCollectible* target=nullptr;float nearest=1e9f;
+                for(const auto& prop:before.props)if(prop.active&&LifeCanAbsorb(body.mass,prop.required)){
+                    float distance=LifeDistance(body.at,prop.at);if(distance<nearest){nearest=distance;target=&prop;}}
+                if(target){auto delta=target->at-body.at;input.yaw=std::atan2(delta.x,delta.z);
+                    if(nearest>before.recipe.AbsorbRange()*LifeScale(body.mass)*.65f)input.move={0,0,1};
+                    else input.absorb=!before.previousAbsorb;}
+            }
+        }
+        Game::GameScene::Update();++frames_;
+        const auto& after=GetChronoSystem()->LifeState();const auto& grown=after.bodies[0];
+        growthTackle_|=after.tackleTime>0&&grown.mass<LifeHammerMass&&grown.action!=LifeAction::Plane;
+        for(int i=0;i<3;++i)if(grown.action==LifeAction(int(LifeAction::Hammer)+i)){
+            if(!LifeCanMorph(grown.mass,grown.action)){std::ofstream("tests/out/slime-life-smoke.txt")<<"FAIL locked weapon entered";PostQuitMessage(2);return;}
+            if(grown.weapon.active&&grown.attackSerial!=growthLastSwing_){growthLastSwing_=grown.attackSerial;++growthSwings_[size_t(i)];}
+            if(i==1&&grown.weapon.active)growthSingleSweep_&=grown.weapon.age<=LifeWeaponDuration(LifeAction::Sword)+.05f;
+            if(grown.weapon.active&&grown.weapon.age>=.29f&&grown.weapon.age<.35f){
+                if(i==0&&!growthHammerAttackImage_){Capture(L"tests/out/slime-life-hammer-downswing.png");growthHammerAttackImage_=true;}
+                if(i==1&&!growthSwordAttackImage_){Capture(L"tests/out/slime-life-sword-sweep.png");growthSwordAttackImage_=true;}}
+            if(grown.actionAge>1.25f&&grown.actionAge<1.5f&&!growthForms_[size_t(i)]){
+                const wchar_t* images[]={L"tests/out/slime-life-held-hammer.png",L"tests/out/slime-life-held-sword.png",L"tests/out/slime-life-held-plane.png"};
+                if(beforeActionAge<=1.25f)Capture(images[i]);}
+        }
+        if(LifeWeaponForm(beforeAction)){
+            int form=int(beforeAction)-int(LifeAction::Hammer);growthHits_[size_t(form)]+=after.hammerHits-beforeHits;
+            growthPersistent_&=grown.action==beforeAction||input.returnToSlime;
+        }
+        if(input.returnToSlime){
+            int selected=int(beforeAction)-int(LifeAction::Hammer);
+            if(selected>=0&&selected<3){growthForms_[size_t(selected)]=true;growthManualReturn_&=grown.action==LifeAction::Restore&&!grown.weapon.active;}
+        }
+        growthInitial_&=after.ChildCount()==0&&after.splits==0;
+        if(frames_>120&&!growthEarlyImage_){Capture(L"tests/out/slime-life-growth-early.png");growthEarlyImage_=true;}
+        if(grown.mass>=600&&growthForms_[2]&&grown.action==LifeAction::Idle&&!growthLateImage_){Capture(L"tests/out/slime-life-growth-late.png");growthLateImage_=true;}
+        if(frames_%60==0){trace_<<"growth mass="<<grown.mass<<" children="<<after.ChildCount()<<" absorbed="<<after.absorbedMass<<" forms="<<growthForms_[0]<<growthForms_[1]<<growthForms_[2]<<" action="<<int(grown.action)<<" ready="<<grown.weapon.ready<<" taps="<<growthSwings_[0]<<" sweeps="<<growthSwings_[1]<<'\n';trace_.flush();}
+        bool complete=growthLateImage_&&growthForms_[0]&&growthForms_[1];
+        float real=std::chrono::duration<float>(std::chrono::steady_clock::now()-start_).count();
+        if(complete||real>200||GetChronoSystem()->Finished()){
+            bool pass=complete&&growthTackle_&&growthInitial_&&growthPersistent_&&growthManualReturn_&&growthSingleSweep_&&growthSwings_[1]>=3&&growthHammerAttackImage_&&growthSwordAttackImage_&&LifeScale(grown.mass)>growthStartScale_*2.1f;
+            uint32_t particles=0;for(const auto& b:after.bodies)particles+=b.particles;pass&=particles==Engine::Renderer::kPlayerFluidParticles;
+            std::ofstream("tests/out/slime-life-smoke.txt")<<(pass?"PASS":"FAIL")<<" growth_initial="<<growthInitial_<<" early_tackle="<<growthTackle_<<" mass="<<grown.mass<<" children="<<after.ChildCount()<<" scale="<<LifeScale(grown.mass)<<" hammer="<<growthForms_[0]<<" sword="<<growthForms_[1]<<" plane="<<growthForms_[2]<<" particles="<<particles<<" collected="<<after.absorbedMass<<" persistent="<<growthPersistent_<<" manual_return="<<growthManualReturn_<<" hammer_taps="<<growthSwings_[0]<<" sword_single_sweeps="<<growthSwings_[1]<<" plane_boosts="<<growthSwings_[2]<<" hammer_hits="<<growthHits_[0]<<" sword_hits="<<growthHits_[1];
+            PostQuitMessage(pass?0:2);
+        }
+    }
     void Capture(const wchar_t* path){
         DirectX::ScratchImage image;auto result=DirectX::CaptureTexture(window_->Queue(),window_->GetCurrentBackBufferResource(),false,image,D3D12_RESOURCE_STATE_PRESENT,D3D12_RESOURCE_STATE_PRESENT);
         if(SUCCEEDED(result))result=DirectX::SaveToWICFile(*image.GetImage(0,0,0),DirectX::WIC_FLAGS_NONE,DirectX::GetWICCodec(DirectX::WIC_CODEC_PNG),path);
@@ -39,6 +174,11 @@ public:
     }
     void Update()override {
         using namespace Game;using namespace Game::Chrono;
+        if(wcsstr(GetCommandLineW(),L"--slime-life-motion")){UpdateMotion();return;}
+        if(wcsstr(GetCommandLineW(),L"--slime-life-stress")){UpdateStress();return;}
+        // The complete gameplay smoke follows the new size-gated progression.
+        // Lab, mixture and turn diagnostics keep their independent scenarios.
+        if(!wcsstr(GetCommandLineW(),L"--slime-life-lab-only")&&!wcsstr(GetCommandLineW(),L"--slime-life-turn-only")&&!wcsstr(GetCommandLineW(),L"--slime-life-mixture-only")){UpdateGrowth();return;}
         auto player=FindObjectByName("Player");auto& input=GetComponents().get<ControlFrame>(player);input={};input.pitch=.3f;
         const auto& life=GetChronoSystem()->LifeState();const auto& body=life.bodies[0];elapsed_=life.age;
         if(elapsed_>.6f&&elapsed_<.8f)noAuto_=life.absorbed==0;

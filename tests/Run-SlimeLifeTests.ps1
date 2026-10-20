@@ -13,4 +13,6 @@ try {
     if($LASTEXITCODE){throw 'Slime life rule tests failed'}
     & ./tests/Run-FluidTests.ps1 -Case '--morph-only'
     if($LASTEXITCODE){throw 'Point-cloud GPU tests failed'}
+    & ./tests/Run-FluidTests.ps1 -Case '--surface-only'
+    if($LASTEXITCODE){throw 'Fluid surface rendering tests failed'}
 } finally {Pop-Location}

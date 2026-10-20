@@ -1,5 +1,34 @@
+#include "FluidScaleTests.inl"
+void TestWeaponSubsteps(Gpu& g){
+    struct Goal {XMFLOAT3 local;float blend;XMFLOAT3 origin;float density;XMFLOAT3 forward;float omega;XMFLOAT4 color,material,motion,shape,reserved;};
+    Goal goal{{0,3,0},1,{},275,{0,0,1},32,{.4f,.8f,.1f,1},{},{},{0,0,0,-4},{12,0,0,-1}};
+    Particle initial=MakeParticle(0,3,0,0);initial.density=275;initial.velocity={12,0,0};
+    UINT zero=0;auto particles=g.MakeBuffer(1,64,&initial),sorted=g.MakeBuffer(1,64,&initial),indices=g.MakeBuffer(1,4,&zero),scratch=g.MakeBuffer(1,64),morph=g.MakeBuffer(16384,48);
+    auto counts=g.MakeBuffer(65536,4),offsets=g.MakeBuffer(65536,4),targets=g.MakeBuffer(1,sizeof(Goal),&goal),aabb=g.MakeBuffer(128,32);
+    std::array<UINT,48> cb{};auto f=[&](UINT i,float value){memcpy(&cb[i],&value,4);};cb[3]=cb[20]=1;f(0,1.f/120);f(31,4);f(35,1);f(47,1);auto constants=g.Constant(192);
+    auto measure=[&](int hz,bool interpolate){Particle particle=initial;double sum=0,square=0;int measured=0;float elapsed=0;
+        int frames=hz?hz:60;
+        for(int frame=0;frame<frames;++frame){const float varying[]={.018f,.041f,.029f,.05f};float frameDt=hz?1.f/hz:varying[frame%4];elapsed+=frameDt;goal.origin.x=12*elapsed;
+            int substeps=std::max(1,int(std::ceil(frameDt*(hz?120.f:100.f)-.0001f)));float stepDt=frameDt/substeps;f(0,stepDt);
+            g.Unbind();g.context->UpdateSubresource(targets.resource.Get(),0,nullptr,&goal,0,0);
+            for(int step=0;step<substeps;++step){f(12,interpolate?frameDt-stepDt*(step+1):0);
+                g.Unbind();g.context->UpdateSubresource(constants.Get(),0,nullptr,cb.data(),0,0);g.context->UpdateSubresource(sorted.resource.Get(),0,nullptr,&particle,0,0);
+                auto c=constants.Get();g.context->CSSetConstantBuffers(0,1,&c);
+                ID3D11UnorderedAccessView* u[]={particles.uav.Get(),counts.uav.Get(),offsets.uav.Get(),sorted.uav.Get(),indices.uav.Get(),nullptr,scratch.uav.Get(),morph.uav.Get()};g.context->CSSetUnorderedAccessViews(0,8,u,nullptr);
+                ID3D11ShaderResourceView* s[]={aabb.srv.Get(),targets.srv.Get()};g.context->CSSetShaderResources(0,2,s);g.Dispatch("CalcForce",1);g.Dispatch("WriteBack",1);particle=g.Read<Particle>(particles)[0];
+                if(frame>frames/2){sum+=particle.velocity.x;square+=double(particle.velocity.x)*particle.velocity.x;++measured;}
+            }}
+        float deviation=float(std::sqrt(std::max(0.,square/measured-std::pow(sum/measured,2.))));
+        printf("weapon travel %dHz %s: speed=%.4f jitter=%.5f\n",hz,interpolate?"substep path":"frame-end goal",sum/measured,deviation);
+        return deviation;
+    };
+    float staircase=measure(30,false);for(int hz:{30,60,120,0}){float smooth=measure(hz,true);Require(smooth<.01f&&smooth<staircase*.1f,"weapon substeps still chase a jumping frame-end goal");}
+    puts("PASS weapon travel: 30/60/120Hz and irregular 18-50 ms frames remove speed pulses");
+}
 void TestFluidMorph(Gpu& g){
     for(auto entry:{"MorphKeys","MorphSort","MorphAssign","SavePrevious","ClearOriginalIndices","ClearGridCount","CountParticles","PrefixSum","SortParticles","SortParticlesVelocity","CalcDensity","CalcForce","WriteBack","CalcDeltaP","ApplyDeltaP","UpdateVelocity"})g.Kernel(entry,true);
+    TestWeaponSubsteps(g);
+    TestScaleInvariantDensity(g);
     struct Goal {XMFLOAT3 local;float blend;XMFLOAT3 origin;float density;XMFLOAT3 forward;float omega;XMFLOAT4 color;XMFLOAT4 material,motion,shape,reserved;};
     struct Entry {XMFLOAT3 start;UINT target;XMFLOAT3 previous;UINT key;UINT source,owner;XMFLOAT2 unused;};
     static_assert(sizeof(Goal)==128&&sizeof(Entry)==48);
@@ -33,6 +62,7 @@ void TestFluidMorph(Gpu& g){
     auto output=g.Read<Particle>(particles);auto after=g.Read<Entry>(morph);double error=0;
     for(UINT i=0;i<count;++i){Require(assigned[8192+i].target==after[8192+i].target,"spatial sorting changed assignment");auto t=goals[after[8192+i].target];auto p=output[i].position;
         Require(std::isfinite(p.x)&&std::isfinite(p.y)&&std::isfinite(output[i].velocity.z),"morph became nonfinite");Require(output[i].color.w>.9f&&p.y>-500,"inactive morph slot was not restored");
+        Require(output[i].pad.x==1000.f+float(i/(count/2))&&output[i].pad.y==t.density,"render ownership or stable sample volume lost after sorting");
         float x=p.x-t.origin.x-t.local.x,y=p.y-t.origin.y-t.local.y,z=p.z-t.local.z;error+=x*x+y*y+z*z;}
     float rms=float(std::sqrt(error/count));Require(rms<.65f,"spring failed to form target with PBF enabled");
     printf("PASS point-cloud GPU: unique assignments, two owners, persistent IDs, PBF spring formation RMS=%.4f\n",rms);
@@ -91,6 +121,23 @@ void TestFluidMorph(Gpu& g){
     auto led=g.Read<Particle>(particles);
     Require(led[0].velocity.x<0&&led[1].velocity.x>0,"core and outer liquid reverse together instead of following with inertia");
     printf("PASS liquid core GPU: no rigid transport, reversing core %.3f precedes outer liquid %.3f\n",led[0].velocity.x,led[1].velocity.x);
+    // Sustained forward travel must keep a crown in front of the core, rather
+    // than pushing the leading liquid into a thin ground-level sheet.
+    auto frontCrown=[&](float speed){
+        for(UINT i=0;i<count;++i){UINT owner=i/(count/2),local=i%(count/2);auto p=rest[local];float x=owner==0?-5.f:5.f;
+            goals[i]={{p.x*scale,p.y*scale,p.z*scale},0,{x,0,0},275,{0,float(owner),1},59,{.4f,.8f,.1f,1},{4,40,23,0},{0,0,speed,0},{2.55f*scale,1.8f*scale,2.55f*scale,1},{-.088f,0,0,.3f*2.55f*scale}};
+            input[i]={};input[i].position={x+p.x*scale,std::max(.15f,p.y*scale),p.z*scale};input[i].color={.4f,.8f,.1f,1};input[i].velocity.z=speed;}
+        g.Unbind();g.context->UpdateSubresource(particles.resource.Get(),0,nullptr,input.data(),0,0);f(0,1.f/120);
+        for(int frame=0;frame<240;++frame){for(auto& t:goals)t.origin.z=speed*float(frame+1)/120;
+            g.Unbind();g.context->UpdateSubresource(targets.resource.Get(),0,nullptr,goals.data(),0,0);bind();g.Dispatch("SavePrevious",count/64);grid();g.Dispatch("CalcDensity",count/64);g.Dispatch("CalcForce",count/64);g.Dispatch("WriteBack",count/64);
+            for(int iteration=0;iteration<3;++iteration){grid();g.Dispatch("CalcDensity",count/64);g.Dispatch("CalcDeltaP",count/64);g.Dispatch("ApplyDeltaP",count/64);}grid(true);g.Dispatch("UpdateVelocity",count/64);g.Dispatch("WriteBack",count/64);}
+        float crown=0;UINT front=0;for(auto p:g.Read<Particle>(particles)){
+            Require(std::isfinite(p.position.x)&&std::isfinite(p.position.y)&&std::isfinite(p.position.z),"forward liquid became nonfinite");
+            if(p.position.z-speed*2>.2f*2.55f*scale){crown=std::max(crown,p.position.y);++front;}}
+        printf("forward speed=%.2f crown=%.3f front=%u\n",speed,crown,front);return XMFLOAT2{crown,float(front)};
+    };
+    auto restingFront=frontCrown(0),movingFront=frontCrown(6);
+    Require(movingFront.x>restingFront.x*.8f&&movingFront.y>restingFront.y*.4f,"forward crown collapses or loses its liquid compared with rest");
     auto handCloud=Engine::FluidShape::SampleEngulf(rest);
     for(UINT i=0;i<count;++i){UINT owner=i/(count/2),local=i%(count/2);float x=owner==0?-5.f:5.f;auto p=rest[local];
         goals[i]={{p.x*scale,p.y*scale,p.z*scale},0,{x,2,0},275,{0,float(owner),1},36,{.4f,.8f,.1f,1},{4,40,50,0},{},{},{}};
@@ -107,4 +154,50 @@ void TestFluidMorph(Gpu& g){
     Require(handError<1.25f&&handHeight>2.8f,"PBF cannot form the tall two-handed engulf pose");
     for(auto p:g.Read<Particle>(particles))Require(std::isfinite(p.position.x)&&std::isfinite(p.position.y)&&p.color.w>.9f,"hand animation loses particles or becomes nonfinite");
     printf("PASS engulf hands GPU: two owners, volumetric reach/wrap/pull, height %.2f, formation RMS %.3f\n",handHeight,handError);
+    // Animate the same production poses used for collision, without reassigning
+    // individual particles between repeated swings.
+    auto weaponMotion=[&](Game::Chrono::LifeAction form,const std::vector<Engine::FluidShape::Point>& cloud){
+        using namespace Game::Chrono;
+        for(UINT i=0;i<count;++i){UINT owner=i/(count/2);auto p=cloud[i%(count/2)];auto pose=LifeWeaponPose(form,{p.x,p.y,p.z},false,0);float x=(owner==0?-1.f:1.f)*(5+10*scale);
+            goals[i]={{pose.x*scale,pose.y*scale,pose.z*scale},1,{x,2,0},275,{0,float(owner),1},80,{.4f,.8f,.1f,1},{4,40,50,0},{},{},{}};
+            input[i]={};input[i].position={x+pose.x*scale,2+pose.y*scale,pose.z*scale};input[i].color={.4f,.8f,.1f,1};}
+        g.Unbind();g.context->UpdateSubresource(targets.resource.Get(),0,nullptr,goals.data(),0,0);g.context->UpdateSubresource(particles.resource.Get(),0,nullptr,input.data(),0,0);f(7,15);
+        bind();g.Dispatch("MorphKeys",128);for(UINT width=2;width<=8192;width*=2)for(UINT stride=width/2;stride;stride/=2){cb[1]=stride;cb[2]=width;bind();g.Dispatch("MorphSort",128);}cb[1]=cb[2]=0;bind();g.Dispatch("MorphAssign",count/64);f(7,0);
+        auto assignment=g.Read<Entry>(morph);float worst=0;
+        for(int swing=-1;swing<3;++swing){float duration=swing<0?1.f:LifeWeaponDuration(form);int frames=int(std::ceil(duration*120));
+            for(int frame=0;frame<=frames;++frame){float age=std::min(duration,float(frame)/120);
+                LifeBody body;body.action=form;body.age=age+float(swing+1);body.mass=100*scale*scale*(scale<=1?scale:1);body.weapon.active=swing>=0;body.weapon.age=age;body.weapon.previousAge=std::max(0.f,age-1.f/120);
+                for(UINT i=0;i<count;++i){auto p=cloud[i%(count/2)];auto pose=LifeWeaponPose(body,{p.x,p.y,p.z},age);auto velocity=LifeWeaponVelocity(body,{p.x,p.y,p.z},1.f/120);
+                    goals[i].local={pose.x*scale,pose.y*scale,pose.z*scale};goals[i].reserved={velocity.x,velocity.y,velocity.z,-1};goals[i].omega=swing<0?32.f:80.f;}
+                g.Unbind();g.context->UpdateSubresource(targets.resource.Get(),0,nullptr,goals.data(),0,0);bind();g.Dispatch("SavePrevious",count/64);grid();g.Dispatch("CalcDensity",count/64);g.Dispatch("CalcForce",count/64);g.Dispatch("WriteBack",count/64);
+                for(int iteration=0;iteration<3;++iteration){grid();g.Dispatch("CalcDensity",count/64);g.Dispatch("CalcDeltaP",count/64);g.Dispatch("ApplyDeltaP",count/64);}grid(true);g.Dispatch("UpdateVelocity",count/64);g.Dispatch("WriteBack",count/64);
+                if(swing>=0&&frame%12==0){auto positions=g.Read<Particle>(particles);double error=0;
+                    for(UINT i=0;i<count;++i){auto p=positions[i];auto t=goals[assignment[8192+i].target];float x=p.position.x-t.origin.x-t.local.x,y=p.position.y-t.origin.y-t.local.y,z=p.position.z-t.origin.z-t.local.z;
+                        Require(std::isfinite(x)&&std::isfinite(y)&&std::isfinite(z)&&p.color.w>.9f,"persistent weapon motion loses fluid particles");error+=x*x+y*y+z*z;}
+                    worst=std::max(worst,float(std::sqrt(error/count))/scale);}
+            }
+        }
+        printf("weapon motion form=%d scale=%.3f normalized RMS=%.3f\n",int(form),scale,worst);
+        Require(worst<1.25f,"GPU fluid cannot follow the repeated production weapon motions");return worst;
+    };
+    auto hammerMotion=weaponMotion(Game::Chrono::LifeAction::Hammer,shape);
+    Engine::FluidShape::Mesh swordMesh("Resources/Models/SlimeLife/sword.obj");auto swordCloud=Engine::FluidShape::Sample(&swordMesh,count/2);
+    auto swordMotion=weaponMotion(Game::Chrono::LifeAction::Sword,swordCloud);
+    float smallScale=scale;scale=Game::Chrono::LifeScale(Game::Chrono::LifeMaxMass);auto largeSwordMotion=weaponMotion(Game::Chrono::LifeAction::Sword,swordCloud);scale=smallScale;
+    printf("PASS persistent weapons GPU: vertical hammer and repeated horizontal sword sweeps, max normalized RMS hammer=%.3f sword=%.3f grown_sword=%.3f\n",hammerMotion,swordMotion,largeSwordMotion);
+    // 16 owners exercise both the late-game 12 children and the upper renderer slot.
+    // The old owner<<30 key silently aliases owners 4, 8 and 12 with owner 0.
+    g.Kernel("MorphMeasure",true);
+    for(UINT i=0;i<count;++i){UINT owner=i/(count/16),local=i%(count/16);auto point=rest[local];float x=float(owner)*12;
+        goals[i]={{point.x,point.y,point.z},1,{x,2,0},275,{0,float(owner),1},20,{.4f,.8f,.1f,1},{4,40,50,0},{},{},{}};
+        input[i]={};input[i].position={x+point.x,2+point.y,point.z};input[i].color={.4f,.8f,.1f,1};}
+    g.Unbind();g.context->UpdateSubresource(targets.resource.Get(),0,nullptr,goals.data(),0,0);g.context->UpdateSubresource(particles.resource.Get(),0,nullptr,input.data(),0,0);f(7,65535);
+    bind();g.Dispatch("MorphKeys",128);for(UINT width=2;width<=8192;width*=2)for(UINT stride=width/2;stride;stride/=2){cb[1]=stride;cb[2]=width;bind();g.Dispatch("MorphSort",128);}cb[1]=cb[2]=0;bind();g.Dispatch("MorphAssign",count/64);
+    auto many=g.Read<Entry>(morph);std::fill(seen.begin(),seen.end(),false);
+    for(UINT i=0;i<count;++i){auto e=many[8192+i];Require(e.target<count&&!seen[e.target],"many-owner assignment is not bijective");seen[e.target]=true;
+        Require(e.owner==i/(count/16)&&e.target/(count/16)==e.owner,"late-game owner aliases another body");}
+    bind();g.Dispatch("MorphMeasure",1);auto measured=g.Read<Entry>(morph);
+    for(UINT owner=0;owner<16;++owner)Require(measured[16000+owner].start.z==count/16,"upper-owner shape readiness missing");
+    puts("PASS growth GPU: 16 independent owners, full spatial keys, unique targets and readiness for upper slots");
+
 }

@@ -4,6 +4,8 @@
 #include "../Engine/FluidMorphShape.h"
 #include "../Engine/SlimeEngulfShape.h"
 #include "../Engine/FluidEmission.h"
+#include "../Game/Chrono/SlimeWeaponRules.h"
+#include "../Engine/FluidVolumeDomain.h"
 #include <windows.h>
 #include <d3d11.h>
 #include <d3dcompiler.h>
@@ -35,8 +37,9 @@ struct VolumeCB { XMFLOAT3 origin; float cell; UINT size[3],count; XMFLOAT3 prev
     XMFLOAT3 playerRadii{2.55f,1.8f,2.55f}; float playerMotion=0;
     XMFLOAT3 playerSlope{}; float playerAir=0;
     XMFLOAT4 playerLiquidCore{};
+    XMFLOAT4 playerMorph{};
 };
-static_assert(sizeof(Particle)==64 && sizeof(Shape)==64 && sizeof(VolumeCB)==192);
+static_assert(sizeof(Particle)==64 && sizeof(Shape)==64 && sizeof(VolumeCB)==208);
 struct Buffer { ComPtr<ID3D11Buffer> resource; ComPtr<ID3D11ShaderResourceView> srv; ComPtr<ID3D11UnorderedAccessView> uav; };
 struct Texture { ComPtr<ID3D11Texture3D> resource; ComPtr<ID3D11ShaderResourceView> srv; ComPtr<ID3D11UnorderedAccessView> uav; UINT size; };
 class Gpu {
@@ -86,7 +89,7 @@ public:
     }
     void Unbind() {
         ID3D11UnorderedAccessView* uavs[8]{}; context->CSSetUnorderedAccessViews(0,8,uavs,nullptr);
-        ID3D11ShaderResourceView* srvs[8]{}; context->CSSetShaderResources(0,8,srvs); context->PSSetShaderResources(0,8,srvs); context->VSSetShaderResources(0,8,srvs);
+        ID3D11ShaderResourceView* srvs[9]{}; context->CSSetShaderResources(0,9,srvs); context->PSSetShaderResources(0,9,srvs); context->VSSetShaderResources(0,9,srvs);
         context->OMSetRenderTargets(0,nullptr,nullptr);
     }
     void Dispatch(const char* name,UINT x,UINT y=1,UINT z=1) { context->CSSetShader(kernels.at(name).Get(),nullptr,0); context->Dispatch(x,y,z); }
@@ -705,6 +708,8 @@ void TestVolume(Gpu& g, int waterLayers=2, float waterOffset=0, bool draw=true, 
 }
 #include "SlimeFluidTests.inl"
 #include "FluidMorphTests.inl"
+#include "FluidShadowTests.inl"
+#include "FluidSurfaceTests.inl"
 #include "SlimeFaceTests.inl"
 #include "SlimeDecorationPreview.inl"
 #include "GraphicsPostValidation.inl"
@@ -712,6 +717,8 @@ void TestVolume(Gpu& g, int waterLayers=2, float waterOffset=0, bool draw=true, 
 int main(int argc,char** argv) {
     if(argc>1&&std::strcmp(argv[1],"--graphics-only")==0){try{Check(CoInitializeEx(nullptr,COINIT_MULTITHREADED));Gpu gpu;TestGraphicsPost(gpu);return 0;}catch(const std::exception& error){fprintf(stderr,"FAIL graphics: %s\n",error.what());return 2;}}
     try {
+        if(argc>1 && std::strcmp(argv[1],"--growth-only")==0){Check(CoInitializeEx(nullptr,COINIT_MULTITHREADED));Gpu gpu;TestScaleInvariantDensity(gpu);return 0;}
+        if(argc>1 && std::strcmp(argv[1],"--surface-only")==0) { Check(CoInitializeEx(nullptr,COINIT_MULTITHREADED));Gpu gpu;TestHammerSurface(gpu);TestHammerSurface(gpu,true);TestHammerSurface(gpu,false,Game::Chrono::LifeAction::Sword);TestHammerSurface(gpu,false,Game::Chrono::LifeAction::Plane);TestHammerSurface(gpu,true,Game::Chrono::LifeAction::Hammer,1200);for(auto form:{Game::Chrono::LifeAction::Hammer,Game::Chrono::LifeAction::Sword,Game::Chrono::LifeAction::Plane})TestHammerSurface(gpu,false,form,1200);return 0; }
         if(argc>1 && std::strcmp(argv[1],"--sandbox-only")==0) { Check(CoInitializeEx(nullptr,COINIT_MULTITHREADED));Gpu gpu;TestFluidSandbox(gpu);return 0; }
         if(argc>1 && std::strcmp(argv[1],"--face-only")==0){ Check(CoInitializeEx(nullptr,COINIT_MULTITHREADED)); Gpu gpu; TestPlayerFace(gpu);TestSlimeDecorationPreview(gpu); return 0; }
         if(argc>1 && std::strcmp(argv[1],"--morph-only")==0){Check(CoInitializeEx(nullptr,COINIT_MULTITHREADED));Gpu gpu;TestFluidMorph(gpu);return 0;}

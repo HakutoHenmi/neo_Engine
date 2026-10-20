@@ -5,7 +5,7 @@
 #include "../Chrono/LiquidTrail.h"
 #include "../Chrono/DomainHighlight.h"
 #include "../Chrono/CinematicRules.h"
-#include "../Chrono/SlimeLifeRules.h"
+#include "../Chrono/SlimeWeaponRules.h"
 #include <vector>
 namespace Game {
 // Scene-level orchestration; all persistent actor state lives in ECS components.
@@ -30,8 +30,8 @@ private:
     Chrono::SlimeLife life_;
     std::array<Chrono::SlimeRecipe,3> lifeRecipes_{};
     int lifeRecipeSlot_=0,lifeMaterials_=3,lifeClears_=0;
-    std::array<int,4> lifeLastAction_{{-1,-1,-1,-1}};
-    std::array<uint32_t,4> lifeLastCounts_{};
+    std::array<int,Chrono::LifeBodyCount> lifeLastAction_{};
+    std::array<uint32_t,Chrono::LifeBodyCount> lifeLastCounts_{};
     bool lifeWasLab_=false,lifeReseed_=true,lifePreviewEmitted_=false;
     void SetSlimeLabOpen(bool);
     void UpdateSlimeLab(GameContext&);

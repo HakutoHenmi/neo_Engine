@@ -337,7 +337,7 @@ void Renderer::Shutdown() {
 	fluidProfileStats_ = FluidProfileStats{};
 	fluidVolumeReady_ = false;
 	volumeHistoryValid_ = false;
-	rootSigVolumeCompute_.Reset(); rootSigVolumeDraw_.Reset();
+	rootSigVolumeCompute_.Reset(); rootSigVolumeDraw_.Reset();rootSigVolumeShadow_.Reset();psoVolumeShadow_.Reset();volumeFrameSettings_=0;
 	psoVolumeClear_.Reset(); psoVolumeShapes_.Reset(); psoVolumeSplat_.Reset();
 	psoVolumeResolve_.Reset(); psoVolumeSmooth_.Reset(); psoVolumeTemporal_.Reset();
 	psoVolumeOccupancy_.Reset(); psoVolumeRaymarch_.Reset(); psoVolumeSpray_.Reset();
@@ -462,6 +462,7 @@ void Renderer::BeginFrame(const float clearColorRGBA[4]) {
 	list_->SetDescriptorHeaps(1, heaps);
 
 	const uint32_t fi = window_->FrameIndex();
+	fluidFrameUpdated_=false;volumeFrameSettings_=0;
 	CollectFluidProfile(fi);
     CollectFluidBody(fi);
     CollectMorphMeasure(fi);
@@ -855,12 +856,7 @@ void Renderer::FlushDrawCalls() {
 	// ★追加: GPU流体更新
 	const bool hasGpuFluidParticles = isGPUFluidReady_ && gpuFluidActiveParticleCount_ > 0;
 	if (hasGpuFluidParticles) {
-		BeginFluidProfile(FluidSimulation);
-		const auto cpuStart = fluidProfilerEnabled_ ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
-		UpdateGPUFluid(TimeManager::GetInstance().GetDeltaTime());
-		if (fluidProfilerEnabled_) fluidProfilerFrames_[fi].cpuSimulationMs =
-			std::chrono::duration<float, std::milli>(std::chrono::steady_clock::now() - cpuStart).count();
-		EndFluidProfile(FluidSimulation);
+		PrepareGPUFluidFrame();
 	}
 
 
@@ -889,7 +885,7 @@ void Renderer::FlushDrawCalls() {
 	if (hasGpuFluidParticles && fluidVolumeReady_) {
 		const auto cpuStart = fluidProfilerEnabled_ ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
 		DrawFluidVolume();
-		if (fluidProfilerEnabled_) fluidProfilerFrames_[fi].cpuVolumeMs =
+		if (fluidProfilerEnabled_) fluidProfilerFrames_[fi].cpuVolumeMs +=
 			std::chrono::duration<float, std::milli>(std::chrono::steady_clock::now() - cpuStart).count();
 		if (drawFluidDebugArrows_) DrawGPUFluidDebug();
 	}
@@ -1036,6 +1032,22 @@ void Renderer::FlushDrawCalls() {
 	drawCalls_.clear();
 }
 
+void Renderer::PrepareGPUFluidFrame() {
+    if(fluidFrameUpdated_ || !isGPUFluidReady_ || !gpuFluidActiveParticleCount_)return;
+    fluidFrameUpdated_=true;
+    const auto fi=window_->FrameIndex();
+    BeginFluidProfile(FluidSimulation);
+    const auto cpuStart = fluidProfilerEnabled_ ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
+    UpdateGPUFluid(TimeManager::GetInstance().GetDeltaTime());
+    if (fluidProfilerEnabled_) fluidProfilerFrames_[fi].cpuSimulationMs =
+        std::chrono::duration<float, std::milli>(std::chrono::steady_clock::now() - cpuStart).count();
+    EndFluidProfile(FluidSimulation);
+    if(fluidVolumeReady_){
+        const auto start=std::chrono::steady_clock::now();PrepareFluidVolume();
+        if(fluidProfilerEnabled_)fluidProfilerFrames_[fi].cpuVolumeMs=std::chrono::duration<float,std::milli>(std::chrono::steady_clock::now()-start).count();
+    }
+}
+
 void Renderer::EndFrame() {
     FlushPaintUploads();
 	const uint32_t fi = window_->FrameIndex();
@@ -1057,6 +1069,9 @@ void Renderer::EndFrame() {
 		if (f) { fputs(s.c_str(), f); fclose(f); }
 	}
 
+
+	// Simulate and reconstruct once, before both the light and camera views.
+	PrepareGPUFluidFrame();
 
 	// ====== 0. シャドウ行列の計算 ======
 	// ★追加: cbFrameAddr_ が 0 の場合、ダミーの CBFrame を割り当てる (Device Removed対策)
@@ -1080,6 +1095,10 @@ void Renderer::EndFrame() {
 		DirectX::XMVECTOR uObj = DirectX::XMVectorSet(0, 1, 0, 0);
 		if (std::abs(ldir.y) > 0.999f) uObj = DirectX::XMVectorSet(1, 0, 0, 0);
 		DirectX::XMMATRIX vMat = DirectX::XMMatrixLookAtLH(pObj, tObj, uObj);
+		// Stabilize the directional map on its texel grid as the follow camera moves.
+		constexpr float shadowTexel=100.f/2048;
+		vMat.r[3]=DirectX::XMVectorSetX(vMat.r[3],std::round(DirectX::XMVectorGetX(vMat.r[3])/shadowTexel)*shadowTexel);
+		vMat.r[3]=DirectX::XMVectorSetY(vMat.r[3],std::round(DirectX::XMVectorGetY(vMat.r[3])/shadowTexel)*shadowTexel);
 		DirectX::XMMATRIX pMat = DirectX::XMMatrixOrthographicLH(100.0f, 100.0f, 1.0f, 100.0f);
 		lightVP = XMToM4(vMat * pMat);
 		lightCB_.shadowMatrix = lightVP;
@@ -1184,7 +1203,8 @@ void Renderer::EndFrame() {
 		// ★追加: 流体の影を落とす
 		if (isGPUFluidReady_ && gpuFluidActiveParticleCount_ > 0) {
 			BeginFluidProfile(FluidShadow);
-			DrawGPUFluidShadow();
+			if(volumeFrameSettings_)DrawFluidVolumeShadow(lightVP);
+			else {list_->SetGraphicsRootSignature(rootSig3D_.Get());list_->SetGraphicsRootConstantBufferView(0,sCbAddr);DrawGPUFluidShadow();}
 			EndFluidProfile(FluidShadow);
 		}
 
@@ -5293,7 +5313,7 @@ void Renderer::SetGPUFluidDecoy(const Vector3& pos, float attraction, const Vect
 }
 
 void Renderer::ResetGPUFluid() {
-    fluidMorphApplied_=~uint64_t(0);fluidMorphRetargetMask_=15;fluidMorphTargets_.clear();fluidMorphSeedPending_=false;
+    fluidMorphApplied_=~uint64_t(0);fluidMorphRetargetMask_=kFluidMorphAllBodies;fluidMorphTargets_.clear();fluidMorphSeedPending_=false;
     guidedTrailParticles_.clear();previousTrailParticleCount_=0;
     fluidBodySnapshot_={};
     for(auto& pending:fluidBodyPending_)pending=false;
@@ -5373,12 +5393,18 @@ void Renderer::UpdateGPUFluid(float dt) {
 	const uint32_t simulationCount = (std::min)(gpuFluidActiveParticleCount_, gpuFluidMaxParticles_);
 	if (simulationCount == 0 && isGPUFluidInitialized_) return;
 
-	// Velocity is bounded to 30 units/s in the shader. At 120 Hz a particle
-	// travels at most 0.25 units, below the 0.4-unit neighbor radius.
-	// Three PBF iterations still run for every substep.
-	// More substeps per slow frame create a GPU work feedback loop.
-	fluidSimulatedDt_ = (std::isfinite(dt) ? (std::clamp)(dt, 0.0f, 1.0f / 30.0f) : 0.0f);
-	const uint32_t substeps = (std::max)(1u, static_cast<uint32_t>(std::ceil(fluidSimulatedDt_ * 120.0f - 0.0001f)));
+	// Legacy fluid retains its 1/30 cap. Morphs use exactly the controller's
+	// bounded frame interval, subdivided below 1/100 with three PBF iterations.
+	// Discarding time here and multiplying target velocity caused speed pulses
+	// against the camera on frames just above 33 ms.
+    const bool controllerClock=fluidMorphTargets_.size()==kPlayerFluidParticles&&fluidMorphDt_>=0;
+    if(controllerClock)dt=fluidMorphDt_;
+    fluidSimulatedDt_ = (std::isfinite(dt) ? (std::clamp)(dt, 0.0f, controllerClock?.05f:1.0f/30.0f) : 0.0f);
+    // At 100 Hz the normal liquid's 30-unit/s limit travels <=0.3 units,
+    // still below its >=0.4-unit neighbour radius. This also avoids the old
+    // 33 ms four-to-five-step cost jump feeding back into an already slow frame.
+    const float stepRate=controllerClock?100.f:120.f;
+	const uint32_t substeps = (std::max)(1u, static_cast<uint32_t>(std::ceil(fluidSimulatedDt_ * stepRate - 0.0001f)));
 	if (fluidProfilerEnabled_) {
 		auto& profile = fluidProfilerFrames_[window_->FrameIndex()];
 		profile.particleSlots = simulationCount;
@@ -5404,7 +5430,11 @@ void Renderer::UpdateGPUFluid(float dt) {
 	}
     fluidMorphFrame_=nullptr;
     const bool morphActive=fluidMorphTargets_.size()==kPlayerFluidParticles;
+    fluidSamplingScale_=1;
     if(morphActive){
+        uint32_t scaleOwners=0;
+        for(const auto& target:fluidMorphTargets_){uint32_t bit=1u<<uint32_t(target.forward.y);if(scaleOwners&bit)continue;scaleOwners|=bit;
+            fluidSamplingScale_=(std::max)(fluidSamplingScale_,std::cbrt(275.f/(std::max)(target.density,1e-6f)));}
         fluidMorphOffset_=fluidUpload.Allocate(kPlayerFluidParticles*sizeof(FluidMorphTarget),256);
         if(fluidMorphOffset_==UINT32_MAX)return;
         memcpy(fluidUpload.mapped+fluidMorphOffset_,fluidMorphTargets_.data(),kPlayerFluidParticles*sizeof(FluidMorphTarget));
@@ -5510,6 +5540,12 @@ void Renderer::UpdateGPUFluid(float dt) {
 	if (cb.dt <= 0.0f) { rebuildGrid(); return; }
 	if (gpuFluidCoreMode_ < 2.0f) rebuildGrid();
 	for (uint32_t step = 0; step < substeps; ++step) {
+        if(morphActive){
+            // emitColor is unused by the solver. Weapon goals are uploaded at
+            // frame end; sample their path at this substep, not four times early.
+            cb.emitColor.x=fluidSimulatedDt_-cb.dt*(step+1);
+            list_->SetComputeRoot32BitConstants(0,48,&cb,0);
+        }
         // Each solver step targets the corresponding point on the controller's
         // path, rather than constraining all substeps to the frame-end height.
         if(gpuFluidCoreMode_>=4&&!morphActive){

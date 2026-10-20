@@ -21,7 +21,8 @@ cbuffer VolumeSettings : register(b1) {
     float3 playerRadii; float playerMotion;
     float3 playerSlope; float playerAir; // x/z: terrain slope; y: rigid decoration mass scale.
 #ifdef FLUID_VOLUME_CORE
-    float4 playerLiquidCore; // Only graphics reads the extra four constants.
+    float4 playerLiquidCore; // Graphics-only; compute keeps its 44-DWORD layout.
+    float4 playerMorph; // Form tag, physical scale, main particle count, active.
 #endif
 };
 uint VolumePhase(float type) {
@@ -30,8 +31,9 @@ uint VolumePhase(float type) {
 }
 uint VolumeIndex(uint3 p) { return (p.z * volumeSize.y + p.y) * volumeSize.x + p.x; }
 uint VolumeHash(int3 c) {
-    // Must match FluidSimCS.hlsl.
-    return ((uint)c.x * 73856093U ^ (uint)c.y * 19349663U ^ (uint)c.z * 83492791U) & 65535U;
+    // Non-morph/spray buckets match FluidSimCS.hlsl (owner salt zero).
+    // Morph shapes use their own isotropic reconstruction without this search.
+    return ((uint)c.x * 73856093U ^ (uint)c.y * 19349663U ^ (uint)c.z * 83492791U) & (filterAxis<0?8191U:65535U);
 }
 float3 ShapeCenter(FluidShape s) { return float3(s.row0.w,s.row1.w,s.row2.w); }
 float3 ShapePoint(FluidShape s, float3 d) { return float3(dot(s.row0.xyz,d),dot(s.row1.xyz,d),dot(s.row2.xyz,d)); }
