@@ -15,13 +15,22 @@ const std::vector<Engine::FluidShape::EngulfSample>& LifeHands(uint32_t count){
     auto found=cache.find(count);if(found!=cache.end())return found->second;
     return cache.emplace(count,Engine::FluidShape::SampleEngulf(LifeCloud(0,count))).first->second;
 }
-void LifeInterruptTopology(SlimeLife& life){
-    // A damage split changes ownership; finish existing poses through their restore path.
-    for(auto& b:life.bodies)if(b.mass>0&&b.action!=LifeAction::Idle){b.action=LifeAction::Restore;b.actionAge=0;b.target=0xffffffffu;}
+SwarmEnemy LifeWaveEnemy(int index,Vec origin){
+    SwarmEnemy enemy;enemy.id=uint32_t(index+1);enemy.flying=enemy.bomber=false;
+    float angle=float(index)*2.399963f,radius=22+float(index%5)*10;
+    enemy.at=origin+Vec{std::sin(angle)*radius,0,std::cos(angle)*radius};
+    enemy.heading=Unit(origin-enemy.at);enemy.health=index%6==5?55.f:30.f;enemy.attackDelay=2+float(index%4)*.7f;
+    return enemy;
 }
-float LifeDuration(LifeAction action,const SlimeRecipe& recipe){return action==LifeAction::Engulf?recipe.AbsorbDuration():action==LifeAction::Restore?.4f:action==LifeAction::Plane?.95f:1.15f;}
-Vec LifeSwing(Vec point,float age){float angle=-.75f+2.15f*LifeSmooth((age-.32f)/.4f),c=std::cos(angle),s=std::sin(angle);float y=point.y-.35f;
-    return {point.x,.35f+y*c-point.z*s,y*s+point.z*c};}
+void LifeInterruptTopology(SlimeLife& life){
+    // Re-form a valid weapon after ownership changes; only undersized weapons
+    // and interrupted absorption return to liquid. Committed growth is retained.
+    for(auto& b:life.bodies)if(b.mass>0&&b.action!=LifeAction::Idle){
+        if(LifeCanMorph(b.mass,b.action)){b.weapon={};b.actionAge=0;}
+        else LifeReturnToSlime(b);
+    }
+}
+float LifeDuration(LifeAction action,const SlimeRecipe& recipe){return action==LifeAction::Engulf?recipe.AbsorbDuration():.4f;}
 }
 bool ChronoSystem::SaveSlimeLab(){
     if(wcsstr(GetCommandLineW(),L"--slime-life-smoke"))return true;
@@ -45,26 +54,24 @@ void ChronoSystem::BuildSlimeLife(entt::registry& r){
                     else out.color=SlimeColor::Legacy(recipes[i].value("color",0));}}
         }catch(...){OutputDebugStringA("Slime Lab: using default recipe after invalid save.\n");}
     }
-    life_={};life_.revision=GetTickCount64();life_.recipe=lifeRecipes_[size_t(lifeRecipeSlot_)];lifeLastAction_={-1,-1,-1,-1};lifeLastCounts_={};
+    life_={};life_.revision=GetTickCount64();life_.recipe=lifeRecipes_[size_t(lifeRecipeSlot_)];lifeLastAction_.fill(-1);lifeLastCounts_={};
     life_.lab=!wcsstr(GetCommandLineW(),L"--slime-life-smoke");
     lifeWasLab_=life_.lab;lifeReseed_=true;lifePreviewEmitted_=false;
     life_.preview.at={0,1201.25f,0};life_.preview.mass=LifeStartMass;life_.preview.particles=Engine::Renderer::kPlayerFluidParticles;life_.preview.forward={0,0,-1};
     auto& p=r.get<Player>(player_);p.mass=LifeStartMass;p.grounded=true;p.velocity={};p.collisionScale=1;
     auto& t=r.get<TransformComponent>(player_);t.translate={0,InkGround({0,0,-27})+1.25f,-27};t.scale={1,1,1};
-    auto& body=life_.bodies[0];body.at=Read(t.translate);body.mass=LifeStartMass;body.health=body.maxHealth=100;body.particles=Engine::Renderer::kPlayerFluidParticles;
+    LifeInitializeBodies(life_,Engine::Renderer::kPlayerFluidParticles);
+    auto& body=life_.bodies[0];body.at=Read(t.translate);
     auto& health=r.get<HealthComponent>(player_);health.SetMaxHp(100);health.SetHp(100);health.SetDead(false);
     auto& ink=r.get<InkPlayer>(player_);ink.rogue.enabled=false;ink.rogue.menu=false;ink.battlePhase=BattlePhase::Horde;
-    ink.hordeEnabled=true;ink.swarmKills=0;ink.swarmSpawned=LifeEnemyCount;ink.swarmAlive=LifeEnemyCount;
+    ink.hordeEnabled=true;ink.swarmKills=0;ink.swarmSpawned=6;ink.swarmAlive=6;
     openingPending_=cinematicActive_=false;
     swarm_.clear();swarmEffects_.clear();
-    for(int i=0;i<LifeEnemyCount;++i){SwarmEnemy enemy;enemy.id=uint32_t(i+1);enemy.flying=enemy.bomber=false;
-        float angle=float(i)*2.399963f,radius=22+float(i%5)*10;
-        enemy.at=body.at+V{std::sin(angle)*radius,0,std::cos(angle)*radius};enemy.at.y=InkGround(enemy.at)+1;
-        enemy.heading=Unit(body.at-enemy.at);enemy.health=i%6==5?55.f:30.f;enemy.attackDelay=2+float(i%4)*.7f;swarm_.push_back(enemy);}
+    for(int i=0;i<6;++i){auto enemy=LifeWaveEnemy(i,body.at);enemy.at.y=InkGround(enemy.at)+1;swarm_.push_back(enemy);}
     SetSwarmBossVisible(r,false);
-    for(int i=0;i<22;++i){LifeCollectible prop;prop.at=body.at+V{float((i%5)-2)*4,0,3+float(i/5)*6};
+    for(int i=0;i<40;++i){LifeCollectible prop;prop.at=body.at+V{float((i%5)-2)*4,0,3+float(i/5)*6};
         if(i==0)prop.at=body.at+V{0,0,3};prop.at.y=InkGround(prop.at)+.5f;
-        prop.required=i<12?15.f:130.f;prop.reward=i<12?8.f:18.f;life_.props.push_back(prop);}
+        prop.required=i<12?15.f:i<28?130.f:300.f;prop.reward=i<12?12.f:i<28?24.f:36.f;life_.props.push_back(prop);}
     for(auto e:r.view<NameComponent,TransformComponent,MeshRendererComponent>()){
         if(r.get<NameComponent>(e).name.find("Scanned field stone")==std::string::npos)continue;
         LifeCollectible prop;prop.at=Read(r.get<TransformComponent>(e).translate);prop.at.y=InkGround(prop.at)+1;
@@ -87,7 +94,8 @@ void ChronoSystem::DamageSlimeLife(entt::registry& r,Player& p,float amount,Game
         LifeInterruptTopology(life_);
         auto* audio=Engine::Audio::GetInstance();audio->Play(lifeSplitSounds_[life_.splits%3],false,.65f*audio->GetMasterSEVolume(),1+.05f*life_.recipe.Ratio(1));
         life_.message="被弾分裂：本体HP -"+LifeNumber(previousHp-body.health)+" / 子の大きさ "+LifeNumber(child.mass);life_.messageAge=2;
-    }else if(body.action!=LifeAction::Idle){body.action=LifeAction::Restore;body.actionAge=0;body.target=0xffffffffu;}
+    }else if(LifeWeaponForm(body.action)){LifeStopWeaponAttack(body);if(!LifeCanMorph(body.mass,body.action))LifeReturnToSlime(body);}
+    else if(body.action!=LifeAction::Idle)LifeReturnToSlime(body);
     ++life_.revision;
     if(life_.recipe.Ratio(3)>0){V away=body.at-source;away.y=0;if(Length(away)>.01f)p.velocity=p.velocity+Unit(away)*(14*life_.recipe.Ratio(3));}
     auto& health=r.get<HealthComponent>(player_);health.SetMaxHp(body.maxHealth);health.SetHp(body.health);health.SetDead(body.health<=0);
@@ -118,40 +126,47 @@ void ChronoSystem::LifeHit(entt::registry& r,Player& p,GameContext& ctx,uint32_t
     }
 }
 void ChronoSystem::SyncSlimeBodies(GameContext& ctx){
+    ctx.renderer->SetSlimeFaceCamera(life_.lab?1.f:0.f);
     using Target=Engine::Renderer::FluidMorphTarget;std::vector<Target> targets;targets.reserve(Engine::Renderer::kPlayerFluidParticles);
     if(lifeWasLab_!=life_.lab){scene_->ResetFluidPreview();lifeWasLab_=life_.lab;lifeReseed_=true;lifePreviewEmitted_=false;lifeLastCounts_={};++life_.revision;}
     auto renderedBody=[&](size_t i)->const LifeBody& {return life_.lab?(i==0?life_.preview:life_.previewChild):life_.bodies[i];};
-    uint32_t mask=lifeReseed_?15:0;for(size_t i=0;i<4;++i){const auto& b=renderedBody(i);uint32_t count=life_.lab&&i>1?0:b.particles;if(lifeLastCounts_[i]!=count)mask=15;else if(lifeLastAction_[i]!=int(b.action))mask|=1u<<i;lifeLastCounts_[i]=count;lifeLastAction_[i]=int(b.action);}
-    for(size_t i=0;i<(life_.lab?2u:4u);++i){const auto& b=renderedBody(i);if(b.mass<=0)continue;
+    static_assert(LifeBodyCount<=Engine::Renderer::kFluidMorphBodyCount);
+    const uint32_t allBodies=Engine::Renderer::kFluidMorphAllBodies;
+    uint32_t mask=lifeReseed_?allBodies:0;for(size_t i=0;i<LifeBodyCount;++i){const auto& b=renderedBody(i);uint32_t count=life_.lab&&i>1?0:b.particles;if(lifeLastCounts_[i]!=count)mask=allBodies;else if(lifeLastAction_[i]!=int(b.action))mask|=1u<<i;lifeLastCounts_[i]=count;lifeLastAction_[i]=int(b.action);}
+    const float frameDt=std::clamp(ctx.dt,0.f,.05f);
+    const auto color=LifeColor(life_.recipe.color);
+    for(size_t i=0;i<(life_.lab?size_t(2):LifeBodyCount);++i){const auto& b=renderedBody(i);if(b.mass<=0)continue;
         uint32_t count=b.particles;
         int shape=b.action==LifeAction::Hammer?1:b.action==LifeAction::Sword?2:b.action==LifeAction::Plane?3:0;
-        bool liquid=b.action==LifeAction::Idle||b.action==LifeAction::Restore;
+        bool liquid=b.action==LifeAction::Idle||b.action==LifeAction::Restore,weapon=LifeWeaponForm(b.action);
         const auto& cloud=LifeCloud(shape,count);float scale=LifeScale(b.mass),age=b.actionAge;V radii=LifeRadii(b,life_.recipe);
         const auto* hands=b.action==LifeAction::Engulf?&LifeHands(count):nullptr;
         V offset=b.engulfPoint-b.at;Engine::FluidShape::Point capture{(b.forward.z*offset.x-b.forward.x*offset.z)/scale,(offset.y+1.25f)/scale,Dot(offset,b.forward)/scale};
+        // Body-wide values, especially the terrain raycast, must not run once
+        // for each of the 6600 points. Only point pose/velocity vary below.
+        Target common{};common.blend=liquid?b.motion:LifeSmooth(age/.25f);
+        if(hands)common.blend=LifeSmooth(age/(life_.recipe.AbsorbDuration()*.14f));
+        common.origin={b.at.x+(liquid?b.fluidOffset.x:0),b.at.y-1.25f+(liquid?.8f*b.air:0),b.at.z+(liquid?b.fluidOffset.z:0)};
+        common.density=LifeDensity(b.mass,count,Engine::Renderer::kPlayerFluidParticles);
+        auto heading=liquid?b.liquidForward:b.forward;
+        common.forward={heading.x,float(i),heading.z};common.omega=liquid?life_.recipe.Cohesion():b.action==LifeAction::Engulf?36.f:b.weapon.active?80.f:32.f;
+        common.material={life_.recipe.Damping(),life_.recipe.Viscosity(),life_.recipe.SurfaceTension(),life_.lab?1200.f:InkGround(b.at)};
+        V drive=liquid?b.coreVelocity:b.velocity;common.motion={drive.x,drive.y,drive.z,b.air};
+        common.shape={radii.x,b.down?radii.y*.25f:radii.y,radii.z,liquid?1.f:weapon?-float(b.action):0.f};common.color=color;
+        if(liquid)common.reserved={b.flowShape.x,b.flowShape.z,b.coreLead.x-b.fluidOffset.x,b.coreLead.z-b.fluidOffset.z};
         for(size_t pointIndex=0;pointIndex<cloud.size();++pointIndex){auto point=cloud[pointIndex];V local{point.x,point.y,point.z};
-            if(liquid){local={local.x/2.55f*radii.x,local.y/1.8f*radii.y,local.z/2.55f*radii.z};}
-            if(b.action==LifeAction::Hammer)local=LifeSwing(local,age);
-            if(b.action==LifeAction::Sword){float angle=-1.15f+2.3f*LifeSmooth((age-.25f)/.4f),c=std::cos(angle),s=std::sin(angle);local={local.x*c+local.z*s,local.y,-local.x*s+local.z*c};}
+            if(liquid)local={local.x/2.55f*radii.x,local.y/1.8f*radii.y,local.z/2.55f*radii.z};
+            if(weapon)local=LifeWeaponPose(b,local,b.weapon.age);
             if(hands){auto p=Engine::FluidShape::EngulfPose((*hands)[pointIndex],age/life_.recipe.AbsorbDuration(),capture);local={p.x,p.y,p.z};}
             if(b.down)local.y*=.25f;
             if(!liquid)local=local*scale;
-            Target target{};target.local={local.x,std::max(.18f,local.y),local.z};
-            target.blend=liquid?b.motion:LifeSmooth(age/.25f);
-            if(hands)target.blend=LifeSmooth(age/(life_.recipe.AbsorbDuration()*.14f));
-            target.origin={b.at.x+(liquid?b.fluidOffset.x:0),b.at.y-1.25f+(liquid?.8f*b.air:0),b.at.z+(liquid?b.fluidOffset.z:0)};target.density=275.f*float(count)*LifeStartMass/(Engine::Renderer::kPlayerFluidParticles*b.mass);
-            auto heading=liquid?b.liquidForward:b.forward;
-            target.forward={heading.x,float(i),heading.z};target.omega=liquid?life_.recipe.Cohesion():b.action==LifeAction::Engulf?36.f:20.f;
-            target.material={life_.recipe.Damping(),life_.recipe.Viscosity(),life_.recipe.SurfaceTension(),life_.lab?1200.f:InkGround(b.at)};
-            float frameDt=std::clamp(ctx.dt,0.f,.05f),simulatedDt=std::min(frameDt,1.f/30),carry=simulatedDt>1e-5f?frameDt/simulatedDt:1;
-            V drive=liquid?b.coreVelocity:b.velocity;
-            target.motion={drive.x*carry,drive.y*carry,drive.z*carry,b.air};target.shape={radii.x,b.down?radii.y*.25f:radii.y,radii.z,liquid?1.f:0.f};
-            target.reserved={b.flowShape.x,b.flowShape.z,b.coreLead.x-b.fluidOffset.x,b.coreLead.z-b.fluidOffset.z};
-            target.color=LifeColor(life_.recipe.color);targets.push_back(target);
+            Target target=common;target.local={local.x,std::max(.18f,local.y),local.z};
+            if(weapon&&b.weapon.ready){V velocity=LifeWeaponVelocity(b,{point.x,point.y,point.z},frameDt);target.reserved={velocity.x,velocity.y,velocity.z,-1};}
+            targets.push_back(target);
         }
     }
-    ctx.renderer->SetFluidMorphTargets(std::move(targets),life_.revision,mask,lifeReseed_);lifeReseed_=false;
-    ctx.renderer->SetSlimeColor(LifeColor(life_.recipe.color));
+    ctx.renderer->SetFluidMorphTargets(std::move(targets),life_.revision,mask,lifeReseed_,frameDt);lifeReseed_=false;
+    ctx.renderer->SetSlimeColor(color);
 }
 void ChronoSystem::SetSlimeLabOpen(bool open){
     life_.lab=open;Engine::WindowDX::SetCursorVisible(open);cameraReady_=false;
@@ -232,6 +247,7 @@ void ChronoSystem::DrawSlimeLab(entt::registry& r,GameContext& ctx){
 void ChronoSystem::UpdateSlimeLife(entt::registry& r,Player& p,GameContext& ctx){
     auto& ink=r.get<InkPlayer>(player_);auto& body=life_.bodies[0];auto* control=r.try_get<ControlFrame>(player_);
     float dt=std::clamp(ctx.dt,0.f,.05f);diagnostic_=control!=nullptr;
+    body.previousForward=body.forward;
     bool tab=control?control->lab:Controls::Key(VK_TAB)||Controls::Pad(XINPUT_GAMEPAD_BACK);
     if(tab&&!life_.previousLab)SetSlimeLabOpen(!life_.lab);life_.previousLab=tab;
     life_.messageAge=std::max(0.f,life_.messageAge-dt);
@@ -243,27 +259,39 @@ void ChronoSystem::UpdateSlimeLife(entt::registry& r,Player& p,GameContext& ctx)
     if(control){yaw_=control->yaw;pitch_=control->pitch;}else if(ctx.input){float y,x;Controls::Look(dt,y,x);yaw_+=ctx.input->GetMouseDeltaX()*.0025f+y;pitch_=std::clamp(pitch_+ctx.input->GetMouseDeltaY()*.0025f+x,-.7f,.85f);}
     bool absorb=control?control->absorb:Controls::Absorb();
     bool fire=control?control->attack:Controls::MorphAttack();
+    bool returnToSlime=control?control->returnToSlime:Controls::ReturnToSlime();
+    bool firePressed=fire&&!life_.previousFire,changedForm=false,returned=false;
     auto say=[&](const char* text){life_.message=text;life_.messageAge=2;};
-    if(absorb&&!life_.previousAbsorb){if(!StartLifeAbsorb(0))say("NO ABSORBABLE TARGET / WEAKEN OR GROW FIRST");}
+    if(returnToSlime&&!life_.previousReturn&&LifeWeaponForm(body.action)){
+        LifeReturnToSlime(body);life_.tackleTime=0;++life_.revision;returned=true;say("スライムに戻る / 再び取り込み可能");}
+    if(absorb&&!life_.previousAbsorb){if(LifeWeaponForm(body.action))say("R / B でスライムに戻って取り込み");else if(!StartLifeAbsorb(0))say("NO ABSORBABLE TARGET / WEAKEN OR GROW FIRST");}
     if(!control&&UI::PadPressed(XINPUT_GAMEPAD_DPAD_RIGHT))life_.form=LifeAction(int(LifeAction::Hammer)+(int(life_.form)-int(LifeAction::Hammer)+1)%3);
     if(!control&&UI::PadPressed(XINPUT_GAMEPAD_DPAD_LEFT))life_.form=LifeAction(int(LifeAction::Hammer)+(int(life_.form)-int(LifeAction::Hammer)+2)%3);
     if(control&&control->morphForm>=1&&control->morphForm<=3)life_.form=LifeAction(int(LifeAction::Hammer)+control->morphForm-1);
     if(!control){if(Controls::Key('1'))life_.form=LifeAction::Hammer;if(Controls::Key('2'))life_.form=LifeAction::Sword;if(Controls::Key('3'))life_.form=LifeAction::Plane;}
-    if(fire&&!life_.previousFire&&body.action==LifeAction::Idle&&body.cooldown<=0){body.action=life_.form;body.actionAge=0;body.forward=Forward(yaw_,0);body.committed=false;body.attackSerial=++life_.nextAttack;++life_.revision;}
-    life_.previousAbsorb=absorb;life_.previousFire=fire;
+    if(firePressed&&!returned&&body.cooldown<=0&&(body.action==LifeAction::Idle||(LifeWeaponForm(body.action)&&body.action!=life_.form))){
+        if(body.mass<LifeHammerMass){
+            life_.tackleTime=.24f;body.cooldown=.45f;body.forward=Forward(yaw_,0);
+            say("タックル！ / 吸収して本体180でハンマー解放");
+        }else if(!LifeCanMorph(body.mass,life_.form)){
+            life_.message="変形には本体の大きさ "+LifeNumber(LifeRequiredMass(life_.form))+" が必要 / 今はタックル・踏みつけで攻撃";life_.messageAge=2;
+        }else if(LifeEnterWeapon(body,life_.form,Forward(yaw_,0))){changedForm=true;++life_.revision;say("変形を維持 / 左クリック・RTで攻撃 / R・Bで戻る");}}
+    life_.previousAbsorb=absorb;life_.previousFire=fire;life_.previousReturn=returnToSlime;
     V input{};if(control)input=Unit(control->move);else Controls::Move(input.x,input.z);
     V wish{input.x*std::cos(yaw_)+input.z*std::sin(yaw_),0,-input.x*std::sin(yaw_)+input.z*std::cos(yaw_)};
     bool jump=control?control->jump:Controls::Jump(),jumped=jump&&!prevSpace_&&p.grounded;
     if(jumped){p.velocity.y=life_.recipe.Bounce();body.reboundAvailable=true;}else if(jump&&!prevSpace_&&!p.grounded&&life_.stompCooldown<=0){life_.stomping=true;p.velocity.y=-32;}
     prevSpace_=jump;
-    float speed=life_.recipe.Speed();if(body.action!=LifeAction::Idle)speed*=.2f;
-    if(body.action==LifeAction::Plane&&body.actionAge>.3f&&body.actionAge<.75f){wish=body.forward;speed=25;}
+    float speed=life_.recipe.Speed();if(LifeWeaponForm(body.action))speed*=body.weapon.active?.4f:.7f;else if(body.action!=LifeAction::Idle)speed*=.2f;
+    if(life_.tackleTime>0){life_.tackleTime=std::max(0.f,life_.tackleTime-dt);wish=body.forward;speed=25;}
+    if(body.action==LifeAction::Plane&&body.weapon.active&&body.weapon.age>.15f&&body.weapon.age<.72f){wish=body.forward;speed=25;}
     p.velocity=LifeMoveVelocity(p.velocity,wish,life_.recipe,p.grounded,dt,speed/life_.recipe.Speed());p.velocity.y-=life_.recipe.Gravity()*dt;
     V old=body.at,next=old+p.velocity*dt;next.x=std::clamp(next.x,-325.f,325.f);next.z=std::clamp(next.z,-335.f,375.f);
     float floor=InkGround(old),nextFloor=InkGround(next);if(nextFloor>old.y+.1f){next.x=old.x;next.z=old.z;nextFloor=floor;}
     bool grounded=p.grounded;p.grounded=SlimeGrounded(old.y,next.y,p.velocity.y,p.grounded,jumped,floor,nextFloor,LifeDistance(old,next));
     if(p.grounded){next.y=nextFloor+1.25f;p.velocity.y=0;p.recoveryPoint=next;}
     if(body.action==LifeAction::Idle)body.forward=Length(wish)>.05f?Unit(wish):Forward(yaw_,0);
+    else if(LifeWeaponForm(body.action)&&!body.weapon.active)body.forward=LifeWeaponFacing(body.forward,Forward(yaw_,0),dt);
     body.at=next;LifeTickMotion(body,life_.recipe,p.velocity,p.grounded,!grounded&&p.grounded,dt,body.forward);
     if(!grounded&&p.grounded&&life_.stomping){life_.stomping=false;life_.stompCooldown=.7f;++life_.stomps;
         float radius=life_.recipe.StompRadius()*LifeScale(body.mass),damage=life_.recipe.StompDamage()*LifeScale(body.mass);int hits=0;
@@ -273,7 +301,7 @@ void ChronoSystem::UpdateSlimeLife(entt::registry& r,Player& p,GameContext& ctx)
     if(!grounded&&p.grounded&&body.reboundAvailable){body.reboundAvailable=false;p.velocity.y=life_.recipe.Rebound();if(p.velocity.y>0)p.grounded=false;}
     auto& transform=r.get<TransformComponent>(player_);transform.translate=Write(body.at);float size=LifeScale(body.mass);transform.scale={size,size,size};transform.rotate.y=std::atan2(body.forward.x,body.forward.z);
     ink.fluidDirection=body.liquidForward;ink.groundHeight=nextFloor;ink.groundSlope={};ink.airBlend=body.air;ink.fluidAspect=body.aspect;ink.fluidMotion=body.motion;ink.swimming=false;ink.phase=SlimePhase::Roaming;
-    for(size_t index=0;index<4;++index){auto& b=life_.bodies[index];if(b.mass<=0)continue;b.age+=dt;b.cooldown=std::max(0.f,b.cooldown-dt);b.actionAge+=dt;
+    for(size_t index=0;index<life_.bodies.size();++index){auto& b=life_.bodies[index];if(b.mass<=0)continue;b.age+=dt;b.cooldown=std::max(0.f,b.cooldown-dt);b.actionAge+=dt;
         if(index>0){V previousAt=b.at;float distance=LifeDistance(b.at,body.at);
             if(b.down){ /* Defeated fragments remain here; proximity never restores main-body HP. */ }
             else if(distance>32){
@@ -281,7 +309,7 @@ void ChronoSystem::UpdateSlimeLife(entt::registry& r,Player& p,GameContext& ctx)
             }else if(b.action==LifeAction::Idle){
                 SwarmEnemy* selected=nullptr;float best=18;
                 for(auto& enemy:swarm_)if(SwarmAlive(enemy)){float d=LifeDistance(enemy.at,b.at);if(d<best){best=d;selected=&enemy;}}
-                V goal=body.at+V{float(index)*4-8,0,-5};if(selected)goal=selected->at;
+                float angle=float(index)*2.399963f;V goal=body.at+V{std::sin(angle)*7,0,std::cos(angle)*7};if(selected)goal=selected->at;
                 V direction=goal-b.at;direction.y=0;if(Length(direction)>.5f){b.forward=Unit(direction);b.at=b.at+b.forward*std::min(Length(direction),dt*life_.recipe.ChildSpeed());}
                 if(!StartLifeAbsorb(int(index))&&selected&&best<3.1f*LifeScale(b.mass)+1&&b.cooldown<=0){LifeHit(r,p,ctx,selected->id,life_.recipe.ChildDamage());b.cooldown=life_.recipe.ChildCooldown();++life_.childHits;}
             }
@@ -303,13 +331,24 @@ void ChronoSystem::UpdateSlimeLife(entt::registry& r,Player& p,GameContext& ctx)
                 }else {b.action=LifeAction::Restore;b.actionAge=0;b.target=0xffffffffu;++life_.revision;continue;}
             }
         }
-        if((b.action==LifeAction::Hammer||b.action==LifeAction::Sword||b.action==LifeAction::Plane)&&b.actionAge>.48f&&b.actionAge<.8f&&ctx.renderer->FluidMorphReady(life_.revision,index,1.f*LifeScale(b.mass))){
-            V local=b.action==LifeAction::Hammer?LifeSwing({0,4.8f,0},b.actionAge):V{0,1,4};local=local*LifeScale(b.mass);
-            V center=b.at+V{b.forward.z*local.x+b.forward.x*local.z,local.y-1.25f,-b.forward.x*local.x+b.forward.z*local.z};
-            for(auto& enemy:swarm_)if(SwarmAlive(enemy)&&enemy.lifeHitRevision!=b.attackSerial&&Length(enemy.at-center)<3*LifeScale(b.mass)+1.5f){enemy.lifeHitRevision=b.attackSerial;LifeHit(r,p,ctx,enemy.id,(b.action==LifeAction::Hammer?28.f:20.f)*LifeScale(b.mass));++life_.hammerHits;}
+        if(LifeWeaponForm(b.action)&&!LifeCanMorph(b.mass,b.action)){LifeReturnToSlime(b);++life_.revision;}
+        if(LifeWeaponForm(b.action)){
+            bool formed=b.actionAge>=.3f&&ctx.renderer->FluidMorphReady(life_.revision,index,1.f*LifeScale(b.mass));
+            if(LifeTickWeapon(life_,b,dt,index==0&&firePressed&&!changedForm,index==0&&fire&&!returned,formed)){
+                auto* audio=Engine::Audio::GetInstance();audio->Play(lifeSplitSounds_[0],false,.16f*audio->GetMasterSEVolume(),b.action==LifeAction::Hammer?1.8f:1.2f);
+            }
+            for(int pulse=0;pulse<2;++pulse){bool hit=false;uint64_t hitKey=b.attackSerial*2+uint64_t(pulse);
+                for(auto& enemy:swarm_)if(SwarmAlive(enemy)&&enemy.lifeHitRevision!=hitKey&&LifeWeaponTouches(b,enemy.at,1.25f,pulse)){
+                    enemy.lifeHitRevision=hitKey;LifeHit(r,p,ctx,enemy.id,LifeWeaponDamage(b));++life_.hammerHits;hit=true;}
+                if(hit){ctx.camera->StartImpactShake(.1f,b.action==LifeAction::Hammer?.16f:.08f,{0,1,0},18);
+                    if(swarmEffects_.size()<128)swarmEffects_.push_back({b.at+b.forward*(3*LifeScale(b.mass)),0,3*LifeScale(b.mass),2});}
+            }
         }
-        if(b.action!=LifeAction::Idle&&b.actionAge>=LifeDuration(b.action,life_.recipe)){
-            if(b.action==LifeAction::Restore){b.action=LifeAction::Idle;b.mass+=b.pendingGrowth;b.maxHealth+=b.pendingGrowth;b.pendingGrowth=0;b.cooldown=.25f;}
+        if((b.action==LifeAction::Engulf||b.action==LifeAction::Restore)&&b.actionAge>=LifeDuration(b.action,life_.recipe)){
+            if(b.action==LifeAction::Restore){b.action=LifeAction::Idle;float gained=LifeCompleteGrowth(life_,b);b.cooldown=.25f;
+                if(gained>0){
+                    life_.message="吸収して成長！ 本体 "+LifeNumber(body.mass)+" / 子分 "+std::to_string(life_.ChildCount())+"体";life_.messageAge=2;}
+            }
             else b.action=LifeAction::Restore;
             b.actionAge=0;b.target=0xffffffffu;++life_.revision;
         }
@@ -317,11 +356,15 @@ void ChronoSystem::UpdateSlimeLife(entt::registry& r,Player& p,GameContext& ctx)
     if(life_.contactCooldown<=0&&LifeDistance(old,body.at)>dt*5&&body.action==LifeAction::Idle){
         for(const auto& enemy:swarm_)if(SwarmAlive(enemy)&&LifeDistance(enemy.at,body.at)<2.7f*LifeScale(body.mass)){
             LifeHit(r,p,ctx,enemy.id,12*LifeScale(body.mass));life_.contactCooldown=.55f;break;}}
+    // Preserve enemies for the late-game forms instead of ending the run before growth.
+    int waveSize=body.mass>=LifePlaneMass?LifeEnemyCount:body.mass>=LifeHammerMass?12:6;
+    while(swarm_.size()<size_t(waveSize)){auto enemy=LifeWaveEnemy(int(swarm_.size()),body.at);enemy.at.y=InkGround(enemy.at)+1;swarm_.push_back(enemy);}
+    ink.swarmSpawned=int(swarm_.size());
     int active=0;for(const auto& enemy:swarm_)if(SwarmAlive(enemy)&&(enemy.phase==SwarmPhase::Windup||enemy.phase==SwarmPhase::Dash))++active;
     ink.swarmAlive=0;
     for(auto& enemy:swarm_)if(SwarmAlive(enemy)){
         ++ink.swarmAlive;int victim=0;float nearest=LifeDistance(body.at,enemy.at);
-        for(size_t i=1;i<4;++i)if(life_.bodies[i].mass>0&&!life_.bodies[i].down){float d=LifeDistance(life_.bodies[i].at,enemy.at);if(d<nearest){nearest=d;victim=int(i);}}
+        for(size_t i=1;i<life_.bodies.size();++i)if(life_.bodies[i].mass>0&&!life_.bodies[i].down){float d=LifeDistance(life_.bodies[i].at,enemy.at);if(d<nearest){nearest=d;victim=int(i);}}
         auto& targetBody=life_.bodies[size_t(victim)];V before=enemy.at;auto phase=enemy.phase;
         bool held=false;for(const auto& b:life_.bodies)if(b.action==LifeAction::Engulf&&b.target==enemy.id)held=true;
         if(!held)TickSwarm(enemy,targetBody.at,dt,InkGround(enemy.at),active<2);
@@ -338,7 +381,7 @@ void ChronoSystem::UpdateSlimeLife(entt::registry& r,Player& p,GameContext& ctx)
     p.mass=body.mass;auto& health=r.get<HealthComponent>(player_);health.SetMaxHp(body.maxHealth);health.SetHp(body.health);health.SetDead(body.health<=0);
     if(life_.absorbed>=5&&lifeMaterials_<4){lifeMaterials_=4;say("NEW MATERIAL / FOAM UNLOCKED IN SLIME LAB");SaveSlimeLab();}
     p.worldScale=p.aimScale=1;p.aiming=false;p.action=Action::Free;
-    ink.cameraPullback=std::max(0.f,(LifeScale(body.mass)-1)*6);InkCamera(r,p,ctx);Presentation(r,p,ctx);SyncSlimeBodies(ctx);
+    InkCamera(r,p,ctx);Presentation(r,p,ctx);SyncSlimeBodies(ctx);
     if(body.health<=0)Finish(p,false);
     else if(ink.swarmKills>=LifeEnemyCount){++lifeClears_;SaveSlimeLab();Finish(p,true);}
 }
@@ -354,13 +397,25 @@ void ChronoSystem::DrawSlimeLifeUI(entt::registry& r,GameContext& ctx){
     if(!life_.lab){
     ui.Rounded({22,20,340,151},{.025f,.045f,.035f,.8f},20);ui.Label("SLIME MEADOW",42,34,15,UI::Lime,2);
     ui.Bold(std::to_string(ink.swarmKills)+" / "+std::to_string(LifeEnemyCount),42,55,36);ui.Text("地上の敵を倒して草原をクリア",42,104,16,UI::Muted,UI::JapaneseFont);ui.Text(life_.recipe.StyleName(),42,132,17,UI::Teal,UI::JapaneseFont);
-    ui.Rounded({22,537,315,143},{.025f,.045f,.035f,.8f},20);ui.Label("BODY  "+std::to_string(int(body.mass))+"    GROUP  "+std::to_string(int(life_.TotalMass())),42,553,16,UI::Lime);
+    ui.Rounded({22,493,340,187},{.025f,.045f,.035f,.8f},20);
+    float progression=LifeStartMass+life_.absorbedMass;
+    const char* stage=progression>=LifePlaneMass?"LATE / SWARM":progression>=LifeHammerMass?"MID / MORPH":"EARLY / TACKLE";
+    ui.Label(stage,42,505,14,UI::Gold);ui.Bar({42,530,290,7},std::min(1.f,body.mass/LifePlaneMass),UI::Lime);
+    ui.Label("BODY  "+std::to_string(int(body.mass))+"    GROUP  "+std::to_string(int(life_.TotalMass())),42,553,16,UI::Lime);
     ui.Bar({42,584,270,10},body.health/std::max(1.f,body.maxHealth),UI::Teal);ui.Text("本体HP  "+std::to_string(int(std::ceil(body.health)))+" / "+std::to_string(int(body.maxHealth)),42,600,16,UI::Paper,UI::JapaneseFont);
-    int children=0;for(size_t i=1;i<4;++i)if(life_.bodies[i].mass>0)++children;ui.Label("CHILDREN  "+std::to_string(children)+" / 3",42,643,14,UI::Muted);
-    ui.Rounded({385,610,865,78},{.025f,.045f,.035f,.8f},20);
-    ui.Text(UI::UsingPad()?"X 取り込み   RT 変形   A ジャンプ / 踏みつけ":"F 取り込み   左クリック 変形   Space ジャンプ / 踏みつけ",405,625,15,UI::Paper,UI::JapaneseFont);
+    ui.Label("CHILDREN  "+std::to_string(life_.ChildCount())+" / "+std::to_string(life_.ChildLimit())+"    GROWTH +"+std::to_string(int(life_.absorbedMass)),42,643,13,UI::Muted);
+    ui.Rounded({385,588,865,100},{.025f,.045f,.035f,.8f},20);
+    bool inWeaponForm=LifeWeaponForm(body.action);
+    std::string attack=inWeaponForm?(body.action==LifeAction::Hammer?"連打（長押し可）":body.action==LifeAction::Sword?"横薙ぎ":"突進"):body.mass<LifeHammerMass?"タックル":"変形";
+    ui.Text(UI::UsingPad()?"RT "+attack+"   B スライムに戻る   X 取り込み   A ジャンプ":"左クリック "+attack+"   R スライムに戻る   F 取り込み   Space ジャンプ",405,600,14,UI::Paper,UI::JapaneseFont);
+    std::string gates;
+    for(auto weapon:{LifeAction::Hammer,LifeAction::Sword,LifeAction::Plane}){const char* name=weapon==LifeAction::Hammer?"1 HAMMER":weapon==LifeAction::Sword?"2 SWORD":"3 PLANE";
+        gates+=std::string(name)+(LifeCanMorph(body.mass,weapon)?" OK  ":" LOCK "+std::to_string(int(LifeRequiredMass(weapon)))+"  ");}
+    ui.Label(gates,405,628,13,UI::Gold);
     const char* form=life_.form==LifeAction::Hammer?"HAMMER":life_.form==LifeAction::Sword?"SWORD":"PLANE";
-    ui.Label(std::string("1/2/3 or DPAD: HAMMER / SWORD / PLANE    ")+form+"     TAB / BACK: SLIME LAB",405,657,12,UI::Lime);
+    const char* current=body.action==LifeAction::Hammer?"HAMMER":body.action==LifeAction::Sword?"SWORD":body.action==LifeAction::Plane?"PLANE":"SLIME";
+    std::string status=inWeaponForm?(!body.weapon.ready?" / FORMING":body.weapon.active?" / ATTACK":" / READY"):"";
+    ui.Label(std::string("FORM: ")+current+status+"   SELECT: "+form+"   1-3 / DPAD   TAB / BACK: LAB",405,657,12,UI::Lime);
     if(life_.messageAge>0)ui.Center(life_.message,640,185,16,UI::Gold,UI::JapaneseFont);
     // A single candidate marker makes the manual button's target legible before pressing it.
     if(!life_.lab&&body.action==LifeAction::Idle){bool ready=false;for(const auto& prop:life_.props)if(prop.active&&LifeCanAbsorb(body.mass,prop.required)&&LifeInMouth(body.at,body.forward,prop.at,body.mass,0,life_.recipe))ready=true;

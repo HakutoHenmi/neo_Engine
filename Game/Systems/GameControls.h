@@ -23,6 +23,7 @@ inline bool Jump() { return Key(VK_SPACE) || Pad(XINPUT_GAMEPAD_A); }
 inline bool LockOn() { return Key(VK_MBUTTON) || Pad(XINPUT_GAMEPAD_RIGHT_THUMB | XINPUT_GAMEPAD_LEFT_SHOULDER); }
 inline bool Absorb() { return Key('F') || Pad(XINPUT_GAMEPAD_X); }
 inline bool MorphAttack() { return Key(VK_LBUTTON) || Pad(Engine::Input::kPadRT); }
+inline bool ReturnToSlime() { return Key('R') || Pad(XINPUT_GAMEPAD_B); }
 
 // x: right, y: forward. Keyboard is digital; the stick keeps its analog length (max 1).
 inline void Move(float& x, float& y) {

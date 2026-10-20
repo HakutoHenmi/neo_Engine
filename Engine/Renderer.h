@@ -389,7 +389,7 @@ public:
 	struct FluidMorphTarget { Vector3 local;float blend;Vector3 origin;float density;Vector3 forward;float omega;Vector4 color;
         Vector4 material; // damping, viscosity, surface tension, ground height
         Vector4 motion;   // velocity xyz, airborne blend
-        Vector4 shape;    // compliant field radii xyz, 1=free liquid / 0=point spring
+        Vector4 shape;    // radii xyz; w: 1=free liquid, 0=engulf, -2/-3/-4=weapon spring
         Vector4 reserved; // 128-byte stride divides the upload ring's 256-byte alignment.
     };
 	static_assert(sizeof(FluidMorphTarget)==128);
@@ -398,17 +398,21 @@ public:
 	Microsoft::WRL::ComPtr<ID3D12Resource> fluidMorphScratch_,fluidMorphDummy_;
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> psoMorphKeys_,psoMorphSort_,psoMorphAssign_;
 	ID3D12Resource* fluidMorphFrame_=nullptr;uint32_t fluidMorphOffset_=0;
+    float fluidSamplingScale_=1; // Largest owner spacing, for bounded rendering work.
 	void InitFluidMorph();
 	void BindFluidMorphResources(ID3D12Resource* aabb,uint32_t offset=0);
-	uint32_t fluidMorphRetargetMask_=15;
+	static constexpr size_t kFluidMorphBodyCount=16;
+    static constexpr uint32_t kFluidMorphAllBodies=(1u<<kFluidMorphBodyCount)-1;
+    uint32_t fluidMorphRetargetMask_=kFluidMorphAllBodies;
 	bool fluidMorphSeedPending_=false;
-	void SetFluidMorphTargets(std::vector<FluidMorphTarget> targets,uint64_t revision,uint32_t mask=15,bool seed=false){fluidMorphTargets_=std::move(targets);fluidMorphRevision_=revision;fluidMorphRetargetMask_|=mask;fluidMorphSeedPending_|=seed;}
+	float fluidMorphDt_=-1;
+	void SetFluidMorphTargets(std::vector<FluidMorphTarget> targets,uint64_t revision,uint32_t mask=kFluidMorphAllBodies,bool seed=false,float frameDt=-1){fluidMorphTargets_=std::move(targets);fluidMorphRevision_=revision;fluidMorphRetargetMask_|=mask;fluidMorphSeedPending_|=seed;fluidMorphDt_=frameDt;}
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> psoMorphMeasure_;
 	Microsoft::WRL::ComPtr<ID3D12Resource> morphReadback_[2];
 	bool morphPending_[2]{};uint64_t morphReadbackRevision_[2]{},morphMeasuredRevision_=0;
-	std::array<float,4> morphErrors_{{1000,1000,1000,1000}};
+	std::array<float,kFluidMorphBodyCount> morphErrors_=[](){std::array<float,kFluidMorphBodyCount> values{};values.fill(1000);return values;}();
 	void QueueMorphMeasure();void CollectMorphMeasure(uint32_t frame);
-	bool FluidMorphReady(uint64_t revision,size_t body,float tolerance)const{return morphMeasuredRevision_==revision&&body<4&&morphErrors_[body]<tolerance;}
+	bool FluidMorphReady(uint64_t revision,size_t body,float tolerance)const{return morphMeasuredRevision_==revision&&body<kFluidMorphBodyCount&&morphErrors_[body]<tolerance;}
 
 	Microsoft::WRL::ComPtr<ID3D12RootSignature> rootSigFluid_;
 	Microsoft::WRL::ComPtr<ID3D12Resource> gpuFluidBuffer_;
@@ -471,20 +475,29 @@ public:
 
 	void InitGPUFluid();
 	void UpdateGPUFluid(float dt);
+	void PrepareGPUFluidFrame();
+	bool fluidFrameUpdated_=false;
 	void ResetGPUFluid();
-	void ClearGPUFluid() { gpuFluidActiveParticleCount_ = 0; gpuFluidPhaseMask_ = 0; volumeHistoryValid_ = false; isGPUFluidInitialized_ = false;fluidMorphTargets_.clear();fluidMorphApplied_=~uint64_t(0);fluidMorphRetargetMask_=15; }
+	void ClearGPUFluid() { gpuFluidActiveParticleCount_ = 0; gpuFluidPhaseMask_ = 0; volumeHistoryValid_ = false; isGPUFluidInitialized_ = false;fluidMorphTargets_.clear();fluidMorphApplied_=~uint64_t(0);fluidMorphRetargetMask_=kFluidMorphAllBodies; }
 	void EmitGPUFluid(const Vector3& pos, const Vector3& velocityDir, const Vector4& color, int count, float type = 0.0f, bool retainWater = false);
 	uint32_t ExtractGPUFluidFromPlayer(const Vector3& pos, const Vector3& velocityDir, int count);
 	void SyncLostGPUFluidGroup(uint32_t groupId, const Vector3& pos);
 	void AbsorbLostGPUFluidGroup(uint32_t groupId);
 	void DrawGPUFluid(TextureHandle texture);
 	bool InitFluidVolume();
+	void PrepareFluidVolume();
 	void DrawFluidVolume();
+	void DrawFluidVolumeShadow(const Matrix4x4& lightVP);
 	// 0: material, 1: phase, 2: normals, 3: thickness, 4: domain/step budget.
 	void SetFluidVolumeDebugMode(uint32_t mode) { fluidVolumeDebugMode_ = mode; }
 	uint32_t GetFluidVolumeDebugMode() const { return fluidVolumeDebugMode_; }
 	bool IsFluidVolumeReady() const { return fluidVolumeReady_; }
 	Microsoft::WRL::ComPtr<ID3D12RootSignature> rootSigVolumeCompute_, rootSigVolumeDraw_;
+	Microsoft::WRL::ComPtr<ID3D12RootSignature> rootSigVolumeShadow_;
+	Microsoft::WRL::ComPtr<ID3D12PipelineState> psoVolumeShadow_;
+	D3D12_GPU_VIRTUAL_ADDRESS volumeFrameSettings_=0;
+	uint32_t volumeDrawCount_=0;
+	Vector3 volumeShadowLow_{},volumeShadowHigh_{};
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> psoVolumeClear_, psoVolumeShapes_, psoVolumeSplat_, psoVolumeResolve_, psoVolumeSmooth_, psoVolumeTemporal_, psoVolumeOccupancy_, psoVolumeRaymarch_, psoVolumeSpray_;
 	Microsoft::WRL::ComPtr<ID3D12Resource> volumeAccum_, volumeMomentum_, volumeShapes_;
 	// 0/1: spatial ping-pong, 2/3: temporal ping-pong, 4: velocity.

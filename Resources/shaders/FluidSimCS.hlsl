@@ -148,7 +148,8 @@ void Emit(uint3 DTid : SV_DispatchThreadID) {
 }
 
 // ==========================================
-// PBF kernel calibration (world units, unit particle mass).
+// PBF base-kernel calibration (unit particle mass). Morph owners scale world
+// distances into these coordinates; legacy fluids use world units directly.
 // ==========================================
 static const float SMOOTHING_RADIUS = 0.4f; // ★1.0fから0.4fへ最適化: グリッドセルサイズが縮小され、O(N)の真価を発揮する
 static const float PARTICLE_MASS = 1.0f;
@@ -168,12 +169,17 @@ static const float POLY6_COEFF = 315.0f / (64.0f * PI * H_POWER_9);
 static const float SPIKY_COEFF = 45.0f / (PI * H_POWER_6);
 
 float RestDensity(float type,uint original) {
-    if(type<.5f&&pad8>.5f)return MorphTargets[MorphData[8192+original].target].density;
+    // Morph density/pressure are solved in particle-spacing coordinates. A
+    // world-space rest density can fall below one particle's self contribution.
+    if(type<.5f&&pad8>.5f)return 275.f;
     // Assault mass changes the active particle count, not each particle's mass.
     if(type<0.5f && coreMode>=4.0f) return FluidRestDensity(type);
     // Above baseline mass, keep the same particle budget and increase volume.
     float volume = (type < 0.5f && coreMode >= 2.0f) ? (coreMode>=4.0f?clamp(coreFlowSpeed/100.0f,.05f,2.0f):max(1.0f, coreFlowSpeed / 100.0f)) : 1.0f;
     return FluidRestDensity(type) / volume;
+}
+float ParticleSpacing(float type,uint original){
+    return type<.5f&&pad8>.5f?pow(275.f/max(MorphTargets[MorphData[8192+original].target].density,1e-6f),1.f/3.f):1.f;
 }
 float3 ChronoTransportVelocity() {
     if(coreMode>=4.0f) return pad3*float3(.9f,lerp(.9f,.65f,saturate(coreScale.y)),.9f);
@@ -382,13 +388,15 @@ void AbsorbLostFluidGroup(uint3 DTid : SV_DispatchThreadID) {
     Particles[i] = p;
 }
 
-int3 GetCell(float3 pos) {
-    return int3(floor(pos / SMOOTHING_RADIUS));
+int3 GetCell(float3 pos,float spacing) {
+    return int3(floor(pos / (SMOOTHING_RADIUS*spacing)));
 }
-
-uint GetGridHash(int3 cell) {
+uint GridSalt(float type,uint original){
+    return pad8>.5f&&type<.5f?(MorphData[8192+original].owner+1)*2654435761U:0;
+}
+uint GetGridHash(int3 cell,uint salt) {
     uint h = (uint(cell.x) * 73856093U) ^ (uint(cell.y) * 19349663U) ^ (uint(cell.z) * 83492791U);
-    return h % NUM_GRID_CELLS;
+    return (h^salt) & (pad8>.5f?8191U:NUM_GRID_CELLS-1);
 }
 
 // ==========================================
@@ -442,8 +450,8 @@ void CountParticles(uint3 DTid : SV_DispatchThreadID) {
     Particle p = Particles[i];
     if (p.color.a < 0.01f || p.position.y < -500.0f) return;
     
-    int3 cell = GetCell(p.position);
-    uint gHash = GetGridHash(cell);
+    int3 cell = GetCell(p.position,ParticleSpacing(p.type,i));
+    uint gHash = GetGridHash(cell,GridSalt(p.type,i));
     InterlockedAdd(GridCount[gHash], 1);
 }
 
@@ -454,7 +462,9 @@ groupshared uint sharedTotal[256];
 
 [numthreads(256, 1, 1)]
 void PrefixSum(uint3 DTid : SV_DispatchThreadID, uint GI : SV_GroupIndex) {
-    uint elementsPerThread = NUM_GRID_CELLS / 256; // 65536 / 256 = 256 elements per thread
+    // The morph path has a fixed 6600-particle budget. A compact table avoids
+    // scanning 65536 mostly empty buckets on every PBF iteration/substep.
+    uint elementsPerThread = (pad8>.5f?8192U:NUM_GRID_CELLS) / 256;
     uint startIdx = GI * elementsPerThread;
     
     // 1. 各スレッドが自分の担当ブロック(256個)の合計を計算
@@ -499,8 +509,8 @@ void SortParticle(uint i, bool prepareVelocity) {
     Particle p = Particles[i];
     if (p.color.a < 0.01f || p.position.y < -500.0f) return;
     
-    int3 cell = GetCell(p.position);
-    uint gHash = GetGridHash(cell);
+    int3 cell = GetCell(p.position,ParticleSpacing(p.type,i));
+    uint gHash = GetGridHash(cell,GridSalt(p.type,i));
     
     uint localOffset;
     InterlockedAdd(GridCount[gHash], 1, localOffset);
@@ -509,7 +519,7 @@ void SortParticle(uint i, bool prepareVelocity) {
     if (destIdx >= maxParticles) return;
     if (prepareVelocity && p.type<4.0f) {
         float3 v = (p.position - PreviousPositions[i].xyz) / max(dt, 1e-6f);
-        p.velocity = v * min(1.0f, (p.type>=4.0f?80.0f:30.0f) / max(length(v), 1e-6f));
+        p.velocity = v * min(1.0f, MorphSpeedLimit(i,p.type) / max(length(v), 1e-6f));
     }
     SortedParticles[destIdx] = p;
     OriginalIndices[destIdx] = i;
@@ -553,13 +563,14 @@ void CalcDensity(uint3 DTid : SV_DispatchThreadID) {
     float3 surfaceGradientSum = 0;
     float gradientSquaredSum = 0;
     float rest = RestDensity(type_i,OriginalIndices[i]);
+    float spacing=ParticleSpacing(type_i,OriginalIndices[i]);
     
     // 空間ハッシュグリッドで近傍のパーティクルのみを探索
-    int3 cell = GetCell(pos_i);
+    int3 cell = GetCell(pos_i,spacing);uint salt=GridSalt(type_i,OriginalIndices[i]);
     for (int z = -1; z <= 1; ++z) {
         for (int y = -1; y <= 1; ++y) {
             for (int x = -1; x <= 1; ++x) {
-                uint gHash = GetGridHash(cell + int3(x, y, z));
+                uint gHash = GetGridHash(cell + int3(x, y, z),salt);
                 uint startIdx = GridOffset[gHash];
                 if (startIdx >= maxParticles) continue;
                 uint count = GridCount[gHash];
@@ -568,14 +579,14 @@ void CalcDensity(uint3 DTid : SV_DispatchThreadID) {
                     uint j = startIdx + k;
                     if (j >= maxParticles) break;
                     if (SortedParticles[j].position.y >= -500.0f) {
-                        float3 diff = pos_i - SortedParticles[j].position;
+                        float3 diff = (pos_i - SortedParticles[j].position)/spacing;
                         float r2 = dot(diff, diff);
                         if (r2 < H2) {
                             // The query cube is much larger than the kernel
                             // sphere. Reject distant candidates before the
                             // floor/division needed to disambiguate hash hits.
-                            if (any(GetCell(SortedParticles[j].position) != cell + int3(x,y,z))) continue;
                             if (!CanParticlePairInteract(i,j,type_i, SortedParticles[j].type)) continue;
+                            if (any(GetCell(SortedParticles[j].position,spacing) != cell + int3(x,y,z))) continue;
                             float w = H2 - r2;
                             density += PARTICLE_MASS * POLY6_COEFF * w * w * w;
                             float3 gradient = KernelGradient(diff) / rest;
@@ -644,7 +655,7 @@ void CalcForce(uint3 DTid : SV_DispatchThreadID) {
     float surfaceTension = pi.type < 0.5f ? 50.0f :
         (isSlimeType ? SLIME_SURFACE_TENSION : WATER_SURFACE_TENSION);
     if(pad8>.5f&&pi.type<.5f)surfaceTension=MorphTargets[MorphData[8192+OriginalIndices[i]].target].material.z;
-    float3 force = SolverOutput[i].position * (surfaceTension / (SPIKY_COEFF * H2));
+    float3 force = SolverOutput[i].position * (surfaceTension / (SPIKY_COEFF * H2))*ParticleSpacing(pi.type,OriginalIndices[i]);
 
     // 加速度
     bool isLostPlayerSlimeForCluster = (pi.type > 2.5f && pi.type < 3.5f);
@@ -810,12 +821,16 @@ void CalcForce(uint3 DTid : SV_DispatchThreadID) {
     // 積分 (Symplectic Euler)
     if(pad8>.5f&&pi.type<.5f){
         pi.velocity=MorphIntegrate(OriginalIndices[i],pi.position,pi.velocity,acceleration,dt);
-        pi.color=MorphTargets[MorphData[8192+OriginalIndices[i]].target].color;
+        MorphTarget visual=MorphTargets[MorphData[8192+OriginalIndices[i]].target];
+        pi.color=visual.color;
+        // Render-only ownership, sample volume and form. Ordinary player/water
+        // retain their existing pad layout; the morph solver never tethers it.
+        pi.pad=float3(1000+visual.forward.y,visual.density,visual.shape.w);
     }else pi.velocity += acceleration * dt;
     
     // ★発散防止のため速度をクランプ
     float speed = length(pi.velocity);
-    float speedLimit=pi.type>=4.0f?80.0f:30.0f;
+    float speedLimit=MorphSpeedLimit(OriginalIndices[i],pi.type);
     if (speed > speedLimit) {
         pi.velocity = (pi.velocity / speed) * speedLimit;
     }
@@ -1018,18 +1033,19 @@ void CalcDeltaP(uint3 id : SV_DispatchThreadID) {
     if (i >= maxParticles || OriginalIndices[i] == 0xffffffffU) return;
     Particle p = SortedParticles[i];
     float3 correction = 0;
-    int3 cell = GetCell(p.position);
     float rest = RestDensity(p.type,OriginalIndices[i]);
+    float spacing=ParticleSpacing(p.type,OriginalIndices[i]);
+    int3 cell = GetCell(p.position,spacing);uint salt=GridSalt(p.type,OriginalIndices[i]);
     [loop] for (int z=-1; z<=1; ++z) [loop] for (int y=-1; y<=1; ++y) [loop] for (int x=-1; x<=1; ++x) {
         int3 query = cell + int3(x,y,z);
-        uint h = GetGridHash(query);
+        uint h = GetGridHash(query,salt);
         uint end = min(GridOffset[h]+GridCount[h], maxParticles);
         [loop] for (uint j=GridOffset[h]; j<end; ++j) {
             if (i==j) continue;
             Particle q = SortedParticles[j];
-            float3 d = p.position-q.position;
+            float3 d = (p.position-q.position)/spacing;
             if (dot(d,d)>=H2) continue;
-            if (any(GetCell(q.position)!=query) || !CanParticlePairInteract(i,j,p.type,q.type)) continue;
+            if (!CanParticlePairInteract(i,j,p.type,q.type)||any(GetCell(q.position,spacing)!=query)) continue;
             // A small artificial pressure discourages tensile pairing without
             // turning dilute particles into large repulsive bubbles.
             float ratio = Kernel(d) / Kernel(float3(0.12f,0,0));
@@ -1038,7 +1054,7 @@ void CalcDeltaP(uint3 id : SV_DispatchThreadID) {
         }
     }
     correction *= min(1.0f, 0.04f / max(length(correction),1e-6f));
-    SolverOutput[i].position = correction;
+    SolverOutput[i].position = correction*spacing;
 }
 
 float3 ProjectCollisions(float3 position, float particleType) {
@@ -1102,16 +1118,17 @@ void UpdateVelocity(uint3 id : SV_DispatchThreadID) {
     if((pad7>.5f&&OriginalIndices[i]>=uint(pad6.z))||p.type>=4.0f){SolverOutput[i]=p;return;}
     float3 velocity=p.velocity, sum=0;
     float weightSum=0;
-    int3 cell=GetCell(p.position);
+    float spacing=ParticleSpacing(p.type,OriginalIndices[i]);
+    int3 cell=GetCell(p.position,spacing);uint salt=GridSalt(p.type,OriginalIndices[i]);
     [loop] for (int z=-1; z<=1; ++z) [loop] for (int y=-1; y<=1; ++y) [loop] for (int x=-1; x<=1; ++x) {
         int3 query=cell+int3(x,y,z);
-        uint h=GetGridHash(query), end=min(GridOffset[h]+GridCount[h],maxParticles);
+        uint h=GetGridHash(query,salt), end=min(GridOffset[h]+GridCount[h],maxParticles);
         [loop] for(uint j=GridOffset[h]; j<end; ++j) {
             if (j==i) continue;
             Particle q=SortedParticles[j];
-            float3 d=p.position-q.position;
+            float3 d=(p.position-q.position)/spacing;
             if (dot(d,d)>=H2) continue;
-            if (any(GetCell(q.position)!=query) || !CanParticlePairInteract(i,j,p.type,q.type)) continue;
+            if (!CanParticlePairInteract(i,j,p.type,q.type)||any(GetCell(q.position,spacing)!=query)) continue;
             float w=Kernel(d);
             sum += q.velocity*w;
             weightSum += w;

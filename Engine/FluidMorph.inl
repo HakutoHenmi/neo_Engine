@@ -13,7 +13,7 @@ void Renderer::InitFluidMorph(){
         check(dev_->CreateComputePipelineState(&desc,IID_PPV_ARGS(&pso)));};
     make("MorphKeys",psoMorphKeys_);make("MorphSort",psoMorphSort_);make("MorphAssign",psoMorphAssign_);
     make("MorphMeasure",psoMorphMeasure_);
-    auto read=CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_READBACK);auto desc=CD3DX12_RESOURCE_DESC::Buffer(4*48);
+    auto read=CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_READBACK);auto desc=CD3DX12_RESOURCE_DESC::Buffer(kFluidMorphBodyCount*48);
     for(auto& buffer:morphReadback_)check(dev_->CreateCommittedResource(&read,D3D12_HEAP_FLAG_NONE,&desc,D3D12_RESOURCE_STATE_COPY_DEST,nullptr,IID_PPV_ARGS(&buffer)));
     fluidMorphFrame_=nullptr;fluidMorphApplied_=~uint64_t(0);
 }
@@ -22,17 +22,17 @@ void Renderer::QueueMorphMeasure(){
     list_->SetPipelineState(psoMorphMeasure_.Get());list_->Dispatch(1,1,1);
     auto ready=CD3DX12_RESOURCE_BARRIER::UAV(fluidMorphScratch_.Get());list_->ResourceBarrier(1,&ready);
     auto copy=CD3DX12_RESOURCE_BARRIER::Transition(fluidMorphScratch_.Get(),D3D12_RESOURCE_STATE_UNORDERED_ACCESS,D3D12_RESOURCE_STATE_COPY_SOURCE);list_->ResourceBarrier(1,&copy);
-    auto frame=window_->FrameIndex();list_->CopyBufferRegion(morphReadback_[frame].Get(),0,fluidMorphScratch_.Get(),16000*48,4*48);
+    auto frame=window_->FrameIndex();list_->CopyBufferRegion(morphReadback_[frame].Get(),0,fluidMorphScratch_.Get(),16000*48,kFluidMorphBodyCount*48);
     auto solve=CD3DX12_RESOURCE_BARRIER::Transition(fluidMorphScratch_.Get(),D3D12_RESOURCE_STATE_COPY_SOURCE,D3D12_RESOURCE_STATE_UNORDERED_ACCESS);list_->ResourceBarrier(1,&solve);
     morphPending_[frame]=true;morphReadbackRevision_[frame]=fluidMorphRevision_;
 }
 void Renderer::CollectMorphMeasure(uint32_t frame){
     if(!morphPending_[frame]||!morphReadback_[frame])return;
     // BeginFrame has already waited for this frame slot's fence; never wait here.
-    D3D12_RANGE range{0,4*48};void* data=nullptr;
+    D3D12_RANGE range{0,kFluidMorphBodyCount*48};void* data=nullptr;
     if(SUCCEEDED(morphReadback_[frame]->Map(0,&range,&data))){
         const auto* bytes=static_cast<const unsigned char*>(data);
-        for(size_t i=0;i<4;++i){float value;memcpy(&value,bytes+i*48,sizeof(float));morphErrors_[i]=std::isfinite(value)?value:1000.f;}
+        for(size_t i=0;i<kFluidMorphBodyCount;++i){float value;memcpy(&value,bytes+i*48,sizeof(float));morphErrors_[i]=std::isfinite(value)?value:1000.f;}
         D3D12_RANGE noWrite{0,0};morphReadback_[frame]->Unmap(0,&noWrite);morphMeasuredRevision_=morphReadbackRevision_[frame];
     }
     morphPending_[frame]=false;

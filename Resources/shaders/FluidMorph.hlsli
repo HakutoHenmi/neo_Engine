@@ -3,6 +3,12 @@ struct MorphTarget {float3 local;float blend;float3 origin;float density;float3 
 struct MorphEntry {float3 start;uint target;float3 previous;uint key;uint source;uint owner;float2 unused;};
 StructuredBuffer<MorphTarget> MorphTargets : register(t1);
 RWStructuredBuffer<MorphEntry> MorphData : register(u7);
+float MorphSpeedLimit(uint original,float type){
+    float limit=type>=4.f?80.f:30.f;
+    if(type<.5f&&pad8>.5f){MorphTarget t=MorphTargets[MorphData[8192+original].target];
+        if(t.shape.w<.5f&&t.reserved.w<-.5f)limit=max(limit,min(600.f,length(t.reserved.xyz)+60.f));}
+    return limit;
+}
 uint MorphSpread(uint n){n&=1023;n=(n|(n<<16))&0x030000ff;n=(n|(n<<8))&0x0300f00f;n=(n|(n<<4))&0x030c30c3;n=(n|(n<<2))&0x09249249;return n;}
 uint MorphKey(float3 p){uint3 q=(uint3)(clamp((p+12)/24,0,.99999)*1024);return MorphSpread(q.x)|(MorphSpread(q.y)<<1)|(MorphSpread(q.z)<<2);}
 float3 MorphLocal(float3 p,MorphTarget t){float3 d=p-t.origin;return float3(dot(d,float3(t.forward.z,0,-t.forward.x)),d.y,dot(d,float3(t.forward.x,0,t.forward.z)));}
@@ -27,23 +33,24 @@ float3 MorphFieldNormal(float3 field,MorphTarget t){
 }
 [numthreads(64,1,1)]
 void MorphKeys(uint3 id:SV_DispatchThreadID){
-    uint i=id.x;if(i>=8192)return;MorphEntry e=(MorphEntry)0;e.key=0xffffffff;e.source=i;
+    uint i=id.x;if(i>=8192)return;MorphEntry e=(MorphEntry)0;e.key=0xffffffff;e.owner=0xffffffff;e.source=i;
     if(i<(uint)pad6.z){MorphTarget t=MorphTargets[i];bool valid=Particles[i].color.a>.01f&&Particles[i].position.y>-500;
         e.start=valid?MorphLocal(Particles[i].position,t):t.local;e.owner=(uint)t.forward.y;
-        e.key=(e.owner<<30)|MorphKey(e.start);e.previous=valid?Particles[i].position:MorphWorld(t.local,t);}
+        e.key=MorphKey(e.start);e.previous=valid?Particles[i].position:MorphWorld(t.local,t);}
     MorphData[i]=e;
 }
 [numthreads(64,1,1)]
 void MorphSort(uint3 id:SV_DispatchThreadID){
     uint i=id.x,j=i^emitCursor;if(i>=8192||j<=i)return;MorphEntry a=MorphData[i],b=MorphData[j];
-    bool greater=a.key>b.key||(a.key==b.key&&a.source>b.source);bool ascending=(i&emitCount)==0;
+    bool greater=a.owner>b.owner||(a.owner==b.owner&&(a.key>b.key||(a.key==b.key&&a.source>b.source)));bool ascending=(i&emitCount)==0;
     if(greater==ascending){MorphData[i]=b;MorphData[j]=a;}
 }
 [numthreads(64,1,1)]
 void MorphAssign(uint3 id:SV_DispatchThreadID){uint i=id.x;if(i>=(uint)pad6.z)return;MorphEntry e=MorphData[i];if(((uint)emitType&(1u<<e.owner))==0)return;e.target=i;
     if(pad6.x>.5f){MorphTarget t=MorphTargets[i];Particle p=Particles[e.source];p.position=MorphWorld(t.local,t);p.velocity=0;p.color=t.color;p.type=0;Particles[e.source]=p;e.start=t.local;e.previous=p.position;}
     MorphData[8192+e.source]=e;}
-[numthreads(4,1,1)]
+// Must match Renderer::kFluidMorphBodyCount. Owner stays separate from the 30-bit spatial key.
+[numthreads(16,1,1)]
 void MorphMeasure(uint3 id:SV_DispatchThreadID){
     uint owner=id.x;float sum=0,maximum=0,count=0;
     for(uint i=0;i<(uint)pad6.z;++i){MorphEntry e=MorphData[8192+i];MorphTarget t=MorphTargets[e.target];if((uint)t.forward.y!=owner)continue;
@@ -65,15 +72,20 @@ float3 MorphIntegrate(uint original,float3 position,float3 velocity,float3 accel
         float3 coreRange=max(float3(t.shape.x*.5f,t.shape.y*.9f,t.shape.z*.5f),.2f);
         float influence=exp(-2*dot(coreDelta/coreRange,coreDelta/coreRange));
         float drive=28*influence;
-        // Propulsion starts near the liquid core. Pressure/viscosity carry the
-        // surrounding liquid; no common horizontal position transport exists.
+        // The core responds first; exterior particles retain their inertia.
+        // Damping is relative to the bulk flow, not the stationary world: world
+        // drag slowed the leading surface into a thin sheet as the core advanced.
+        // This changes forces only; particles never receive rigid translation.
         float3 desired=float3(t.motion.x,t.motion.y*(1-lerp(.9f,.65f,t.motion.w)),t.motion.z);
         float damping=max(.1f,t.material.x)*lerp(1.f,.65f,t.motion.w);
-        return (velocity+step*(acceleration+confinement+drive*desired))/(1+(damping+drive)*step);
+        return (velocity+step*(acceleration+confinement+(damping+drive)*desired))/(1+(damping+drive)*step);
     }
     float3 goal=MorphWorld(lerp(entry.start,t.local,saturate(t.blend)),t);
-    float3 targetVelocity=clamp((goal-entry.previous)/max(step,1e-5),-30,30);
+    // A weapon uploads its point velocity for the whole frame. Recomputing it
+    // from a frame-constant goal loses motion on all but the first GPU substep.
+    float3 targetVelocity=t.reserved.w<-.5f?t.reserved.xyz:clamp((goal-entry.previous)/max(step,1e-5),-30,30);
     entry.previous=goal;MorphData[8192+original]=entry;
+    if(t.reserved.w<-.5f)goal-=targetVelocity*max(emitColor.x,0);
     float w=t.omega,k=w*w,c=2*w;
     // Implicit spring, relative damping; integrate all external acceleration once.
     return (velocity+step*(acceleration+k*(goal-position)+c*targetVelocity))/(1+c*step+k*step*step);

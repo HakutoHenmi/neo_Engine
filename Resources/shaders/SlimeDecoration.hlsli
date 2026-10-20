@@ -8,6 +8,13 @@ float3 SlimeHash(float id) {
     return frac(sin(float3(id*12.9898f+3.1f,id*78.233f+9.2f,id*39.346f+1.7f))*43758.5453f);
 }
 float SlimeDecorationScale() { return playerSlope.y>0 ? playerSlope.y : 1; }
+bool SlimeMorphActive() {
+#ifdef FLUID_VOLUME_CORE
+    return playerMorph.w>.5f;
+#else
+    return false;
+#endif
+}
 bool SlimeCoreActive() {
 #ifdef FLUID_VOLUME_CORE
     return playerLiquidCore.w>.5f;
@@ -38,14 +45,37 @@ float3 SlimeFieldPosition(float3 field) {
     local.y+=dot(local.xz,playerSlope.xz)*(1-playerAir);
     return playerBodyCenter+local;
 }
-float3 SlimeEyeRadii() { return float3(.145f,.285f,.105f)*SlimeDecorationScale(); }
+float3 SlimeEyeRadii() { return (SlimeMorphActive()&&playerMorph.x==-3?float3(.11f,.22f,.10f):float3(.145f,.285f,.105f))*SlimeDecorationScale(); }
 float3 SlimeEyeGuide(uint eye) {
     float3 front=SlimeFaceForward(),right=float3(front.z,0,-front.x);
+    if(SlimeMorphActive()){
+        float height=playerMorph.x<-1.5f&&playerMorph.x>-2.5f?.58f:.38f;
+        float separation=playerMorph.x==-3?.23f:.46f;
+        return playerBodyCenter+right*((eye==0?-1:1)*separation*SlimeDecorationScale())+float3(0,playerRadii.y*height,0);
+    }
     if(SlimeCoreActive())return SlimeCorePosition()+right*((eye==0?-1:1)*.46f*SlimeDecorationScale())+front*(SlimeCoreRadii().z*.86f)+float3(0,.09f*SlimeDecorationScale(),0);
     return playerBodyCenter+right*((eye==0?-1:1)*.46f*SlimeDecorationScale())+float3(0,playerRadii.y*.48f,0);
 }
 float3 SlimeBubblePosition(uint id,out float radius,out float visibility) {
     float3 random=SlimeHash(float(id));
+    if(SlimeMorphActive()){
+        // Stable, unsorted simulation identities distribute cavities throughout
+        // the real liquid, including a weapon's head, handle and moving edges.
+        uint count=max(1,(uint)playerMorph.z);
+        uint anchor=min(count-1,(uint)((float(id)+.5f)*float(count)/float(slimeInteriorBubbles)));
+        VolumeParticle particle=originalParticles[anchor];
+        radius=min(.13f,lerp(.04f,.09f,random.y)*sqrt(SlimeDecorationScale()));
+        float3 position=particle.position+float3(sin(time*.55f+id)*.035f,sin(time*.7f+id)*.06f,cos(time*.55f+id)*.035f);
+        // A cavity fades before touching the skin; it never carves a moving
+        // crater or becomes a row of spheres on the top of the hammer.
+        float margin=radius*1.4f;
+        float density=Density(position).x;
+        density=min(density,min(Density(position+float3(margin,0,0)).x,Density(position-float3(margin,0,0)).x));
+        density=min(density,min(Density(position+float3(0,margin,0)).x,Density(position-float3(0,margin,0)).x));
+        density=min(density,min(Density(position+float3(0,0,margin)).x,Density(position-float3(0,0,margin)).x));
+        visibility=smoothstep(isoValue,isoValue*1.5f,density)*step(999.5f,particle.pad.x)*step(particle.pad.x,1000.5f);
+        return position;
+    }
     float age=frac(time*(.10f+.035f*random.y)+random.x);
     float angle=float(id)*2.39996323f+time*.22f;
     float radial=sqrt(random.z)*.78f;

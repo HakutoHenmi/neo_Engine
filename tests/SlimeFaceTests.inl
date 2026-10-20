@@ -46,5 +46,15 @@ void TestPlayerFace(Gpu& g) {
     g.Compile(L"Resources/shaders/FluidRaymarch.hlsl","RaymarchPS","ps_5_0");
     g.Compile(L"Resources/shaders/FluidRaymarch.hlsl","SprayVS","vs_5_0");
     g.Compile(L"Resources/shaders/FluidRaymarch.hlsl","SprayPS","ps_5_0");
+    auto faceCode=g.Compile(L"tests/SlimeFaceTests.hlsl","TestGameplayFace","cs_5_0",&includes);
+    Check(g.device->CreateComputeShader(faceCode->GetBufferPointer(),faceCode->GetBufferSize(),nullptr,&g.kernels["TestGameplayFace"]));
+    auto output=g.MakeBuffer(3,16);
+    for(float form:{1.f,-2.f,-3.f,-4.f}){std::vector<XMFLOAT4> original;
+        for(int side=0;side<2;++side){camera.pos={side?12.f:-12.f,4,side?20.f:-20.f};VolumeCB cb{};cb.playerMorph={form,2.2f,6600,1};cb.playerSlope.y=2.2f;cb.playerForward={.6f,0,.8f};
+            g.Unbind();g.context->UpdateSubresource(cameraCb.Get(),0,nullptr,&camera,0,0);g.context->UpdateSubresource(volumeCb.Get(),0,nullptr,&cb,0,0);ID3D11Buffer* c[]={cameraCb.Get(),volumeCb.Get()};g.context->CSSetConstantBuffers(0,2,c);auto uav=output.uav.Get();g.context->CSSetUnorderedAccessViews(0,1,&uav,nullptr);g.Dispatch("TestGameplayFace",1);auto result=g.Read<XMFLOAT4>(output);
+            Require(std::abs(result[0].x-.6f)<.0001f&&std::abs(result[0].z-.8f)<.0001f,"gameplay face follows camera instead of body front");
+            if(side==0)original=result;else for(size_t i=0;i<3;++i)Require(XMVectorGetX(XMVector3Length(XMVectorSubtract(XMLoadFloat4(&result[i]),XMLoadFloat4(&original[i]))))<.0001f,"camera orbit moves gameplay eyes to the tail");
+        }}
+    puts("PASS gameplay face: ordinary/hammer/sword/plane eyes keep body-forward orientation while camera orbits");
     puts("PASS rigid decorations: unchanged eye aspect/separation and spherical bubble radius across stretch, squash, flight and slope; mass scaling; travel/menu facing; analytic silhouette/depth; production shaders compiled");
 }

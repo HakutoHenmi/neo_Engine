@@ -1,5 +1,11 @@
 #include "../Resources/shaders/FluidRaymarch.hlsl"
 RWStructuredBuffer<float4> faceResults : register(u0);
+[numthreads(1,1,1)]
+void TestGameplayFace(uint3 id:SV_DispatchThreadID){
+    faceResults[0]=float4(SlimeFaceForward(),1);
+    faceResults[1]=float4(SlimeEyeGuide(0),1);
+    faceResults[2]=float4(SlimeEyeGuide(1),1);
+}
 [numthreads(64,1,1)]
 void TestPlayerFace(uint3 id : SV_DispatchThreadID) {
     if(id.x>=230)return;

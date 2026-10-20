@@ -1,4 +1,4 @@
-param([Parameter(Mandatory=$true)][string]$Executable,[switch]$LabOnly,[switch]$TurnOnly,[switch]$MixtureOnly)
+param([Parameter(Mandatory=$true)][string]$Executable,[switch]$LabOnly,[switch]$TurnOnly,[switch]$MixtureOnly,[switch]$StressOnly,[switch]$MotionOnly)
 $ErrorActionPreference='Stop'
 $repoPath=Split-Path $PSScriptRoot -Parent
 $outPath=Join-Path $PSScriptRoot 'out'
@@ -10,10 +10,14 @@ $process=$null
 $validationBefore=@(Get-Content -LiteralPath (Join-Path $repoPath 'd3d12_validation_log.txt') -ErrorAction SilentlyContinue).Count
 $runtimeOutPath=Join-Path (Split-Path (Resolve-Path -LiteralPath $Executable).Path -Parent) 'tests/out'
 New-Item -ItemType Directory -Force $runtimeOutPath | Out-Null
+$reportName=if($MotionOnly){'slime-life-motion.txt'}elseif($StressOnly){'slime-life-stress.txt'}else{'slime-life-smoke.txt'}
+$testStarted=Get-Date
 try {
     $arguments=@('--slime-life-smoke');if($LabOnly){$arguments+='--slime-life-lab-only'}
     if($TurnOnly){$arguments+='--slime-life-turn-only'}
     if($MixtureOnly){$arguments+='--slime-life-mixture-only'}
+    if($StressOnly){$arguments+='--slime-life-stress'}
+    if($MotionOnly){$arguments+='--slime-life-motion'}
     $process=Start-Process -FilePath (Resolve-Path -LiteralPath $Executable).Path -ArgumentList $arguments -WorkingDirectory $repoPath -WindowStyle Hidden -PassThru
     while(-not $process.WaitForExit(1000)){
         if((Get-Date)-$process.StartTime -gt [TimeSpan]::FromSeconds(240)){throw 'Slime life smoke test exceeded 240 seconds'}
@@ -21,11 +25,13 @@ try {
     Copy-Item -LiteralPath (Join-Path $repoPath 'error_log.txt') -Destination (Join-Path $outPath 'slime-life-run.txt')
     $newValidation=@(Get-Content -LiteralPath (Join-Path $repoPath 'd3d12_validation_log.txt') | Select-Object -Skip $validationBefore)
     $newValidation | Set-Content -LiteralPath (Join-Path $outPath 'slime-life-d3d12.txt')
-    if((Test-Path -LiteralPath (Join-Path $runtimeOutPath 'slime-life-smoke.txt')) -and [IO.Path]::GetFullPath($runtimeOutPath) -ne [IO.Path]::GetFullPath($outPath)){
+    if((Test-Path -LiteralPath (Join-Path $runtimeOutPath $reportName)) -and [IO.Path]::GetFullPath($runtimeOutPath) -ne [IO.Path]::GetFullPath($outPath) -and (Get-Item -LiteralPath (Join-Path $runtimeOutPath $reportName)).LastWriteTime -ge $testStarted){
         Get-ChildItem -LiteralPath $runtimeOutPath -Filter 'slime-life-*' -File | ForEach-Object { Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $outPath $_.Name) }
     }
-    $report=Get-Content -LiteralPath (Join-Path $outPath 'slime-life-smoke.txt') -Raw
-    if($process.ExitCode -ne 0 -or $report -notmatch '^PASS'){throw "Slime life smoke failed: $report"}
+    $reportPath=Join-Path $outPath $reportName
+    if(!(Test-Path -LiteralPath $reportPath) -or (Get-Item -LiteralPath $reportPath).LastWriteTime -lt $testStarted){throw "No fresh report for $reportName"}
+    $report=Get-Content -LiteralPath $reportPath -Raw
+    if($process.ExitCode -ne 0 -or $report -notmatch '(?m)^PASS'){throw "Slime life smoke failed: $report"}
     if(($newValidation -join "`n") -match '\[(ERROR|CORRUPTION)\]|Device removed'){throw 'Slime life D3D12 error: see tests/out/slime-life-d3d12.txt'}
     Write-Output $report
 } finally {

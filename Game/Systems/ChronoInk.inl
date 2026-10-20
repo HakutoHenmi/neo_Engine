@@ -180,7 +180,8 @@ void ChronoSystem::InkCamera(entt::registry& r,Player& p,GameContext& ctx){
     const auto& boss=r.get<CreatureBoss>(boss_);
     float arrival=boss.stage==CreatureStage::Dive&&boss.sweepPhase==2?6.f*AttackEase(boss.sweepTime/.65f):0.f;
     float aftershock=boss.impactAge<.45f?5.f*(1-boss.impactAge/.45f):0.f;
-    float pullback=((charging||firing)?3*power:0.f)+domainView*14+std::max(arrival,aftershock);
+    float growthPullback=slimeLife_?std::max(0.f,(LifeScale(life_.bodies[0].mass)-1)*6):0.f;
+    float pullback=growthPullback+((charging||firing)?3*power:0.f)+domainView*14+std::max(arrival,aftershock);
     ink.cameraPullback+=(pullback-ink.cameraPullback)*(1-std::exp(-10*ctx.dt));
     V focus=cameraFollow_+V{0,2.f,0};
     V wanted=focus-forward*(17.f+ink.cameraPullback+heavy*5)+right*(1.5f+shot*4.5f+heavy*8)+V{0,shot*1.2f+heavy*3+domainView*6,0};

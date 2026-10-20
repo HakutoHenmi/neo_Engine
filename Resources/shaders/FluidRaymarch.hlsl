@@ -14,21 +14,16 @@ StructuredBuffer<FluidShape> particleShapes : register(t4);
 StructuredBuffer<VolumeParticle> renderParticles : register(t5);
 Texture2D<float> fluidDepth : register(t6);
 Texture3D<float4> occupancy : register(t7);
+StructuredBuffer<VolumeParticle> originalParticles : register(t8);
 SamplerState linearClamp : register(s0);
 
-// The 98.56-unit horizontal volume reaches 49.28 units from its center.
-// Keep the crossfade inside that boundary.
-static const float nearVolumeFullRadius = 46.0f;
-static const float nearVolumeFadeEndRadius = 48.5f;
-
+// Morphing uses a fitted domain: its physical extent changes with the shape.
+// Share this exact border between raymarch and particle-LOD classification.
+float NearVolumeBorder(){return 2*voxelSize;}
+float3 NearVolumeMargin(float3 world){return min(world-volumeOrigin,volumeOrigin+voxelSize*volumeSize-world);}
 float NearVolumeWeight(float3 world) {
-    float3 margin=min(world-volumeOrigin,volumeOrigin+voxelSize*volumeSize-world);
-    // Broad, rounded transition instead of a narrow square band around player.
-    float3 centered=world-(volumeOrigin+voxelSize*volumeSize*0.5f);
-    float radial=length(centered.xz);
-    float horizontal=1-smoothstep(nearVolumeFullRadius,nearVolumeFadeEndRadius,radial);
-    float vertical=smoothstep(0.0f,4.0f,margin.y);
-    return horizontal*vertical;
+    float3 margin=NearVolumeMargin(world);
+    return smoothstep(0,NearVolumeBorder(),min(margin.x,min(margin.y,margin.z)));
 }
 
 float ViewDepth(float2 uv) {
@@ -156,14 +151,16 @@ RayResult RaymarchPS(FullscreenIn input) {
         n=dot(n,ray)>0?-n:n;
         float f0=selected==2?0.0204f:0.035f;
         float fresnel=f0+(1-f0)*pow(1-saturate(dot(n,-ray)),5);
-        float roughness=selected==2?0.12f:0.20f;
+        bool softSlime=selected==0&&SlimeMorphActive();
+        float roughness=selected==2?0.12f:softSlime?.14f:.20f;
         float3 tint=saturate(phaseColor[selected].rgb);
         float4 localDensity=fluidDensity.SampleLevel(linearClamp,(cameraPosition+ray*farthest-volumeOrigin)/(voxelSize*volumeSize),0);
         float inkFraction=selected==0?saturate(localDensity.w/max(localDensity.x,.001f)):0;
         tint=lerp(tint,float3(.045,.32,.17),inkFraction);
-        float3 absorption=(1-tint)*(selected==2?0.55f:lerp(2.2f,7.2f,inkFraction))+0.035f;
+        float gelAbsorption=softSlime?.85f/max(SlimeDecorationScale(),1):2.2f;
+        float3 absorption=(1-tint)*(selected==2?0.55f:lerp(gelAbsorption,7.2f,inkFraction))+0.035f;
         float3 transmission=exp(-absorption*thickness[selected]);
-        float3 body=result*transmission+tint*(1-transmission)*0.12f;
+        float3 body=result*transmission+tint*(1-transmission)*(softSlime?.22f:.12f);
         float opacity=saturate(phaseColor[selected].a);
         result=lerp(result,lerp(body,Reflection(n,ray,roughness),fresnel),opacity);
     }
@@ -197,10 +194,12 @@ SprayOut SprayVS(uint vertex:SV_VertexID, uint instance:SV_InstanceID) {
             world=SlimeBubblePosition(id,o.radius,visibility);o.distantBulk=2;
             if(Density(world).x<isoValue*.55f)visibility=0;
         }else if(id<slimeInteriorBubbles+slimeEscapedBubbles){
-            float3 random=SlimeHash(float(id));float age=frac(time*(.32f+.14f*random.y)+random.x);
+            float3 random=SlimeHash(float(id));bool morph=SlimeMorphActive();
+            float age=frac(time*(morph?.18f+.08f*random.y:.32f+.14f*random.y)+random.x);
             float angle=float(id)*2.39996323f;
             float3 field=float3(cos(angle)*playerRadii.x*.48f,0,sin(angle)*playerRadii.z*.48f);
             world=SlimeFieldPosition(field);o.radius=(.13f+.10f*random.y)*SlimeDecorationScale();
+            if(morph)o.radius=min(.18f,(.065f+.045f*random.y)*sqrt(SlimeDecorationScale()));
             // Start above the reconstructed surface, including landing squash and sliding.
             // An assumed ellipsoid can keep the entire plume buried inside the SPH body.
             float extent=playerRadii.y*1.7f;float previous=extent;bool found=false;
@@ -210,11 +209,12 @@ SprayOut SprayVS(uint vertex:SV_VertexID, uint instance:SV_InstanceID) {
                     float outside=previous,inside=height;
                     [unroll] for(uint refine=0;refine<4;++refine){float middle=(outside+inside)*.5f;
                         if(Density(world+float3(0,middle,0)).x>=isoValue)inside=middle;else outside=middle;}
-                    world.y+=(outside+inside)*.5f+o.radius+age*2.8f*SlimeDecorationScale();found=true;break;
+                    world.y+=(outside+inside)*.5f+o.radius+age*(morph?.8f*sqrt(SlimeDecorationScale()):2.8f*SlimeDecorationScale());found=true;break;
                 }previous=height;
             }
             world.xz+=float2(sin(time*1.6f+angle),cos(time*1.3f+angle))*.13f*age*SlimeDecorationScale();
             visibility=found?smoothstep(0,.07f,age)*(1-smoothstep(.72f,1,age)):0;o.distantBulk=4;
+            if(morph&&id>=slimeInteriorBubbles+12)visibility=0;
         }else{
             uint eye=id-slimeInteriorBubbles-slimeEscapedBubbles;
             float3 front=SlimeFaceForward(),guide=SlimeEyeGuide(eye);
@@ -223,7 +223,7 @@ SprayOut SprayVS(uint vertex:SV_VertexID, uint instance:SV_InstanceID) {
             world=guide;
             // Anchor each rigid eye to the actual reconstructed SPH boundary.
             // This follows lagging/flapping fluid instead of an assumed ellipse.
-            [loop] for(uint step=0;step<40&&!SlimeCoreActive();++step){
+            [loop] for(uint step=0;step<40&&(!SlimeCoreActive()||SlimeMorphActive());++step){
                 float distance=extent*(1-float(step)/20);
                 if(Density(guide+front*distance).x>=isoValue){
                     float outside=previous,inside=distance;
@@ -232,7 +232,7 @@ SprayOut SprayVS(uint vertex:SV_VertexID, uint instance:SV_InstanceID) {
                     world=guide+front*((outside+inside)*.5f+.045f*SlimeDecorationScale());found=true;break;
                 }previous=distance;
             }
-            if(SlimeCoreActive()){world=guide;found=Density(SlimeCorePosition()).x>isoValue*.25f;}
+            if(SlimeCoreActive()&&!SlimeMorphActive()){world=guide;found=Density(SlimeCorePosition()).x>isoValue*.25f;}
             visibility=found?1:0;o.radius=SlimeEyeRadii().y*1.2f;o.distantBulk=3;
         }
         if(visibility<=0){o.position=float4(2,2,2,1);return o;}
@@ -243,9 +243,8 @@ SprayOut SprayVS(uint vertex:SV_VertexID, uint instance:SV_InstanceID) {
     }
     FluidShape s=particleShapes[instance];
     VolumeParticle p=renderParticles[instance];
-    float3 margin=min(ShapeCenter(s)-volumeOrigin,volumeOrigin+voxelSize*volumeSize-ShapeCenter(s));
-    float2 centered=ShapeCenter(s).xz-(volumeOrigin+voxelSize*volumeSize*0.5f).xz;
-    bool distant=s.info.x>0 && (length(centered)+s.info.y>nearVolumeFullRadius || margin.y<4+s.info.y);
+    float3 margin=NearVolumeMargin(ShapeCenter(s));
+    bool distant=s.info.x>0 && min(margin.x,min(margin.y,margin.z))<NearVolumeBorder()+s.info.y;
     if(s.info.w==0 || (s.info.z<0.005f && !distant)) { o.position=float4(2,2,2,1); return o; }
     o.shapeIndex=instance; o.distantBulk=distant ? 1 : 0;
     o.phase=VolumePhase(p.type);
@@ -274,10 +273,11 @@ float4 SprayPS(SprayOut input):SV_Target {
         float bulkDepth=fluidDepth.Load(int3((int2)input.position.xy,0));
         float depthInGel=bulkDepth>0?max(0,z-bulkDepth):0;
         if(eye){
-            if(bulkDepth<=0 || (!SlimeCoreActive()&&depthInGel>.2f*SlimeDecorationScale()))discard;
+            if(SlimeMorphActive()&&depthInGel>.25f*SlimeDecorationScale())discard;
+            if(!SlimeMorphActive()&&(bulkDepth<=0 || (!SlimeCoreActive()&&depthInGel>.2f*SlimeDecorationScale())))discard;
             float facing=saturate(dot(normal,-ray));
             float edge=smoothstep(0,.22f,facing);
-            if(SlimeCoreActive())edge*=exp(-depthInGel*.055f)*smoothstep(-.15f,.25f,dot(normalize(cameraPosition-SlimeCorePosition()),SlimeFaceForward()));
+            if(SlimeCoreActive()&&!SlimeMorphActive())edge*=exp(-depthInGel*.055f)*smoothstep(-.15f,.25f,dot(normalize(cameraPosition-SlimeCorePosition()),SlimeFaceForward()));
             if(halo)return float4(.68f,.90f,.26f,.14f*edge*input.color.a*saturate(playerDecoration));
             return float4(lerp(float3(.75f,.85f,.20f),float3(1,.97f,.64f),pow(facing,.35f)),
                 edge*input.color.a*saturate(playerDecoration));
@@ -293,7 +293,7 @@ float4 SprayPS(SprayOut input):SV_Target {
         if(ViewDepth(refracted)<z)refracted=uv;
         float3 reflection=Reflection(normal,ray,.035f);
         float3 refractedColor=sceneColor.SampleLevel(linearClamp,refracted,0).rgb;
-        float transmission=exp(-depthInGel*.48f);
+        float transmission=exp(-depthInGel*(SlimeMorphActive()?.24f/max(SlimeDecorationScale(),1):.48f));
         float3 tint=input.distantBulk==2?float3(.36f,.95f,.73f):float3(.9f,1,.96f);
         float3 color=(reflection*3.f+float3(.24f,.39f,.33f))*tint+highlight*float3(2.3f,2.4f,2.25f);
         color=lerp(refractedColor*tint*.55f,color,saturate(.18f+fresnel*.82f+highlight));
@@ -327,7 +327,7 @@ float4 SprayPS(SprayOut input):SV_Target {
         float f0=input.phase==2 ? 0.0204f : 0.035f;
         float fresnel=f0+(1-f0)*pow(1-saturate(dot(normal,-ray)),5);
         bool ink=renderParticles[input.shapeIndex].type>=8.0f;
-        float3 tint=ink?float3(.045,.32,.17):saturate(input.color.rgb);
+        float3 tint=ink?float3(.045,.32,.17):saturate(phaseColor[input.phase].rgb);
         float3 transmission=exp(-((1-tint)*(input.phase==2 ? 0.55f : ink?7.2f:2.2f)+0.035f)*(endT-t));
         float3 viewNormal=mul(normal,(float3x3)view);
         float2 refracted=clamp(uv+viewNormal.xy*float2(1,-1)*min(endT-t,2.0f)*0.025f/max(t*viewRay.z,1),0.001f,0.999f);
@@ -335,7 +335,7 @@ float4 SprayPS(SprayOut input):SV_Target {
         float3 background=sceneColor.SampleLevel(linearClamp,refracted,0).rgb;
         float3 color=lerp(background*transmission+tint*(1-transmission)*0.12f,Reflection(normal,ray,input.phase==2 ? 0.12f : 0.20f),fresnel);
         float edgeCoverage=saturate(discriminant/(a*0.15f));
-        return float4(color,weight*edgeCoverage*saturate(input.color.a));
+        return float4(color,weight*edgeCoverage*saturate(input.color.a)*saturate(phaseColor[input.phase].a));
     }
     float r2=dot(input.local,input.local);
     if(r2>=1) discard;

@@ -5,9 +5,18 @@
 #include <vector>
 #include <string>
 namespace Game::Chrono {
-inline constexpr float LifeStartMass=100,LifeMaxMass=400,LifeChildMass=20;
+inline constexpr float LifeStartMass=100,LifeMaxMass=1200;
+inline constexpr float LifeInitialGroupMass=LifeStartMass;
+inline constexpr float LifeHammerMass=180,LifeSwordMass=300,LifePlaneMass=480;
+inline constexpr size_t LifeBodyCount=13;
 inline constexpr int LifeEnemyCount=18;
 enum class LifeAction {Idle,Engulf,Hammer,Sword,Plane,Restore};
+inline float LifeRequiredMass(LifeAction action){
+    return action==LifeAction::Hammer?LifeHammerMass:action==LifeAction::Sword?LifeSwordMass:action==LifeAction::Plane?LifePlaneMass:0;
+}
+inline bool LifeCanMorph(float mass,LifeAction action){
+    return (action==LifeAction::Hammer||action==LifeAction::Sword||action==LifeAction::Plane)&&mass>=LifeRequiredMass(action);
+}
 struct SlimeColor {
     float h=.26190476f,s=.875f,v=.8f;
     Vec ToRGB()const {
@@ -55,8 +64,13 @@ struct SlimeRecipe {
     float SurfaceTension()const {return 8+45*Ratio(2)+18*Ratio(1);}
     float Slosh()const {return 1.2f+1.6f*Ratio(0)-.65f*Ratio(2)-.7f*Ratio(1);}
 };
+struct LifeWeaponAttack {
+    float age=0,previousAge=0,buffer=0;
+    bool active=false,ready=false;
+};
 struct LifeBody {
     Vec at{},forward{0,0,1},liquidForward{0,0,1},engulfPoint{},velocity{};
+    Vec previousForward{0,0,1}; // Previous frame's weapon basis, for angular velocity.
     // World-space horizontal strain (xx-zz, xz). Blending shape, rather than
     // rotating a long body, lets the old extension relax into the new direction.
     Vec flowShape{};
@@ -66,10 +80,15 @@ struct LifeBody {
     uint32_t target=0xffffffffu;
     LifeAction action=LifeAction::Idle;
     uint64_t attackSerial=0;
+    LifeWeaponAttack weapon;
     uint32_t particles=0;
     bool down=false,committed=false,reboundAvailable=false;
 };
-inline float LifeScale(float mass){return std::cbrt(std::max(1.f,mass)/LifeStartMass);}
+// Stronger growth above the starting size; fragments retain their small volume.
+inline float LifeScale(float mass){float ratio=std::max(1.f,mass)/LifeStartMass;return ratio>1?std::sqrt(ratio):std::cbrt(ratio);}
+inline float LifeDensity(float mass,uint32_t particles,uint32_t totalParticles){
+    float scale=LifeScale(mass);return 275.f*float(particles)/(float(std::max(1u,totalParticles))*scale*scale*scale);
+}
 inline bool LifeCanAbsorb(float mass,float required,float health=0,float maxHealth=1){
     return mass>=required&&health<=maxHealth*.3f;
 }
@@ -100,7 +119,8 @@ inline void LifeTickMotion(LifeBody& b,const SlimeRecipe& recipe,Vec velocity,bo
         strain={amount*(direction.x*direction.x-direction.z*direction.z),0,amount*2*direction.x*direction.z};}
     b.flowShape=Lerp(b.flowShape,strain,1-std::exp(-(7+2*recipe.Ratio(0)+3*recipe.Ratio(2))*dt));
     if(landed)b.aspectVelocity-=6*recipe.Slosh();
-    float target=grounded?1-.12f*std::min(1.f,Length(Vec{velocity.x,0,velocity.z})/15):1+std::min(.45f,std::abs(velocity.y)*.028f)*recipe.Slosh();
+    // Travel stretches horizontally; only impacts squash the crown vertically.
+    float target=grounded?1:1+std::min(.45f,std::abs(velocity.y)*.028f)*recipe.Slosh();
     int steps=std::max(1,int(std::ceil(dt*120)));float h=dt/steps;
     for(int i=0;i<steps;++i){b.aspectVelocity+=((35+80*recipe.Ratio(1))*(target-b.aspect)-(3+7*recipe.Ratio(2)+3*recipe.Ratio(1))*b.aspectVelocity)*h;b.aspect=std::clamp(b.aspect+b.aspectVelocity*h,.48f,1.65f);}
     b.air+=((grounded?0.f:1.f)-b.air)*(1-std::exp(-14*dt));
@@ -120,7 +140,7 @@ inline bool LifeInMouth(Vec from,Vec forward,Vec target,float mass,float extra=0
 enum class SlimeTrial {None,Move,Absorb,Hit};
 struct LifeCollectible {Vec at{};float required=20,reward=12;bool active=true;uint32_t visual=0xffffffffu;};
 struct SlimeLife {
-    std::array<LifeBody,4> bodies{};
+    std::array<LifeBody,LifeBodyCount> bodies{};
     std::vector<LifeCollectible> props;
     SlimeRecipe recipe;
     LifeBody preview;
@@ -134,15 +154,30 @@ struct SlimeLife {
     int colorDrag=0;
     LifeAction form=LifeAction::Hammer;
     float age=0,messageAge=0,stompCooldown=0,contactCooldown=0,morphAge=0;
+    float absorbedMass=0,tackleTime=0;
     int absorbed=0,childHits=0,stomps=0,hammerHits=0,splits=0;
     uint64_t revision=1;
     uint64_t nextAttack=1;
-    bool lab=true,previousAbsorb=false,previousFire=false;
+    bool lab=true,previousAbsorb=false,previousFire=false,previousReturn=false;
     bool previousLab=false,stomping=false,deployRequested=false;
     std::string message;
     float TotalMass()const {float n=0;for(const auto& b:bodies)n+=b.mass;return n;}
     float ReservedMass()const {float n=TotalMass();for(const auto& b:bodies)n+=b.pendingGrowth;return n;}
+    int ChildLimit()const {float growth=LifeStartMass+absorbedMass;return growth>=LifePlaneMass?12:growth>=LifeHammerMass?6:2;}
+    int ChildCount()const {int count=0;for(size_t i=1;i<bodies.size();++i)if(bodies[i].mass>0)++count;return count;}
 };
+inline void LifeInitializeBodies(SlimeLife& life,uint32_t particles){
+    life.bodies={};life.absorbedMass=0;
+    auto& parent=life.bodies[0];parent.mass=parent.health=parent.maxHealth=LifeStartMass;
+    parent.particles=particles;
+}
+// Absorption by either the player or a child grows the main body. Growth is
+// committed only after restoration; pending rewards still count towards the cap.
+inline float LifeCompleteGrowth(SlimeLife& life,LifeBody& collector){
+    float amount=std::clamp(collector.pendingGrowth,0.f,std::max(0.f,LifeMaxMass-life.TotalMass()));collector.pendingGrowth=0;
+    auto& parent=life.bodies[0];parent.mass+=amount;parent.maxHealth+=amount;life.absorbedMass+=amount;
+    return amount;
+}
 // Every accepted hit costs HP, including at the child limit. A living fragment
 // takes cohesion out of the main body; there is no minimum-HP protection.
 inline int LifeTakeHit(SlimeLife& life,float damage){
@@ -150,7 +185,7 @@ inline int LifeTakeHit(SlimeLife& life,float damage){
     if(damage<=0||parent.health<=0||parent.down)return -1;
     parent.health=std::max(0.f,parent.health-damage*life.recipe.DamageMultiplier());
     if(parent.health<=0||parent.mass<=0||parent.particles<2)return -1;
-    for(size_t i=1;i<life.bodies.size();++i)if(life.bodies[i].mass<=0){
+    for(size_t i=1;i<=size_t(life.ChildLimit());++i)if(life.bodies[i].mass<=0){
         float mass=std::min(life.recipe.SplitCap(),parent.mass*life.recipe.SplitRatio()),fraction=mass/parent.mass;
         auto& child=life.bodies[i];child={};child.at=parent.at;child.forward=parent.forward;child.mass=mass;
         child.maxHealth=parent.maxHealth*fraction;child.health=std::min(parent.health,child.maxHealth);

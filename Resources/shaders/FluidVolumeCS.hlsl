@@ -47,27 +47,40 @@ void BuildShapes(uint3 id : SV_DispatchThreadID) {
         shape.info=float4(3.2f*p.color.a,width,0,1);shapes[i]=shape;return;
     }
     bool water=VolumePhase(p.type)==2;
+    bool morph=p.type<.5f&&p.pad.x>=1000&&p.pad.x<1016&&p.pad.y>0;
+    if(morph){
+        // Fixed work per particle at every size. A coherent isotropic kernel
+        // avoids rotating PCA ridges as neighbours enter/leave a grown body.
+        float spacing=pow(275.f/max(p.pad.y,1e-6f),1.f/3.f);
+        float radius=max(.8f*spacing,voxelSize*1.25f);
+        shape.row0=float4(1/radius,0,0,p.position.x);
+        shape.row1=float4(0,1/radius,0,p.position.y);
+        shape.row2=float4(0,0,1/radius,p.position.z);
+        float amplitude=(315.f/(64.f*3.14159265f))/(p.pad.y*radius*radius*radius);
+        shape.info=float4(amplitude*saturate(p.color.a),radius,0,1);shapes[i]=shape;return;
+    }
     bool supported=water && p.pad.z>0 &&
         abs(p.position.y-p.pad.y)<0.35f && abs(p.velocity.y)<2.5f;
     float sum=0;
     float3 mean=0;
     float3x3 moment=(float3x3)0;
     uint neighbours=0;
-    int3 cell=(int3)floor(p.position/0.4f);
+    float gridCell=max(.4f,abs(filterAxis)); // Negative = compact morph hash table.
+    int3 cell=(int3)floor(p.position/gridCell);
     const float searchRadius=1.1f;
     float nearestDistance=searchRadius;
-    float3 localPosition=p.position-(float3)cell*0.4f;
+    float3 localPosition=p.position-(float3)cell*gridCell;
     [loop] for(int z=-3;z<=3;++z) [loop] for(int y=-3;y<=3;++y) [loop] for(int x=-3;x<=3;++x) {
         // A cell whose nearest point is outside the kernel cannot contribute.
         // Reject it before the hashed-grid reads, including for distant LODs.
-        float3 relativeMin=float3(x,y,z)*0.4f-localPosition;
-        float3 outside=max(max(relativeMin,-relativeMin-0.4f),0.0f);
+        float3 relativeMin=float3(x,y,z)*gridCell-localPosition;
+        float3 outside=max(max(relativeMin,-relativeMin-gridCell),0.0f);
         if(dot(outside,outside)>=searchRadius*searchRadius) continue;
         int3 query=cell+int3(x,y,z);
         uint h=VolumeHash(query), end=min(gridOffset[h]+gridCount[h],particleCount);
         [loop] for(uint j=gridOffset[h];j<end;++j) {
             VolumeParticle q=particles[j];
-            if (VolumePhase(q.type)!=VolumePhase(p.type) || any((int3)floor(q.position/0.4f)!=query)) continue;
+            if (VolumePhase(q.type)!=VolumePhase(p.type) || any((int3)floor(q.position/gridCell)!=query)) continue;
             float3 d=q.position-p.position;
             float r2=dot(d,d)/(searchRadius*searchRadius);
             if (r2>=1) continue;
@@ -89,7 +102,7 @@ void BuildShapes(uint3 id : SV_DispatchThreadID) {
     float3 axes=sqrt(max(variance,maxVariance*0.0625f));
     axes/=pow(axes.x*axes.y*axes.z,1.0f/3.0f);
     bool spray=water && !supported && neighbours==0;
-    axes=clamp(axes*0.65f,max(voxelSize*1.25f,0.28f),1.1f);
+    axes=clamp(axes*.65f,max(voxelSize*1.25f,0.28f),1.1f);
     float3 center=p.position+mean*0.2f;
     // Column eigenvectors become rows of the inverse ellipsoid transform.
     float3x3 transform=transpose(vectors);
