@@ -5,6 +5,7 @@ StructuredBuffer<MorphTarget> MorphTargets : register(t1);
 RWStructuredBuffer<MorphEntry> MorphData : register(u7);
 float MorphSpeedLimit(uint original,float type){
     float limit=type>=4.f?80.f:30.f;
+    if(type>1.05f&&type<1.25f)limit=96.f;
     if(type<.5f&&pad8>.5f){MorphTarget t=MorphTargets[MorphData[8192+original].target];
         if(t.shape.w<.5f&&t.reserved.w<-.5f)limit=max(limit,min(600.f,length(t.reserved.xyz)+60.f));}
     return limit;

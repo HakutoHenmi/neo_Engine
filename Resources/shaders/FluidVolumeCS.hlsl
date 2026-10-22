@@ -13,6 +13,32 @@ RWTexture3D<float4> outputDensity : register(u3);
 RWTexture3D<float4> outputVelocity : register(u4);
 SamplerState linearClamp : register(s0);
 
+// This entry point shares t0 with BuildShapes/SplatDensity. Each PSO only uses
+// one of the two declarations, with its own structured-buffer stride.
+struct FluidTendril { float3 start;float radius;float3 end;float endRadius; };
+StructuredBuffer<FluidTendril> tendrils : register(t0);
+[numthreads(64,1,1)]
+void SplatTendrils(uint3 id : SV_DispatchThreadID) {
+    if(id.x>=particleCount)return;
+    FluidTendril arm=tendrils[id.x];
+    float support=max(max(arm.radius,arm.endRadius)*1.5f,voxelSize*1.65f);
+    int3 lo=max(int3(0,0,0),(int3)floor((min(arm.start,arm.end)-support-volumeOrigin)/voxelSize-.5f));
+    int3 hi=min((int3)volumeSize-1,(int3)ceil((max(arm.start,arm.end)+support-volumeOrigin)/voxelSize-.5f));
+    float3 segment=arm.end-arm.start;
+    float squared=max(dot(segment,segment),1e-8f);
+    [loop]for(int z=lo.z;z<=hi.z;++z)[loop]for(int y=lo.y;y<=hi.y;++y)[loop]for(int x=lo.x;x<=hi.x;++x){
+        uint3 cell=uint3(x,y,z);float3 world=volumeOrigin+(cell+.5f)*voxelSize;
+        float along=saturate(dot(world-arm.start,segment)/squared);
+        float radius=max(lerp(arm.radius,arm.endRadius,along)*1.5f,voxelSize*1.65f);
+        float3 delta=world-lerp(arm.start,arm.end,along);
+        float w=saturate(1-dot(delta,delta)/(radius*radius));
+        // Union, rather than summation, keeps joints and overlapping arms from
+        // swelling. The common filtering, raymarch, shadows and refraction follow.
+        uint value=(uint)round(1.4f*w*w*4096.f);
+        InterlockedMax(densityAccum[VolumeIndex(cell)].x,value);
+    }
+}
+
 [numthreads(4,4,4)]
 void ClearVolume(uint3 p : SV_DispatchThreadID) {
     if (any(p>=volumeSize)) return;
@@ -61,6 +87,19 @@ void BuildShapes(uint3 id : SV_DispatchThreadID) {
     }
     bool supported=water && p.pad.z>0 &&
         abs(p.position.y-p.pad.y)<0.35f && abs(p.velocity.y)<2.5f;
+    if(p.type>1.05f&&p.type<1.25f&&!supported&&p.pad.x<.12f&&dot(p.velocity,p.velocity)>16){
+        // Fast jets must not toggle between a sub-voxel PCA surface and a tiny
+        // isolated spray. Overlapping velocity-aligned kernels reconstruct the
+        // actual simulated stream, including sparse tips and the near-volume LOD.
+        float speed=length(p.velocity);float3 along=p.velocity/speed;
+        float3 across=normalize(cross(along,abs(along.y)<.9f?float3(0,1,0):float3(1,0,0)));
+        float radius=max(max(.48f,p.pad.y*.65f),voxelSize*1.65f);
+        float axial=max(radius,clamp(speed/60,.8f,1.5f));
+        shape.row0=float4(across/radius,p.position.x);
+        shape.row1=float4(cross(along,across)/radius,p.position.y);
+        shape.row2=float4(along/axial,p.position.z);
+        shape.info=float4(1.1f*saturate(p.color.a),max(radius,axial),0,1);shapes[i]=shape;return;
+    }
     float sum=0;
     float3 mean=0;
     float3x3 moment=(float3x3)0;
@@ -109,6 +148,9 @@ void BuildShapes(uint3 id : SV_DispatchThreadID) {
     // Contact water is a sheet, not an airborne droplet. Preserve its volume.
     if (supported) {
         float radius=neighbours>0 ? clamp(nearestDistance*1.8f,0.65f,1.1f) : 0.5f;
+        // A spreading hydrant sheet is a thin continuous film: wider, flatter
+        // kernels merge it, and sparse outskirts thin away instead of beading.
+        if(p.type>1.05f&&p.type<1.25f)radius=neighbours>0?clamp(nearestDistance*3.f,1.2f,2.f):.7f;
         axes=float3(radius,max(voxelSize,0.25f),radius);
         transform=float3x3(1,0,0,0,1,0,0,0,1);
         center.y=p.position.y;
@@ -129,6 +171,8 @@ void BuildShapes(uint3 id : SV_DispatchThreadID) {
     float amplitude=(315.0f/(64.0f*3.14159265f))*volume/(axes.x*axes.y*axes.z);
     // A tiny detached slime group still represents visible gameplay mass.
     if (!water && neighbours<3) amplitude=max(amplitude,0.7f);
+    // Drained street water fades out over its last seconds rather than popping.
+    if (supported && p.type>1.05f&&p.type<1.25f) amplitude*=1-smoothstep(1.5f,4.5f,p.pad.x);
     shape.info=float4(spray ? 0 : amplitude*saturate(p.color.a), max(axes.x,max(axes.y,axes.z)),
                       spray ? 0.045f : 0.0f, 1);
     shapes[i]=shape;

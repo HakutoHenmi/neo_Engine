@@ -1,3 +1,30 @@
+// Execute the production liquid-arm kernel. Check continuous support all the
+// way to every tip and idempotent union at crossings (no joint swelling).
+void TestFluidTendrils(Gpu& g){
+    using namespace Game::Chrono;
+    struct Arm {Vec start;float radius;Vec end;float endRadius;};
+    constexpr UINT width=96,height=32,depth=96;
+    LifeBody body;body.mass=100;body.at={0,1.25f,0};SlimeRecipe recipe;body.actionAge=recipe.AbsorbDuration()*.5f;
+    std::vector<Arm> arms;std::vector<Vec> probes;
+    for(size_t i=0;i<12;++i){float angle=(float(i)-5.5f)*.105f;LifeGrab grab;grab.at={std::sin(angle)*10,.5f,std::cos(angle)*10};
+        auto previous=LifeTentaclePoint(body,recipe,grab,i,0);float radius=LifeTentacleRadius(100,0);
+        for(int segment=1;segment<=LifeTentacleSegments;++segment){float u=float(segment)/LifeTentacleSegments;auto next=LifeTentaclePoint(body,recipe,grab,i,u);float nextRadius=LifeTentacleRadius(100,u);
+            arms.push_back({previous,radius,next,nextRadius});probes.push_back((previous+next)*.5f);probes.push_back(next);previous=next;radius=nextRadius;}
+    }
+    auto input=g.MakeBuffer(UINT(arms.size()),sizeof(Arm),arms.data()),accum=g.MakeBuffer(width*height*depth,16),momentum=g.MakeBuffer(width*height*depth,16);
+    VolumeCB cb{};cb.origin={-9,-1,-4};cb.cell=.2f;cb.size[0]=width;cb.size[1]=height;cb.size[2]=depth;cb.count=UINT(arms.size());auto settings=g.Constant(sizeof(cb));
+    g.Kernel("ClearVolume");g.Kernel("SplatTendrils");
+    auto bind=[&](){g.Unbind();g.context->UpdateSubresource(settings.Get(),0,nullptr,&cb,0,0);auto constant=settings.Get();g.context->CSSetConstantBuffers(1,1,&constant);
+        auto srv=input.srv.Get();g.context->CSSetShaderResources(0,1,&srv);ID3D11UnorderedAccessView* outputs[]={accum.uav.Get(),momentum.uav.Get()};g.context->CSSetUnorderedAccessViews(0,2,outputs,nullptr);};
+    bind();g.Dispatch("ClearVolume",width/4,height/4,depth/4);g.Dispatch("SplatTendrils",(cb.count+63)/64);auto first=g.Read<std::array<UINT,4>>(accum);
+    for(auto p:probes){int x=int((p.x-cb.origin.x)/cb.cell),y=int((p.y-cb.origin.y)/cb.cell),z=int((p.z-cb.origin.z)/cb.cell);
+        Require(x>=0&&x<int(width)&&y>=0&&y<int(height)&&z>=0&&z<int(depth),"liquid arm escaped its field");
+        Require(first[(z*height+y)*width+x][0]>UINT(.25f*4096),"hole in a fluid arm or disconnected tip");}
+    bind();g.Dispatch("SplatTendrils",(cb.count+63)/64);auto second=g.Read<std::array<UINT,4>>(accum);
+    Require(first==second,"overlapping liquid arms swell after repeated reconstruction");
+    for(const auto& cell:first)Require(cell[1]==0&&cell[2]==0&&cell[3]==0,"liquid arms use a different fluid material channel");
+    puts("PASS 12 liquid arms: continuous density to tips, stable union and shared body material channel");
+}
 // Reconstruct and compose an actual grown hammer, including the particle LOD.
 void TestHammerSurface(Gpu& g,bool grown=false,Game::Chrono::LifeAction form=Game::Chrono::LifeAction::Hammer,float massOverride=0){
     using namespace Game::Chrono;
@@ -87,8 +114,8 @@ void TestHammerSurface(Gpu& g,bool grown=false,Game::Chrono::LifeAction form=Gam
         if(form==LifeAction::Sword&&!grown)camera.position=pose==0?XMFLOAT3{0,5,40}:pose==1?XMFLOAT3{10,16,35}:pose==2?XMFLOAT3{0,2,35}:XMFLOAT3{0,5,-35};
         float framing=massOverride>0?scale/LifeScale(grown?600.f:form==LifeAction::Hammer?232.f:form==LifeAction::Sword?304.f:496.f):1;
         camera.position={camera.position.x*framing,camera.position.y*framing,camera.position.z*framing};
-        auto view=XMMatrixLookAtLH(XMLoadFloat3(&camera.position),XMVectorSet(0,4*framing,0,1),XMVectorSet(0,1,0,0)),projection=XMMatrixPerspectiveFovLH(.9f,float(w)/h,.1f,200);XMStoreFloat4x4(&camera.view,view);XMStoreFloat4x4(&camera.projection,projection);XMStoreFloat4x4(&camera.vp,view*projection);
-        if(pose==3){cb.origin.x+=100;cb.colors[0]={.04f,.9f,.07f,1};}
+        auto view=XMMatrixLookAtLH(XMLoadFloat3(&camera.position),XMVectorSet(0,4*framing,0,1),XMVectorSet(0,1,0,0)),projection=XMMatrixPerspectiveFovLH(.9f,float(w)/h,.1f,std::max(200.f,60*scale));XMStoreFloat4x4(&camera.view,view);XMStoreFloat4x4(&camera.projection,projection);XMStoreFloat4x4(&camera.vp,view*projection);
+        if(pose==3){cb.origin.x+=100*std::max(1.f,scale/LifeScale(1200));cb.colors[0]={.04f,.9f,.07f,1};}
         g.Unbind();g.context->UpdateSubresource(cameraCb.Get(),0,nullptr,&camera,0,0);g.context->UpdateSubresource(settings.Get(),0,nullptr,&cb,0,0);g.context->VSSetConstantBuffers(0,2,constants);g.context->PSSetConstantBuffers(0,2,constants);
         ID3D11ShaderResourceView* inputs[]={fields[1].srv.Get(),bgSrv.Get(),depthSrv.Get(),nullptr,shapes.srv.Get(),particles.srv.Get(),nullptr,fields[3].srv.Get()};g.context->PSSetShaderResources(0,8,inputs);
         ID3D11RenderTargetView* targets[]={colorRtv.Get(),surfaceRtv.Get()};g.context->OMSetRenderTargets(2,targets,nullptr);g.context->OMSetDepthStencilState(ds.Get(),0);g.context->RSSetState(rs.Get());g.context->OMSetBlendState(nullptr,nullptr,UINT_MAX);D3D11_VIEWPORT viewport{0,0,float(w),float(h),0,1};g.context->RSSetViewports(1,&viewport);g.context->VSSetShader(vs.Get(),nullptr,0);g.context->PSSetShader(ps.Get(),nullptr,0);g.context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);g.context->Draw(3,0);

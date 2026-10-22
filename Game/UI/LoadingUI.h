@@ -107,7 +107,7 @@ struct Page { const char* title; std::array<const char*,4> lines; const char *ke
 inline const std::array<Page,6>& Pages() {
     static const std::array<Page,6> pages{{
         {"自分だけのスライム",{"水分・弾力・粘りを混ぜてスライムを作ろう。","配合と素材の解放は保存されます。","大きさはステージごとに元に戻ります。",""},nullptr,nullptr,nullptr,nullptr},
-        {"ガバッと取り込む",{"対象へ近づいて取り込みボタンを押そう。","前側を左右に開き、包み込んで飲み込みます。","敵は弱らせてから。大きな物には成長が必要。",""},nullptr,"F / ABSORB","xbox_button_x","ABSORB"},
+        {"触手を伸ばして取り込む",{"右クリック長押しで正面をまとめて吸収。","無数の触手が素早く伸び、対象を引き寄せます。","本体180から小さな物は通るだけで吸収。","敵は弱らせてから。大きな物には成長が必要。"},"mouse_right","ABSORB","xbox_button_x","ABSORB"},
         {"被弾すると自然分裂",{"攻撃を受けると体の一部が子に分かれます。","子は自動で敵を探して戦います。","分裂と集合を指示する操作はありません。",""},nullptr,nullptr,nullptr,nullptr},
         {"本体のHPを守ろう",{"被弾と分裂で本体のHPが減ります。","子が残っていても本体のHPがゼロなら終了。","子を合体させてHPを戻すことはできません。",""},nullptr,nullptr,nullptr,nullptr},
         {"体そのものを変形",{"ハンマー・剣・飛行機へ変形して攻撃。","キーボードの1・2・3で形を選べます。","ジャンプ中にもう一度ジャンプで踏みつけ。",""},"mouse_left","MORPH","xbox_rt","MORPH"},

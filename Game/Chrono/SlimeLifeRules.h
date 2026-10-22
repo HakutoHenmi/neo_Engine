@@ -5,17 +5,18 @@
 #include <vector>
 #include <string>
 namespace Game::Chrono {
-inline constexpr float LifeStartMass=100,LifeMaxMass=1200;
+inline constexpr float LifeStartMass=100,LifeMaxMass=6000;
 inline constexpr float LifeInitialGroupMass=LifeStartMass;
 inline constexpr float LifeHammerMass=180,LifeSwordMass=300,LifePlaneMass=480;
+inline constexpr float LifeContactAbsorbMass=180;
 inline constexpr size_t LifeBodyCount=13;
-inline constexpr int LifeEnemyCount=18;
-enum class LifeAction {Idle,Engulf,Hammer,Sword,Plane,Restore};
+enum class LifeAction {Idle,Engulf,Hammer,Sword,Plane,Tire,Hydrant,Restore};
+enum class LifeMorphItem {None,Tire,Hydrant};
 inline float LifeRequiredMass(LifeAction action){
-    return action==LifeAction::Hammer?LifeHammerMass:action==LifeAction::Sword?LifeSwordMass:action==LifeAction::Plane?LifePlaneMass:0;
+    return action==LifeAction::Hammer?LifeHammerMass:action==LifeAction::Sword?LifeSwordMass:action==LifeAction::Plane?LifePlaneMass:(action==LifeAction::Tire||action==LifeAction::Hydrant)?1.f:0;
 }
 inline bool LifeCanMorph(float mass,LifeAction action){
-    return (action==LifeAction::Hammer||action==LifeAction::Sword||action==LifeAction::Plane)&&mass>=LifeRequiredMass(action);
+    return LifeRequiredMass(action)>0&&mass>=LifeRequiredMass(action);
 }
 struct SlimeColor {
     float h=.26190476f,s=.875f,v=.8f;
@@ -35,14 +36,14 @@ struct SlimeRecipe {
     std::array<int,4> mix{40,35,25,0};
     SlimeColor color;
     float Ratio(int i)const {return float(mix[size_t(i)])/float(std::max(1,mix[0]+mix[1]+mix[2]+mix[3]));}
-    float Speed()const {return 8+20*Ratio(0)-2*Ratio(2)+6*Ratio(3);}
+    float Speed()const {return 1.2f*(8+20*Ratio(0)-2*Ratio(2)+6*Ratio(3));}
     float Acceleration()const {return 7+13*Ratio(0)-2*Ratio(2)+3*Ratio(1);}
     float Braking()const {return 10-6*Ratio(0)+5*Ratio(2);}
     float Gravity()const {return 30-16*Ratio(3);}
     float Bounce()const {return 8+16*Ratio(1)+7*Ratio(3);}
     float Rebound()const {return Ratio(1)>=.5f?3+4*Ratio(1):0;}
-    float AbsorbDuration()const {return 1.2f-.35f*Ratio(0)-.75f*Ratio(2)+.15f*Ratio(1);}
-    float AbsorbRange()const {return 4.2f*(1+.85f*Ratio(0));}
+    float AbsorbDuration()const {return .48f-.14f*Ratio(0)-.30f*Ratio(2)+.06f*Ratio(1);}
+    float AbsorbRange()const {return 8.f*(1+.85f*Ratio(0));}
     float AbsorbDot()const {return .35f-.23f*Ratio(0);}
     float AbsorbHold()const {return 1+2*Ratio(2);}
     float StompDamage()const {return 12+42*Ratio(1);}
@@ -68,6 +69,13 @@ struct LifeWeaponAttack {
     float age=0,previousAge=0,buffer=0;
     bool active=false,ready=false;
 };
+struct LifeGrab {
+    uint32_t target=0xffffffffu;
+    Vec at{};
+    float reward=0;
+    float cancelAge=0;
+    bool committed=false,cancelled=false;
+};
 struct LifeBody {
     Vec at{},forward{0,0,1},liquidForward{0,0,1},engulfPoint{},velocity{};
     Vec previousForward{0,0,1}; // Previous frame's weapon basis, for angular velocity.
@@ -76,14 +84,22 @@ struct LifeBody {
     Vec flowShape{};
     Vec fluidOffset{},coreLead{},coreVelocity{};
     float aspect=1,aspectVelocity=0,air=0,motion=0;
-    float mass=0,health=0,maxHealth=0,cooldown=0,age=0,actionAge=0,pendingGrowth=0;
+    float mass=0,health=0,maxHealth=0,cooldown=0,age=0,actionAge=0,pendingGrowth=0,restoreDuration=.4f;
     uint32_t target=0xffffffffu;
     LifeAction action=LifeAction::Idle;
     uint64_t attackSerial=0;
     LifeWeaponAttack weapon;
+    std::vector<LifeGrab> grabs;
+    Vec grabOrigin{};
     uint32_t particles=0;
     bool down=false,committed=false,reboundAvailable=false;
+    bool tireUnlocked=false;
+    bool hydrantUnlocked=false;
+    float tireAngle=0;
 };
+inline bool LifeCanMorph(const LifeBody& body,LifeAction action){
+    return LifeCanMorph(body.mass,action)&&(action!=LifeAction::Tire||body.tireUnlocked)&&(action!=LifeAction::Hydrant||body.hydrantUnlocked);
+}
 // Stronger growth above the starting size; fragments retain their small volume.
 inline float LifeScale(float mass){float ratio=std::max(1.f,mass)/LifeStartMass;return ratio>1?std::sqrt(ratio):std::cbrt(ratio);}
 inline float LifeDensity(float mass,uint32_t particles,uint32_t totalParticles){
@@ -138,7 +154,10 @@ inline bool LifeInMouth(Vec from,Vec forward,Vec target,float mass,float extra=0
     return height<3*LifeScale(mass)&&Length(delta)<=range&&(Length(delta)<.5f||Dot(Unit(delta),forward)>recipe.AbsorbDot());
 }
 enum class SlimeTrial {None,Move,Absorb,Hit};
-struct LifeCollectible {Vec at{};float required=20,reward=12;bool active=true;uint32_t visual=0xffffffffu;};
+struct LifeCollectible {Vec at{};float required=20,reward=12;bool active=true;uint32_t visual=0xffffffffu;bool orb=false;LifeMorphItem morphItem=LifeMorphItem::None;};
+inline int LifeOrbTier(float reward){return reward>=30?2:reward>=18?1:0;}
+inline float LifeOrbRadius(float reward){const float radii[]={.42f,.68f,.96f};return radii[LifeOrbTier(reward)];}
+inline Vec LifeOrbColor(float reward){const Vec colors[]={{.12f,.85f,1},{1,.68f,.12f},{.76f,.3f,1}};return colors[LifeOrbTier(reward)];}
 struct SlimeLife {
     std::array<LifeBody,LifeBodyCount> bodies{};
     std::vector<LifeCollectible> props;
@@ -154,18 +173,81 @@ struct SlimeLife {
     int colorDrag=0;
     LifeAction form=LifeAction::Hammer;
     float age=0,messageAge=0,stompCooldown=0,contactCooldown=0,morphAge=0;
-    float absorbedMass=0,tackleTime=0;
+    float absorbedMass=0,tackleTime=0,tireNotice=0;
+    float hydrantNotice=0,waterAttackBudget=0,waterGuardBudget=0,waterHitClock=0;
+    bool waterAttack=false,waterGuard=false;
+    int waterHits=0,waterBlocks=0;
+    int waterGuardRow=0;
     int absorbed=0,childHits=0,stomps=0,hammerHits=0,splits=0;
+    int step=0;      // City stage step (CityStageRules.h).
+    float stepDelay=2;
     uint64_t revision=1;
     uint64_t nextAttack=1;
     bool lab=true,previousAbsorb=false,previousFire=false,previousReturn=false;
     bool previousLab=false,stomping=false,deployRequested=false;
     std::string message;
     float TotalMass()const {float n=0;for(const auto& b:bodies)n+=b.mass;return n;}
-    float ReservedMass()const {float n=TotalMass();for(const auto& b:bodies)n+=b.pendingGrowth;return n;}
+    float ReservedMass()const {
+        float n=TotalMass();for(const auto& b:bodies){n+=b.pendingGrowth;
+            if(b.action==LifeAction::Engulf)for(const auto& grab:b.grabs)if(!grab.committed&&!grab.cancelled)n+=grab.reward;}
+        return n;
+    }
     int ChildLimit()const {float growth=LifeStartMass+absorbedMass;return growth>=LifePlaneMass?12:growth>=LifeHammerMass?6:2;}
     int ChildCount()const {int count=0;for(size_t i=1;i<bodies.size();++i)if(bodies[i].mass>0)++count;return count;}
 };
+// Unlock only when absorption commits, through either a hand or contact. Child
+// collectors also unlock the main body's form. Reservations/cancellations do not.
+inline void LifeUnlockMorphItem(SlimeLife& life,uint32_t target){
+    if(!(target&0x80000000u))return;
+    size_t index=target&0x7fffffffu;
+    if(index<life.props.size()&&life.props[index].morphItem==LifeMorphItem::Tire)life.bodies[0].tireUnlocked=true;
+    if(index<life.props.size()&&life.props[index].morphItem==LifeMorphItem::Hydrant)life.bodies[0].hydrantUnlocked=true;
+}
+inline bool LifeTargetReserved(const SlimeLife& life,uint32_t target){
+    for(const auto& body:life.bodies)if(body.action==LifeAction::Engulf)
+        for(const auto& grab:body.grabs)if(grab.target==target&&!grab.cancelled)return true;
+    return false;
+}
+inline bool LifeCanContactAbsorb(const LifeBody& body,Vec from,Vec target,float required,float hp,float maxHp,const SlimeRecipe& recipe){
+    if(body.mass<LifeContactAbsorbMass||body.down||body.health<=0||required>body.mass*.25f||!LifeCanAbsorb(body.mass,required,hp,maxHp))return false;
+    // Sweep the footprint so quick movement cannot step over a small orb.
+    Vec travel=body.at-from;travel.y=0;Vec delta=target-from;delta.y=0;float squared=Dot(travel,travel);
+    float t=squared>.00001f?std::clamp(Dot(delta,travel)/squared,0.f,1.f):0;
+    Vec nearest=Lerp(from,body.at,t);float scale=LifeScale(body.mass),radius=2.1f*recipe.Spread()*scale;
+    return LifeDistance(nearest,target)<=radius&&std::abs(nearest.y-target.y)<1.8f*scale;
+}
+inline bool LifeCollectTouch(SlimeLife& life,uint32_t target,Vec at,float required,float hp,float maxHp,float reward,Vec from){
+    auto& body=life.bodies[0];
+    if(reward<=0||life.ReservedMass()+reward>LifeMaxMass||LifeTargetReserved(life,target)||
+        !LifeCanContactAbsorb(body,from,at,required,hp,maxHp,life.recipe))return false;
+    // Contact growth is independent of pending hand grabs and weapon actions.
+    body.mass+=reward;body.maxHealth+=reward;body.health=std::min(body.maxHealth,body.health+reward);life.absorbedMass+=reward;++life.absorbed;LifeUnlockMorphItem(life,target);return true;
+}
+inline bool LifeAddGrab(SlimeLife& life,LifeBody& body,uint32_t target,Vec at,float required,float hp,float maxHp,float reward){
+    if(body.mass<=0||body.down||(body.action!=LifeAction::Idle&&body.action!=LifeAction::Engulf)||
+        reward<=0||life.ReservedMass()+reward>LifeMaxMass||LifeTargetReserved(life,target)||
+        !LifeCanAbsorb(body.mass,required,hp,maxHp)||!LifeInMouth(body.at,body.forward,at,body.mass,0,life.recipe))return false;
+    if(body.action==LifeAction::Idle){body.grabs.clear();body.grabOrigin=body.at;body.action=LifeAction::Engulf;body.actionAge=0;body.committed=false;body.restoreDuration=.12f;}
+    body.grabs.push_back({target,at,reward});return true;
+}
+inline bool LifeHoldGrab(const LifeBody& body,Vec at,const SlimeRecipe& recipe){
+    // Once a hand has reached out, passing/turning away from it does not cancel
+    // the grab. A moving enemy can still escape the original capture area.
+    float scale=LifeScale(body.mass),range=recipe.AbsorbRange()*scale+recipe.AbsorbHold();
+    return std::abs(at.y-body.grabOrigin.y)<3*scale+recipe.AbsorbHold()&&LifeDistance(body.grabOrigin,at)<=range&&
+        LifeDistance(body.at,at)<=range+recipe.Speed()*recipe.AbsorbDuration();
+}
+inline bool LifeCommitGrab(SlimeLife& life,LifeBody& body,LifeGrab& grab){
+    if(grab.committed||grab.cancelled)return false;
+    grab.committed=true;body.committed=true;body.pendingGrowth+=grab.reward;++life.absorbed;LifeUnlockMorphItem(life,grab.target);return true;
+}
+inline bool LifeWantsAbsorb(bool held,const LifeBody& body){return held&&body.action==LifeAction::Idle&&!body.down;}
+inline float LifeTravelScale(const LifeBody& body){
+    if(body.action==LifeAction::Tire)return 1;
+    if(body.action==LifeAction::Hydrant)return .85f;
+    if(LifeRequiredMass(body.action)>0)return body.weapon.active?.4f:.7f;
+    return body.action==LifeAction::Restore?.8f:1.f;
+}
 inline void LifeInitializeBodies(SlimeLife& life,uint32_t particles){
     life.bodies={};life.absorbedMass=0;
     auto& parent=life.bodies[0];parent.mass=parent.health=parent.maxHealth=LifeStartMass;
@@ -175,7 +257,7 @@ inline void LifeInitializeBodies(SlimeLife& life,uint32_t particles){
 // committed only after restoration; pending rewards still count towards the cap.
 inline float LifeCompleteGrowth(SlimeLife& life,LifeBody& collector){
     float amount=std::clamp(collector.pendingGrowth,0.f,std::max(0.f,LifeMaxMass-life.TotalMass()));collector.pendingGrowth=0;
-    auto& parent=life.bodies[0];parent.mass+=amount;parent.maxHealth+=amount;life.absorbedMass+=amount;
+    auto& parent=life.bodies[0];parent.mass+=amount;parent.maxHealth+=amount;parent.health=std::min(parent.maxHealth,parent.health+amount);life.absorbedMass+=amount;
     return amount;
 }
 // Every accepted hit costs HP, including at the child limit. A living fragment

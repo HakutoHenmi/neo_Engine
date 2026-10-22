@@ -236,8 +236,8 @@ bool Renderer::Initialize(WindowDX* window) {
 	{
 		D3D12_RESOURCE_DESC desc{};
 		desc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
-		desc.Width = 2048;
-		desc.Height = 2048;
+		desc.Width = kShadowMapSize;
+		desc.Height = kShadowMapSize;
 		desc.DepthOrArraySize = 1;
 		desc.MipLevels = 1;
 		desc.Format = DXGI_FORMAT_R32_TYPELESS; 
@@ -333,6 +333,8 @@ void Renderer::Shutdown() {
     for(auto& readback:fluidBodyReadback_)readback.Reset();
     for(auto& pending:fluidBodyPending_)pending=false;
     fluidBodySnapshot_={};
+    hydrantWaterSnapshot_={};hydrantWaterReadbackEnabled_=false;
+    for(auto& pending:hydrantWaterPending_)pending=false;
 	fluidProfilerHistoryCount_ = 0;
 	fluidProfileStats_ = FluidProfileStats{};
 	fluidVolumeReady_ = false;
@@ -465,6 +467,7 @@ void Renderer::BeginFrame(const float clearColorRGBA[4]) {
 	fluidFrameUpdated_=false;volumeFrameSettings_=0;
 	CollectFluidProfile(fi);
     CollectFluidBody(fi);
+    CollectHydrantWater(fi);
     CollectMorphMeasure(fi);
 	BeginFluidProfile(SceneRender);
 	upload_[fi].Reset();
@@ -1088,7 +1091,11 @@ void Renderer::EndFrame() {
 	if (lightCB_.dirLights[0].enabled) {
 		Vector3 ldir = lightCB_.dirLights[0].direction;
 		Vector3 target = cbFrame_.cameraPos;
-		Vector3 pos = { target.x - ldir.x * 50.0f, target.y - ldir.y * 50.0f, target.z - ldir.z * 50.0f };
+		if(shadowLead_>0){// Centre the map ahead of the camera along its horizontal view direction.
+			float fx=cbFrame_.view.m[0][2],fz=cbFrame_.view.m[2][2],fl=std::sqrt(fx*fx+fz*fz);
+			if(fl>1e-4f){target.x+=fx/fl*shadowExtent_*shadowLead_;target.z+=fz/fl*shadowExtent_*shadowLead_;}}
+		const float back=shadowDepth_*.5f;
+		Vector3 pos = { target.x - ldir.x * back, target.y - ldir.y * back, target.z - ldir.z * back };
 		
 		DirectX::XMVECTOR pObj = DirectX::XMLoadFloat3(reinterpret_cast<const DirectX::XMFLOAT3*>(&pos));
 		DirectX::XMVECTOR tObj = DirectX::XMLoadFloat3(reinterpret_cast<const DirectX::XMFLOAT3*>(&target));
@@ -1096,10 +1103,10 @@ void Renderer::EndFrame() {
 		if (std::abs(ldir.y) > 0.999f) uObj = DirectX::XMVectorSet(1, 0, 0, 0);
 		DirectX::XMMATRIX vMat = DirectX::XMMatrixLookAtLH(pObj, tObj, uObj);
 		// Stabilize the directional map on its texel grid as the follow camera moves.
-		constexpr float shadowTexel=100.f/2048;
+		const float shadowTexel=shadowExtent_/kShadowMapSize;
 		vMat.r[3]=DirectX::XMVectorSetX(vMat.r[3],std::round(DirectX::XMVectorGetX(vMat.r[3])/shadowTexel)*shadowTexel);
 		vMat.r[3]=DirectX::XMVectorSetY(vMat.r[3],std::round(DirectX::XMVectorGetY(vMat.r[3])/shadowTexel)*shadowTexel);
-		DirectX::XMMATRIX pMat = DirectX::XMMatrixOrthographicLH(100.0f, 100.0f, 1.0f, 100.0f);
+		DirectX::XMMATRIX pMat = DirectX::XMMatrixOrthographicLH(shadowExtent_, shadowExtent_, 1.0f, shadowDepth_);
 		lightVP = XMToM4(vMat * pMat);
 		lightCB_.shadowMatrix = lightVP;
 	}
@@ -1113,8 +1120,8 @@ void Renderer::EndFrame() {
 		list_->ClearDepthStencilView(shadowDsv_, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
 		list_->OMSetRenderTargets(0, nullptr, FALSE, &shadowDsv_);
 
-		D3D12_VIEWPORT svp = { 0.0f, 0.0f, 2048.0f, 2048.0f, 0.0f, 1.0f };
-		D3D12_RECT ssc = { 0, 0, 2048, 2048 };
+		D3D12_VIEWPORT svp = { 0.0f, 0.0f, float(kShadowMapSize), float(kShadowMapSize), 0.0f, 1.0f };
+		D3D12_RECT ssc = { 0, 0, LONG(kShadowMapSize), LONG(kShadowMapSize) };
 		list_->RSSetViewports(1, &svp);
 		list_->RSSetScissorRects(1, &ssc);
 
@@ -5273,7 +5280,7 @@ void Renderer::InitGPUFluid() {
 
 	// ★追加: AABB用バッファ
 	auto hpAABB = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
-	auto aabbDesc = CD3DX12_RESOURCE_DESC::Buffer(sizeof(FluidAABB) * 128); // 最大128個まで対応
+	auto aabbDesc = CD3DX12_RESOURCE_DESC::Buffer(sizeof(FluidAABB) * (kFluidBoxCapacity + kFluidSphereCapacity));
 	dev_->CreateCommittedResource(&hpAABB, D3D12_HEAP_FLAG_NONE, &aabbDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&gpuFluidAABBBuffer_));
 
 	InitFluidMorph();
@@ -5313,6 +5320,7 @@ void Renderer::SetGPUFluidDecoy(const Vector3& pos, float attraction, const Vect
 }
 
 void Renderer::ResetGPUFluid() {
+    fluidTendrils_.clear();
     fluidMorphApplied_=~uint64_t(0);fluidMorphRetargetMask_=kFluidMorphAllBodies;fluidMorphTargets_.clear();fluidMorphSeedPending_=false;
     guidedTrailParticles_.clear();previousTrailParticleCount_=0;
     fluidBodySnapshot_={};
@@ -5323,11 +5331,12 @@ void Renderer::ResetGPUFluid() {
 	volumeHistoryValid_ = false;
 	gpuFluidEmitCursorPlayer_ = 0;
 	gpuFluidEmitCursorSplash_ = kPlayerFluidParticles;
+    hydrantAttackCursor_=kPlayerFluidParticles;hydrantGuardCursor_=kPlayerFluidParticles+kHydrantAttackParticles;
 	gpuFluidExtractCursor_ = 0;
 	gpuFluidActiveParticleCount_ = 0;
 	gpuFluidPhaseMask_ = 0;
 	isGPUFluidInitialized_ = false;
-	gpuFluidAABBs_.clear();
+	gpuFluidAABBs_.clear();gpuFluidSplashSpheres_.clear();
 
 	gpuFluidCorePos_ = {0.0f, -1000.0f, 0.0f};
 	gpuFluidCoreAttraction_ = 0.0f;
@@ -5369,10 +5378,16 @@ void Renderer::UpdateGPUFluid(float dt) {
 	// Use the fence-protected frame upload ring. A single persistently shared
 	// upload buffer can otherwise change while the previous frame is solving.
 	auto& fluidUpload = upload_[window_->FrameIndex()];
-	const uint32_t aabbOffset = fluidUpload.Allocate(sizeof(FluidAABB) * 128, 256);
+	const uint32_t aabbOffset = fluidUpload.Allocate(sizeof(FluidAABB) * (kFluidBoxCapacity + kFluidSphereCapacity), 256);
 	if (aabbOffset == UINT32_MAX) return;
-	const size_t aabbCopyCount = (std::min)(gpuFluidAABBs_.size(), size_t(128));
+	size_t aabbCopyCount = (std::min)(gpuFluidAABBs_.size(), kFluidBoxCapacity);
 	if (aabbCopyCount) memcpy(fluidUpload.mapped + aabbOffset, gpuFluidAABBs_.data(), sizeof(FluidAABB) * aabbCopyCount);
+	// Spheres follow the boxes, tagged by pad0 = 1 and stored as their bounds.
+	for (size_t i = 0; i < (std::min)(gpuFluidSplashSpheres_.size(), kFluidSphereCapacity); ++i, ++aabbCopyCount) {
+		const auto& sphere = gpuFluidSplashSpheres_[i];
+		FluidAABB entry{{sphere.x - sphere.w, sphere.y - sphere.w, sphere.z - sphere.w}, 1.0f, {sphere.x + sphere.w, sphere.y + sphere.w, sphere.z + sphere.w}, 0.0f};
+		memcpy(fluidUpload.mapped + aabbOffset + sizeof(FluidAABB) * aabbCopyCount, &entry, sizeof(entry));
+	}
 	
 	struct CB { 
 		float dt; uint32_t emitCursor; uint32_t emitCount; uint32_t maxParticles; 
@@ -5417,7 +5432,7 @@ void Renderer::UpdateGPUFluid(float dt) {
 	cb.emitEndIndex = gpuFluidMaxParticles_; cb.pad3 = gpuFluidCoreVelocity_;
 	cb.coreScale = gpuFluidCoreScale_; cb.pad4 = gpuFluidCoreFlowSpeed_;
 	cb.coreForward = gpuFluidCoreForward_; cb.pad5 = gpuFluidCoreMode_;
-	cb.aabbCount = (uint32_t)(gpuFluidAABBs_.size() > 128 ? 128 : gpuFluidAABBs_.size());
+	cb.aabbCount = (uint32_t)aabbCopyCount;
 	cb.pad6 = {0,0,0};
 	if (gpuFluidCoreMode_ >= 2.0f) {
 		cb.pad6 = {1.0f, (std::clamp)(gpuFluidCoreFlowSpeed_ * (kPlayerFluidParticles / 100.0f), 0.0f, static_cast<float>(kPlayerFluidParticles)), static_cast<float>(kPlayerFluidParticles)};
@@ -5594,6 +5609,7 @@ void Renderer::UpdateGPUFluid(float dt) {
 	list_->ResourceBarrier(1, &sortedReady);
     QueueMorphMeasure();
     QueueFluidBody();
+    QueueHydrantWater();
 }
 
 void Renderer::CollectFluidBody(uint32_t frame) {
@@ -5626,7 +5642,32 @@ void Renderer::QueueFluidBody(){
     list_->ResourceBarrier(1,&barrier);fluidBodyReadbackCore_[frame]=gpuFluidCorePos_;fluidBodyPending_[frame]=true;
 }
 
-void Renderer::EmitGPUFluid(const Vector3& pos, const Vector3& velocityDir, const Vector4& color, int count, float type, bool retainWater) {
+void Renderer::CollectHydrantWater(uint32_t frame){
+    if(!hydrantWaterPending_[frame]||!hydrantWaterReadback_[frame])return;
+    D3D12_RANGE range{0,sizeof(GPUFluidParticle)*kHydrantWaterParticles};GPUFluidParticle* particles=nullptr;
+    if(SUCCEEDED(hydrantWaterReadback_[frame]->Map(0,&range,reinterpret_cast<void**>(&particles)))){
+        hydrantWaterSnapshot_.particles.clear();
+        if(hydrantWaterReadbackEnabled_)for(uint32_t i=0;i<kHydrantWaterParticles;++i){const auto& p=particles[i];
+            if(p.type>1.05f&&p.type<1.25f&&p.color.w>.01f&&p.position.y>-500&&
+                std::isfinite(p.position.x)&&std::isfinite(p.position.y)&&std::isfinite(p.position.z)&&
+                std::isfinite(p.velocity.x)&&std::isfinite(p.velocity.y)&&std::isfinite(p.velocity.z))
+                hydrantWaterSnapshot_.particles.push_back({p.position,p.velocity,p.type,p.pad2.x});
+        }
+        ++hydrantWaterSnapshot_.serial;D3D12_RANGE noWrites{0,0};hydrantWaterReadback_[frame]->Unmap(0,&noWrites);
+    }
+    hydrantWaterPending_[frame]=false;
+}
+void Renderer::QueueHydrantWater(){
+    if(!hydrantWaterReadbackEnabled_||!gpuFluidBuffer_)return;
+    auto frame=window_->FrameIndex();const UINT64 bytes=sizeof(GPUFluidParticle)*kHydrantWaterParticles;
+    if(!hydrantWaterReadback_[frame]){auto heap=CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_READBACK);auto desc=CD3DX12_RESOURCE_DESC::Buffer(bytes);
+        if(FAILED(dev_->CreateCommittedResource(&heap,D3D12_HEAP_FLAG_NONE,&desc,D3D12_RESOURCE_STATE_COPY_DEST,nullptr,IID_PPV_ARGS(&hydrantWaterReadback_[frame]))))return;}
+    auto barrier=CD3DX12_RESOURCE_BARRIER::Transition(gpuFluidBuffer_.Get(),D3D12_RESOURCE_STATE_UNORDERED_ACCESS,D3D12_RESOURCE_STATE_COPY_SOURCE);list_->ResourceBarrier(1,&barrier);
+    list_->CopyBufferRegion(hydrantWaterReadback_[frame].Get(),0,gpuFluidBuffer_.Get(),UINT64(kPlayerFluidParticles)*sizeof(GPUFluidParticle),bytes);
+    barrier=CD3DX12_RESOURCE_BARRIER::Transition(gpuFluidBuffer_.Get(),D3D12_RESOURCE_STATE_COPY_SOURCE,D3D12_RESOURCE_STATE_UNORDERED_ACCESS);list_->ResourceBarrier(1,&barrier);
+    hydrantWaterPending_[frame]=true;
+}
+void Renderer::EmitGPUFluid(const Vector3& pos, const Vector3& velocityDir, const Vector4& color, int count, float type, bool retainWater, float nozzleRadius) {
 	if (!isGPUFluidReady_ || !psoFluidEmit_ || !gpuFluidBuffer_) return;
 	if (count <= 0) return;
 	if (!isGPUFluidInitialized_ && psoFluidInit_) {
@@ -5687,7 +5728,16 @@ void Renderer::EmitGPUFluid(const Vector3& pos, const Vector3& velocityDir, cons
 		startIndex = kPlayerFluidParticles;
 		endIndex = effectParticleEnd;
 		cursorPtr = &gpuFluidEmitCursorSplash_;
+        if(type>1.05f&&type<1.25f){
+            // Independent rings keep a held shield or an impact splash from
+            // replacing the travelling attack stream before it reaches its target.
+            bool attack=type<1.15f;
+            startIndex=kPlayerFluidParticles+(attack?0:kHydrantAttackParticles);
+            endIndex=(std::min)(effectParticleEnd,startIndex+(attack?kHydrantAttackParticles:kHydrantGuardParticles));
+            cursorPtr=attack?&hydrantAttackCursor_:&hydrantGuardCursor_;
+        }else startIndex=kPlayerFluidParticles+kHydrantWaterParticles;
 	}
+	if(*cursorPtr<startIndex||*cursorPtr>=endIndex)*cursorPtr=startIndex;
 	uint32_t rangeSize = endIndex - startIndex;
 	if (rangeSize == 0) return;
 	uint32_t emitCount = (std::min)(static_cast<uint32_t>(count), rangeSize);
@@ -5696,14 +5746,15 @@ void Renderer::EmitGPUFluid(const Vector3& pos, const Vector3& velocityDir, cons
 	gpuFluidPhaseMask_ |= 1u << phase;
 	volumeColors_[phase] = color;
 	
-	cb.dt = (std::min)((std::max)(TimeManager::GetInstance().GetDeltaTime(),1e-4f),1.0f/30.0f);
+    bool hydrant=type>1.05f&&type<1.25f;
+	cb.dt = (std::min)((std::max)(TimeManager::GetInstance().GetDeltaTime(),1e-4f),hydrant?.05f:1.0f/30.0f);
 	cb.emitCursor = *cursorPtr; cb.emitCount = emitCount; cb.maxParticles = gpuFluidMaxParticles_;
 	cb.emitPos = pos; cb.emitType = type; cb.emitDir = velocityDir; cb.emitStartIndex = startIndex; cb.emitColor = color;
 	cb.corePos = gpuFluidCorePos_; cb.coreAttraction = gpuFluidCoreAttraction_;
 	cb.emitEndIndex = endIndex; cb.pad3 = {0,0,0};
 	cb.coreScale = gpuFluidCoreScale_; cb.pad4 = gpuFluidCoreFlowSpeed_;
 	cb.coreForward = gpuFluidCoreForward_; cb.pad5 = gpuFluidCoreMode_;
-	cb.aabbCount = 0; cb.pad6 = {retainWater ? 1.0f : 0.0f,0,0};
+	cb.aabbCount = 0; cb.pad6 = {retainWater ? 1.0f : 0.0f,nozzleRadius,0};
 	cb.decoyPos = gpuFluidDecoyPos_; cb.decoyAttraction = gpuFluidDecoyAttraction_;
 	cb.decoyScale = gpuFluidDecoyScale_; cb.pad7 = rogueWorldFrozen_?1.f:0.0f;
 	cb.decoyForward = gpuFluidDecoyForward_; cb.pad8 = 0.0f;

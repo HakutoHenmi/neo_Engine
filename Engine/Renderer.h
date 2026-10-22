@@ -339,6 +339,9 @@ public:
 	// ★追加: キューブマップ読み込み (DDS) と Skybox 設定
 	TextureHandle LoadCubeMap(const std::string& ddsPath);
 	void SetSkyboxTexture(TextureHandle cubeMap);
+	// Directional shadow map: square extent and depth along the light (world units), and how far
+	// ahead of the camera (fraction of the extent) the map is centred. Defaults suit the meadow.
+	void SetDirectionalShadowRange(float extent,float depth,float lead=0){shadowExtent_=extent;shadowDepth_=depth;shadowLead_=lead;}
 	// ★追加: 和風ポストプロセス用テクスチャ
 	void SetSumiETextures(TextureHandle paper, TextureHandle vignette) {
 		sumiEPaperTex_ = paper;
@@ -394,6 +397,12 @@ public:
     };
 	static_assert(sizeof(FluidMorphTarget)==128);
 	std::vector<FluidMorphTarget> fluidMorphTargets_;
+    // Swept liquid surfaces share the simulated body's density field and optics.
+    struct FluidTendril { Vector3 start;float radius;Vector3 end;float endRadius; };
+    static_assert(sizeof(FluidTendril)==32);
+    std::vector<FluidTendril> fluidTendrils_;
+    void SetFluidTendrils(std::vector<FluidTendril> tendrils){fluidTendrils_=std::move(tendrils);}
+    Microsoft::WRL::ComPtr<ID3D12PipelineState> psoVolumeTendrils_;
 	uint64_t fluidMorphRevision_=0,fluidMorphApplied_=~uint64_t(0);
 	Microsoft::WRL::ComPtr<ID3D12Resource> fluidMorphScratch_,fluidMorphDummy_;
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> psoMorphKeys_,psoMorphSort_,psoMorphAssign_;
@@ -453,6 +462,18 @@ public:
     bool fluidBodyPending_[kFrameCount]{};
     void CollectFluidBody(uint32_t frame);
     void QueueFluidBody();
+    static constexpr uint32_t kHydrantAttackParticles=12288,kHydrantGuardParticles=3072;
+    static constexpr uint32_t kHydrantWaterParticles=kHydrantAttackParticles+kHydrantGuardParticles;
+    uint32_t hydrantAttackCursor_=kPlayerFluidParticles,hydrantGuardCursor_=kPlayerFluidParticles+kHydrantAttackParticles;
+    struct HydrantWaterSample {Vector3 at{},velocity{};float type=0,contactAge=0;};
+    struct HydrantWaterSnapshot {std::vector<HydrantWaterSample> particles;uint64_t serial=0;};
+    HydrantWaterSnapshot hydrantWaterSnapshot_;
+    const HydrantWaterSnapshot& GetHydrantWaterSnapshot()const{return hydrantWaterSnapshot_;}
+    bool hydrantWaterReadbackEnabled_=false;
+    void EnableHydrantWaterReadback(bool enabled){hydrantWaterReadbackEnabled_=enabled;if(!enabled){hydrantWaterSnapshot_.particles.clear();for(auto& pending:hydrantWaterPending_)pending=false;++hydrantWaterSnapshot_.serial;}}
+    Microsoft::WRL::ComPtr<ID3D12Resource> hydrantWaterReadback_[kFrameCount];
+    bool hydrantWaterPending_[kFrameCount]{};
+    void CollectHydrantWater(uint32_t frame);void QueueHydrantWater();
     Vector3 slimeGround_{};bool slimeGrounded_=false;
     void SetSlimeGround(Vector3 slopeHeight,bool grounded){slimeGround_=slopeHeight;slimeGrounded_=grounded;}
     float slimeFaceCamera_=0;
@@ -478,8 +499,8 @@ public:
 	void PrepareGPUFluidFrame();
 	bool fluidFrameUpdated_=false;
 	void ResetGPUFluid();
-	void ClearGPUFluid() { gpuFluidActiveParticleCount_ = 0; gpuFluidPhaseMask_ = 0; volumeHistoryValid_ = false; isGPUFluidInitialized_ = false;fluidMorphTargets_.clear();fluidMorphApplied_=~uint64_t(0);fluidMorphRetargetMask_=kFluidMorphAllBodies; }
-	void EmitGPUFluid(const Vector3& pos, const Vector3& velocityDir, const Vector4& color, int count, float type = 0.0f, bool retainWater = false);
+	void ClearGPUFluid() { gpuFluidActiveParticleCount_ = 0; gpuFluidPhaseMask_ = 0; volumeHistoryValid_ = false; isGPUFluidInitialized_ = false;fluidMorphTargets_.clear();fluidTendrils_.clear();fluidMorphApplied_=~uint64_t(0);fluidMorphRetargetMask_=kFluidMorphAllBodies;gpuFluidSplashSpheres_.clear();EnableHydrantWaterReadback(false); }
+	void EmitGPUFluid(const Vector3& pos, const Vector3& velocityDir, const Vector4& color, int count, float type = 0.0f, bool retainWater = false, float nozzleRadius = 0);
 	uint32_t ExtractGPUFluidFromPlayer(const Vector3& pos, const Vector3& velocityDir, int count);
 	void SyncLostGPUFluidGroup(uint32_t groupId, const Vector3& pos);
 	void AbsorbLostGPUFluidGroup(uint32_t groupId);
@@ -510,6 +531,9 @@ public:
 	Vector3 volumePreviousOrigin_{};
 	Vector4 volumeColors_[3] = { {0.02f,0.8f,0.06f,1}, {1,0.9f,0.1f,1}, {0.1f,0.65f,1,1} };
     void SetSlimeColor(Vector4 color){volumeColors_[0]=color;}
+    // Directional shadow map resolution; shaders use the same value for their PCF texel size.
+    static constexpr uint32_t kShadowMapSize=4096;
+    float shadowExtent_=100,shadowDepth_=100,shadowLead_=0;
     float volumePreviousVoxelSize_=0;
 	bool fluidVolumeReady_ = false, volumeHistoryValid_ = false;
 	uint32_t volumeHistoryIndex_ = 0, fluidVolumeDebugMode_ = 0;
@@ -549,7 +573,11 @@ public:
 		Vector3 max; float pad1;
 	};
 	void SetFluidAABBs(const std::vector<FluidAABB>& aabbs) { gpuFluidAABBs_ = aabbs; }
+	// Moving obstacles (centre xyz, radius w) that only hydrant water splashes off.
+	void SetFluidSplashSpheres(const std::vector<Vector4>& spheres) { gpuFluidSplashSpheres_ = spheres; }
+	static constexpr size_t kFluidBoxCapacity = 128, kFluidSphereCapacity = 32;
 	std::vector<FluidAABB> gpuFluidAABBs_;
+	std::vector<Vector4> gpuFluidSplashSpheres_;
 	Microsoft::WRL::ComPtr<ID3D12Resource> gpuFluidAABBBuffer_;
 
 	// ★追加: Compute Shader Skinning

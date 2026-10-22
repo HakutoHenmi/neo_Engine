@@ -1,10 +1,116 @@
 #include "../Game/Chrono/SlimeWeaponRules.h"
+#include "../Game/Chrono/SlimeHydrantRules.h"
+#include "../Game/Chrono/CityStageRules.h"
+#include "../Game/Chrono/SlimeTentacleRules.h"
 #include "../Engine/FluidMorphShape.h"
 #include "../Engine/SlimeEngulfShape.h"
 #include <cstdio>
 #include <stdexcept>
 using namespace Game::Chrono;
 void CheckLife(bool value,const char* message){if(!value)throw std::runtime_error(message);}
+void TestFacingAndCamera(){
+    for(int hz:{30,60,120})for(auto form:{LifeAction::Idle,LifeAction::Engulf,LifeAction::Restore,LifeAction::Sword,LifeAction::Hammer,LifeAction::Plane}){
+        LifeBody body;body.action=form;body.forward={1,0,0};body.weapon.active=LifeWeaponForm(form);
+        for(int frame=0;frame<hz;++frame)LifeUpdateFacing(body,{}, {0,0,1},1.f/hz);
+        CheckLife(Dot(body.forward,LifeFacesCamera(form)?Vec{0,0,1}:Vec{1,0,0})>.999f,"stationary orbit changes free facing or aimed form ignores camera during attack");
+        body.weapon.active=false;
+        for(int frame=0;frame<hz;++frame)LifeUpdateFacing(body,{-1,0,0},{0,0,1},1.f/hz);
+        CheckLife(Dot(body.forward,LifeFacesCamera(form)?Vec{0,0,1}:Vec{-1,0,0})>.999f,"movement and camera facing policies disagree");
+        auto stopped=body.forward;for(int frame=0;frame<hz;++frame)LifeUpdateFacing(body,{}, {0,0,1},1.f/hz);
+        CheckLife(Length(body.forward-stopped)<.002f,"releasing movement snaps to camera");
+    }
+    CheckLife(LifeCameraDistance(30,1.13f,16.f/9)>LifeCameraDistance(3,1.13f,16.f/9)*4,"grown subject does not pull the camera back");
+    CheckLife(LifeCameraDistance(30,1.13f,.6f)>LifeCameraDistance(30,1.13f,16.f/9),"portrait viewport clips the growing subject");
+    puts("PASS facing/camera: independent movement and stopped orbit, aimed hammer/plane during attacks, growth and viewport framing at 30/60/120Hz");
+}
+void TestGrowthHealth(){
+    SlimeLife life;LifeInitializeBodies(life,6600);auto& body=life.bodies[0];
+    body.health=80;body.pendingGrowth=30;
+    CheckLife(LifeCompleteGrowth(life,body)==30&&body.health==110&&body.maxHealth==130,"growth does not fill new HP capacity or erases existing damage");
+    CheckLife(LifeCompleteGrowth(life,body)==0&&body.health==110,"restoration grants HP twice");
+    auto& child=life.bodies[1];child.mass=20;child.health=child.maxHealth=20;child.pendingGrowth=12;
+    CheckLife(LifeCompleteGrowth(life,child)==12&&body.health==122&&body.maxHealth==142&&child.health==20,"child absorption does not feed main-body HP");
+    body.mass=LifeMaxMass-child.mass-5;body.pendingGrowth=30;
+    CheckLife(LifeCompleteGrowth(life,body)==5&&body.health==127&&body.maxHealth==147&&life.TotalMass()==LifeMaxMass,"cap-trimmed growth grants excess HP");
+    CheckLife(LifeCompleteGrowth(life,body)==0&&body.health==127,"mass cap grants free healing");
+    SlimeRecipe recipe;CheckLife(std::abs(recipe.Speed()-18.6f)<.001f,"default movement speed was not increased by 20 percent");
+    for(int hz:{30,60,120}){Vec velocity{};float distance=0;
+        for(int frame=0;frame<hz;++frame){velocity=LifeMoveVelocity(velocity,{0,0,1},recipe,true,1.f/hz);distance+=velocity.z/hz;}
+        CheckLife(distance>16&&distance<19,"faster movement does not reach the controller or varies with frame rate");}
+    puts("PASS growth HP: main/child, retained damage, single credit, mass cap; faster movement at 30/60/120Hz");
+}
+void TestLifeContactAbsorb(){
+    SlimeLife life;LifeInitializeBodies(life,6600);auto& body=life.bodies[0];body.at={0,1.25f,8};Vec from{0,1.25f,0};
+    body.mass=179.99f;CheckLife(!LifeCollectTouch(life,1,{0,.5f,4},15,0,1,12,from),"contact absorption unlocked too early");
+    body.mass=180;body.health=80;body.maxHealth=180;LifeEnterWeapon(body,LifeAction::Hammer,{0,0,1});
+    CheckLife(LifeCollectTouch(life,1,{0,.5f,4},15,0,1,12,from)&&body.mass==192&&body.health==92&&body.maxHealth==192&&body.action==LifeAction::Hammer,"fast pass misses an orb, loses growth HP or interrupts the held weapon");
+    CheckLife(!LifeCollectTouch(life,2,{0,.5f,4},130,0,1,36,from),"large object bypasses the relative size gate");
+    CheckLife(!LifeCollectTouch(life,3,{0,.5f,4},15,30,30,12,from),"healthy enemy was eaten by contact");
+    CheckLife(!LifeCollectTouch(life,4,{0,20,4},15,0,1,12,from)&&!LifeCollectTouch(life,5,{20,.5f,4},15,0,1,12,from),"remote/high object is collected");
+    CheckLife(LifeCollectTouch(life,6,{0,.5f,4},15,9,30,12,from),"weakened small enemy cannot be collected");
+    body.action=LifeAction::Idle;body.at=from;CheckLife(LifeAddGrab(life,body,9,{0,.5f,3},15,0,1,12),"manual reservation setup failed");
+    body.at={0,1.25f,8};CheckLife(!LifeCollectTouch(life,9,{0,.5f,3},15,0,1,12,from),"contact steals a reserved hand target");
+    LifeCommitGrab(life,body,body.grabs[0]);float pending=body.pendingGrowth;
+    CheckLife(LifeCollectTouch(life,10,{0,.5f,4},15,0,1,12,from)&&body.pendingGrowth==pending,"contact consumes pending hand growth");
+    body.mass=LifeMaxMass-pending-5;CheckLife(!LifeCollectTouch(life,11,{0,.5f,4},15,0,1,12,from),"contact exceeds reserved global mass cap");
+    SwarmEnemy rat,guard,knight;rat.kind=uint8_t(CityEnemy::Rat);guard.kind=uint8_t(CityEnemy::Guard);knight.kind=uint8_t(CityEnemy::Knight);
+    auto small=CityEnemyDrop(rat),medium=CityEnemyDrop(guard),large=CityEnemyDrop(knight);
+    CheckLife(small.orb&&medium.orb&&large.orb&&LifeOrbTier(small.reward)==0&&LifeOrbTier(medium.reward)==2&&small.required<medium.required&&medium.required<large.required,"enemy drop tiers are inconsistent");
+    CheckLife(LifeOrbRadius(12)<LifeOrbRadius(24)&&LifeOrbRadius(24)<LifeOrbRadius(36)&&LifeOrbRadius(small.reward)<LifeOrbRadius(large.reward),"orb tiers have identical sizes");
+    CheckLife(Length(LifeOrbColor(12)-LifeOrbColor(24))>.5f&&Length(LifeOrbColor(24)-LifeOrbColor(36))>.5f,"orb tier colours cannot be distinguished");
+    puts("PASS contact absorption: threshold, swept movement, weak enemies, weapon continuity, reservations/cap and orb tiers");
+}
+void TestLifeBatchAbsorb(){
+    SlimeLife life;LifeInitializeBodies(life,6600);auto& body=life.bodies[0];body.at={0,1.25f,0};
+    for(uint32_t i=0;i<3;++i)CheckLife(LifeAddGrab(life,body,i,{float(i)-1,.5f,3},15,0,1,12),"front batch target rejected");
+    CheckLife(body.grabs.size()==3&&life.ReservedMass()==136,"batch does not reserve all growth before commitment");
+    CheckLife(!LifeAddGrab(life,body,0,{0,.5f,3},15,0,1,12),"duplicate target added twice");
+    CheckLife(!LifeAddGrab(life,body,4,{0,.5f,-3},15,0,1,12)&&!LifeAddGrab(life,body,5,{0,.5f,3},130,0,1,12)&&
+        !LifeAddGrab(life,body,6,{0,.5f,3},15,10,30,12),"batch bypasses cone/size/weakness gates");
+    auto& child=life.bodies[1];child.mass=20;child.at=body.at;child.forward=body.forward;
+    CheckLife(!LifeAddGrab(life,child,1,{0,.5f,3},15,0,1,12),"child stole a target held by the parent");
+    body.at={0,1.25f,9};body.forward={1,0,0};
+    CheckLife(LifeHoldGrab(body,body.grabs[0].at,life.recipe),"walking past or turning away cancels a latched hand");
+    CheckLife(!LifeHoldGrab(body,{0,.5f,40},life.recipe),"escaping enemy cannot break an individual grab");
+    body.grabs[1].cancelled=true;
+    CheckLife(!LifeTargetReserved(life,1)&&life.ReservedMass()==144,"cancelled hand did not release its target/capacity");
+    CheckLife(LifeCommitGrab(life,body,body.grabs[0])&&!LifeCommitGrab(life,body,body.grabs[0])&&
+        !LifeCommitGrab(life,body,body.grabs[1]),"commit duplicated growth or collected a cancelled target");
+    CheckLife(LifeCommitGrab(life,body,body.grabs[2])&&body.pendingGrowth==24&&life.absorbed==2&&life.ReservedMass()==144,"partial batch growth was lost or counted twice");
+    LifeReturnToSlime(body);CheckLife(body.grabs.empty()&&!LifeTargetReserved(life,0)&&body.pendingGrowth==24,"interruption lost committed growth or retained target reservations");
+    LifeCompleteGrowth(life,body);CheckLife(body.mass==124&&life.ReservedMass()==144,"restoration created/lost batch mass");
+    SlimeLife capped;LifeInitializeBodies(capped,6600);capped.bodies[0].mass=LifeMaxMass-30;auto& full=capped.bodies[0];
+    CheckLife(LifeAddGrab(capped,full,1,{0,0,3},15,0,1,20)&&!LifeAddGrab(capped,full,2,{0,0,3},15,0,1,20)&&
+        LifeAddGrab(capped,full,3,{0,0,3},15,0,1,10)&&capped.ReservedMass()==LifeMaxMass,"batch does not enforce total reserved mass cap");
+    LifeCommitGrab(capped,full,full.grabs[0]);CheckLife(capped.ReservedMass()==LifeMaxMass,"committing one hand changed reserved total");
+    full.grabs[1].cancelled=true;CheckLife(capped.ReservedMass()==LifeMaxMass-10,"one cancelled hand does not release exactly its reward");
+    for(int hz:{30,60,120}){LifeBody moving;moving.mass=100;moving.action=LifeAction::Engulf;Vec velocity{};float distance=0;
+        for(int i=0;i<hz;++i){velocity=LifeMoveVelocity(velocity,{0,0,1},life.recipe,true,1.f/hz,LifeTravelScale(moving));distance+=velocity.z/hz;}
+        CheckLife(distance>life.recipe.Speed()*.65f,"absorb movement still stalls the player");
+        CheckLife(!LifeWantsAbsorb(true,moving),"held input restarts an unfinished grab");moving.action=LifeAction::Idle;
+        CheckLife(LifeWantsAbsorb(true,moving)&&!LifeWantsAbsorb(false,moving),"hold/release cannot control subsequent batches");}
+    LifeBody tentacle;tentacle.mass=100;tentacle.health=100;tentacle.at={0,1.25f,0};SlimeRecipe recipe;
+    CheckLife(recipe.AbsorbDuration()+.12f<.55f&&recipe.AbsorbRange()>10,"tentacles are still short/slow");
+    for(size_t count:{size_t(1),size_t(12),size_t(48)})for(size_t g=0;g<count;++g){
+        float angle=(float(g)/float(count)-.5f)*1.2f;LifeGrab grab;grab.at={std::sin(angle)*10,.7f,std::cos(angle)*10};
+        tentacle.actionAge=0;auto root=LifeTentaclePoint(tentacle,recipe,grab,g,0);
+        CheckLife(Length(LifeTentaclePoint(tentacle,recipe,grab,g,1)-root)<.001f,"tentacle appears at the target before extending");
+        tentacle.actionAge=.14f;CheckLife(Length(LifeTentaclePoint(tentacle,recipe,grab,g,1)-grab.at)<.01f,"tentacle does not reach its own object within 140ms");
+        for(int frame=0;frame<=40;++frame){tentacle.actionAge=recipe.AbsorbDuration()*float(frame)/40;
+            for(int segment=0;segment<=LifeTentacleSegments;++segment){auto point=LifeTentaclePoint(tentacle,recipe,grab,g,float(segment)/LifeTentacleSegments);
+                CheckLife(std::isfinite(point.x)&&std::isfinite(point.y)&&std::isfinite(point.z),"tentacle curve became nonfinite");}}
+        CheckLife(Length(LifeTentaclePoint(tentacle,recipe,grab,g,1)-LifeTentaclePoint(tentacle,recipe,grab,g,0))<.001f,"tentacle does not retract into the body");
+        tentacle.actionAge=.15f;grab.cancelled=true;grab.cancelAge=.05f;
+        CheckLife(Length(LifeTentaclePoint(tentacle,recipe,grab,g,1)-LifeTentaclePoint(tentacle,recipe,grab,g,0))<.001f,"cancelled tentacle keeps reaching");
+    }
+    CheckLife(LifeTentacleRadius(100,0)<.5f&&LifeTentacleRadius(100,1)<.14f,"tentacle is still a broad hand");
+    for(float mass:{100.f,600.f,LifeMaxMass})for(const auto& mix:std::array<std::array<int,4>,3>{{{100,0,0,0},{0,100,0,0},{0,0,100,0}}}){
+        recipe.mix=mix;tentacle.mass=mass;tentacle.aspect=.48f;tentacle.fluidOffset={-.4f,0,.2f};LifeGrab grab;grab.at={3,.5f,10};
+        auto root=LifeTentaclePoint(tentacle,recipe,grab,2,0);auto radii=LifeRadii(tentacle,recipe);Vec offset=root-tentacle.at-tentacle.fluidOffset;offset.y+=1.25f;
+        float inside=offset.x*offset.x/(radii.x*radii.x)+offset.y*offset.y/(radii.y*radii.y)+offset.z*offset.z/(radii.z*radii.z);
+        CheckLife(inside<.9f,"tentacle root detaches from a flattened or grown liquid body");}
+    puts("PASS batch absorption: 1/12/48 fast tentacles, reservations/cap, partial cancellation, interruption, growth and held movement at 30/60/120Hz");
+}
 void TestLifeWeapons(){
     for(int hz:{30,60,120}){
         SlimeLife life;LifeInitializeBodies(life,6600);auto& body=life.bodies[0];body.mass=480;
@@ -68,7 +174,130 @@ void TestLifeWeapons(){
     velocity=LifeWeaponVelocity(body,{2.2f,4.8f,0},1.f/60);CheckLife(std::abs(velocity.x)>1,"weapon target velocity omits heading rotation");
     puts("PASS persistent weapons: manual return, formation gating, held vertical hammer, repeated single horizontal sword sweep, shared pose/collision, smooth heading/angular velocity, 30/60/120Hz");
 }
+void TestCityStage(){
+    CityGates closed{},open{true,true};
+    // Start, every spawn and the route through all three areas lie on the floor.
+    CheckLife(CityWalkable(CityStart,4,closed),"stage start is blocked");
+    for(Vec at:{Vec{0,0,-640},Vec{40,0,-562},Vec{78,0,-500},Vec{78,0,-300},Vec{-100,0,-265},Vec{250,0,-265},Vec{78,0,-50},Vec{78,0,340},Vec{-250,0,650},Vec{400,0,0}})
+        CheckLife(CityWalkable(at,3,open),"stage route is not walkable");
+    // Closed gates block; opened gates let the body through. Walls block in every area.
+    CheckLife(!CityWalkable(CityBarricadeCenter,3,closed)&&CityWalkable(CityBarricadeCenter,3,open),"barricade gating is wrong");
+    CheckLife(!CityWalkable(CityGateCenter,3,closed)&&CityWalkable(CityGateCenter,3,open),"shutter gate gating is wrong");
+    CheckLife(!CityWalkable({0,0,-480},3,open)&&!CityWalkable({-50,0,-650},3,open)&&!CityWalkable({0,0,-56},3,open)&&!CityWalkable({78,0,760},3,open),"walls do not block");
+    Vec slid=CityConstrain({10,0,-660},{40,0,-650},4,closed);CheckLife(slid.x<22&&slid.z>-660.01f,"walls do not slide the body");
+    // Pushing straight along a wall into an inner corner rounds it instead of pinning the body.
+    Vec cornered=CityConstrain({21.92f,0,-580},{22.22f,0,-580},4.3f,closed);CheckLife(Length(cornered-Vec{21.92f,0,-580})>.1f,"body pinned in an inner corner");
+    Vec stopped=CityConstrain({78,0,-500},{78,0,-470},4,closed);CheckLife(stopped.z<-486,"barricade lets the body pass");
+    // Steps: areas in order, every enemy spawns on the floor, roles grow with the stage.
+    int total=0;CityArea area=CityArea::Alley;float previousRequired=0;
+    for(int step=0;step<CityStepCount;++step){auto spawns=CityStepSpawns(step);CheckLife(!spawns.empty(),"empty stage step");
+        CheckLife(int(CityStepInfo(step).area)>=int(area),"stage steps go back an area");area=CityStepInfo(step).area;
+        static float required=0;if(step==0||CityStepInfo(step-1).area!=area)required=0;
+        for(const auto& spawn:spawns){auto enemy=CitySpawnEnemy(spawn,uint32_t(++total),step);
+            CheckLife(CityWalkable(spawn.at,std::min(enemy.scale,6.f),open)&&CityAreaAt(spawn.at)==area,"enemy spawns outside its area");
+            CheckLife(CityWalkable(spawn.patrol,1,open),"patrol point is off the floor");
+            CheckLife(enemy.health>0&&CityEnemyRequired(enemy)>0&&CityEnemyReward(enemy)>0&&enemy.step==step,"invalid city enemy stats");
+            required=std::max(required,CityEnemyRequired(enemy));}
+        // Each area's largest absorb requirement exceeds every earlier area's.
+        if(step+1==CityStepCount||CityStepInfo(step+1).area!=area){CheckLife(required>previousRequired,"later areas need less size");previousRequired=required;}}
+    CheckLife(total==CityEnemyTotal()&&CityStepInfo(CityStepCount-1).area==CityArea::Plaza,"stage totals disagree");
+    CheckLife(CityAreaAt({0,0,-640})==CityArea::Alley&&CityAreaAt({78,0,-300})==CityArea::Street&&CityAreaAt(CityCrossing)==CityArea::Plaza,"area lookup is wrong");
+    // Shields block frontal non-sword hits; the sword and attacks from behind get through.
+    SwarmEnemy shield;shield.kind=uint8_t(CityEnemy::Shield);shield.at={0,0,0};shield.heading={0,0,-1};
+    CheckLife(CityShieldBlocks(shield,{0,0,-5},false)&&!CityShieldBlocks(shield,{0,0,-5},true)&&!CityShieldBlocks(shield,{0,0,5},false),"shield facing rules are wrong");
+    // A cannon shell lands on its target.
+    Vec from{0,5,0},target{30,0,40},v=CityShellVelocity(from,target,1.7f),at=from;for(int i=0;i<1700;++i){v.y-=30*.001f;at=at+v*.001f;}
+    CheckLife(Length(at-target)<.2f,"cannon shell misses its target");
+    puts("PASS city stage: walkable route, wall sliding, barricade/shutter gate gating, 8 steps in area order, spawn placement, shields and shells");
+}
+void TestTireMorph(){
+    SlimeLife life;LifeInitializeBodies(life,6600);auto& body=life.bodies[0];body.at={0,1.25f,0};
+    life.props.push_back({{0,.5f,4},15,12,true,0xffffffffu,false,LifeMorphItem::Tire});
+    CheckLife(!LifeEnterWeapon(body,LifeAction::Tire,{0,0,1})&&!body.tireUnlocked,"tire morph unlocked without absorbing a tire");
+    CheckLife(LifeAddGrab(life,body,0x80000000u,life.props[0].at,15,0,1,12)&&!body.tireUnlocked,"reserving a tire unlocked its form");
+    body.grabs[0].cancelled=true;CheckLife(!LifeCommitGrab(life,body,body.grabs[0])&&!body.tireUnlocked,"cancelled tire unlocks");
+    LifeReturnToSlime(body);body.action=LifeAction::Idle;
+    CheckLife(LifeAddGrab(life,body,0x80000000u,life.props[0].at,15,0,1,12),"cannot reserve a released tire");
+    CheckLife(LifeCommitGrab(life,body,body.grabs[0])&&body.tireUnlocked,"committed tire does not unlock");
+    CheckLife(!LifeCommitGrab(life,body,body.grabs[0])&&body.pendingGrowth==12,"tire absorption credited twice");
+    LifeReturnToSlime(body);LifeCompleteGrowth(life,body);
+    CheckLife(LifeEnterWeapon(body,LifeAction::Tire,{0,0,1})&&body.mass==112,"starting-size tire morph rejected");
+    LifeTickWeapon(life,body,.1f,true,true,true);
+    CheckLife(body.weapon.ready&&!body.weapon.active,"movement form queues a weapon attack");
+    LifeReturnToSlime(body);CheckLife(body.tireUnlocked&&LifeEnterWeapon(body,LifeAction::Tire,{0,0,1}),"return consumes tire unlock");
+    LifeTakeHit(life,2);CheckLife(body.tireUnlocked&&LifeCanMorph(body,LifeAction::Tire),"damage split loses item unlock");
+    LifeInitializeBodies(life,6600);CheckLife(!life.bodies[0].tireUnlocked,"new run keeps tire unlock");
+    body.mass=180;body.at={0,1.25f,8};
+    CheckLife(LifeCollectTouch(life,0x80000000u,life.props[0].at,15,0,1,12,{0,1.25f,0})&&body.tireUnlocked,"contact absorption misses tire unlock");
+    SlimeLife childLife;LifeInitializeBodies(childLife,6600);childLife.props=life.props;
+    auto& child=childLife.bodies[1];child.mass=20;child.health=20;child.action=LifeAction::Engulf;child.grabs.push_back({0x80000000u,life.props[0].at,12});
+    CheckLife(LifeCommitGrab(childLife,child,child.grabs[0])&&childLife.bodies[0].tireUnlocked,"child tire does not unlock main body");
+    for(int hz:{30,60,120}){
+        LifeBody tire;tire.mass=100;tire.action=LifeAction::Tire;tire.tireUnlocked=true;Vec velocity{};
+        for(int i=0;i<hz*2;++i)velocity=LifeTireMoveVelocity(tire,velocity,{0,0,1},life.recipe,true,1.f/hz);
+        CheckLife(velocity.z>life.recipe.Speed()*2&&std::abs(velocity.x)<.001f,"tire does not provide faster straight travel");
+        auto moving=velocity;LifeUpdateFacing(tire,{1,0,0},{0,0,1},1.f/hz);
+        CheckLife(tire.forward.z>.98f,"tire turns instantly");
+        velocity=LifeTireMoveVelocity(tire,velocity,{},life.recipe,true,1.f/hz);
+        CheckLife(velocity.z>moving.z*.9f&&velocity.z<moving.z,"tire stops instantly or fails to brake");
+        for(int i=0;i<hz*4;++i)velocity=LifeTireMoveVelocity(tire,velocity,{},life.recipe,true,1.f/hz);
+        CheckLife(Length(velocity)<.1f,"released wheel never stops");
+    }
+    CheckLife(!LifeInsideTire({0,LifeTireRadius,0})&&LifeInsideTire({0,LifeTireRadius,LifeTireMajor}),"tire has no central hole");
+    for(int i=0;i<90;++i){auto point=LifeTirePose({0,LifeTireRadius,LifeTireMajor},float(i)*.13f);
+        CheckLife(LifeInsideTire(point)&&point.y>=0,"rolling tire deforms or passes through floor");}
+    puts("PASS tire: item gate, cancelled/manual/contact/child absorption, reusable unlock/reset, acceleration/turn/braking at 30/60/120Hz, hollow rolling shape");
+}
+void TestHydrantMorph(){
+    for(float mass:{100.f,905.f,6000.f})for(float yaw:{0.f,1.2f,-2.5f}){
+        Vec forward{std::sin(yaw),0,std::cos(yaw)},right{forward.z,0,-forward.x};
+        Vec offset=LifeHydrantCameraOffset(mass,forward);float scale=LifeScale(mass);
+        CheckLife(Dot(offset,right)>3.7f*scale&&offset.y>5.6f*scale-1.25f&&Dot(offset,forward)<-8.9f*scale,"hydrant camera is not above the right shoulder");
+        LifeBody body;body.mass=mass;body.at={0,1.25f,0};body.forward=forward;Vec nozzle=LifeHydrantNozzle(body);
+        for(float range:{4.f,20.f,55.f,90.f})for(float height:{.5f,6.f,18.f}){
+            Vec target=nozzle+forward*range+right*3;target.y=height;
+            Vec velocity;float flight;bool reached=LifeHydrantLaunch(nozzle,target,velocity,flight);
+            if(reached){
+                CheckLife(std::abs(Length(velocity)-HydrantJetSpeed)<.002f&&Length(LifeHydrantTrajectory(nozzle,velocity,flight)-target)<.002f,"camera/nozzle parallax or water drop is not corrected");
+                for(int hz:{60,120,240}){Vec at=nozzle,v=velocity;float time=0;
+                    while(time<flight){float dt=std::min(1.f/hz,flight-time);v.y-=HydrantGravity*dt;at=at+v*dt;time+=dt;}
+                    CheckLife(Length(at-target)<.85f,"aim misses under the GPU's symplectic integration");}
+            }
+        }
+    }
+    {Vec velocity;float flight;CheckLife(!LifeHydrantLaunch({0,1,0},{0,200,200},velocity,flight)&&std::isfinite(flight)&&std::abs(Length(velocity)-HydrantJetSpeed)<.001f,"unreachable aim produces invalid water");
+        CheckLife(LifeHydrantLaunch({0,10,0},{0,1,0},velocity,flight)&&Length(LifeHydrantTrajectory({0,10,0},velocity,flight)-Vec{0,1,0})<.001f,"vertical aim is singular");}
+    for(bool contact:{false,true}){
+        SlimeLife life;LifeInitializeBodies(life,6600);auto& body=life.bodies[0];body.at={0,1.25f,0};
+        life.props.push_back({{0,.5f,3},15,24,true,0xffffffffu,false,LifeMorphItem::Hydrant});
+        CheckLife(!LifeEnterWeapon(body,LifeAction::Hydrant,{0,0,1}),"hydrant bypasses item gate");
+        if(contact){body.mass=180;CheckLife(LifeCollectTouch(life,0x80000000u,life.props[0].at,15,0,1,24,body.at),"hydrant contact pickup failed");}
+        else{CheckLife(LifeAddGrab(life,body,0x80000000u,life.props[0].at,15,0,1,24)&&!body.hydrantUnlocked,"hydrant reservation grants ability");
+            CheckLife(LifeCommitGrab(life,body,body.grabs[0]),"hydrant commit failed");LifeReturnToSlime(body);LifeCompleteGrowth(life,body);}
+        CheckLife(body.hydrantUnlocked&&!body.tireUnlocked&&LifeEnterWeapon(body,LifeAction::Hydrant,{0,0,1}),"hydrant pickup unlocks wrong form");
+        LifeTickWeapon(life,body,.1f,true,true,true);CheckLife(body.weapon.ready&&!body.weapon.active,"hydrant queues melee attack");
+        body.actionAge=2;LifeTakeHit(life,2);LifeRetargetWeapon(body);
+        CheckLife(body.action==LifeAction::Hydrant&&body.weapon.ready&&body.actionAge==2,"damage split interrupts a formed hydrant stream");
+        LifeReturnToSlime(body);CheckLife(LifeEnterWeapon(body,LifeAction::Hydrant,{0,0,1}),"return consumes hydrant");
+        LifeRetargetWeapon(body);CheckLife(!body.weapon.ready,"retargeting bypasses initial hydrant formation");
+        LifeTakeHit(life,2);CheckLife(body.hydrantUnlocked,"split loses hydrant unlock");
+        LifeInitializeBodies(life,6600);CheckLife(!body.hydrantUnlocked,"restart preserves hydrant unlock");
+    }
+    CheckLife(LifeInsideHydrant({0,2,0})&&LifeInsideHydrant({2,2.9f,0})&&LifeInsideHydrant({0,3.1f,2})&&!LifeInsideHydrant({2,4,2}),"hydrant body or nozzle is missing");
+    CheckLife(LifeHydrantLiveWater(1.1f,0,{0,0,48})&&LifeHydrantLiveWater(1.2f,0,{0,0,18}),"airborne attack/guard water ignored");
+    CheckLife(!LifeHydrantLiveWater(1,0,{0,0,48})&&!LifeHydrantLiveWater(1.2f,.5f,{0,0,18})&&!LifeHydrantLiveWater(1.2f,0,{}),"unrelated water or a puddle can attack/block");
+    CheckLife(LifeHydrantWaterTouches({0,2,4},{0,0,48},{0,2,3},.3f,.03f)&&!LifeHydrantWaterTouches({0,2,4},{0,0,48},{3,2,3},.3f,.03f),"swept water hit test misses or reaches off-axis targets");
+    CheckLife(LifeWaterSegmentDistance({-2,0,0},{2,0,0},{0,-2,0},{0,2,0})<1e-5f&&LifeWaterSegmentDistance({-2,0,0},{2,0,0},{0,-2,3},{0,2,3})>2.9f,"crossing water/projectile paths are not swept");
+    puts("PASS hydrant: absorbed-item gate, manual/contact unlock, reusable form/reset, nozzle shape, live-water filtering and swept attack/defense");
+}
 int main(){try{
+    TestHydrantMorph();
+    TestTireMorph();
+    TestFacingAndCamera();
+    TestGrowthHealth();
+    TestCityStage();
+    TestLifeContactAbsorb();
+    TestLifeBatchAbsorb();
     TestLifeWeapons();
     SlimeLife life;life.absorbedMass=LifeHammerMass-LifeStartMass;auto& parent=life.bodies[0];parent.mass=100;parent.health=72;parent.maxHealth=100;parent.particles=6600;
     CheckLife(LifeTakeHit(life,0)==-1&&life.splits==0&&parent.health==72,"non-damage triggered a split");
@@ -116,12 +345,12 @@ int main(){try{
     CheckLife(mid&&late&&LifeScale(growth.bodies[0].mass)>startSize*3&&LifeCanMorph(growth.bodies[0].mass,LifeAction::Plane),"absorption cannot reach a large late-game body and all weapons");
     CheckLife(LifeTakeHit(growth,1)==1&&growth.ChildCount()==1,"damage after growth did not split");
     float hpBefore=growth.bodies[0].health;growth.bodies[1].pendingGrowth=12;LifeCompleteGrowth(growth,growth.bodies[1]);
-    CheckLife(growth.bodies[0].health==hpBefore&&growth.bodies[1].pendingGrowth==0&&growth.ChildCount()==1,"child collection heals or creates another child");
+    CheckLife(growth.bodies[0].health==hpBefore+12&&growth.bodies[1].pendingGrowth==0&&growth.ChildCount()==1,"child collection lost growth HP or creates another child");
     SlimeLife army;LifeInitializeBodies(army,6600);army.absorbedMass=900;army.bodies[0].mass=army.bodies[0].health=army.bodies[0].maxHealth=1000;
     for(int childIndex=1;childIndex<=12;++childIndex)CheckLife(LifeTakeHit(army,1)==childIndex,"late-game damage did not fill the unlocked child slots");
     uint32_t grownParticles=0;for(const auto& body:army.bodies)grownParticles+=body.particles;
     CheckLife(army.ChildCount()==12&&army.splits==12&&grownParticles==6600,"damage army lost particles or split without a hit");
-    growth.bodies[0].pendingGrowth=2000;LifeCompleteGrowth(growth,growth.bodies[0]);
+    growth.bodies[0].pendingGrowth=LifeMaxMass*2;LifeCompleteGrowth(growth,growth.bodies[0]);
     CheckLife(growth.TotalMass()==LifeMaxMass&&growth.ReservedMass()==LifeMaxMass,"growth exceeds the group mass cap");
     SlimeLife restart;LifeInitializeBodies(restart,6600);CheckLife(restart.absorbedMass==0&&restart.ChildCount()==0&&restart.ChildLimit()==2&&!LifeCanMorph(restart.bodies[0].mass,LifeAction::Hammer),"restart keeps growth/army/weapons");
     puts("PASS progression: absorption size, exact weapon gates, 2/6/12 children, child-fed growth, mass/particle conservation and restart");
@@ -136,7 +365,7 @@ int main(){try{
     CheckLife(runDistance(waterOnly)>runDistance(glueOnly)*3,"water/glue travel cannot be distinguished in actual acceleration");
     Vec coastWater{waterOnly.Speed(),0,0},coastGlue{glueOnly.Speed(),0,0};for(int i=0;i<36;++i){coastWater=LifeMoveVelocity(coastWater,{},waterOnly,true,1.f/120);coastGlue=LifeMoveVelocity(coastGlue,{},glueOnly,true,1.f/120);}
     CheckLife(coastWater.x>coastGlue.x*10&&coastWater.x>5,"watery stopping has no observable momentum tradeoff");
-    CheckLife(LifeInMouth({},{0,0,1},{0,0,6.5f},100,0,waterOnly)&&!LifeInMouth({},{0,0,1},{0,0,6.5f},100,0,glueOnly),"mixture does not change real absorb reach");
+    CheckLife(LifeInMouth({},{0,0,1},{0,0,12.5f},100,0,waterOnly)&&!LifeInMouth({},{0,0,1},{0,0,12.5f},100,0,glueOnly),"mixture does not change real absorb reach");
     CheckLife(LifeInMouth({},{0,0,1},{4,0,1},100,0,waterOnly)&&!LifeInMouth({},{0,0,1},{4,0,1},100,0,glueOnly),"water does not widen the actual mouth");
     CheckLife(glueOnly.AbsorbDuration()<waterOnly.AbsorbDuration()*.6f&&glueOnly.AbsorbHold()>waterOnly.AbsorbHold()*2,"glue does not improve wrapping speed/hold");
     auto flight=[](const SlimeRecipe& recipe){float y=0,peak=0,v=recipe.Bounce(),time=0;do{v-=recipe.Gravity()/240;y+=v/240;peak=std::max(peak,y);time+=1.f/240;}while(y>0&&time<6);return Vec{peak,time,0};};

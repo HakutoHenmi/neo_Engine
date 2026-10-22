@@ -10,6 +10,8 @@ Kevin MacLeod (https://incompetech.com/), CC BY 4.0.
 ## Models / UI
 - Poly Haven: scenery, grass and PBR terrain — CC0. See MeadowRefresh.md,
   MeadowRefreshSources.json, MeadowAssets.md and PBR-Materials.md for sources.
+- Poly Haven: city stage props, iron gate, cannon, rat and street/facade/roof
+  surfaces — CC0. See CityStage.md and CityStageSources.json.
 - Kenney: UI Pack (2.0), Input Prompts (1.5A). https://www.kenney.nl/ — CC0 1.0.
   原文: ../Textures/UI/kenney_ui-pack/License.txt,
   ../Textures/UI/kenney_input-prompts_1.5/License.txt.

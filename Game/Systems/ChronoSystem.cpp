@@ -1,5 +1,6 @@
 #include "../../Engine/FluidMorphShape.h"
-#include "../../Engine/SlimeEngulfShape.h"
+#include "../Chrono/SlimeTentacleRules.h"
+#include "../../Engine/FluidMorphShape.h"
 #include <map>
 #include "../UI/SceneMusic.h"
 #include "ChronoSystem.h"
@@ -1447,3 +1448,5 @@ void ChronoSystem::DrawUI(entt::registry& r,GameContext& ctx){
 #include "SlimeAssault.inl"
 
 #include "SlimeLife.inl"
+#include "SlimeHydrant.inl"
+#include "CityStage.inl"

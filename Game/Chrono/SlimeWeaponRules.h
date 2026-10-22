@@ -4,17 +4,59 @@
 namespace Game::Chrono {
 inline bool LifeWeaponForm(LifeAction form){return LifeRequiredMass(form)>0;}
 inline void LifeStopWeaponAttack(LifeBody& body){bool ready=body.weapon.ready;body.weapon={};body.weapon.ready=ready;}
+inline void LifeRetargetWeapon(LifeBody& body){
+    // Resizing an already formed hydrant after a split must not switch off a
+    // held jet until the GPU's new particle ownership converges again.
+    bool flowing=body.action==LifeAction::Hydrant&&body.weapon.ready;
+    body.weapon={};body.weapon.ready=flowing;if(!flowing)body.actionAge=0;
+}
 inline void LifeReturnToSlime(LifeBody& body){
-    body.action=LifeAction::Restore;body.actionAge=0;body.target=0xffffffffu;body.weapon={};
+    body.restoreDuration=body.action==LifeAction::Engulf?.12f:.4f;
+    body.action=LifeAction::Restore;body.actionAge=0;body.target=0xffffffffu;body.grabs.clear();body.weapon={};
 }
 inline bool LifeEnterWeapon(LifeBody& body,LifeAction form,Vec facing){
-    if(!LifeCanMorph(body.mass,form)||body.down||body.health<=0)return false;
+    if(!LifeCanMorph(body,form)||body.down||body.health<=0)return false;
     body.action=form;body.actionAge=0;body.forward=body.previousForward=facing;body.committed=false;body.weapon={};return true;
 }
 inline Vec LifeWeaponFacing(Vec facing,Vec desired,float dt){
     float yaw=std::atan2(facing.x,facing.z),delta=std::remainder(std::atan2(desired.x,desired.z)-yaw,6.2831853f);
     yaw+=std::clamp(delta*(1-std::exp(-14*dt)),-6*dt,6*dt);
     return {std::sin(yaw),0,std::cos(yaw)};
+}
+inline bool LifeFacesCamera(LifeAction form){return form==LifeAction::Hammer||form==LifeAction::Plane||form==LifeAction::Hydrant;}
+inline void LifeUpdateFacing(LifeBody& body,Vec movement,Vec cameraForward,float dt){
+    if(LifeFacesCamera(body.action))body.forward=LifeWeaponFacing(body.forward,cameraForward,dt);
+    else if(Length(movement)>.05f){
+        if(!LifeWeaponForm(body.action))body.forward=Unit(movement);
+        else if(body.action==LifeAction::Tire){
+            float yaw=std::atan2(body.forward.x,body.forward.z),goal=std::atan2(movement.x,movement.z);
+            float rate=2.2f/(1+.12f*LifeScale(body.mass));
+            yaw+=std::clamp(std::remainder(goal-yaw,6.2831853f),-rate*dt,rate*dt);body.forward={std::sin(yaw),0,std::cos(yaw)};
+        }else if(!body.weapon.active)body.forward=LifeWeaponFacing(body.forward,Unit(movement),dt);
+    }
+}
+inline constexpr float LifeTireMajor=2.1f,LifeTireTube=.77f,LifeTireRadius=LifeTireMajor+LifeTireTube;
+inline bool LifeInsideTire(Vec point){
+    float radial=std::sqrt((point.y-LifeTireRadius)*(point.y-LifeTireRadius)+point.z*point.z)-LifeTireMajor;
+    return point.x*point.x+radial*radial<=LifeTireTube*LifeTireTube;
+}
+inline Vec LifeTirePose(Vec point,float angle){
+    float y=point.y-LifeTireRadius,c=std::cos(angle),s=std::sin(angle);
+    return {point.x,LifeTireRadius+y*c-point.z*s,y*s+point.z*c};
+}
+inline Vec LifeTireMoveVelocity(const LifeBody& body,Vec velocity,Vec wish,const SlimeRecipe& recipe,bool grounded,float dt){
+    float amount=std::min(1.f,Length(wish));
+    float top=recipe.Speed()*(2.1f+std::min(.5f,.08f*LifeScale(body.mass)));
+    float rate=amount>.05f?2.4f:1.7f;rate*=grounded?1.f:.35f;
+    float blend=1-std::exp(-rate*dt);Vec goal=body.forward*(top*amount);
+    velocity.x+=(goal.x-velocity.x)*blend;velocity.z+=(goal.z-velocity.z)*blend;return velocity;
+}
+struct LifeCameraSubject {Vec center{};float radius=1;};
+inline float LifeCameraDistance(float radius,float fovY,float aspect){
+    // Keep the complete subject within 62% of the narrower viewport dimension.
+    float tangent=std::tan(fovY*.5f)*std::min(1.f,std::max(.1f,aspect));
+    float halfAngle=std::atan(tangent*.62f);
+    return std::max(17.f,(radius+1.5f)/std::sin(halfAngle));
 }
 inline float LifeWeaponDuration(LifeAction form){
     return form==LifeAction::Hammer?.58f:form==LifeAction::Sword?.64f:.95f;
@@ -23,6 +65,7 @@ inline float LifeWeaponDuration(LifeAction form){
 // through the recovery window; holding the hammer repeats without extra presses.
 inline bool LifeTickWeapon(SlimeLife& life,LifeBody& body,float dt,bool pressed,bool held,bool formed){
     if(!LifeWeaponForm(body.action))return false;
+    if(body.action==LifeAction::Tire||body.action==LifeAction::Hydrant){body.weapon.ready|=formed;return false;}
     auto& attack=body.weapon;attack.ready|=formed;
     attack.buffer=pressed?.24f:std::max(0.f,attack.buffer-dt);
     attack.previousAge=attack.age;
@@ -67,12 +110,16 @@ inline Vec LifeWeaponPoseAt(LifeAction form,Vec point,bool attacking,float age,f
     return point;
 }
 inline Vec LifeWeaponPose(LifeAction form,Vec point,bool attacking,float age){return LifeWeaponPoseAt(form,point,attacking,age,0);}
-inline Vec LifeWeaponPose(const LifeBody& body,Vec point,float age){return LifeWeaponPoseAt(body.action,point,body.weapon.active,age,body.age-(body.weapon.age-age));}
+inline Vec LifeWeaponPose(const LifeBody& body,Vec point,float age){return body.action==LifeAction::Tire?LifeTirePose(point,body.tireAngle):LifeWeaponPoseAt(body.action,point,body.weapon.active,age,body.age-(body.weapon.age-age));}
 inline Vec LifeWeaponVelocity(const LifeBody& body,Vec point,float dt){
     if(dt<=1e-5f)return body.velocity;
     auto world=[](Vec p,Vec f){return Vec{f.z*p.x+f.x*p.z,p.y,-f.x*p.x+f.z*p.z};};
-    Vec current=LifeWeaponPoseAt(body.action,point,body.weapon.active,body.weapon.age,body.age);
-    Vec previous=LifeWeaponPoseAt(body.action,point,body.weapon.active,body.weapon.previousAge,body.age-dt);
+    Vec current,previous;
+    if(body.action==LifeAction::Tire){
+        float angular=Dot(body.velocity,body.forward)/(LifeTireRadius*LifeScale(body.mass));
+        current=LifeTirePose(point,body.tireAngle);previous=LifeTirePose(point,body.tireAngle-angular*dt);
+    }else{current=LifeWeaponPoseAt(body.action,point,body.weapon.active,body.weapon.age,body.age);
+        previous=LifeWeaponPoseAt(body.action,point,body.weapon.active,body.weapon.previousAge,body.age-dt);}
     return body.velocity+(world(current,body.forward)-world(previous,body.previousForward))*(LifeScale(body.mass)/dt);
 }
 inline bool LifeWeaponHitInterval(const LifeBody& body,int pulse,float& from,float& to){

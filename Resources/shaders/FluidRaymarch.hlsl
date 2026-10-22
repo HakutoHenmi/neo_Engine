@@ -15,6 +15,7 @@ StructuredBuffer<VolumeParticle> renderParticles : register(t5);
 Texture2D<float> fluidDepth : register(t6);
 Texture3D<float4> occupancy : register(t7);
 StructuredBuffer<VolumeParticle> originalParticles : register(t8);
+Texture3D<float4> fluidVelocity : register(t9);
 SamplerState linearClamp : register(s0);
 
 // Morphing uses a fitted domain: its physical extent changes with the shape.
@@ -60,6 +61,57 @@ float3 Reflection(float3 normal,float3 ray,float roughness) {
     float3 env=environmentMap.SampleLevel(linearClamp,r,roughness*max((float)levels-1,0)).rgb;
     float3 sky=lerp(float3(0.035f,0.055f,0.075f),float3(0.3f,0.43f,0.55f),saturate(r.y*0.5f+0.5f));
     return max(env,sky*0.3f);
+}
+// Direction sunlight travels. Offline tests leave the constant zero.
+float3 SunTravel(){return sunDirection.w>0?sunDirection.xyz:normalize(float3(.45f,-.8f,.35f));}
+float SunIntensity(){return sunDirection.w>0?sunDirection.w:1;}
+float3 FlowVelocity(float3 p){
+    float3 uv=(p-volumeOrigin)/(voxelSize*volumeSize);
+    if(any(uv<0) || any(uv>1)) return 0;
+    return fluidVelocity.SampleLevel(linearClamp,uv,0).xyz;
+}
+float WaterHash(float3 p){p=frac(p*float3(.1031f,.1030f,.0973f));p+=dot(p,p.yxz+33.33f);return frac((p.x+p.y)*p.z);}
+float WaterNoise(float3 p){
+    float3 i=floor(p),f=frac(p);f=f*f*(3-2*f);
+    float a=lerp(WaterHash(i),WaterHash(i+float3(1,0,0)),f.x),b=lerp(WaterHash(i+float3(0,1,0)),WaterHash(i+float3(1,1,0)),f.x);
+    float c=lerp(WaterHash(i+float3(0,0,1)),WaterHash(i+float3(1,0,1)),f.x),d=lerp(WaterHash(i+float3(0,1,1)),WaterHash(i+1),f.x);
+    return lerp(lerp(a,b,f.y),lerp(c,d,f.y),f.z);
+}
+float WaterFbm(float3 p){return WaterNoise(p)*.55f+WaterNoise(p*2.03f+11.1f)*.3f+WaterNoise(p*4.11f+23.7f)*.15f;}
+// Fast water draws in air as it travels. x: broken white skin on the surface,
+// y: milky scattering inside. The streak field is advected by the resolved
+// fluid velocity with two half-cycle phases (a flow map), so it rides the jet
+// without stretching as the clock grows.
+float2 WaterAeration(float3 world,float3 normal,float3 ray,float thickness){
+    float3 velocity=FlowVelocity(world);
+    float speed=length(velocity);
+    float aerated=smoothstep(8,26,speed);
+    if(aerated<=0.001f) return 0;
+    // The jet leaves the nozzle glassy and whitens as it breaks up downstream.
+    float amount=aerated*lerp(.2f,1,smoothstep(1.5f,14,length(world-playerBodyCenter)));
+    // A sheet sliding over the street keeps only a little white at its front.
+    amount*=lerp(.25f,1,smoothstep(.5f,1.3f,world.y));
+    // Shear stretches entrained air into thin streaks along the flow.
+    float3 along=velocity/speed;
+    float3 across=normalize(cross(along,abs(along.y)<.9f?float3(0,1,0):float3(1,0,0)));
+    float3x3 frame=float3x3(across*5.f,cross(along,across)*5.f,along*.9f);
+    const float cycle=.4f;
+    float phase=frac(time/cycle),blend=1-abs(2*phase-1);
+    float3 drift=velocity*cycle;
+    float streak=WaterFbm(mul(frame,world-drift*phase))*blend+
+                 WaterFbm(mul(frame,world-drift*frac(phase+.5f))+19.3f)*(1-blend);
+    float grazing=pow(1-saturate(dot(normal,-ray)),1.5f);
+    // Sparse streaks first; more air lowers the threshold into a broken skin.
+    float low=.6f-.28f*amount-.12f*grazing;
+    float skin=smoothstep(low,low+.2f,streak)*amount;
+    float milk=amount*(1-exp(-thickness*1.1f));
+    return float2(skin,milk);
+}
+float3 RainbowColor(float t){
+    // t: 0 violet edge, 1 red edge of the band.
+    float band=smoothstep(-.12f,.08f,t)*(1-smoothstep(.92f,1.12f,t));
+    float hue=(1-saturate(t))*.78f;
+    return band*saturate(abs(frac(hue+float3(1,2.f/3,1.f/3))*6-3)-1);
 }
 #include "SlimeDecoration.hlsli"
 struct FullscreenIn { float4 position:SV_POSITION; float2 uv:TEXCOORD0; };
@@ -162,7 +214,18 @@ RayResult RaymarchPS(FullscreenIn input) {
         float3 transmission=exp(-absorption*thickness[selected]);
         float3 body=result*transmission+tint*(1-transmission)*(softSlime?.22f:.12f);
         float opacity=saturate(phaseColor[selected].a);
-        result=lerp(result,lerp(body,Reflection(n,ray,roughness),fresnel),opacity);
+        float3 surface=lerp(body,Reflection(n,ray,roughness),fresnel);
+        if(selected==2){
+            // Entrained air scatters diffusely. Inside it only clouds the water;
+            // the broken skin is lit white with no glassy glare.
+            float2 air=WaterAeration(cameraPosition+ray*farthest,n,ray,thickness[2]);
+            float3 sky=Reflection(float3(0,1,0),float3(0,-1,0),.9f);
+            float lit=.5f+.5f*saturate(dot(n,-SunTravel()));
+            float3 white=float3(.88f,.93f,.97f)*(sky*.55f+lit*SunIntensity()*.7f);
+            surface=lerp(surface,lerp(body,white*.8f,.6f),air.y*.5f);
+            surface=lerp(surface,white,air.x*.75f);
+        }
+        result=lerp(result,surface,opacity);
     }
     float3 nearestWorld=cameraPosition+ray*nearest;
     if(playerDecoration>0.001f && nearestPhase==0 &&
@@ -245,6 +308,57 @@ SprayOut SprayVS(uint vertex:SV_VertexID, uint instance:SV_InstanceID) {
     VolumeParticle p=renderParticles[instance];
     float3 margin=NearVolumeMargin(ShapeCenter(s));
     bool distant=s.info.x>0 && min(margin.x,min(margin.y,margin.z))<NearVolumeBorder()+s.info.y;
+    if(s.info.w!=0 && s.info.z<0.005f && !distant && p.type>1.05f && p.type<1.25f) {
+        // Hydrant mist: a seeded subset of resolved droplets also sheds a soft
+        // puff. Airborne water shreds into a widening sheath as it travels;
+        // water that has just hit something throws up a rising cloud.
+        // A further seeded subset becomes loose glassy droplets: torn off the
+        // jet's skin in flight, or thrown up ballistically from an impact.
+        float seed=frac(p.color.r*1000);
+        float age=p.pad.x;bool airborne=age<=0;
+        float keep=airborne?.3f:.12f,drops=keep+(airborne?.06f:.06f);
+        if(seed>=drops || age>=1.1f) { o.position=float4(2,2,2,1); return o; }
+        bool droplet=seed>=keep;
+        float random=droplet?(seed-keep)/(drops-keep):seed/keep;
+        float speed=length(p.velocity);
+        float3 along=speed>.01f?p.velocity/speed:float3(0,1,0);
+        float3 across=normalize(cross(along,abs(along.y)<.9f?float3(0,1,0):float3(1,0,0)));
+        float spin=random*45.553f+time*(random-.5f)*1.3f;
+        float3 radial=across*cos(spin)+cross(along,across)*sin(spin);
+        float3 swirl=float3(sin(time*.9f+random*40),cos(time*.7f+random*23),sin(time*.8f+random*31))*.25f;
+        float spread=saturate((length(p.position-playerBodyCenter)-2)/30);
+        float reach=.5f+frac(random*37.1f);
+        float3 world;
+        if(droplet){
+            if(airborne){
+                world=p.position+radial*(.25f+1.5f*spread)*reach;
+                o.color.a=smoothstep(.02f,.15f,spread);
+            }else{
+                if(age>.7f) { o.position=float4(2,2,2,1); return o; }
+                float lift=(3.5f+3*frac(random*5.3f))*age-10*age*age;
+                world=p.position+radial*(.3f+4*age)*reach+float3(0,max(0,lift),0);
+                o.color.a=1-smoothstep(.4f,.7f,age);
+            }
+            o.radius=.04f+.05f*frac(random*13.7f);
+            o.distantBulk=0;o.shapeIndex=instance;o.phase=2;
+            o.centerView=mul(float4(world,1),view).xyz;
+            o.position=mul(float4(o.centerView+float3(o.local*o.radius,0),1),projection);
+            return o;
+        }
+        if(airborne){
+            world=p.position+radial*(.35f+1.7f*spread)*reach+swirl*spread;
+            o.radius=.8f+2.f*spread;
+            o.color.a=.05f*smoothstep(.05f,.4f,spread);
+        }else{
+            world=p.position+radial*(.2f+1.4f*age)*reach+float3(0,.3f+1.5f*age,0)+swirl;
+            o.radius=1.f+2.5f*age;
+            o.color.a=.06f*smoothstep(0,.12f,age)*(1-smoothstep(.4f,1.1f,age));
+        }
+        o.color.r=random;o.distantBulk=5;o.centerWorld=world;
+        o.centerView=mul(float4(world,1),view).xyz;
+        o.position=mul(float4(o.centerView+float3(o.local*o.radius,0),1),projection);
+        return o;
+    }
     if(s.info.w==0 || (s.info.z<0.005f && !distant)) { o.position=float4(2,2,2,1); return o; }
     o.shapeIndex=instance; o.distantBulk=distant ? 1 : 0;
     o.phase=VolumePhase(p.type);
@@ -255,6 +369,42 @@ SprayOut SprayVS(uint vertex:SV_VertexID, uint instance:SV_InstanceID) {
     return o;
 }
 float4 SprayPS(SprayOut input):SV_Target {
+    if(input.distantBulk==5) {
+        float r2=dot(input.local,input.local);
+        if(r2>=1) discard;
+        uint width,height; sceneDepth.GetDimensions(width,height);
+        float2 uv=input.position.xy/float2(width,height);
+        float z=input.centerView.z;
+        // Soft particle: fade into geometry, the camera and the liquid surface.
+        float soft=saturate((ViewDepth(uv)-z)/max(input.radius,.1f))*saturate((z-.3f)/1.5f);
+        float bulkDepth=fluidDepth.Load(int3((int2)input.position.xy,0));
+        if(bulkDepth>0) soft*=saturate((bulkDepth-z)/input.radius+1);
+        // Wisps: the billboard is only a bound. Density comes from a rising,
+        // drifting noise field at the pixel's world position on the puff plane.
+        float3 right=float3(view[0][0],view[1][0],view[2][0]),up=float3(view[0][1],view[1][1],view[2][1]);
+        float3 at=input.centerWorld+(right*input.local.x+up*input.local.y)*input.radius;
+        float wisp=WaterFbm(at*.8f+float3(0,-time*.5f,0)+input.color.r*31.7f);
+        float density=(1-r2)*(1-r2)*smoothstep(.3f,.75f,wisp)*1.8f*soft*input.color.a;
+        if(density<=1e-4f) discard;
+        // Per-pixel ray: a puff spans more than the 1.8-degree bow band.
+        float3 viewRay=normalize(float3((uv*float2(2,-2)+float2(-1,1))/float2(projection[0][0],projection[1][1]),1));
+        float3 pixelRay=normalize(mul(viewRay,transpose((float3x3)view)));
+        float3 travel=SunTravel();float sun=SunIntensity();
+        // Henyey-Greenstein forward scattering: mist glows against the sun.
+        float g=.6f,mie=(1-g*g)/(12.566371f*pow(1+g*g+2*g*dot(pixelRay,travel),1.5f));
+        float3 sky=Reflection(float3(0,1,0),float3(0,-1,0),.9f);
+        float3 mist=sky*.7f+float3(1,.98f,.94f)*sun*(.25f+mie*1.6f);
+        // Primary and fainter, reversed secondary bows around the antisolar
+        // point; only with the sun behind the viewer. Fine hose droplets widen
+        // and wash out the bands, so they stay soft and pastel.
+        float angle=degrees(acos(clamp(dot(pixelRay,travel),-1,1)));
+        float3 bow=RainbowColor((angle-39.8f)/2.8f)+RainbowColor((53.8f-angle)/3.6f)*.35f;
+        bow=lerp(dot(bow,1.f/3),bow,.7f);
+        // Dispersion redistributes the scattered light rather than adding a glow.
+        float3 colour=bow*sun*1.1f*saturate(-travel.y*4);
+        mist=mist*(1-.3f*saturate(dot(colour,1.f/3)))+colour;
+        return float4(mist,density);
+    }
     if(input.distantBulk>=2) {
         uint width,height; sceneDepth.GetDimensions(width,height);
         float2 uv=input.position.xy/float2(width,height);
