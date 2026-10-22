@@ -5,6 +5,7 @@
 #include "../Engine/SlimeEngulfShape.h"
 #include "../Engine/FluidEmission.h"
 #include "../Game/Chrono/SlimeWeaponRules.h"
+#include "../Game/Chrono/SlimeTentacleRules.h"
 #include "../Engine/FluidVolumeDomain.h"
 #include <windows.h>
 #include <d3d11.h>
@@ -38,8 +39,9 @@ struct VolumeCB { XMFLOAT3 origin; float cell; UINT size[3],count; XMFLOAT3 prev
     XMFLOAT3 playerSlope{}; float playerAir=0;
     XMFLOAT4 playerLiquidCore{};
     XMFLOAT4 playerMorph{};
+    XMFLOAT4 sunDirection{};
 };
-static_assert(sizeof(Particle)==64 && sizeof(Shape)==64 && sizeof(VolumeCB)==208);
+static_assert(sizeof(Particle)==64 && sizeof(Shape)==64 && sizeof(VolumeCB)==224);
 struct Buffer { ComPtr<ID3D11Buffer> resource; ComPtr<ID3D11ShaderResourceView> srv; ComPtr<ID3D11UnorderedAccessView> uav; };
 struct Texture { ComPtr<ID3D11Texture3D> resource; ComPtr<ID3D11ShaderResourceView> srv; ComPtr<ID3D11UnorderedAccessView> uav; UINT size; };
 class Gpu {
@@ -714,11 +716,13 @@ void TestVolume(Gpu& g, int waterLayers=2, float waterOffset=0, bool draw=true, 
 #include "SlimeDecorationPreview.inl"
 #include "GraphicsPostValidation.inl"
 #include "FluidSandboxTests.inl"
+#include "HydrantFluidTests.inl"
 int main(int argc,char** argv) {
     if(argc>1&&std::strcmp(argv[1],"--graphics-only")==0){try{Check(CoInitializeEx(nullptr,COINIT_MULTITHREADED));Gpu gpu;TestGraphicsPost(gpu);return 0;}catch(const std::exception& error){fprintf(stderr,"FAIL graphics: %s\n",error.what());return 2;}}
     try {
+        if(argc>1&&std::strcmp(argv[1],"--hydrant-only")==0){Check(CoInitializeEx(nullptr,COINIT_MULTITHREADED));Gpu gpu;TestHydrantFluid(gpu);return 0;}
         if(argc>1 && std::strcmp(argv[1],"--growth-only")==0){Check(CoInitializeEx(nullptr,COINIT_MULTITHREADED));Gpu gpu;TestScaleInvariantDensity(gpu);return 0;}
-        if(argc>1 && std::strcmp(argv[1],"--surface-only")==0) { Check(CoInitializeEx(nullptr,COINIT_MULTITHREADED));Gpu gpu;TestHammerSurface(gpu);TestHammerSurface(gpu,true);TestHammerSurface(gpu,false,Game::Chrono::LifeAction::Sword);TestHammerSurface(gpu,false,Game::Chrono::LifeAction::Plane);TestHammerSurface(gpu,true,Game::Chrono::LifeAction::Hammer,1200);for(auto form:{Game::Chrono::LifeAction::Hammer,Game::Chrono::LifeAction::Sword,Game::Chrono::LifeAction::Plane})TestHammerSurface(gpu,false,form,1200);return 0; }
+        if(argc>1 && std::strcmp(argv[1],"--surface-only")==0) { Check(CoInitializeEx(nullptr,COINIT_MULTITHREADED));Gpu gpu;TestFluidTendrils(gpu);TestHammerSurface(gpu);TestHammerSurface(gpu,true);TestHammerSurface(gpu,false,Game::Chrono::LifeAction::Sword);TestHammerSurface(gpu,false,Game::Chrono::LifeAction::Plane);TestHammerSurface(gpu,true,Game::Chrono::LifeAction::Hammer,Game::Chrono::LifeMaxMass);for(auto form:{Game::Chrono::LifeAction::Hammer,Game::Chrono::LifeAction::Sword,Game::Chrono::LifeAction::Plane})TestHammerSurface(gpu,false,form,Game::Chrono::LifeMaxMass);return 0; }
         if(argc>1 && std::strcmp(argv[1],"--sandbox-only")==0) { Check(CoInitializeEx(nullptr,COINIT_MULTITHREADED));Gpu gpu;TestFluidSandbox(gpu);return 0; }
         if(argc>1 && std::strcmp(argv[1],"--face-only")==0){ Check(CoInitializeEx(nullptr,COINIT_MULTITHREADED)); Gpu gpu; TestPlayerFace(gpu);TestSlimeDecorationPreview(gpu); return 0; }
         if(argc>1 && std::strcmp(argv[1],"--morph-only")==0){Check(CoInitializeEx(nullptr,COINIT_MULTITHREADED));Gpu gpu;TestFluidMorph(gpu);return 0;}

@@ -40,7 +40,7 @@ void Renderer::CollectMorphMeasure(uint32_t frame){
 void Renderer::BindFluidMorphResources(ID3D12Resource* aabb,uint32_t offset){
     auto index=AllocateDynamicSrvIndex(3);if(index==UINT32_MAX)throw std::runtime_error("Fluid descriptor budget exhausted");
     D3D12_SHADER_RESOURCE_VIEW_DESC srv{};srv.Shader4ComponentMapping=D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;srv.ViewDimension=D3D12_SRV_DIMENSION_BUFFER;
-    srv.Buffer.FirstElement=offset/32;srv.Buffer.NumElements=128;srv.Buffer.StructureByteStride=32;
+    srv.Buffer.FirstElement=offset/32;srv.Buffer.NumElements=UINT(kFluidBoxCapacity+kFluidSphereCapacity);srv.Buffer.StructureByteStride=32;
     dev_->CreateShaderResourceView(aabb,&srv,window_->SRV_CPU(index));
     srv.Buffer.FirstElement=fluidMorphFrame_?fluidMorphOffset_/sizeof(FluidMorphTarget):0;srv.Buffer.NumElements=fluidMorphFrame_?kPlayerFluidParticles:1;srv.Buffer.StructureByteStride=sizeof(FluidMorphTarget);
     dev_->CreateShaderResourceView(fluidMorphFrame_?fluidMorphFrame_:fluidMorphDummy_.Get(),&srv,window_->SRV_CPU(index+1));

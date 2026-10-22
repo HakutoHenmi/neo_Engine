@@ -49,6 +49,24 @@ float hash(uint n) {
     return float(n & uint(0x7fffffffU)) / float(0x7fffffff);
 }
 
+// Hydrant water striking a surface. Impingement turns the normal momentum
+// into a thin sheet that fans out along the surface (a narrow forward fan
+// for grazing hits, a full circle head-on) and throws a crown of droplets.
+// Water already lying in a sheet only slides, with thin-film drag.
+float3 HydrantImpact(float3 velocity,float3 normal,uint seed,float step){
+    float normalSpeed=-dot(velocity,normal);
+    float3 tangent=velocity+normal*normalSpeed;
+    float sliding=length(tangent);
+    if(normalSpeed<3)return tangent*pow(.92f,step*60);
+    float3 dir=sliding>.01f?tangent/sliding:normalize(cross(normal,abs(normal.y)<.9f?float3(0,1,0):float3(1,0,0)));
+    float headOn=normalSpeed/(normalSpeed+sliding);
+    float angle=(hash(seed)*2-1)*lerp(.5f,3.14159f,saturate(headOn*1.6f));
+    float3 spread=dir*cos(angle)+cross(normal,dir)*sin(angle);
+    float3 result=spread*(sliding*.4f+normalSpeed*.35f)*(.45f+.55f*hash(seed+1U));
+    if(hash(seed+2U)<.2f)result+=normal*(normalSpeed*(.15f+.25f*hash(seed+3U))+1.5f);
+    return result;
+}
+
 // ==========================================
 // Pass 0: Emit (パーティクル放出)
 // ==========================================
@@ -108,10 +126,20 @@ void Emit(uint3 DTid : SV_DispatchThreadID) {
                 float slabLength=max(speed*max(dt,1e-4f),0.01f);
                 uint side=max(1U,(uint)ceil(sqrt((float)emitCount*0.20f/slabLength)));
                 uint perLayer=side*side;
-                uint lane=(emitCursor-emitStartIndex+localIndex)%perLayer;
-                float2 plane=(float2(lane%side,lane/side)-((float)side-1)*0.5f)*0.20f;
-                // Earlier emissions have travelled farther by the frame end.
-                p.position=emitPos+across*plane.x+tangent*plane.y+along*((emitCount-localIndex-0.5f)*slabLength/emitCount);
+                uint slot=emitCursor-emitStartIndex+localIndex,lane=slot%perLayer;
+                // Sunflower lanes fill a disc at the same area per particle as
+                // the former square grid, so the stream has a round section.
+                // Each layer is rotated to avoid visible spiral arms along the jet.
+                float discRadius=(float)side*0.20f*0.5641896f;
+                if(emitType>1.05f&&emitType<1.15f&&pad6.y>0)discRadius=pad6.y;
+                float angle=(float)lane*2.399963f+(float)(slot/perLayer)*1.618034f;
+                float2 plane=float2(cos(angle),sin(angle))*discRadius*sqrt(((float)lane+0.5f)/(float)perLayer);
+                float travel=(emitCount-localIndex-0.5f)*slabLength/emitCount;
+                // Hydrant batches are emitted before this frame's integration.
+                // Backdate them so the newest water finishes at the nozzle,
+                // rather than leaving a whole frame of empty space in front.
+                if(emitType>1.05f&&emitType<1.25f)travel-=slabLength;
+                p.position=emitPos+across*plane.x+tangent*plane.y+along*travel;
                 p.velocity=flow;
             }
             p.color = emitColor;
@@ -140,6 +168,14 @@ void Emit(uint3 DTid : SV_DispatchThreadID) {
             } else {
                 // 水飛沫の場合: タイマー初期化
                 p.pad = float3(pad6.x>0.5f ? -1.0f : 0.0f, 0, 0);
+                // Airborne hydrant water stores its nozzle width until contact
+                // replaces this channel with the supporting surface height.
+                if(emitType>1.05f&&emitType<1.25f){
+                    p.pad.y=pad6.y;
+                    // Render-only seed for mist puffs in the thousandths of red;
+                    // water colour comes from the phase colour, not this channel.
+                    p.color.r=floor(emitColor.r*1000.0f)/1000.0f+hash(i*313U+7U)*0.00099f;
+                }
             }
             
             Particles[i] = p;
@@ -854,6 +890,13 @@ void CalcForce(uint3 DTid : SV_DispatchThreadID) {
     float friction = pow(isCurrentLiquefiedPlayer ? 0.92f :
         (pi.type < 0.5f ? 0.97f : (isSlimeTypeForFriction ? 0.6f : 0.98f)), dt * 60.0f);
     bool groundContact=false;
+    bool hydrantWater=pi.type>1.05f&&pi.type<1.25f;
+    float3 incoming=pi.velocity,hitNormal=0;
+    // Hydrant water belongs to the flat city street, including PBF projection.
+    // Other water keeps scene-collider support and can fall from ledges.
+    if(hydrantWater&&pi.position.y<.22f){
+        groundContact=true;pi.position.y=.22f;pi.velocity.y=abs(pi.velocity.y)*.12f;pi.velocity.xz*=friction;hitNormal=float3(0,1,0);
+    }
     
     // Slime retains the legacy safety floor. Water must use scene colliders so
     // it can leave a ledge and fall under gravity.
@@ -867,10 +910,18 @@ void CalcForce(uint3 DTid : SV_DispatchThreadID) {
     }
     
     // ★追加: 自由配置されたAABB（Cube等）との衝突判定
-    uint safeAABBCount = min(aabbCount, 128U);
+    uint safeAABBCount = min(aabbCount, 160U);
     for (uint k = 0; k < safeAABBCount; ++k) {
         float3 bmin = AABBs[k].min;
         float3 bmax = AABBs[k].max;
+        if(AABBs[k].pad0>.5f){
+            // Sphere entries (enemies) only obstruct hydrant water.
+            if(!hydrantWater)continue;
+            float3 centre=(bmin+bmax)*.5f,offset=pi.position-centre;
+            float radius=(bmax.x-bmin.x)*.5f+.25f,distance=length(offset);
+            if(distance<radius&&distance>1e-4f){hitNormal=offset/distance;pi.position=centre+hitNormal*radius;pi.pad.x=max(pi.pad.x,1e-3f);}
+            continue;
+        }
         // The continuous support plane owns top contacts. An expanded tower
         // front face must not repeatedly kick climbing particles backwards.
         if(coreMode>=4&&pi.type<.5f&&emitStartIndex!=0&&bmax.y<=SlimeGroundHeight(pi.position)+.4f)continue;
@@ -907,32 +958,38 @@ void CalcForce(uint3 DTid : SV_DispatchThreadID) {
             float minDist = min(min(min(dLeft, dRight), min(dBottom, dTop)), min(dBack, dFront));
             
             if (minDist == dTop) {
+                hitNormal=float3(0,1,0);
                 pi.position.y = bmax.y + pRadius;
                 pi.velocity.y *= -0.3f;
                 pi.velocity.x *= friction;
                 pi.velocity.z *= friction;
                 groundContact=true;
             } else if (minDist == dBottom) {
+                hitNormal=float3(0,-1,0);
                 pi.position.y = bmin.y - pRadius;
                 pi.velocity.y *= -0.3f;
                 pi.velocity.x *= friction;
                 pi.velocity.z *= friction;
             } else if (minDist == dLeft) {
+                hitNormal=float3(-1,0,0);
                 pi.position.x = bmin.x - pRadius;
                 pi.velocity.x *= -0.3f;
                 pi.velocity.y *= friction;
                 pi.velocity.z *= friction;
             } else if (minDist == dRight) {
+                hitNormal=float3(1,0,0);
                 pi.position.x = bmax.x + pRadius;
                 pi.velocity.x *= -0.3f;
                 pi.velocity.y *= friction;
                 pi.velocity.z *= friction;
             } else if (minDist == dBack) {
+                hitNormal=float3(0,0,-1);
                 pi.position.z = bmin.z - pRadius;
                 pi.velocity.z *= -0.3f;
                 pi.velocity.x *= friction;
                 pi.velocity.y *= friction;
             } else if (minDist == dFront) {
+                hitNormal=float3(0,0,1);
                 pi.position.z = bmax.z + pRadius;
                 pi.velocity.z *= -0.3f;
                 pi.velocity.x *= friction;
@@ -941,6 +998,15 @@ void CalcForce(uint3 DTid : SV_DispatchThreadID) {
         }
     }
     
+    // Position-based velocity is re-derived from the step's displacement, so a
+    // velocity change alone would be discarded. Rewrite the start of the step
+    // so the derived velocity is the impact response.
+    if(hydrantWater&&dot(hitNormal,hitNormal)>0){
+        uint seed=uint(frac(pi.color.r*1000)*1048576)*7U+(asuint(pi.position.x+pi.position.z)&1023U);
+        pi.velocity=HydrantImpact(incoming,hitNormal,seed,dt);
+        PreviousPositions[OriginalIndices[i]].xyz=pi.position-pi.velocity*dt;
+    }
+
     // Water metadata: age since contact, support height, recent-contact grace.
     // Advance age once, even when both the floor and an AABB were touched.
     if (FluidIsWater(pi.type)) {
@@ -1059,6 +1125,7 @@ void CalcDeltaP(uint3 id : SV_DispatchThreadID) {
 
 float3 ProjectCollisions(float3 position, float particleType) {
     if (!FluidIsWater(particleType)) position.y = max(position.y, 0.2f);
+    if(particleType>1.05f&&particleType<1.25f)position.y=max(position.y,.22f);
     [loop] for (uint k=0; k<min(aabbCount,128U); ++k) {
         if(coreMode>=4&&particleType<.5f&&emitStartIndex!=0&&AABBs[k].max.y<=SlimeGroundHeight(position)+.4f)continue;
         float3 lo=AABBs[k].min-0.2f, hi=AABBs[k].max+0.2f;

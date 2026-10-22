@@ -137,21 +137,30 @@ void ChronoSystem::UpdateSwarm(entt::registry& r,Player& p,GameContext& ctx){
 }
 void ChronoSystem::DrawSwarm(entt::registry& r,GameContext& ctx){
     const auto& ink=r.get<InkPlayer>(player_);if(!ink.hordeEnabled||finished_)return;
-    float bodyOpacity=1;
+    float bodyOpacity=1,modelScale=1;V modelPivot{};
     auto piece=[&](int index,V at,V size,float yaw,Engine::Vector4 color){const auto& mesh=swarmMeshes_[size_t(index)];
+        at=modelPivot+(at-modelPivot)*modelScale;size=size*modelScale;
         Engine::Transform t;t.scale={size.x*mesh.inverseExtent.x,size.y*mesh.inverseExtent.y,size.z*mesh.inverseExtent.z};t.rotate.y=yaw;
         V center{mesh.center.x*t.scale.x,mesh.center.y*t.scale.y,mesh.center.z*t.scale.z};float cs=std::cos(yaw),sn=std::sin(yaw);
         t.translate=EV(at-V{center.x*cs+center.z*sn,center.y,-center.x*sn+center.z*cs});
         // Store hit/arming light separately from opacity in the existing instance payload.
         color.w=2*std::round(std::clamp(color.w,0.f,1.f)*16)+bodyOpacity;
-        ctx.renderer->DrawMeshInstanced(mesh.handle,white_,t,color,"HordeArmor");};
+        // The city draws armour with projected PBR paint, sun shadows and haze.
+        if(slimeLife_&&cityArmor_.texture)ctx.renderer->DrawMeshInstanced(mesh.handle,cityArmor_.texture,t,color,"CityArmor",cityArmor_.extra);
+        else ctx.renderer->DrawMeshInstanced(mesh.handle,white_,t,color,"HordeArmor");};
     auto floorEffect=[&](V at,float size,int kind,float progress,Engine::Vector4 color){Engine::Transform t;
         t.translate=EV(V{at.x,InkGround(at)+.18f,at.z});t.scale={size,1,size};color.w=kind*2+std::clamp(progress,0.f,.999f);
         ctx.renderer->DrawMeshInstanced(swarmQuad_,white_,t,color,"HordeEffect");};
     for(const auto& enemy:swarm_)if(SwarmAlive(enemy)){
+        // City rats, cannons and the guardian use their own models (CityStage.inl).
+        auto cityKind=Chrono::CityKind(enemy);
+        if(slimeLife_&&(cityKind==Chrono::CityEnemy::Rat||cityKind==Chrono::CityEnemy::Cannon||cityKind==Chrono::CityEnemy::Guardian))continue;
         bodyOpacity=enemy.cameraOpacity;
+        modelScale=enemy.scale;modelPivot=enemy.at;
         float yaw=std::atan2(enemy.heading.x,enemy.heading.z),bob=std::sin(enemy.age*9+float(enemy.id))*.13f;
         float warning=enemy.phase==SwarmPhase::Windup?1.f:0.f;Engine::Vector4 metal{.68f,.77f,.83f,enemy.flash*6+warning*.55f};
+        if(slimeLife_){const Engine::Vector4 roles[]={{.68f,.77f,.83f,0},{.45f,.55f,.68f,0},{.52f,.46f,.3f,0},{.72f,.55f,.3f,0},{.86f,.88f,.92f,0},{.3f,.3f,.3f,0},{.62f,.24f,.2f,0},{.5f,.5f,.5f,0}};
+            auto role=roles[int(cityKind)];metal={role.x,role.y,role.z,metal.w};}
         if(enemy.slow>0)metal={.3f,.7f,1,metal.w};else if(enemy.burn>0)metal={1,.4f,.15f,metal.w};else if(enemy.corrosion>0||enemy.inPool)metal={.3f,.95f,.4f,metal.w};
         V base=enemy.at+V{0,bob,0};if(enemy.phase==SwarmPhase::Spawn)base.y-=2*(1-std::clamp(enemy.clock/.6f,0.f,1.f));
         V side{std::cos(yaw),0,-std::sin(yaw)};
@@ -159,8 +168,10 @@ void ChronoSystem::DrawSwarm(entt::registry& r,GameContext& ctx){
             for(float sign:{-1.f,1.f})piece(0,base+side*(sign*2.1f)+V{0,flap,0},{3.6f,.32f,2.1f},yaw,metal);}
         for(int segment=0;segment<3;++segment)piece(0,base-enemy.heading*(segment*1.15f),{2.2f-segment*.25f,1.8f-segment*.25f,1.6f},yaw,segment==1?Engine::Vector4{.09f,.14f,.2f,metal.w}:metal);
         piece(1,base+enemy.heading*1.2f,{2.1f,1.2f,2.6f},yaw,{.15f,.2f,.27f,metal.w});
+        // Shield bearers carry a tower shield ahead of them; it drops while staggered.
+        if(slimeLife_&&cityKind==Chrono::CityEnemy::Shield&&enemy.stagger<=0)piece(0,base+enemy.heading*2.3f+V{0,.3f,0},{2.9f,2.6f,.35f},yaw,{.58f,.42f,.22f,metal.w});
         for(float sign:{-1.f,1.f}){piece(2,base+side*(sign*.85f)+V{0,.8f,0},{.4f,1.4f,.6f},yaw,metal);
-            Engine::Transform eye;eye.translate=EV(base+enemy.heading*1.35f+side*(sign*.58f)+V{0,.65f,0});eye.scale={.25f,.25f,.35f};
+            Engine::Transform eye;eye.translate=EV(modelPivot+(base+enemy.heading*1.35f+side*(sign*.58f)+V{0,.65f,0}-modelPivot)*modelScale);eye.scale={.25f*modelScale,.25f*modelScale,.35f*modelScale};
             ctx.renderer->DrawMeshInstanced(sphere_,white_,eye,enemy.bomber?Engine::Vector4{1,.48f,.08f,bodyOpacity}:Engine::Vector4{.2f,.85f,1,bodyOpacity},"DomainGlow");}
         if(enemy.bomber){Engine::Transform core;core.translate=EV(base+V{0,.6f,0});core.scale={.75f,.75f,.75f};
             ctx.renderer->DrawMeshInstanced(sphere_,white_,core,{1,.25f,.035f,.9f*bodyOpacity},"DomainGlow");}
@@ -168,10 +179,10 @@ void ChronoSystem::DrawSwarm(entt::registry& r,GameContext& ctx){
             if(enemy.bomber)floorEffect(enemy.at,7,0,enemy.clock/SwarmWindup(enemy),{1,.25f,.035f,1});
             else if(enemy.flying)floorEffect(enemy.attackAt,3.5f,0,enemy.clock/SwarmWindup(enemy),{1,.25f,.035f,1});
             else{V at=(enemy.at+enemy.attackAt)*.5f;Engine::Transform dashCue;
-                dashCue.translate=EV(V{at.x,InkGround(at)+.18f,at.z});dashCue.rotate.y=yaw;dashCue.scale={3,1,DomainDistance(enemy.at,enemy.attackAt)*.5f+3};
+                dashCue.translate=EV(V{at.x,InkGround(at)+.18f,at.z});dashCue.rotate.y=yaw;dashCue.scale={3*modelScale,1,DomainDistance(enemy.at,enemy.attackAt)*.5f+3*modelScale};
                 ctx.renderer->DrawMeshInstanced(swarmQuad_,white_,dashCue,{1,.25f,.035f,10+std::clamp(enemy.clock/SwarmWindup(enemy),0.f,.999f)},"HordeEffect");}
         }
-        if(enemy.phase==SwarmPhase::Spawn)floorEffect(enemy.at,3,3,enemy.clock/.6f,{.12f,.65f,1,1});
+        if(enemy.phase==SwarmPhase::Spawn)floorEffect(enemy.at,3*modelScale,3,enemy.clock/.6f,{.12f,.65f,1,1});
     }
     V camera=Read(ctx.camera->Position());
     for(const auto& effect:swarmEffects_){float progress=effect.age/.7f;Engine::Vector4 color=effect.kind==1?Engine::Vector4{1,.32f,.05f,1}:Engine::Vector4{.2f,.85f,1,1};

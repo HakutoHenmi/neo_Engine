@@ -57,7 +57,7 @@ float CalcShadow(float3 worldPos) {
     if (projCoords.x < 0.0f || projCoords.x > 1.0f || projCoords.y < 0.0f || projCoords.y > 1.0f || projCoords.z < 0.0f || projCoords.z > 1.0f)
         return 1.0f;
     float shadow = 0.0f;
-    float texelSize = 1.0f / 2048.0f;
+    float texelSize = 1.0f / 4096.0f;
     float bias = 0.002f; // Z-fighting/shadow acne対策の手動バイアス
     for(int x = -1; x <= 1; ++x) {
         for(int y = -1; y <= 1; ++y) {

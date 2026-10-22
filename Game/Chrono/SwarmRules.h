@@ -13,13 +13,16 @@ inline constexpr float SwarmCaptureHeight=8.f;
 inline constexpr float SwarmEmergenceSeconds=3.2f;
 inline constexpr uint32_t SwarmNoTarget=0xffffffffu;
 struct SwarmEnemy {
+    float scale=1,maxHealth=3;
     uint64_t lifeHitRevision=0;
     uint32_t id=0,attacks=0;Vec at{},heading{0,0,1},attackAt{};float health=3,age=0,clock=0,reserved=0,flash=0,attackDelay=0,cameraOpacity=1,corrosion=0,burn=0,slow=0;bool inPool=false;
     bool bomber=false,flying=false,struck=false;SwarmPhase phase=SwarmPhase::Spawn;
+    // City stage roles: kind, the stage step that spawned it, patrol route and ranged/armor state.
+    uint8_t kind=0;int8_t step=0;bool alerted=false;Vec home{},patrol{};float shotClock=0,armor=0,stagger=0;
 };
 inline float SwarmVariation(uint32_t id,uint32_t cycle=0){uint32_t hash=id*747796405u+cycle*2891336453u+277803737u;hash=(hash^(hash>>16))*2246822519u;return float(hash&65535u)/65535.f;}
 inline float SwarmWindup(const SwarmEnemy& enemy){return (enemy.bomber?3.3f:enemy.flying?1.3f:1.1f)+SwarmVariation(enemy.id,enemy.attacks)*(enemy.bomber?.7f:.5f);}
-inline float SwarmDashSpeed(const SwarmEnemy& enemy){return (enemy.flying?28.f:20.f)+SwarmVariation(enemy.id,enemy.attacks)*4;}
+inline float SwarmDashSpeed(const SwarmEnemy& enemy){return ((enemy.flying?28.f:20.f)+SwarmVariation(enemy.id,enemy.attacks)*4)*std::sqrt(enemy.scale);}
 inline void SwarmRole(SwarmEnemy& enemy){enemy.flying=enemy.id%10!=0;enemy.bomber=enemy.flying&&enemy.id%3==0;enemy.attackDelay=1.5f+SwarmVariation(enemy.id)*3;}
 inline Vec SwarmSpawnPosition(Vec player,uint32_t id){
     float radius=85+SwarmVariation(id)*35;

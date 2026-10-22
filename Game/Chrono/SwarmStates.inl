@@ -27,7 +27,7 @@ public:
 		const bool ready = context.canAttack && enemy.attackDelay <= 0;
 		Vec approach = context.delta;
 		if (!ready) {
-			const float hold = enemy.flying ? (enemy.bomber ? 22.f : 27.f) : 8.f;
+			const float hold = (enemy.flying ? (enemy.bomber ? 22.f : 27.f) : 8.f)*enemy.scale;
 			Vec planar = context.delta;
 			planar.y = 0;
 			const Vec radial = context.distance > .01f ? Unit(planar) : Vec{std::cos(float(enemy.id)), 0, std::sin(float(enemy.id))};
@@ -37,9 +37,9 @@ public:
 		if (enemy.flying)
 			approach.y = context.ground + 14 + float(enemy.id % 5) * 2 + std::sin(enemy.age * 2 + float(enemy.id)) * 1.5f - enemy.at.y;
 		enemy.heading = Unit(Lerp(enemy.heading, Unit(approach), 1 - std::exp(-9 * dt)));
-		const float speed = (enemy.flying ? 10.f : 6.f) + SwarmVariation(enemy.id) * 2;
+		const float speed = ((enemy.flying ? 10.f : 6.f) + SwarmVariation(enemy.id) * 2)*std::sqrt(enemy.scale);
 		enemy.at = enemy.at + Unit(approach) * std::min(Length(approach), speed * dt);
-		if (ready && context.distance < (enemy.flying ? (enemy.bomber ? 28.f : 32.f) : 9.f)) {
+		if (ready && context.distance < (enemy.flying ? (enemy.bomber ? 28.f : 32.f) : 9.f)*enemy.scale) {
 			enemy.heading = Unit(context.delta);
 			enemy.attackAt = context.player;
 			if (!enemy.flying)

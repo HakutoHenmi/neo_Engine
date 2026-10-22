@@ -6,6 +6,9 @@
 #include "../Chrono/DomainHighlight.h"
 #include "../Chrono/CinematicRules.h"
 #include "../Chrono/SlimeWeaponRules.h"
+#include "../Chrono/SlimeHydrantRules.h"
+#include "../Chrono/CityStageRules.h"
+#include <map>
 #include <vector>
 namespace Game {
 // Scene-level orchestration; all persistent actor state lives in ECS components.
@@ -21,10 +24,15 @@ public:
     bool SlimeLabOpen() const {return slimeLife_&&life_.lab&&!finished_;}
     const Chrono::SlimeLife& LifeState()const {return life_;}
     const std::vector<Chrono::SwarmEnemy>& LifeEnemies()const {return swarm_;}
+    const Chrono::CityGates& CityGateState()const {return cityGates_;}
+    const Chrono::HydrantAim& HydrantAimState()const {return hydrantAim_;}
+    // Validation: opens the barricade and the iron gate as if broken.
+    void OpenCityGates(entt::registry& r,bool alleyOnly=false){if(!cityGates_.barricadeOpen)BreakCityGate(r,true,false);if(!alleyOnly&&!cityGates_.gateOpen){cityGateUnlocked_=true;BreakCityGate(r,false,false);}}
     void DrawSlimeLab(entt::registry&,GameContext&);
     void Invalidate() {initialized_=false;}
     void Clear(entt::registry&) override { Invalidate(); }
 private:
+    Chrono::LifeCameraSubject GetLifeCameraSubject()const;
     bool inkMode_=true;
     bool slimeLife_=true,lifeLoaded_=false;
     Chrono::SlimeLife life_;
@@ -33,6 +41,7 @@ private:
     std::array<int,Chrono::LifeBodyCount> lifeLastAction_{};
     std::array<uint32_t,Chrono::LifeBodyCount> lifeLastCounts_{};
     bool lifeWasLab_=false,lifeReseed_=true,lifePreviewEmitted_=false;
+    void DrawLifeTentacles(GameContext&,const Chrono::LifeBody&);
     void SetSlimeLabOpen(bool);
     void UpdateSlimeLab(GameContext&);
       void StartSlimeTrial(Chrono::SlimeTrial);
@@ -43,9 +52,45 @@ private:
     void DrawSlimeLifeUI(entt::registry&,GameContext&);
     void SyncSlimeBodies(GameContext&);
     void DamageSlimeLife(entt::registry&,Chrono::Player&,float,GameContext&,Chrono::Vec);
-    void LifeHit(entt::registry&,Chrono::Player&,GameContext&,uint32_t,float);
+    void LifeHit(entt::registry&,Chrono::Player&,GameContext&,uint32_t,float,Chrono::LifeAction source=Chrono::LifeAction::Idle,Chrono::Vec from={});
     bool StartLifeAbsorb(int);
     bool SaveSlimeLab();
+    void UpdateHydrantWater(entt::registry&,Chrono::Player&,GameContext&,float,bool,bool);
+    void UpdateHydrantAim(GameContext&);
+    Chrono::HydrantAim hydrantAim_{};
+    uint64_t hydrantWaterSerial_=0;
+    // City stage (CityStage.inl): generated architecture, CC0 props, gates and role-based enemies.
+    struct CityModel {uint32_t mesh=0,texture=0;std::vector<uint32_t> extra;Chrono::Vec lo{},hi{};};
+    struct CityPropVisual {uint32_t mesh=0,texture=0;std::vector<uint32_t> extra;Chrono::Vec scale{1,1,1},rotate{},center{};float height=1;std::string shader="EnvironmentSurface";};
+    struct CityGlow {Chrono::Vec center{},right{},up{},size{};Engine::Vector4 color{1,1,1,1};};
+    std::vector<CityGlow> cityGlows_;
+    struct CityPropSeed {entt::entity entity=entt::null;Chrono::Vec at{};float required=0,reward=0;Chrono::LifeMorphItem morphItem=Chrono::LifeMorphItem::None;};
+    struct CityPlank {Chrono::Vec at{},size{},rotate{};};
+    struct CityShot {Chrono::Vec at{},velocity{};float age=0;bool shell=false;Chrono::Vec target{};};
+    struct CityDebris {Chrono::Vec at{},velocity{},spin{},size{},rotate{};float age=0;int material=0;};
+    struct CityStomp {Chrono::Vec at{};float age=0,radius=30;};
+    std::map<uint32_t,CityPropVisual> cityVisuals_;
+    std::vector<CityPropSeed> cityProps_;
+    std::vector<CityPlank> cityBarricade_;
+    std::vector<CityShot> cityShots_;
+    std::vector<CityDebris> cityDebris_;
+    std::vector<CityStomp> cityStomps_;
+    CityModel cityRat_,cityCannon_,cityWood_,cityStoneSkin_,cityIron_,cityArmor_;
+    uint32_t cityCube_=0;
+    entt::entity cityGateEntity_=entt::null;
+    Chrono::CityGates cityGates_{};
+    float cityBarricadeHealth_=0,cityGateHealth_=0,cityBarricadeShake_=0,cityGateShake_=0,cityHintClock_=0;
+    uint64_t cityBarricadeHit_=0,cityGateHit_=0;
+    int cityGateProp_=-1,cityAnnounced_=-1;bool cityGateUnlocked_=false;
+    void BuildCityStage(entt::registry&);
+    void SpawnCityStep(int);
+    int CityStepAlive()const;
+    void BreakCityGate(entt::registry&,bool barricade,bool absorbed);
+    void CityWeaponHits(entt::registry&,GameContext&,const Chrono::LifeBody&,int pulse,uint64_t hitKey);
+    void UpdateCityStage(entt::registry&,Chrono::Player&,GameContext&,float);
+    void UpdateCityEnemies(entt::registry&,Chrono::Player&,GameContext&,float);
+    void DrawCityStage(GameContext&);
+    bool DrawCityPropInTentacle(GameContext&,uint32_t visual,Chrono::Vec at,float shrink);
     struct InkShot {Chrono::Vec at,velocity;float age=0;};
     std::vector<InkShot> inkShots_;
     struct SlimeTrail {Chrono::Vec at;int surface;float mass,radius;std::array<float,32> footprint{};float originalMass=0;bool bonus=false;};

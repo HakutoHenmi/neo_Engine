@@ -1214,6 +1214,7 @@
     <ClInclude Include="tests\ComponentValidationScene.h" />
     <ClInclude Include="Game\Chrono\ChronoComponents.h" />
     <ClInclude Include="Game\Chrono\ChronoRules.h" />
+    <ClInclude Include="Game\Chrono\SlimeTentacleRules.h" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Game\States\EntityStateContext.h" />
@@ -1221,5 +1222,8 @@
     <ClInclude Include="Game\States\EnemyAIStates.inl" />
     <ClInclude Include="Game\States\BossActionStates.inl" />
     <ClInclude Include="Game\Chrono\SwarmStates.inl" />
+    <ClInclude Include="Game\Chrono\SlimeHydrantRules.h" />
+    <ClInclude Include="Game\Systems\SlimeHydrant.inl" />
+    <ClInclude Include="tests\HydrantFluidTests.inl" />
   </ItemGroup>
 </Project>

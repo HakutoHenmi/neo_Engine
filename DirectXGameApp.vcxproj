@@ -218,6 +218,7 @@ exit /b 0
     <ClInclude Include="Game\Systems\GameControls.h" />
     <ClInclude Include="Game\Chrono\ChronoComponents.h" />
     <ClInclude Include="Game\Chrono\ChronoRules.h" />
+    <ClInclude Include="Game\Chrono\SlimeTentacleRules.h" />
     <ClInclude Include="Game\Chrono\DomainRules.h" />
     <ClInclude Include="Game\Chrono\LiquidTrail.h" />
     <ClInclude Include="Game\Chrono\RogueliteRules.h" />
@@ -583,6 +584,9 @@ exit /b 0
     <ClInclude Include="Game\States\EnemyAIStates.inl" />
     <ClInclude Include="Game\States\BossActionStates.inl" />
     <ClInclude Include="Game\Chrono\SwarmStates.inl" />
+    <ClInclude Include="Game\Chrono\SlimeHydrantRules.h" />
+    <ClInclude Include="Game\Systems\SlimeHydrant.inl" />
+    <ClInclude Include="tests\HydrantFluidTests.inl" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

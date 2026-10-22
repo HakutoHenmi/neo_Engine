@@ -23,6 +23,7 @@ cbuffer VolumeSettings : register(b1) {
 #ifdef FLUID_VOLUME_CORE
     float4 playerLiquidCore; // Graphics-only; compute keeps its 44-DWORD layout.
     float4 playerMorph; // Form tag, physical scale, main particle count, active.
+    float4 sunDirection; // xyz: direction sunlight travels; w: intensity (0 = none).
 #endif
 };
 uint VolumePhase(float type) {

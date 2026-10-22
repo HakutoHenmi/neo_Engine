@@ -43,7 +43,16 @@ void ChronoSystem::BuildInk(entt::registry& r){
         if(pbr.count(texture))mr.extraTextureHandles=pbr[texture];
         r.remove<CameraOccluder>(e);return e;
     };
-    auto floor=scenery("Meadow ground","Resources/Models/Environment/meadow-floor.obj",groundTex,{0,0,0},{1,1,1},"MeadowGround");
+    // The meadow keeps the original close-range shadow map; the city widens it for its towers.
+    render->SetDirectionalShadowRange(100,100);
+    // Sun: the scene's "Sun" entity drives the light every frame. The meadow keeps its
+    // original 45/30 degree sun; the city raises it and aligns it with its streets.
+    for(auto e:r.view<NameComponent,TransformComponent,DirectionalLightComponent>())if(r.get<NameComponent>(e).name=="Sun"){
+        auto& t=r.get<TransformComponent>(e);auto& light=r.get<DirectionalLightComponent>(e);
+        if(slimeLife_){t.rotate={DirectX::XMConvertToRadians(62.f),DirectX::XMConvertToRadians(8.f),0};light.intensity=1.1f;}
+        else{t.rotate={DirectX::XMConvertToRadians(45.f),DirectX::XMConvertToRadians(30.f),0};light.intensity=1;}}
+    if(slimeLife_){BuildCityStage(r);goto sceneryDone;}
+    {auto floor=scenery("Meadow ground","Resources/Models/Environment/meadow-floor.obj",groundTex,{0,0,0},{1,1,1},"MeadowGround");
     std::vector<Engine::VertexData> terrainVertices;std::vector<uint32_t> terrainIndices;
     constexpr int grid=110;terrainVertices.reserve((grid+1)*(grid+1));
     for(int iz=0;iz<=grid;++iz)for(int ix=0;ix<=grid;++ix){float x=-550.f+ix*10.f,z=-560.f+iz*(1160.f/grid);
@@ -127,6 +136,8 @@ void ChronoSystem::BuildInk(entt::registry& r){
         natural("Foreground meadow tuft",grassMesh,grassTex,at,4.5f,noise(int(at.x*19+at.z*13))*6.28318f,"MeadowGrass");
     natural("Foreground weathered stone",rockFaceMesh,rockFaceTex,{-19,-.12f,18},4.8f,1.1f);
     natural("Foreground sandstone",boulderMesh,boulderTex,{25,-.1f,32},5.5f,2.3f);
+    }
+    sceneryDone:
     render->CreateShaderPipeline("InkSurface",L"Resources/shaders/ObjVS.hlsl",L"Resources/shaders/InkSurfacePS.hlsl");
     for(int i=0;i<static_cast<int>(inkSurfaces_.size());++i)inkMeshes_.push_back(render->LoadObjMesh("Resources/Models/Ink/surface"+std::to_string(i)+".obj"));
     slimeTrails_.clear();homingDomains_.clear();domainMissiles_.clear();inkNeedsRebuild_=false;inkUploadClock_=0;inkDirty_=true;UploadInk();
@@ -152,6 +163,8 @@ void ChronoSystem::UploadInk(){
     inkTexture_=Engine::Renderer::GetInstance()->UpdatePaintTexture("boss-arena",size,size,pixels.data());inkDirty_=false;
 }
 float ChronoSystem::InkGround(V at,int* surface)const{
+    // The city stage is flat at y=0 and extends beyond the meadow's paint tiles.
+    if(slimeLife_&&!inkSurfaces_.empty()){if(surface)*surface=0;(void)at;return 0;}
     float height=-1000;int found=-1;
     for(int i=0;i<static_cast<int>(inkSurfaces_.size());++i){float f;V hit;
         if(inkSurfaces_[i].Ray({at.x,200,at.z},{0,-400,0},f,hit)&&hit.y>height){height=hit.y;found=i;}}
@@ -180,11 +193,25 @@ void ChronoSystem::InkCamera(entt::registry& r,Player& p,GameContext& ctx){
     const auto& boss=r.get<CreatureBoss>(boss_);
     float arrival=boss.stage==CreatureStage::Dive&&boss.sweepPhase==2?6.f*AttackEase(boss.sweepTime/.65f):0.f;
     float aftershock=boss.impactAge<.45f?5.f*(1-boss.impactAge/.45f):0.f;
-    float growthPullback=slimeLife_?std::max(0.f,(LifeScale(life_.bodies[0].mass)-1)*6):0.f;
+    LifeCameraSubject subject{};
+    if(slimeLife_)subject=GetLifeCameraSubject();
+    float growthPullback=slimeLife_?LifeCameraDistance(subject.radius,1.13f,ctx.viewportSize.x/std::max(1.f,ctx.viewportSize.y))-17.f:0.f;
     float pullback=growthPullback+((charging||firing)?3*power:0.f)+domainView*14+std::max(arrival,aftershock);
     ink.cameraPullback+=(pullback-ink.cameraPullback)*(1-std::exp(-10*ctx.dt));
     V focus=cameraFollow_+V{0,2.f,0};
-    V wanted=focus-forward*(17.f+ink.cameraPullback+heavy*5)+right*(1.5f+shot*4.5f+heavy*8)+V{0,shot*1.2f+heavy*3+domainView*6,0};
+    if(slimeLife_)focus=cameraFollow_+(subject.center-pos);
+    bool hydrant=slimeLife_&&life_.bodies[0].action==LifeAction::Hydrant;
+    float shoulder=slimeLife_?0.f:1.5f+shot*4.5f+heavy*8;
+    V wanted=focus-forward*(17.f+ink.cameraPullback+heavy*5)+right*shoulder+V{0,shot*1.2f+heavy*3+domainView*6,0};
+    if(hydrant){
+        // Height follows the body, independently of pitch: looking up must not
+        // swing the camera down to the pavement. Leave the sight line to its right.
+        V flat{std::sin(yaw_),0,std::cos(yaw_)};
+        float blend=LifeSmooth(life_.bodies[0].actionAge/.35f);
+        V shoulderAt=pos+LifeHydrantCameraOffset(life_.bodies[0].mass,flat);
+        wanted=Lerp(wanted,shoulderAt,blend);
+        focus=Lerp(focus,pos+V{0,-1.25f+4.3f*LifeScale(life_.bodies[0].mass),0},blend);
+    }
     float f;V n;
     for(const auto& box:solids_)if(Chrono::Sweep(focus,wanted-focus,box,{.3f,.3f,.3f},f,n))wanted=focus+(wanted-focus)*std::max(.05f,f-.025f);
     for(const auto& surface:inkSurfaces_){V hit;if(surface.Ray(focus,wanted-focus,f,hit))wanted=focus+(wanted-focus)*std::max(.05f,f-.06f);}
@@ -193,12 +220,15 @@ void ChronoSystem::InkCamera(entt::registry& r,Player& p,GameContext& ctx){
     ink.cameraBeamDirection=Unit(Lerp(ink.cameraBeamDirection,beamForward,1-std::exp(-14*ctx.dt)));
     V lookAt=focus+ink.cameraBeamDirection*(45-heavy*20)+V{0,domainView*20,0};
     V view=Unit(Lerp(forward,Unit(lookAt-wanted),std::max(shot,domainView*.8f)));
+    if(slimeLife_)view=hydrant?forward:Unit(focus-wanted);
+    if(hydrant)ctx.camera->StopShake();
     ctx.camera->SetPosition(Write(wanted));
     ctx.camera->SetRotation(-std::asin(std::clamp(view.y,-1.f,1.f)),std::atan2(view.x,view.z),0);
     float goal=(ink.swimming?1.22f:1.13f)+heavy*.06f+domainView*.12f;fov_+=(goal-fov_)*(1-std::exp(-6*ctx.dt));
     // A quick seven-degree kick, returning fully to the regular camera within 0.4 seconds.
     ctx.camera->SetProjection(fov_+.12f*SlimePerfectPulse(ink.perfectAge),ctx.viewportSize.x/std::max(1.f,ctx.viewportSize.y),.1f,2000);
-    ctx.camera->SetHandheld(.008f);
+    ctx.camera->SetHandheld(hydrant?0.f:.008f);
+    ctx.camera->SetShakeStrength(hydrant?0.f:shakeSetting_*.5f);
     p.cameraOpacity=std::clamp((Length(wanted-pos)-2.5f)/5.f,.2f,1.f);
     // The boss can reach through the player on impact. Fade only the pieces
     // between the camera and the player so the hit and floor cue remain visible.
