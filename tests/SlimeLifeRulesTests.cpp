@@ -177,12 +177,12 @@ void TestLifeWeapons(){
 void TestCityStage(){
     CityGates closed{},open{true,true};
     // Start, every spawn and the route through all three areas lie on the floor.
-    CheckLife(CityWalkable(CityStart,4,closed),"stage start is blocked");
+    CheckLife(CityWalkable(CityStart(),4,closed),"stage start is blocked");
     for(Vec at:{Vec{0,0,-640},Vec{40,0,-562},Vec{78,0,-500},Vec{78,0,-300},Vec{-100,0,-265},Vec{250,0,-265},Vec{78,0,-50},Vec{78,0,340},Vec{-250,0,650},Vec{400,0,0}})
         CheckLife(CityWalkable(at,3,open),"stage route is not walkable");
     // Closed gates block; opened gates let the body through. Walls block in every area.
-    CheckLife(!CityWalkable(CityBarricadeCenter,3,closed)&&CityWalkable(CityBarricadeCenter,3,open),"barricade gating is wrong");
-    CheckLife(!CityWalkable(CityGateCenter,3,closed)&&CityWalkable(CityGateCenter,3,open),"shutter gate gating is wrong");
+    CheckLife(!CityWalkable(CityBarricadeCenter(),3,closed)&&CityWalkable(CityBarricadeCenter(),3,open),"barricade gating is wrong");
+    CheckLife(!CityWalkable(CityGateCenter(),3,closed)&&CityWalkable(CityGateCenter(),3,open),"shutter gate gating is wrong");
     CheckLife(!CityWalkable({0,0,-480},3,open)&&!CityWalkable({-50,0,-650},3,open)&&!CityWalkable({0,0,-56},3,open)&&!CityWalkable({78,0,760},3,open),"walls do not block");
     Vec slid=CityConstrain({10,0,-660},{40,0,-650},4,closed);CheckLife(slid.x<22&&slid.z>-660.01f,"walls do not slide the body");
     // Pushing straight along a wall into an inner corner rounds it instead of pinning the body.
@@ -201,7 +201,7 @@ void TestCityStage(){
         // Each area's largest absorb requirement exceeds every earlier area's.
         if(step+1==CityStepCount||CityStepInfo(step+1).area!=area){CheckLife(required>previousRequired,"later areas need less size");previousRequired=required;}}
     CheckLife(total==CityEnemyTotal()&&CityStepInfo(CityStepCount-1).area==CityArea::Plaza,"stage totals disagree");
-    CheckLife(CityAreaAt({0,0,-640})==CityArea::Alley&&CityAreaAt({78,0,-300})==CityArea::Street&&CityAreaAt(CityCrossing)==CityArea::Plaza,"area lookup is wrong");
+    CheckLife(CityAreaAt({0,0,-640})==CityArea::Alley&&CityAreaAt({78,0,-300})==CityArea::Street&&CityAreaAt(CityCrossing())==CityArea::Plaza,"area lookup is wrong");
     // Shields block frontal non-sword hits; the sword and attacks from behind get through.
     SwarmEnemy shield;shield.kind=uint8_t(CityEnemy::Shield);shield.at={0,0,0};shield.heading={0,0,-1};
     CheckLife(CityShieldBlocks(shield,{0,0,-5},false)&&!CityShieldBlocks(shield,{0,0,-5},true)&&!CityShieldBlocks(shield,{0,0,5},false),"shield facing rules are wrong");

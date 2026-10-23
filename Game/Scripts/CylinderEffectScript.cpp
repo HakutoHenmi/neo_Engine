@@ -1,3 +1,5 @@
+// CylinderEffectScript.cpp
+// 光の柱のエフェクトの実装。
 #include "CylinderEffectScript.h"
 #include "GameScene.h"
 #include "../ObjectTypes.h"
@@ -6,20 +8,21 @@
 
 namespace Game {
 
+// 開始: メッシュとトランスフォームが無ければ用意する (青い円柱・専用シェーダー)
 void CylinderEffectScript::Start(entt::entity entity, GameScene* scene) {
 	auto& registry = scene->GetComponents();
 	
 	if (!registry.all_of<MeshRendererComponent>(entity)) {
 		auto& mr = registry.emplace<MeshRendererComponent>(entity);
 		mr.modelPath = "Resources/Models/Cylinder/cylinder.obj";
-		mr.texturePath = ""; // 適当なテクスチャ
+		mr.texturePath = ""; // テクスチャは使わない
 		mr.shaderName = "EnergyCylinder";
-		mr.color = { 0.2f, 0.5f, 1.0f, 1.0f }; // 青っぽいシリンダー
+		mr.color = { 0.2f, 0.5f, 1.0f, 1.0f }; // 青い円柱
 
 		auto* renderer = scene->GetRenderer();
 		if (renderer) {
 			mr.modelHandle = renderer->LoadObjMesh(mr.modelPath);
-			// テクスチャが必要であればロード
+			// テクスチャが必要ならここで読み込む
 		}
 	}
 	
@@ -29,6 +32,7 @@ void CylinderEffectScript::Start(entt::entity entity, GameScene* scene) {
 	}
 }
 
+// 更新: 減速しながら縦に伸ばし、だんだん透明にする。時間が来たら削除する
 void CylinderEffectScript::Update(entt::entity entity, GameScene* scene, float dt) {
 	timer_ += dt;
 	auto& registry = scene->GetComponents();
@@ -40,10 +44,11 @@ void CylinderEffectScript::Update(entt::entity entity, GameScene* scene, float d
 		float t = timer_ / duration_;
 		if (t > 1.0f) t = 1.0f;
 		
+		// 最初は速く、だんだん遅くなる (EaseOutCubic)
 		float easeT = 1.0f - std::pow(1.0f - t, 3.0f);
 		tc.scale.y = startScaleY_ + (endScaleY_ - startScaleY_) * easeT;
 		
-		// フェードアウト
+		// だんだん透明にする
 		mr.color.w = 1.0f - t;
 	}
 
@@ -54,6 +59,7 @@ void CylinderEffectScript::Update(entt::entity entity, GameScene* scene, float d
 	}
 }
 
+// 破棄時の処理は無い / パラメータは保存しない
 void CylinderEffectScript::OnDestroy(entt::entity /*entity*/, GameScene* /*scene*/) {
 }
 
@@ -64,6 +70,7 @@ std::string CylinderEffectScript::SerializeParameters() {
 void CylinderEffectScript::DeserializeParameters(const std::string& /*data*/) {
 }
 
+// ScriptEngine へ自動登録する
 REGISTER_SCRIPT(CylinderEffectScript);
 
 } // namespace Game

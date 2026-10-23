@@ -1,3 +1,5 @@
+// GameManagerScript.cpp
+// 結果表示の設定を持つスクリプトの実装。
 #include "GameManagerScript.h"
 #include "ScriptEngine.h"
 #include <nlohmann/json.hpp>
@@ -7,14 +9,16 @@ namespace Game {
 
 GameManagerScript* GameManagerScript::instance_ = nullptr;
 
+// 開始時に自分を共有インスタンスとして登録する
 void GameManagerScript::Start(entt::entity /*entity*/, GameScene* /*scene*/) {
     instance_ = this;
 }
 
 void GameManagerScript::Update(entt::entity /*entity*/, GameScene* /*scene*/, float /*dt*/) {
-    // 毎フレームの処理は不要
+    // 毎フレームの処理は無い
 }
 
+// 破棄されたら共有インスタンスから外す
 void GameManagerScript::OnDestroy(entt::entity /*entity*/, GameScene* /*scene*/) {
     if (instance_ == this) {
         instance_ = nullptr;
@@ -28,6 +32,7 @@ GameManagerScript::~GameManagerScript() {
 }
 
 
+// 設定を JSON にする
 std::string GameManagerScript::SerializeParameters() {
     nlohmann::json j;
     j["defeatText"] = defeatText;
@@ -40,6 +45,7 @@ std::string GameManagerScript::SerializeParameters() {
     return j.dump();
 }
 
+// JSON から設定を読み込む (壊れていたら無視する)
 void GameManagerScript::DeserializeParameters(const std::string& data) {
     if (data.empty()) return;
     try {
@@ -65,6 +71,7 @@ void GameManagerScript::DeserializeParameters(const std::string& data) {
     }
 }
 
+// ScriptEngine へ自動登録する
 REGISTER_SCRIPT(GameManagerScript);
 
 } // namespace Game

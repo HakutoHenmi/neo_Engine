@@ -77,7 +77,7 @@ class RtLightingValidationScene final : public Game::GameScene {
     }
 public:
     void Initialize(Engine::WindowDX* dx,const Engine::SceneParameters&)override{
-        window_=dx;std::filesystem::create_directories("RtLightingCheck");Engine::SceneParameters p;p.stagePath="Resources/Scenes/chrono.json";Game::GameScene::Initialize(dx,p);
+        window_=dx;std::filesystem::create_directories("RtLightingCheck");Engine::SceneParameters p;p.stagePath=Game::Data::MainStagePath();Game::GameScene::Initialize(dx,p);
         angleMode_=wcsstr(GetCommandLineW(),L"--rt-angle-smoke")!=nullptr;
         editorMode_=wcsstr(GetCommandLineW(),L"--rt-editor-smoke")!=nullptr;
         travelMode_=wcsstr(GetCommandLineW(),L"--rt-travel-smoke")!=nullptr;

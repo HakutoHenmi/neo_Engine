@@ -1,3 +1,6 @@
+// WaveSystem.h
+// 旧アクションゲームのステージの進行。敵とボスが全滅したらクリアにし、
+// クリア表示・結果 (時間・体力・被弾回数・ランク・使った缶)・クリア後のメニューを描く。
 #pragma once
 #include "ISystem.h"
 #include "../Scenes/GameScene.h"
@@ -19,23 +22,30 @@
 
 namespace Game {
 
+// ステージクリアの判定と結果画面のシステム (クリア後も更新を続ける)
 class WaveSystem : public ISystem {
 public:
+	// クリア後も更新を続けるシステムとして作る
 	WaveSystem() : ISystem(true) {}
+	// プレイ中 / クリア
 	enum class State {
 		Playing,
 		Clear
 	};
 
+	// 状態・クリア表示の不透明度・選択中のボタン・前フレームのパッド入力・結果の記録
 	State state = State::Playing;
 	float clearAlpha = 0.0f;
 	int warmupFrames_ = 0; // スクリプト初期化を待つ猶予フレーム
-	int selectedButton_ = 1; // 0: Retry, 1: Equipment, 2: Select
+	int selectedButton_ = 1; // 0: やり直し, 1: 装備, 2: セレクト
+	// 矩形を描くための白いテクスチャ
 	Engine::Renderer::TextureHandle whiteTexture_ = 0;
+	// 前フレームのパッドのボタン (押した瞬間の判定用)
 	bool prevA_ = false;
 	bool prevB_ = false;
 	bool prevLeft_ = false;
 	bool prevRight_ = false;
+	// 経過時間と、クリア時に記録した結果
 	float elapsedTime_ = 0.0f;
 	float resultTime_ = 0.0f;
 	float resultHp_ = 0.0f;
@@ -43,8 +53,10 @@ public:
 	int resultDamageTaken_ = 0;
 	char resultRank_ = 'C';
 	bool resultCaptured_ = false;
+	// 使った缶 (缶の種類ごと)
 	std::array<bool, 9> usedCans_{};
 
+	// ボタンの矩形
 	struct ButtonRect {
 		float x;
 		float y;
@@ -52,25 +64,28 @@ public:
 		float h;
 	};
 
+	// PLAY 中の更新
 	void Update(entt::registry& registry, GameContext& ctx) override {
+		// PLAY 中でなければ何もしない
 		if (!ctx.isPlaying) return;
 
-		// ScriptSystemがWaveSystemの後に実行されるため、
+		// ScriptSystem は WaveSystem の後に実行されるため、
 		// 最初の数フレームはスクリプトの初期化を待つ
 		if (warmupFrames_ < 3) {
 			warmupFrames_++;
 			return;
 		}
 
-		// スクリプトインスタンスがなければ動的に生成してアタッチする（フォールバック）
+		// GameManagerScript が無ければ、作ってアタッチする (予備の処理)
 		if (!GameManagerScript::GetInstance()) {
 			entt::entity gmEntity = ctx.scene->CreateEntity("GameManager");
 			auto& sc = registry.emplace<ScriptComponent>(gmEntity);
 			sc.scripts.push_back({"GameManagerScript", "", nullptr, false});
-			ScriptEngine::GetInstance()->Execute(gmEntity, ctx.scene, 0.0f); // Startを呼ぶため
+			ScriptEngine::GetInstance()->Execute(gmEntity, ctx.scene, 0.0f); // Start を呼ぶために一度実行する
 		}
 
 		// プレイヤーの生存確認
+		// 入力を持つプレイヤーの体力を調べる
 		bool playerAlive = false;
 		auto pView = registry.view<PlayerInputComponent, HealthComponent>();
 		if (pView.begin() != pView.end()) {
@@ -78,7 +93,9 @@ public:
 			if (!hc.IsDead()) playerAlive = true;
 		}
 
+		// プレイヤーが倒れていれば進めない
 		if (!playerAlive) return;
+		// プレイ中は経過時間と使った缶を記録する
 		if (state == State::Playing) {
 			elapsedTime_ += ctx.dt;
 			TrackUsedCans(registry);
@@ -86,30 +103,34 @@ public:
 
 		// 敵の数を数える
 		int enemyCount = 0;
+		// 雑魚敵: 体力があって生きていれば数える
 		auto eView = registry.view<EnemyAIComponent>();
 		for (auto entity : eView) {
 			if (registry.all_of<HealthComponent>(entity)) {
 				if (!registry.get<HealthComponent>(entity).IsDead()) enemyCount++;
 			} else {
-				enemyCount++; // Initialization pending
+				enemyCount++; // 初期化待ち
 			}
 		}
+		// ボスも同じように数える
 		auto bView = registry.view<BossActionComponent>();
 		for (auto entity : bView) {
 			if (registry.all_of<HealthComponent>(entity)) {
 				if (!registry.get<HealthComponent>(entity).IsDead()) enemyCount++;
 			} else {
-				enemyCount++; // Initialization pending
+				enemyCount++; // 初期化待ち
 			}
 		}
 
 
+		// プレイ中に敵が 0 になったらクリアにして結果を記録する。クリア後はメニューを動かして描く
 		if (state == State::Playing) {
 			if (enemyCount == 0) {
 				state = State::Clear;
 				CaptureResult(registry);
 			}
 		} else if (state == State::Clear) {
+			// クリア後はカーソルを出し、プレイヤーの入力を止める
 			Engine::WindowDX::SetCursorVisible(true);
 			FreezePlayerInput(registry);
 
@@ -119,16 +140,19 @@ public:
 			UpdateClearMenu(ctx);
 
 			// STAGE CLEAR テキストの描画
+			// 白テクスチャを一度だけ読み込む
 			if (ctx.renderer) {
 				if (whiteTexture_ == 0) {
 					whiteTexture_ = ctx.renderer->LoadTexture2D("Resources/Textures/white1x1.png");
 				}
+				// クリアの文字・大きさ・色は GameManagerScript の設定を使う (無ければ既定)
 				auto* gm = GameManagerScript::GetInstance();
 				std::string msg = gm ? gm->clearText : "STAGE CLEAR!";
 				float scale = (std::min)(gm ? gm->clearTextScale : 3.0f, 2.15f);
 				float cColor[4] = {1.0f, 0.8f, 0.2f, 1.0f};
 				if (gm) { cColor[0]=gm->clearColor[0]; cColor[1]=gm->clearColor[1]; cColor[2]=gm->clearColor[2]; cColor[3]=gm->clearColor[3]; }
 
+				// 画面の中央・上寄りに置く
 				float centerX = ctx.viewportOffset.x + ctx.viewportSize.x * 0.5f;
 				float centerY = ctx.viewportOffset.y + ctx.viewportSize.y * 0.26f;
 
@@ -144,7 +168,9 @@ public:
 		}
 	}
 
+	// PLAY 開始時: 状態と結果をすべて初期化する
 	void Reset(entt::registry& /*registry*/) override {
+		// 状態・表示・選択・パッド・結果・使った缶をすべて初期化する
 		state = State::Playing;
 		clearAlpha = 0.0f;
 		warmupFrames_ = 0;
@@ -164,7 +190,9 @@ public:
 	}
 
 private:
+	// 現在の缶と選択中の缶を「使った缶」として記録する
 	void TrackUsedCans(entt::registry& registry) {
+		// プレイヤーの行動の今の缶
 		auto actionView = registry.view<PlayerActionComponent>();
 		for (auto entity : actionView) {
 			const auto& action = actionView.get<PlayerActionComponent>(entity);
@@ -174,6 +202,7 @@ private:
 			}
 		}
 
+		// プレイヤーの入力の選んでいる缶
 		auto inputView = registry.view<PlayerInputComponent>();
 		for (auto entity : inputView) {
 			const auto& input = inputView.get<PlayerInputComponent>(entity);
@@ -184,11 +213,14 @@ private:
 		}
 	}
 
+	// クリア時の時間・体力・被弾回数を記録してランクを求める
 	void CaptureResult(entt::registry& registry) {
+		// 一度だけ記録する
 		if (resultCaptured_) return;
 		resultCaptured_ = true;
 		resultTime_ = elapsedTime_;
 
+		// プレイヤーの体力・最大体力・被弾回数
 		auto playerView = registry.view<PlayerInputComponent, HealthComponent>();
 		if (playerView.begin() != playerView.end()) {
 			const auto& health = playerView.get<HealthComponent>(*playerView.begin());
@@ -199,7 +231,9 @@ private:
 		resultRank_ = CalculateRank();
 	}
 
+	// ランク: 時間と被弾回数で減点し、残り体力で加点した点数から S/A/B/C を決める
 	char CalculateRank() const {
+		// 残り体力の割合
 		const float hpRate = resultMaxHp_ > 0.0f ? std::clamp(resultHp_ / resultMaxHp_, 0.0f, 1.0f) : 0.0f;
 		const float score = 100.0f - resultTime_ * 0.18f - static_cast<float>(resultDamageTaken_) * 10.0f + hpRate * 20.0f;
 		if (score >= 95.0f) return 'S';
@@ -208,7 +242,9 @@ private:
 		return 'C';
 	}
 
+	// 秒を「分:秒.百分の一秒」の文字列にする
 	std::string FormatTime(float seconds) const {
+		// 百分の一秒の単位に直して分・秒・百分の一秒に分ける
 		const int totalCentiseconds = static_cast<int>(seconds * 100.0f);
 		const int minutes = totalCentiseconds / 6000;
 		const int sec = (totalCentiseconds / 100) % 60;
@@ -218,12 +254,15 @@ private:
 		return text;
 	}
 
+	// クリアメニューのボタンの矩形 (中央の装備ボタンだけ幅が広い)
 	ButtonRect GetButtonRect(const GameContext& ctx, int index) const {
+		// ビューの大きさ (無ければ内部解像度)
 		const float viewW = ctx.viewportSize.x > 0.0f ? ctx.viewportSize.x : static_cast<float>(Engine::WindowDX::kW);
 		const float viewH = ctx.viewportSize.y > 0.0f ? ctx.viewportSize.y : static_cast<float>(Engine::WindowDX::kH);
 		const float w = index == 1 ? 300.0f : 230.0f;
 		const float h = 68.0f;
 		const float gap = 24.0f;
+		// 3 つのボタンを並べた全体の幅で中央にそろえる
 		const float totalW = 230.0f + gap + 300.0f + gap + 230.0f;
 		const float startX = viewW * 0.5f - totalW * 0.5f;
 		const float y = viewH * 0.68f + 68.0f;
@@ -232,11 +271,14 @@ private:
 		return {startX + 230.0f + gap + 300.0f + gap, y, w, h};
 	}
 
+	// 点が矩形の中にあるか
 	bool PointInRect(float x, float y, const ButtonRect& r) const {
 		return x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
 	}
 
+	// クリア後はプレイヤーの入力を止める
 	void FreezePlayerInput(entt::registry& registry) {
+		// プレイヤーの移動・ジャンプ・攻撃・カメラ・メニューを止める
 		auto playerView = registry.view<PlayerInputComponent>();
 		for (auto entity : playerView) {
 			auto& pi = playerView.get<PlayerInputComponent>(entity);
@@ -249,33 +291,43 @@ private:
 		}
 	}
 
+	// 選択を左右に動かす (端で折り返す)
 	void MoveSelection(int dir) {
+		// 3 つのボタンの間で選択を回す
 		selectedButton_ = (selectedButton_ + dir + 3) % 3;
 	}
 
+	// 決定: 0 はやり直し、1 は装備を変えにセレクトへ (同じ設定で)、2 はセレクトへ
 	void ConfirmSelection() {
+		// やり直し: 同じ設定でゲームを開き直す
 		if (selectedButton_ == 0) {
 			Engine::SceneManager::GetInstance()->RequestChange("Game", Engine::SceneManager::GetInstance()->CurrentParameters());
+		// 装備: 同じ設定でセレクトへ
 		} else if (selectedButton_ == 1) {
 			Engine::SceneManager::GetInstance()->RequestChange("Select", Engine::SceneManager::GetInstance()->CurrentParameters());
+		// セレクト: 設定を引き継がずにセレクトへ
 		} else {
 			Engine::SceneManager::GetInstance()->RequestChange("Select");
 		}
 	}
 
+	// クリアメニューの操作 (キーボード・マウス・パッド)。Esc はセレクトへ
 	void UpdateClearMenu(GameContext& ctx) {
+		// 入力が無ければ何もしない
 		auto* input = ctx.input;
 		if (!input) return;
 
-		if (input->Trigger(0xCB) || input->Trigger(0x1E)) MoveSelection(-1); // Left / A
-		if (input->Trigger(0xCD) || input->Trigger(0x20)) MoveSelection(1);  // Right / D
-		if (input->Trigger(0x1C) || input->Trigger(0x39)) ConfirmSelection(); // Enter / Space
+		if (input->Trigger(0xCB) || input->Trigger(0x1E)) MoveSelection(-1); // 左 / A
+		if (input->Trigger(0xCD) || input->Trigger(0x20)) MoveSelection(1);  // 右 / D
+		if (input->Trigger(0x1C) || input->Trigger(0x39)) ConfirmSelection(); // Enter か Space で決定
+		// Esc はセレクトへ
 		if (input->Trigger(0x01)) {
 			selectedButton_ = 2;
 			ConfirmSelection();
 			return;
 		}
 
+		// マウスの位置を Game ビューの座標に直してボタンとの当たりを調べる
 		float mx = 0.0f;
 		float my = 0.0f;
 		input->GetMousePos(mx, my);
@@ -283,6 +335,7 @@ private:
 			mx = (mx - ctx.viewportOffset.x) * static_cast<float>(Engine::WindowDX::kW) / ctx.viewportSize.x;
 			my = (my - ctx.viewportOffset.y) * static_cast<float>(Engine::WindowDX::kH) / ctx.viewportSize.y;
 		}
+		// マウスが乗っているボタンを選び、クリックで決定
 		for (int i = 0; i < 3; ++i) {
 			if (PointInRect(mx, my, GetButtonRect(ctx, i))) {
 				selectedButton_ = i;
@@ -293,7 +346,9 @@ private:
 			}
 		}
 
+		// パッド: A で決定、B でセレクトへ、十字キーの左右で選択
 		XINPUT_STATE statePad = {};
+		// 接続されているパッドの状態を読む
 		if (XInputGetState(0, &statePad) == ERROR_SUCCESS) {
 			const bool currA = (statePad.Gamepad.wButtons & XINPUT_GAMEPAD_A) != 0;
 			if (currA && !prevA_) ConfirmSelection();
@@ -316,7 +371,9 @@ private:
 		}
 	}
 
+	// 白テクスチャで矩形を描く
 	void DrawRect(Engine::Renderer* renderer, float x, float y, float w, float h, const Engine::Vector4& color, int layer) {
+		// 白テクスチャが無ければ描かない
 		if (!renderer || whiteTexture_ == 0) return;
 		Engine::Renderer::SpriteDesc desc;
 		desc.x = x;
@@ -328,24 +385,32 @@ private:
 		renderer->DrawSprite(whiteTexture_, desc);
 	}
 
+	// 中央揃えの文字を描く
 	void DrawCenteredText(Engine::Renderer* renderer, const std::string& text, float centerX, float y, float scale, const Engine::Vector4& color) {
+		// 文字の幅を測って中央に置く
 		const float w = renderer->MeasureTextWidth(text, scale);
 		renderer->DrawString(text, centerX - w * 0.5f, y, scale, color);
 	}
 
+	// ランクごとの色
 	Engine::Vector4 RankColor() const {
+		// S は金、A は緑、B は水色、C は赤
 		if (resultRank_ == 'S') return {1.0f, 0.95f, 0.24f, clearAlpha};
 		if (resultRank_ == 'A') return {0.28f, 1.0f, 0.56f, clearAlpha};
 		if (resultRank_ == 'B') return {0.34f, 0.82f, 1.0f, clearAlpha};
 		return {1.0f, 0.38f, 0.42f, clearAlpha};
 	}
 
+	// 結果の項目 (見出しと値) を描く
 	void DrawMetric(Engine::Renderer* renderer, const char* label, const std::string& value, float x, float y) {
+		// 見出しは小さく、値はその右に大きく
 		renderer->DrawString(label, x, y, 0.28f, {0.68f, 0.78f, 0.92f, clearAlpha});
 		renderer->DrawString(value, x + 190.0f, y - 2.0f, 0.38f, {1.0f, 0.98f, 0.86f, clearAlpha});
 	}
 
+	// 使った缶を缶の色の札として描く
 	void DrawUsedCanPill(Engine::Renderer* renderer, CanType type, float x, float y, float w) {
+		// 缶の種類ごとの色
 		Engine::Vector4 color = {0.42f, 0.48f, 0.58f, clearAlpha};
 		switch (type) {
 		case CanType::Fire: color = {0.95f, 0.22f, 0.12f, clearAlpha}; break;
@@ -358,16 +423,19 @@ private:
 		case CanType::Bubble: color = {1.0f, 0.40f, 0.78f, clearAlpha}; break;
 		default: break;
 		}
+		// 色の枠・暗い地・色の帯・缶の名前
 		DrawRect(renderer, x - 3.0f, y - 3.0f, w + 6.0f, 34.0f, color, 288);
 		DrawRect(renderer, x, y, w, 28.0f, {0.07f, 0.09f, 0.14f, 0.96f * clearAlpha}, 289);
 		DrawRect(renderer, x, y, 8.0f, 28.0f, color, 290);
 		DrawCenteredText(renderer, CanLoadout::Name(type), x + w * 0.5f, y + 6.0f, 0.28f, {0.92f, 0.96f, 1.0f, clearAlpha});
 	}
 
+	// 結果のパネル (クリア時間・体力・被弾回数・ランク・使った缶) を描く
 	void DrawResultPanel(GameContext& ctx) {
 		auto* renderer = ctx.renderer;
 		if (!renderer || whiteTexture_ == 0) return;
 
+		// ビューの大きさとパネルの位置
 		const float viewW = ctx.viewportSize.x > 0.0f ? ctx.viewportSize.x : static_cast<float>(Engine::WindowDX::kW);
 		const float viewH = ctx.viewportSize.y > 0.0f ? ctx.viewportSize.y : static_cast<float>(Engine::WindowDX::kH);
 		const float panelW = 880.0f;
@@ -375,21 +443,26 @@ private:
 		const float panelX = viewW * 0.5f - panelW * 0.5f;
 		const float panelY = viewH * 0.42f;
 
+		// パネルの枠・地・上の帯・見出し
 		DrawRect(renderer, panelX - 4.0f, panelY - 4.0f, panelW + 8.0f, panelH + 8.0f, {0.18f, 0.78f, 0.98f, 0.86f * clearAlpha}, 280);
 		DrawRect(renderer, panelX, panelY, panelW, panelH, {0.05f, 0.07f, 0.12f, 0.90f * clearAlpha}, 281);
 		DrawRect(renderer, panelX, panelY, panelW, 8.0f, {1.0f, 0.33f, 0.62f, clearAlpha}, 282);
 		DrawCenteredText(renderer, "CLEAR RESULT", viewW * 0.5f, panelY + 18.0f, 0.40f, {0.86f, 0.94f, 1.0f, clearAlpha});
 
+		// 体力を「今 / 最大」の文字にする
 		char hpText[48];
 		std::snprintf(hpText, sizeof(hpText), "%.0f / %.0f", resultHp_, resultMaxHp_);
+		// クリア時間・体力・被弾回数
 		DrawMetric(renderer, "CLEAR TIME", FormatTime(resultTime_), panelX + 44.0f, panelY + 62.0f);
 		DrawMetric(renderer, "PLAYER HP", hpText, panelX + 44.0f, panelY + 104.0f);
 		DrawMetric(renderer, "DAMAGE TAKEN", std::to_string(resultDamageTaken_), panelX + 44.0f, panelY + 146.0f);
 
+		// 右側に大きくランク
 		DrawCenteredText(renderer, "RANK", panelX + 700.0f, panelY + 54.0f, 0.34f, {0.68f, 0.78f, 0.92f, clearAlpha});
 		std::string rankText(1, resultRank_);
 		DrawCenteredText(renderer, rankText, panelX + 700.0f, panelY + 82.0f, 1.35f, RankColor());
 
+		// 使った缶を札で並べる (1 つも無ければ「なし」の札)
 		renderer->DrawString("USED CANS", panelX + 44.0f, panelY + 184.0f, 0.28f, {0.68f, 0.78f, 0.92f, clearAlpha});
 		float pillX = panelX + 210.0f;
 		bool hasUsedCan = false;
@@ -404,10 +477,12 @@ private:
 		}
 	}
 
+	// クリアメニューのパネルとボタンを描く
 	void DrawClearMenu(GameContext& ctx) {
 		auto* renderer = ctx.renderer;
 		if (!renderer || whiteTexture_ == 0) return;
 
+		// クリアメニューのパネルの位置
 		const float viewW = ctx.viewportSize.x > 0.0f ? ctx.viewportSize.x : static_cast<float>(Engine::WindowDX::kW);
 		const float viewH = ctx.viewportSize.y > 0.0f ? ctx.viewportSize.y : static_cast<float>(Engine::WindowDX::kH);
 		const float panelW = 880.0f;
@@ -415,13 +490,16 @@ private:
 		const float panelX = viewW * 0.5f - panelW * 0.5f;
 		const float panelY = viewH * 0.68f;
 
+		// パネルの枠・地・上の帯・見出し
 		DrawRect(renderer, panelX - 4.0f, panelY - 4.0f, panelW + 8.0f, panelH + 8.0f, {0.18f, 0.78f, 0.98f, 0.86f * clearAlpha}, 280);
 		DrawRect(renderer, panelX, panelY, panelW, panelH, {0.05f, 0.07f, 0.12f, 0.88f * clearAlpha}, 281);
 		DrawRect(renderer, panelX, panelY, panelW, 8.0f, {1.0f, 0.33f, 0.62f, clearAlpha}, 282);
 		DrawCenteredText(renderer, "CLEAR MENU", viewW * 0.5f, panelY + 18.0f, 0.38f, {0.86f, 0.94f, 1.0f, clearAlpha});
 
+		// ボタンの名前と説明
 		const char* labels[3] = {"RETRY", "EQUIPMENT", "SELECT"};
 		const char* hints[3] = {"もう一度", "缶を変える", "セレクトへ"};
+		// 各ボタン: 選択中は金の枠、装備のボタンは緑の地
 		for (int i = 0; i < 3; ++i) {
 			const ButtonRect r = GetButtonRect(ctx, i);
 			const bool selected = selectedButton_ == i;
@@ -429,11 +507,13 @@ private:
 			Engine::Vector4 fill = {0.16f, 0.20f, 0.30f, 0.95f * clearAlpha};
 			if (i == 1) fill = {0.12f, 0.48f, 0.26f, 0.95f * clearAlpha};
 
+			// 枠・地・名前・説明を描く
 			DrawRect(renderer, r.x - 5.0f, r.y - 5.0f, r.w + 10.0f, r.h + 10.0f, edge, 283);
 			DrawRect(renderer, r.x, r.y, r.w, r.h, fill, 284);
 			DrawCenteredText(renderer, labels[i], r.x + r.w * 0.5f, r.y + 12.0f, i == 1 ? 0.46f : 0.50f, {1.0f, 0.98f, 0.88f, clearAlpha});
 			DrawCenteredText(renderer, hints[i], r.x + r.w * 0.5f, r.y + 43.0f, 0.22f, {0.86f, 0.94f, 1.0f, clearAlpha});
 		}
+		// 操作の案内
 		DrawCenteredText(renderer, "Mouse: click   Keyboard/Pad: move and confirm", viewW * 0.5f, panelY + 154.0f, 0.24f, {0.72f, 0.80f, 0.92f, clearAlpha});
 	}
 };

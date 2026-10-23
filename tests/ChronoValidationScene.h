@@ -145,7 +145,7 @@ class ChronoValidationScene final : public Game::GameScene {
     }
 public:
     void Initialize(Engine::WindowDX* dx,const Engine::SceneParameters&)override{
-        window_=dx;Engine::SceneParameters params;params.stagePath="Resources/Scenes/chrono.json";
+        window_=dx;Engine::SceneParameters params;params.stagePath=Game::Data::MainStagePath();
         Game::GameScene::Initialize(dx,params);
         auto player=FindObjectByName("Player");GetComponents().emplace<Game::Chrono::ControlFrame>(player);
         Engine::Renderer::GetInstance()->SetFluidProfilerEnabled(true);

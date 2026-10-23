@@ -64,7 +64,7 @@ bool SceneManager::Change(const std::string& name, const SceneParameters& params
 	auto next = it->second();
 	auto* renderer = Renderer::GetInstance();
 	// The first world scene also finishes the renderer's deferred 3D setup.
-	const bool needs3D = next && next->RequiresFullRenderer() && renderer && !renderer->Ready3D();
+	const bool needs3D = next && (next->RequiresFullRenderer() || fullRendererScenes_.count(name) != 0) && renderer && !renderer->Ready3D();
 	LoadingScreen::Begin(needs3D ? name + "+Engine" : name, startup);
 	if (needs3D) renderer->InitializeDeferred();
 	current_ = std::move(next);

@@ -21,7 +21,7 @@ class DlssPackageValidationScene final : public Engine::IScene {
 public:
     void Initialize(Engine::WindowDX* dx,const Engine::SceneParameters&)override{
         window_=dx;std::filesystem::create_directories("DlssCheck");
-        Engine::SceneParameters p;p.stagePath="Resources/Scenes/chrono.json";game_.Initialize(dx,p);
+        Engine::SceneParameters p;p.stagePath=Game::Data::MainStagePath();game_.Initialize(dx,p);
     }
     void Update()override{
         if(frame_<90)game_.Update();++frame_;auto* r=Engine::Renderer::GetInstance();
@@ -50,7 +50,7 @@ class PackageValidationScene final : public Engine::IScene {
         else if(page_==7)scene_=std::make_unique<Game::GameScene>();
         else if(page_==2)scene_=std::make_unique<Game::GameOverScene>();
         else scene_.reset();
-        if(scene_){Engine::SceneParameters p;p.stagePath="Resources/Scenes/chrono.json";scene_->Initialize(window_,p);}
+        if(scene_){Engine::SceneParameters p;p.stagePath=Game::Data::MainStagePath();scene_->Initialize(window_,p);}
     }
 public:
     void Initialize(Engine::WindowDX* dx,const Engine::SceneParameters&)override{
@@ -60,7 +60,7 @@ public:
         if(page_>=7)scene_->Update();
         if(++frame_<90)return;
         auto* r=Engine::Renderer::GetInstance();
-        passed_&=r->MeasureTextWidth(Game::UI::GameTitle,1,Game::UI::JapaneseFont)>0;
+        passed_&=r->MeasureTextWidth(Game::UI::GameTitle(),1,Game::UI::JapaneseFont)>0;
         passed_&=r->MeasureTextWidth("BEGIN EXPEDITION",1,Game::UI::Font)>0;
         DirectX::ScratchImage image;
         auto hr=DirectX::CaptureTexture(window_->Queue(),window_->GetCurrentBackBufferResource(),false,image,D3D12_RESOURCE_STATE_PRESENT,D3D12_RESOURCE_STATE_PRESENT);

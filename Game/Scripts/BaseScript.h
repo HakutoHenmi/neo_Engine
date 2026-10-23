@@ -1,3 +1,5 @@
+// BaseScript.h
+// 新しいスクリプトを作るときのひな形。
 #pragma once
 #include "IScript.h"
 #include "Scenes/GameScene.h"

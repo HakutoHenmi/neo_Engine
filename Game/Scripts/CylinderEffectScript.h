@@ -1,3 +1,5 @@
+// CylinderEffectScript.h
+// 円柱のエフェクト (光の柱) を縦に伸ばしながら消し、時間が来たら自分を削除するスクリプト。
 #pragma once
 #include "IScript.h"
 
@@ -13,6 +15,7 @@ public:
 	void DeserializeParameters(const std::string& data) override;
 
 private:
+	// 表示時間・経過時間・開始時と終了時の縦の大きさ
 	float duration_ = 1.0f;
 	float timer_ = 0.0f;
 	float startScaleY_ = 0.1f;

@@ -100,7 +100,10 @@ void Input::Update() {
 	float clientW = static_cast<float>(rc.right - rc.left);
 	float clientH = static_cast<float>(rc.bottom - rc.top);
 
-	if (clientW > 0 && clientH > 0) {
+	if (useViewport_) {
+		absMouseX_ = (static_cast<float>(pt.x) - viewportX_) * (static_cast<float>(WindowDX::kW) / viewportW_);
+		absMouseY_ = (static_cast<float>(pt.y) - viewportY_) * (static_cast<float>(WindowDX::kH) / viewportH_);
+	} else if (clientW > 0 && clientH > 0) {
 		absMouseX_ = static_cast<float>(pt.x) * (static_cast<float>(WindowDX::kW) / clientW);
 		absMouseY_ = static_cast<float>(pt.y) * (static_cast<float>(WindowDX::kH) / clientH);
 	} else {

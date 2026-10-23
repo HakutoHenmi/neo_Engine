@@ -65,6 +65,8 @@ public:
 	static void SetCursorVisible(bool visible);
 	// 入力デバイスの切り替え時に、最後に要求された表示状態を再適用する
 	static void RefreshCursor();
+	// エディタの Scene ビュー操作中など、ゲームの要求に関係なくカーソルを表示させる
+	static void SetCursorForcedVisible(bool forced);
 
 private:
 	bool InitWindow_(HINSTANCE hInst, int cmdShow, HWND& outHwnd);

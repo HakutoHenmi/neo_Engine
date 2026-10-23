@@ -1,0 +1,224 @@
+{
+  "_comment": "ローグライトの強化カード。カードの順番はコードの効果 (ランクの番号) と対応しているので、並びと枚数は変えないこと。 skill が true のカードは、パレット画面で SKILL の印が付く (使うと技が増えるカード)。",
+  "rules": {
+    "_comment": "必要経験値 = xpBase + xpPerLevel x (レベル - 1)。rarityWeights は希少度 (通常・レア・伝説) ごとの出やすさ。",
+    "xpBase": 100,
+    "xpPerLevel": 50,
+    "rarityWeights": [
+      5,
+      3,
+      1
+    ],
+    "rerolls": 3,
+    "synergyCount": 3
+  },
+  "tags": [
+    {
+      "id": "Rapid",
+      "name": "手数",
+      "synergy": "発射速度 +30%"
+    },
+    {
+      "id": "Domain",
+      "name": "領域",
+      "synergy": "領域の威力 +20%"
+    },
+    {
+      "id": "Debuff",
+      "name": "デバフ",
+      "synergy": "状態異常ダメージ +50%"
+    },
+    {
+      "id": "Guard",
+      "name": "防壁",
+      "synergy": "被ダメージ -10%"
+    },
+    {
+      "id": "Familiar",
+      "name": "眷属",
+      "synergy": "砲台発射速度 +50%"
+    }
+  ],
+  "cards": [
+    {
+      "name": "多腔粘液腺",
+      "effect": "最低弾数 +12 / 総弾数 +12",
+      "flavor": "小さな輪にも、尽きない雨を。",
+      "tag": "Rapid",
+      "attribute": 1,
+      "rarity": 0,
+      "maxRank": 5,
+      "skill": false
+    },
+    {
+      "name": "閉環加速",
+      "effect": "囲い完成後 2秒間 移動速度 +20%",
+      "flavor": "閉じた瞬間、身体がほどける。",
+      "tag": "Rapid",
+      "attribute": 2,
+      "rarity": 0,
+      "maxRank": 3,
+      "skill": false
+    },
+    {
+      "name": "硬質弾核",
+      "effect": "弾の固定ダメージ +2",
+      "flavor": "柔らかい身体に、硬い決意。",
+      "tag": "Rapid",
+      "attribute": 1,
+      "rarity": 1,
+      "maxRank": 5,
+      "skill": false
+    },
+    {
+      "name": "長命の軌跡",
+      "effect": "記録上限 +384点 / 領域持続 +3秒",
+      "flavor": "この一筆は、まだ終わらない。",
+      "tag": "Domain",
+      "attribute": 0,
+      "rarity": 0,
+      "maxRank": 4,
+      "skill": false
+    },
+    {
+      "name": "面積増幅",
+      "effect": "面積1000㎡ごと 弾威力 +25% (上限+100%)",
+      "flavor": "大地を抱くほど、重くなる。",
+      "tag": "Domain",
+      "attribute": 0,
+      "rarity": 1,
+      "maxRank": 3,
+      "skill": false
+    },
+    {
+      "name": "スライム隕石",
+      "effect": "通常囲いの全弾を 1発に統合 / 爆風半径18m",
+      "flavor": "空に溜めた質量が、降る。",
+      "tag": "Domain",
+      "attribute": 1,
+      "rarity": 2,
+      "maxRank": 1,
+      "skill": true
+    },
+    {
+      "name": "酸性軌跡",
+      "effect": "軌跡の周囲3mに 毎秒4ダメージ",
+      "flavor": "草の上に、酸の記憶を残す。",
+      "tag": "Debuff",
+      "attribute": 0,
+      "rarity": 0,
+      "maxRank": 3,
+      "skill": false
+    },
+    {
+      "name": "腐食の沼",
+      "effect": "完成領域を8秒維持 / 敵速度-35% / 被ダメ+25%",
+      "flavor": "輪の内側は、もう私の海。",
+      "tag": "Debuff",
+      "attribute": 3,
+      "rarity": 1,
+      "maxRank": 1,
+      "skill": true
+    },
+    {
+      "name": "腐食弾",
+      "effect": "命中で4秒腐食 / 毎秒2ダメージ",
+      "flavor": "粘液は、装甲の隙間を知る。",
+      "tag": "Debuff",
+      "attribute": 3,
+      "rarity": 0,
+      "maxRank": 3,
+      "skill": false
+    },
+    {
+      "name": "凍結弾",
+      "effect": "命中で2秒減速 -50%",
+      "flavor": "冷たい雫が、翼を縛る。",
+      "tag": "Debuff",
+      "attribute": 3,
+      "rarity": 1,
+      "maxRank": 1,
+      "skill": false
+    },
+    {
+      "name": "炎上弾",
+      "effect": "命中で3秒炎上 / 毎秒3ダメージ",
+      "flavor": "緑の身体に、熱い鼓動。",
+      "tag": "Debuff",
+      "attribute": 3,
+      "rarity": 1,
+      "maxRank": 3,
+      "skill": false
+    },
+    {
+      "name": "迎撃粘液",
+      "effect": "迎撃速度 +4発/秒 (半径18m)",
+      "flavor": "雨を落とす前に、雨を消す。",
+      "tag": "Guard",
+      "attribute": 1,
+      "rarity": 1,
+      "maxRank": 3,
+      "skill": true
+    },
+    {
+      "name": "周回防壁",
+      "effect": "囲いで8秒防壁 / 毎秒4ダメージ / 被ダメ-15%",
+      "flavor": "帰る場所は、自分の周り。",
+      "tag": "Guard",
+      "attribute": 2,
+      "rarity": 1,
+      "maxRank": 3,
+      "skill": true
+    },
+    {
+      "name": "反応閉環",
+      "effect": "ジャスト回避で半径5mの囲いを自動発動",
+      "flavor": "危機をすり抜け、輪を結ぶ。",
+      "tag": "Guard",
+      "attribute": 2,
+      "rarity": 2,
+      "maxRank": 1,
+      "skill": true
+    },
+    {
+      "name": "小さな眷属",
+      "effect": "囲いで砲台召喚 / 12秒持続 / 毎秒2発 / 最大6体",
+      "flavor": "ひとりの輪から、仲間が生まれる。",
+      "tag": "Familiar",
+      "attribute": 2,
+      "rarity": 1,
+      "maxRank": 1,
+      "skill": true
+    },
+    {
+      "name": "共鳴連鎖",
+      "effect": "囲い完成後3秒 砲台間レーザー / 毎秒6ダメージ",
+      "flavor": "離れていても、同じ粘液。",
+      "tag": "Familiar",
+      "attribute": 1,
+      "rarity": 2,
+      "maxRank": 3,
+      "skill": true
+    },
+    {
+      "name": "眷属の記憶",
+      "effect": "砲台の寿命 +6秒 / 弾威力 +25%",
+      "flavor": "小さな身体は、長く覚える。",
+      "tag": "Familiar",
+      "attribute": 2,
+      "rarity": 0,
+      "maxRank": 4,
+      "skill": false
+    },
+    {
+      "name": "呪い：重い領域",
+      "effect": "弾威力 +50% / 移動速度 -10%",
+      "flavor": "抱いた大地は、足にも残る。",
+      "tag": "Domain",
+      "attribute": 0,
+      "rarity": 2,
+      "maxRank": 2,
+      "skill": false
+    }
+  ]
+}

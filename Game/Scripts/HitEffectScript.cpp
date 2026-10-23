@@ -1,3 +1,6 @@
+// HitEffectScript.cpp
+// 命中エフェクトの実装。開始時に GPU 流体のしぶきを放出し、
+// 破片 (触手・残像・爆発のトゲ・通常の破片) を独自の物理で動かして消す。
 #include "HitEffectScript.h"
 #include "GameScene.h"
 #include "../ObjectTypes.h"
@@ -7,9 +10,11 @@
 
 namespace Game {
 
+// 開始: 攻撃の種類に応じた色・量・勢いで GPU 流体のしぶきを出す
 void HitEffectScript::Start(entt::entity entity, GameScene* scene) {
 	auto& registry = scene->GetComponents();
 	
+	// エフェクトを置いた位置
 	DirectX::XMFLOAT3 pos = {0, 0, 0};
 	if (registry.all_of<TransformComponent>(entity)) {
 		pos = registry.get<TransformComponent>(entity).translate;
@@ -60,6 +65,7 @@ void HitEffectScript::Start(entt::entity entity, GameScene* scene) {
 	}
 }
 
+// 更新: 破片の種類ごとに動かし、寿命が尽きたら消す。全体の時間が来たら残りを消して自分も削除する
 void HitEffectScript::Update(entt::entity entity, GameScene* scene, float dt) {
 	timer_ += dt;
 	
@@ -75,6 +81,7 @@ void HitEffectScript::Update(entt::entity entity, GameScene* scene, float dt) {
 
 
 
+		// 触手: 進む軸の周りを回りながら広がり、残像を残す
 		if (fd.isTentacle) {
 			fd.life -= dt;
 			if (fd.life <= 0.0f || !registry.valid(fd.entity)) {
@@ -134,7 +141,7 @@ void HitEffectScript::Update(entt::entity entity, GameScene* scene, float dt) {
 					mr.color.w = 0.99f * (1.0f - pop);
 				}
 			} else {
-				// ★残像の生成（星形スライムメッシュを置く）
+				// 残像を作る (星形のスライムメッシュを置く)
 				fd.vx += dt; // タイマーとして利用
 				if (fd.vx > 0.04f) { // 秒間25個
 					fd.vx = 0.0f;
@@ -168,6 +175,7 @@ void HitEffectScript::Update(entt::entity entity, GameScene* scene, float dt) {
 			continue;
 		}
 
+		// 残像: 小さくなりながら回転して消える
 		if (fd.isTentacleTrail) {
 			fd.life -= dt;
 			if (fd.life <= 0.0f || !registry.valid(fd.entity)) {
@@ -184,6 +192,7 @@ void HitEffectScript::Update(entt::entity entity, GameScene* scene, float dt) {
 			continue;
 		}
 
+		// 爆発のトゲ: まっすぐ高速で飛び、毎フレーム残像を残す
 		if (fd.isExplosionSpike) {
 			fd.life -= dt;
 			if (fd.life <= 0.0f || !registry.valid(fd.entity)) {
@@ -228,6 +237,7 @@ void HitEffectScript::Update(entt::entity entity, GameScene* scene, float dt) {
 			continue;
 		}
 
+		// 通常の破片: 重力・回転・地面での跳ね返り
 		if (registry.valid(fd.entity) && registry.all_of<TransformComponent>(fd.entity)) {
 			auto& tc = registry.get<TransformComponent>(fd.entity);
 			
@@ -282,6 +292,7 @@ void HitEffectScript::Update(entt::entity entity, GameScene* scene, float dt) {
 		}
 	}
 
+	// このフレームで作った残像を一覧に加える
 	for (const auto& td : newTrails) {
 		fragments_.push_back(td);
 	}
@@ -303,6 +314,7 @@ void HitEffectScript::Update(entt::entity entity, GameScene* scene, float dt) {
 	}
 }
 
+// 破棄時: 残っている破片を消す
 void HitEffectScript::OnDestroy(entt::entity /*entity*/, GameScene* scene) {
 	if (scene) {
 		auto& registry = scene->GetComponents();
@@ -315,6 +327,7 @@ void HitEffectScript::OnDestroy(entt::entity /*entity*/, GameScene* scene) {
 	fragments_.clear();
 }
 
+// エフェクトの種類を保存する / 読み込む (近接と液体は攻撃の向きも読む)
 std::string HitEffectScript::SerializeParameters() {
 	if (isExplosion_) return "isExplosion=1";
 	if (isExplosionHit_) return "isExplosionHit=1";
@@ -327,7 +340,7 @@ void HitEffectScript::DeserializeParameters(const std::string& data) {
 	} else if (data.find("isExplosionHit=1") != std::string::npos) {
 		isExplosionHit_ = true;
 	} else if (data.find("isLiquidSplatter=1") != std::string::npos) {
-		isLiquidSplatter_ = true; // ★追加
+		isLiquidSplatter_ = true; // 液体の飛び散り
 		size_t posX = data.find("dirX=");
 		if (posX != std::string::npos) {
 			size_t comma = data.find(',', posX);
@@ -354,6 +367,7 @@ void HitEffectScript::DeserializeParameters(const std::string& data) {
 	}
 }
 
+// ScriptEngine へ自動登録する
 REGISTER_SCRIPT(HitEffectScript);
 
 } // namespace Game

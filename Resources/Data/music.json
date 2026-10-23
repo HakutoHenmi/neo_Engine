@@ -1,0 +1,10 @@
+{
+  "_comment": "シーンごとの BGM のファイルと音量 (0〜1)。",
+  "tracks": {
+    "Title": { "path": "Resources/Sound/BGM/Call to Adventure.mp3", "volume": 0.32 },
+    "Select": { "path": "Resources/Sound/BGM/Carefree.mp3", "volume": 0.28 },
+    "Battle": { "path": "Resources/Sound/BGM/Volatile Reaction.mp3", "volume": 0.30 },
+    "Victory": { "path": "Resources/Sound/BGM/Fanfare for Space.mp3", "volume": 0.34 },
+    "Defeat": { "path": "Resources/Sound/BGM/Evening Fall Harp.mp3", "volume": 0.34 }
+  }
+}

@@ -252,7 +252,7 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <None Include="assessment.md" />
+    <None Include="Docs\archive\assessment.md" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Engine\IState.h" />

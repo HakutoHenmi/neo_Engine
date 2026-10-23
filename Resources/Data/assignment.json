@@ -1,0 +1,50 @@
+{
+  "_comment": "評価課題のデモ (AssignmentScene) の素材・パーティクル・戦闘の値。",
+  "assets": {
+    "sword": "Resources/Models/weapons/sword.obj",
+    "swordTexture": "Resources/Models/weapons/bukiUV.png",
+    "enemy": "Resources/Models/cube/cube.obj",
+    "enemyTexture": "Resources/Textures/white1x1.png",
+    "particleModel": "Resources/Models/plane.obj",
+    "particleTexture": "Resources/Textures/ball.png",
+    "mutant": "Resources/Models/Animation/Boss/Mutant Idle.fbx",
+    "mutantAnimations": ["Resources/Models/Animation/Boss/Mutant Walking.fbx", "Resources/Models/Animation/Boss/attack1.fbx"],
+    "_materialComment": "ミュータントのマテリアルに交互に貼るテクスチャ (materialCount 個)",
+    "mutantTextures": ["Resources/Textures/basecolor.jpg", "Resources/Textures/uvChecker.png"],
+    "materialCount": 5
+  },
+  "particles": {
+    "cpuMax": 1000,
+    "gpuMax": 100000,
+    "_emitterComment": "shape: 0 点 / 1 球 / 2 箱 / 3 メッシュ。field: 0 なし / 1 重力 / 2 風 / 3 竜巻。type: 0 通常 / 1 軌跡 / 2 ライティングあり。0 番目は竜巻、1 番目は剣のメッシュから出す炎。",
+    "emitters": [
+      { "position": [10, 0, 0], "rate": 1000, "velocity": [0, 0.1, 0], "life": 3.0, "shape": 1, "extents": [0.5, 0, 0],
+        "colorStart": [2.0, 0.5, 3.0, 1.0], "colorEnd": [0.0, 0.5, 1.0, 0.0], "field": 3, "fieldParams": [10, 3, 1.5, 0], "type": 0 },
+      { "position": [0, 0, 0], "rate": 1000, "velocity": [0, 1, 0], "life": 0.5, "shape": 3, "extents": [0, 0, 0.25],
+        "colorStart": [3.0, 1.0, 0.2, 1.0], "colorEnd": [1.0, 0.0, 0.0, 0.0], "field": 0, "fieldParams": [0, 0, 0, 0], "type": 2 }
+    ]
+  },
+  "start": {
+    "playerHp": 100,
+    "enemyHp": 60,
+    "enemyPosition": [9, 1, 6],
+    "enemyScale": [1.2, 1.2, 1.2],
+    "cameraDistance": 12,
+    "cameraPitch": 0.3,
+    "animation": "Mutant Idle"
+  },
+  "combat": {
+    "_comment": "距離はワールドの単位、時間は秒。",
+    "noticeRange": 9,
+    "loseRange": 11,
+    "attackDamage": 20,
+    "attackRange": 5.5,
+    "attackFacing": 0.15,
+    "enemyAttackRange": 4.0,
+    "enemyHitRange": 4.4,
+    "enemyWindup": 0.55,
+    "enemyCooldown": 1.4,
+    "enemyDamage": 15,
+    "enemyGuardedDamage": 4
+  }
+}
