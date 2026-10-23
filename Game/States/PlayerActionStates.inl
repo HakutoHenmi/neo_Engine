@@ -1,4 +1,8 @@
-// Included inside PlayerActionSystem; each state shares behavior, never actor data.
+// PlayerActionStates.inl
+// 旧アクションゲームのプレイヤー (缶とスライム) の行動状態。
+// 待機・トゲ攻撃・ハンマー・回避・液状化・よろけ・溜め・発射・トゲ爆発・火炎・分身ワープ。
+// PlayerActionSystem の中に読み込まれる。各状態は振る舞いだけを共有し、個体のデータは持たない
+// 状態の更新に渡す情報 (このフレームの入力と、カメラを引く量)
 struct StateContext {
 	PlayerActionSystem& system;
 	entt::registry& registry;
@@ -7,8 +11,10 @@ struct StateContext {
 	bool attackInput, attackPressed, hammerPressed, dashPressed, liquefyInput;
 	float& targetCamOffset;
 };
+// プレイヤーの状態の基底: 回避で中断できるかと、攻撃判定の更新 (既定は判定なし)
 class State : public Engine::IState<StateContext, EntityStateContext> {
 public:
+	// この状態は回避で中断できるか (既定はできない)
 	virtual bool CanCancelToDodge(const PlayerActionComponent&) const { return false; }
 	virtual void UpdateHitbox(EntityStateContext& frame) const {
 		if (auto* hitbox = frame.registry.try_get<HitboxComponent>(frame.entity)) {
@@ -18,9 +24,11 @@ public:
 	}
 };
 
+// 待機: 空中・移動中・停止中で体の形を変え、入力に応じて液状化・回避・攻撃・ハンマーへ
 class IdleState final : public State {
 public:
 	void Update(StateContext& frame) const override {
+		// よく使う値と、このフレームの入力
 		auto& registry = frame.registry;
 		auto entity = frame.entity;
 		auto& ctx = frame.ctx;
@@ -32,6 +40,7 @@ public:
 		const bool dashPressed = frame.dashPressed;
 		const bool liquefyInput = frame.liquefyInput;
 		{
+			// 移動しているか・接地しているか
 			bool isMoving = (std::abs(pi.moveDir.x) > 0.01f || std::abs(pi.moveDir.y) > 0.01f);
 			bool isGrounded = true;
 			if (registry.all_of<CharacterMovementComponent>(entity)) {
@@ -58,6 +67,7 @@ public:
 				tc.scale.z = 1.2f + breathe * 0.015f;
 			}
 
+			// 液状化の入力 → 液状化、回避 → 回避、攻撃 → トゲか火炎、ハンマー → ハンマー
 			if (liquefyInput) {
 				frame.system.BeginLiquefy(registry, entity, pa, pi, tc, ctx);
 				ChangeState(registry, entity, PlayerActionState::Liquefy, 0.0f); // 長押し状態
@@ -74,23 +84,29 @@ public:
 	}
 };
 
+// トゲ攻撃: 前方へ細く鋭く伸びて戻る。押し続けていれば溜めへ
 class SlimeSpikeState final : public State {
 public:
+	// 0.08 秒以降なら回避で中断できる
 	bool CanCancelToDodge(const PlayerActionComponent& action) const override { return action.stateTimer >= .08f; }
+	// 伸びている間だけ攻撃判定を出す (伸びた長さに合わせる)
 	void UpdateHitbox(EntityStateContext& frame) const override {
 		if (auto* hitbox = frame.registry.try_get<HitboxComponent>(frame.entity)) {
 			const auto& action = frame.registry.get<PlayerActionComponent>(frame.entity);
 			const auto& transform = frame.registry.get<TransformComponent>(frame.entity);
+			// 判定が有効になった瞬間に、当たった相手の記録を消す
 			const bool wasActive = hitbox->isActive;
 			hitbox->isActive = action.stateTimer >= .025f && action.stateTimer <= .19f;
 			if (!wasActive && hitbox->isActive)
 				hitbox->hitTargets.clear();
+			// ダメージと、伸びた長さに合わせた大きさと位置
 			hitbox->damage = 30;
 			hitbox->size = {1.5f, 1.5f, transform.scale.z * 1.5f};
 			hitbox->center.z = transform.scale.z * .75f;
 		}
 	}
 	void Update(StateContext& frame) const override {
+		// よく使う値
 		auto& registry = frame.registry;
 		auto entity = frame.entity;
 		auto& pa = frame.registry.get<PlayerActionComponent>(frame.entity);
@@ -110,12 +126,13 @@ public:
 			tc.scale.y = std::max(0.05f, 0.8f - (spike * 0.75f)); // 非常に平たく
 			tc.scale.z = 1.2f + (spike * 12.0f);                  // 針のように長く伸びる
 
-			// ★追加: 描画に合わせて当たり判定を「プレイヤーの根本から先端まで」に設定
+			// 見た目に合わせて当たり判定を「体の根元から先端まで」にする
 			if (auto* bc = registry.try_get<BoxColliderComponent>(entity)) {
 				// 物理コライダー: 伸びた長さの半分だけ前方にズラす
 				bc->center.z = tc.scale.z * 0.75f;
 			}
 
+			// 終わったとき、押し続けていれば溜めへ、離していれば待機へ
 			if (pa.stateTimer >= pa.stateDuration) {
 				if (attackInput) {
 					pa.chargeTimer = pa.stateDuration;
@@ -128,14 +145,17 @@ public:
 	}
 };
 
+// ハンマー: 膨らんでから前へ叩きつける
 class SlimeHammerState final : public State {
 public:
+	// 0.22 秒以降なら回避で中断できる
 	bool CanCancelToDodge(const PlayerActionComponent& action) const override { return action.stateTimer >= .22f; }
 	void UpdateHitbox(EntityStateContext& frame) const override {
 		if (auto* hitbox = frame.registry.try_get<HitboxComponent>(frame.entity)) {
 			const auto& action = frame.registry.get<PlayerActionComponent>(frame.entity);
 			const auto& transform = frame.registry.get<TransformComponent>(frame.entity);
 			const bool wasActive = hitbox->isActive;
+			// 0.14〜0.42 秒の間だけ攻撃判定を出す
 			hitbox->isActive = action.stateTimer >= .14f && action.stateTimer <= .42f;
 			if (!wasActive && hitbox->isActive)
 				hitbox->hitTargets.clear();
@@ -145,6 +165,7 @@ public:
 		}
 	}
 	void Update(StateContext& frame) const override {
+		// よく使う値
 		auto& registry = frame.registry;
 		auto entity = frame.entity;
 		auto& pa = frame.registry.get<PlayerActionComponent>(frame.entity);
@@ -164,11 +185,12 @@ public:
 			tc.scale.y = std::max(0.1f, 0.8f * scaleBase * (1.0f - smash * 0.95f)); // 極限まで潰れる
 			tc.scale.z = 1.2f * scaleBase * (1.0f + smash * 2.5f);                  // さらに前方に伸びる
 
-			// ★追加: 描画に合わせて当たり判定を「プレイヤーの根本から先端まで」に設定
+			// 見た目に合わせて当たり判定を「体の根元から先端まで」にする
 			if (auto* bc = registry.try_get<BoxColliderComponent>(entity)) {
 				bc->center.z = tc.scale.z * 0.75f;
 			}
 
+			// 時間が来たら待機へ
 			if (pa.stateTimer >= pa.stateDuration) {
 				ChangeState(registry, entity, PlayerActionState::Idle, 0.0f);
 			}
@@ -176,9 +198,11 @@ public:
 	}
 };
 
+// 回避: 向きへ高速移動 (壁や段差の手前で止まる)。途中は無敵
 class DodgeState final : public State {
 public:
 	void Update(StateContext& frame) const override {
+		// よく使う値
 		auto& registry = frame.registry;
 		auto entity = frame.entity;
 		auto& ctx = frame.ctx;
@@ -186,17 +210,20 @@ public:
 		auto& pi = frame.registry.get<PlayerInputComponent>(frame.entity);
 		auto& tc = frame.registry.get<TransformComponent>(frame.entity);
 		{
+			// 回避中は移動とジャンプの入力を消す
 			pi.moveDir = {0.0f, 0.0f};
 			pi.jumpRequested = false;
 
 			// 回避移動
 			float step = pa.dodgeSpeed * ctx.dt;
+			// 前方の壁までの距離で止める
 			if (ctx.scene) {
 				float wallDistance = step + 0.7f;
 				if (ctx.scene->RayCast(
 				        {tc.translate.x, tc.translate.y + 0.4f, tc.translate.z}, {pa.dodgeDirection.x, 0.0f, pa.dodgeDirection.z}, step + 0.7f, static_cast<uint32_t>(entity), wallDistance)) {
 					step = (std::max)(0.0f, wallDistance - 0.7f);
 				}
+				// 移動先の地面が無いか、段差が大きければ動かない
 				const float currentGround = ctx.scene->GetHeightAt(tc.translate.x, tc.translate.z, tc.translate.y + 2.0f, static_cast<uint32_t>(entity));
 				const float nextGround =
 				    ctx.scene->GetHeightAt(tc.translate.x + pa.dodgeDirection.x * step, tc.translate.z + pa.dodgeDirection.z * step, tc.translate.y + 2.0f, static_cast<uint32_t>(entity));
@@ -221,6 +248,7 @@ public:
 				}
 			}
 
+			// 時間が来たら待機へ
 			if (pa.stateTimer >= pa.stateDuration) {
 				ChangeState(registry, entity, PlayerActionState::Idle, 0.0f);
 			}
@@ -228,14 +256,18 @@ public:
 	}
 };
 
+// 液状化: 押している間は薄い水たまりのように広がり、無敵になる
 class LiquefyState final : public State {
 public:
+	// 液状化を終えるときの後片付け
 	void Exit(EntityStateContext& frame) const override {
 		auto& registry = frame.registry;
 		const auto entity = frame.entity;
+		// 液状化の速さと固定を元に戻す
 		EndLiquefy(registry, entity, registry.get<PlayerActionComponent>(entity));
 	}
 	void Update(StateContext& frame) const override {
+		// よく使う値と、液状化の入力
 		auto& registry = frame.registry;
 		auto entity = frame.entity;
 		auto& ctx = frame.ctx;
@@ -244,16 +276,19 @@ public:
 		auto& tc = frame.registry.get<TransformComponent>(frame.entity);
 		const bool liquefyInput = frame.liquefyInput;
 		{
+			// 離したら待機へ
 			if (!liquefyInput) {
 
 				ChangeState(registry, entity, PlayerActionState::Idle, 0.0f);
 				return;
 			}
 
+			// 固定されていなければ液状化を始める
 			if (!pa.liquefyLocked) {
 				frame.system.BeginLiquefy(registry, entity, pa, pi, tc, ctx);
 			}
 
+			// 入力を消し、固定の位置に留める
 			pi.moveDir = {0.0f, 0.0f};
 			pi.jumpRequested = false;
 			tc.translate = pa.liquefyAnchorPos;
@@ -264,10 +299,12 @@ public:
 				cm->isGrounded = true;
 			}
 
+			// 流れているか・広がりの進み具合・波打ち
 			bool isMoving = pa.CurrentLiquefyFlowSpeed() > 0.1f;
 			float t = std::min(1.0f, pa.stateTimer * 8.0f);
 			float wave = std::sin(pa.totalTime * 12.0f) * 0.20f;
 			if (isMoving) {
+				// 流れの向きへなめらかに向く
 				DirectX::XMFLOAT3 flowDir = frame.system.GetCameraMoveDirection(pi, ctx, tc);
 				float targetRot = std::atan2(flowDir.x, flowDir.z);
 				float diff = targetRot - tc.rotate.y;
@@ -287,6 +324,7 @@ public:
 				tc.scale.y = 0.65f - (0.58f * t);
 				tc.scale.z = 1.7f + (4.2f * t) - wave * 1.0f;
 			}
+			// 薄すぎないようにする
 			tc.scale.y = std::max(0.040f, tc.scale.y);
 
 			// 無敵状態を維持
@@ -298,11 +336,13 @@ public:
 	}
 };
 
+// よろけ: 体の形を戻して一定時間待つ
 class StaggerState final : public State {
 public:
 	void Enter(EntityStateContext& frame) const override {
 		auto& registry = frame.registry;
 		const auto entity = frame.entity;
+		// 溜めを消し、通常の形にする
 		registry.get<PlayerActionComponent>(entity).chargeTimer = 0.0f;
 		if (auto* transform = registry.try_get<TransformComponent>(entity))
 			transform->scale = {1.2f, 0.92f, 1.2f};
@@ -313,16 +353,20 @@ public:
 		auto& pa = frame.registry.get<PlayerActionComponent>(frame.entity);
 		if (auto* transform = registry.try_get<TransformComponent>(entity))
 			transform->scale = {1.2f, .92f, 1.2f};
+		// 時間が来たら待機へ
 		if (pa.stateTimer >= pa.stateDuration) {
 			ChangeState(registry, entity, PlayerActionState::Idle, 0.0f);
 		}
 	}
 };
 
+// 溜め: 震えながら潰れ、カメラを引く。離したら溜め時間に応じて発射、ハンマー入力で爆発
 class ChargingState final : public State {
 public:
+	// 溜め中はいつでも回避で中断できる
 	bool CanCancelToDodge(const PlayerActionComponent&) const override { return true; }
 	void Update(StateContext& frame) const override {
+		// よく使う値と、このフレームの入力
 		auto& registry = frame.registry;
 		auto entity = frame.entity;
 		auto& ctx = frame.ctx;
@@ -332,6 +376,7 @@ public:
 		const bool attackInput = frame.attackInput;
 		const bool hammerPressed = frame.hammerPressed;
 		{
+			// 溜めの時間を進める
 			pa.chargeTimer += ctx.dt;
 			// 溜め中の演出（小刻みに震えつつ、徐々に潰れる）
 			float shake = std::sin(pa.chargeTimer * 50.0f) * 0.05f;
@@ -339,10 +384,10 @@ public:
 			tc.scale.y = std::max(0.4f, 0.8f - pa.chargeTimer * 0.4f); // ペシャンコに
 			tc.scale.z = 1.2f + shake;
 
-			// ★追加: 溜めている間、徐々にカメラを引く（最大6.0m）
+			// 溜めている間、徐々にカメラを引く (最大 6.0)
 			targetCamOffset = std::min(pa.chargeTimer * 5.0f, 6.0f);
 
-			// ★追加: 溜め中に右クリック（ハンマーボタン）が押されたら爆発派生
+			// 溜め中にハンマー入力 (右クリック) で爆発に派生する
 			if (hammerPressed) {
 				ChangeState(registry, entity, PlayerActionState::SpikeExplosion, 0.5f); // 0.5秒の爆発アクション
 				pa.chargeTimer = 0.0f;
@@ -352,7 +397,7 @@ public:
 				if (pa.chargeTimer >= 0.4f) { // 一定時間以上で遠距離発射
 					ChangeState(registry, entity, PlayerActionState::Shoot, 0.3f);
 					pa.chargeTimer = 0.0f;
-				} else { // The quick strike already happened on press.
+				} else { // 短い押しの攻撃は押した時点で済んでいる
 					ChangeState(registry, entity, PlayerActionState::Idle, 0.0f);
 					pa.chargeTimer = 0.0f;
 				}
@@ -362,14 +407,17 @@ public:
 	}
 };
 
+// 発射: 反動で伸び、最初のフレームで水の弾を生成する (水が足りなければミストだけ出す)
 class ShootState final : public State {
 public:
 	void Enter(EntityStateContext& frame) const override {
 		auto& registry = frame.registry;
 		const auto entity = frame.entity;
+		// 発射済みの記録を消す
 		registry.get<PlayerActionComponent>(entity).shotEmitted = false;
 	}
 	void Update(StateContext& frame) const override {
+		// よく使う値
 		auto& registry = frame.registry;
 		auto entity = frame.entity;
 		auto& ctx = frame.ctx;
@@ -386,10 +434,12 @@ public:
 			// 状態に入った最初のフレームで弾を生成予約
 			if (!pa.shotEmitted) {
 				pa.shotEmitted = true;
+				// 向いている方向
 				float facing = tc.rotate.y;
 				float dx = std::sin(facing);
 				float dz = std::cos(facing);
 
+				// 水 (体力) を 5 使う。足りなければ水切れ
 				bool hasWater = true;
 				if (registry.all_of<HealthComponent>(entity)) {
 					auto& hc = registry.get<HealthComponent>(entity);
@@ -399,6 +449,7 @@ public:
 					}
 				}
 
+				// 水の弾を生成待ちに積む
 				if (hasWater) {
 					ProjectileSpawnData ps;
 					ps.pos = {tc.translate.x + dx * 1.5f, tc.translate.y + 0.8f, tc.translate.z + dz * 1.5f};
@@ -416,6 +467,7 @@ public:
 				}
 			}
 
+			// 時間が来たら待機へ
 			if (pa.stateTimer >= pa.stateDuration) {
 				ChangeState(registry, entity, PlayerActionState::Idle, 0.0f);
 			}
@@ -424,9 +476,11 @@ public:
 	}
 };
 
+// トゲ爆発: 縮んでから全方位へ膨らみ、爆発の判定とエフェクトを出す
 class SpikeExplosionState final : public State {
 public:
 	void Update(StateContext& frame) const override {
+		// よく使う値
 		auto& registry = frame.registry;
 		auto entity = frame.entity;
 		auto& ctx = frame.ctx;
@@ -434,8 +488,9 @@ public:
 		auto& tc = frame.registry.get<TransformComponent>(frame.entity);
 		auto& targetCamOffset = frame.targetCamOffset;
 		{
+			// 進み具合
 			float progress = pa.stateTimer / pa.stateDuration;
-			targetCamOffset = 6.0f * (1.0f - progress); // ★追加: 爆発中は引いた状態から徐々に元に戻る
+			targetCamOffset = 6.0f * (1.0f - progress); // 爆発中は引いたカメラを徐々に元へ戻す
 
 			// アニメーション: 一瞬縮んでから全方位に膨張
 			if (progress < 0.2f) {
@@ -460,6 +515,7 @@ public:
 					ctx.camera->StartShake(0.3f, 0.4f);
 			}
 
+			// 時間が来たら待機へ
 			if (pa.stateTimer >= pa.stateDuration) {
 				ChangeState(registry, entity, PlayerActionState::Idle, 0.0f);
 			}
@@ -468,15 +524,18 @@ public:
 	}
 };
 
+// 火炎: 口を開けた形になり、一定間隔で炎と攻撃判定を出す
 class FireBreathState final : public State {
 public:
 	void Update(StateContext& frame) const override {
+		// よく使う値
 		auto& registry = frame.registry;
 		auto entity = frame.entity;
 		auto& ctx = frame.ctx;
 		auto& pa = frame.registry.get<PlayerActionComponent>(frame.entity);
 		auto& tc = frame.registry.get<TransformComponent>(frame.entity);
 		{
+			// 進み具合
 			float progress = pa.stateTimer / pa.stateDuration;
 
 			// プレイヤーの変形 (前方に口を開けているような形)
@@ -486,6 +545,7 @@ public:
 
 			// 炎のエフェクトとHitboxを一定間隔で生成
 			if (pa.stateTimer > 0.0f) {
+				// 向いている方向
 				float facing = tc.rotate.y;
 				float dx = std::sin(facing);
 				float dz = std::cos(facing);
@@ -501,6 +561,7 @@ public:
 				}
 			}
 
+			// 時間が来たら待機へ
 			if (pa.stateTimer >= pa.stateDuration) {
 				ChangeState(registry, entity, PlayerActionState::Idle, 0.0f);
 			}
@@ -509,9 +570,11 @@ public:
 	}
 };
 
+// 分身ワープ: 放物線を描いて跳び、着地でエフェクトを出す (跳んでいる間は通常の移動を止める)
 class DecoyWarpState final : public State {
 public:
 	void Enter(EntityStateContext& frame) const override {
+		// 跳んでいる間は通常の移動を止める (元の設定を覚えておく)
 		auto& registry = frame.registry;
 		const auto entity = frame.entity;
 		if (auto* movement = registry.try_get<CharacterMovementComponent>(entity)) {
@@ -520,18 +583,21 @@ public:
 		}
 	}
 	void Exit(EntityStateContext& frame) const override {
+		// 通常の移動の設定を元に戻す
 		auto& registry = frame.registry;
 		const auto entity = frame.entity;
 		if (auto* movement = registry.try_get<CharacterMovementComponent>(entity))
 			movement->enabled = registry.get<PlayerActionComponent>(entity).warpMovementEnabled;
 	}
 	void Update(StateContext& frame) const override {
+		// よく使う値
 		auto& registry = frame.registry;
 		auto entity = frame.entity;
 		auto& ctx = frame.ctx;
 		auto& pa = frame.registry.get<PlayerActionComponent>(frame.entity);
 		auto& tc = frame.registry.get<TransformComponent>(frame.entity);
 		{
+			// 進み具合 (0〜1)
 			float progress = pa.stateTimer / pa.stateDuration;
 			progress = std::clamp(progress, 0.0f, 1.0f);
 
@@ -562,7 +628,9 @@ public:
 	}
 };
 
+// 状態の列挙値から状態オブジェクトを返す
 static const State& GetState(PlayerActionState state) {
+	// 各状態のオブジェクト (変更されないので共有できる)
 	static const IdleState idle;
 	static const SlimeSpikeState slimespike;
 	static const SlimeHammerState slimehammer;
@@ -574,6 +642,7 @@ static const State& GetState(PlayerActionState state) {
 	static const SpikeExplosionState spikeexplosion;
 	static const FireBreathState firebreath;
 	static const DecoyWarpState decoywarp;
+	// 状態の列挙値の順に並べる (数が合っているかを確かめる)
 	static const State* const states[] = {&idle, &slimespike, &slimehammer, &dodge, &liquefy, &stagger, &charging, &shoot, &spikeexplosion, &firebreath, &decoywarp};
 	static_assert(std::size(states) == static_cast<size_t>(PlayerActionState::DecoyWarp) + 1);
 	const auto index = static_cast<size_t>(state);

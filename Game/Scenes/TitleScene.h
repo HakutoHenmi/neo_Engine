@@ -1,3 +1,5 @@
+// TitleScene.h
+// タイトル画面のシーン。
 #pragma once
 #include "IScene.h"
 #include "../../externals/entt/entt.hpp"
@@ -9,27 +11,31 @@
 
 namespace Game {
 
+// UI システムの前方宣言 (このヘッダーでは使わない)
 class UISystem;
 
 // ========================================================
-// TitleScene: 映画的な3Dタイトル画面
-//   - 手前にプレイヤー、遠景に霧の中のボス
-//   - フェイク反射（水面）
-//   - "Press Any Button" → シームレスにゲーム遷移
+// TitleScene: タイトル画面
+//   - 2D の UI (タイトルロゴ・スライムのマーク・ボタン) を描く
+//   - BEGIN EXPEDITION / Enter / START でセレクト画面へ
+//   - CREDITS でクレジット画面を開く
 // ========================================================
 class TitleScene : public Engine::IScene {
 public:
+    // 生成・破棄 (後片付けは不要)
     TitleScene() = default;
     ~TitleScene() override = default;
 
-    // UI-only: runs before the 3D renderer is initialized.
+    // UI 専用のシーン: 3D 描画の準備前 (起動直後の軽量な経路) でも動く
     bool RequiresFullRenderer() const override { return false; }
+    // IScene の実装: 初期化・更新・描画
     void Initialize(Engine::WindowDX* dx, const Engine::SceneParameters& params) override;
     void Update() override;
     void Draw() override;
     void DrawUI() override;
 
 private:
+    // クレジット画面を開いているかと、表示中のページ
     bool creditsOpen_ = false;
     int creditsPage_ = 0;
     // === 遷移フェーズ ===
@@ -49,6 +55,7 @@ private:
     float dt_ = 1.0f / 60.0f;
 
     // === カメラ ===
+    // タイトル用のカメラ (現在の 2D タイトルでは固定の視点として使う)
     Engine::Camera camera_;
     // 初期状態
     DirectX::XMFLOAT3 camStartPos_ = { -1.5f, 0.8f, -1.0f };
@@ -58,6 +65,7 @@ private:
     DirectX::XMFLOAT3 camEndPos_ = { 0.0f, 1.5f, -2.0f };
     DirectX::XMFLOAT3 camEndTarget_ = { 0.0f, 1.0f, 10.0f };
     float camEndFov_ = DirectX::XMConvertToRadians(60.0f);
+    // 現在の画角
     float currentFov_;
 
     // === レンダリングリソース ===
@@ -65,6 +73,7 @@ private:
     Engine::Renderer* renderer_ = nullptr;
 
     // モデルハンドル
+    // 以前の 3D タイトルで使っていたモデル/テクスチャのハンドル
     uint32_t groundMesh_ = 0;
     uint32_t groundTex_ = 0;
     uint32_t cubeMesh_ = 0;
@@ -82,10 +91,11 @@ private:
                     const Engine::Vector4& color,
                     const std::string& shader = "Default");
 
-    // イージング: EaseInOutCubic
+    // イージング (EaseInOutCubic): 0〜1 をゆっくり始まりゆっくり終わる曲線に変換
     static float EaseInOut(float t);
 
     // 時間管理
+    // 前フレームの時刻 (dt の計算用)
     std::chrono::steady_clock::time_point lastTime_;
 };
 

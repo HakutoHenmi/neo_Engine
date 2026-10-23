@@ -441,5 +441,17 @@
   "Textures/PolyHaven/white_bricks_AO_2k.jpg",
   "Textures/PolyHaven/white_bricks_Rough_2k.jpg",
   "Textures/PolyHaven/white_bricks_diff_2k.jpg",
-  "Textures/PolyHaven/white_bricks_nor_dx_2k.jpg"
+  "Textures/PolyHaven/white_bricks_nor_dx_2k.jpg",
+  "Data/assignment.json",
+  "Data/city_stage.json",
+  "Data/credits.json",
+  "Data/editor.json",
+  "Data/game.json",
+  "Data/graphics.json",
+  "Data/loading.json",
+  "Data/loadout.json",
+  "Data/music.json",
+  "Data/roguelite.json",
+  "Data/ui_text.json",
+  "Scenes/fallback.json"
 ]

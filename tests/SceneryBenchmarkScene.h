@@ -22,7 +22,7 @@ class SceneryBenchmarkScene final : public Game::GameScene {
     }
 public:
     void Initialize(Engine::WindowDX* dx,const Engine::SceneParameters&)override{
-        start_=Clock::now();Engine::SceneParameters p;p.stagePath="Resources/Scenes/chrono.json";Game::GameScene::Initialize(dx,p);
+        start_=Clock::now();Engine::SceneParameters p;p.stagePath=Game::Data::MainStagePath();Game::GameScene::Initialize(dx,p);
         auto* r=Engine::Renderer::GetInstance();original_=r->GetGraphicsSettings();r->SetFluidProfilerEnabled(true);
         auto s=r->GetGraphicsSettings();s.rtShadows=s.rtReflections=s.rtIndirect=false;r->ApplyGraphicsSettings(s);
         std::filesystem::create_directories("SceneryBenchmark");report_.open("SceneryBenchmark/result.txt");

@@ -234,7 +234,8 @@ void App::Run() {
 #ifdef USE_IMGUI
 		if (currentScene) {
 #ifndef NDEBUG
-			currentScene->DrawEditor();
+			if (editorPresenter_) editorPresenter_(*currentScene, sceneManager_.CurrentName());
+			else currentScene->DrawEditor();
 #endif
 		}
 		imgui_.Render(dx_);

@@ -1,3 +1,7 @@
+// BossTestScript.cpp
+// 旧アクションゲームのボス (ミュータント) の準備と演出。
+// 開始時に行動パターン・当たり判定・アニメーションを用意し、
+// 毎フレーム、ボスの状態に合わせてアニメーションや変形・攻撃判定・着地の衝撃波を処理する。
 #include "BossTestScript.h"
 #include "ScriptEngine.h"
 #include "../Engine/Renderer.h"
@@ -10,8 +14,10 @@
 using json = nlohmann::json;
 namespace Game {
 
+// ScriptEngine へ自動登録する
 REGISTER_SCRIPT(BossTestScript);
 
+// 開始: ボスに必要なコンポーネントと行動パターン、判定の大きさを用意する
 void BossTestScript::Start(entt::entity entity, GameScene* scene) {
 	auto& registry = scene->GetComponents();
 
@@ -21,6 +27,7 @@ void BossTestScript::Start(entt::entity entity, GameScene* scene) {
 	}
 	auto& boss = registry.get<BossActionComponent>(entity);
 	
+	// 行動パターンを JSON (Resources/Scripts/boss_patterns.json) から読み込む
 	if (boss.patterns.empty()) {
 		std::ifstream file("Resources/Scripts/boss_patterns.json");
 		if (file.is_open()) {
@@ -62,11 +69,11 @@ void BossTestScript::Start(entt::entity entity, GameScene* scene) {
 		originalScale_ = bTc.scale;
 	}
 
-	// ★追加: 物理演算コンポーネント（重力と床判定）
+	// 物理 (重力と床の判定)
 	if (!registry.all_of<RigidbodyComponent>(entity)) {
 		auto& rb = registry.emplace<RigidbodyComponent>(entity);
 		rb.useGravity = true;
-		rb.isKinematic = true; // ガクガク防止のためキネマティックにする（物理挙動は自前で行うかCMSに任せる）
+		rb.isKinematic = true; // がたつきを防ぐためキネマティックにする (物理の動きは自前の処理か CharacterMovement に任せる)
 	}
 	if (!registry.all_of<BoxColliderComponent>(entity)) {
 		registry.emplace<BoxColliderComponent>(entity);
@@ -77,7 +84,7 @@ void BossTestScript::Start(entt::entity entity, GameScene* scene) {
 		cm.gravity = 40.0f;     // 巨体なので速く落ちる
 	}
 
-	// ★追加: アニメーションコンポーネントの追加
+	// アニメーターを追加する
 	if (!registry.all_of<AnimatorComponent>(entity)) {
 		registry.emplace<AnimatorComponent>(entity);
 	}
@@ -91,7 +98,7 @@ void BossTestScript::Start(entt::entity entity, GameScene* scene) {
 		hb.isActive = false; // 攻撃中のみtrueになる
 	}
 
-	// ★追加: ボス本体にHealthComponentがない場合は追加する（WaveSystem等で生存カウントするため）
+	// 体力が無ければ追加する (WaveSystem などで生存数を数えるため)
 	if (!registry.all_of<HealthComponent>(entity)) {
 		auto& hc = registry.emplace<HealthComponent>(entity);
 		hc.SetHp(250.0f);
@@ -103,7 +110,7 @@ void BossTestScript::Start(entt::entity entity, GameScene* scene) {
 		registry.emplace<HurtboxComponent>(entity);
 	}
 	
-	// ★追加: ボスのMeshRendererComponentを取得して、追加のアニメーションを読み込む
+	// モデルに追加のアニメーション (待機・歩き・旋回・死亡・ジャンプ攻撃・走り・咆哮) を読み込む
 	if (registry.all_of<MeshRendererComponent>(entity)) {
 		auto& bossMr = registry.get<MeshRendererComponent>(entity);
 		if (auto* renderer = Engine::Renderer::GetInstance()) {
@@ -117,6 +124,7 @@ void BossTestScript::Start(entt::entity entity, GameScene* scene) {
 			renderer->LoadAdditionalAnimation(bossMr.modelHandle, "Resources/Models/Animation/Boss/Mutant Roaring.fbx");
 		}
 	}
+	// モデルの大きさから、全身を覆う食らい判定と物理の箱を求める
 	auto& hr = registry.get<HurtboxComponent>(entity);
 	auto& bc = registry.get<BoxColliderComponent>(entity);
 	hr.tag = TagType::Enemy;
@@ -190,6 +198,7 @@ void BossTestScript::Start(entt::entity entity, GameScene* scene) {
 
 }
 
+// 更新: 状態ごとのアニメーション (アニメーターが無ければ伸縮の演出)、攻撃判定の大きさ、着地の衝撃波
 void BossTestScript::Update(entt::entity entity, GameScene* scene, float /*dt*/) {
 	auto& registry = scene->GetComponents();
 	if (!registry.all_of<BossActionComponent>(entity)) return;
@@ -210,10 +219,11 @@ void BossTestScript::Update(entt::entity entity, GameScene* scene, float /*dt*/)
 		bool hasAnimator = registry.all_of<AnimatorComponent>(entity);
 		auto* anim = hasAnimator ? &registry.get<AnimatorComponent>(entity) : nullptr;
 		if (anim) {
-			anim->isPlaying = true; // ★追加: 再生状態をオンにする
+			anim->isPlaying = true; // 再生状態にする
 			anim->drawSkeleton = false;
 		}
 		
+		// アニメーション名の解決: 接頭辞が一致するもの (mixamo のものを優先) を探し、結果を覚えておく
 		auto getAnimNameCached = [&](const std::string& prefix, const std::string& fallback) -> std::string {
 			auto it = animNameCache_.find(prefix);
 			if (it != animNameCache_.end()) {
@@ -247,6 +257,7 @@ void BossTestScript::Update(entt::entity entity, GameScene* scene, float /*dt*/)
 		};
 
 		bool stateChanged = (prevBossState_ != boss.state);
+		// アニメーションを再生する (別のアニメーションへは 0.2 秒かけて混ぜる)
 		auto playAnim = [&](const std::string& animPrefix, bool loop, float speed) {
 			if (!anim) return;
 			std::string targetName = getAnimNameCached(animPrefix, animPrefix);
@@ -257,7 +268,7 @@ void BossTestScript::Update(entt::entity entity, GameScene* scene, float /*dt*/)
 				forceRestart = true;
 			}
 			
-			// If playing attack animation, we don't want it to loop
+			// 攻撃のアニメーションはループさせない
 			if (animPrefix == "attack1") loop = false;
 
 			if (!targetName.empty()) {
@@ -283,6 +294,7 @@ void BossTestScript::Update(entt::entity entity, GameScene* scene, float /*dt*/)
 		};
 
 
+		// 状態ごとの処理
 		switch (boss.state) {
 		case BossState::Idle:
 			// mr.color = {0.8f, 0.8f, 0.8f, 1.0f}; // グレー
@@ -323,7 +335,7 @@ void BossTestScript::Update(entt::entity entity, GameScene* scene, float /*dt*/)
 					playAnim("Mutant Roaring", false, 0.5f); // 溜め動作としてRoaring
 				} else {
 					// 攻撃はループさせず、速度をさらに遅くしてタイミングを合わせる
-					playAnim("attack1", false, 0.4f); // search for "attack1_..." 
+					playAnim("attack1", false, 0.4f); // "attack1_..." を探す
 				}
 			} else {
 				if (attackType == BossAttackType::Thrust) {
@@ -356,7 +368,7 @@ void BossTestScript::Update(entt::entity entity, GameScene* scene, float /*dt*/)
 				} else if (attackType == BossAttackType::BeamSweep) {
 					playAnim("Mutant Roaring", false, 0.5f); // 継続
 				} else {
-					playAnim("attack1", false, 0.4f); // search for "attack1_..."
+					playAnim("attack1", false, 0.4f); // "attack1_..." を探す
 				}
 			} else {
 				if (attackType == BossAttackType::Thrust) {
@@ -393,7 +405,7 @@ void BossTestScript::Update(entt::entity entity, GameScene* scene, float /*dt*/)
 		case BossState::Cooldown:
 			// mr.color = {0.2f, 0.2f, 0.8f, 1.0f}; // 青（硬直・隙）
 			if (anim) {
-				playAnim("Mutant Idle", true, 1.0f); // search for "Mutant Idle_..."
+				playAnim("Mutant Idle", true, 1.0f); // "Mutant Idle_..." を探す
 			} else {
 				bTc.scale = originalScale_;
 			}
@@ -505,6 +517,7 @@ void BossTestScript::Update(entt::entity entity, GameScene* scene, float /*dt*/)
 	prevBossState_ = boss.state;
 }
 
+// 破棄時の処理は無い
 void BossTestScript::OnDestroy(entt::entity /*entity*/, GameScene* /*scene*/) {
 }
 

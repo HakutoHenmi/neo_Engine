@@ -284,10 +284,12 @@ void WindowDX::ToggleFullscreen() {
 
 namespace {
 bool cursorRequested = true;
+bool cursorForced = false;
 }
 
 void WindowDX::SetCursorVisible(bool visible) {
 	cursorRequested = visible;
+	visible = visible || cursorForced;
 	// ゲームパッド操作中はUIもフォーカス移動で扱うため、カーソルは出さない
 	if (auto* input = Input::GetInstance(); input && input->UsingGamepad()) {
 		visible = false;
@@ -309,6 +311,12 @@ void WindowDX::SetCursorVisible(bool visible) {
 }
 
 void WindowDX::RefreshCursor() { SetCursorVisible(cursorRequested); }
+
+void WindowDX::SetCursorForcedVisible(bool forced) {
+	if (cursorForced == forced) return;
+	cursorForced = forced;
+	RefreshCursor();
+}
 
 void WindowDX::Shutdown() {
 	WaitGPU();

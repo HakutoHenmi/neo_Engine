@@ -273,7 +273,7 @@ Releaseは実行ファイルと同じ場所の `Resources/shaders` を起動時�
 - `tests/Run-FluidTests.ps1 -Case '--near-volume-only'`: 0.18単位のグリッドで薄い流体の連続した表面、密度の保存、描画深度、遮蔽、遠方表示、履歴の除去を確認する。
 - `tests/GenerateSlimeLifeAssets.py`: オリジナルの武器用閉メッシュと、分裂・取り込み・合体の音を再生成する。
 
-配合による動作差、分裂の手触り、ASMRの音量、変形の速度は、実機で継続調整する対象。計画時の詳細は [全体プラン](SlimeRebootPlan.md) と [点群変形プラン](SlimePointCloudMorphPlan.md) を参照。
+配合による動作差、分裂の手触り、ASMRの音量、変形の速度は、実機で継続調整する対象。計画時の詳細は [全体プラン](archive/SlimeRebootPlan.md) と [点群変形プラン](archive/SlimePointCloudMorphPlan.md) を参照。
 
 全GPUテストを指定なしで実行した場合、旧コアの `player crown is pushed sideways or collapses` 判定で失敗する。この判定は変更前のHEADのシェーダーでも同じく失敗することを確認した。今回の通常液体・配合・点群変形の検証は `--morph-only` で独立して実行する。
 

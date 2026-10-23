@@ -1,3 +1,6 @@
+// GameManagerScript.h
+// 旧アクションゲームの結果表示 (敗北・クリア・リトライ) の文言と色を持つスクリプト。
+// シーンに1つだけ置き、GetInstance で他のシステムから参照する。
 #pragma once
 #include "IScript.h"
 #include <string>
@@ -6,6 +9,7 @@ namespace Game {
 
 class GameManagerScript : public IScript {
 public:
+    // 表示する文言・色・文字の大きさ (Inspector で編集し、シーンに保存する)
     std::string defeatText = "YOU DIED";
     std::string clearText = "STAGE CLEAR!";
     std::string retryText = "Press [ R ] to Retry";
@@ -14,6 +18,7 @@ public:
     float textScale = 6.0f;
     float clearTextScale = 3.0f;
 
+    // シーンに置かれているインスタンス (無ければ nullptr)
     static GameManagerScript* GetInstance() { return instance_; }
 
     ~GameManagerScript();

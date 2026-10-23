@@ -390,3 +390,7 @@ temp_play.json
 /PackageCheck/
 /RtLightingCheck/
 /externals/Streamline/bin/*.dll
+
+# Local tool settings and scratch files
+/.codex/
+/scratch/

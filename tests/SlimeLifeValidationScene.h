@@ -164,7 +164,7 @@ class SlimeLifeValidationScene final:public Game::GameScene {
         if(hydrantPhase_==7)input.returnToSlime=true;
         if(hydrantPhase_==8)input.attack=hydrantClock_>.35f;
         if(hydrantPhase_==3&&!enemies.empty())AimHydrantAt(input,body,enemies.front().at);
-        if(hydrantPhase_==6)AimHydrantAt(input,body,CityGateCenter+Vec{0,8,0});
+        if(hydrantPhase_==6)AimHydrantAt(input,body,CityGateCenter()+Vec{0,8,0});
         float before=life.age;Game::GameScene::Update();++frames_;hydrantClock_+=life.age-before;
         auto next=[&](){trace_<<"hydrant phase="<<hydrantPhase_<<" action="<<int(body.action)<<" ready="<<body.weapon.ready<<" hits="<<life.waterHits<<" blocks="<<life.waterBlocks<<" hp="<<body.health<<'\n';trace_.flush();++hydrantPhase_;hydrantClock_=0;};
         const auto& water=GetRenderer()->GetHydrantWaterSnapshot();hydrantWaterPeak_=std::max(hydrantWaterPeak_,water.particles.size());
@@ -490,7 +490,7 @@ class SlimeLifeValidationScene final:public Game::GameScene {
     }
 public:
     void Initialize(Engine::WindowDX* window,const Engine::SceneParameters&)override {
-        window_=window;Engine::SceneParameters params;params.stagePath="Resources/Scenes/chrono.json";Game::GameScene::Initialize(window,params);
+        window_=window;Engine::SceneParameters params;params.stagePath=Game::Data::MainStagePath();Game::GameScene::Initialize(window,params);
         GetComponents().emplace<Game::Chrono::ControlFrame>(FindObjectByName("Player"));start_=std::chrono::steady_clock::now();trace_.open("tests/out/slime-life-trace.txt");
         auto* renderer=Engine::Renderer::GetInstance();auto settings=renderer->GetGraphicsSettings();settings.rtShadows=settings.rtReflections=settings.rtIndirect=false;renderer->ApplyGraphicsSettings(settings);
     }

@@ -1,0 +1,10 @@
+{
+  "_comment": "グラフィック設定画面の値。effectDefaults は 6 つの効果 (ブルーム・レンズフレア・カラーグレーディング・AO・モーションブラー・被写界深度) を ON にしたときの強さ。プリセットに無い項目はエンジンの既定値になる。",
+  "effectDefaults": [0.16, 0.035, 0.55, 0.5, 0.2, 1.0],
+  "presets": {
+    "low": { "bloom": 0.08, "lensFlare": 0.0, "grading": 0.4, "ambientOcclusion": 0.0, "motionBlur": 0.0, "dof": 0.0, "exposure": 1.05 },
+    "balanced": {},
+    "high": { "bloom": 0.25, "lensFlare": 0.045, "grading": 0.65, "ambientOcclusion": 0.7, "motionBlur": 0.3, "dof": 1.0, "exposure": 1.05 }
+  },
+  "exposure": { "min": 0.6, "max": 1.6, "step": 0.1 }
+}

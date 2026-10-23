@@ -1,0 +1,102 @@
+{
+  "_comment": "クレジット画面のページ (見出しと、名前・詳細の行。1 ページ 5 行まで)。",
+  "title": "CREDITS / SPECIAL THANKS",
+  "pages": [
+    {
+      "heading": "MUSIC / Kevin MacLeod (incompetech.com)",
+      "rows": [
+        {
+          "title": "TITLE  /  Call to Adventure",
+          "detail": "Kevin MacLeod - CC BY 4.0"
+        },
+        {
+          "title": "SELECT & TRAINING  /  Carefree",
+          "detail": "Kevin MacLeod - CC BY 4.0"
+        },
+        {
+          "title": "BATTLE  /  Volatile Reaction",
+          "detail": "Kevin MacLeod - CC BY 4.0"
+        },
+        {
+          "title": "VICTORY  /  Fanfare for Space",
+          "detail": "Kevin MacLeod - CC BY 4.0"
+        },
+        {
+          "title": "DEFEAT  /  Evening Fall (Harp)",
+          "detail": "Kevin MacLeod - CC BY 4.0 / creativecommons.org/licenses/by/4.0/"
+        }
+      ]
+    },
+    {
+      "heading": "ART & USER INTERFACE",
+      "rows": [
+        {
+          "title": "UI Pack (2.0)",
+          "detail": "Kenney / www.kenney.nl / CC0 1.0"
+        },
+        {
+          "title": "Input Prompts (1.5A)",
+          "detail": "Kenney / www.kenney.nl / CC0 1.0"
+        },
+        {
+          "title": "Ultimate Platformer Pack",
+          "detail": "Quaternius / quaternius.com / CC0 1.0"
+        },
+        {
+          "title": "Slime effects & procedural sound effects",
+          "detail": "Generated for this game / GenerateSlimeMeshes & GenerateSlimeAudio"
+        },
+        {
+          "title": "Photogrammetry scenery / Poly Haven",
+          "detail": "CC0 / polyhaven.com / sources: Resources/Credits/MeadowRefresh.md"
+        }
+      ]
+    },
+    {
+      "heading": "FONTS / SIL OPEN FONT LICENSE 1.1",
+      "rows": [
+        {
+          "title": "Rajdhani",
+          "detail": "Copyright (c) 2014 Indian Type Foundry"
+        },
+        {
+          "title": "M PLUS Rounded 1c",
+          "detail": "Copyright 2016 The Rounded M+ Project Authors"
+        },
+        {
+          "title": "SIL Open Font License 1.1",
+          "detail": "openfontlicense.org"
+        },
+        {
+          "title": "Font licenses",
+          "detail": "OFL.txt is included with each font in Resources/Fonts."
+        }
+      ]
+    },
+    {
+      "heading": "SOFTWARE / OPEN SOURCE",
+      "rows": [
+        {
+          "title": "Dear ImGui / Omar Cornut",
+          "detail": "Copyright (c) 2014-2023 / MIT License"
+        },
+        {
+          "title": "DirectXTex / Microsoft Corporation",
+          "detail": "MIT License"
+        },
+        {
+          "title": "JSON for Modern C++ / Niels Lohmann",
+          "detail": "Copyright (c) 2013-2022 / MIT License"
+        },
+        {
+          "title": "Assimp / assimp team  -  stb_truetype / Sean Barrett",
+          "detail": "Assimp: BSD license / stb_truetype: MIT or public domain"
+        },
+        {
+          "title": "EnTT  /  ufbx  /  cpp-httplib",
+          "detail": "Thanks to the projects and their contributors. See Resources/Credits."
+        }
+      ]
+    }
+  ]
+}

@@ -13,6 +13,7 @@
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace Engine {
@@ -39,6 +40,9 @@ public:
 	using TransitionDrawer = std::function<void(const Transition&)>;
 	void SetTransitionDrawer(TransitionDrawer drawer) { transitionDrawer_ = std::move(drawer); }
 	bool InTransition() const { return transitionActive_; }
+	// UI 専用シーン (RequiresFullRenderer()==false) でも 3D パイプラインを先に用意するシーン。
+	// エディタはゲーム画像を Game ビューに表示するため、通常のフレーム経路が必要になる
+	void SetFullRendererScenes(std::unordered_set<std::string> names) { fullRendererScenes_ = std::move(names); }
 
 public:
 	void Register(const std::string& name, Factory factory);
@@ -65,6 +69,7 @@ public:
 
 private:
 	std::unordered_map<std::string, Factory> factories_;
+	std::unordered_set<std::string> fullRendererScenes_;
 	std::unique_ptr<IScene> current_;
 	std::string currentName_;
 	SceneParameters currentParams_;

@@ -545,6 +545,7 @@ public:
 	// Deforms existing player particles; no separate arm mesh or extra emission.
 	void SetGPUFluidTether(const Vector3& tip, bool active) { gpuFluidTetherTip_ = tip; gpuFluidTetherActive_ = active; }
 	void SetRogueWorldFrozen(bool value) { rogueWorldFrozen_=value; }
+	bool GetRogueWorldFrozen() const { return rogueWorldFrozen_; }
 	void SetChronoFluidPresentation(float opacity,float flash,bool paused) { chronoFluidOpacity_=opacity;chronoFluidFlash_=flash;chronoFluidPaused_=paused; }
 	Vector3 gpuFluidTetherTip_{};
 	bool gpuFluidTetherActive_ = false;

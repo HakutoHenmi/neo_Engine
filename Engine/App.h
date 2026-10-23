@@ -35,6 +35,10 @@ public:
 	using SceneRegistrar = std::function<void(SceneManager& sm, WindowDX& dx)>;
 	void SetSceneRegistrar(SceneRegistrar f) { registrar_ = std::move(f); }
 	void SetInitialSceneKey(const std::string& key) { initialSceneKey_ = key; }
+	// エディタ UI の描画をゲーム側へ任せる (未設定なら各シーンの DrawEditor をそのまま呼ぶ)
+	using EditorPresenter = std::function<void(IScene& scene, const std::string& sceneName)>;
+	void SetEditorPresenter(EditorPresenter f) { editorPresenter_ = std::move(f); }
+	SceneManager& GetSceneManager() { return sceneManager_; }
 
 private:
 	void BeginFrame_();
@@ -42,6 +46,7 @@ private:
 
 private:
 	SceneManager sceneManager_;
+	EditorPresenter editorPresenter_;
 	HWND hwnd_ = nullptr;
 	WindowDX dx_;
 	Input input_;

@@ -1,21 +1,28 @@
+// CharacterMovementSystem.h
+// 旧アクションゲームのキャラクターの移動 (カメラ基準の水平移動・壁判定・ジャンプと重力・接地・向き)。
 #pragma once
 #include "ISystem.h"
 #include <cmath>
 
 namespace Game {
 
+// キャラクター移動のシステム
 class CharacterMovementSystem : public ISystem {
 public:
+	// PLAY 中、入力に応じてキャラクターを動かす
 	void Update(entt::registry& registry, GameContext& ctx) override {
 		if (!ctx.isPlaying) return;
 
+		// キャラクター移動・剛体・トランスフォームを持つエンティティを処理する
 		auto view = registry.view<CharacterMovementComponent, RigidbodyComponent, TransformComponent>();
 		for (auto entity : view) {
 			auto& cm = view.get<CharacterMovementComponent>(entity);
 			auto& rb = view.get<RigidbodyComponent>(entity);
 			auto& tc = view.get<TransformComponent>(entity);
+			// 無効なら動かさない
 			if (!cm.enabled || !rb.enabled) continue;
 
+			// プレイヤー入力があれば移動方向とジャンプを読み取る
 			DirectX::XMFLOAT2 inputDir = {0, 0};
 			bool wantJump = false;
 			if (registry.all_of<PlayerInputComponent>(entity)) {
@@ -25,8 +32,8 @@ public:
 					wantJump = pi.jumpRequested;
 				}
 			}
-			// --- カメラ基準の移動計算 ---
-			// --- 3rd Person Character Controller 方式の移動更新 ---
+			// カメラ基準の移動計算
+			// 三人称キャラクターコントローラー方式の移動更新
 			float moveX = 0, moveZ = 0;
 			if (ctx.camera) {
 				// 入力の正規化 (斜め移動の加速防止)
@@ -37,6 +44,7 @@ public:
 					normInput.y /= mag;
 				}
 
+				// カメラのヨー角で入力をワールドの XZ 方向へ回す
 				auto camRot = ctx.camera->Rotation();
 				float cy = std::cos(camRot.y);
 				float sy = std::sin(camRot.y);
@@ -45,11 +53,13 @@ public:
 			}
 			
 			// 1. 壁判定と水平移動
+			// このフレームの移動量
 			float desiredX = moveX * cm.speed * ctx.dt;
 			float desiredZ = moveZ * cm.speed * ctx.dt;
 
+			// 動こうとしているときだけ壁を調べる
 			if (ctx.scene && (std::abs(moveX) > 0.001f || std::abs(moveZ) > 0.001f)) {
-				// --- 強力な段差制限による壁判定 ---
+				// 段差の高さを強く制限した壁判定
 				float futureX = tc.translate.x + desiredX;
 				float futureZ = tc.translate.z + desiredZ;
 				float currentFeetY = tc.translate.y - cm.heightOffset;
@@ -71,11 +81,13 @@ public:
 					}
 				}
 			}
+			// 水平の位置を進める
 			tc.translate.x += desiredX;
 			tc.translate.z += desiredZ;
 
 			// 2. 垂直移動と重力の更新 (isKinematic = true 前提での手動計算)
 			if (cm.isGrounded) {
+				// 接地中にジャンプの入力があれば上向きの速度を与える
 				if (wantJump) {
 					rb.velocity.y = cm.jumpPower;
 					cm.isGrounded = false;
@@ -86,6 +98,7 @@ public:
 				// 自由落下
 				rb.velocity.y -= cm.gravity * ctx.dt;
 			}
+			// 縦の速度の分だけ高さを変える
 			tc.translate.y += rb.velocity.y * ctx.dt;
 
 			// 3. 接地判定とスナップ (レイキャストを使用)
@@ -98,6 +111,7 @@ public:
 				// 2. 落下または静止中 (rb.velocity.y <= 0.01) かつ 地面を突き抜けた(埋まった)場合のみ着地・固定
 				// 3. 地面から離れている場合は grounded を解除 (空中浮遊防止)
 				
+				// 足元の高さ
 				float feetY = tc.translate.y - cm.heightOffset;
 				if (rb.velocity.y <= 0.01f) {
 					// 地面を通過したか、ほぼ地表にある場合のみ snap
@@ -114,8 +128,9 @@ public:
 				}
 			}
 
-			// --- 4. 回転 (スムーズな補間) ---
+			// 4. 向き (なめらかに補間する)
 			if (std::abs(moveX) > 0.01f || std::abs(moveZ) > 0.01f) {
+				// 移動方向を向く角度
 				float targetRotation = std::atan2(moveX, moveZ);
 				float currentRotation = tc.rotate.y;
 				
@@ -124,6 +139,7 @@ public:
 				while (diff >  DirectX::XM_PI) diff -= DirectX::XM_2PI;
 				while (diff < -DirectX::XM_PI) diff += DirectX::XM_2PI;
 				
+				// 回転の速さ (1 秒で約 20 回分近づく)
 				float rotationSpeed = 20.0f; 
 				tc.rotate.y += diff * std::min(1.0f, rotationSpeed * ctx.dt);
 			}
@@ -132,7 +148,9 @@ public:
 		}
 	}
 
+	// PLAY 開始時: 接地状態を消す
 	void Reset(entt::registry& registry) override {
+		// すべてのキャラクターを空中扱いに戻す
 		auto view = registry.view<CharacterMovementComponent>();
 		for (auto entity : view) {
 			auto& cm = registry.get<CharacterMovementComponent>(entity);

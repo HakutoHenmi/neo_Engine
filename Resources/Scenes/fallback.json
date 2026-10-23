@@ -1,0 +1,57 @@
+{
+  "_comment": "本編のシーンファイルが読めないときに使う最低限のシーン (太陽・地形・空・プレイヤー)。game.json の fallbackStage から読む。",
+  "objects": [
+    {
+      "id": 1,
+      "name": "Sun",
+      "translate": [0, 10, 0],
+      "rotate": [0.7853982, 0.5235988, 0],
+      "scale": [1, 1, 1],
+      "components": [
+        { "type": "DirectionalLight", "enabled": true, "color": [1, 1, 1], "intensity": 1.0 }
+      ]
+    },
+    {
+      "id": 2,
+      "name": "CrystalForest_Main",
+      "translate": [0, 0, 0],
+      "rotate": [0, 0, 0],
+      "scale": [10, 10, 10],
+      "components": [
+        { "type": "MeshRenderer", "enabled": true, "modelPath": "Resources/Models/Stages/map/CrystalForest_02_Main.glb" },
+        { "type": "GpuMeshCollider", "enabled": true, "meshPath": "Resources/Models/Stages/map/CrystalForest_02_Main.glb" }
+      ]
+    },
+    {
+      "id": 3,
+      "name": "CrystalForest_Sky",
+      "translate": [0, 0, 0],
+      "rotate": [0, 0, 0],
+      "scale": [10, 10, 10],
+      "components": [
+        { "type": "MeshRenderer", "enabled": true, "modelPath": "Resources/Models/Stages/map/CrystalForest_01_Sky.glb" }
+      ]
+    },
+    {
+      "id": 4,
+      "name": "Player",
+      "translate": [0, 1, -0.15],
+      "rotate": [0, 0, 0],
+      "scale": [1, 1, 1],
+      "components": [
+        { "type": "MeshRenderer", "enabled": true, "modelPath": "Resources/Models/player_ball/ball.obj", "shaderName": "Slime",
+          "color": [0.4, 0.8, 0.1, 0.8], "useCubemap": true, "reflectivity": 1.0 },
+        { "type": "BoxCollider", "enabled": true, "center": [0, 0, 0], "size": [1.5, 1.5, 1.5], "isTrigger": false },
+        { "type": "Rigidbody", "enabled": true, "velocity": [0, 0, 0], "useGravity": true, "isKinematic": true },
+        { "type": "Health", "enabled": true, "hp": 100, "maxHp": 100, "isDead": false },
+        { "type": "Tag", "enabled": true, "tag": "Player" },
+        { "type": "PlayerInput", "enabled": true },
+        { "type": "CharacterMovement", "enabled": true, "speed": 8.0, "jumpPower": 10.0, "gravity": 9.8, "heightOffset": 0.75 },
+        { "type": "CameraTarget", "enabled": true, "distance": 16.0, "height": 2.5, "smoothSpeed": 8.0 },
+        { "type": "Hitbox", "enabled": true, "center": [0, 0, 1.5], "size": [1.5, 1.5, 4.0], "damage": 15, "isActive": false, "tag": "Player" },
+        { "type": "Hurtbox", "enabled": true, "center": [0, 0, 0], "size": [2.0, 2.0, 2.0], "damageMultiplier": 1.0, "tag": "Player" },
+        { "type": "PlayerAction", "enabled": true, "dodgeDuration": 0.4, "dodgeSpeed": 15.0 }
+      ]
+    }
+  ]
+}

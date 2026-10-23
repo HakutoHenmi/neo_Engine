@@ -1,0 +1,37 @@
+{
+  "_comment": "エディタの設定。sceneLauncher は Scenes メニューとツールバーのシーン切り替えの項目 (stage が空なら本編のシーン)。hostedScenes はエディタの画面で包んで表示する、GameScene 以外のシーン。",
+  "sceneLauncher": [
+    { "group": "Game Flow", "label": "Title", "scene": "Title", "stage": "", "note": "Title screen" },
+    { "group": "Game Flow", "label": "Select", "scene": "Select", "stage": "", "note": "Stage select" },
+    { "group": "Game Flow", "label": "City Stage", "scene": "Game", "stage": "", "note": "Slime city stage (main game)" },
+    { "group": "Game Flow", "label": "Game Over", "scene": "GameOver", "stage": "", "note": "Result screen" },
+    { "group": "Demos", "label": "Assignment Demo", "scene": "Assignment", "stage": "", "note": "Skinning, animation blending, bones, GPU particles" },
+    { "group": "Demos", "label": "Fluid Sandbox", "scene": "Game", "stage": "Resources/Scenes/fluid_sandbox.json", "note": "Glass tank and water preview" }
+  ],
+  "hostedScenes": [
+    "Title",
+    "Select",
+    "GameOver",
+    "Assignment"
+  ],
+  "slimeDevTools": {
+    "_comment": "Slime Dev Tools ウィンドウ。warpPoints はワープのボタン、stepStarts は「この段階から開始」で移動する位置 (段階の順に 8 つ)。",
+    "warpPoints": [
+      { "label": "路地裏 (スタート)", "at": [0, 1.25, -680] },
+      { "label": "路地裏 (バリケード前)", "at": [78, 1.25, -500] },
+      { "label": "市街地", "at": [78, 1.25, -400] },
+      { "label": "市街地 (鉄門前)", "at": [78, 1.25, -90] },
+      { "label": "大交差点", "at": [78, 1.25, 340] }
+    ],
+    "stepStarts": [
+      [0, 1.25, -680],
+      [78, 1.25, -500],
+      [78, 1.25, -400],
+      [78, 1.25, -280],
+      [78, 1.25, -150],
+      [78, 1.25, 120],
+      [78, 1.25, 260],
+      [78, 1.25, 340]
+    ]
+  }
+}

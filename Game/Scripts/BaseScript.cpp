@@ -1,3 +1,5 @@
+// BaseScript.cpp
+// ひな形スクリプトの実装 (中身は空)。
 #include "BaseScript.h"
 #include "ObjectTypes.h"
 #include "Scenes/GameScene.h"
@@ -24,6 +26,7 @@ void BaseScript::Update(entt::entity entity, GameScene* scene, float dt) {
 	(void)dt;
 }
 
+// 破棄時の処理 (ひな形では何もしない)
 void BaseScript::OnDestroy(entt::entity /*entity*/, GameScene* /*scene*/) {}
 
 void BaseScript::OnEditorUI() {
@@ -33,6 +36,7 @@ void BaseScript::OnEditorUI() {
 #endif
 }
 
+// 保存するパラメータを文字列にする / 文字列から読み込む
 std::string BaseScript::SerializeParameters() {
 	return "";
 }
@@ -41,6 +45,7 @@ void BaseScript::DeserializeParameters(const std::string& data) {
 	(void)data;
 }
 
+// ScriptEngine へ自動登録する
 REGISTER_SCRIPT(BaseScript);
 
 } // namespace Game

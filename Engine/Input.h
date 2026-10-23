@@ -37,6 +37,12 @@ public:
 
 	// ★追加: 絶対座標とボタン状態
 	void GetMousePos(float& x, float& y) const { x = absMouseX_; y = absMouseY_; }
+	// エディタの Game ビュー (クライアント座標の矩形) に画面を表示している間、
+	// マウス座標をその矩形基準で内部解像度へ換算する。Clear で通常 (ウィンドウ全体) に戻す
+	void SetPointerViewport(float x, float y, float width, float height) {
+		viewportX_ = x; viewportY_ = y; viewportW_ = width; viewportH_ = height; useViewport_ = width > 0 && height > 0;
+	}
+	void ClearPointerViewport() { useViewport_ = false; }
 	bool IsMouseDown(int button) const { return (mouseState_.rgbButtons[button] & 0x80) != 0; }
 	bool IsMouseTrigger(int button) const { return IsMouseDown(button) && !(prevMouseState_.rgbButtons[button] & 0x80); }
 
@@ -76,6 +82,8 @@ private:
 	float mouseY_ = 0.0f;
 	float absMouseX_ = 0.0f; // ★追加
 	float absMouseY_ = 0.0f; // ★追加
+	bool useViewport_ = false;
+	float viewportX_ = 0.0f, viewportY_ = 0.0f, viewportW_ = 0.0f, viewportH_ = 0.0f;
 	float wheel_ = 0.0f;
 	HWND hwnd_ = nullptr; // ★追加
 

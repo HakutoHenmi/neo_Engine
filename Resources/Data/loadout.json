@@ -1,0 +1,15 @@
+{
+  "_comment": "旧アクションゲームの缶の装備。defaultCans は最初の装備 (4 つまで)、names は画面に出す缶の名前 (None は空のスロット)。",
+  "defaultCans": ["Fire", "Water", "Thunder", "Soda"],
+  "names": {
+    "None": "Empty",
+    "Fire": "Fire",
+    "Water": "Water",
+    "Thunder": "Thunder",
+    "Soda": "Soda",
+    "Ice": "Ice",
+    "Magnet": "Magnet",
+    "Acid": "Acid",
+    "Bubble": "Bubble"
+  }
+}

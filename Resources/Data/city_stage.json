@@ -1,0 +1,302 @@
+{
+  "_comment": "街のステージのデータ。ワールドの単位は約 6 単位で 1 メートル。段階は 8 つ、敵の種類は 8 つで、並びはコードの列挙型と同じにすること。",
+  "layout": {
+    "_comment": "walk は歩ける床の矩形 [x0, z0, x1, z1]。0-2 が裏路地、3 が大通り、4-5 が横の通り、6 が門の通路、7 が交差点 (建物の配置もこの番号を使う)。",
+    "walk": [
+      [-22, -700, 22, -580],
+      [-22, -584, 100, -540],
+      [56, -544, 100, -468],
+      [-12, -472, 168, -72],
+      [-160, -300, -8, -230],
+      [164, -300, 316, -230],
+      [48, -76, 108, -36],
+      [-302, -40, 458, 720]
+    ],
+    "barricade": [54, -486, 102, -474],
+    "ironGate": [46, -62, 110, -50],
+    "barricadeCenter": [78, 0, -480],
+    "gateCenter": [78, 0, -56],
+    "crossing": [78, 0, 340],
+    "roadHalf": 80,
+    "start": [0, 0, -680],
+    "_areaComment": "z がこれより小さければ裏路地 / 市街地",
+    "alleyEndZ": -476,
+    "streetEndZ": -44
+  },
+  "areas": {
+    "Alley": "路地裏",
+    "Street": "市街地",
+    "Plaza": "大交差点"
+  },
+  "gates": {
+    "barricadeHealth": 120,
+    "gateHealth": 900,
+    "gateAbsorbMass": 1400,
+    "gateReward": 320
+  },
+  "shotDamage": {
+    "arrow": 6,
+    "shell": 16
+  },
+  "enemies": [
+    {
+      "id": "Rat",
+      "name": "ネズミ",
+      "scale": 0.75,
+      "health": 18,
+      "required": 15,
+      "reward": 14,
+      "armor": 0,
+      "damage": 4,
+      "alertRange": 34,
+      "standoff": 0
+    },
+    {
+      "id": "Guard",
+      "name": "警備兵",
+      "scale": 3.2,
+      "health": 70,
+      "required": 140,
+      "reward": 40,
+      "armor": 0,
+      "damage": 9,
+      "alertRange": 70,
+      "standoff": 0
+    },
+    {
+      "id": "Archer",
+      "name": "弓兵",
+      "scale": 3,
+      "health": 60,
+      "required": 220,
+      "reward": 45,
+      "armor": 0,
+      "damage": 5,
+      "alertRange": 95,
+      "standoff": 42
+    },
+    {
+      "id": "Shield",
+      "name": "盾持ち",
+      "scale": 3.4,
+      "health": 110,
+      "required": 280,
+      "reward": 70,
+      "armor": 0,
+      "damage": 8,
+      "alertRange": 70,
+      "standoff": 0
+    },
+    {
+      "id": "Knight",
+      "name": "騎士",
+      "scale": 3.8,
+      "health": 170,
+      "required": 520,
+      "reward": 80,
+      "armor": 0,
+      "damage": 14,
+      "alertRange": 70,
+      "standoff": 0
+    },
+    {
+      "id": "Cannon",
+      "name": "防衛砲台",
+      "scale": 4.2,
+      "health": 260,
+      "required": 1300,
+      "reward": 180,
+      "armor": 0,
+      "damage": 0,
+      "alertRange": 150,
+      "standoff": 0
+    },
+    {
+      "id": "Soldier",
+      "name": "兵士",
+      "scale": 3.4,
+      "health": 120,
+      "required": 650,
+      "reward": 60,
+      "armor": 0,
+      "damage": 12,
+      "alertRange": 70,
+      "standoff": 0
+    },
+    {
+      "id": "Guardian",
+      "name": "城砦ゴーレム",
+      "scale": 15,
+      "health": 3200,
+      "required": 3600,
+      "reward": 400,
+      "armor": 700,
+      "damage": 28,
+      "alertRange": 70,
+      "standoff": 0
+    }
+  ],
+  "steps": [
+    {
+      "area": "Alley",
+      "title": "路地裏の掃除",
+      "goal": "ゴミ袋や箱を吸い込み、ネズミを弱らせて取り込む",
+      "spawns": [
+        {"kind": "Rat", "at": [-12, 0, -660]},
+        {"kind": "Rat", "at": [12, 0, -652]},
+        {"kind": "Rat", "at": [6, 0, -636]},
+        {"kind": "Rat", "at": [-10, 0, -622]},
+        {"kind": "Rat", "at": [13, 0, -606]},
+        {"kind": "Rat", "at": [-3, 0, -594]}
+      ]
+    },
+    {
+      "area": "Alley",
+      "title": "見回りの警備兵",
+      "goal": "警備兵を止めて吸い込み、ハンマーで工事バリケードを壊す",
+      "spawns": [
+        {"kind": "Guard", "at": [-6, 0, -562], "patrol": [88, 0, -562]},
+        {"kind": "Guard", "at": [78, 0, -500], "patrol": [78, 0, -536]},
+        {"kind": "Rat", "at": [60, 0, -570]},
+        {"kind": "Rat", "at": [92, 0, -552]},
+        {"kind": "Rat", "at": [64, 0, -520]},
+        {"kind": "Rat", "at": [92, 0, -498]}
+      ]
+    },
+    {
+      "area": "Street",
+      "title": "大通りの警備隊",
+      "goal": "消火栓を吸収し、放水で盾を崩して水で矢を防ぐ",
+      "spawns": [
+        {"kind": "Archer", "at": [0, 0, -380]},
+        {"kind": "Archer", "at": [156, 0, -360]},
+        {"kind": "Archer", "at": [4, 0, -300]},
+        {"kind": "Archer", "at": [152, 0, -262]},
+        {"kind": "Archer", "at": [40, 0, -200]},
+        {"kind": "Archer", "at": [116, 0, -200]},
+        {"kind": "Shield", "at": [48, 0, -440]},
+        {"kind": "Shield", "at": [68, 0, -446]},
+        {"kind": "Shield", "at": [88, 0, -446]},
+        {"kind": "Shield", "at": [108, 0, -440]}
+      ]
+    },
+    {
+      "area": "Street",
+      "title": "脇道の制圧",
+      "goal": "消火栓の放水で脇道の警備兵を押し返す",
+      "spawns": [
+        {"kind": "Guard", "at": [-140, 0, -276], "patrol": [-30, 0, -276]},
+        {"kind": "Guard", "at": [-100, 0, -248], "patrol": [-148, 0, -248]},
+        {"kind": "Guard", "at": [-40, 0, -252], "patrol": [-40, 0, -288]},
+        {"kind": "Guard", "at": [196, 0, -248], "patrol": [300, 0, -248]},
+        {"kind": "Guard", "at": [256, 0, -282], "patrol": [184, 0, -282]},
+        {"kind": "Guard", "at": [292, 0, -254], "patrol": [292, 0, -290]},
+        {"kind": "Guard", "at": [30, 0, -420], "patrol": [30, 0, -330]},
+        {"kind": "Guard", "at": [128, 0, -392], "patrol": [128, 0, -460]},
+        {"kind": "Guard", "at": [40, 0, -150], "patrol": [116, 0, -150]},
+        {"kind": "Guard", "at": [116, 0, -120], "patrol": [40, 0, -120]}
+      ]
+    },
+    {
+      "area": "Street",
+      "title": "騎士団と封鎖シャッター",
+      "goal": "水圧で騎士団を倒し、放水で封鎖シャッターを破る",
+      "spawns": [
+        {"kind": "Knight", "at": [48, 0, -180]},
+        {"kind": "Knight", "at": [68, 0, -180]},
+        {"kind": "Knight", "at": [88, 0, -180]},
+        {"kind": "Knight", "at": [108, 0, -180]},
+        {"kind": "Knight", "at": [48, 0, -162]},
+        {"kind": "Knight", "at": [68, 0, -162]},
+        {"kind": "Knight", "at": [88, 0, -162]},
+        {"kind": "Knight", "at": [108, 0, -162]},
+        {"kind": "Knight", "at": [48, 0, -144]},
+        {"kind": "Knight", "at": [68, 0, -144]},
+        {"kind": "Knight", "at": [88, 0, -144]},
+        {"kind": "Knight", "at": [108, 0, -144]}
+      ]
+    },
+    {
+      "area": "Plaza",
+      "title": "交差点の防衛陣地",
+      "goal": "防衛砲台を黙らせ、兵士をまとめて飲み込む",
+      "spawns": [
+        {"kind": "Cannon", "at": [-172, 0, 90]},
+        {"kind": "Cannon", "at": [328, 0, 90]},
+        {"kind": "Cannon", "at": [-172, 0, 590]},
+        {"kind": "Cannon", "at": [328, 0, 590]},
+        {"kind": "Soldier", "at": [308, 0, 340]},
+        {"kind": "Soldier", "at": [235.05951, 0, 405.05618]},
+        {"kind": "Soldier", "at": [240.63455, 0, 502.63455]},
+        {"kind": "Soldier", "at": [143.05618, 0, 497.0595]},
+        {"kind": "Soldier", "at": [77.99999, 0, 570]},
+        {"kind": "Soldier", "at": [12.943802, 0, 497.0595]},
+        {"kind": "Soldier", "at": [-84.63456, 0, 502.63455]},
+        {"kind": "Soldier", "at": [-79.05954, 0, 405.05615]},
+        {"kind": "Soldier", "at": [-152, 0, 339.99997]},
+        {"kind": "Soldier", "at": [-79.05952, 0, 274.94382]},
+        {"kind": "Soldier", "at": [-84.63453, 0, 177.36542]},
+        {"kind": "Soldier", "at": [12.943869, 0, 182.94046]},
+        {"kind": "Soldier", "at": [78, 0, 110]},
+        {"kind": "Soldier", "at": [143.05621, 0, 182.94049]},
+        {"kind": "Soldier", "at": [240.63461, 0, 177.3655]},
+        {"kind": "Soldier", "at": [235.05952, 0, 274.94382]}
+      ]
+    },
+    {
+      "area": "Plaza",
+      "title": "押し寄せる兵士",
+      "goal": "子分の大群で兵士を弱らせ、一気に取り込む",
+      "spawns": [
+        {"kind": "Soldier", "at": [338, 0, 340]},
+        {"kind": "Soldier", "at": [362.42773, 0, 396.57617]},
+        {"kind": "Soldier", "at": [373.64145, 0, 462.45868]},
+        {"kind": "Soldier", "at": [294.1821, 0, 484.44824]},
+        {"kind": "Soldier", "at": [283.061, 0, 545.0609]},
+        {"kind": "Soldier", "at": [255.78253, 0, 606.07025]},
+        {"kind": "Soldier", "at": [177.49776, 0, 580.2087]},
+        {"kind": "Soldier", "at": [134.57628, 0, 624.42773]},
+        {"kind": "Soldier", "at": [78.0001, 0, 660]},
+        {"kind": "Soldier", "at": [27.276606, 0, 595.0042]},
+        {"kind": "Soldier", "at": [-32.97809, 0, 607.9251]},
+        {"kind": "Soldier", "at": [-99.782326, 0, 606.0704]},
+        {"kind": "Soldier", "at": [-105.84768, 0, 523.84784]},
+        {"kind": "Soldier", "at": [-163.12613, 0, 501.11545]},
+        {"kind": "Soldier", "at": [-217.64139, 0, 462.45886]},
+        {"kind": "Soldier", "at": [-177.00414, 0, 390.72366]},
+        {"kind": "Soldier", "at": [-212, 0, 340.00018]},
+        {"kind": "Soldier", "at": [-235.85132, 0, 277.57126]},
+        {"kind": "Soldier", "at": [-162.20876, 0, 240.50249]},
+        {"kind": "Soldier", "at": [-163.12633, 0, 178.88484]},
+        {"kind": "Soldier", "at": [-148.27435, 0, 113.726006]},
+        {"kind": "Soldier", "at": [-66.44842, 0, 123.818]},
+        {"kind": "Soldier", "at": [-32.97849, 0, 72.075066]},
+        {"kind": "Soldier", "at": [15.570777, 0, 26.148777]},
+        {"kind": "Soldier", "at": [77.999756, 0, 80]},
+        {"kind": "Soldier", "at": [134.57594, 0, 55.572224]},
+        {"kind": "Soldier", "at": [200.45847, 0, 44.358463]},
+        {"kind": "Soldier", "at": [222.448, 0, 123.81773]},
+        {"kind": "Soldier", "at": [283.06073, 0, 134.93881]},
+        {"kind": "Soldier", "at": [344.0701, 0, 162.21725]},
+        {"kind": "Soldier", "at": [318.20853, 0, 240.50197]},
+        {"kind": "Soldier", "at": [362.42764, 0, 283.42343]}
+      ]
+    },
+    {
+      "area": "Plaza",
+      "title": "城砦ゴーレム",
+      "goal": "足の装甲をハンマーで砕き、守護者を倒す",
+      "spawns": [
+        {"kind": "Guardian", "at": [78, 0, 560]},
+        {"kind": "Soldier", "at": [208, 0, 520]},
+        {"kind": "Soldier", "at": [169.92387, 0, 583.6396]},
+        {"kind": "Soldier", "at": [77.99999, 0, 610]},
+        {"kind": "Soldier", "at": [-13.92388, 0, 583.6396]},
+        {"kind": "Soldier", "at": [-52, 0, 520]},
+        {"kind": "Soldier", "at": [-13.923864, 0, 456.36038]},
+        {"kind": "Soldier", "at": [78, 0, 430]},
+        {"kind": "Soldier", "at": [169.9239, 0, 456.3604]}
+      ]
+    }
+  ]
+}
