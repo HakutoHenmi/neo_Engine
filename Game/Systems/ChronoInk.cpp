@@ -1,5 +1,7 @@
-// ChronoInk.inl
-// ChronoSystem.cpp から読み込まれる: 新しいゲームのシミュレーションの流れ全体。
+// ChronoInk.cpp
+// 新しいゲームのシミュレーションの流れ全体。
+#include "ChronoSystemInternal.h"
+
 namespace Game {
 // インクのステージを作る: プレイヤーの状態・古いエンティティの削除・当たり判定・塗れる面・地形と景観・シェーダー・音・群れ
 void ChronoSystem::BuildInk(entt::registry& r){

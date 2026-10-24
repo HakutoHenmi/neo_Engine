@@ -2,6 +2,10 @@
 // ゲーム本編のシーンの実装。
 // 初期化 (シーンファイルの読み込みとシステムの登録)、毎フレームの更新と描画、
 // エンティティの生成・破棄の予約処理、タグ検索のキャッシュ、PLAY の開始・停止を扱う。
+//
+// このファイル: 破棄・初期化・毎フレームの更新 (Update とその手順)・PLAY の開始と停止・ポーズ。
+// 描画は GameSceneDraw.cpp、エディタ用の線の表示は GameSceneGizmos.cpp、
+// エンティティの管理・探索・タグは GameSceneEntities.cpp にある。
 #include <cfloat>
 // シーンの BGM
 #include "../UI/SceneMusic.h"
@@ -64,18 +68,6 @@
 #include <filesystem> // 空のテクスチャ検索などのファイル操作
 
 namespace Game {
-
-// このファイルの中だけで使う関数
-namespace {
-	// スライムのぷよぷよした揺れを CPU で計算するための簡易 3D ノイズ (Simplex ノイズの代わり)
-	float Noise3D(float x, float y, float z) {
-		// sin・cos を組み合わせた滑らかな値
-		float n = std::sin(x) * std::cos(y) * std::sin(z);
-		n += std::sin(x * 2.1f + y * 1.3f) * 0.5f;
-		n += std::cos(y * 1.7f + z * 2.5f) * 0.5f;
-		return n * 0.5f;
-	}
-}
 
 // 破棄: シグナルの接続を外し、シーンとシステムを片付ける
 GameScene::~GameScene() {
@@ -191,8 +183,7 @@ void GameScene::Initialize(Engine::WindowDX* dx, const Engine::SceneParameters& 
 	// 空 (キューブマップ) の読み込み
 	if(auto sky=renderer_->LoadCubeMap("Resources/Textures/PolyHaven/kloppenheim_06_puresky_8k_cube.dds"))renderer_->SetSkyboxTexture(sky);
 
-
-	// パーティクルエディターの初期化
+// パーティクルエディターの初期化
 	particleEditor_.Initialize();
 
 	// スクリプトエンジンの初期化
@@ -233,8 +224,7 @@ void GameScene::Initialize(Engine::WindowDX* dx, const Engine::SceneParameters& 
 	scriptSys->SetScene(this);
 	systems_.push_back(std::move(scriptSys));
 
-
-	// 音・UI・モーション
+// 音・UI・モーション
 	systems_.push_back(std::make_unique<AudioSystem>());
 	systems_.push_back(std::make_unique<UISystem>());
 	systems_.push_back(std::make_unique<MotionSystem>());
@@ -257,16 +247,13 @@ void GameScene::Initialize(Engine::WindowDX* dx, const Engine::SceneParameters& 
 		initialSceneSnapshot_ = EditorUI::SaveToMemory(this);
 	}
 
-
-	// 各システムを初期状態にする
+// 各システムを初期状態にする
 	// 各Systemのリセット
 	for (auto& sys : systems_) {
 		sys->Reset(registry_);
 	}
 
-
-
-	// タグ検索のキャッシュを作り直す
+// タグ検索のキャッシュを作り直す
 	tagCache_.clear();
 	pendingTagSync_.clear();
 	pendingTagRemoved_.clear();
@@ -277,9 +264,7 @@ void GameScene::Initialize(Engine::WindowDX* dx, const Engine::SceneParameters& 
 		tagCache_[tag].push_back(entity);
 	}
 
-
-
-	// Web プロファイラとの双方向のパラメータ通信を登録する
+// Web プロファイラとの双方向のパラメータ通信を登録する
 	// Web プロファイラから値を変更されたとき: 環境光の色とプレイヤーの速さ
 	Engine::NetworkProfiler::GetInstance().SetParameterUpdateCallback([this](const std::string& target, const std::string& prop, float val) {
 		// 環境光の R / G / B のどれかを変える
@@ -360,6 +345,118 @@ void GameScene::Update() {
 	// ワールド行列のキャッシュを毎フレーム捨てる
 	ClearMatrixCache();
 
+	// 生成・破棄で予約したタグのキャッシュの更新を反映する
+	FlushPendingTags();
+
+	// 前フレームからの経過時間
+	static auto last = std::chrono::steady_clock::now();
+	auto now = std::chrono::steady_clock::now();
+	float dt = std::chrono::duration<float>(now - last).count();
+	last = now;
+
+	if (dt > 1.0f / 10.0f)
+		dt = 1.0f / 60.0f; // 長く止まった後 (極端なラグ) は 1/60 秒として扱う
+	// スライム本編では、操作・カメラ・流体の目標値でエンジンの時計を共有する
+	// 別の時計を使うと BeginFrame やエディタの処理時間まで移動量に含まれてしまうため
+	if(chronoMode_)dt=std::clamp(Engine::TimeManager::GetInstance().GetUnscaledDeltaTime(),0.f,.05f);
+
+	// システムへ渡す共有データを更新する
+	// このフレームの経過時間
+	ctx_.dt = dt;
+	// 戦闘の流れ (ヒットストップなど) の状態
+	ctx_.combatFlow = &combatFlow_;
+	// 旧アクションゲームの PLAY 中だけ戦闘の流れの時間を進める
+	if (isPlaying_ && !isPaused_ && !chronoMode_) combatFlow_.Tick(dt);
+	// ステージをクリアしたか
+	const bool stageClear = IsStageClear();
+
+	// PLAY 中の入力 (グラフィック設定・ポーズメニュー・ポーズの切り替え)。画面を開いている間はここで終わる
+	if (HandlePlayInput(dt, stageClear)) return;
+
+	// システムへ渡す共有データ (カメラ・描画・入力・シーン・イベント・生成予約)
+	ctx_.camera = &camera_;
+	ctx_.renderer = renderer_;
+	ctx_.input = Engine::Input::GetInstance();
+	ctx_.isPlaying = isPlaying_;
+	// シーン・イベント・生成の予約
+	ctx_.scene = this;
+	ctx_.eventSystem = &eventSystem_;
+	ctx_.pendingSpawns = &pendingSpawns_;
+
+	// ビューポートの初期値はウィンドウ全体 (エディタが無い構成で配置がずれないように)。エディタがあれば後で上書きする
+	ctx_.viewportOffset = { 0.0f, 0.0f };
+	ctx_.viewportSize = { (float)Engine::WindowDX::kW, (float)Engine::WindowDX::kH };
+
+	// GPU での当たり判定は PhysicsSystem に移したので、ここでは何もしない
+
+	// アニメーションの再生時刻を進める
+	UpdateAnimations(dt);
+
+	// 旧アクションゲーム: 缶を選ぶラジアルメニュー
+	UpdateCanRadialMenu(stageClear);
+
+	// パーティクルエディタのプレビュー更新
+	// パーティクルエディター
+	if (!isPaused_) {
+		particleEditor_.Update(dt);
+	}
+
+	// 各システムを登録順に更新する
+#ifndef NDEBUG
+	// システムの前の時間を記録する
+	const auto profileSystems = std::chrono::steady_clock::now();
+	updateTimings_.push_back({"Before systems", std::chrono::duration<float, std::milli>(profileSystems - profileBegin).count()});
+#endif
+	for (auto& system : systems_) {
+		// PLAY 停止中・ポーズ中はシステムを動かさない (結果画面への遷移中はエンティティが消えている可能性がある)
+		if (!isPlaying_ || isPaused_)
+			break;
+		// クリア後に動かないシステムは飛ばす
+		if (stageClear && !system->UpdatesAfterStageClear())
+			continue;
+#ifndef NDEBUG
+		// このシステムの処理時間を記録する
+		const auto profileSystemBegin = std::chrono::steady_clock::now();
+#endif
+		system->Update(registry_, ctx_);
+#ifndef NDEBUG
+		updateTimings_.push_back({typeid(*system).name(), std::chrono::duration<float, std::milli>(std::chrono::steady_clock::now() - profileSystemBegin).count()});
+#endif
+	}
+#ifndef NDEBUG
+	// システムの後の時間を記録する
+	const auto profileAfterSystems = std::chrono::steady_clock::now();
+#endif
+	// 旧アクションゲーム: プレイヤーの頭上に浮かぶ缶を追従させる
+	UpdateCanFollow(dt, stageClear);
+
+	// エディタがある構成では Scene ビューのカメラを EditorUI が操作する (ビューポート上で右ドラッグ中のみ)。
+	// 以前はここで停止中に camera_ を生のキー入力で動かしており、Inspector の入力中も WASD でカメラが動いていた
+#ifndef USE_IMGUI
+	if (!isPlaying_) {
+		camera_.Update(*Engine::Input::GetInstance());
+	}
+#endif
+	// カメラの揺れなどを進める
+	camera_.Tick(dt);
+
+// 予約された生成と破棄を反映する
+	FlushPendingSpawnsAndDestroys();
+
+	// ライトをレンダラーへ渡す
+	ApplyLights();
+
+	// パーティクルエミッターを動かす
+	UpdateParticleEmitters(dt);
+
+#ifndef NDEBUG
+	// システムの後の処理時間を記録する
+	updateTimings_.push_back({"After systems", std::chrono::duration<float, std::milli>(std::chrono::steady_clock::now() - profileAfterSystems).count()});
+#endif
+}
+
+// タグのキャッシュを遅れて同期する (生成直後と破棄時に予約したもの)
+void GameScene::FlushPendingTags() {
 	// タグのキャッシュを遅れて同期する (生成直後と破棄時に予約したもの)
 	// 予約があるときだけ処理する
 	if (!pendingTagRemoved_.empty() || !pendingTagSync_.empty()) {
@@ -388,33 +485,15 @@ void GameScene::Update() {
 			}
 		}
 	}
+}
 
-	// 前フレームからの経過時間
-	static auto last = std::chrono::steady_clock::now();
-	auto now = std::chrono::steady_clock::now();
-	float dt = std::chrono::duration<float>(now - last).count();
-	last = now;
-
-	if (dt > 1.0f / 10.0f)
-		dt = 1.0f / 60.0f; // 長く止まった後 (極端なラグ) は 1/60 秒として扱う
-	// スライム本編では、操作・カメラ・流体の目標値でエンジンの時計を共有する
-	// 別の時計を使うと BeginFrame やエディタの処理時間まで移動量に含まれてしまうため
-	if(chronoMode_)dt=std::clamp(Engine::TimeManager::GetInstance().GetUnscaledDeltaTime(),0.f,.05f);
-
-	// システムへ渡す共有データを更新する
-	// このフレームの経過時間
-	ctx_.dt = dt;
-	// 戦闘の流れ (ヒットストップなど) の状態
-	ctx_.combatFlow = &combatFlow_;
-	// 旧アクションゲームの PLAY 中だけ戦闘の流れの時間を進める
-	if (isPlaying_ && !isPaused_ && !chronoMode_) combatFlow_.Tick(dt);
-	// ステージをクリアしたか
-	const bool stageClear = IsStageClear();
-
+// PLAY 中の入力: F7 でグラフィック設定、ポーズメニュー、Esc / START でポーズ。
+// グラフィック設定やポーズメニューを処理したフレームは true を返す (Update はそこで終わる)
+bool GameScene::HandlePlayInput(float dt, bool stageClear) {
 	// PLAY 中の入力: F7 でグラフィック設定、ポーズメニュー、Esc / START でポーズ
 	if (isPlaying_) {
         // F7: グラフィック設定画面を開閉する (開いている間はポーズ)
-        if(!stageClear&&UI::Pressed(DIK_F7)){SetPaused(true);graphicsOpen_=!graphicsOpen_;return;}
+        if(!stageClear&&UI::Pressed(DIK_F7)){SetPaused(true);graphicsOpen_=!graphicsOpen_;return true;}
         // グラフィック設定画面: 変更があれば設定ファイルへ保存する
         if(!stageClear&&isPaused_&&graphicsOpen_){
             // UI の描画先 (エディタの Game ビューならマウス座標を上書きする)
@@ -428,20 +507,20 @@ void GameScene::Update() {
             // 効果のどれかが変わったら保存し、失敗したら覚えておく
             if(previous.bloom!=current.bloom||previous.lensFlare!=current.lensFlare||previous.grading!=current.grading||previous.ambientOcclusion!=current.ambientOcclusion||previous.motionBlur!=current.motionBlur||previous.dof!=current.dof||previous.exposure!=current.exposure||previous.dlssQuality!=current.dlssQuality||previous.rtShadows!=current.rtShadows||previous.rtReflections!=current.rtReflections||previous.rtIndirect!=current.rtIndirect)
                 graphicsSaveFailed_=!renderer_->SaveGraphicsSettings();
-            return;
+            return true;
         }
 		// ポーズメニューのボタン入力 (グラフィック設定 / タイトルへ / 再開)
         if (!stageClear && isPaused_) {
             // UI の描画先 (エディタの Game ビューならマウス座標を上書きする)
             UI::Canvas ui(renderer_,ctx_.viewportSize.x,ctx_.viewportSize.y);if(ctx_.useOverrideMouse)ui.SetPointer(ctx_.overrideMouseX,ctx_.overrideMouseY);
             // グラフィック設定ボタン・G・パッドの BACK で設定画面を開く
-            if(ui.Click(UI::GraphicsButton)||UI::Pressed(DIK_G)||UI::PadPressed(XINPUT_GAMEPAD_BACK)){graphicsOpen_=true;return;}
+            if(ui.Click(UI::GraphicsButton)||UI::Pressed(DIK_G)||UI::PadPressed(XINPUT_GAMEPAD_BACK)){graphicsOpen_=true;return true;}
             auto* input=Engine::Input::GetInstance();
             // スライム本編の強化パレット画面かどうか (ボタンの位置が違う)
             bool roguePause=chronoMode_&&!registry_.view<Chrono::InkPlayer>().empty();
             // タイトルへ戻るボタンか Tab でタイトルへ
             if (ui.Click(roguePause?UI::PaletteTitle:UI::Title) || input->Trigger(DIK_TAB)) {
-                Engine::SceneManager::GetInstance()->RequestChange("Title");return;
+                Engine::SceneManager::GetInstance()->RequestChange("Title");return true;
             }
             // 再開ボタン・Enter・パッドの B でポーズを解く (同じ押下を他で使わないよう止める)
             if (ui.Click(roguePause?UI::PaletteResume:UI::Resume) || input->Trigger(DIK_RETURN) || input->PadTrigger(XINPUT_GAMEPAD_B)) {
@@ -486,26 +565,11 @@ void GameScene::Update() {
 			}
 		}
 	}
+	return false;
+}
 
-
-
-
-	// システムへ渡す共有データ (カメラ・描画・入力・シーン・イベント・生成予約)
-	ctx_.camera = &camera_;
-	ctx_.renderer = renderer_;
-	ctx_.input = Engine::Input::GetInstance();
-	ctx_.isPlaying = isPlaying_;
-	// シーン・イベント・生成の予約
-	ctx_.scene = this;
-	ctx_.eventSystem = &eventSystem_;
-	ctx_.pendingSpawns = &pendingSpawns_;
-
-	// ビューポートの初期値はウィンドウ全体 (エディタが無い構成で配置がずれないように)。エディタがあれば後で上書きする
-	ctx_.viewportOffset = { 0.0f, 0.0f };
-	ctx_.viewportSize = { (float)Engine::WindowDX::kW, (float)Engine::WindowDX::kH };
-
-	// GPU での当たり判定は PhysicsSystem に移したので、ここでは何もしない
-
+// アニメーション (エンジン側の処理なのでシーンに残している)
+void GameScene::UpdateAnimations(float dt) {
 	// アニメーション (エンジン側の処理なのでシーンに残している)
 	// アニメーションの再生時刻を進める (エンティティごとに並列で処理する)
 	auto animView = registry_.view<AnimatorComponent, MeshRendererComponent>();
@@ -567,7 +631,10 @@ void GameScene::Update() {
 			Engine::JobSystem::Wait();
 		}
 	}
+}
 
+// 旧アクションゲーム: 缶を選ぶラジアルメニュー (選択と描画)
+void GameScene::UpdateCanRadialMenu(bool stageClear) {
 	// 旧アクションゲーム: 缶を選ぶラジアルメニュー
 	if (isPlaying_ && !isPaused_) {
 		// プレイヤーの入力を調べる
@@ -662,9 +729,8 @@ void GameScene::Update() {
 					box.color = color;
 					box.layer = 200;
 					ctx_.renderer->DrawSprite(texH, box);
-					
-					
-					// 缶の名前
+
+// 缶の名前
 					const char* canName = CanLoadout::Name(equippedCans[i]);
 					// 文字の幅を測って中央に書く
 					float tw = ctx_.renderer->MeasureTextWidth(canName, 0.3f);
@@ -676,39 +742,10 @@ void GameScene::Update() {
 			}
 		}
 	}
+}
 
-	// パーティクルエディタのプレビュー更新
-	// パーティクルエディター
-	if (!isPaused_) {
-		particleEditor_.Update(dt);
-	}
-
-	// 各システムを登録順に更新する
-#ifndef NDEBUG
-	// システムの前の時間を記録する
-	const auto profileSystems = std::chrono::steady_clock::now();
-	updateTimings_.push_back({"Before systems", std::chrono::duration<float, std::milli>(profileSystems - profileBegin).count()});
-#endif
-	for (auto& system : systems_) {
-		// PLAY 停止中・ポーズ中はシステムを動かさない (結果画面への遷移中はエンティティが消えている可能性がある)
-		if (!isPlaying_ || isPaused_)
-			break;
-		// クリア後に動かないシステムは飛ばす
-		if (stageClear && !system->UpdatesAfterStageClear())
-			continue;
-#ifndef NDEBUG
-		// このシステムの処理時間を記録する
-		const auto profileSystemBegin = std::chrono::steady_clock::now();
-#endif
-		system->Update(registry_, ctx_);
-#ifndef NDEBUG
-		updateTimings_.push_back({typeid(*system).name(), std::chrono::duration<float, std::milli>(std::chrono::steady_clock::now() - profileSystemBegin).count()});
-#endif
-	}
-#ifndef NDEBUG
-	// システムの後の時間を記録する
-	const auto profileAfterSystems = std::chrono::steady_clock::now();
-#endif
+// 旧アクションゲーム: プレイヤーの頭上に浮かぶ缶を、少し遅れて追従させる
+void GameScene::UpdateCanFollow(float dt, bool stageClear) {
 	// 旧アクションゲーム: プレイヤーの頭上に浮かぶ缶を、少し遅れて追従させる
 	if (isPlaying_ && !isPaused_ && !stageClear) {
 		// プレイヤーは PlayerActionSystem の後に移動するので、缶はここで付ける。
@@ -754,23 +791,10 @@ void GameScene::Update() {
 			canMesh.enabled = pa.canRevealTimer >= 0.45f;
 		});
 	}
+}
 
-	// エディタがある構成では Scene ビューのカメラを EditorUI が操作する (ビューポート上で右ドラッグ中のみ)。
-	// 以前はここで停止中に camera_ を生のキー入力で動かしており、Inspector の入力中も WASD でカメラが動いていた
-#ifndef USE_IMGUI
-	if (!isPlaying_) {
-		camera_.Update(*Engine::Input::GetInstance());
-	}
-#endif
-	// カメラの揺れなどを進める
-	camera_.Tick(dt);
-
-
-
-
-
-
-
+// 予約された生成 (弾など) と破棄を反映する
+void GameScene::FlushPendingSpawnsAndDestroys() {
 	// 予約された生成 (弾など) と破棄を反映する
 	// 生成・破棄の予約を取り出す (ロック中に取り出すだけにして、削除はロックの外で行う)
 	std::vector<entt::entity> destroysToProcess;
@@ -802,7 +826,10 @@ void GameScene::Update() {
 			RemoveEntity(id);
 		}
 	}
+}
 
+// ライト (描画の設定なのでシーンに残している)
+void GameScene::ApplyLights() {
 	// ライト (描画の設定なのでシーンに残している)
 	// ライトの反映: 平行光源1つ・点光源・スポットライトをレンダラーへ渡す
 	if (renderer_) {
@@ -866,7 +893,10 @@ void GameScene::Update() {
 			renderer_->SetSpotLight(i, {0, 0, 0}, {0, -1, 0}, {0, 0, 0}, 0, 0.0f, 0.0f, {1, 0, 0}, false);
 		}
 	}
+}
 
+// パーティクルエミッターの更新
+void GameScene::UpdateParticleEmitters(float dt) {
 	// パーティクルエミッターの更新
 	auto peView = registry_.view<ParticleEmitterComponent, TransformComponent, NameComponent>();
 	// 初回にエミッターを初期化し (保存された設定ファイルがあれば読み込む)、位置を合わせて更新する
@@ -888,1257 +918,6 @@ void GameScene::Update() {
 		// エミッターをエンティティの位置へ動かし、時間を進める
 		pe.emitter.params.position = {tc.translate.x, tc.translate.y, tc.translate.z};
 		pe.emitter.Update(dt);
-	});
-#ifndef NDEBUG
-	// システムの後の処理時間を記録する
-	updateTimings_.push_back({"After systems", std::chrono::duration<float, std::milli>(std::chrono::steady_clock::now() - profileAfterSystems).count()});
-#endif
-}
-
-// 選択を解除する
-void GameScene::ClearSelection() {
-    // 主な選択と、複数選択の一覧を空にする
-    selectedEntity_ = entt::null;
-    selectedEntities_.clear();
-}
-
-// 1つだけ選択する (無効なエンティティなら解除のみ)
-void GameScene::SelectEntity(entt::entity entity) {
-    ClearSelection();
-    // 存在すれば選ぶ
-    if (registry_.valid(entity)) {
-        selectedEntity_ = entity;
-        selectedEntities_.insert(entity);
-    }
-}
-
-// 名前もトランスフォームも付けない空のエンティティを作る
-entt::entity GameScene::CreateEmptyEntity() {
-    // 生成・破棄の予約と同時に触らないようロックする
-    std::lock_guard<std::mutex> lock(spawnMutex_);
-    return registry_.create();
-}
-
-// エディタ用の一時エンティティ (プレビューなど) を即座に削除する
-void GameScene::DestroyEditorEntity(entt::entity entity) {
-    RemoveEntity(entity);
-}
-
-// 即座に削除する。選択中なら選択から外し、行列のキャッシュも捨てる
-void GameScene::RemoveEntity(entt::entity entity) {
-    // 存在しなければ何もしない
-    if (!registry_.valid(entity)) return;
-    // 選択から外し、主な選択が消えたら残りの先頭にする
-    selectedEntities_.erase(entity);
-    if (selectedEntity_ == entity) selectedEntity_ = selectedEntities_.empty() ? entt::null : *selectedEntities_.begin();
-    // ECS から消し、行列のキャッシュを捨てる
-    registry_.destroy(entity);
-    ClearMatrixCache();
-}
-
-// エディタの Game ビューの位置・大きさと、内部解像度に換算したマウス座標を保存する
-void GameScene::SetEditorViewport(DirectX::XMFLOAT2 offset, DirectX::XMFLOAT2 size, float mouseX, float mouseY) {
-    ctx_.viewportOffset = offset;
-    ctx_.viewportSize = size;
-    ctx_.overrideMouseX = mouseX;
-    ctx_.overrideMouseY = mouseY;
-    ctx_.useOverrideMouse = true;
-}
-
-// エンティティを生成する (名前とトランスフォームを付ける)
-entt::entity GameScene::CreateEntity(const std::string& name) {
-	// 生成・破棄の予約と同時に触らないようロックする
-	std::lock_guard<std::mutex> lock(spawnMutex_);
-	auto entity = registry_.create();
-	// 名前とトランスフォームを付ける
-	registry_.emplace<NameComponent>(entity, name);
-	registry_.emplace<TransformComponent>(entity);
-	return entity;
-}
-
-// ID を指定して破棄を予約する
-void GameScene::DestroyObject(uint32_t id) {
-	// 生成・破棄の予約と同時に触らないようロックする
-	std::lock_guard<std::mutex> lock(spawnMutex_);
-	// ID をそのまま entt::entity として扱う
-	pendingDestroys_.push_back(static_cast<entt::entity>(id));
-}
-
-
-// 名前でエンティティを探す
-entt::entity GameScene::FindObjectByName(const std::string& name) {
-	// 名前を持つエンティティを順に調べる
-	auto view = registry_.view<NameComponent>();
-	for (auto entity : view) {
-		if (view.get<NameComponent>(entity).name == name) {
-			return entity;
-		}
-	}
-	// 見つからなければ無し
-	return entt::null;
-}
-
-// 指定座標の真下にあるメッシュ表面の高さを求める
-float GameScene::GetHeightAt(float x, float z, float startY, uint32_t excludeId) {
-	// 当たった中で一番高い面の高さ。何にも当たらなければ -10000
-	float maxHeight = -1000.0f;
-	bool hitAny = false;
-
-	// startY (既定 1000) から真下へレイを飛ばす
-	DirectX::XMVECTOR rayPos = DirectX::XMVectorSet(x, startY, z, 1.0f);
-	DirectX::XMVECTOR rayDir = DirectX::XMVectorSet(0.0f, -1.0f, 0.0f, 0.0f);
-
-	// 位置を持つエンティティを順に調べる
-	auto view = registry_.view<TransformComponent>();
-	for (auto entity : view) {
-		// 除外するもの (自分自身など) は飛ばす
-		if (excludeId != 0 && static_cast<uint32_t>(entity) == excludeId)
-			continue;
-
-		// 敵・弾・プレイヤー・エフェクトは地面として扱わない
-		bool isEnemyOrBullet = false;
-		if (registry_.all_of<TagComponent>(entity)) {
-			// タグを調べる
-			const auto tag = registry_.get<TagComponent>(entity).tag;
-			if (tag == TagType::Enemy || tag == TagType::Bullet || tag == TagType::Player || tag == TagType::Projectile || tag == TagType::VFX) {
-				isEnemyOrBullet = true;
-			}
-		}
-		if (isEnemyOrBullet)
-			continue;
-
-		// 当たり判定用のメッシュがあればそれを使い、無ければ描画用のメッシュを使う
-		uint32_t modelHandle = 0;
-		if (registry_.all_of<GpuMeshColliderComponent>(entity)) {
-			auto& mc = registry_.get<GpuMeshColliderComponent>(entity);
-			if (mc.enabled)
-				modelHandle = mc.meshHandle;
-		}
-		if (modelHandle == 0 && registry_.all_of<MeshRendererComponent>(entity)) {
-			auto& mr = registry_.get<MeshRendererComponent>(entity);
-			if (mr.enabled)
-				modelHandle = mr.modelHandle;
-		}
-
-		// メッシュが無ければ飛ばす
-		if (modelHandle == 0)
-			continue;
-
-		// モデルの実体 (無ければ飛ばす)
-		auto* model = renderer_->GetModel(modelHandle);
-		if (!model)
-			continue;
-
-		// 当たった距離・位置と、このエンティティのワールド行列
-		float dist = 0.0f;
-		Engine::Vector3 hitPoint;
-		Engine::Matrix4x4 worldMat = this->GetWorldMatrix(static_cast<int>(entity));
-
-		// 当たったら、一番高い位置を覚える
-		if (model->RayCast(rayPos, rayDir, worldMat, dist, hitPoint)) {
-			if (hitPoint.y > maxHeight) {
-				maxHeight = hitPoint.y;
-				hitAny = true;
-			}
-		}
-	}
-
-	// 当たったものがあればその高さ、無ければ -10000
-	return hitAny ? maxHeight : -10000.0f;
-}
-
-// レイキャスト: 地形などのメッシュに当たった最も近い距離を返す (敵・弾・プレイヤーなどは無視)
-bool GameScene::RayCast(const Engine::Vector3& origin, const Engine::Vector3& direction, float maxDist, uint32_t excludeId, float& outDist) {
-	// 当たったか・一番近い距離 (最初は最大距離)
-	bool hitAny = false;
-	float minDist = maxDist;
-
-	// 始点と向きを DirectXMath の形にする
-	DirectX::XMVECTOR rayPos = DirectX::XMLoadFloat3(reinterpret_cast<const DirectX::XMFLOAT3*>(&origin));
-	DirectX::XMVECTOR rayDir = DirectX::XMLoadFloat3(reinterpret_cast<const DirectX::XMFLOAT3*>(&direction));
-
-	// 位置を持つエンティティを順に調べる
-	auto view = registry_.view<TransformComponent>();
-	for (auto entity : view) {
-		// 除外するもの (自分自身など) は飛ばす
-		if (excludeId != 0 && static_cast<uint32_t>(entity) == excludeId)
-			continue;
-
-		// タグで対象外のものを除く
-		if (registry_.all_of<TagComponent>(entity)) {
-			const auto tag = registry_.get<TagComponent>(entity).tag;
-			if (tag == TagType::Enemy || tag == TagType::Bullet || tag == TagType::Player || tag == TagType::Projectile || tag == TagType::VFX)
-				continue;
-		}
-
-		// 当たり判定用のメッシュがあればそれを使い、無ければ描画用のメッシュを使う
-		uint32_t modelHandle = 0;
-		if (registry_.all_of<GpuMeshColliderComponent>(entity)) {
-			auto& mc = registry_.get<GpuMeshColliderComponent>(entity);
-			if (mc.enabled)
-				modelHandle = mc.meshHandle;
-		}
-		if (modelHandle == 0 && registry_.all_of<MeshRendererComponent>(entity)) {
-			auto& mr = registry_.get<MeshRendererComponent>(entity);
-			if (mr.enabled)
-				modelHandle = mr.modelHandle;
-		}
-		if (modelHandle == 0)
-			continue;
-
-		// モデルの実体 (無ければ飛ばす)
-		auto* model = renderer_->GetModel(modelHandle);
-		if (!model)
-			continue;
-
-		// 当たった距離・位置と、このエンティティのワールド行列
-		float dist = 0.0f;
-		Engine::Vector3 hitPoint;
-		Engine::Matrix4x4 worldMat = GetWorldMatrix(static_cast<int>(entity));
-
-		// 当たったら、一番近い距離を覚える
-		if (model->RayCast(rayPos, rayDir, worldMat, dist, hitPoint)) {
-			if (dist < minDist) {
-				minDist = dist;
-				hitAny = true;
-			}
-		}
-	}
-
-	// 当たったものがあれば距離を返す
-	if (hitAny) {
-		outDist = minDist;
-		return true;
-	}
-	return false;
-}
-
-// エンティティのワールド行列 (親子関係を含む)
-Engine::Matrix4x4 GameScene::GetWorldMatrix(int entityId) const { return GetWorldMatrixRecursive(static_cast<entt::entity>(entityId), 0); }
-
-// ワールド行列を親へたどって計算する (深さ 32 を超える循環は単位行列で打ち切り、結果はフレーム内でキャッシュする)
-Engine::Matrix4x4 GameScene::GetWorldMatrixRecursive(entt::entity e, int depth) const {
-	// 深すぎるときは循環しているとみなして打ち切る
-	if (depth > 32)
-		return Engine::Matrix4x4::Identity();
-
-	// このフレームで計算済みならそれを返す
-	auto it = matrixCache_.find(e);
-	if (it != matrixCache_.end())
-		return it->second;
-
-	// 存在しないか位置が無ければ単位行列
-	if (!registry_.valid(e) || !registry_.all_of<TransformComponent>(e))
-		return Engine::Matrix4x4::Identity();
-	// 自分のローカル行列
-	const auto& tc = registry_.get<TransformComponent>(e);
-	Engine::Matrix4x4 local = tc.ToMatrix();
-
-	Engine::Matrix4x4 world = local;
-	// 親があれば親のワールド行列を掛ける
-	if (registry_.all_of<HierarchyComponent>(e)) {
-		const auto& hc = registry_.get<HierarchyComponent>(e);
-		if (hc.parentId != entt::null && registry_.valid(hc.parentId)) {
-			world = Engine::Matrix4x4::Multiply(local, GetWorldMatrixRecursive(hc.parentId, depth + 1));
-		}
-	}
-	// キャッシュに入れて返す
-	matrixCache_[e] = world;
-	return world;
-}
-
-namespace {
-// Scene ビュー表示中は、描画の間だけ camera_ にエディタカメラを入れる。
-// 描画処理 (ChronoSystem など) は ctx.camera = &camera_ を参照するため、全体がエディタ視点で描かれる。
-// 描画中にカメラへ書き込まれても、終了時にゲームカメラを書き戻すので更新処理には影響しない
-class ViewCameraScope {
-public:
-	ViewCameraScope(Engine::Camera& gameCamera, const Engine::Camera& editorCamera, bool active)
-		: camera_(gameCamera), active_(active) {
-		// 有効なときだけ、ゲームのカメラを覚えてエディタのカメラに差し替える
-		if (!active_) return;
-		saved_ = gameCamera;
-		gameCamera = editorCamera;
-	}
-	// 終わったらゲームのカメラに戻す
-	~ViewCameraScope() { if (active_) camera_ = saved_; }
-	// コピーはできない
-	ViewCameraScope(const ViewCameraScope&) = delete;
-	ViewCameraScope& operator=(const ViewCameraScope&) = delete;
-private:
-	// 差し替えたカメラ・元のカメラ・有効か
-	Engine::Camera& camera_;
-	Engine::Camera saved_;
-	bool active_;
-};
-} // namespace
-
-// 描画: 流体の設定・メッシュ・パーティクル・ギズモ・ゲーム内 UI
-void GameScene::Draw() {
-	// 描画の窓口が無ければ何もしない
-	if (!renderer_)
-		return;
-	// Scene ビューなら描画の間だけエディタのカメラにする
-	ViewCameraScope viewCamera(camera_, editorCamera_, editorView_ == EditorView::Scene);
-    // スライムの調合室を開いているときは、調合室の画面だけを描く
-    if(isPlaying_&&!isPaused_&&chronoSystem_&&chronoSystem_->SlimeLabOpen()){
-        chronoSystem_->DrawSlimeLab(registry_,ctx_);return;
-    }
-
-	// プレイヤーの位置・大きさ・液状化の状態 (流体の描画に使う)
-	DirectX::XMFLOAT3 corePos = { 0.0f, 1.0f, 0.0f };
-	DirectX::XMFLOAT3 blobRadii = { 1.2f, 0.85f, 1.2f };
-	bool isLiquidated = false;
-	float liquefyInitialFlowSpeed = 0.0f;
-	Engine::Vector3 liquefyFlowForward = {0.0f, 0.0f, 1.0f};
-	bool hasPlayerSlime = false;
-	bool isPlayerDead = false;
-
-	// プレイヤーを探し、位置・液状化・死亡の状態を読む
-	const auto& playersForCore = GetEntitiesByTag(TagType::Player);
-	// プレイヤーのエンティティ
-	entt::entity playerEntity = entt::null;
-	if (!playersForCore.empty() && registry_.valid(playersForCore[0])) {
-		playerEntity = playersForCore[0];
-		// 位置と大きさ
-		if (registry_.all_of<TransformComponent>(playerEntity)) {
-			auto& tc = registry_.get<TransformComponent>(playerEntity);
-			corePos = { tc.translate.x, tc.translate.y, tc.translate.z };
-			blobRadii = { tc.scale.x, tc.scale.y, tc.scale.z };
-		}
-		// 液状化中か・流れの速さと向き
-		if (registry_.all_of<PlayerActionComponent>(playerEntity)) {
-			const auto& pa = registry_.get<PlayerActionComponent>(playerEntity);
-			isLiquidated = pa.state == PlayerActionState::Liquefy;
-			liquefyInitialFlowSpeed = pa.CurrentLiquefyFlowSpeed();
-			liquefyFlowForward = {pa.liquefyFlowDir.x, pa.liquefyFlowDir.y, pa.liquefyFlowDir.z};
-		}
-		// 死んでいるか
-		if (registry_.all_of<HealthComponent>(playerEntity)) {
-			const auto& hc = registry_.get<HealthComponent>(playerEntity);
-			isPlayerDead = hc.IsDead() || hc.Hp() <= 0.0f;
-		}
-	}
-
-	// 流体エミッターは当たり判定用の箱が必要 (プレイヤーがいないプレビューも含む)。壁と既定タグの箱を AABB にして渡す
-	std::vector<Engine::Renderer::FluidAABB> fluidAABBs;
-	// 箱の当たり判定を持つエンティティを調べる
-	auto aabbView = registry_.view<TransformComponent, BoxColliderComponent>();
-	aabbView.each([&](entt::entity entity, TransformComponent&, BoxColliderComponent& bc) {
-		// 無効なものとすり抜けるものは除く
-		if (!bc.enabled || bc.isTrigger) return;
-		// 壁と既定のタグだけ
-		const auto* tag = registry_.try_get<TagComponent>(entity);
-		if (!tag || (tag->tag != TagType::Wall && tag->tag != TagType::Default)) return;
-		// ワールド行列
-		const auto matrix = GetWorldMatrix(static_cast<int>(entity));
-		const auto world = DirectX::XMLoadFloat4x4(reinterpret_cast<const DirectX::XMFLOAT4X4*>(&matrix));
-		// 最小・最大の点
-		DirectX::XMVECTOR lo = DirectX::XMVectorReplicate(FLT_MAX);
-		DirectX::XMVECTOR hi = DirectX::XMVectorReplicate(-FLT_MAX);
-		// 箱の 8 つの角をワールド座標にして、最小・最大を広げる
-		for (int corner = 0; corner < 8; ++corner) {
-			const auto local = DirectX::XMVectorSet(
-				bc.center.x + ((corner & 1) ? .5f : -.5f) * bc.size.x,
-				bc.center.y + ((corner & 2) ? .5f : -.5f) * bc.size.y,
-				bc.center.z + ((corner & 4) ? .5f : -.5f) * bc.size.z, 1);
-			const auto point = DirectX::XMVector3TransformCoord(local, world);
-			lo = DirectX::XMVectorMin(lo, point); hi = DirectX::XMVectorMax(hi, point);
-		}
-		// AABB にして一覧へ追加する
-		Engine::Renderer::FluidAABB box{};
-		DirectX::XMStoreFloat3(reinterpret_cast<DirectX::XMFLOAT3*>(&box.min), lo);
-		DirectX::XMStoreFloat3(reinterpret_cast<DirectX::XMFLOAT3*>(&box.max), hi);
-		fluidAABBs.push_back(box);
-	});
-	// レンダラーへ渡す
-	renderer_->SetFluidAABBs(fluidAABBs);
-
-	// プレイヤーがいないとき (水のプレビューなど) は、最初の流体エミッター付近を高画質で描く
-	if (!registry_.valid(playerEntity)) {
-		// プレイヤーがいなくてもプレビューの周りは高画質で再構成する
-		// 流体エミッターを探す
-		auto sources = registry_.view<TransformComponent, FluidEmitterComponent>();
-		if (sources.begin() != sources.end()) {
-			// 最初のエミッターの少し下を中心にする
-			const auto source = *sources.begin();
-			const auto matrix = GetWorldMatrix(static_cast<int>(source));
-			corePos = {matrix.m[3][0], matrix.m[3][1] - 3, matrix.m[3][2]};
-		}
-		// 中心だけ渡し、引き寄せ・分身・糸は無効にする
-		renderer_->SetGPUFluidCore({corePos.x, corePos.y, corePos.z}, 0);
-		renderer_->SetGPUFluidDecoy({0,-1000,0}, 0, {1,1,1}, {0,0,1});
-		renderer_->SetGPUFluidTether({}, false);
-		renderer_->SetChronoFluidPresentation(1, 0, false);
-	}
-
-	// エディタで自由に置ける流体エミッターの処理 (プレイヤーの有無や表示に関係なく動かす)
-	{
-		// 流体エミッターごとに、毎フレームの粒子数 (端数と上限を考慮) を GPU 流体へ追加する
-		auto emitterView = registry_.view<TransformComponent, FluidEmitterComponent>();
-		emitterView.each([&](entt::entity e, TransformComponent&, FluidEmitterComponent& fec) {
-			// 無効か、出す数が 0 なら何もしない
-			if (!fec.enabled || fec.emitCountPerFrame <= 0) return;
-
-			// ワールド座標での位置・初速・色
-			const auto world = GetWorldMatrix(static_cast<int>(e));
-			Engine::Vector3 pos = {world.m[3][0], world.m[3][1], world.m[3][2]};
-			Engine::Vector3 vel = { fec.velocity.x, fec.velocity.y, fec.velocity.z };
-			Engine::Vector4 col = { fec.color.x, fec.color.y, fec.color.z, fec.color.w };
-
-			// 毎フレーム粒子を出す
-			const int emitCount=Engine::LimitFluidEmission(Engine::AccumulateFluidEmission(fec.emitCountPerFrame,
-				Engine::TimeManager::GetInstance().GetDeltaTime(),fec.emissionRemainder), fec.particleLimit, fec.emittedParticles);
-			// GPU 流体へ追加する
-			renderer_->EmitGPUFluid(pos, vel, col, emitCount, fec.fluidType, fec.retainWater);
-
-			// 水 (fluidType >= 0.5) の真下 (半径 1.5 以内) にプレイヤーがいれば HP を回復する
-			if (isPlaying_ && !isPaused_ && fec.fluidType >= 0.5f && registry_.valid(playerEntity)) {
-				// エミッターとプレイヤーの水平の差
-				float dx = corePos.x - pos.x;
-				float dz = corePos.z - pos.z;
-				if (dx * dx + dz * dz < 1.5f * 1.5f) {
-					if (registry_.all_of<HealthComponent>(playerEntity)) {
-						auto& hc = registry_.get<HealthComponent>(playerEntity);
-						// 回復の間隔を数える (関数をまたいで覚えておく)
-						static float healTimer = 0.0f;
-						healTimer += ctx_.dt;
-						if (healTimer > 0.05f) { // 0.05 秒ごとに 1 回復 (1 秒で 20)
-							healTimer = 0.0f;
-							hc.RecoverHp(1);
-						}
-					}
-				}
-			}
-		});
-	}
-
-	// プレイヤーのスライム: 見た目は GPU 流体で描き、元のメッシュは非表示にする
-	if (registry_.valid(playerEntity) && registry_.all_of<MeshRendererComponent>(playerEntity)) {
-		// プレイヤーの見た目
-		auto& mr = registry_.get<MeshRendererComponent>(playerEntity);
-			
-			// CPU 側のスライムメッシュの準備
-			// 初回だけ、元の球メッシュから変形用の動的メッシュとパーティクルを作る
-			if (!slimeCpuLogic_.initialized) {
-				// 元のモデル
-				auto* model = renderer_->GetModel(mr.modelHandle);
-				if (model) {
-					// 元の頂点と添え字を覚える
-					slimeCpuLogic_.baseVertices = model->GetData().vertices;
-					// 法線の初期状態を保存する
-					slimeCpuLogic_.baseNormals = slimeCpuLogic_.baseVertices; 
-					slimeCpuLogic_.indices = model->GetData().indices;
-					// 変形後の頂点 (最初は元と同じ)
-					slimeCpuLogic_.dynamicVerts = slimeCpuLogic_.baseVertices;
-					
-					// 変形用の動的メッシュを作る
-					slimeCpuLogic_.dynamicMeshHandle = renderer_->CreateDynamicMesh(slimeCpuLogic_.baseVertices, slimeCpuLogic_.indices);
-					
-					// 体の中に漂うパーティクル (50個) の初期化
-					slimeCpuLogic_.particles.resize(50);
-					for (auto& p : slimeCpuLogic_.particles) {
-						// ランダムな向きに、ランダムな距離 (最大 1.5) だけ離した位置
-						Engine::Vector3 randPos = { (rand()%100/50.0f)-1.0f, (rand()%100/50.0f)-1.0f, (rand()%100/50.0f)-1.0f };
-						p.basePos = Engine::Normalize(randPos);
-						p.basePos.x *= ((rand()%100)/100.0f) * 1.5f;
-						p.basePos.y *= ((rand()%100)/100.0f) * 1.5f;
-						p.basePos.z *= ((rand()%100)/100.0f) * 1.5f;
-						p.color = {0.4f, 0.8f, 0.1f, 1.0f}; // 濃い黄緑
-					}
-					slimeCpuLogic_.initialized = true;
-				}
-			}
-
-			if (slimeCpuLogic_.initialized && registry_.all_of<TransformComponent>(playerEntity)) {
-				// CPU で変形させたメッシュは描かず、GPU 流体のスライムで描く
-				mr.enabled = false;
-				
-				if (!gpuSlimeEmitted_) {
-					// 最初の1回だけ、大量の GPU 流体粒子を体の中心に放出する
-					// スライムの色 (変形の見本があればその色)
-					Engine::Vector4 pColor = {Chrono::SlimeRed, Chrono::SlimeGreen, Chrono::SlimeBlue, 1.0f};
-                    if(!renderer_->fluidMorphTargets_.empty())pColor=renderer_->fluidMorphTargets_.front().color;
-					// プレイヤーの粒子数だけ出す
-					renderer_->EmitGPUFluid({corePos.x, corePos.y, corePos.z}, {0, -2, 0}, pColor, Engine::Renderer::kPlayerFluidParticles);
-					gpuSlimeEmitted_ = true;
-				}
-				
-				// 状態で引き寄せる力を変える (死亡中は 0、液状化中は弱く、通常は強く)
-				float attraction = isPlayerDead ? 0.0f : (isLiquidated ? 1.0f : 32.0f);
-				
-				// 流体の中心 (圧力の源) を体の少し上に置く
-				Engine::Vector3 targetCore = {corePos.x, corePos.y + 0.18f, corePos.z};
-				// 向き (回転行列の Z 軸。液状化中は流れの向き)
-				auto& playerTc = registry_.get<TransformComponent>(playerEntity);
-				Engine::Matrix4x4 mat = playerTc.GetTransform().ToMatrix();
-				Engine::Vector3 forward = {mat.m[2][0], mat.m[2][1], mat.m[2][2]};
-				if (isLiquidated) {
-					forward = liquefyFlowForward;
-				}
-				// 大きさと、液状化の流れの速さ
-				Engine::Vector3 scaleVec = {blobRadii.x, blobRadii.y, blobRadii.z};
-				float liquidFlowSpeed = 0.0f;
-				if (isLiquidated) {
-					liquidFlowSpeed = liquefyInitialFlowSpeed;
-				}
-				// スライム本編: 地面の傾き・顔の向き・体の形 (伸び・空中・動き)・質量を流体へ渡す
-				if (chronoMode_) {
-					// 地面の傾き・高さを渡す
-					if(auto* ink=registry_.try_get<Chrono::InkPlayer>(playerEntity)){renderer_->SetSlimeGround({ink->groundSlope.x,ink->groundHeight,ink->groundSlope.z},registry_.get<Chrono::Player>(playerEntity).grounded);renderer_->SetSlimeFaceCamera(ink->rogue.MenuEase());scaleVec={ink->fluidAspect,ink->airBlend,ink->fluidMotion};forward={ink->fluidDirection.x,0,ink->fluidDirection.z};}
-					// 質量 (体力)。変形の見本があれば最大にする
-					float mass = registry_.get<HealthComponent>(playerEntity).Hp();
-                    if(!renderer_->fluidMorphTargets_.empty())mass=Chrono::SlimeMaximumMass;
-                    if(auto* ink=registry_.try_get<Chrono::InkPlayer>(playerEntity);ink&&ink->perfectAge>=0&&ink->perfectAge<.16f)
-                        mass*=.18f; // 一瞬だけ見た目を縮める (ゲーム上の質量は変えない)
-					// 流体の大きさの基準 (100) に換算する
-					if(registry_.all_of<Chrono::InkPlayer>(playerEntity))mass*=100.f/Chrono::SlimeMaximumMass;
-					// 中心・引き寄せ・大きさ・向き・状態を渡す
-					renderer_->SetGPUFluidCore(targetCore, attraction, scaleVec, forward, (registry_.all_of<Chrono::InkPlayer>(playerEntity) && registry_.get<Chrono::InkPlayer>(playerEntity).dodgeLiquid) ? 5.0f : (registry_.all_of<Chrono::InkPlayer>(playerEntity) ? 4.0f : 2.0f), mass);
-					// 被弾時の点滅・不安定時の明滅、ヒットストップ中の停止、触手を伸ばしている間の糸
-					if (auto* action = registry_.try_get<Chrono::Player>(playerEntity)) {
-						// 強化の選択画面を開いているか
-						bool upgradeOpenForFluid=false;if(auto* ink=registry_.try_get<Chrono::InkPlayer>(playerEntity))upgradeOpenForFluid=ink->rogue.menu;
-						// 被弾から 0.6 秒は激しく点滅する
-						float flash=action->damageAge<.6f?(std::sin(action->damageAge*70)>0?.75f:0):0;
-						// 不安定さが 75 を超えたらゆっくり明滅する
-						if(action->instability>75)flash=std::max(flash,.35f*(.5f+.5f*std::sin(action->stats.seconds*10)));
-						// カメラ用の透明度・点滅・止めるか (ポーズ中かヒットストップ中) を渡す
-						renderer_->SetChronoFluidPresentation(action->cameraOpacity,flash,isPaused_||(action->hitStop>0&&!upgradeOpenForFluid));
-						// 触手を伸ばしている・引き寄せている間は手まで糸を張る
-						bool tether = action->action == Chrono::Action::Extending || action->action == Chrono::Action::Pulling || action->action == Chrono::Action::Retracting;
-						renderer_->SetGPUFluidTether({action->hand.x, action->hand.y, action->hand.z}, tether);
-					}
-				// 旧アクションゲーム: 液状化の流れの速さを渡す
-				} else {
-					// 糸と点滅は無し
-					renderer_->SetGPUFluidTether({}, false);
-					renderer_->SetChronoFluidPresentation(1,0,false);
-					// 中心・引き寄せ・大きさ・向き・液状化の状態と流れの速さを渡す
-					renderer_->SetGPUFluidCore(targetCore, attraction, scaleVec, forward, isLiquidated ? 1.0f : 0.0f, liquidFlowSpeed);
-				}
-
-				// 分身 (デコイ) の流体の設定
-				bool decoyFound = false;
-				// タグ・位置・名前を持つエンティティから分身を探す
-				auto decoyView = registry_.view<TagComponent, TransformComponent, NameComponent>();
-				decoyView.each([&](entt::entity e, TagComponent& tagComp, TransformComponent& dtc, NameComponent& nc) {
-					// 見つかったら残りは飛ばす
-					if (decoyFound) return;
-					// プレイヤーのタグで、名前が Decoy のもの
-					if (tagComp.tag == TagType::Player && nc.name == "Decoy") {
-						
-						// 分身の呼吸のような伸び縮み
-						float timeLived = 5.0f;
-						if (registry_.all_of<AutoDestroyComponent>(e)) {
-							timeLived = 5.0f - registry_.get<AutoDestroyComponent>(e).timer;
-						}
-						float breathe = std::sin(timeLived * 3.0f);
-						
-						// 幅は自機より少し小さく、厚みは自機と同じにしてぺたんこにならないようにする
-						dtc.scale.x = 0.9f + breathe * 0.05f;
-						dtc.scale.y = 0.8f - breathe * 0.05f; // 自機 (0.8) と同じ高さ
-						dtc.scale.z = 0.9f + breathe * 0.05f;
-
-						// 中心を持ち上げて地面に潰されないようにする
-						Engine::Vector3 targetDecoyCore = {dtc.translate.x, dtc.translate.y + 0.8f, dtc.translate.z};
-						// 向きと大きさ
-						Engine::Matrix4x4 dMat = dtc.GetTransform().ToMatrix();
-						Engine::Vector3 dForward = {dMat.m[2][0], dMat.m[2][1], dMat.m[2][2]};
-						Engine::Vector3 dScale = {dtc.scale.x, dtc.scale.y, dtc.scale.z};
-						// 分身はプレイヤーの状態 (液状化など) に関係なく常に形を保つ
-						float decoyAttraction = 80.0f;
-						// 分身の流体の設定を渡す
-						renderer_->SetGPUFluidDecoy(targetDecoyCore, decoyAttraction, dScale, dForward);
-						decoyFound = true;
-					}
-				});
-				if (!decoyFound) {
-					// 分身がいなければ引き寄せる力を 0 にしておく
-					renderer_->SetGPUFluidDecoy({0,-1000,0}, 0.0f, {1,1,1}, {0,0,1});
-				}
-
-
-			}
-			// ----------------------------------------
-			
-			// 星形の弾のメッシュの準備
-			if (!projectileCpuLogic_.initialized && slimeCpuLogic_.initialized && !slimeCpuLogic_.baseVertices.empty()) {
-				// プレイヤーの元の球の頂点を複製して、弾の元のメッシュにする
-				projectileCpuLogic_.baseVertices = slimeCpuLogic_.baseVertices;
-				projectileCpuLogic_.baseNormals = slimeCpuLogic_.baseNormals; 
-				projectileCpuLogic_.indices = slimeCpuLogic_.indices;
-				projectileCpuLogic_.dynamicVerts = projectileCpuLogic_.baseVertices;
-				projectileCpuLogic_.dynamicMeshHandle = renderer_->CreateDynamicMesh(projectileCpuLogic_.baseVertices, projectileCpuLogic_.indices);
-				projectileCpuLogic_.initialized = true;
-			}
-
-			// 弾のメッシュをノイズで毎フレーム変形させ、トゲのある星形にする
-			if (projectileCpuLogic_.initialized) {
-				// 時間を進める
-				projectileCpuLogic_.time += ctx_.dt;
-				const float pNoiseScale = 4.0f;  // 細かくうねらせる
-				const float pNoiseSpeed = 8.0f;  // 速くうねらせる
-				
-				// 頂点ごとに変形する
-				for (size_t i = 0; i < projectileCpuLogic_.baseVertices.size(); ++i) {
-					// 元の頂点と法線、書き込む頂点
-					const auto& baseV = projectileCpuLogic_.baseVertices[i];
-					const auto& baseN = projectileCpuLogic_.baseNormals[i];
-					auto& dynV = projectileCpuLogic_.dynamicVerts[i];
-
-					// 元の位置
-					float bx = baseV.position.x;
-					float by = baseV.position.y;
-					float bz = baseV.position.z;
-
-					// 球を少し大きくしてから変形する
-					float scaleUp = 1.8f;
-					float sx = bx * scaleUp;
-					float sy = by * scaleUp;
-					float sz = bz * scaleUp;
-
-					// 時間で流れる 3D ノイズ
-					float noise = Noise3D(
-						sx * pNoiseScale + projectileCpuLogic_.time * pNoiseSpeed,
-						sy * pNoiseScale + projectileCpuLogic_.time * pNoiseSpeed,
-						sz * pNoiseScale + projectileCpuLogic_.time * pNoiseSpeed
-					);
-					
-					// ノイズの絶対値を強めて、星形のトゲを作る
-					float spike = std::abs(noise) * 1.5f;
-
-					// 法線の向きへトゲの分だけ押し出す
-					Engine::Vector3 v = {
-						sx + baseN.normal.x * spike,
-						sy + baseN.normal.y * spike,
-						sz + baseN.normal.z * spike
-					};
-
-					// 変形後の位置と法線
-					dynV.position = { v.x, v.y, v.z, 1.0f };
-					dynV.normal = baseN.normal; 
-				}
-				// GPU のメッシュを更新する
-				renderer_->UpdateDynamicMesh(projectileCpuLogic_.dynamicMeshHandle, projectileCpuLogic_.dynamicVerts);
-			}
-			// ----------------------------------------
-
-			// プレイヤーがスライムのシェーダーで描かれているか
-			hasPlayerSlime = mr.shaderName == "Slime";
-		}
-
-	// 液状化の開始・終了時の流体リセット (現在は使っていない)
-	if (hasPlayerSlime) {
-		if (isLiquidated && !wasLiquidated_) {
-			// Game::FluidSystem::GetInstance()->RequestParticleReset(Game::FluidResetShape::Puddle, blobRadii);
-		} else if (!isLiquidated && wasLiquidated_) {
-			// Game::FluidSystem::GetInstance()->RequestParticleReset(Game::FluidResetShape::Blob, blobRadii);
-		}
-	}
-	// 今の液状化の状態を覚える
-	wasLiquidated_ = isLiquidated;
-
-	// 弾の当たり判定を持つエンティティに星形メッシュとスライム用シェーダーを使う
-	auto projView = registry_.view<MeshRendererComponent>();
-	for (auto entity : projView) {
-		// 攻撃判定を持つもののうち
-		if (registry_.all_of<HitboxComponent>(entity)) {
-			auto& hb = registry_.get<HitboxComponent>(entity);
-			// 弾で、星形メッシュが準備できているもの
-			if (hb.isProjectile && projectileCpuLogic_.initialized) {
-				auto& pmr = registry_.get<MeshRendererComponent>(entity);
-				pmr.modelHandle = projectileCpuLogic_.dynamicMeshHandle;
-				// プレイヤーの弾は深度ありで描き、それ以外は深度なしで描く (手前に見せる)
-				if (registry_.all_of<NameComponent>(entity) && registry_.get<NameComponent>(entity).name == "PlayerProjectile") {
-					pmr.shaderName = "SlimeNoFace";
-				} else {
-					pmr.shaderName = "SlimeNoFaceNoDepth";
-				}
-			}
-		}
-	}
-
-	// 描画に使うカメラを渡す
-	renderer_->SetCamera(camera_);
-#ifdef USE_IMGUI
-	// ギズモは Unity と同様に Scene ビューだけに描く (Game ビューは実際のゲーム画面)
-	if (editorView_ == EditorView::Scene) {
-		DrawEditorGizmos();
-	}
-#endif
-
-	// プレイヤーの位置をレンダラーへ渡す (タグのキャッシュで素早く探す)
-	const auto& players = GetEntitiesByTag(TagType::Player);
-	if (!players.empty()) {
-		playerEntity = players[0];
-		if (registry_.valid(playerEntity) && registry_.all_of<TransformComponent>(playerEntity)) {
-			auto& tc = registry_.get<TransformComponent>(playerEntity);
-			renderer_->SetPlayerPos(Engine::Vector3{tc.translate.x, tc.translate.y, tc.translate.z});
-		}
-	}
-
-	// メッシュの描画: 色の上書き・カメラを遮る物の透明化・アニメーション・シェーダーごとの描画方法
-	auto renderView = registry_.view<TransformComponent>();
-	for (auto entity : renderView) {
-		// 色 (ColorComponent があればその色)
-		Engine::Vector4 color = {1, 1, 1, 1};
-		if (registry_.all_of<ColorComponent>(entity)) {
-			const auto& cc = registry_.get<ColorComponent>(entity);
-			color = {cc.color.x, cc.color.y, cc.color.z, cc.color.w};
-		}
-
-		// メッシュで描いたか
-		bool hasMeshRenderer = false;
-		if(chronoMode_&&isPlaying_)if(auto* occluder=registry_.try_get<Chrono::CameraOccluder>(entity))
-			if(occluder->opacity<.995f)color.w=-occluder->opacity; // カメラを遮る物は網目状に透かす (影と当たり判定はそのまま)
-		if (registry_.all_of<MeshRendererComponent>(entity)) {
-			// 見た目を持ち、有効でモデルがあるものを描く
-			const auto& mr = registry_.get<MeshRendererComponent>(entity);
-			if (mr.enabled && mr.modelHandle != 0) {
-				hasMeshRenderer = true;
-				// アニメーションしているかと、骨の行列
-				bool hasAnim = false;
-				std::vector<Engine::Matrix4x4> bonePalette;
-
-				// アニメーターがあれば骨の行列 (直前のクリップとのクロスフェード込み) を計算する
-				if (registry_.all_of<AnimatorComponent>(entity)) {
-					const auto& anim = registry_.get<AnimatorComponent>(entity);
-					if (anim.enabled && !anim.currentAnimation.empty()) {
-						auto* m = renderer_->GetModel(mr.modelHandle);
-						if (m) {
-							const auto& data = m->GetData();
-							// 再生中のクリップを探す
-							const Engine::Animation* currAnim = nullptr;
-							for (const auto& a : data.animations) {
-								if (a.name == anim.currentAnimation) {
-									currAnim = &a;
-									break;
-								}
-							}
-							if (currAnim) {
-								// 骨の数だけ単位行列で用意する
-								bonePalette.resize(data.bones.size());
-								for (auto& b : bonePalette)
-									b = Engine::Matrix4x4::Identity();
-
-								// クロスフェード中なら直前のクリップと、混ぜる割合 (0〜1) を求める
-								const Engine::Animation* prevAnim = nullptr;
-								float blendFactor = 0.0f;
-								if (anim.crossfadeTimer > 0.0f && anim.crossfadeDuration > 0.0f) {
-									for (const auto& a : data.animations) {
-										if (a.name == anim.prevAnimation) {
-											prevAnim = &a;
-											break;
-										}
-									}
-									blendFactor = 1.0f - (anim.crossfadeTimer / anim.crossfadeDuration);
-								}
-
-								// 骨の行列を計算する
-								std::vector<Engine::Model::DebugBone> debugBones;
-								m->UpdateSkeleton(data.rootNode, Engine::Matrix4x4::Identity(), *currAnim, anim.time, prevAnim, anim.prevTime, blendFactor, bonePalette, anim.drawSkeleton ? &debugBones : nullptr);
-								hasAnim = true;
-
-								// 骨の表示が有効なら、親の骨から各骨へ線を引く
-								if (anim.drawSkeleton) {
-									// このエンティティのワールド行列
-									Engine::Matrix4x4 world = this->GetWorldMatrix(static_cast<int>(entity));
-									DirectX::XMMATRIX w = DirectX::XMLoadFloat4x4(reinterpret_cast<const DirectX::XMFLOAT4X4*>(&world));
-									for (const auto& bone : debugBones) {
-										// 親の骨の位置と、この骨の位置
-										DirectX::XMVECTOR p1 = DirectX::XMVectorSet(bone.parentPos.x, bone.parentPos.y, bone.parentPos.z, 1.0f);
-										Engine::Vector3 bPos = {bone.globalMatrix.m[3][0], bone.globalMatrix.m[3][1], bone.globalMatrix.m[3][2]};
-										DirectX::XMVECTOR p2 = DirectX::XMVectorSet(bPos.x, bPos.y, bPos.z, 1.0f);
-										// ワールド座標へ変換する
-										p1 = DirectX::XMVector3TransformCoord(p1, w);
-										p2 = DirectX::XMVector3TransformCoord(p2, w);
-										// Engine の型へ取り出す
-										Engine::Vector3 wp1, wp2;
-										DirectX::XMStoreFloat3(reinterpret_cast<DirectX::XMFLOAT3*>(&wp1), p1);
-										DirectX::XMStoreFloat3(reinterpret_cast<DirectX::XMFLOAT3*>(&wp2), p2);
-										renderer_->DrawLine3D(wp1, wp2, {0.0f, 1.0f, 0.0f, 1.0f}, true); // 手前の物に隠れずに描く
-									}
-								}
-							}
-						}
-					}
-				}
-
-				// このエンティティのワールド行列
-				Engine::Matrix4x4 world = this->GetWorldMatrix(static_cast<int>(entity));
-				// アニメーションありはスキニング描画、半透明は後回し、特殊シェーダーは個別描画、それ以外はインスタンシング描画
-				if (hasAnim) {
-					// 骨の行列を使って描く
-					renderer_->DrawSkinnedMesh(mr.modelHandle, mr.textureHandle, world, bonePalette, {color.x * mr.color.x, color.y * mr.color.y, color.z * mr.color.z, color.w * mr.color.w});
-				} else {
-					// スライム系・ビームなどの半透明のシェーダー
-					if (mr.shaderName == "Slime" || mr.shaderName == "SlimeNoFace" || mr.shaderName == "SlimeNoFaceNoDepth" || mr.shaderName == "EnergyBeam" || mr.shaderName == "EnergyCylinder") {
-						// 半透明なので、不透明な物の後でまとめて描く
-						continue;
-					}
-					// 特殊なシェーダーは 1 つずつ描く
-					if (mr.shaderName == "Toon" || mr.shaderName == "ToonSkinning" || mr.shaderName == "Hologram" || mr.shaderName == "EmissiveGlow" || mr.shaderName == "ForceField" ||
-					    mr.shaderName == "Dissolve" || mr.shaderName == "Distortion" || mr.shaderName == "Reflection" || mr.shaderName == "Glass") {
-						renderer_->DrawMesh(mr.modelHandle, mr.textureHandle, world, {color.x * mr.color.x, color.y * mr.color.y, color.z * mr.color.z, color.w * mr.color.w}, mr.shaderName, mr.reflectivity, mr.useCubemap);
-					} else {
-						// それ以外は同じモデルをまとめて描く
-						renderer_->DrawMeshInstanced(
-						    mr.modelHandle, mr.textureHandle, world, {color.x * mr.color.x, color.y * mr.color.y, color.z * mr.color.z, color.w * mr.color.w}, mr.shaderName, mr.extraTextureHandles,uint64_t(entt::to_integral(entity))+1);
-					}
-				}
-			}
-		}
-
-		// 旧 SceneObject との互換用 (MeshRenderer を持たず自前の modelHandle を持つ場合)
-		// 基本は MeshRendererComponent にまとめる方針なので、処理は無効化して残している
-		/*
-		if (!hasMeshRenderer && obj.modelHandle != 0) { ... }
-		*/
-
-		// 川の描画 (メッシュはワールド座標で作ってあるので単位行列で描く)
-		// 川を持っていれば
-		if (registry_.all_of<RiverComponent>(entity)) {
-			const auto& rv = registry_.get<RiverComponent>(entity);
-			if (rv.enabled && rv.meshHandle != 0) {
-				// 川のテクスチャ
-				auto tex = renderer_->LoadTexture2D(rv.texturePath);
-				// 単位行列の代わりの、移動・回転なし・大きさ 1 のトランスフォーム
-				Engine::Transform identity;
-				identity.translate = {0, 0, 0};
-				identity.rotate = {0, 0, 0};
-				identity.scale = {1, 1, 1};
-				// 流れの速さと UV の倍率を色の欄で渡して、川のシェーダーで描く
-				renderer_->DrawMesh(rv.meshHandle, tex, identity, {rv.flowSpeed, rv.uvScale, 0.0f, 0.0f}, "River");
-			}
-		}
-	}
-
-	// 半透明の物 (スライムなど) を後から描く
-	for (auto entity : renderView) {
-		if (registry_.all_of<MeshRendererComponent>(entity)) {
-			auto& mr = registry_.get<MeshRendererComponent>(entity);
-			// 無効なら飛ばす
-			if (!mr.enabled) continue;
-			// 半透明のシェーダーのものだけ描く
-			if (mr.shaderName == "Slime" || mr.shaderName == "SlimeNoFace" || mr.shaderName == "SlimeNoFaceNoDepth" || mr.shaderName == "EnergyBeam" || mr.shaderName == "EnergyCylinder") {
-				Engine::Matrix4x4 world = this->GetWorldMatrix(static_cast<int>(entity));
-				// 色 (ColorComponent があればその色)
-				Engine::Vector4 color = { 1.0f, 1.0f, 1.0f, 1.0f };
-				if (registry_.all_of<ColorComponent>(entity)) {
-					const auto& cc = registry_.get<ColorComponent>(entity);
-					color = { cc.color.x, cc.color.y, cc.color.z, cc.color.w };
-				}
-				// 半透明として描く
-				renderer_->DrawMesh(mr.modelHandle, mr.textureHandle, world,
-					{ color.x * mr.color.x, color.y * mr.color.y, color.z * mr.color.z, color.w * mr.color.w },
-					mr.shaderName, mr.reflectivity > 0 ? mr.reflectivity : 1.0f, true);
-			}
-		}
-	}
-
-#if defined(USE_IMGUI) && !defined(NDEBUG)
-	// Scene ビューのときだけ、選択中の強調とライトの印を描く
-	if (editorView_ == EditorView::Scene) {
-		DrawSelectionHighlight();
-		DrawLightGizmos();
-	}
-#endif
-	// パーティクルの描画
-	auto peView = registry_.view<ParticleEmitterComponent>();
-	peView.each([&](auto, ParticleEmitterComponent& pe) {
-		// 有効なものだけ描く
-		if (pe.enabled) {
-			pe.emitter.Draw(camera_);
-		}
-	});
-
-	// 旧: CPU 計算のスライム描画 (軽量なスライム用シェーダーに置き換えたので無効)
-	renderer_->SetCustomDrawJob(nullptr);
-
-    // Scene ビューは Unity と同様にゲーム内 UI (ポーズ画面・HUD) を重ねず、空間だけを見せる
-    const bool sceneView = editorView_ == EditorView::Scene;
-    // ポーズ中: グラフィック設定画面またはポーズメニューを描く
-    if (isPlaying_ && isPaused_) {
-        // Scene ビューでは何も重ねない
-        if (sceneView) return;
-        // UI の描画先 (エディタの Game ビューならマウス座標を上書きする)
-        UI::Canvas ui(renderer_,ctx_.viewportSize.x,ctx_.viewportSize.y);if(ctx_.useOverrideMouse)ui.SetPointer(ctx_.overrideMouseX,ctx_.overrideMouseY);
-        // グラフィック設定画面 (保存に失敗したら注意を出す)
-        if(graphicsOpen_){UI::DrawGraphics(ui,*renderer_);if(graphicsSaveFailed_)ui.Text(UI::Str("pause.saveFailed"),110,689,17,UI::Gold,UI::JapaneseFont);return;}
-        // スライム本編は強化パレット、旧アクションゲームはポーズメニュー
-        if(chronoMode_&&!registry_.view<Chrono::InkPlayer>().empty()){auto view=registry_.view<Chrono::InkPlayer>();UI::RoguePalette(ui,view.get<Chrono::InkPlayer>(*view.begin()).rogue);}else ui.Pause();
-        // 右上のグラフィック設定ボタン
-        ui.Button(UI::GraphicsButton,UI::Str(UI::UsingPad()?"pause.graphics":"pause.graphicsKey"),false,"xbox_button_view");
-        return;
-    }
-    // 各システムの描画
-    for (auto& system : systems_) {
-        system->Draw(registry_, ctx_);
-		// スライム本編の HUD は Renderer::EndFrame でまとめて描かれる前に登録する
-		if (chronoMode_ && isPlaying_ && !sceneView) system->DrawUI(registry_, ctx_);
-	}
-}
-
-// ゲーム内 UI の描画 (旧アクションゲームのシステムが使う)
-void GameScene::DrawUI() {
-	// 描画の窓口が無ければ何もしない
-	if (!renderer_) return;
-
-	// Scene ビューではゲームの HUD を描かない (Draw と同じ扱い)
-	if (!isPlaying_ || editorView_ == EditorView::Scene)
-		return;
-	// 旧アクションゲームのときだけ、各システムの UI を描く
-	for (auto& sys : systems_) {
-		if (!chronoMode_) sys->DrawUI(registry_, ctx_);
-	}
-}
-
-
-// ステージクリアしたか (本編は ChronoSystem、旧モードは WaveSystem で判定する)
-bool GameScene::IsStageClear() const {
-	// 本編は ChronoSystem の終了判定
-	if (chronoSystem_) return chronoSystem_->Finished();
-	// 旧モードはウェーブがクリアの状態か
-	return waveSystem_ && waveSystem_->state == WaveSystem::State::Clear;
-}
-
-// エディタ: 選択中のエンティティを箱の線で強調表示する
-void GameScene::DrawSelectionHighlight() {
-	if (!renderer_)
-		return;
-
-	// 選択中のエンティティを順に処理する
-	for (auto entity : selectedEntities_) {
-		// 消えているか位置が無ければ飛ばす
-		if (!registry_.valid(entity) || !registry_.all_of<TransformComponent>(entity))
-			continue;
-
-		// 位置
-		auto& tc = registry_.get<TransformComponent>(entity);
-		Engine::Vector3 pos = {tc.translate.x, tc.translate.y, tc.translate.z};
-
-		// ワールド行列
-		Engine::Matrix4x4 mat = this->GetWorldMatrix(static_cast<int>(entity));
-		DirectX::XMMATRIX worldMat = DirectX::XMLoadFloat4x4(reinterpret_cast<DirectX::XMFLOAT4X4*>(&mat));
-
-		// モデルの基準の箱 (±1) をワールド行列で変換し、12本の辺を黄色で描く
-		Engine::Vector4 hlColor = {1.0f, 0.85f, 0.0f, 1.0f};
-		Engine::Vector3 v[8] = {
-		    {-1.0f, -1.0f, -1.0f},
-            {1.0f,  -1.0f, -1.0f},
-            {1.0f,  1.0f,  -1.0f},
-            {-1.0f, 1.0f,  -1.0f},
-            {-1.0f, -1.0f, 1.0f },
-            {1.0f,  -1.0f, 1.0f },
-            {1.0f,  1.0f,  1.0f },
-            {-1.0f, 1.0f,  1.0f },
-		};
-
-		// 8 つの角をワールド座標へ変換する
-		for (int i = 0; i < 8; ++i) {
-			DirectX::XMVECTOR p = DirectX::XMVector3TransformCoord(DirectX::XMVectorSet(v[i].x, v[i].y, v[i].z, 1.0f), worldMat);
-			DirectX::XMStoreFloat3(reinterpret_cast<DirectX::XMFLOAT3*>(&v[i]), p);
-		}
-		// 箱の 12 本の辺 (角の番号の組)
-		int edges[][2] = {
-		    {0, 1},
-            {1, 2},
-            {2, 3},
-            {3, 0},
-            {4, 5},
-            {5, 6},
-            {6, 7},
-            {7, 4},
-            {0, 4},
-            {1, 5},
-            {2, 6},
-            {3, 7}
-        };
-		// 辺を描く
-		for (auto& eg : edges)
-			renderer_->DrawLine3D(v[eg[0]], v[eg[1]], hlColor, true);
-
-		// 箱の当たり判定 (緑)
-		if (registry_.all_of<BoxColliderComponent>(entity)) {
-			const auto& bc = registry_.get<BoxColliderComponent>(entity);
-			if (bc.enabled) {
-				// 箱の半分の大きさと中心
-				float hx = bc.size.x * 0.5f, hy = bc.size.y * 0.5f, hz = bc.size.z * 0.5f;
-				Engine::Vector3 cp = {bc.center.x, bc.center.y, bc.center.z};
-				Engine::Vector4 colColor = {0.2f, 1.0f, 0.2f, 0.8f};
-				Engine::Vector3 cv[8] = {
-				    {cp.x - hx, cp.y - hy, cp.z - hz},
-                    {cp.x + hx, cp.y - hy, cp.z - hz},
-                    {cp.x + hx, cp.y + hy, cp.z - hz},
-                    {cp.x - hx, cp.y + hy, cp.z - hz},
-				    {cp.x - hx, cp.y - hy, cp.z + hz},
-                    {cp.x + hx, cp.y - hy, cp.z + hz},
-                    {cp.x + hx, cp.y + hy, cp.z + hz},
-                    {cp.x - hx, cp.y + hy, cp.z + hz},
-				};
-				// 8 つの角をワールド座標へ変換して辺を描く
-				for (int i = 0; i < 8; ++i) {
-					DirectX::XMVECTOR p = DirectX::XMVector3TransformCoord(DirectX::XMVectorSet(cv[i].x, cv[i].y, cv[i].z, 1.0f), worldMat);
-					DirectX::XMStoreFloat3(reinterpret_cast<DirectX::XMFLOAT3*>(&cv[i]), p);
-				}
-				for (auto& eg : edges)
-					renderer_->DrawLine3D(cv[eg[0]], cv[eg[1]], colColor, true);
-			}
-		}
-
-		// GPU メッシュコライダー (青、重なっていれば赤)
-		if (registry_.all_of<GpuMeshColliderComponent>(entity)) {
-			const auto& gmc = registry_.get<GpuMeshColliderComponent>(entity);
-			if (gmc.enabled) {
-				Engine::Vector4 gColor = gmc.isIntersecting ? Engine::Vector4{1.0f, 0.2f, 0.2f, 0.8f} : Engine::Vector4{0.2f, 0.2f, 1.0f, 0.8f};
-				// モデルの基準の箱 (±1)
-				float hs = 1.0f;
-				Engine::Vector3 cv[8] = {
-				    {-hs, -hs, -hs},
-                    {hs,  -hs, -hs},
-                    {hs,  hs,  -hs},
-                    {-hs, hs,  -hs},
-                    {-hs, -hs, hs },
-                    {hs,  -hs, hs },
-                    {hs,  hs,  hs },
-                    {-hs, hs,  hs }
-                };
-				// 8 つの角をワールド座標へ変換して辺を描く
-				for (int i = 0; i < 8; ++i) {
-					DirectX::XMVECTOR p = DirectX::XMVector3TransformCoord(DirectX::XMVectorSet(cv[i].x, cv[i].y, cv[i].z, 1.0f), worldMat);
-					DirectX::XMStoreFloat3(reinterpret_cast<DirectX::XMFLOAT3*>(&cv[i]), p);
-				}
-				for (auto& eg : edges)
-					renderer_->DrawLine3D(cv[eg[0]], cv[eg[1]], gColor, true);
-			}
-		}
-
-		// 攻撃判定 (赤。有効なときは濃く)
-		if (registry_.all_of<HitboxComponent>(entity)) {
-			const auto& hb = registry_.get<HitboxComponent>(entity);
-			if (hb.enabled) {
-				// 箱の半分の大きさと中心
-				float hx = hb.size.x * 0.5f, hy = hb.size.y * 0.5f, hz = hb.size.z * 0.5f;
-				Engine::Vector3 cp = {hb.center.x, hb.center.y, hb.center.z};
-				Engine::Vector4 hbColor = hb.isActive ? Engine::Vector4{1.0f, 0.2f, 0.2f, 1.0f} : Engine::Vector4{1.0f, 0.2f, 0.2f, 0.3f};
-				Engine::Vector3 hv[8] = {
-				    {cp.x - hx, cp.y - hy, cp.z - hz},
-                    {cp.x + hx, cp.y - hy, cp.z - hz},
-                    {cp.x + hx, cp.y + hy, cp.z - hz},
-                    {cp.x - hx, cp.y + hy, cp.z - hz},
-				    {cp.x - hx, cp.y - hy, cp.z + hz},
-                    {cp.x + hx, cp.y - hy, cp.z + hz},
-                    {cp.x + hx, cp.y + hy, cp.z + hz},
-                    {cp.x - hx, cp.y + hy, cp.z + hz},
-				};
-				// 8 つの角をワールド座標へ変換して辺を描く
-				for (int i = 0; i < 8; ++i) {
-					DirectX::XMVECTOR p = DirectX::XMVector3TransformCoord(DirectX::XMVectorSet(hv[i].x, hv[i].y, hv[i].z, 1.0f), worldMat);
-					DirectX::XMStoreFloat3(reinterpret_cast<DirectX::XMFLOAT3*>(&hv[i]), p);
-				}
-				for (auto& eg : edges)
-					renderer_->DrawLine3D(hv[eg[0]], hv[eg[1]], hbColor, true);
-			}
-		}
-
-		// 食らい判定 (緑)
-		if (registry_.all_of<HurtboxComponent>(entity)) {
-			const auto& hb = registry_.get<HurtboxComponent>(entity);
-			if (hb.enabled) {
-				// 箱の半分の大きさと中心
-				float hx = hb.size.x * 0.5f, hy = hb.size.y * 0.5f, hz = hb.size.z * 0.5f;
-				Engine::Vector3 cp = {hb.center.x, hb.center.y, hb.center.z};
-				Engine::Vector4 hbColor = {0.2f, 1.0f, 0.5f, 0.6f};
-				Engine::Vector3 hv[8] = {
-				    {cp.x - hx, cp.y - hy, cp.z - hz},
-                    {cp.x + hx, cp.y - hy, cp.z - hz},
-                    {cp.x + hx, cp.y + hy, cp.z - hz},
-                    {cp.x - hx, cp.y + hy, cp.z - hz},
-				    {cp.x - hx, cp.y - hy, cp.z + hz},
-                    {cp.x + hx, cp.y - hy, cp.z + hz},
-                    {cp.x + hx, cp.y + hy, cp.z + hz},
-                    {cp.x - hx, cp.y + hy, cp.z + hz},
-				};
-				// 8 つの角をワールド座標へ変換して辺を描く
-				for (int i = 0; i < 8; ++i) {
-					DirectX::XMVECTOR p = DirectX::XMVector3TransformCoord(DirectX::XMVectorSet(hv[i].x, hv[i].y, hv[i].z, 1.0f), worldMat);
-					DirectX::XMStoreFloat3(reinterpret_cast<DirectX::XMFLOAT3*>(&hv[i]), p);
-				}
-				for (auto& eg : edges)
-					renderer_->DrawLine3D(hv[eg[0]], hv[eg[1]], hbColor, true);
-			}
-		}
-
-		// 変形ツールの形を描く (移動は矢印、回転は円、拡大は先端の × 印)。ドラッグ中の軸は明るくする
-		DirectX::XMMATRIX gizmoMat = DirectX::XMMatrixRotationRollPitchYaw(tc.rotate.x, tc.rotate.y, tc.rotate.z) * DirectX::XMMatrixTranslation(tc.translate.x, tc.translate.y, tc.translate.z);
-		// ギズモのローカル座標の線を、ワールド座標に直して描く
-		auto drawLocalLine = [&](const Engine::Vector3& localP0, const Engine::Vector3& localP1, const Engine::Vector4& col) {
-			DirectX::XMVECTOR p0 = DirectX::XMVector3TransformCoord(DirectX::XMVectorSet(localP0.x, localP0.y, localP0.z, 1.0f), gizmoMat);
-			DirectX::XMVECTOR p1 = DirectX::XMVector3TransformCoord(DirectX::XMVectorSet(localP1.x, localP1.y, localP1.z, 1.0f), gizmoMat);
-			Engine::Vector3 wp0, wp1;
-			DirectX::XMStoreFloat3(reinterpret_cast<DirectX::XMFLOAT3*>(&wp0), p0);
-			DirectX::XMStoreFloat3(reinterpret_cast<DirectX::XMFLOAT3*>(&wp1), p1);
-			renderer_->DrawLine3D(wp0, wp1, col, true);
-		};
-
-		// 軸の長さと、矢印の先の大きさ
-		const float al = 2.0f, ar = 0.3f;
-		// ドラッグ中の軸 (選択中のものをドラッグしているときだけ)
-		int dAxis = (EditorUI::IsGizmoDragging() && entity == selectedEntity_) ? EditorUI::GetGizmoDragAxis() : -1;
-		// 軸の色 (X 赤・Y 緑・Z 青、ドラッグ中は明るく)
-		auto axCol = [](int axis, int drag) -> Engine::Vector4 {
-			bool a = (drag == axis);
-			switch (axis) {
-			case 0:
-				return a ? Engine::Vector4{1, .6f, .6f, 1} : Engine::Vector4{1, .2f, .2f, 1};
-			case 1:
-				return a ? Engine::Vector4{.6f, 1, .6f, 1} : Engine::Vector4{.2f, 1, .2f, 1};
-			case 2:
-				return a ? Engine::Vector4{.6f, .6f, 1, 1} : Engine::Vector4{.2f, .2f, 1, 1};
-			default:
-				return {1, 1, 1, 1};
-			}
-		};
-		// 3 軸の色
-		auto cX = axCol(0, dAxis), cY = axCol(1, dAxis), cZ = axCol(2, dAxis);
-
-		// 移動: 各軸の線と矢印の先
-		if (EditorUI::GetGizmoMode() == GizmoMode::Translate) {
-			drawLocalLine({0, 0, 0}, {al, 0, 0}, cX);
-			drawLocalLine({al, 0, 0}, {al - ar, ar * .4f, 0}, cX);
-			drawLocalLine({al, 0, 0}, {al - ar, -ar * .4f, 0}, cX);
-			drawLocalLine({0, 0, 0}, {0, al, 0}, cY);
-			drawLocalLine({0, al, 0}, {ar * .4f, al - ar, 0}, cY);
-			drawLocalLine({0, al, 0}, {-ar * .4f, al - ar, 0}, cY);
-			drawLocalLine({0, 0, 0}, {0, 0, al}, cZ);
-			drawLocalLine({0, 0, al}, {0, ar * .4f, al - ar}, cZ);
-			drawLocalLine({0, 0, al}, {0, -ar * .4f, al - ar}, cZ);
-		} else if (EditorUI::GetGizmoMode() == GizmoMode::Rotate) {
-			// 回転: 各軸のまわりの円を 32 分割で描く
-			const int seg = 32;
-			const float rad = 1.5f;
-			for (int i = 0; i < seg; ++i) {
-				float a0 = (float)i / seg * DirectX::XM_2PI, a1 = (float)(i + 1) / seg * DirectX::XM_2PI;
-				drawLocalLine({0, cosf(a0) * rad, sinf(a0) * rad}, {0, cosf(a1) * rad, sinf(a1) * rad}, cX);
-				drawLocalLine({cosf(a0) * rad, 0, sinf(a0) * rad}, {cosf(a1) * rad, 0, sinf(a1) * rad}, cY);
-				drawLocalLine({cosf(a0) * rad, sinf(a0) * rad, 0}, {cosf(a1) * rad, sinf(a1) * rad, 0}, cZ);
-			}
-		} else {
-			// 拡大: 各軸の線と先の × 印
-			float e = 0.15f;
-			drawLocalLine({0, 0, 0}, {al, 0, 0}, cX);
-			drawLocalLine({al - e, -e, 0}, {al + e, e, 0}, cX);
-			drawLocalLine({al + e, -e, 0}, {al - e, e, 0}, cX);
-			drawLocalLine({0, 0, 0}, {0, al, 0}, cY);
-			drawLocalLine({-e, al - e, 0}, {e, al + e, 0}, cY);
-			drawLocalLine({e, al - e, 0}, {-e, al + e, 0}, cY);
-			drawLocalLine({0, 0, 0}, {0, 0, al}, cZ);
-			drawLocalLine({0, -e, al - e}, {0, e, al + e}, cZ);
-			drawLocalLine({0, e, al - e}, {0, -e, al + e}, cZ);
-		}
-	}
-}
-
-// エディタ: 地面の格子 (10 マスごとに濃く)、X 軸 (赤) と Z 軸 (青)、原点の XYZ 軸
-void GameScene::DrawEditorGizmos() {
-	if (!renderer_)
-		return;
-	// 格子の範囲 (±100) と間隔 (1)
-	const float gridSize = 100.0f, step = 1.0f;
-	for (float i = -gridSize; i <= gridSize; i += step) {
-		// 中心の線は軸として別に描く
-		if (std::fabs(i) < 0.01f)
-			continue;
-		// 10 ごとの線は濃く
-		bool isMajor = std::fmod(std::fabs(i), 10.0f) < 0.01f;
-		float alpha = isMajor ? 0.35f : 0.15f;
-		Engine::Vector4 gc = {0.6f, 0.6f, 0.6f, alpha};
-		// X 方向と Z 方向の線
-		renderer_->DrawLine3D({-gridSize, 0.0f, i}, {gridSize, 0.0f, i}, gc, false);
-		renderer_->DrawLine3D({i, 0.0f, -gridSize}, {i, 0.0f, gridSize}, gc, false);
-	}
-	// X 軸 (赤) と Z 軸 (青)
-	renderer_->DrawLine3D({-gridSize, 0.0f, 0.0f}, {gridSize, 0.0f, 0.0f}, {0.8f, 0.2f, 0.2f, 0.7f}, false);
-	renderer_->DrawLine3D({0.0f, 0.0f, -gridSize}, {0.0f, 0.0f, gridSize}, {0.2f, 0.2f, 0.8f, 0.7f}, false);
-	// 原点の XYZ 軸 (手前に描く)
-	renderer_->DrawLine3D({0, 0, 0}, {1.5f, 0, 0}, {1.f, 0.2f, 0.2f, 1.f}, true);
-	renderer_->DrawLine3D({0, 0, 0}, {0, 1.5f, 0}, {0.2f, 1.f, 0.2f, 1.f}, true);
-	renderer_->DrawLine3D({0, 0, 0}, {0, 0, 1.5f}, {0.2f, 0.2f, 1.f, 1.f}, true);
-}
-
-// エディタ UI の描画
-void GameScene::DrawEditor() {
-#ifdef USE_IMGUI
-	EditorUI::Show(renderer_, this);
-#endif
-}
-
-// エディタ: ライトの位置と向きを線で描く (選択中は濃く)
-void GameScene::DrawLightGizmos() {
-	if (!renderer_)
-		return;
-	// 平行光源 (黄): 十字と向き
-	auto dlView = registry_.view<DirectionalLightComponent, TransformComponent>();
-	dlView.each([&](auto entity, const DirectionalLightComponent& dl, const TransformComponent& tc) {
-		// 無効なら描かない
-		if (!dl.enabled)
-			return;
-		// 位置と向き (回転行列の Z 軸)
-		Engine::Vector3 pos = {tc.translate.x, tc.translate.y, tc.translate.z};
-		Engine::Matrix4x4 mat = tc.GetTransform().ToMatrix();
-		Engine::Vector3 fwd = {mat.m[2][0], mat.m[2][1], mat.m[2][2]};
-		// 選択中なら濃く
-		bool isSelected = (selectedEntities_.find(entity) != selectedEntities_.end());
-		float alpha = isSelected ? 1.0f : 0.4f;
-
-		Engine::Vector4 col = {1.0f, 0.9f, 0.2f, alpha};
-		// 向きの線 (長さ 5) と十字
-		renderer_->DrawLine3D(pos, {pos.x + fwd.x * 5.0f, pos.y + fwd.y * 5.0f, pos.z + fwd.z * 5.0f}, col, true);
-		float s = 0.5f;
-		renderer_->DrawLine3D({pos.x - s, pos.y, pos.z}, {pos.x + s, pos.y, pos.z}, col, true);
-		renderer_->DrawLine3D({pos.x, pos.y - s, pos.z}, {pos.x, pos.y + s, pos.z}, col, true);
-	});
-
-	// 点光源 (緑): 3軸の十字
-	auto plView = registry_.view<PointLightComponent, TransformComponent>();
-	plView.each([&](auto entity, const PointLightComponent& pl, const TransformComponent& tc) {
-		// 無効なら描かない
-		if (!pl.enabled)
-			return;
-		Engine::Vector3 pos = {tc.translate.x, tc.translate.y, tc.translate.z};
-		// 選択中なら濃く
-		bool isSelected = (selectedEntities_.find(entity) != selectedEntities_.end());
-		float alpha = isSelected ? 1.0f : 0.4f;
-
-		Engine::Vector4 col = {0.2f, 0.9f, 0.2f, alpha};
-		float s = 0.5f;
-		// X・Y・Z の十字
-		renderer_->DrawLine3D({pos.x - s, pos.y, pos.z}, {pos.x + s, pos.y, pos.z}, col, true);
-		renderer_->DrawLine3D({pos.x, pos.y - s, pos.z}, {pos.x, pos.y + s, pos.z}, col, true);
-		renderer_->DrawLine3D({pos.x, pos.y, pos.z - s}, {pos.x, pos.y, pos.z + s}, col, true);
-	});
-
-	// スポットライト (水色): 十字と向き
-	auto slView = registry_.view<SpotLightComponent, TransformComponent>();
-	slView.each([&](auto entity, const SpotLightComponent& sl, const TransformComponent& tc) {
-		// 無効なら描かない
-		if (!sl.enabled)
-			return;
-		// 位置と向き (回転行列の Z 軸)
-		Engine::Vector3 pos = {tc.translate.x, tc.translate.y, tc.translate.z};
-		Engine::Matrix4x4 mat = tc.GetTransform().ToMatrix();
-		Engine::Vector3 fwd = {mat.m[2][0], mat.m[2][1], mat.m[2][2]};
-		// 選択中なら濃く
-		bool isSelected = (selectedEntities_.find(entity) != selectedEntities_.end());
-		float alpha = isSelected ? 1.0f : 0.4f;
-
-		Engine::Vector4 col = {0.2f, 0.8f, 1.0f, alpha};
-		// 向きの線 (長さ 5) と十字
-		renderer_->DrawLine3D(pos, {pos.x + fwd.x * 5.0f, pos.y + fwd.y * 5.0f, pos.z + fwd.z * 5.0f}, col, true);
-		float s = 0.5f;
-		renderer_->DrawLine3D({pos.x - s, pos.y, pos.z}, {pos.x + s, pos.y, pos.z}, col, true);
-		renderer_->DrawLine3D({pos.x, pos.y - s, pos.z}, {pos.x, pos.y + s, pos.z}, col, true);
 	});
 }
 
@@ -2292,168 +1071,11 @@ void GameScene::SetIsPlaying(bool play) {
 		// 保存内容は PLAY 開始のたびに取り直すので、停止したら空にする
 		sceneSnapshot_ = "";
 
-
-
-
-		// 残っている生成・破棄の予約を捨てる
+// 残っている生成・破棄の予約を捨てる
 		std::lock_guard<std::mutex> lock(spawnMutex_);
 		pendingDestroys_.clear();
 		pendingSpawns_.clear();
-	}
-}
-
-// =====================================================
-// タグ検索の実装
-// =====================================================
-
-// タグでエンティティの一覧を返す (無ければ空の一覧)
-const std::vector<entt::entity>& GameScene::GetEntitiesByTag(TagType tag) {
-	// 見つからないときに返す空の一覧
-	static const std::vector<entt::entity> emptyResult;
-	// タグの一覧を探す
-	auto it = tagCache_.find(tag);
-	if (it != tagCache_.end()) {
-		return it->second;
-	}
-	return emptyResult;
-}
-
-// タグを設定する (キャッシュへの反映は次の Update で行う)
-void GameScene::SetTag(entt::entity entity, TagType tag) {
-	// 存在しなければ何もしない
-	if (!registry_.valid(entity)) {
-		return;
-	}
-	// タグのコンポーネント (無ければ付ける) に書き込む
-	auto& tc = registry_.get_or_emplace<TagComponent>(entity);
-	tc.tag = tag;
-	// すぐには同期せず、同期待ちの一覧に入れる
-	pendingTagSync_.push_back(entity);
-}
-
-// タグが付いたとき
-void GameScene::OnTagAdded(entt::registry& /*registry*/, entt::entity entity) {
-	// すぐには同期せず、次の Update で同期する
-	pendingTagSync_.push_back(entity);
-}
-
-// タグが外れたとき
-void GameScene::OnTagRemoved(entt::registry& /*registry*/, entt::entity entity) {
-	// すぐには消さず、次の Update の最初に消す
-	// (反復処理の途中でコンテナを書き換えて壊さないため)
-	pendingTagRemoved_.push_back(entity);
-}
-
-// スクリプトが外れたとき
-void GameScene::OnScriptDestroyed(entt::registry& registry, entt::entity entity) {
-	// スクリプトが破棄されるときに C++ スクリプトの OnDestroy を呼ぶ
-	// スクリプトのコンポーネントがあれば止める
-	if (auto* sc = registry.try_get<ScriptComponent>(entity)) {
-		StopScripts(*sc, entity, this);
-	}
-}
-
-// タグのキャッシュにエンティティを追加する
-void GameScene::SyncTag(entt::entity entity) {
-	// 存在しないかタグが無ければ何もしない
-	if (!registry_.valid(entity) || !registry_.all_of<TagComponent>(entity)) {
-		return;
-	}
-
-	// 新しいタグの一覧に追加する (古い一覧からの削除は Update の最初にまとめて行う前提)
-	const TagType tag = registry_.get<TagComponent>(entity).tag;
-	
-	// 1件ずつ重複を調べると遅いので、Update 側の削除を信頼する
-	tagCache_[tag].push_back(entity);
-}
-
-// 文字列のタグで探す / 設定する
-const std::vector<entt::entity>& GameScene::GetEntitiesByTag(const std::string& tag) {
-	return GetEntitiesByTag(StringToTag(tag));
-}
-
-void GameScene::SetTag(entt::entity entity, const std::string& tagStr) {
-	// 文字列をタグの列挙値に変換して設定する
-	SetTag(entity, StringToTag(tagStr));
-}
-
-// 流体のプレビューを初期状態にする (GPU 流体を空にし、エミッターの放出数を 0 に戻す)
-void GameScene::ResetFluidPreview() {
-	// GPU 流体を空にする
-	if (renderer_) renderer_->ResetGPUFluid();
-	gpuSlimeEmitted_ = false;
-	// 流体エミッターの出した数と端数を 0 に戻す
-	auto emitters = registry_.view<FluidEmitterComponent>();
-	for (auto entity : emitters) {
-		auto& emitter = emitters.get<FluidEmitterComponent>(entity);
-		emitter.emittedParticles = 0;
-		emitter.emissionRemainder = 0;
-	}
-}
-
-// シーンを完全に空にする
-void GameScene::ClearScene() {
-	gpuSlimeEmitted_ = false;
-    // 選択を外し、止めていた世界を動かす
-    ClearSelection();
-    if(renderer_)renderer_->SetRogueWorldFrozen(false);
-	// すべてのスクリプトを止める
-	StopAllScripts(registry_, this);
-	// 1. 各システムの状態をリセットする
-	for (auto& sys : systems_) {
-		sys->Clear(registry_);
-	}
-
-	// 2. 予約やキャッシュを全部消す
-	{
-		std::lock_guard<std::mutex> lock(spawnMutex_);
-		pendingDestroys_.clear();
-		pendingSpawns_.clear();
-		pendingTagSync_.clear();
-		pendingTagRemoved_.clear();
-		tagCache_.clear();
-		matrixCache_.clear();
-	}
-
-	// 3. レジストリを空にする
-	// 全消去の間は OnDestroy などのシグナルで二重に破棄しないよう (反復処理の破壊を防ぐ)、シグナルを一時的に外す
-	registry_.on_destroy<TagComponent>().disconnect<&GameScene::OnTagRemoved>(this);
-	registry_.on_destroy<ScriptComponent>().disconnect<&GameScene::OnScriptDestroyed>(this);
-
-	registry_.clear();
-
-	// シグナルをつなぎ直す
-	registry_.on_destroy<TagComponent>().connect<&GameScene::OnTagRemoved>(this);
-	registry_.on_destroy<ScriptComponent>().connect<&GameScene::OnScriptDestroyed>(this);
-
-	// 4. CPU 側スライムメッシュを未初期化に戻す
-	slimeCpuLogic_.initialized = false;
-	projectileCpuLogic_.initialized = false;
-
-	if (renderer_) {
-		// GPU 流体を空にする
-		renderer_->ClearGPUFluid();
-	}
-}
-
-// ポーズメニューは共通の UI キャンバスで描くので、ここでは何も作らない
-void GameScene::CreatePauseMenu() { /* 共通の UI キャンバスで描くので、ここでは何もしない */ }
-
-// ポーズメニュー用のエンティティを破棄する
-void GameScene::DestroyPauseMenu() {
-	// ポーズメニューのタグを持つものを破棄する
-	const auto& pauseUIs = GetEntitiesByTag(TagType::PauseUI);
-	for (auto e : pauseUIs) {
-		if (registry_.valid(e)) {
-			DestroyObject(static_cast<uint32_t>(e));
-		}
 	}
 }
 
 } // namespace Game
-
-
-
-
-
-

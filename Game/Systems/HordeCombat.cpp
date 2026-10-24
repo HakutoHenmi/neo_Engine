@@ -1,6 +1,9 @@
-// HordeCombat.inl
-// 群れの敵との戦闘 (ChronoSystem の一部)。namespace Game の中に読み込まれる。数の決まった群れは共通のメッシュとインスタンス描画を使う。
+// HordeCombat.cpp
+// 群れの敵との戦闘 (ChronoSystem の一部)。数の決まった群れは共通のメッシュとインスタンス描画を使う。
 // 群れの作成: 状態を消し、鎧のシェーダーとメッシュ (大きさの逆数と中心) を用意して、プレイヤーの周りに 72 体を出す
+#include "ChronoSystemInternal.h"
+
+namespace Game {
 void ChronoSystem::BuildSwarm(entt::registry& r){
     // 使い魔とローグライトのダメージの時間を消す
     familiars_.clear();rogueDamageClock_=0;
@@ -272,4 +275,4 @@ void ChronoSystem::DrawSwarm(entt::registry& r,GameContext& ctx){
     // ボスの出現の大きな輪
     if(ink.battlePhase==BattlePhase::Emerging)floorEffect(swarmEmergenceAt_,36,4,ink.battleAge/SwarmEmergenceSeconds,{.15f,.7f,1,1});
 }
-
+} // namespace Game

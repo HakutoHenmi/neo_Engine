@@ -71,13 +71,15 @@ neo_Engine/
 ├─ Engine/            エンジン本体 (描画・GPU 流体・入力・音・シーン管理・ECS)
 ├─ Game/              ゲーム
 │  ├─ main.cpp        入口 (シーンの登録と起動)
+│  ├─ ObjectTypes.h   コンポーネントをまとめて読み込むヘッダー
+│  ├─ Components/     ECS のコンポーネント (基本・描画・物理・音・UI・旧アクションゲーム)
 │  ├─ Scenes/         タイトル・セレクト・ゲーム・ゲームオーバー・評価課題デモ
-│  ├─ Systems/        毎フレームの処理 (ChronoSystem がスライム本編の中心)
+│  ├─ Systems/        毎フレームの処理 (ChronoSystem がスライム本編の中心。実装の分担は ChronoSystemInternal.h)
 │  ├─ Chrono/         スライム本編のルール (成長・変形・敵・街ステージ・強化カード)
 │  ├─ States/         State パターンの状態 (旧アクションゲーム)
 │  ├─ Scripts/        C++ のスクリプト
 │  ├─ UI/             画面表示 (タイトル・ロード画面・HUD・設定)
-│  ├─ Editor/         エディタ (ImGui) と Slime Dev Tools
+│  ├─ Editor/         エディタ (ImGui) と Slime Dev Tools。ウィンドウごとに Editor*.cpp に分割 (一覧は EditorInternal.h)
 │  └─ Data/           JSON データの読み込み
 ├─ Resources/         素材
 │  ├─ Data/           調整値・表・画面の文字 (JSON)
@@ -94,6 +96,8 @@ neo_Engine/
 `Game/main.cpp` でシーンを登録して `Engine::App` を起動します。
 `SceneManager` がタイトル → セレクト → `GameScene` と切り替えます。
 `GameScene` は `Resources/Scenes/chrono.json` を読み込み、登録した System を毎フレーム順に動かします。
+`GameScene` の実装は、更新 (`GameScene.cpp`)・描画 (`GameSceneDraw.cpp`)・エディタ用の表示 (`GameSceneGizmos.cpp`)・
+エンティティの管理 (`GameSceneEntities.cpp`) に分かれています。
 スライム本編の処理は `Game/Systems/ChronoSystem.cpp` から始まり、ルールは `Game/Chrono/` にあります。
 
 ## テスト

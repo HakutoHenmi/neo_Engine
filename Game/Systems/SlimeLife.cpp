@@ -1,6 +1,8 @@
-// SlimeLife.inl
+// SlimeLife.cpp
 // スライムの生活モード (現在のゲームの本編。ChronoSystem の一部)。
 // 吸収で成長し、武器 (ハンマー・剣・飛行機・タイヤ・消火栓) に変形して街を進む。調合室 (研究所) の画面もここにある。
+#include "ChronoSystemInternal.h"
+
 namespace Game {
 // このファイルの中だけで使う補助の関数
 namespace {

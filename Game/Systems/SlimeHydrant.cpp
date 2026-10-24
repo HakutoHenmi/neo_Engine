@@ -1,6 +1,8 @@
-// SlimeHydrant.inl
+// SlimeHydrant.cpp
 // 消火栓に変形したスライムの水 (ChronoSystem の一部)。
 // 画面中央の狙いの計算と、攻撃の水流・防御の水の幕の発射、水が当たった敵や門への効果。
+#include "ChronoSystemInternal.h"
+
 namespace Game {
 // 消火栓の狙い: カメラの中央の先にある最初の物 (壁・床・敵) を目標にし、放物線で届くか・途中で遮られるかを求める
 void ChronoSystem::UpdateHydrantAim(GameContext& ctx){

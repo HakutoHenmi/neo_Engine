@@ -1,5 +1,8 @@
-// BossDefeat.inl
-// ボスの被弾の反応と倒れる演出 (ChronoSystem の一部)。SlimeAssault.inl から namespace Game の中に読み込まれる。
+// BossDefeat.cpp
+// ボスの被弾の反応と倒れる演出 (ChronoSystem の一部)。
+#include "ChronoSystemInternal.h"
+
+namespace Game {
 namespace {
 // 倒れる演出の時間 (破裂まで・結果まで・被弾の光)
 constexpr float DefeatBurstSeconds=1.6f,DefeatResultSeconds=6.2f,BossFlashSeconds=.14f;
@@ -216,3 +219,4 @@ void ChronoSystem::DrawBossDefeat(GameContext& ctx){
     text.Center("SERPENT DEFEATED",640,568,44,UI::Ink);
     text.Bold("大蛇、砕け散る",640-text.Width("大蛇、砕け散る",22,UI::JapaneseFont)*.5f,640,22,UI::Paper,UI::JapaneseFont);
 }
+} // namespace Game

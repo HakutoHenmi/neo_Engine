@@ -4,6 +4,12 @@
     <Filter Include="1. Main（入口・共通定義）">
       <UniqueIdentifier>{a8ddb899-c60d-53c1-84cf-66034e99a22a}</UniqueIdentifier>
     </Filter>
+    <Filter Include="1. Main（入口・共通定義）\Components（コンポーネント）">
+      <UniqueIdentifier>{5fe16716-0722-513b-8369-8de58a333b1c}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="1. Main（入口・共通定義）\Data（JSON の読み込み）">
+      <UniqueIdentifier>{00db5a88-08d7-5afa-94b8-cb2a0648dbeb}</UniqueIdentifier>
+    </Filter>
     <Filter Include="2. Scenes（シーン）">
       <UniqueIdentifier>{ec2dd942-cdfd-5a78-bbcc-604ceb8f7b35}</UniqueIdentifier>
     </Filter>
@@ -117,10 +123,25 @@
     <ClCompile Include="Game\Scenes\AssignmentScene.cpp">
       <Filter>2. Scenes（シーン）</Filter>
     </ClCompile>
+    <ClCompile Include="Game\Scenes\AssignmentSceneCombat.cpp">
+      <Filter>2. Scenes（シーン）</Filter>
+    </ClCompile>
+    <ClCompile Include="Game\Scenes\AssignmentSceneDraw.cpp">
+      <Filter>2. Scenes（シーン）</Filter>
+    </ClCompile>
     <ClCompile Include="Game\Scenes\GameOverScene.cpp">
       <Filter>2. Scenes（シーン）</Filter>
     </ClCompile>
     <ClCompile Include="Game\Scenes\GameScene.cpp">
+      <Filter>2. Scenes（シーン）</Filter>
+    </ClCompile>
+    <ClCompile Include="Game\Scenes\GameSceneDraw.cpp">
+      <Filter>2. Scenes（シーン）</Filter>
+    </ClCompile>
+    <ClCompile Include="Game\Scenes\GameSceneEntities.cpp">
+      <Filter>2. Scenes（シーン）</Filter>
+    </ClCompile>
+    <ClCompile Include="Game\Scenes\GameSceneGizmos.cpp">
       <Filter>2. Scenes（シーン）</Filter>
     </ClCompile>
     <ClCompile Include="Game\Scenes\SelectScene.cpp">
@@ -129,14 +150,71 @@
     <ClCompile Include="Game\Scenes\TitleScene.cpp">
       <Filter>2. Scenes（シーン）</Filter>
     </ClCompile>
+    <ClCompile Include="Game\Systems\BossDefeat.cpp">
+      <Filter>3. Systems（システム）\スライム本編</Filter>
+    </ClCompile>
+    <ClCompile Include="Game\Systems\ChronoCinematic.cpp">
+      <Filter>3. Systems（システム）\スライム本編</Filter>
+    </ClCompile>
+    <ClCompile Include="Game\Systems\ChronoInk.cpp">
+      <Filter>3. Systems（システム）\スライム本編</Filter>
+    </ClCompile>
     <ClCompile Include="Game\Systems\ChronoSystem.cpp">
       <Filter>3. Systems（システム）\スライム本編</Filter>
+    </ClCompile>
+    <ClCompile Include="Game\Systems\CityStage.cpp">
+      <Filter>3. Systems（システム）\スライム本編</Filter>
+    </ClCompile>
+    <ClCompile Include="Game\Systems\HomingDomains.cpp">
+      <Filter>3. Systems（システム）\スライム本編</Filter>
+    </ClCompile>
+    <ClCompile Include="Game\Systems\HordeCombat.cpp">
+      <Filter>3. Systems（システム）\スライム本編</Filter>
+    </ClCompile>
+    <ClCompile Include="Game\Systems\RogueliteCombat.cpp">
+      <Filter>3. Systems（システム）\スライム本編</Filter>
+    </ClCompile>
+    <ClCompile Include="Game\Systems\SlimeAssault.cpp">
+      <Filter>3. Systems（システム）\スライム本編</Filter>
+    </ClCompile>
+    <ClCompile Include="Game\Systems\SlimeHydrant.cpp">
+      <Filter>3. Systems（システム）\スライム本編</Filter>
+    </ClCompile>
+    <ClCompile Include="Game\Systems\SlimeLife.cpp">
+      <Filter>3. Systems（システム）\スライム本編</Filter>
+    </ClCompile>
+    <ClCompile Include="Game\Systems\ChronoChainMode.cpp">
+      <Filter>3. Systems（システム）\共通</Filter>
+    </ClCompile>
+    <ClCompile Include="Game\Systems\ChronoCreature.cpp">
+      <Filter>3. Systems（システム）\共通</Filter>
+    </ClCompile>
+    <ClCompile Include="Game\Systems\FluidSystem.cpp">
+      <Filter>3. Systems（システム）\共通</Filter>
+    </ClCompile>
+    <ClCompile Include="Game\Systems\PhysicsSystem.cpp">
+      <Filter>3. Systems（システム）\共通</Filter>
     </ClCompile>
     <ClCompile Include="Game\Systems\RiverSystem.cpp">
       <Filter>3. Systems（システム）\共通</Filter>
     </ClCompile>
     <ClCompile Include="Game\Systems\UISystem.cpp">
       <Filter>3. Systems（システム）\共通</Filter>
+    </ClCompile>
+    <ClCompile Include="Game\Systems\CanAbilitySystem.cpp">
+      <Filter>3. Systems（システム）\旧アクションゲーム</Filter>
+    </ClCompile>
+    <ClCompile Include="Game\Systems\CombatSystem.cpp">
+      <Filter>3. Systems（システム）\旧アクションゲーム</Filter>
+    </ClCompile>
+    <ClCompile Include="Game\Systems\HealthSystem.cpp">
+      <Filter>3. Systems（システム）\旧アクションゲーム</Filter>
+    </ClCompile>
+    <ClCompile Include="Game\Systems\PlayerActionSystem.cpp">
+      <Filter>3. Systems（システム）\旧アクションゲーム</Filter>
+    </ClCompile>
+    <ClCompile Include="Game\Systems\WaveSystem.cpp">
+      <Filter>3. Systems（システム）\旧アクションゲーム</Filter>
     </ClCompile>
     <ClCompile Include="Game\Scripts\BaseScript.cpp">
       <Filter>6. Scripts（スクリプト）</Filter>
@@ -165,7 +243,28 @@
     <ClCompile Include="Game\Scripts\WarningEffectScript.cpp">
       <Filter>6. Scripts（スクリプト）</Filter>
     </ClCompile>
-    <ClCompile Include="Game\Editor\EditorUI.cpp">
+    <ClCompile Include="Game\Editor\EditorCommands.cpp">
+      <Filter>8. Editor（エディタ）</Filter>
+    </ClCompile>
+    <ClCompile Include="Game\Editor\EditorHierarchy.cpp">
+      <Filter>8. Editor（エディタ）</Filter>
+    </ClCompile>
+    <ClCompile Include="Game\Editor\EditorInspector.cpp">
+      <Filter>8. Editor（エディタ）</Filter>
+    </ClCompile>
+    <ClCompile Include="Game\Editor\EditorPanels.cpp">
+      <Filter>8. Editor（エディタ）</Filter>
+    </ClCompile>
+    <ClCompile Include="Game\Editor\EditorSceneIO.cpp">
+      <Filter>8. Editor（エディタ）</Filter>
+    </ClCompile>
+    <ClCompile Include="Game\Editor\EditorShell.cpp">
+      <Filter>8. Editor（エディタ）</Filter>
+    </ClCompile>
+    <ClCompile Include="Game\Editor\EditorViewport.cpp">
+      <Filter>8. Editor（エディタ）</Filter>
+    </ClCompile>
+    <ClCompile Include="Game\Editor\FluidSandbox.cpp">
       <Filter>8. Editor（エディタ）</Filter>
     </ClCompile>
     <ClCompile Include="Game\Editor\SlimeDevTools.cpp">
@@ -173,17 +272,41 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="Game\Data\GameConfig.h">
-      <Filter>1. Main（入口・共通定義）</Filter>
-    </ClInclude>
-    <ClInclude Include="Game\Data\GameData.h">
-      <Filter>1. Main（入口・共通定義）</Filter>
-    </ClInclude>
     <ClInclude Include="Game\ObjectTypes.h">
       <Filter>1. Main（入口・共通定義）</Filter>
     </ClInclude>
     <ClInclude Include="Game\SceneComponents.h">
       <Filter>1. Main（入口・共通定義）</Filter>
+    </ClInclude>
+    <ClInclude Include="Game\Components\AudioComponents.h">
+      <Filter>1. Main（入口・共通定義）\Components（コンポーネント）</Filter>
+    </ClInclude>
+    <ClInclude Include="Game\Components\ComponentBase.h">
+      <Filter>1. Main（入口・共通定義）\Components（コンポーネント）</Filter>
+    </ClInclude>
+    <ClInclude Include="Game\Components\CoreComponents.h">
+      <Filter>1. Main（入口・共通定義）\Components（コンポーネント）</Filter>
+    </ClInclude>
+    <ClInclude Include="Game\Components\LegacyActionComponents.h">
+      <Filter>1. Main（入口・共通定義）\Components（コンポーネント）</Filter>
+    </ClInclude>
+    <ClInclude Include="Game\Components\PhysicsComponents.h">
+      <Filter>1. Main（入口・共通定義）\Components（コンポーネント）</Filter>
+    </ClInclude>
+    <ClInclude Include="Game\Components\RenderComponents.h">
+      <Filter>1. Main（入口・共通定義）\Components（コンポーネント）</Filter>
+    </ClInclude>
+    <ClInclude Include="Game\Components\UIComponents.h">
+      <Filter>1. Main（入口・共通定義）\Components（コンポーネント）</Filter>
+    </ClInclude>
+    <ClInclude Include="Game\Data\GameConfig.h">
+      <Filter>1. Main（入口・共通定義）\Data（JSON の読み込み）</Filter>
+    </ClInclude>
+    <ClInclude Include="Game\Data\GameData.h">
+      <Filter>1. Main（入口・共通定義）\Data（JSON の読み込み）</Filter>
+    </ClInclude>
+    <ClInclude Include="Game\Scenes\AssignmentConfig.h">
+      <Filter>2. Scenes（シーン）</Filter>
     </ClInclude>
     <ClInclude Include="Game\Scenes\AssignmentScene.h">
       <Filter>2. Scenes（シーン）</Filter>
@@ -200,37 +323,10 @@
     <ClInclude Include="Game\Scenes\TitleScene.h">
       <Filter>2. Scenes（シーン）</Filter>
     </ClInclude>
-    <ClInclude Include="Game\Systems\BossDefeat.inl">
-      <Filter>3. Systems（システム）\スライム本編</Filter>
-    </ClInclude>
-    <ClInclude Include="Game\Systems\ChronoCinematic.inl">
-      <Filter>3. Systems（システム）\スライム本編</Filter>
-    </ClInclude>
-    <ClInclude Include="Game\Systems\ChronoInk.inl">
-      <Filter>3. Systems（システム）\スライム本編</Filter>
-    </ClInclude>
     <ClInclude Include="Game\Systems\ChronoSystem.h">
       <Filter>3. Systems（システム）\スライム本編</Filter>
     </ClInclude>
-    <ClInclude Include="Game\Systems\CityStage.inl">
-      <Filter>3. Systems（システム）\スライム本編</Filter>
-    </ClInclude>
-    <ClInclude Include="Game\Systems\HomingDomains.inl">
-      <Filter>3. Systems（システム）\スライム本編</Filter>
-    </ClInclude>
-    <ClInclude Include="Game\Systems\HordeCombat.inl">
-      <Filter>3. Systems（システム）\スライム本編</Filter>
-    </ClInclude>
-    <ClInclude Include="Game\Systems\RogueliteCombat.inl">
-      <Filter>3. Systems（システム）\スライム本編</Filter>
-    </ClInclude>
-    <ClInclude Include="Game\Systems\SlimeAssault.inl">
-      <Filter>3. Systems（システム）\スライム本編</Filter>
-    </ClInclude>
-    <ClInclude Include="Game\Systems\SlimeHydrant.inl">
-      <Filter>3. Systems（システム）\スライム本編</Filter>
-    </ClInclude>
-    <ClInclude Include="Game\Systems\SlimeLife.inl">
+    <ClInclude Include="Game\Systems\ChronoSystemInternal.h">
       <Filter>3. Systems（システム）\スライム本編</Filter>
     </ClInclude>
     <ClInclude Include="Game\Systems\AudioSystem.h">
@@ -425,10 +521,10 @@
     <ClInclude Include="Game\UI\SceneMusic.h">
       <Filter>7. UI（画面表示）</Filter>
     </ClInclude>
-    <ClInclude Include="Game\Editor\EditorUI.h">
+    <ClInclude Include="Game\Editor\EditorInternal.h">
       <Filter>8. Editor（エディタ）</Filter>
     </ClInclude>
-    <ClInclude Include="Game\Editor\FluidSandbox.inl">
+    <ClInclude Include="Game\Editor\EditorUI.h">
       <Filter>8. Editor（エディタ）</Filter>
     </ClInclude>
     <ClInclude Include="tests\ChronoValidationScene.h">

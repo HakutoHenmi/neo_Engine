@@ -1,6 +1,9 @@
-// RogueliteCombat.inl
+// RogueliteCombat.cpp
 // 1 回の挑戦の中での成長 (ChronoSystem の一部)。強化を選んでいる間は戦闘の時間を進めない。
 // ローグライトの強化メニュー: 経験値がたまったら世界を止めてカードを選ばせる (カメラは横から寄った構図へ移る)
+#include "ChronoSystemInternal.h"
+
+namespace Game {
 bool ChronoSystem::UpdateRogueMenu(entt::registry& r,Player& p,GameContext& ctx){
     // インクのプレイヤーとローグライトの状態
     auto& ink=r.get<InkPlayer>(player_);auto& state=ink.rogue;
@@ -145,3 +148,4 @@ void ChronoSystem::UpdateRogueSkills(entt::registry& r,Player& p,GameContext& ct
         ink.rogueBossPool=pool(at);if(damage>0)HitDomainMissile(r,p,ctx,at,false,damage*tick/4);
     }
 }
+} // namespace Game

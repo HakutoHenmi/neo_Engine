@@ -17,7 +17,7 @@ JSON を書き換えて起動し直すだけで反映され、コードを直す
 | `credits.json` | クレジット画面のページと行 | [`Game/UI/CreditsUI.h`](../Game/UI/CreditsUI.h) |
 | `music.json` | シーンごとの BGM のファイルと音量 | [`Game/UI/SceneMusic.h`](../Game/UI/SceneMusic.h) |
 | `graphics.json` | 映像効果の既定の強さ、LOW / BALANCED / HIGH のプリセット、露出の範囲 | [`Game/UI/GraphicsUI.h`](../Game/UI/GraphicsUI.h) |
-| `editor.json` | エディタのシーンランチャー、エディタで包むシーン、Slime Dev Tools のワープ先 | [`Game/Editor/EditorUI.cpp`](../Game/Editor/EditorUI.cpp), [`Game/Editor/SlimeDevTools.cpp`](../Game/Editor/SlimeDevTools.cpp) |
+| `editor.json` | エディタのシーンランチャー、エディタで包むシーン、Slime Dev Tools のワープ先 | [`Game/Editor/EditorShell.cpp`](../Game/Editor/EditorShell.cpp), [`Game/Editor/SlimeDevTools.cpp`](../Game/Editor/SlimeDevTools.cpp) |
 | `loadout.json` | 旧アクションゲームの缶の初期装備と表示名 | [`Game/CanLoadout.h`](../Game/CanLoadout.h) |
 | `assignment.json` | 評価課題デモの素材・パーティクルの発生源・戦闘の値 | [`Game/Scenes/AssignmentScene.cpp`](../Game/Scenes/AssignmentScene.cpp) |
 

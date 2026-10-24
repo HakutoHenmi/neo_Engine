@@ -1,5 +1,7 @@
-// SlimeAssault.inl
+// SlimeAssault.cpp
 // 輪を描いて誘導弾を撃つ戦闘の本番の処理 (ChronoSystem の一部)。
+#include "ChronoSystemInternal.h"
+
 namespace Game {
 // インク (輪を描く戦闘) のモードの毎フレームの更新。スライムの生活モードなら SlimeLife.inl の処理へ任せる
 void ChronoSystem::UpdateInk(entt::registry& r,Player& p,GameContext& ctx){
@@ -400,9 +402,4 @@ void ChronoSystem::DrawInkUI(entt::registry& r,GameContext& ctx){
     }
 }
 
-// 群れ・誘導弾・ローグライト・ボス撃破の処理を読み込む
-#include "HordeCombat.inl"
-#include "HomingDomains.inl"
-#include "RogueliteCombat.inl"
-#include "BossDefeat.inl"
 }

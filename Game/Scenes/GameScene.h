@@ -199,6 +199,35 @@ private:
 	// ステージクリアしたか
 	bool IsStageClear() const;
 
+	// ---- Update の手順 (GameScene.cpp) ----
+	void FlushPendingTags();                            // 予約したタグのキャッシュの更新を反映する
+	bool HandlePlayInput(float dt, bool stageClear);    // PLAY 中の入力。設定画面・ポーズメニューを処理したら true
+	void UpdateAnimations(float dt);                    // アニメーションの再生時刻を進める
+	void UpdateCanRadialMenu(bool stageClear);          // 旧アクションゲーム: 缶を選ぶラジアルメニュー
+	void UpdateCanFollow(float dt, bool stageClear);    // 旧アクションゲーム: 頭上の缶を追従させる
+	void FlushPendingSpawnsAndDestroys();               // 予約された生成と破棄を反映する
+	void ApplyLights();                                 // ライトをレンダラーへ渡す
+	void UpdateParticleEmitters(float dt);              // パーティクルエミッターを動かす
+
+	// ---- Draw の手順 (GameSceneDraw.cpp) ----
+	// 流体の描画に使うプレイヤーの状態 (位置・大きさ・液状化・死亡)
+	struct PlayerDrawState {
+		DirectX::XMFLOAT3 corePos = { 0.0f, 1.0f, 0.0f };
+		DirectX::XMFLOAT3 blobRadii = { 1.2f, 0.85f, 1.2f };
+		bool isLiquidated = false;
+		float liquefyInitialFlowSpeed = 0.0f;
+		Engine::Vector3 liquefyFlowForward = {0.0f, 0.0f, 1.0f};
+		bool hasPlayerSlime = false;
+		bool isPlayerDead = false;
+		entt::entity playerEntity = entt::null;
+	};
+	PlayerDrawState GatherPlayerDrawState();                    // プレイヤーを探して状態をまとめる
+	void UploadFluidColliders();                                // 流体がぶつかる箱をレンダラーへ渡す
+	void UpdateFluidPreviewCore(PlayerDrawState& player);       // プレイヤーがいないときの流体の中心
+	void UpdateFluidEmitters(const PlayerDrawState& player);    // 流体エミッターから粒子を出す
+	void UpdatePlayerSlimeFluid(PlayerDrawState& player);       // プレイヤーのスライムの流体・分身・弾のメッシュ
+	void DrawSceneMeshes();                                     // メッシュの描画 (不透明 → 半透明)
+
 	// ワールド行列の計算結果のキャッシュ (同じフレームで何度も計算しないため)
 	mutable std::unordered_map<entt::entity, Engine::Matrix4x4> matrixCache_;
 	mutable uint64_t matrixFrameCount_ = 0;
