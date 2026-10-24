@@ -1,8 +1,10 @@
-// CityStage.inl
-// ChronoSystem.cpp から読み込まれる: スライムの街のステージ (Docs/SlimeLife.md の「街ステージ」)。
+// CityStage.cpp
+// スライムの街のステージ (Docs/SlimeLife.md の「街ステージ」)。
 // 動かない建物は PBR の材質ごとに 1 つの動的メッシュとして作る。小物・
 // バリケード・シャッターの門・街の敵は、Resources/Credits/CityStage.md にある
 // CC0 の Poly Haven の素材を使う
+#include "ChronoSystemInternal.h"
+
 namespace Game {
 // このファイルの中だけで使う型と関数
 namespace {

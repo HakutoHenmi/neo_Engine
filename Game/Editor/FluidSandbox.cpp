@@ -1,7 +1,12 @@
-// FluidSandbox.inl
+// FluidSandbox.cpp
 // エディタの Fluid Sandbox ウィンドウ: ガラスの水槽と水のエミッターを作って流体を試す。
 // Fluid Sandbox ウィンドウを開く要求 (検証シーンなどから呼ばれる)
-static bool fluidSandboxOpen = false;
+#include "EditorInternal.h"
+
+namespace Game {
+// エディタの内部で共有する状態と関数 (EditorInternal.h)
+using namespace EditorInternal;
+
 void EditorUI::OpenFluidSandbox() { fluidSandboxOpen = true; }
 
 // 水槽のエンティティか (VariableComponent の fluidTank が 1)
@@ -255,3 +260,5 @@ void EditorUI::ShowFluidSandbox(Engine::Renderer* renderer, GameScene* scene) {
     ImGui::EndDisabled();
     ImGui::PopItemWidth();
 }
+
+} // namespace Game

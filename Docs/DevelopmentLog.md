@@ -9,7 +9,7 @@
 
 ## エディタの整理とスライム開発ツール（2026-10-22）
 
-[エディタ](../Game/Editor/EditorUI.cpp)の例外と動かないUIを修正し、Hierarchy を整理しました。
+[エディタ](../Game/Editor/EditorShell.cpp)の例外と動かないUIを修正し、Hierarchy を整理しました。
 
 | 修正前の問題 | 修正内容 |
 | --- | --- |
@@ -92,9 +92,9 @@ Hierarchy は `Category`（部品構成とゲームの分類ごと）・`Name`�
 | --- | --- |
 | 粒子の丸い輪郭がそのまま影になる | [液体の影](../Resources/shaders/FluidShadow.hlsl)を追加。本体と同じ密度場・同じ表面の閾値を光の方向から探索し、表面の深度を書く |
 | 影と本体の更新がずれる | [描画順序](../Engine/Renderer.cpp)を流体更新→密度再構成→影→本体へ変更。再構成はフレームに1回だけ行う |
-| 成長後のカメラ距離を毎フレーム設定し直して減衰させていた | [追従カメラ](../Game/Systems/ChronoInk.inl)の目標距離に成長分を足し、距離を継続して補間する |
+| 成長後のカメラ距離を毎フレーム設定し直して減衰させていた | [追従カメラ](../Game/Systems/ChronoInk.cpp)の目標距離に成長分を足し、距離を継続して補間する |
 | CPUとGPUの時間が違い、33ms超のフレームで追従速度を増幅していた | [ゲームの時計](../Game/Scenes/GameScene.cpp)をエンジンと共有。GPUへ実際の移動時間を渡し、同じ時間を1/100秒以下の刻みに分割して計算する。速度の倍率補償を撤去 |
-| 目標点6600個で同じ地面判定・密度・物性を毎回再計算 | [目標点の生成](../Game/Systems/SlimeLife.inl)で個体共通の値を1回だけ計算。地面のレイ判定は粒子ごとから個体ごとへ削減 |
+| 目標点6600個で同じ地面判定・密度・物性を毎回再計算 | [目標点の生成](../Game/Systems/SlimeLife.cpp)で個体共通の値を1回だけ計算。地面のレイ判定は粒子ごとから個体ごとへ削減 |
 | 大きい武器の描画グリッドがセル単位で切り替わる | [描画領域](../Engine/FluidVolumeDomain.h)を本体へ連続追従させ、移動時のサンプリング位置の飛びを除去。光源のシャドウマップはテクセル単位で安定化 |
 
 `tests/Run-SlimeLifeTests.ps1`で通常形状・3武器と最大サイズの表面／影を検証します。`tests/Run-SlimeLifeSmoke.ps1 -Executable build/growth/bin/DirectXGameApp.exe -MotionOnly`は成長3段階・ハンマー544／1200・剣1200・飛行機1200を移動させ、フレーム時間を変化させた状態のカメラ距離とGPUへ渡す時間を記録します。結果は`tests/out/slime-life-motion.txt`、移動中の影の画像は`tests/out/slime-life-shadow-moving.png`です。
@@ -137,7 +137,7 @@ Developmentビルドと上記検証が通過し、7条件すべてで粒子の�
 | ハンマーが横向きのまま振られる | 頭部の長い軸を振り下ろす面に沿う向きへ90度回転。縦の振り上げ・叩きつけを共通の描画・命中軌道で計算 |
 | 剣のコンボが不自然 | 斜め斬り・回転斬り・コンボ受付・追加命中区間を撤去。毎回0.64秒の横薙ぎだけを行う。次の横薙ぎの入力予約、変形維持、R／Bでの解除は継続 |
 
-主な変更先は [武器ルール](../Game/Chrono/SlimeWeaponRules.h)、[入力・GPU目標点・HUD](../Game/Systems/SlimeLife.inl)、[GPUの目標位置](../Resources/shaders/FluidMorph.hlsli)、[サブステップの時刻](../Engine/Renderer.cpp)、[描画グリッド](../Engine/FluidVolumeDomain.h)、[目の配置](../Resources/shaders/SlimeDecoration.hlsli) です。
+主な変更先は [武器ルール](../Game/Chrono/SlimeWeaponRules.h)、[入力・GPU目標点・HUD](../Game/Systems/SlimeLife.cpp)、[GPUの目標位置](../Resources/shaders/FluidMorph.hlsli)、[サブステップの時刻](../Engine/Renderer.cpp)、[描画グリッド](../Engine/FluidVolumeDomain.h)、[目の配置](../Resources/shaders/SlimeDecoration.hlsli) です。
 
 一定速度12の移動を再現したGPU検証では、30fpsでの速度の標準偏差が0.49220から表示精度で0.00000へ減少し、60／120fpsも同じ精度で安定しました。これは目標位置の段差だけを調べるテストで、液体らしい揺れや命中時のカメラ演出は残しています。`tests/Run-SlimeLifeTests.ps1`でCPU・GPUの軌道、移動、ハンマー・剣・飛行機・大型スライムの表面と目を確認できます。`--face-only`ではカメラを回しても草原の顔の向きが変わらないことも確認します。
 
@@ -149,7 +149,7 @@ Developmentのビルド（警告0・エラー0）、CPU/GPUテスト、実ゲー
 
 | 症状・原因 | 変更内容と主なファイル |
 | --- | --- |
-| 武器が静止した形へ強く固定され、厚い液体の光が吸収されすぎる | [武器の共通姿勢](../Game/Chrono/SlimeWeaponRules.h)に体積を保つゆっくりした伸縮・せん断を追加。[追従処理](../Game/Systems/SlimeLife.inl)は待機中のばねを弱め、攻撃時は従来の追従力を使う。[光学処理](../Resources/shaders/FluidRaymarch.hlsl)の吸収を成長倍率に合わせて調整 |
+| 武器が静止した形へ強く固定され、厚い液体の光が吸収されすぎる | [武器の共通姿勢](../Game/Chrono/SlimeWeaponRules.h)に体積を保つゆっくりした伸縮・せん断を追加。[追従処理](../Game/Systems/SlimeLife.cpp)は待機中のばねを弱め、攻撃時は従来の追従力を使う。[光学処理](../Resources/shaders/FluidRaymarch.hlsl)の吸収を成長倍率に合わせて調整 |
 | 泡が通常スライムの楕円形の範囲から生成され、ハンマーの頭部へ届かない | [泡の配置](../Resources/shaders/SlimeDecoration.hlsli)を本体の実際のGPU粒子に追従させ、頭部と柄の内部へ分散。皮膚に接する前に薄くし、外へ抜ける泡は12個・小さめ・ゆっくりに変更 |
 | 成長して粒が疎になっても表面の再構成幅が固定で、粒の密度や近傍の変化が凹凸になる | [表面再構成](../Resources/shaders/FluidVolumeCS.hlsl)で成長に合わせて粒の幅を広げ、細長いカーネルを球に近づける。描画の体積は目標密度から求め、物理密度の細かな変動で表面を膨縮させない |
 | 目と泡だけ旧来の小さい成長倍率を使い、目を液体内部のコアへ置いていた | [描画定数](../Engine/FluidVolume.cpp)を実際の成長倍率に合わせ、目を実際の液体表面へ配置。続く正面配置の修正で、草原は体の正面、調合室はカメラ側を使う |
@@ -186,7 +186,7 @@ Developmentビルド、CPU・GPUの武器／表面テスト、細かい解像度
 
 1／2／3・十字キーで武器を選び、左クリック／RTで変形します。変形後は同じ入力で攻撃し、別の武器を選んで入力すると切り替えます。取り込みはスライムに戻ってから行います。被弾で攻撃は中断しますが、必要な大きさを満たす武器の姿は維持します。小さくなって変形条件を下回ると通常形状へ戻ります。
 
-実装は [武器の維持・軌道と命中判定](../Game/Chrono/SlimeWeaponRules.h) と [入力・GPU目標点・戦闘・HUD](../Game/Systems/SlimeLife.inl) に分けています。描画と攻撃判定が同じ軌道を使い、振りごとの命中IDで毎フレームの重複ダメージを防ぎます。剣は0.24秒の次の横薙ぎの入力予約だけを持ち、コンボ段数は持ちません。
+実装は [武器の維持・軌道と命中判定](../Game/Chrono/SlimeWeaponRules.h) と [入力・GPU目標点・戦闘・HUD](../Game/Systems/SlimeLife.cpp) に分けています。描画と攻撃判定が同じ軌道を使い、振りごとの命中IDで毎フレームの重複ダメージを防ぎます。剣は0.24秒の次の横薙ぎの入力予約だけを持ち、コンボ段数は持ちません。
 
 速い振りでも形を保てるよう、武器の各点の移動速度をGPUへ渡し、シミュレーションの各ステップで追従に使います。武器の速度上限も軌道の速さに合わせ、通常のスライムの速度上限は維持しています。
 
@@ -211,7 +211,7 @@ Developmentビルド、CPU・GPUの武器／表面テスト、細かい解像度
 - 左クリック／RTは序盤にタックル、成長後は選択中の武器で攻撃します。未解放の武器を選んで攻撃した場合は必要質量を表示します。1／2／3または十字キー左右で武器を選択します。
 - GPUの個体管理を4枠から16枠に拡張し、本体＋最大12体の子分を扱います。個体番号を空間ソートキーの上位2bitへ詰めていた処理を改め、子分が増えても異なる個体の粒子割り当てが混ざらないようにしました。
 
-主な変更先は [成長・解放ルール](../Game/Chrono/SlimeLifeRules.h)、[ゲーム進行・HUD](../Game/Systems/SlimeLife.inl)、[GPU個体管理](../Resources/shaders/FluidMorph.hlsli) です。リトライ・新規出撃で成長・子分・武器条件を初期化し、調合室のプレビューは従来どおり開始サイズのままです。詳細と検証方法は [SlimeLifeの仕様](SlimeLife.md) を参照してください。
+主な変更先は [成長・解放ルール](../Game/Chrono/SlimeLifeRules.h)、[ゲーム進行・HUD](../Game/Systems/SlimeLife.cpp)、[GPU個体管理](../Resources/shaders/FluidMorph.hlsli) です。リトライ・新規出撃で成長・子分・武器条件を初期化し、調合室のプレビューは従来どおり開始サイズのままです。詳細と検証方法は [SlimeLifeの仕様](SlimeLife.md) を参照してください。
 
 ### 分裂・大きさ・前進時の形状の修正（2026-10-18）
 

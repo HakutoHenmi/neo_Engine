@@ -1,5 +1,7 @@
-// ChronoCinematic.inl
+// ChronoCinematic.cpp
 // 開幕とボス出現のムービー (ChronoSystem の一部)。カメラの構図・被写界深度・上下の黒帯とタイトルを扱う。
+#include "ChronoSystemInternal.h"
+
 namespace Game {
 // ムービーの更新: 始まりで元のカメラを記録し、時間に沿って構図を動かし、終わったら元へ戻す。ムービー中は true
 bool ChronoSystem::UpdateCinematic(entt::registry& r,Player& p,GameContext& ctx){

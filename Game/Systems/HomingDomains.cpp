@@ -1,6 +1,9 @@
-// HomingDomains.inl
-// 描いた輪から出る誘導弾 (ChronoSystem の一部)。SlimeAssault.inl から namespace Game の中に読み込まれる。
+// HomingDomains.cpp
+// 描いた輪から出る誘導弾 (ChronoSystem の一部)。
 // 誘導弾がボスに当たったとき: 装甲を削り、壊れたら核を出して核の体力を減らす。3 回倒すと撃破
+#include "ChronoSystemInternal.h"
+
+namespace Game {
 void ChronoSystem::HitDomainMissile(entt::registry& r,Player& p,GameContext& ctx,V at,bool enclosed,float power){
     // インクのプレイヤー・弱点・ボスの状態
     auto& ink=r.get<InkPlayer>(player_);auto& target=r.get<Target>(weakpoint_);auto& boss=r.get<Boss>(boss_);
@@ -245,3 +248,4 @@ void ChronoSystem::DrawSlimeBeam(entt::registry& r,GameContext& ctx){
             tube(from,missile.tail[i],(missile.shape==DomainShape::Triangle?.3f:.08f*size)*(1-float(i)/9),tint);from=missile.tail[i];}
     }
 }
+} // namespace Game
