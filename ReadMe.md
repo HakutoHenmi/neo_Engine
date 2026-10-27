@@ -111,6 +111,11 @@ PowerShell で、リポジトリのフォルダーから実行します。
 .\tests\Run-ChronoTests.ps1
 .\tests\Run-SlimeLifeTests.ps1
 
+# 起動からタイトルの表示演出完了まで5秒未満か確認 (計測結果と画像は tests/out/)
+.\tests\Run-UISmoke.ps1 -Executable <ビルドした DirectXGameApp.exe> -Startup
+# タイトル → セレクト → 本編 → タイトルと、3D 初期化の遅延も確認
+.\tests\Run-UISmoke.ps1 -Executable <ビルドした DirectXGameApp.exe> -StartupTransitions
+
 # ゲームを起動して、成長・ステージ進行・UI を確かめるスモークテスト
 .\tests\Run-SlimeLifeSmoke.ps1 -Executable <ビルドした DirectXGameApp.exe>
 .\tests\Run-SlimeLifeSmoke.ps1 -Executable <ビルドした DirectXGameApp.exe> -ProgressionOnly

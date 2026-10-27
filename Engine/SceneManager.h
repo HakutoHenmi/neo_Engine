@@ -41,7 +41,7 @@ public:
 	void SetTransitionDrawer(TransitionDrawer drawer) { transitionDrawer_ = std::move(drawer); }
 	bool InTransition() const { return transitionActive_; }
 	// UI 専用シーン (RequiresFullRenderer()==false) でも 3D パイプラインを先に用意するシーン。
-	// エディタはゲーム画像を Game ビューに表示するため、通常のフレーム経路が必要になる
+	// タイトル・セレクトの Game ビューは軽量経路で表示できるため、通常は指定不要
 	void SetFullRendererScenes(std::unordered_set<std::string> names) { fullRendererScenes_ = std::move(names); }
 
 public:

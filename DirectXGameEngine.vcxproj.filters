@@ -46,6 +46,12 @@
     <ClCompile Include="Engine\Renderer.cpp">
       <Filter>Graphics</Filter>
     </ClCompile>
+    <ClCompile Include="Engine\RendererNtc.cpp">
+      <Filter>Graphics</Filter>
+    </ClCompile>
+    <ClCompile Include="Engine\ShaderCache.cpp">
+      <Filter>Graphics</Filter>
+    </ClCompile>
     <ClCompile Include="Engine\FluidVolume.cpp">
       <Filter>Graphics</Filter>
     </ClCompile>

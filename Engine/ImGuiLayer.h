@@ -22,6 +22,7 @@ public:
 	void NewFrame(WindowDX& dx);
 
 	void Render(WindowDX& dx);
+	void Render(ID3D12GraphicsCommandList* commands);
 	void Shutdown();
 
 	ImFont* GetDefaultFont() const { return fontDefault_; }

@@ -4,8 +4,8 @@
   "mainStage": "Resources/Scenes/chrono.json",
   "fallbackStage": "Resources/Scenes/fallback.json",
   "logFile": "error_log.txt",
-  "_fullRendererComment": "エディタを出す Development ビルドで、最初から 3D の描画経路で動かすシーン",
-  "fullRendererScenes": ["Title", "Select"],
+  "_fullRendererComment": "Development ビルドで 3D 初期化を強制するシーン。タイトル・セレクトは軽量な描画経路でエディタに表示する",
+  "fullRendererScenes": [],
   "_launchComment": "コマンドライン引数で起動シーンを差し替える (自動テスト用)。debugOnly のものは Debug / Development ビルドだけで受け付ける。log はログに残す文。",
   "launchOptions": [
     { "flag": "--far-water-demo-smoke", "scene": "SlimePlayerDemoValidation", "debugOnly": true },

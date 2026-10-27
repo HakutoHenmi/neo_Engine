@@ -34,6 +34,7 @@ public:
 
 	using SceneRegistrar = std::function<void(SceneManager& sm, WindowDX& dx)>;
 	void SetSceneRegistrar(SceneRegistrar f) { registrar_ = std::move(f); }
+	void SetStartupMusic(const std::string& scene, const std::string& path) { startupMusicScene_ = scene; startupMusicPath_ = path; }
 	void SetInitialSceneKey(const std::string& key) { initialSceneKey_ = key; }
 	// エディタ UI の描画をゲーム側へ任せる (未設定なら各シーンの DrawEditor をそのまま呼ぶ)
 	using EditorPresenter = std::function<void(IScene& scene, const std::string& sceneName)>;
@@ -65,6 +66,7 @@ private:
 
 	SceneRegistrar registrar_{};
 	std::string initialSceneKey_{};
+	std::string startupMusicScene_, startupMusicPath_;
 
 	// ★修正: App自身がWorldを持つのはやめる (GameSceneが持つため)
 	// Game::World world_;  <-- 削除済み

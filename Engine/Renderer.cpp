@@ -7,6 +7,9 @@
 #include "ShadowCaster.h"
 #include "CameraMatrices.h"
 #include "PathUtils.h"
+#include "LoadProfile.h"
+#include "JobSystem.h"
+#include "ShaderCache.h"
 #include "Time/TimeManager.h"
 #include "../Game/ObjectTypes.h"
 
@@ -282,6 +285,7 @@ bool Renderer::Initialize(WindowDX* window) {
 // Everything only the 3D world needs. Run once, under the loading screen of the
 // first scene that renders the world (Title / Select are UI-only).
 bool Renderer::InitializeDeferred() {
+	LoadProfile::Scope profile("engine", "Renderer::InitializeDeferred");
 	if (ready3D_)
 		return true;
 	if (!InitPipelines())
@@ -1717,12 +1721,13 @@ uint32_t Renderer::AllocateDynamicSrvIndex(uint32_t count) {
 }
 
 ComPtr<ID3DBlob> Renderer::CompileShader(const char* src, const char* entry, const char* target) {
+	LoadProfile::Scope profile("shader", std::string("(inline) ") + entry + " " + target);
 	UINT flags = D3DCOMPILE_ENABLE_STRICTNESS;
 #if defined(_DEBUG)
 	flags |= D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;
 #endif
 	ComPtr<ID3DBlob> blob, err;
-	HRESULT hr = D3DCompile(src, (UINT)std::strlen(src), nullptr, nullptr, nullptr, entry, target, flags, 0, &blob, &err);
+	HRESULT hr = ShaderCache::Compile(src, std::strlen(src), entry, target, flags, &blob, &err);
 	if (FAILED(hr)) {
 		if (err)
 			::MessageBoxA(nullptr, (const char*)err->GetBufferPointer(), "HLSL Compile Error", MB_OK);
@@ -1733,13 +1738,14 @@ ComPtr<ID3DBlob> Renderer::CompileShader(const char* src, const char* entry, con
 }
 
 ComPtr<ID3DBlob> Renderer::CompileShaderFromFile(const wchar_t* filePath, const char* entry, const char* target) {
+	LoadProfile::Scope profile("shader", LoadProfile::Narrow(filePath) + " " + entry + " " + target);
 	std::wstring unifiedPath = PathUtils::GetUnifiedPathW(filePath);
 	UINT flags = D3DCOMPILE_ENABLE_STRICTNESS;
 #if defined(_DEBUG)
 	flags |= D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;
 #endif
 	ComPtr<ID3DBlob> blob, err;
-	HRESULT hr = D3DCompileFromFile(unifiedPath.c_str(), nullptr, D3D_COMPILE_STANDARD_FILE_INCLUDE, entry, target, flags, 0, &blob, &err);
+	HRESULT hr = ShaderCache::CompileFromFile(unifiedPath, entry, target, flags, &blob, &err);
 	if (FAILED(hr)) {
 		if (err) {
 			::MessageBoxA(nullptr, (const char*)err->GetBufferPointer(), "HLSL CompileFromFile Error", MB_OK);
@@ -1805,6 +1811,7 @@ bool Renderer::CreatePSO(const std::string& name, ID3DBlob* vsBlob, ID3DBlob* ps
 }
 
 bool Renderer::CreateShaderPipeline(const std::string& shaderName, const std::wstring& vsPath, const std::wstring& psPath) {
+	LoadProfile::Scope profile("pipeline", shaderName);
 	auto vs = CompileShaderFromFile(vsPath.c_str(), "main", "vs_5_0");
 	auto ps = CompileShaderFromFile(psPath.c_str(), "main", "ps_5_0");
 	if (!vs || !ps)
@@ -1893,6 +1900,7 @@ bool Renderer::CreatePSO_Transparent(const std::string& name, ID3DBlob* vsBlob, 
 
 // 追加：透明/加算 シェーダー登録
 bool Renderer::CreateShaderPipelineTransparent(const std::string& shaderName, const std::wstring& vsPath, const std::wstring& psPath, bool additive, bool depthTest) {
+	LoadProfile::Scope profile("pipeline", shaderName);
 	auto vs = CompileShaderFromFile(vsPath.c_str(), "main", "vs_5_0");
 	auto ps = CompileShaderFromFile(psPath.c_str(), "main", "ps_5_0");
 	if (!vs || !ps)
@@ -2686,6 +2694,120 @@ Renderer::TextureHandle Renderer::LoadTexture2D(const std::string& filePath, boo
 	return handle;
 }
 
+// 1 つのメッシュの LOD を作る途中の結果 (簡略化したモデルは、まだ models_ に入れていない)
+struct Renderer::LodJob {uint32_t mesh=0;bool grassCards=false,authoredLeaves=false,valid=false;SceneryLods lod;std::array<std::shared_ptr<Model>,2> reduced;};
+
+// CPU で作り終えたミップと、転送先のハンドル
+struct Renderer::TextureUpload {
+	TextureHandle handle = 0;
+	DirectX::ScratchImage mips;
+	DXGI_FORMAT format = DXGI_FORMAT_UNKNOWN;
+	bool ok = true;
+	// StageTextureUpload_ の結果: 転送先と、全ミップを書き込んだアップロード用バッファ
+	ComPtr<ID3D12Resource> texture, staging;
+	std::vector<D3D12_PLACED_SUBRESOURCE_FOOTPRINT> layouts;
+	UINT mipCount = 0;
+	// true: mips には最上段だけが入っていて、残りの段は GPU で作る
+	bool gpuMips = false;
+};
+
+// 画像を読み、RGBA8 の最上段だけを用意する (残りのミップは UploadTextures_ が GPU で作る)。複数スレッドから呼べる
+bool Renderer::DecodeTextureBase_(const std::string& unifiedPath, bool sRGB, TextureUpload& out) {
+	DirectX::ScratchImage img;
+	if (FAILED(DirectX::LoadFromWICFile(PathUtils::FromUTF8(unifiedPath).c_str(), DirectX::WIC_FLAGS_NONE, nullptr, img)))
+		return false;
+	const DirectX::Image* src = img.GetImage(0, 0, 0);
+	if (!src)
+		return false;
+	if (src->format != DXGI_FORMAT_R8G8B8A8_UNORM && src->format != DXGI_FORMAT_R8G8B8A8_UNORM_SRGB) {
+		if (FAILED(DirectX::Convert(*src, DXGI_FORMAT_R8G8B8A8_UNORM, DirectX::TEX_FILTER_DEFAULT, DirectX::TEX_THRESHOLD_DEFAULT, out.mips)))
+			return false;
+	} else if (FAILED(out.mips.InitializeFromImage(*src))) {
+		return false;
+	}
+	out.format = sRGB ? DXGI_FORMAT_R8G8B8A8_UNORM_SRGB : DXGI_FORMAT_R8G8B8A8_UNORM;
+	out.gpuMips = true;
+	return true;
+}
+
+// GPU でミップを作るコンピュートシェーダー (最初に使うときに作る)
+bool Renderer::EnsureMipPipeline_() {
+	// 作れなかったときも 1 回だけ試す (毎回コンパイルし直したり、エラーを何度も出したりしない)
+	if (mipPipelineTried_) return mipPso_ != nullptr;
+	mipPipelineTried_ = true;
+	CD3DX12_DESCRIPTOR_RANGE ranges[2]; ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0); ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);
+	CD3DX12_ROOT_PARAMETER params[3]; params[0].InitAsConstants(5, 0); params[1].InitAsDescriptorTable(1, &ranges[0]); params[2].InitAsDescriptorTable(1, &ranges[1]);
+	CD3DX12_ROOT_SIGNATURE_DESC desc(3, params);
+	ComPtr<ID3DBlob> blob, errors;
+	if (FAILED(D3D12SerializeRootSignature(&desc, D3D_ROOT_SIGNATURE_VERSION_1, &blob, &errors)) ||
+		FAILED(dev_->CreateRootSignature(0, blob->GetBufferPointer(), blob->GetBufferSize(), IID_PPV_ARGS(&mipRoot_))))
+		return false;
+	auto cs = CompileShaderFromFile(L"Resources/shaders/GenerateMipsCS.hlsl", "main", "cs_5_0");
+	if (!cs) return false;
+	D3D12_COMPUTE_PIPELINE_STATE_DESC pso{};
+	pso.pRootSignature = mipRoot_.Get();
+	pso.CS = {cs->GetBufferPointer(), cs->GetBufferSize()};
+	return SUCCEEDED(dev_->CreateComputePipelineState(&pso, IID_PPV_ARGS(&mipPso_)));
+}
+
+// 転送先とアップロード用バッファを作り、全ミップを書き込む。デバイスは複数スレッドから使えるので、ワーカーで呼ぶ
+bool Renderer::StageTextureUpload_(TextureUpload& u) const {
+	const auto& meta = u.mips.GetMetadata();
+	UINT fullChain = 1;
+	for (size_t size = (std::max)(meta.width, meta.height); size > 1; size >>= 1) ++fullChain;
+	u.mipCount = u.gpuMips ? fullChain : UINT(meta.mipLevels);
+	// GPU でミップを作るときは UAV で書けるよう型なしで作り、転送するのは最上段だけ
+	const UINT uploadCount = u.gpuMips ? 1 : u.mipCount;
+	CD3DX12_HEAP_PROPERTIES heapDefault(D3D12_HEAP_TYPE_DEFAULT), heapUpload(D3D12_HEAP_TYPE_UPLOAD);
+	CD3DX12_RESOURCE_DESC texDesc = CD3DX12_RESOURCE_DESC::Tex2D(u.gpuMips ? DXGI_FORMAT_R8G8B8A8_TYPELESS : u.format, UINT64(meta.width), UINT(meta.height), 1, UINT16(u.mipCount),
+		1, 0, u.gpuMips && u.mipCount > 1 ? D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS : D3D12_RESOURCE_FLAG_NONE);
+	if (FAILED(dev_->CreateCommittedResource(&heapDefault, D3D12_HEAP_FLAG_NONE, &texDesc, D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&u.texture))))
+		return false;
+	u.layouts.resize(uploadCount);
+	std::vector<UINT> rows(uploadCount);
+	std::vector<UINT64> rowBytes(uploadCount);
+	UINT64 total = 0;
+	dev_->GetCopyableFootprints(&texDesc, 0, uploadCount, 0, u.layouts.data(), rows.data(), rowBytes.data(), &total);
+	CD3DX12_RESOURCE_DESC upDesc = CD3DX12_RESOURCE_DESC::Buffer(total);
+	if (FAILED(dev_->CreateCommittedResource(&heapUpload, D3D12_HEAP_FLAG_NONE, &upDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&u.staging))))
+		return false;
+	uint8_t* mapped = nullptr;
+	D3D12_RANGE noRead{0, 0};
+	if (FAILED(u.staging->Map(0, &noRead, reinterpret_cast<void**>(&mapped))))
+		return false;
+	for (UINT level = 0; level < uploadCount; ++level) {
+		const auto* mip = u.mips.GetImage(level, 0, 0);
+		for (UINT row = 0; row < rows[level]; ++row)
+			memcpy(mapped + u.layouts[level].Offset + UINT64(row) * u.layouts[level].Footprint.RowPitch, mip->pixels + size_t(row) * mip->rowPitch, size_t(rowBytes[level]));
+	}
+	u.staging->Unmap(0, nullptr);
+	// CPU 側の画像はもう要らない
+	u.mips.Release();
+	return true;
+}
+
+// 画像を読み、RGBA8 にそろえて全ミップを作る。GPU に触れないので複数のスレッドから同時に呼べる
+bool Renderer::DecodeTextureMips_(const std::string& unifiedPath, bool sRGB, TextureUpload& out) {
+	DirectX::ScratchImage img;
+	if (FAILED(DirectX::LoadFromWICFile(PathUtils::FromUTF8(unifiedPath).c_str(), DirectX::WIC_FLAGS_NONE, nullptr, img)))
+		return false;
+	const DirectX::Image* src = img.GetImage(0, 0, 0);
+	if (!src)
+		return false;
+	DirectX::ScratchImage conv;
+	if (src->format != DXGI_FORMAT_R8G8B8A8_UNORM && src->format != DXGI_FORMAT_R8G8B8A8_UNORM_SRGB) {
+		if (FAILED(DirectX::Convert(*src, DXGI_FORMAT_R8G8B8A8_UNORM, DirectX::TEX_FILTER_DEFAULT, DirectX::TEX_THRESHOLD_DEFAULT, conv)))
+			return false;
+		src = conv.GetImage(0, 0, 0);
+	}
+	out.format = sRGB ? DXGI_FORMAT_R8G8B8A8_UNORM_SRGB : DXGI_FORMAT_R8G8B8A8_UNORM;
+	// Filter radiance in linear space for color maps, data linearly for PBR maps.
+	DirectX::Image mipSource = *src; mipSource.format = out.format;
+	const HRESULT hr = mipSource.width == 1 && mipSource.height == 1 ? out.mips.InitializeFromImage(mipSource) : DirectX::GenerateMipMaps(mipSource, DirectX::TEX_FILTER_DEFAULT, 0, out.mips);
+	if (FAILED(hr)) { OutputDebugStringA(("Texture mip generation failed: " + unifiedPath + "\n").c_str()); return false; }
+	return true;
+}
+
 Renderer::TextureHandle Renderer::LoadTexture2DUncached_(const std::string& filePath, bool sRGB) {
 	if (filePath.empty())
 		return 0;
@@ -2694,92 +2816,229 @@ Renderer::TextureHandle Renderer::LoadTexture2DUncached_(const std::string& file
 	auto it = textureCache_.find(unifiedPath+(sRGB?"#srgb":"#linear"));
 	if (it != textureCache_.end())
 		return it->second;
+	LoadProfile::Scope profile("texture", unifiedPath);
+	// DDS はブロック圧縮 (BCn) のまま全ミップを転送する。CPU での展開やミップ生成はしない
+	if (unifiedPath.size() > 4 && _stricmp(unifiedPath.c_str() + unifiedPath.size() - 4, ".dds") == 0)
+		return LoadDDSTexture_(unifiedPath, sRGB);
 
-	DirectX::ScratchImage img;
-	std::wstring wpath = PathUtils::FromUTF8(unifiedPath);
-	HRESULT hr = DirectX::LoadFromWICFile(wpath.c_str(), DirectX::WIC_FLAGS_NONE, nullptr, img);
-	if (FAILED(hr))
+	const std::string cacheKey = unifiedPath + (sRGB ? "#srgb" : "#linear");
+	// まとめ読み中は場所だけ確保し、EndTextureBatch で並列に読み込む
+	if (assetBatchDepth_ > 0) {
+		const TextureHandle handle = ReserveTexture_(cacheKey);
+		pendingTextures_.push_back({unifiedPath, sRGB, handle});
+		return handle;
+	}
+	std::vector<TextureUpload> upload(1);
+	if (!DecodeTextureMips_(unifiedPath, sRGB, upload[0]))
 		return 0;
+	upload[0].handle = ReserveTexture_(cacheKey);
+	UploadTextures_(upload);
+	return upload[0].handle;
+}
 
-	const DirectX::Image* src = img.GetImage(0, 0, 0);
-	if (!src)
-		return 0;
-
-	DirectX::ScratchImage conv;
-	if (src->format != DXGI_FORMAT_R8G8B8A8_UNORM && src->format != DXGI_FORMAT_R8G8B8A8_UNORM_SRGB) {
-		hr = DirectX::Convert(*src, DXGI_FORMAT_R8G8B8A8_UNORM, DirectX::TEX_FILTER_DEFAULT, DirectX::TEX_THRESHOLD_DEFAULT, conv);
-		if (FAILED(hr))
-			return 0;
-		src = conv.GetImage(0, 0, 0);
+void Renderer::EndAssetBatch() {
+	if (assetBatchDepth_ == 0 || --assetBatchDepth_ > 0)
+		return;
+	// LOD: 簡略化 (CPU) を並列に行い、GPU への転送は 1 回の待ちにまとめる
+	if (!pendingLods_.empty()) {
+		LoadProfile::Scope profile("lod", "batch of " + std::to_string(pendingLods_.size()));
+		auto requests = std::move(pendingLods_);
+		pendingLods_.clear();
+		std::vector<LodJob> jobs(requests.size());
+		JobSystem::Dispatch(uint32_t(jobs.size()), 1, [&](uint32_t i) {
+			jobs[i].mesh = requests[i].mesh; jobs[i].grassCards = requests[i].grassCards; jobs[i].authoredLeaves = requests[i].authoredLeaves;
+			jobs[i].valid = BuildDistanceLods_(jobs[i]);
+		});
+		JobSystem::Wait();
+		FinishDistanceLods_(jobs);
+		LoadingScreen::Pump();
 	}
+	FlushTextureBatch_();
+}
 
-	const DXGI_FORMAT fmt = sRGB ? DXGI_FORMAT_R8G8B8A8_UNORM_SRGB : DXGI_FORMAT_R8G8B8A8_UNORM;
-	// Filter radiance in linear space for color maps, data linearly for PBR maps.
-    DirectX::Image mipSource=*src;mipSource.format=fmt;
-    DirectX::ScratchImage mipChain;
-    hr=mipSource.width==1&&mipSource.height==1?mipChain.InitializeFromImage(mipSource):DirectX::GenerateMipMaps(mipSource,DirectX::TEX_FILTER_DEFAULT,0,mipChain);
-    if(FAILED(hr)){OutputDebugStringA(("Texture mip generation failed: "+unifiedPath+"\n").c_str());return 0;}
-    const UINT mipCount=UINT(mipChain.GetMetadata().mipLevels);
-    ComPtr<ID3D12Resource> tex;
-	{
-		CD3DX12_HEAP_PROPERTIES heapDefault(D3D12_HEAP_TYPE_DEFAULT);
-		CD3DX12_RESOURCE_DESC texDesc = CD3DX12_RESOURCE_DESC::Tex2D(fmt, (UINT64)src->width, (UINT)src->height, 1, UINT16(mipCount));
-		hr = dev_->CreateCommittedResource(&heapDefault, D3D12_HEAP_FLAG_NONE, &texDesc, D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&tex));
-		if (FAILED(hr))
-			return 0;
+void Renderer::FlushTextureBatch_() {
+	if (pendingTextures_.empty())
+		return;
+	LoadProfile::Scope profile("texture", "batch of " + std::to_string(pendingTextures_.size()));
+	auto pending = std::move(pendingTextures_);
+	pendingTextures_.clear();
+	// 2K の RGBA8 は全ミップで約 22MB。CPU とアップロード用のメモリを抑えるため 12 枚ずつ処理し、
+	// ワーカーが次の組を展開している間に、メインスレッドが今の組を GPU へ送る
+	constexpr size_t kChunk = 12;
+	auto decode = [&](size_t first, std::vector<TextureUpload>& uploads) {
+		uploads.clear();
+		uploads.resize((std::min)(kChunk, pending.size() - first));
+		JobSystem::Dispatch(uint32_t(uploads.size()), 1, [this, &pending, &uploads, first](uint32_t i) {
+			const auto& request = pending[first + i];
+			uploads[i].handle = request.handle;
+			uploads[i].ok = DecodeTextureBase_(request.path, request.sRGB, uploads[i]) && StageTextureUpload_(uploads[i]);
+		});
+	};
+	std::vector<TextureUpload> current, next;
+	if (!pending.empty()) { decode(0, current); JobSystem::Wait(); }
+	for (size_t first = 0; first < pending.size(); first += kChunk) {
+		if (first + kChunk < pending.size()) decode(first + kChunk, next);
+		UploadTextures_(current);
+		LoadingScreen::Pump();
+		JobSystem::Wait();
+		std::swap(current, next);
 	}
+}
 
-	ComPtr<ID3D12Resource> upload;
-	UINT64 uploadSize = 0;
-	{
-		D3D12_RESOURCE_DESC texDesc = tex->GetDesc();
-		dev_->GetCopyableFootprints(&texDesc, 0, mipCount, 0, nullptr, nullptr, nullptr, &uploadSize);
-		CD3DX12_HEAP_PROPERTIES heapUpload(D3D12_HEAP_TYPE_UPLOAD);
-		CD3DX12_RESOURCE_DESC upDesc = CD3DX12_RESOURCE_DESC::Buffer(uploadSize);
-		hr = dev_->CreateCommittedResource(&heapUpload, D3D12_HEAP_FLAG_NONE, &upDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&upload));
-		if (FAILED(hr))
-			return 0;
-	}
-
-	{
-		ComPtr<ID3D12CommandAllocator> alloc;
-		ComPtr<ID3D12GraphicsCommandList> cl;
-		dev_->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&alloc));
-		dev_->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, alloc.Get(), nullptr, IID_PPV_ARGS(&cl));
-
-		std::vector<D3D12_SUBRESOURCE_DATA> sub(mipCount);
-        for(UINT level=0;level<mipCount;++level){auto* mip=mipChain.GetImage(level,0,0);sub[level].pData=mip->pixels;sub[level].RowPitch=LONG_PTR(mip->rowPitch);sub[level].SlicePitch=LONG_PTR(mip->slicePitch);}
-        UpdateSubresources(cl.Get(),tex.Get(),upload.Get(),0,0,mipCount,sub.data());
-		auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(tex.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
-		cl->ResourceBarrier(1, &barrier);
-		cl->Close();
-
-		ID3D12CommandList* lists[] = {cl.Get()};
-		queue_->ExecuteCommandLists(1, lists);
-		WaitGPU();
-	}
-
+Renderer::TextureHandle Renderer::ReserveTexture_(const std::string& cacheKey) {
 	const uint32_t idx = AllocateSrvIndex();
-	D3D12_CPU_DESCRIPTOR_HANDLE cpu = window_->SRV_CPU((int)idx);
-	D3D12_CPU_DESCRIPTOR_HANDLE cpuMaster = window_->SRV_CPU_Master((int)idx); // ★追加
-	D3D12_GPU_DESCRIPTOR_HANDLE gpu = window_->SRV_GPU((int)idx);
+	Texture t{};
+	t.srvCpu = window_->SRV_CPU((int)idx);
+	t.srvCpuMaster = window_->SRV_CPU_Master((int)idx); // ★追加
+	t.srvGpu = window_->SRV_GPU((int)idx);
+	const TextureHandle handle = (TextureHandle)textures_.size();
+	textures_.push_back(t);
+	textureCache_[cacheKey] = handle;
+	return handle;
+}
+
+void Renderer::SetTextureResource_(TextureHandle handle, ComPtr<ID3D12Resource> tex, DXGI_FORMAT format, UINT mipCount) {
+	auto& t = textures_[handle];
 	D3D12_SHADER_RESOURCE_VIEW_DESC srv{};
 	srv.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-	srv.Format = fmt;
+	srv.Format = format;
 	srv.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
 	srv.Texture2D.MipLevels = mipCount;
-	dev_->CreateShaderResourceView(tex.Get(), &srv, cpu);
-	dev_->CreateShaderResourceView(tex.Get(), &srv, cpuMaster); // ★追加
-
-	Texture t{};
+	dev_->CreateShaderResourceView(tex.Get(), &srv, t.srvCpu);
+	dev_->CreateShaderResourceView(tex.Get(), &srv, t.srvCpuMaster); // ★追加
 	t.res = tex;
-	t.srvCpu = cpu;
-	t.srvCpuMaster = cpuMaster; // ★追加
-	t.srvGpu = gpu;
+}
 
-	TextureHandle handle = (TextureHandle)textures_.size();
-	textures_.push_back(t);
-	textureCache_[unifiedPath+(sRGB?"#srgb":"#linear")] = handle;
+void Renderer::UploadTextures_(std::vector<TextureUpload>& uploads) {
+	ComPtr<ID3D12CommandAllocator> alloc;
+	ComPtr<ID3D12GraphicsCommandList> cl;
+	dev_->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&alloc));
+	dev_->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, alloc.Get(), nullptr, IID_PPV_ARGS(&cl));
+	// メインスレッドはコピー命令を積むだけ (資源の作成と書き込みは StageTextureUpload_ で済ませる)
+	UINT mipDescriptors = 0;
+	for (auto& u : uploads) {
+		if (!u.ok) continue;
+		if (!u.texture && !StageTextureUpload_(u)) { u.ok = false; continue; }
+		if (u.gpuMips && u.mipCount > 1) mipDescriptors += 2 * (u.mipCount - 1);
+	}
+	ComPtr<ID3D12DescriptorHeap> mipHeap;
+	if (mipDescriptors > 0) {
+		D3D12_DESCRIPTOR_HEAP_DESC hd{D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, mipDescriptors, D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE, 0};
+		if (!EnsureMipPipeline_() || FAILED(dev_->CreateDescriptorHeap(&hd, IID_PPV_ARGS(&mipHeap)))) {
+			// GPU でミップを作れないときは、最上段だけのまま描く (落とさない)
+			for (auto& u : uploads) if (u.gpuMips) u.gpuMips = false, u.mipCount = 1;
+			mipDescriptors = 0;
+		} else {
+			ID3D12DescriptorHeap* heaps[] = {mipHeap.Get()};
+			cl->SetDescriptorHeaps(1, heaps);
+			cl->SetComputeRootSignature(mipRoot_.Get());
+			cl->SetPipelineState(mipPso_.Get());
+		}
+	}
+	const UINT inc = dev_->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+	UINT descriptor = 0;
+	for (auto& u : uploads) {
+		if (!u.ok) continue;
+		for (UINT level = 0; level < UINT(u.layouts.size()); ++level) {
+			auto dst = CD3DX12_TEXTURE_COPY_LOCATION(u.texture.Get(), level), src = CD3DX12_TEXTURE_COPY_LOCATION(u.staging.Get(), u.layouts[level]);
+			cl->CopyTextureRegion(&dst, 0, 0, 0, &src, nullptr);
+		}
+		if (!u.gpuMips || u.mipCount <= 1 || !mipHeap) {
+			auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(u.texture.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+			cl->ResourceBarrier(1, &barrier);
+			continue;
+		}
+		// 段ごとに「前の段を読み、次の段へ書く」。読む段は NON_PIXEL、書く段は UAV にする
+		const auto desc = u.texture->GetDesc();
+		const UINT srgb = u.format == DXGI_FORMAT_R8G8B8A8_UNORM_SRGB ? 1u : 0u;
+		for (UINT level = 1; level < u.mipCount; ++level) {
+			D3D12_RESOURCE_BARRIER before[2] = {
+				CD3DX12_RESOURCE_BARRIER::Transition(u.texture.Get(), level == 1 ? D3D12_RESOURCE_STATE_COPY_DEST : D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, level - 1),
+				CD3DX12_RESOURCE_BARRIER::Transition(u.texture.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, level)};
+			cl->ResourceBarrier(2, before);
+			CD3DX12_CPU_DESCRIPTOR_HANDLE cpu(mipHeap->GetCPUDescriptorHandleForHeapStart(), int(descriptor), inc);
+			CD3DX12_GPU_DESCRIPTOR_HANDLE gpu(mipHeap->GetGPUDescriptorHandleForHeapStart(), int(descriptor), inc);
+			D3D12_SHADER_RESOURCE_VIEW_DESC srv{};
+			srv.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+			srv.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+			srv.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+			srv.Texture2D.MostDetailedMip = level - 1;
+			srv.Texture2D.MipLevels = 1;
+			dev_->CreateShaderResourceView(u.texture.Get(), &srv, cpu);
+			D3D12_UNORDERED_ACCESS_VIEW_DESC uav{};
+			uav.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+			uav.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
+			uav.Texture2D.MipSlice = level;
+			dev_->CreateUnorderedAccessView(u.texture.Get(), nullptr, &uav, CD3DX12_CPU_DESCRIPTOR_HANDLE(cpu, 1, inc));
+			const UINT srcW = (std::max)(1u, UINT(desc.Width) >> (level - 1)), srcH = (std::max)(1u, desc.Height >> (level - 1));
+			const UINT dstW = (std::max)(1u, UINT(desc.Width) >> level), dstH = (std::max)(1u, desc.Height >> level);
+			const UINT constants[5] = {srcW, srcH, dstW, dstH, srgb};
+			cl->SetComputeRoot32BitConstants(0, 5, constants, 0);
+			cl->SetComputeRootDescriptorTable(1, gpu);
+			cl->SetComputeRootDescriptorTable(2, CD3DX12_GPU_DESCRIPTOR_HANDLE(gpu, 1, inc));
+			cl->Dispatch((dstW + 7) / 8, (dstH + 7) / 8, 1);
+			descriptor += 2;
+		}
+		// 最後の段も読み取り用にそろえ、全体を描画で読める状態にする
+		D3D12_RESOURCE_BARRIER last = CD3DX12_RESOURCE_BARRIER::Transition(u.texture.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, u.mipCount - 1);
+		cl->ResourceBarrier(1, &last);
+		D3D12_RESOURCE_BARRIER all = CD3DX12_RESOURCE_BARRIER::Transition(u.texture.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+		cl->ResourceBarrier(1, &all);
+	}
+	cl->Close();
+	ID3D12CommandList* lists[] = {cl.Get()};
+	queue_->ExecuteCommandLists(1, lists);
+	// 1 回の待ちでまとめて送る (以前は 1 枚ごとに待っていた)
+	WaitGPU();
+	for (size_t i = 0; i < uploads.size(); ++i) {
+		auto& u = uploads[i];
+		if (u.ok) { SetTextureResource_(u.handle, u.texture, u.format, u.mipCount); u.staging.Reset(); continue; }
+		// 読めなかった画像は、従来どおりハンドル 0 のテクスチャとして描く
+		if (u.handle == 0 || textures_.empty()) continue;
+		auto& t = textures_[u.handle];
+		t.res = textures_[0].res;
+		dev_->CopyDescriptorsSimple(1, t.srvCpu, textures_[0].srvCpuMaster, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+		dev_->CopyDescriptorsSimple(1, t.srvCpuMaster, textures_[0].srvCpuMaster, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+	}
+}
+
+Renderer::TextureHandle Renderer::LoadDDSTexture_(const std::string& unifiedPath, bool sRGB) {
+	DirectX::ScratchImage img;
+	if (FAILED(DirectX::LoadFromDDSFile(PathUtils::FromUTF8(unifiedPath).c_str(), DirectX::DDS_FLAGS_NONE, nullptr, img)))
+		return 0;
+	const auto& meta = img.GetMetadata();
+	if (meta.dimension != DirectX::TEX_DIMENSION_TEXTURE2D || meta.arraySize != 1)
+		return 0;
+	// 色のマップは sRGB として読む。法線などのデータは DDS の形式のまま
+	const DXGI_FORMAT fmt = sRGB ? DirectX::MakeSRGB(meta.format) : meta.format;
+	const UINT mipCount = UINT(meta.mipLevels);
+	ComPtr<ID3D12Resource> tex, upload;
+	CD3DX12_HEAP_PROPERTIES heapDefault(D3D12_HEAP_TYPE_DEFAULT), heapUpload(D3D12_HEAP_TYPE_UPLOAD);
+	CD3DX12_RESOURCE_DESC texDesc = CD3DX12_RESOURCE_DESC::Tex2D(fmt, UINT64(meta.width), UINT(meta.height), 1, UINT16(mipCount));
+	if (FAILED(dev_->CreateCommittedResource(&heapDefault, D3D12_HEAP_FLAG_NONE, &texDesc, D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&tex))))
+		return 0;
+	CD3DX12_RESOURCE_DESC upDesc = CD3DX12_RESOURCE_DESC::Buffer(GetRequiredIntermediateSize(tex.Get(), 0, mipCount));
+	if (FAILED(dev_->CreateCommittedResource(&heapUpload, D3D12_HEAP_FLAG_NONE, &upDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&upload))))
+		return 0;
+	ComPtr<ID3D12CommandAllocator> alloc;
+	ComPtr<ID3D12GraphicsCommandList> cl;
+	dev_->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&alloc));
+	dev_->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, alloc.Get(), nullptr, IID_PPV_ARGS(&cl));
+	std::vector<D3D12_SUBRESOURCE_DATA> sub(mipCount);
+	for (UINT level = 0; level < mipCount; ++level) { auto* mip = img.GetImage(level, 0, 0); sub[level] = {mip->pixels, LONG_PTR(mip->rowPitch), LONG_PTR(mip->slicePitch)}; }
+	UpdateSubresources(cl.Get(), tex.Get(), upload.Get(), 0, 0, mipCount, sub.data());
+	auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(tex.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+	cl->ResourceBarrier(1, &barrier);
+	cl->Close();
+	ID3D12CommandList* lists[] = {cl.Get()};
+	queue_->ExecuteCommandLists(1, lists);
+	WaitGPU();
+	return RegisterTexture_(tex, fmt, mipCount, unifiedPath+(sRGB?"#srgb":"#linear"));
+}
+
+Renderer::TextureHandle Renderer::RegisterTexture_(ComPtr<ID3D12Resource> tex, DXGI_FORMAT format, UINT mipCount, const std::string& cacheKey) {
+	const TextureHandle handle = ReserveTexture_(cacheKey);
+	SetTextureResource_(handle, tex, format, mipCount);
 	return handle;
 }
 
@@ -2878,6 +3137,7 @@ void Renderer::DrawLiquidParticleInstanced(MeshHandle mesh, TextureHandle textur
 }
 
 Renderer::MeshHandle Renderer::LoadObjMesh(const std::string& objFilePath) {
+	LoadProfile::Scope profile("mesh", objFilePath);
 	if (objFilePath.empty())
 		return 0;
 
@@ -2933,26 +3193,41 @@ Model* Renderer::GetModel(MeshHandle handle) {
 void Renderer::PrepareDistanceLods(uint32_t mesh,bool grassCards,bool authoredLeaves){
     sceneryOptimized_=wcsstr(GetCommandLineW(),L"--scenery-baseline")==nullptr;
     if(authoredLeaves&&!sceneryOptimized_)return;
-    if(sceneryLods_.count(mesh))return;auto* source=GetModel(mesh);if(!source||!source->GetData().bones.empty())return;
-    SceneryLods lod;lod.meshes.fill(mesh);lod.foliage=authoredLeaves;Vector3 lo{1e30f,1e30f,1e30f},hi{-1e30f,-1e30f,-1e30f};
+    if(sceneryLods_.count(mesh))return;
+    // まとめ読み中は予約だけして、EndAssetBatch で並列に作る
+    if(assetBatchDepth_>0){for(const auto& p:pendingLods_)if(p.mesh==mesh)return;pendingLods_.push_back({mesh,grassCards,authoredLeaves});return;}
+    LoadProfile::Scope profile("lod", std::to_string(mesh));
+    std::vector<LodJob> jobs(1);jobs[0].mesh=mesh;jobs[0].grassCards=grassCards;jobs[0].authoredLeaves=authoredLeaves;
+    jobs[0].valid=BuildDistanceLods_(jobs[0]);FinishDistanceLods_(jobs);
+}
+// CPU 側: 範囲を求め、2 段階の簡略化モデルを作る。models_ には触れないので複数のスレッドから同時に呼べる
+bool Renderer::BuildDistanceLods_(LodJob& job)const{
+    auto* source=job.mesh!=0&&job.mesh<models_.size()?models_[job.mesh].get():nullptr;if(!source||!source->GetData().bones.empty())return false;
+    auto& lod=job.lod;lod.meshes.fill(job.mesh);lod.foliage=job.authoredLeaves;Vector3 lo{1e30f,1e30f,1e30f},hi{-1e30f,-1e30f,-1e30f};
     for(const auto& v:source->GetData().vertices){lo.x=(std::min)(lo.x,v.position.x);lo.y=(std::min)(lo.y,v.position.y);lo.z=(std::min)(lo.z,v.position.z);
         hi.x=(std::max)(hi.x,v.position.x);hi.y=(std::max)(hi.y,v.position.y);hi.z=(std::max)(hi.z,v.position.z);}
     lod.center=(lo+hi)*.5f;Vector3 half=(hi-lo)*.5f;lod.radius=std::sqrt(half.x*half.x+half.y*half.y+half.z*half.z);
     for(int level=1;level<=2;++level){auto reduced=std::make_shared<Model>();
-        int reduction=authoredLeaves?(level==1?4:12):grassCards?(level==1?2:4):(level==1?32:20);
-        if(reduced->InitializeStaticLOD(dev_,*source,reduction,grassCards,authoredLeaves)){
-            lod.meshes[level]=uint32_t(models_.size());models_.push_back(reduced);
-        }else lod.meshes[level]=lod.meshes[level-1];}
+        int reduction=job.authoredLeaves?(level==1?4:12):job.grassCards?(level==1?2:4):(level==1?32:20);
+        if(reduced->InitializeStaticLOD(dev_,*source,reduction,job.grassCards,job.authoredLeaves))job.reduced[size_t(level-1)]=reduced;}
+    return true;
+}
+// メインスレッド: 簡略化モデルを登録し、全メッシュの頂点を 1 回の GPU 待ちで DEFAULT ヒープへ移す
+void Renderer::FinishDistanceLods_(std::vector<LodJob>& jobs){
+    for(auto& job:jobs){if(!job.valid)continue;
+        for(int level=1;level<=2;++level){
+            if(auto& reduced=job.reduced[size_t(level-1)]){job.lod.meshes[level]=uint32_t(models_.size());models_.push_back(reduced);}
+            else job.lod.meshes[level]=job.lod.meshes[level-1];}}
     if(sceneryOptimized_){
         ComPtr<ID3D12CommandAllocator> allocator;ComPtr<ID3D12GraphicsCommandList> commands;
         if(SUCCEEDED(dev_->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT,IID_PPV_ARGS(&allocator)))&&
             SUCCEEDED(dev_->CreateCommandList(0,D3D12_COMMAND_LIST_TYPE_DIRECT,allocator.Get(),nullptr,IID_PPV_ARGS(&commands)))){
-            for(auto handle:lod.meshes)models_[handle]->PromoteStaticGeometry(dev_,commands.Get());
+            for(const auto& job:jobs)if(job.valid)for(auto handle:job.lod.meshes)models_[handle]->PromoteStaticGeometry(dev_,commands.Get());
             if(SUCCEEDED(commands->Close())){ID3D12CommandList* lists[]={commands.Get()};queue_->ExecuteCommandLists(1,lists);WaitGPU();
-                for(auto handle:lod.meshes)models_[handle]->ReleaseUploadBuffers();}
+                for(const auto& job:jobs)if(job.valid)for(auto handle:job.lod.meshes)models_[handle]->ReleaseUploadBuffers();}
         }
     }
-    sceneryLods_.emplace(mesh,lod);
+    for(const auto& job:jobs)if(job.valid)sceneryLods_.emplace(job.mesh,job.lod);
 }
 std::array<uint32_t,3> Renderer::GetDistanceLodMeshes(uint32_t mesh)const{
     auto it=sceneryLods_.find(mesh);return it==sceneryLods_.end()?std::array<uint32_t,3>{mesh,mesh,mesh}:it->second.meshes;
@@ -3102,7 +3377,56 @@ void Renderer::FlushOverlayQueue() {
 	spriteDrawCalls_.clear();
 }
 
+bool Renderer::InitFinalTarget_() {
+	if (finalSceneColor_) return true;
+	// ★追加: 最終描画用テクスチャの作成
+	{
+		const UINT W = Engine::WindowDX::kW;
+		const UINT H = Engine::WindowDX::kH;
+		D3D12_RESOURCE_DESC rd{};
+		rd.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+		rd.Width = W;
+		rd.Height = H;
+		rd.DepthOrArraySize = 1;
+		rd.MipLevels = 1;
+		rd.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+		rd.SampleDesc.Count = 1;
+		rd.Flags = D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
+		D3D12_CLEAR_VALUE cv{};
+		cv.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+		std::memcpy(cv.Color, kFinalSceneClearColor, sizeof(float) * 4);
+
+		CD3DX12_HEAP_PROPERTIES heap(D3D12_HEAP_TYPE_DEFAULT);
+		HRESULT hr = dev_->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &rd, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, &cv, IID_PPV_ARGS(&finalSceneColor_));
+		if (FAILED(hr)) return false;
+		finalSceneState_ = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+
+		D3D12_DESCRIPTOR_HEAP_DESC hd{};
+		hd.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
+		hd.NumDescriptors = 64; // Includes six fluid reconstruction ping-pong RTVs.
+		hr = dev_->CreateDescriptorHeap(&hd, IID_PPV_ARGS(&finalRtvHeap_));
+		if (FAILED(hr)) return false;
+		finalRtv_ = finalRtvHeap_->GetCPUDescriptorHandleForHeapStart();
+		dev_->CreateRenderTargetView(finalSceneColor_.Get(), nullptr, finalRtv_);
+
+		const uint32_t idx = AllocateSrvIndex();
+		D3D12_CPU_DESCRIPTOR_HANDLE cpu = window_->SRV_CPU((int)idx);
+		D3D12_CPU_DESCRIPTOR_HANDLE cpuMaster = window_->SRV_CPU_Master((int)idx); // ★追加
+		finalSrvGpu_ = window_->SRV_GPU((int)idx);
+		D3D12_SHADER_RESOURCE_VIEW_DESC srv{};
+		srv.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+		srv.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+		srv.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+		srv.Texture2D.MipLevels = 1;
+		dev_->CreateShaderResourceView(finalSceneColor_.Get(), &srv, cpu);
+		dev_->CreateShaderResourceView(finalSceneColor_.Get(), &srv, cpuMaster); // ★追加
+	}
+
+	return true;
+}
+
 bool Renderer::InitUIFrame_() {
+	if (!InitFinalTarget_()) return false;
 	for (uint32_t i = 0; i < kFrameCount; ++i) {
 		if (FAILED(dev_->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&uiAlloc_[i]))))
 			return false;
@@ -3141,7 +3465,8 @@ bool Renderer::MapLoadingPointer(float& x, float& y) const {
 
 // Capture before Present: flip-discard swap chains do not guarantee that the
 // contents of a previously presented buffer remain available.
-void Renderer::CaptureEditorLoadingBackground() {
+void Renderer::CaptureEditorLoadingBackground(ID3D12GraphicsCommandList* commands) {
+	auto* captureList = commands ? commands : list_;
 	auto* source = window_->GetCurrentBackBufferResource();
 	const bool first = !editorLoadingBackground_;
 	if (first) {
@@ -3152,15 +3477,15 @@ void Renderer::CaptureEditorLoadingBackground() {
 			D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&editorLoadingBackground_)))) return;
 	} else {
 		auto writable = CD3DX12_RESOURCE_BARRIER::Transition(editorLoadingBackground_.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_COPY_DEST);
-		list_->ResourceBarrier(1, &writable);
+		captureList->ResourceBarrier(1, &writable);
 	}
 	auto readable = CD3DX12_RESOURCE_BARRIER::Transition(source, D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_COPY_SOURCE);
-	list_->ResourceBarrier(1, &readable);
-	list_->CopyResource(editorLoadingBackground_.Get(), source);
+	captureList->ResourceBarrier(1, &readable);
+	captureList->CopyResource(editorLoadingBackground_.Get(), source);
 	readable = CD3DX12_RESOURCE_BARRIER::Transition(source, D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_RENDER_TARGET);
-	list_->ResourceBarrier(1, &readable);
+	captureList->ResourceBarrier(1, &readable);
 	auto ready = CD3DX12_RESOURCE_BARRIER::Transition(editorLoadingBackground_.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_COPY_SOURCE);
-	list_->ResourceBarrier(1, &ready);
+	captureList->ResourceBarrier(1, &ready);
 }
 
 bool Renderer::PrepareEditorLoadingFrame() {
@@ -3168,7 +3493,8 @@ bool Renderer::PrepareEditorLoadingFrame() {
 	return preserveEditorLoading_;
 }
 
-void Renderer::RenderUIFrame(const std::function<void()>& draw) {
+void Renderer::RenderUIFrame(const std::function<void()>& draw,
+	const std::function<void(ID3D12GraphicsCommandList*)>& composite) {
 	const uint32_t fi = window_->FrameIndex();
 	uiAlloc_[fi]->Reset();
 	uiList_->Reset(uiAlloc_[fi].Get(), nullptr);
@@ -3201,13 +3527,19 @@ void Renderer::RenderUIFrame(const std::function<void()>& draw) {
 	uiList_->ResourceBarrier(1, &toTarget);
 	auto rtvBack = window_->GetCurrentRTV();
 	const float clear[] = {0.022f, 0.045f, 0.035f, 1.0f};
-	uiList_->OMSetRenderTargets(1, &rtvBack, FALSE, nullptr);
-	if (!preserveEditorLoading_) uiList_->ClearRenderTargetView(rtvBack, clear, 0, nullptr);
+	if (composite) {
+		auto writable = CD3DX12_RESOURCE_BARRIER::Transition(finalSceneColor_.Get(), finalSceneState_, D3D12_RESOURCE_STATE_RENDER_TARGET);
+		uiList_->ResourceBarrier(1, &writable);
+		finalSceneState_ = D3D12_RESOURCE_STATE_RENDER_TARGET;
+		uiList_->OMSetRenderTargets(1, &finalRtv_, FALSE, nullptr);
+		uiList_->ClearRenderTargetView(finalRtv_, clear, 0, nullptr);
+	} else uiList_->OMSetRenderTargets(1, &rtvBack, FALSE, nullptr);
+	if (!composite && !preserveEditorLoading_) uiList_->ClearRenderTargetView(rtvBack, clear, 0, nullptr);
 	// The editor may have narrowed the sprite viewport to its Game panel.
 	const D3D12_VIEWPORT savedViewport = viewport_;
 	const D3D12_RECT savedScissor = scissor_;
-	viewport_ = preserveEditorLoading_ ? editorLoadingViewport_ : fullVP;
-	scissor_ = preserveEditorLoading_ ? D3D12_RECT{
+	viewport_ = !composite && preserveEditorLoading_ ? editorLoadingViewport_ : fullVP;
+	scissor_ = !composite && preserveEditorLoading_ ? D3D12_RECT{
 		LONG((std::max)(0.f, viewport_.TopLeftX)), LONG((std::max)(0.f, viewport_.TopLeftY)),
 		LONG((std::min)(float(WindowDX::kW), viewport_.TopLeftX + viewport_.Width)),
 		LONG((std::min)(float(WindowDX::kH), viewport_.TopLeftY + viewport_.Height))} : fullScissor;
@@ -3224,6 +3556,16 @@ void Renderer::RenderUIFrame(const std::function<void()>& draw) {
 	scissor_ = savedScissor;
 	tUiList_ = nullptr;
 	tUiUpload_ = nullptr;
+	if (composite) {
+		auto readable = CD3DX12_RESOURCE_BARRIER::Transition(finalSceneColor_.Get(), finalSceneState_, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+		uiList_->ResourceBarrier(1, &readable);
+		finalSceneState_ = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+		uiList_->OMSetRenderTargets(1, &rtvBack, FALSE, nullptr);
+		uiList_->ClearRenderTargetView(rtvBack, clear, 0, nullptr);
+		uiList_->RSSetViewports(1, &fullVP);
+		uiList_->RSSetScissorRects(1, &fullScissor);
+		composite(uiList_.Get());
+	}
 	window_->PresentList(uiList_.Get());
 }
 
@@ -4007,48 +4349,7 @@ float4 main(float4 svpos:SV_POSITION, float2 uv:TEXCOORD0) : SV_TARGET {
 		}
 	}
 
-	// ★追加: 最終描画用テクスチャの作成
-	{
-		const UINT W = Engine::WindowDX::kW;
-		const UINT H = Engine::WindowDX::kH;
-		D3D12_RESOURCE_DESC rd{};
-		rd.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
-		rd.Width = W;
-		rd.Height = H;
-		rd.DepthOrArraySize = 1;
-		rd.MipLevels = 1;
-		rd.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-		rd.SampleDesc.Count = 1;
-		rd.Flags = D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
-		D3D12_CLEAR_VALUE cv{};
-		cv.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-		std::memcpy(cv.Color, kFinalSceneClearColor, sizeof(float) * 4);
-
-		CD3DX12_HEAP_PROPERTIES heap(D3D12_HEAP_TYPE_DEFAULT);
-		HRESULT hr = dev_->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &rd, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, &cv, IID_PPV_ARGS(&finalSceneColor_));
-		if (FAILED(hr)) return false;
-		finalSceneState_ = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
-
-		D3D12_DESCRIPTOR_HEAP_DESC hd{};
-		hd.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
-		hd.NumDescriptors = 64; // Includes six fluid reconstruction ping-pong RTVs.
-		hr = dev_->CreateDescriptorHeap(&hd, IID_PPV_ARGS(&finalRtvHeap_));
-		if (FAILED(hr)) return false;
-		finalRtv_ = finalRtvHeap_->GetCPUDescriptorHandleForHeapStart();
-		dev_->CreateRenderTargetView(finalSceneColor_.Get(), nullptr, finalRtv_);
-
-		const uint32_t idx = AllocateSrvIndex();
-		D3D12_CPU_DESCRIPTOR_HANDLE cpu = window_->SRV_CPU((int)idx);
-		D3D12_CPU_DESCRIPTOR_HANDLE cpuMaster = window_->SRV_CPU_Master((int)idx); // ★追加
-		finalSrvGpu_ = window_->SRV_GPU((int)idx);
-		D3D12_SHADER_RESOURCE_VIEW_DESC srv{};
-		srv.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-		srv.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-		srv.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
-		srv.Texture2D.MipLevels = 1;
-		dev_->CreateShaderResourceView(finalSceneColor_.Get(), &srv, cpu);
-		dev_->CreateShaderResourceView(finalSceneColor_.Get(), &srv, cpuMaster); // ★追加
-	}
+	if (!InitFinalTarget_()) return false;
 
 	// ★追加: Distortion用バックドロップテクスチャの作成
 	{
@@ -4561,6 +4862,7 @@ bool Renderer::GetCollisionResult(uint32_t resultIndex) const {
 }
 
 Renderer::MeshHandle Renderer::CreateDynamicMesh(const std::vector<VertexData>& vertices, const std::vector<uint32_t>& indices) {
+	LoadProfile::Scope profile("dynmesh", std::to_string(vertices.size()) + " verts");
 	auto model = std::make_shared<Model>();
 	model->InitializeDynamic(dev_, vertices, indices);
 	models_.push_back(model);
@@ -4720,6 +5022,7 @@ Renderer::MeshHandle Renderer::CreateCylinderMesh(float radius, float height, ui
 // ====================================================================
 
 Renderer::TextureHandle Renderer::LoadCubeMap(const std::string& ddsPath) {
+	LoadProfile::Scope profile("texture", ddsPath);
 	if (ddsPath.empty()) return 0;
 
 	std::string unifiedPath = PathUtils::GetUnifiedPath(ddsPath);

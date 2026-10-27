@@ -75,6 +75,9 @@ float CityNoise(int seed){float n=std::sin(float(seed)*12.9898f+78.233f)*43758.5
 }
 // 街のステージを作る: 影の範囲・シェーダー・材質・道路と横断歩道・建物・小物・バリケード・門・敵のモデル
 void ChronoSystem::BuildCityStage(entt::registry& r){
+    Engine::LoadProfile::Scope profile("phase","ChronoSystem::BuildCityStage");
+    // 材質の画像と小物の LOD は予約だけして組み立てを進め、関数を抜けるときにまとめて並列で作る
+    struct AssetBatch{AssetBatch(){Engine::Renderer::GetInstance()->BeginAssetBatch();}~AssetBatch(){Engine::Renderer::GetInstance()->EndAssetBatch();}} assetBatch;
     using namespace Chrono;
     // 影の範囲を広げる
     auto* render=Engine::Renderer::GetInstance();
@@ -90,12 +93,18 @@ void ChronoSystem::BuildCityStage(entt::registry& r){
     render->CreateShaderPipelineTransparent("DomainGlow",L"Resources/shaders/InstancedObjVS.hlsl",L"Resources/shaders/DomainGlowPS.hlsl",true,true);
     render->CreateShaderPipelineTransparent("MorphItemHighlight",L"Resources/shaders/InstancedObjVS.hlsl",L"Resources/shaders/MorphItemHighlightPS.hlsl",true,true);
     // Poly Haven の材質 (色・法線・粗さ・AO) を読み込む
-    auto material=[&](const std::string& id){CityModel m;
-        // 色と、法線・粗さ・AO のマップ
-        m.texture=render->LoadTexture2D("Resources/Textures/PolyHaven/"+id+"_diff_2k.jpg");
-        for(const char* map:{"nor_dx","Rough","AO"}){std::string path="Resources/Textures/PolyHaven/"+id+"_"+map+"_2k.jpg";
+    auto material=[&](const std::string& id){CityModel m;const std::string base="Resources/Textures/PolyHaven/"+id;
+        // BCn の DDS があればそれを、無ければ JPEG を使う
+        auto map=[&](const char* suffix,bool sRGB){for(const char* ext:{".dds",".jpg"}){std::string path=base+"_"+suffix+"_2k"+ext;
+            if(std::filesystem::exists(path))return render->LoadTexture2D(path,sRGB);}
             // AO の無いスキャンもある。白にすると光を遮らない
-            m.extra.push_back(std::filesystem::exists(path)?render->LoadTexture2D(path,false):white_);}
+            return white_;};
+        // NTC の材質: 色・粗さ・AO を GPU で BCn に復元する。法線は NTC に通さず BC5 の DDS のまま使う
+        if(std::filesystem::exists(base+"_material.ntc")){auto set=render->LoadNtcTextureSet(base+"_material.ntc",{"albedo","roughness","ao"});
+            if(set.size()==3){m.texture=set[0];m.extra={map("nor_dx",false),set[1],set[2]};return m;}}
+        // 色と、法線・粗さ・AO のマップ
+        m.texture=map("diff",true);
+        for(const char* suffix:{"nor_dx","Rough","AO"})m.extra.push_back(map(suffix,false));
         return m;};
     // 材質ごとの Poly Haven の素材の名前
     const char* surfaceIds[CityMaterialCount]={"asphalt_02","large_grey_tiles","concrete_floor_worn_001","concrete_floor_worn_001","concrete_floor_worn_001",
@@ -103,6 +112,7 @@ void ChronoSystem::BuildCityStage(entt::registry& r){
         "painted_metal_shutter","rusty_metal_shutter","concrete_floor_worn_001","concrete_floor_worn_001","white_bricks","medieval_wood","castle_wall_slates"};
     // 材質を読み込む
     std::array<CityModel,CityMaterialCount> surfaces;for(int i=0;i<CityMaterialCount;++i)surfaces[size_t(i)]=material(surfaceIds[i]);
+    Engine::LoadProfile::Record("mark","city: surfaces requested",0);
     // 材質ごとの色の補正
     auto tint=[](int i)->DirectX::XMFLOAT4{
         // 塗装は明るく、黄色の塗装・ガラス・金属・道路は色を変える
@@ -294,6 +304,7 @@ void ChronoSystem::BuildCityStage(entt::registry& r){
     }
     // シャッターの門の上のまぐさで双子の塔をつなぐ
     city.Box(CityDarkTiles,{46,58,-64},{110,96,-48});
+    Engine::LoadProfile::Record("mark","city: geometry built",0);
     // 材質ごとのメッシュをエンティティとして置く
     for(int i=0;i<CityMaterialCount;++i){auto& g=city.geometry[size_t(i)];if(g.indices.empty())continue;
         auto e=r.create();r.emplace<NameComponent>(e,std::string("Chrono City surface ")+surfaceIds[i]);
@@ -312,6 +323,7 @@ void ChronoSystem::BuildCityStage(entt::registry& r){
             render->PrepareDistanceLods(m.mesh);}
         return models.emplace(id,m).first->second;};
     // 小物と見た目の記録を消す
+    Engine::LoadProfile::Record("mark","city: surface entities",0);
     cityProps_.clear();cityVisuals_.clear();
     // スキャンした小物を置く (required が 0 より大きければ取り込める物になる)
     auto place=[&](const std::string& id,V at,float width,float yaw,float required=0,float reward=0){
@@ -448,6 +460,7 @@ void ChronoSystem::BuildCityStage(entt::registry& r){
         placeMesh("statue pedestal",render->CreateDynamicMesh(g.vertices,g.indices),CityConcrete,pedestal,0,6,0,0);
         place("gothic_statue",pedestal+V{0,6,0},12,.6f,2200,260);}
     // 敵のモデル (ネズミと大砲)
+    Engine::LoadProfile::Record("mark","city: props placed",0);
     cityRat_=model("street_rat");cityCannon_=model("cannon_01");
     // 板・ゴーレムの部品・矢・破片・光る看板に共通で使う単位立方体
     std::vector<Engine::VertexData> cube;std::vector<uint32_t> cubeIndex;

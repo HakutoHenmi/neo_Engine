@@ -86,9 +86,11 @@ void ImGuiLayer::NewFrame(WindowDX& dx) {
 	ImGui::NewFrame();
 }
 
-void ImGuiLayer::Render(WindowDX& dx) {
+void ImGuiLayer::Render(WindowDX& dx) { Render(dx.List()); }
+
+void ImGuiLayer::Render(ID3D12GraphicsCommandList* commands) {
 	ImGui::Render();
-	ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), dx.List());
+	ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), commands);
 }
 
 void ImGuiLayer::Shutdown() {

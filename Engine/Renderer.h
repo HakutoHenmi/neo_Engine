@@ -328,6 +328,15 @@ public:
 	LightCB GetLightCB() const { return lightCB_; }
 
 	TextureHandle LoadTexture2D(const std::string& filePath, bool sRGB = true);
+	// NTC のテクスチャセットを GPU で BCn に復元する。names の順にハンドルを返す。
+	// libntc.dll が無い・GPU が非対応などで失敗したら空を返すので、呼び出し側が代わりを使う
+	std::vector<TextureHandle> LoadNtcTextureSet(const std::string& filePath, const std::vector<std::string>& names);
+	// Begin～End の間の LoadTexture2D は場所 (ハンドル) だけ確保し、PrepareDistanceLods は予約だけする。
+	// End で LOD の簡略化と画像の展開を並列に行い、まとめて GPU へ送る。End まで描画しないこと (ロード中の組み立て処理で使う)
+	void BeginAssetBatch() { ++assetBatchDepth_; }
+	void EndAssetBatch();
+	// 検証用: テクスチャの GPU リソース (PIXEL_SHADER_RESOURCE 状態)
+	ID3D12Resource* GetTextureResource(TextureHandle handle) const { return handle < textures_.size() ? textures_[handle].res.Get() : nullptr; }
 	// Reuses a named, bounded RGBA8 paint atlas. Uploads are batched by the caller.
 	TextureHandle UpdatePaintTexture(const std::string& name, uint32_t width, uint32_t height, const uint8_t* pixels);
     struct PendingPaint {TextureHandle handle;uint32_t width,height;std::vector<uint8_t> pixels;};
@@ -655,11 +664,13 @@ public:
 	// renderer's private UI command list and upload ring. Title / select screens use
 	// it before the 3D pipeline exists, and the loading screen calls it from its own
 	// thread while the main thread keeps loading.
-	void RenderUIFrame(const std::function<void()>& draw);
+	// With a compositor, render UI into the Game texture before drawing the editor.
+	void RenderUIFrame(const std::function<void()>& draw,
+		const std::function<void(ID3D12GraphicsCommandList*)>& composite = {});
 	// Client coordinates, supplied only by the editor Game view. An empty rectangle
 	// preserves the editor while the Game tab is hidden.
 	void SetEditorLoadingViewport(float x, float y, float w, float h);
-	void CaptureEditorLoadingBackground();
+	void CaptureEditorLoadingBackground(ID3D12GraphicsCommandList* commands = nullptr);
 	bool PrepareEditorLoadingFrame();
 	void FinishEditorLoadingFrame() { preserveEditorLoading_ = false; }
 	bool MapLoadingPointer(float& x, float& y) const;
@@ -1095,10 +1106,29 @@ private:
 	void FlushOverlayQueue();
 	bool InitSpritePipeline_();
 	bool InitUIFrame_();
+	bool InitFinalTarget_();
 	bool editorPresented_ = false, preserveEditorLoading_ = false;
 	D3D12_VIEWPORT editorLoadingViewport_{};
 	Microsoft::WRL::ComPtr<ID3D12Resource> editorLoadingBackground_;
 	TextureHandle LoadTexture2DUncached_(const std::string& filePath, bool sRGB);
+	TextureHandle LoadDDSTexture_(const std::string& unifiedPath, bool sRGB);
+	struct TextureUpload;
+	static bool DecodeTextureMips_(const std::string& unifiedPath, bool sRGB, TextureUpload& out);
+	void UploadTextures_(std::vector<TextureUpload>& uploads);
+	bool StageTextureUpload_(TextureUpload& upload) const;
+	static bool DecodeTextureBase_(const std::string& unifiedPath, bool sRGB, TextureUpload& out);
+	bool EnsureMipPipeline_();
+	Microsoft::WRL::ComPtr<ID3D12RootSignature> mipRoot_;
+	Microsoft::WRL::ComPtr<ID3D12PipelineState> mipPso_;
+	bool mipPipelineTried_ = false;
+	TextureHandle ReserveTexture_(const std::string& cacheKey);
+	void SetTextureResource_(TextureHandle handle, Microsoft::WRL::ComPtr<ID3D12Resource> tex, DXGI_FORMAT format, UINT mipCount);
+	struct PendingTexture { std::string path; bool sRGB; TextureHandle handle; };
+	std::vector<PendingTexture> pendingTextures_;
+	int assetBatchDepth_ = 0;
+	void FlushTextureBatch_();
+	// 作成済みのテクスチャへ SRV を作り、キャッシュに登録する
+	TextureHandle RegisterTexture_(Microsoft::WRL::ComPtr<ID3D12Resource> tex, DXGI_FORMAT format, UINT mipCount, const std::string& cacheKey);
 	Microsoft::WRL::ComPtr<ID3D12CommandAllocator> uiAlloc_[2];
 	Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> uiList_;
 	std::atomic<bool> uiThreadActive_{false};
@@ -1114,6 +1144,11 @@ private:
 	std::vector<std::shared_ptr<Model>> models_;
 	struct SceneryLods {std::array<uint32_t,3> meshes{};Vector3 center{};float radius=1;bool foliage=false;};
 	std::unordered_map<uint32_t,SceneryLods> sceneryLods_;
+	struct LodJob;
+	struct PendingLod {uint32_t mesh;bool grassCards,authoredLeaves;};
+	std::vector<PendingLod> pendingLods_;
+	bool BuildDistanceLods_(LodJob& job)const;
+	void FinishDistanceLods_(std::vector<LodJob>& jobs);
 	bool distanceLodEnabled_=true;SceneryLodStats sceneryLodStats_{},lastSceneryLodStats_{};
 	uint32_t SelectDistanceLod(uint32_t mesh,const Matrix4x4& world);
     bool SceneryVisible(uint32_t mesh,const Matrix4x4& world,const Matrix4x4& viewProjection)const;

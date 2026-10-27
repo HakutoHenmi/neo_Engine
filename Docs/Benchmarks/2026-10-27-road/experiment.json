@@ -1,0 +1,18 @@
+{
+  "date": "2026-10-27",
+  "description": "Native D3D12 inference-on-load prototype, asphalt_02, 2048x2048, 12 mips. OS file cache warm; clocks/power settings unchanged. GPU memory figures are owned resource allocations, not residency.",
+  "sdkRelease": "v0.10.0-beta",
+  "requestedBpp": 5,
+  "trainingSteps": 10000,
+  "seed": 1234,
+  "gdeflate": "off",
+  "coopVec": false,
+  "validation": "D3D12 debug layer: no error/corruption messages; all four texture readbacks passed fidelity checks",
+  "sha256": {
+    "ntc": "508c8c38b8fcc0443ec1126e05739b89cbc00535c257fdf69766fc68847d547f",
+    "benchmarkSource": "4f01f09a4b7aa0a9f04dd6f8a2a4198fb8688bdf785af74bfc9b9fe77c589fe4",
+    "runner": "fc9ff5f44c2f3e4b119b02335e7a22b6c79fd7f7db40336006ce0cf610bba308",
+    "libntc": "db97f3ac6ef032525c29c87278568a8c67def7f36fc90aa918675e74c3989c71"
+  },
+  "libntcDllBytes": 6968832
+}

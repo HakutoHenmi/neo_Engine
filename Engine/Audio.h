@@ -68,6 +68,8 @@ public:
 	void StopAll();
 
 	// One scene music channel, independent of sound effects. Tick with real time.
+	// Preload on a worker before the first scene; join before accessing audio again.
+	bool PreloadBGM(const std::string& path);
 	bool PlayBGM(const std::string& path, float volume = 0.35f);
 	void StopBGM();
 	void UpdateBGM(float dt);
@@ -87,6 +89,7 @@ private:
 
 	Microsoft::WRL::ComPtr<IXAudio2> xa_;
 	IXAudio2MasteringVoice* master_ = nullptr;
+	bool mfStarted_ = false;
 
 	// 読み込んだ音声データ (Indexがハンドルになる)
 	std::vector<SoundData> soundDatas_;

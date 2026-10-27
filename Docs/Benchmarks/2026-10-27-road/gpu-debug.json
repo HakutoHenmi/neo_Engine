@@ -1,0 +1,12 @@
+{
+  "adapter": "NVIDIA GeForce RTX 4060 Laptop GPU",
+  "debugLayer": true,
+  "driverVersionRaw": 9007199255790646,
+  "timestampFrequency": 1000000000,
+  "warmups": 3, "samples": 32,
+  "variants": [
+    {"name": "rgba8", "fileBytes": 12397863, "finalGpuAllocationBytes": 89653248, "peakOwnedDefaultAllocationBytes": 89653248, "uploadHeapBytes": 89520144, "firstLoadWallMs": 469.962500, "warmLoadWallMedianMs": 538.080200, "warmLoadWallP95Ms": 588.174600, "gpuTotalMedianMs": 67.246080, "gpuTotalP95Ms": 67.436544, "gpuUploadMedianMs": 67.246080, "gpuInferenceMedianMs": 0.000000, "gpuEncodeAndCopyMedianMs": 0.000000, "syntheticDrawMedianMs": 0.087040},
+    {"name": "bcn", "fileBytes": 16777888, "finalGpuAllocationBytes": 16908288, "peakOwnedDefaultAllocationBytes": 16908288, "uploadHeapBytes": 16795696, "firstLoadWallMs": 15.863100, "warmLoadWallMedianMs": 13.599250, "warmLoadWallP95Ms": 16.474100, "gpuTotalMedianMs": 1.300000, "gpuTotalP95Ms": 1.307840, "gpuUploadMedianMs": 1.298784, "gpuInferenceMedianMs": 0.000864, "gpuEncodeAndCopyMedianMs": 0.000288, "syntheticDrawMedianMs": 0.076800},
+    {"name": "ntc-native", "fileBytes": 3213460, "finalGpuAllocationBytes": 16908288, "peakOwnedDefaultAllocationBytes": 146341888, "uploadHeapBytes": 3527704, "firstLoadWallMs": 1714.664900, "warmLoadWallMedianMs": 43.596200, "warmLoadWallP95Ms": 52.542900, "gpuTotalMedianMs": 15.528528, "gpuTotalP95Ms": 20.087328, "gpuUploadMedianMs": 0.250016, "gpuInferenceMedianMs": 10.776176, "gpuEncodeAndCopyMedianMs": 4.496464, "syntheticDrawMedianMs": 0.072704}
+  ]
+}

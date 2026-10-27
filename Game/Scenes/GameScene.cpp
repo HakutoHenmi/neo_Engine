@@ -59,6 +59,7 @@
 #include "../Systems/PostProcessSystem.h" // ポストエフェクト
 // Web プロファイラ (外部ツールから値を見たり変えたりする)
 #include "../../Engine/NetworkProfiler.h"
+#include "../../Engine/LoadProfile.h"
 // JSON の読み書き
 #include "../../externals/nlohmann/json.hpp"
 #include "../../externals/imgui/imgui.h" // ImGui (エディタの画面)
@@ -92,6 +93,7 @@ GameScene::~GameScene() {
 
 // 初期化: シーンファイルを読み込み、カメラ・システム・タグのキャッシュなどを準備する
 void GameScene::Initialize(Engine::WindowDX* dx, const Engine::SceneParameters& params) {
+	Engine::LoadProfile::Scope profile("phase", "GameScene::Initialize");
     // グラフィック設定画面を閉じた状態から始める
     graphicsOpen_=false;graphicsSaveFailed_=false;
 	// ウィンドウを覚える
@@ -100,6 +102,15 @@ void GameScene::Initialize(Engine::WindowDX* dx, const Engine::SceneParameters& 
     Music::Play(Music::Battle);
 	// 描画の窓口
 	renderer_ = Engine::Renderer::GetInstance();
+	// 最初の Update より先に Draw が呼ばれても (検証シーンなど) 調合室の描画が使えるよう、
+	// フレームに依らない共有データはここで用意しておく
+	ctx_.camera = &camera_;
+	ctx_.renderer = renderer_;
+	ctx_.input = Engine::Input::GetInstance();
+	ctx_.scene = this;
+	ctx_.eventSystem = &eventSystem_;
+	ctx_.pendingSpawns = &pendingSpawns_;
+	ctx_.viewportSize = { (float)Engine::WindowDX::kW, (float)Engine::WindowDX::kH };
 	// シーンファイルが空か本編のシーン (game.json の mainStage) ならスライム本編モード (ChronoSystem で動かす)
 	slimePlayerDemo_ = Data::IsSlimePlayerDemoStage(params.stagePath);
 	chronoMode_ = slimePlayerDemo_ || Data::IsMainStage(params.stagePath);
@@ -150,7 +161,7 @@ void GameScene::Initialize(Engine::WindowDX* dx, const Engine::SceneParameters& 
 		if (std::filesystem::exists(Engine::PathUtils::FromUTF8(scenePath))) {
 			// 見つかったことをデバッグ出力に残し、読み込む
 			OutputDebugStringA(("[GameScene] " + scenePath + " found. Loading...\n").c_str());
-			EditorUI::LoadScene(this, scenePath);
+			{ Engine::LoadProfile::Scope loadSceneProfile("phase", "EditorUI::LoadScene"); EditorUI::LoadScene(this, scenePath); }
 			isPlaying_ = true; // 読み込めたら PLAY 状態から始める
 			loaded = true;
 		} else {
