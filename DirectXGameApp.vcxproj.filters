@@ -180,6 +180,15 @@
     <ClCompile Include="Game\Systems\SlimeHydrant.cpp">
       <Filter>3. Systems（システム）\スライム本編</Filter>
     </ClCompile>
+    <ClCompile Include="Game\Systems\SlimeShowcase.cpp">
+      <Filter>3. Systems（システム）\スライム本編</Filter>
+    </ClCompile>
+    <ClCompile Include="Game\Systems\SlimeSignal.cpp">
+      <Filter>3. Systems（システム）\スライム本編</Filter>
+    </ClCompile>
+    <ClCompile Include="Game\Systems\SlimePlayerDemo.cpp">
+      <Filter>3. Systems（システム）\スライム本編</Filter>
+    </ClCompile>
     <ClCompile Include="Game\Systems\SlimeLife.cpp">
       <Filter>3. Systems（システム）\スライム本編</Filter>
     </ClCompile>
@@ -314,6 +323,9 @@
     <ClInclude Include="Game\Scenes\GameOverScene.h">
       <Filter>2. Scenes（シーン）</Filter>
     </ClInclude>
+    <ClInclude Include="Game\Scenes\SlimePlayerDemoScene.h">
+      <Filter>2. Scenes（シーン）</Filter>
+    </ClInclude>
     <ClInclude Include="Game\Scenes\GameScene.h">
       <Filter>2. Scenes（シーン）</Filter>
     </ClInclude>
@@ -438,6 +450,9 @@
       <Filter>4. Chrono（スライム本編のルール）</Filter>
     </ClInclude>
     <ClInclude Include="Game\Chrono\SlimeHydrantRules.h">
+      <Filter>4. Chrono（スライム本編のルール）</Filter>
+    </ClInclude>
+    <ClInclude Include="Game\Chrono\SlimeSignalRules.h">
       <Filter>4. Chrono（スライム本編のルール）</Filter>
     </ClInclude>
     <ClInclude Include="Game\Chrono\SlimeLifeRules.h">
@@ -567,6 +582,12 @@
       <Filter>9. Tests（自動テスト）</Filter>
     </ClInclude>
     <ClInclude Include="tests\UIGalleryScene.h">
+      <Filter>9. Tests（自動テスト）</Filter>
+    </ClInclude>
+    <ClInclude Include="tests\SlimePlayerDemoValidationScene.h">
+      <Filter>9. Tests（自動テスト）</Filter>
+    </ClInclude>
+    <ClInclude Include="tests\EditorLoadingValidationScene.h">
       <Filter>9. Tests（自動テスト）</Filter>
     </ClInclude>
     <ClInclude Include="tests\UIValidationScene.h">
@@ -1060,6 +1081,9 @@
     <None Include="Resources\shaders\FluidSurfacePS.hlsl">
       <Filter>Resources（素材）\shaders</Filter>
     </None>
+    <None Include="Resources\shaders\FluidFarWater.hlsli">
+      <Filter>Resources（素材）\shaders</Filter>
+    </None>
     <None Include="Resources\shaders\FluidVolumeCommon.hlsli">
       <Filter>Resources（素材）\shaders</Filter>
     </None>
@@ -1181,6 +1205,9 @@
       <Filter>Resources（素材）\shaders</Filter>
     </None>
     <None Include="Resources\shaders\MorphItemHighlightPS.hlsl">
+      <Filter>Resources（素材）\shaders</Filter>
+    </None>
+    <None Include="Resources\shaders\SlimeChildHighlightPS.hlsl">
       <Filter>Resources（素材）\shaders</Filter>
     </None>
     <None Include="Resources\shaders\Obj.hlsli">

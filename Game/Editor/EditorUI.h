@@ -91,6 +91,7 @@ public:
 	// シーンの保存 (ファイル / 文字列) と読み込み (ファイル / 文字列)
 	static void SaveScene(GameScene* scene, const std::string& path = "");
 	static std::string SaveToMemory(GameScene* scene);
+	static std::string SavePlaySnapshot(GameScene* scene);
 	static void LoadScene(GameScene* scene, const std::string& path);
 	static void LoadFromMemory(GameScene* scene, const std::string& data);
 	

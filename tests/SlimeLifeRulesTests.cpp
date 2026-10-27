@@ -1,5 +1,6 @@
 #include "../Game/Chrono/SlimeWeaponRules.h"
 #include "../Game/Chrono/SlimeHydrantRules.h"
+#include "../Game/Chrono/SlimeSignalRules.h"
 #include "../Game/Chrono/CityStageRules.h"
 #include "../Game/Chrono/SlimeTentacleRules.h"
 #include "../Engine/FluidMorphShape.h"
@@ -290,7 +291,51 @@ void TestHydrantMorph(){
     CheckLife(LifeWaterSegmentDistance({-2,0,0},{2,0,0},{0,-2,0},{0,2,0})<1e-5f&&LifeWaterSegmentDistance({-2,0,0},{2,0,0},{0,-2,3},{0,2,3})>2.9f,"crossing water/projectile paths are not swept");
     puts("PASS hydrant: absorbed-item gate, manual/contact unlock, reusable form/reset, nozzle shape, live-water filtering and swept attack/defense");
 }
+// タイヤ: 押している間はその場で溜め、離すと溜めに応じて突進する。短い押しは突進しない
+void TestTireCharge(){
+    SlimeRecipe recipe;LifeBody body;body.mass=100;body.health=body.maxHealth=100;body.tireUnlocked=true;
+    CheckLife(LifeEnterWeapon(body,LifeAction::Tire,{0,0,1}),"tire not entered");
+    CheckLife(!LifeTickTireCharge(body,true,.1f)&&!body.weapon.charging,"charged before the tire was formed");
+    body.weapon.ready=true;Vec velocity{0,0,20};
+    for(int i=0;i<3;++i){LifeTickTireCharge(body,true,1.f/60);velocity=LifeTireChargeVelocity(body,velocity,{},recipe,true,1.f/60);}
+    CheckLife(!LifeTickTireCharge(body,false,1.f/60)&&body.weapon.dash==0,"a tap dashed without enough charge");
+    for(int i=0;i<120;++i){LifeTickTireCharge(body,true,1.f/60);velocity=LifeTireChargeVelocity(body,velocity,{},recipe,true,1.f/60);body.tireSpin=LifeTireSpinRate(body,1.f/60);}
+    CheckLife(body.weapon.charge==1&&Length(velocity)<1&&body.tireSpin>LifeTireSpinMax*.8f,"charging does not stop in place and spin up");
+    CheckLife(LifeTickTireCharge(body,false,1.f/60)&&body.weapon.dashPower==1&&body.weapon.dash>0,"release did not start a full dash");
+    velocity=LifeTireChargeVelocity(body,velocity,{},recipe,true,1.f/60);
+    Vec roll=LifeTireMoveVelocity(body,{},{0,0,1},recipe,true,10);
+    CheckLife(velocity.z>Length(roll)*2.5f,"full dash is not much faster than rolling");
+    CheckLife(!LifeTickTireCharge(body,true,1.f/60)&&!body.weapon.charging,"recharged during a dash");
+    CheckLife(LifeTireDashGateDamage(1)>=CityBarricadeHealth(),"a full dash cannot break the barricade at once");
+    CheckLife(LifeTireDashDamage(body,1)>=CityStats(CityEnemy::Guard).health,"a full dash cannot defeat an alley guard");
+    std::puts("PASS tire charge: stops in place, tap/min charge, full dash speed, no recharge mid-dash, one-hit barricade and guard");
+}
+// 信号機: 赤 → 青 → 黄の順だけ、色ごとの待ちと黄の後の点検、足止め・整列・マーカー
+void TestSignal(){
+    SignalState s;SignalColor fired;
+    CheckLife(SignalFire(s,fired)&&fired==SignalColor::Red&&s.next==SignalColor::Green&&s.wait==SignalStepWait,"red is not first");
+    CheckLife(!SignalFire(s,fired),"signal fired during the step wait");
+    SignalTick(s,SignalStepWait);CheckLife(SignalFire(s,fired)&&fired==SignalColor::Green,"green does not follow red");
+    SignalTick(s,SignalStepWait);CheckLife(SignalFire(s,fired)&&fired==SignalColor::Yellow&&SignalResting(s)&&s.wait==SignalRestTime,"yellow does not start the long rest");
+    SignalTick(s,SignalRestTime-.1f);CheckLife(!SignalFire(s,fired)&&SignalResting(s),"red repeated before the rest ended");
+    SignalTick(s,.1f);CheckLife(SignalFire(s,fired)&&fired==SignalColor::Red,"cycle did not restart at red");
+    std::vector<SwarmEnemy> enemies(3);for(size_t i=0;i<3;++i){enemies[i].health=enemies[i].maxHealth=100;enemies[i].scale=1;enemies[i].phase=SwarmPhase::Dash;}
+    enemies[0].at={5,0,0};enemies[1].at={-10,0,8};enemies[2].at={80,0,0};
+    CheckLife(SignalStopEnemies(enemies,{},30)==2&&enemies[0].signalStop==SignalStopTime&&enemies[0].phase==SwarmPhase::Chase&&enemies[2].signalStop==0,"red stops the wrong enemies or keeps their dash");
+    auto line=SignalLinePositions({0,0,10},{1,0,0},3,5);CheckLife(line.size()==3&&line[0].x==-5&&line[1].x==0&&line[2].x==5&&line[1].z==10,"green line is not centred and evenly spaced");
+    Vec walker;CheckLife(SignalWalkerAt({},{1,0,0},{0,0,1},10,1,1,0,SignalWalkDelay+SignalWalkTime*.5f,walker)&&std::abs(walker.x)<.01f&&walker.z<0&&walker.z>-SignalCrossNear-1.5f&&!SignalWalkerAt({},{1,0,0},{0,0,1},10,1,1,0,SignalWalkDelay+SignalWalkTime+.1f,walker),"walker does not cross the crosswalk once");
+    // 横断歩道は逆の端からも敷ける。範囲と人影の届く距離は成長に合わせて広がる
+    CheckLife(SignalWalkerAt({},{1,0,0},{0,0,1},10,1,-1,0,SignalWalkDelay+.01f,walker)&&walker.x>5&&SignalStripeTime(9,10)<SignalLayTime&&SignalStripeTime(1,10)>0,"crosswalk cannot be laid from the other side");
+    CheckLife(SignalStopRadius(LifeMaxMass)>SignalStopRadius(LifeStartMass)*3&&SignalMarkReach(900)>SignalMarkReach(100)*2&&SignalWalkerReach(3.4f,SignalReach(900))>SignalWalkerReach(3.4f,1)+5,"signal ranges do not grow with the body");
+    SwarmEnemy marked;marked.health=1;marked.signalMark=SignalMarkTime;marked.signalMarkAt=marked.at;
+    CheckLife(SignalTickMark(marked,1)==0&&SignalTickMark(marked,SignalMarkTime)==1&&marked.signalMark==0,"timed marker did not burst once");
+    marked.signalMark=SignalMarkTime;marked.at={SignalMarkMove+.1f,0,0};CheckLife(SignalTickMark(marked,.01f)==2,"moving with a marker did not burst");
+    CheckLife(SignalMarkDamage(600,true)>SignalMarkDamage(600,false)*2,"moving burst is not much stronger");
+    std::puts("PASS signal: fixed red/green/yellow order, step waits and long rest, stop radius, centred line, crossing walkers, timed/moving markers");
+}
 int main(){try{
+    TestSignal();
+    TestTireCharge();
     TestHydrantMorph();
     TestTireMorph();
     TestFacingAndCamera();

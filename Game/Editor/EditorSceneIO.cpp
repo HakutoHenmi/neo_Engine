@@ -921,6 +921,19 @@ static void LoadSceneInternal(GameScene* scene, const std::string& path, bool ap
 	}
 }
 
+// Play snapshots live only within this renderer session. Procedural city meshes
+// and demo geometry have no asset path, so keep their GPU resource handles too.
+std::string EditorUI::SavePlaySnapshot(GameScene* scene) {
+    auto j = json::parse(SaveToMemory(scene));
+    auto& reg = scene->GetComponents();
+    for (auto& obj : j["objects"]) {
+        auto e = entt::entity(obj["id"].get<uint32_t>());
+        if (auto* mesh = reg.try_get<MeshRendererComponent>(e))
+            obj["_playMesh"] = {{"model",mesh->modelHandle},{"texture",mesh->textureHandle},{"extra",mesh->extraTextureHandles}};
+    }
+    return j.dump();
+}
+
 // シーンを開く / シーンを追加で読み込む
 void EditorUI::LoadScene(GameScene* scene, const std::string& path) {
 	// 保存先を覚えてから読み込む
@@ -938,7 +951,17 @@ void EditorUI::LoadFromMemory(GameScene* scene, const std::string& data) {
 	try {
 		// JSON を読み込み、今のシーンを置き換える
 		j = json::parse(data);
-		(void)RestoreSceneFromJson(scene, j, false);
+		const auto entities = RestoreSceneFromJson(scene, j, false);
+        auto& reg = scene->GetComponents();
+        for (size_t i=0;i<entities.size();++i) {
+            if (!reg.valid(entities[i]) || !j["objects"][i].contains("_playMesh")) continue;
+            auto* mesh=reg.try_get<MeshRendererComponent>(entities[i]);
+            if (!mesh) continue;
+            const auto& resources=j["objects"][i]["_playMesh"];
+            mesh->modelHandle=resources["model"].get<uint32_t>();
+            mesh->textureHandle=resources["texture"].get<uint32_t>();
+            mesh->extraTextureHandles=resources["extra"].get<std::vector<uint32_t>>();
+        }
 	} catch (const std::exception& e) {
 		LogError("Failed to restore memory snapshot: " + std::string(e.what()));
 	}

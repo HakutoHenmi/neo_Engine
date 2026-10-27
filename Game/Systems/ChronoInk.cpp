@@ -70,7 +70,10 @@ void ChronoSystem::BuildInk(entt::registry& r){
         if(slimeLife_){t.rotate={DirectX::XMConvertToRadians(62.f),DirectX::XMConvertToRadians(8.f),0};light.intensity=1.1f;}
         else{t.rotate={DirectX::XMConvertToRadians(45.f),DirectX::XMConvertToRadians(30.f),0};light.intensity=1;}}
     // スライムの生活モードなら街のステージを作り、草原の景観はとばす
-    if(slimeLife_){BuildCityStage(r);goto sceneryDone;}
+    // 子分の縁取り: 見えている所と、壁越し (深度を見ない) の 2 種類
+    if(slimeLife_){render->CreateShaderPipelineTransparent("SlimeChildGlow",L"Resources/shaders/InstancedObjVS.hlsl",L"Resources/shaders/SlimeChildHighlightPS.hlsl",true,true);
+        render->CreateShaderPipelineTransparent("SlimeChildXRay",L"Resources/shaders/InstancedObjVS.hlsl",L"Resources/shaders/SlimeChildHighlightPS.hlsl",true,false);}
+    if(slimeLife_){if(slimePlayerDemo_) BuildSlimePlayerDemo(r);else BuildCityStage(r);goto sceneryDone;}
     // 草原の地面: 高さの関数から格子状の地形メッシュを作る
     {auto floor=scenery("Meadow ground","Resources/Models/Environment/meadow-floor.obj",groundTex,{0,0,0},{1,1,1},"MeadowGround");
     std::vector<Engine::VertexData> terrainVertices;std::vector<uint32_t> terrainIndices;

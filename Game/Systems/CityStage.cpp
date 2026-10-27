@@ -438,6 +438,11 @@ void ChronoSystem::BuildCityStage(entt::registry& r){
     // 公衆電話・配電盤
     for(V at:{V{-280,0,-20},V{440,0,-20},V{-280,0,700},V{440,0,700}})place("korean_public_payphone_01",at,4.4f,0,300,24);
     for(V at:{V{-40,0,200},V{196,0,200},V{-40,0,480},V{196,0,480},V{-260,0,240},V{420,0,440}})place(CityNoise(int(at.x+at.z))<.5f?"utility_box_01":"utility_box_02",at,5.4f,0,260,20);
+    // 変形アイテムの信号機: 台座・柱・灯器の箱 (信号機の形を 1.4 倍にした寸法)。大交差点の入口に置く
+    {CityBuilder local;const float k=SignalItemScale;local.Box(CityMetal,{-1.2f*k,0,-1.2f*k},{1.2f*k,.4f*k,1.2f*k});local.Box(CityMetal,{-.42f*k,.4f*k,-.42f*k},{.42f*k,5.2f*k,.42f*k});
+        local.Box(CityMetal,{-2.3f*k,(SignalHousingY-.8f)*k,-.55f*k},{2.3f*k,(SignalHousingY+.8f)*k,.55f*k});auto& g=local.geometry[CityMetal];
+        auto e=placeMesh("traffic signal",render->CreateDynamicMesh(g.vertices,g.indices),CityMetal,signalItemAt_,0,SignalHeight*k,15,24,LifeMorphItem::Signal);
+        r.get<MeshRendererComponent>(e).color={.32f,.34f,.36f,1};}
     // 台座と像
     {V pedestal{-200,0,-10};CityBuilder local;local.Box(CityMetal,{-8,0,-8},{8,6,8});auto& g=local.geometry[CityMetal];
         placeMesh("statue pedestal",render->CreateDynamicMesh(g.vertices,g.indices),CityConcrete,pedestal,0,6,0,0);
@@ -502,7 +507,7 @@ void ChronoSystem::CityWeaponHits(entt::registry& r,GameContext& ctx,const Chron
             ctx.camera->StartImpactShake(.12f,.14f,{0,1,0},16);swarmEffects_.push_back({CityBarricadeCenter()-V{0,0,4},0,10,2});
             if(cityBarricadeHealth_<=0)BreakCityGate(r,true,false);
             else{life_.message="バリケード 残り "+std::to_string(int(std::ceil(cityBarricadeHealth_/CityBarricadeHealth()*100)))+"%";life_.messageAge=1.2f;}}
-        else{life_.message="工事バリケードはハンマーで叩き壊せる";life_.messageAge=2;}
+        else{life_.message="工事バリケードはタイヤの溜め突進で壊せる";life_.messageAge=2;}
     }
     // 門: 騎士団を倒すまでは案内だけ。それ以外は体力を減らし、尽きたら壊す
     if(!cityGates_.gateOpen&&cityGateHit_!=hitKey&&(touches(CityGateCenter(),10,10)||touches(CityGateCenter()+V{0,0,-3},30,10))){cityGateHit_=hitKey;
@@ -512,6 +517,25 @@ void ChronoSystem::CityWeaponHits(entt::registry& r,GameContext& ctx,const Chron
         if(cityGateHealth_<=0)BreakCityGate(r,false,false);
         else{life_.message="封鎖シャッター 残り "+std::to_string(int(std::ceil(cityGateHealth_/CityGateHealth()*100)))+"% / 本体"+std::to_string(int(CityGateAbsorbMass()))+"ならシャッターごと吸い込める";life_.messageAge=1.4f;}
     }
+}
+// タイヤの突進がバリケードや門に当たったか (溜めが強いほど大きく削る。門は騎士団を倒した後だけ)
+void ChronoSystem::CityTireDashHits(entt::registry& r,GameContext& ctx,const Chrono::LifeBody& b,uint64_t hitKey){
+    using namespace Chrono;
+    // 体の中心から範囲の矩形までの水平の距離
+    float reach=LifeTireRadius*LifeScale(b.mass)+1.5f;
+    auto touching=[&](const CityRect& box){float dx=std::max({box.x0-b.at.x,0.f,b.at.x-box.x1}),dz=std::max({box.z0-b.at.z,0.f,b.at.z-box.z1});return std::sqrt(dx*dx+dz*dz)<reach;};
+    float damage=LifeTireDashGateDamage(b.weapon.dashPower);
+    if(!cityGates_.barricadeOpen&&cityBarricadeHit_!=hitKey&&touching(CityBarricade())){cityBarricadeHit_=hitKey;
+        cityBarricadeHealth_-=damage;cityBarricadeShake_=.35f;
+        ctx.camera->StartImpactShake(.14f,.18f,{0,1,0},16);swarmEffects_.push_back({CityBarricadeCenter()-V{0,0,4},0,10,2});
+        if(cityBarricadeHealth_<=0)BreakCityGate(r,true,false);
+        else{life_.message="バリケード 残り "+std::to_string(int(std::ceil(cityBarricadeHealth_/CityBarricadeHealth()*100)))+"% / もっと溜めて突進しよう";life_.messageAge=1.4f;}}
+    if(!cityGates_.gateOpen&&cityGateHit_!=hitKey&&touching(CityIronGate())){cityGateHit_=hitKey;
+        if(!cityGateUnlocked_){life_.message="騎士団がシャッターを守っている / 先に騎士団を倒そう";life_.messageAge=2;return;}
+        cityGateHealth_-=damage*1.4f;cityGateShake_=.35f;
+        ctx.camera->StartImpactShake(.12f,.16f,{0,1,0},14);swarmEffects_.push_back({CityGateCenter()-V{0,0,6},0,14,2});
+        if(cityGateHealth_<=0)BreakCityGate(r,false,false);
+        else{life_.message="封鎖シャッター 残り "+std::to_string(int(std::ceil(cityGateHealth_/CityGateHealth()*100)))+"%";life_.messageAge=1.4f;}}
 }
 // 街のステージの更新: エリアの表示・門の開放・ヒント・段階の進行・破片・敵の弾・踏みつけ
 void ChronoSystem::UpdateCityStage(entt::registry& r,Chrono::Player& p,GameContext& ctx,float dt){
@@ -533,7 +557,7 @@ void ChronoSystem::UpdateCityStage(entt::registry& r,Chrono::Player& p,GameConte
     // 閉じた門に近づいたら、大きさに応じたヒントを出す
     if(cityHintClock_<=0&&life_.messageAge<=0){
         if(!cityGates_.barricadeOpen&&LifeDistance(body.at,CityBarricadeCenter())<34){cityHintClock_=4;
-            life_.message=body.mass<LifeHammerMass?"本体"+std::to_string(int(LifeHammerMass))+"まで育ててハンマーに変形し、バリケードを叩き壊そう":std::string("1でハンマーを選び、左クリック／RTで叩き壊そう");life_.messageAge=3;}
+            life_.message=!body.tireUnlocked?std::string("金色のタイヤを吸収してタイヤ変形を解放しよう"):body.action!=LifeAction::Tire?std::string("1でタイヤを選んで変形し、溜め突進でバリケードを壊そう"):std::string("左長押しで回転を溜め、離して突進！ 溜めきればひと突きで壊せる");life_.messageAge=3;}
         else if(!cityGates_.gateOpen&&LifeDistance(body.at,CityGateCenter())<50){cityHintClock_=4;
             life_.message=!cityGateUnlocked_?std::string("騎士団を倒すとシャッターの守りが解ける"):body.mass<CityGateAbsorbMass()?"本体"+std::to_string(int(CityGateAbsorbMass()))+"でシャッターごと吸い込める / 今は武器で破壊":std::string("右クリック／Xでシャッターごと吸い込もう");life_.messageAge=3;}
     }
@@ -611,6 +635,10 @@ void ChronoSystem::UpdateCityEnemies(entt::registry& r,Chrono::Player& p,GameCon
             if(enemy.phase==SwarmPhase::Spawn&&enemy.clock>=.6f)ChangeSwarmPhase(enemy,SwarmPhase::Chase);};
         // 触手につかまれている間は動かない
         if(held){}
+        // 信号機の赤で止められている間は、移動も攻撃もしない。青で並べられたら列の位置へ寄る
+        else if(enemy.signalStop>0){enemy.flash=std::max(0.f,enemy.flash-dt);enemy.signalStop=std::max(0.f,enemy.signalStop-dt);
+            if(enemy.signalLined){V goal=enemy.signalLine-enemy.at;goal.y=0;enemy.at=enemy.at+goal*(1-std::exp(-SignalLineRate*dt));}
+            if(enemy.signalStop<=0)enemy.signalLined=false;}
         // 大砲: 向きを合わせて放物線の弾を撃つ
         else if(kind==CityEnemy::Cannon){idleTick();
             enemy.heading=Unit(Lerp(enemy.heading,direction,1-std::exp(-2.5f*dt)));
@@ -657,6 +685,11 @@ void ChronoSystem::UpdateCityEnemies(entt::registry& r,Chrono::Player& p,GameCon
                 enemy.struck=true;float damage=CityDamage(kind);if(victim==0)Damage(r,p,damage,ctx,enemy.at);
                 else {targetBody.health=std::max(0.f,targetBody.health-damage*.7f);if(targetBody.health<=0){targetBody.down=true;LifeReturnToSlime(targetBody);++life_.revision;}}
             }}
+        // 信号機の黄のマーカー: 時間切れで爆発、付いている間に動いたら大爆発
+        if(int burst=SignalTickMark(enemy,dt)){bool moved=burst==2;V at=enemy.at;LifeHit(r,p,ctx,enemy.id,SignalMarkDamage(body.mass,moved),LifeAction::Signal,at);
+            if(swarmEffects_.size()<128)swarmEffects_.push_back({at,0,(moved?5.f:3.f)+enemy.scale,2});
+            ctx.camera->StartImpactShake(.08f,moved?.1f:.05f,{0,1,0},16);auto* audio=Engine::Audio::GetInstance();audio->Play(hitSound_,false,(moved?.6f:.35f)*audio->GetMasterSEVolume(),moved?.7f:1.f);
+            if(moved){life_.message="動いた！ マーカーが大爆発";life_.messageAge=1.2f;}}
         // カメラとの間の透明度
         enemy.cameraOpacity=SwarmCameraOpacity(Read(ctx.camera->Position()),body.at,enemy.at,false);
     }

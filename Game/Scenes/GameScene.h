@@ -75,6 +75,7 @@ public:
 	Engine::ParticleEditor& GetParticleEditor() { return particleEditor_; }
 	// PLAY 中か (エディタの再生状態)
 	bool GetIsPlaying() const { return isPlaying_; }
+	bool IsSlimePlayerDemo() const { return slimePlayerDemo_; }
 	bool IsPlaying() const { return isPlaying_; } // 古い名前のための別名
 	// ゲーム内のポーズ / ステージクリアの結果画面を表示中か
 	bool IsPaused() const { return isPaused_; }
@@ -178,6 +179,8 @@ private:
     // PLAY 中か / スライム本編モードか / ポーズ中か / グラフィック設定画面の状態
     bool isPlaying_ = false;
     bool chronoMode_ = false;
+	bool slimePlayerDemo_ = false;
+	void FrameStoppedGameCamera();
     bool isPaused_ = false;
     bool graphicsOpen_=false;
     bool graphicsSaveFailed_=false;

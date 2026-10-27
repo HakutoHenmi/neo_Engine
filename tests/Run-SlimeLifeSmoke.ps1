@@ -1,4 +1,4 @@
-param([Parameter(Mandatory=$true)][string]$Executable,[switch]$LabOnly,[switch]$TurnOnly,[switch]$MixtureOnly,[switch]$StressOnly,[switch]$MotionOnly,[switch]$AbsorbOnly,[switch]$ProgressionOnly,[switch]$CameraOnly,[switch]$CityTour,[switch]$TireOnly,[switch]$HydrantOnly,[switch]$AimOnly)
+param([Parameter(Mandatory=$true)][string]$Executable,[switch]$LabOnly,[switch]$TurnOnly,[switch]$MixtureOnly,[switch]$StressOnly,[switch]$MotionOnly,[switch]$AbsorbOnly,[switch]$ProgressionOnly,[switch]$CameraOnly,[switch]$CityTour,[switch]$TireOnly,[switch]$HydrantOnly,[switch]$AimOnly,[switch]$CrewOnly,[switch]$ShowcaseOnly,[switch]$AlleyOnly,[switch]$SignalOnly)
 $ErrorActionPreference='Stop'
 $repoPath=Split-Path $PSScriptRoot -Parent
 $outPath=Join-Path $PSScriptRoot 'out'
@@ -10,7 +10,7 @@ $process=$null
 $validationBefore=@(Get-Content -LiteralPath (Join-Path $repoPath 'd3d12_validation_log.txt') -ErrorAction SilentlyContinue).Count
 $runtimeOutPath=Join-Path (Split-Path (Resolve-Path -LiteralPath $Executable).Path -Parent) 'tests/out'
 New-Item -ItemType Directory -Force $runtimeOutPath | Out-Null
-$reportName=if($AimOnly){'slime-life-aim.txt'}elseif($HydrantOnly){'slime-life-hydrant.txt'}elseif($TireOnly){'slime-life-tire.txt'}elseif($CameraOnly){'slime-life-camera.txt'}elseif($ProgressionOnly){'slime-life-progression.txt'}elseif($AbsorbOnly){'slime-life-absorb.txt'}elseif($MotionOnly){'slime-life-motion.txt'}elseif($StressOnly){'slime-life-stress.txt'}else{'slime-life-smoke.txt'}
+$reportName=if($SignalOnly){'slime-life-signal.txt'}elseif($AlleyOnly){'slime-life-alley.txt'}elseif($ShowcaseOnly){'slime-life-showcase.txt'}elseif($CrewOnly){'slime-life-crew.txt'}elseif($AimOnly){'slime-life-aim.txt'}elseif($HydrantOnly){'slime-life-hydrant.txt'}elseif($TireOnly){'slime-life-tire.txt'}elseif($CameraOnly){'slime-life-camera.txt'}elseif($ProgressionOnly){'slime-life-progression.txt'}elseif($AbsorbOnly){'slime-life-absorb.txt'}elseif($MotionOnly){'slime-life-motion.txt'}elseif($StressOnly){'slime-life-stress.txt'}else{'slime-life-smoke.txt'}
 $testStarted=Get-Date
 try {
     $arguments=@('--slime-life-smoke');if($LabOnly){$arguments+='--slime-life-lab-only'}
@@ -25,6 +25,10 @@ try {
     if($TireOnly){$arguments+='--slime-life-tire'}
     if($HydrantOnly){$arguments+='--slime-life-hydrant';$arguments+='--graphics-validation'}
     if($AimOnly){$arguments+='--slime-life-aim';$arguments+='--graphics-validation'}
+    if($CrewOnly){$arguments+='--slime-life-crew'}
+    if($ShowcaseOnly){$arguments+='--slime-life-showcase'}
+    if($AlleyOnly){$arguments+='--slime-life-alley'}
+    if($SignalOnly){$arguments+='--slime-life-signal'}
     $process=Start-Process -FilePath (Resolve-Path -LiteralPath $Executable).Path -ArgumentList $arguments -WorkingDirectory $repoPath -WindowStyle Hidden -PassThru
     while(-not $process.WaitForExit(1000)){
         if((Get-Date)-$process.StartTime -gt [TimeSpan]::FromSeconds(240)){throw 'Slime life smoke test exceeded 240 seconds'}

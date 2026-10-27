@@ -1,0 +1,61 @@
+<!doctype html><html lang="ja"><head><meta charset="utf-8"><title>Street Sign HUD</title>
+<link href="https://fonts.googleapis.com/css2?family=Dela+Gothic+One&family=Allerta+Stencil&family=Permanent+Marker&family=M+PLUS+1p:wght@800&display=block" rel="stylesheet">
+<style>
+:root{--sign:#1f6e43;--white:#f4f4ef;--hazard:#f2c230;--black:#141414;--slime:#9be23a}
+*{box-sizing:border-box;margin:0}
+body{width:1280px;height:720px;overflow:hidden;background:#000 url(bg.jpg) center/cover;font-family:"M PLUS 1p",sans-serif;position:relative}
+/* 目標: 道路の案内標識 */
+.sign{position:absolute;left:24px;top:20px;width:420px;background:var(--sign);border:4px solid var(--white);outline:3px solid var(--sign);border-radius:8px;color:var(--white);padding:10px 16px 12px;box-shadow:0 8px 16px rgba(0,0,0,.5)}
+.sign .area{display:flex;align-items:center;gap:8px;font-size:13px}
+.sign .area b{background:var(--white);color:var(--sign);border-radius:4px;padding:0 6px;font-family:"Allerta Stencil"}
+.sign .t{font-family:"Dela Gothic One";font-size:28px;line-height:1.15;margin-top:4px;display:flex;align-items:center;gap:10px}
+.sign .t svg{width:30px;height:30px}
+.sign .g{font-size:14px;margin-top:6px;opacity:.95;border-top:2px solid rgba(244,244,239,.5);padding-top:6px}
+.limit{position:absolute;left:460px;top:26px;width:74px;height:74px;border-radius:50%;background:var(--white);border:8px solid #d6332a;display:grid;place-items:center;font-family:"Dela Gothic One";font-size:32px;color:var(--black);box-shadow:0 6px 12px rgba(0,0,0,.5)}
+.limit small{position:absolute;bottom:-22px;font-size:12px;color:var(--white);text-shadow:0 1px 3px #000;font-family:"M PLUS 1p"}
+/* 体力: 工事の縞のテープとスプレーの垂れ */
+.hp{position:absolute;left:24px;bottom:58px;width:400px;height:30px;background:repeating-linear-gradient(-45deg,var(--hazard) 0 14px,var(--black) 14px 28px);border:3px solid var(--black);transform:skewX(-8deg)}
+.hp .fill{position:absolute;inset:0;width:78%;background:var(--slime);clip-path:polygon(0 0,100% 0,100% 100%,92% 100%,91% 135%,89% 100%,60% 100%,59% 160%,57% 100%,24% 100%,23% 145%,21% 100%,0 100%)}
+.hp .num{position:absolute;right:10px;top:1px;font-family:"Allerta Stencil";font-size:20px;color:var(--white);text-shadow:0 0 3px #000,0 0 3px #000;transform:skewX(8deg)}
+.hp-label{position:absolute;left:28px;bottom:94px;font-family:"Allerta Stencil";font-size:16px;color:var(--white);text-shadow:0 2px 3px #000;letter-spacing:2px}
+.hp-label span{color:var(--hazard)}
+.tally{position:absolute;left:30px;bottom:16px;display:flex;align-items:center;gap:6px;font-family:"Permanent Marker";font-size:18px;color:var(--slime);text-shadow:0 2px 3px #000}
+.tally svg{width:22px;height:22px;color:var(--slime);filter:drop-shadow(0 2px 2px #000)}
+.tally svg.off{color:rgba(255,255,255,.25)}
+.tally svg.down{color:#777}
+/* 変形: ステッカー */
+.stickers{position:absolute;right:26px;bottom:20px;display:flex;gap:8px;align-items:flex-end}
+.st{width:74px;height:74px;border-radius:14px;background:var(--black);border:4px solid var(--white);display:grid;place-items:center;position:relative;box-shadow:0 6px 10px rgba(0,0,0,.55)}
+.st:nth-child(1){transform:rotate(-6deg)}.st:nth-child(2){transform:rotate(4deg)}.st:nth-child(3){transform:rotate(-3deg)}.st:nth-child(4){transform:rotate(5deg)}.st:nth-child(5){transform:rotate(-4deg)}
+.st svg{width:40px;height:40px;color:var(--hazard)}
+.st .k{position:absolute;left:-8px;top:-10px;width:26px;height:26px;border-radius:50%;background:var(--hazard);color:var(--black);font-family:"Dela Gothic One";font-size:15px;display:grid;place-items:center;border:2px solid var(--black)}
+.st.sel{background:var(--slime);transform:rotate(0) scale(1.18) translateY(-8px)}
+.st.sel svg{color:var(--black)}
+.st.lock{opacity:.55}.st.lock svg{color:#888}
+.st.lock:after{content:"";position:absolute;inset:6px;background:linear-gradient(45deg,transparent 46%,#d6332a 46% 54%,transparent 54%)}
+.st-name{position:absolute;right:34px;bottom:112px;text-align:right;font-family:"Dela Gothic One";font-size:30px;color:var(--white);text-shadow:0 3px 0 #000,0 0 8px #000;transform:rotate(-3deg)}
+.st-name small{display:block;font-family:"Allerta Stencil";font-size:13px;color:var(--hazard);letter-spacing:2px}
+.ctrl{position:absolute;left:50%;top:668px;transform:translateX(-50%);font-family:"Allerta Stencil";font-size:13px;color:var(--white);text-shadow:0 1px 3px #000;letter-spacing:1px;white-space:nowrap}
+.ctrl b{background:var(--white);color:var(--black);padding:0 5px;margin:0 4px 0 12px;border-radius:2px}
+</style></head><body>
+<!--ICONS-->
+<div class="sign"><div class="area"><b>AREA 2</b>市街地 ・ 段階 3 / 8</div>
+ <div class="t"><svg viewBox="0 0 24 24"><path d="M12 2l8 9h-5v11H9V11H4z" fill="#f4f4ef"/></svg>大通りの警備隊</div>
+ <div class="g">消火栓を吸収し、放水で盾を崩して水で矢を防ぐ</div></div>
+<div class="limit">5<small>残りの敵</small></div>
+<div class="hp-label">BODY <span>610 / 780</span>　 MASS 900</div>
+<div class="hp"><div class="fill"></div><div class="num">78%</div></div>
+<div class="tally">
+ <svg><use href="#i-blob"/></svg><svg><use href="#i-blob"/></svg><svg><use href="#i-blob"/></svg><svg><use href="#i-blob"/></svg><svg><use href="#i-blob"/></svg><svg class="down"><use href="#i-blob"/></svg>
+ <svg class="off"><use href="#i-blob"/></svg><svg class="off"><use href="#i-blob"/></svg><svg class="off"><use href="#i-blob"/></svg><svg class="off"><use href="#i-blob"/></svg><svg class="off"><use href="#i-blob"/></svg><svg class="off"><use href="#i-blob"/></svg>
+ <span>×5</span></div>
+<div class="st-name"><small>FORM 01</small>ハンマー</div>
+<div class="stickers">
+ <div class="st sel"><span class="k">1</span><svg><use href="#i-hammer"/></svg></div>
+ <div class="st"><span class="k">2</span><svg><use href="#i-sword"/></svg></div>
+ <div class="st"><span class="k">3</span><svg><use href="#i-plane"/></svg></div>
+ <div class="st lock"><span class="k">4</span><svg><use href="#i-tire"/></svg></div>
+ <div class="st lock"><span class="k">5</span><svg><use href="#i-hydrant"/></svg></div>
+</div>
+<div class="ctrl"><b>左</b>変形 <b>右 長押し</b>吸収 <b>SPACE</b>ジャンプ <b>R</b>戻る</div>
+</body></html>

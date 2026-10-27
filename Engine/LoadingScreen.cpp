@@ -107,8 +107,14 @@ void PumpMessages(Context& c) {
 			RECT rc{};
 			GetClientRect(msg.hwnd, &rc);
 			const float w = float(std::max<LONG>(1, rc.right - rc.left)), h = float(std::max<LONG>(1, rc.bottom - rc.top));
-			const float x = float(short(LOWORD(msg.lParam))) * float(WindowDX::kW) / w;
-			const float y = float(short(HIWORD(msg.lParam))) * float(WindowDX::kH) / h;
+			float x = float(short(LOWORD(msg.lParam))) * float(WindowDX::kW) / w;
+			float y = float(short(HIWORD(msg.lParam))) * float(WindowDX::kH) / h;
+			bool inside = true;
+			if (!key) {
+				if (auto* renderer = Renderer::GetInstance()) inside = renderer->MapLoadingPointer(x, y);
+				if (!inside && click) { TranslateMessage(&msg); DispatchMessage(&msg); continue; }
+				if (!inside) x = y = -1;
+			}
 			std::lock_guard<std::mutex> lock(c.input.mutex);
 			if (key) {
 				if (msg.wParam == VK_LEFT || msg.wParam == 'A') c.input.step = -1;
@@ -207,7 +213,13 @@ void LoadingScreen::Begin(const std::string& scene, bool startup) {
 	c.state.scene = scene;
 	c.state.startup = startup;
 	if (auto* input = Input::GetInstance()) c.state.padMode = input->UsingGamepad();
-	c.input.padMode = c.state.padMode;
+	{
+		std::lock_guard<std::mutex> lock(c.input.mutex);
+		c.input.step = 0;
+		c.input.clicked = false;
+		c.input.mouseX = c.input.mouseY = -1;
+		c.input.padMode = c.state.padMode;
+	}
 	// The startup splash stays up long enough to read the brand, unless skipped.
 	c.minimumSeconds = startup ? 3.f : 0.f;
 	// Clicking to focus the window must not cut the brand reveal short.
@@ -220,6 +232,7 @@ void LoadingScreen::Begin(const std::string& scene, bool startup) {
 	if (!c.drawer || !renderer || !renderer->UIReady()) return;
 	// Warm-up frame on the main thread: every texture / glyph the drawer may need
 	// is cached here, so the loading thread never touches the loaders.
+	renderer->PrepareEditorLoadingFrame();
 	renderer->SetRecordUITextures(true);
 	LoadingScreen::State warm = c.state;
 	warm.warmup = true;
@@ -254,7 +267,10 @@ void LoadingScreen::End() {
 		c.stop = true;
 		c.worker.join();
 		timeEndPeriod(1);
-		if (auto* renderer = Renderer::GetInstance()) renderer->SetUIThreadActive(false);
+		if (auto* renderer = Renderer::GetInstance()) {
+			renderer->SetUIThreadActive(false);
+			renderer->FinishEditorLoadingFrame();
+		}
 	}
 	c.state.progress = 1;
 	c.state.finished = true;

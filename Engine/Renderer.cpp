@@ -339,7 +339,9 @@ void Renderer::Shutdown() {
 	fluidProfileStats_ = FluidProfileStats{};
 	fluidVolumeReady_ = false;
 	volumeHistoryValid_ = false;
-	rootSigVolumeCompute_.Reset(); rootSigVolumeDraw_.Reset();rootSigVolumeShadow_.Reset();psoVolumeShadow_.Reset();volumeFrameSettings_=0;
+	farWaterFrameSettings_=0;psoFarWaterSplat_.Reset();farWaterAccum_.Reset();farWaterMomentum_.Reset();
+    for(auto& resource:farWaterTextures_)resource.Reset();
+    rootSigVolumeCompute_.Reset(); rootSigVolumeDraw_.Reset();rootSigVolumeShadow_.Reset();psoVolumeShadow_.Reset();volumeFrameSettings_=0;
 	psoVolumeClear_.Reset(); psoVolumeShapes_.Reset(); psoVolumeSplat_.Reset();
 	psoVolumeResolve_.Reset(); psoVolumeSmooth_.Reset(); psoVolumeTemporal_.Reset();
 	psoVolumeOccupancy_.Reset(); psoVolumeRaymarch_.Reset(); psoVolumeSpray_.Reset();
@@ -3118,6 +3120,54 @@ bool Renderer::InitUIFrame_() {
 	return true;
 }
 
+void Renderer::SetEditorLoadingViewport(float x, float y, float w, float h) {
+	RECT rc{};
+	GetClientRect(window_->GetHwnd(), &rc);
+	const float sx = float(WindowDX::kW) / (std::max)(1L, rc.right);
+	const float sy = float(WindowDX::kH) / (std::max)(1L, rc.bottom);
+	editorLoadingViewport_ = {x * sx, y * sy, w * sx, h * sy, 0.f, 1.f};
+	editorPresented_ = true;
+}
+
+bool Renderer::MapLoadingPointer(float& x, float& y) const {
+	if (!preserveEditorLoading_) return true;
+	const auto& v = editorLoadingViewport_;
+	if (v.Width <= 0 || v.Height <= 0 || x < v.TopLeftX || y < v.TopLeftY ||
+		x >= v.TopLeftX + v.Width || y >= v.TopLeftY + v.Height) return false;
+	x = (x - v.TopLeftX) * WindowDX::kW / v.Width;
+	y = (y - v.TopLeftY) * WindowDX::kH / v.Height;
+	return true;
+}
+
+// Capture before Present: flip-discard swap chains do not guarantee that the
+// contents of a previously presented buffer remain available.
+void Renderer::CaptureEditorLoadingBackground() {
+	auto* source = window_->GetCurrentBackBufferResource();
+	const bool first = !editorLoadingBackground_;
+	if (first) {
+		auto desc = source->GetDesc();
+		desc.Flags = D3D12_RESOURCE_FLAG_NONE;
+		CD3DX12_HEAP_PROPERTIES heap(D3D12_HEAP_TYPE_DEFAULT);
+		if (FAILED(dev_->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &desc,
+			D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&editorLoadingBackground_)))) return;
+	} else {
+		auto writable = CD3DX12_RESOURCE_BARRIER::Transition(editorLoadingBackground_.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_COPY_DEST);
+		list_->ResourceBarrier(1, &writable);
+	}
+	auto readable = CD3DX12_RESOURCE_BARRIER::Transition(source, D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_COPY_SOURCE);
+	list_->ResourceBarrier(1, &readable);
+	list_->CopyResource(editorLoadingBackground_.Get(), source);
+	readable = CD3DX12_RESOURCE_BARRIER::Transition(source, D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_RENDER_TARGET);
+	list_->ResourceBarrier(1, &readable);
+	auto ready = CD3DX12_RESOURCE_BARRIER::Transition(editorLoadingBackground_.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_COPY_SOURCE);
+	list_->ResourceBarrier(1, &ready);
+}
+
+bool Renderer::PrepareEditorLoadingFrame() {
+	preserveEditorLoading_ = editorPresented_ && editorLoadingBackground_;
+	return preserveEditorLoading_;
+}
+
 void Renderer::RenderUIFrame(const std::function<void()>& draw) {
 	const uint32_t fi = window_->FrameIndex();
 	uiAlloc_[fi]->Reset();
@@ -3140,21 +3190,36 @@ void Renderer::RenderUIFrame(const std::function<void()>& draw) {
 	const D3D12_VIEWPORT fullVP = {0.0f, 0.0f, static_cast<float>(window_->kW), static_cast<float>(window_->kH), 0.0f, 1.0f};
 	const D3D12_RECT fullScissor = {0, 0, static_cast<LONG>(window_->kW), static_cast<LONG>(window_->kH)};
 	ID3D12Resource* backBuffer = window_->GetCurrentBackBufferResource();
+	if (preserveEditorLoading_) {
+		auto toCopy = CD3DX12_RESOURCE_BARRIER::Transition(backBuffer, D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_COPY_DEST);
+		uiList_->ResourceBarrier(1, &toCopy);
+		uiList_->CopyResource(backBuffer, editorLoadingBackground_.Get());
+		toCopy = CD3DX12_RESOURCE_BARRIER::Transition(backBuffer, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_PRESENT);
+		uiList_->ResourceBarrier(1, &toCopy);
+	}
 	auto toTarget = CD3DX12_RESOURCE_BARRIER::Transition(backBuffer, D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET);
 	uiList_->ResourceBarrier(1, &toTarget);
 	auto rtvBack = window_->GetCurrentRTV();
 	const float clear[] = {0.022f, 0.045f, 0.035f, 1.0f};
 	uiList_->OMSetRenderTargets(1, &rtvBack, FALSE, nullptr);
-	uiList_->ClearRenderTargetView(rtvBack, clear, 0, nullptr);
+	if (!preserveEditorLoading_) uiList_->ClearRenderTargetView(rtvBack, clear, 0, nullptr);
 	// The editor may have narrowed the sprite viewport to its Game panel.
 	const D3D12_VIEWPORT savedViewport = viewport_;
 	const D3D12_RECT savedScissor = scissor_;
-	viewport_ = fullVP;
-	scissor_ = fullScissor;
-	FlushSprites();
-	FlushText();
-	FlushOverlayQueue();
+	viewport_ = preserveEditorLoading_ ? editorLoadingViewport_ : fullVP;
+	scissor_ = preserveEditorLoading_ ? D3D12_RECT{
+		LONG((std::max)(0.f, viewport_.TopLeftX)), LONG((std::max)(0.f, viewport_.TopLeftY)),
+		LONG((std::min)(float(WindowDX::kW), viewport_.TopLeftX + viewport_.Width)),
+		LONG((std::min)(float(WindowDX::kH), viewport_.TopLeftY + viewport_.Height))} : fullScissor;
+	if (viewport_.Width > 0 && viewport_.Height > 0 && scissor_.right > scissor_.left && scissor_.bottom > scissor_.top) {
+		FlushSprites();
+		FlushText();
+		FlushOverlayQueue();
+	}
 	spriteDrawCalls_.clear();
+	textVerticesMap_.clear();
+	overlaySprites_.clear();
+	overlayText_.clear();
 	viewport_ = savedViewport;
 	scissor_ = savedScissor;
 	tUiList_ = nullptr;

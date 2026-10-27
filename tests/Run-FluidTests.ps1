@@ -1,4 +1,4 @@
-param([ValidateSet('', '--chrono-only', '--volume-only', '--near-volume-only', '--reversal-only', '--liquefy-only', '--slime-only', '--morph-only', '--growth-only', '--surface-only', '--face-only', '--graphics-only', '--sandbox-only', '--hydrant-only')][string]$Case = '')
+param([ValidateSet('', '--chrono-only', '--volume-only', '--near-volume-only', '--reversal-only', '--liquefy-only', '--slime-only', '--morph-only', '--growth-only', '--surface-only', '--face-only', '--graphics-only', '--sandbox-only', '--hydrant-only', '--far-water-only')][string]$Case = '')
 $ErrorActionPreference = 'Stop'
 $repoPath = Split-Path $PSScriptRoot -Parent
 Push-Location $repoPath

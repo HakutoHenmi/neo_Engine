@@ -9,6 +9,7 @@
 | --- | --- |
 | [../README.md](../README.md) | プロジェクトの概要、ビルドと実行、フォルダー構成 |
 | [GameDesign.md](GameDesign.md) | ゲームの概要 (1 ページ) |
+| [SlimePlayerDemo.md](SlimePlayerDemo.md) | スライムの移動・変形試験場と停止時のカメラ |
 | [SlimeLife.md](SlimeLife.md) | **現在のゲーム仕様**:操作、成長と変形、街ステージ、調合画面 |
 | [GameData.md](GameData.md) | 調整値・表・画面の文字を置いている JSON の一覧と編集方法 |
 

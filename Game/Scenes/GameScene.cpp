@@ -101,7 +101,8 @@ void GameScene::Initialize(Engine::WindowDX* dx, const Engine::SceneParameters& 
 	// 描画の窓口
 	renderer_ = Engine::Renderer::GetInstance();
 	// シーンファイルが空か本編のシーン (game.json の mainStage) ならスライム本編モード (ChronoSystem で動かす)
-	chronoMode_ = Data::IsMainStage(params.stagePath);
+	slimePlayerDemo_ = Data::IsSlimePlayerDemoStage(params.stagePath);
+	chronoMode_ = slimePlayerDemo_ || Data::IsMainStage(params.stagePath);
 	// 本編では GPU の流体を最初の状態に戻す
 	if (chronoMode_) renderer_->ResetGPUFluid();
 
@@ -309,6 +310,11 @@ void GameScene::Initialize(Engine::WindowDX* dx, const Engine::SceneParameters& 
 		return j.dump();
 	});
 
+	// The first automatic Play needs the same restore point as a toolbar Play.
+	FrameStoppedGameCamera();
+	editorCameraPos_ = camera_.Position();
+	editorCameraRot_ = camera_.Rotation();
+	initialSceneSnapshot_ = sceneSnapshot_ = EditorUI::SavePlaySnapshot(this);
 	// 常に PLAY 状態から始める
 	isPlaying_ = true;
 }
@@ -437,6 +443,8 @@ void GameScene::Update() {
 		camera_.Update(*Engine::Input::GetInstance());
 	}
 #endif
+	// Stopped Game view follows editor changes to the player, without simulation.
+	if (!isPlaying_) FrameStoppedGameCamera();
 	// カメラの揺れなどを進める
 	camera_.Tick(dt);
 
@@ -949,6 +957,22 @@ void GameScene::SetEditorPaused(bool paused) {
 	editorStepFrames_ = 0;
 }
 
+// A follow camera has no serialized Camera entity. Preview the restored player
+// without advancing gameplay, physics or input; Scene navigation stays independent.
+void GameScene::FrameStoppedGameCamera() {
+	if (!chronoMode_) return;
+	for (auto e : registry_.view<TransformComponent, NameComponent>()) {
+		if (registry_.get<NameComponent>(e).name != "Player") continue;
+		const auto& t = registry_.get<TransformComponent>(e);
+		const float distance = (std::max)(17.f, 8.f * t.scale.x);
+		camera_.StopShake(); camera_.SetHandheld(0);
+		camera_.SetRotation(.2f, 0, 0);
+		camera_.SetPosition(t.translate.x, t.translate.y + 1.5f + std::sin(.2f) * distance,
+			t.translate.z - std::cos(.2f) * distance);
+		break;
+	}
+}
+
 // PLAY の開始と停止
 void GameScene::SetIsPlaying(bool play) {
 	// 変わらなければ何もしない
@@ -994,6 +1018,7 @@ void GameScene::SetIsPlaying(bool play) {
 			}
 		}
 
+		const std::string editSnapshot = EditorUI::SavePlaySnapshot(this);
 		// 各システムをリセットする (スクリプトの再初期化やインスタンスの破棄など) のを先に行う
 		// 戦闘の流れ (ヒットストップなど) を戻す
 		combatFlow_.Reset();
@@ -1002,7 +1027,7 @@ void GameScene::SetIsPlaying(bool play) {
 		}
 
 		// 停止時に戻すため、PLAY 開始時のシーンを保存する
-		sceneSnapshot_ = EditorUI::SaveToMemory(this);
+		sceneSnapshot_ = editSnapshot;
 		{
 			char logBuf[128];
 			sprintf_s(logBuf, "[GameScene] Saved snapshot for PLAY mode (size: %zu)\n", sceneSnapshot_.size());
@@ -1068,6 +1093,7 @@ void GameScene::SetIsPlaying(bool play) {
 				EditorUI::LoadFromMemory(this, initialSceneSnapshot_);
 			}
 		}
+		FrameStoppedGameCamera();
 		// 保存内容は PLAY 開始のたびに取り直すので、停止したら空にする
 		sceneSnapshot_ = "";
 

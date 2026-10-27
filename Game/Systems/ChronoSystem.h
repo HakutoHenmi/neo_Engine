@@ -10,6 +10,7 @@
 #include "../Chrono/CinematicRules.h"
 #include "../Chrono/SlimeWeaponRules.h"
 #include "../Chrono/SlimeHydrantRules.h"
+#include "../Chrono/SlimeSignalRules.h"
 #include "../Chrono/CityStageRules.h"
 #include <map>
 #include <vector>
@@ -32,6 +33,8 @@ public:
     // スライムの状態・敵・街の門・消火栓の狙いを外 (エディタやテスト) から読むための関数
     const Chrono::SlimeLife& LifeState()const {return life_;}
     const std::vector<Chrono::SwarmEnemy>& LifeEnemies()const {return swarm_;}
+    // 変形アイテムを初めて取ったときの見せ場 (カメラが正面へ寄り、周りの時間が止まる) の最中か
+    bool MorphShowcaseActive()const {return showcase_.active;}
     const Chrono::CityGates& CityGateState()const {return cityGates_;}
     const Chrono::HydrantAim& HydrantAimState()const {return hydrantAim_;}
     // 確認用: バリケードと鉄の門を壊したように開ける
@@ -46,7 +49,11 @@ private:
     Chrono::LifeCameraSubject GetLifeCameraSubject()const;
     // インクのモード・スライムの生活モード・読み込み済みか
     bool inkMode_=true;
-    bool slimeLife_=true,lifeLoaded_=false;
+    bool slimeLife_=true,lifeLoaded_=false,slimePlayerDemo_=false;
+    void BuildSlimePlayerDemo(entt::registry&);
+    Chrono::Vec ConstrainLifeMovement(Chrono::Vec from,Chrono::Vec to,float radius)const;
+    void UpdateSlimePlayerDemo(entt::registry&,Chrono::Player&,GameContext&);
+    void DrawSlimePlayerDemoUI(GameContext&);
     // スライムの状態と、研究所のレシピ・素材・クリア数
     Chrono::SlimeLife life_;
     std::array<Chrono::SlimeRecipe,3> lifeRecipes_{};
@@ -55,6 +62,16 @@ private:
     std::array<int,Chrono::LifeBodyCount> lifeLastAction_{};
     std::array<uint32_t,Chrono::LifeBodyCount> lifeLastCounts_{};
     bool lifeWasLab_=false,lifeReseed_=true,lifePreviewEmitted_=false;
+    // 章の見出しを出した段階と、出し始めた時刻 (life_.age)
+    int lifeTitleStep_=-1;float lifeTitleStart_=0;
+    // 信号機: 横断歩道 (中心・渡る向き・前方向・長さ・経過時間・ダメージの倍率・当てた人影と敵の組)・広がる輪・変形アイテムの足元と大きさ
+    struct SignalWalk {Chrono::Vec center{},side{},forward{};float length=14,age=0,damage=1,size=1,dir=1;std::vector<uint64_t> hits;};
+    struct SignalPulse {Chrono::Vec at{};float age=0,radius=10;Chrono::SignalColor color=Chrono::SignalColor::Red;};
+    std::vector<SignalWalk> signalWalks_;std::vector<SignalPulse> signalPulses_;int signalWalkCount_=0; // 横断歩道を敷く向きを交互にする
+    Chrono::Vec signalItemAt_{126,0,6};static constexpr float SignalItemScale=1.4f;
+    // 変形の見せ場: 形・経過時間・形が完成した時刻・寄る構図の中心と半径・戻す太陽の強さと被写界深度
+    struct MorphShowcase {bool active=false,morphed=false;Chrono::LifeAction form=Chrono::LifeAction::Tire;float age=0,readyAt=-1,radius=1,sun=1;
+        Chrono::Vec center{},facing{0,0,1};float dofFocus=30,dofRange=30,dofStrength=0;} showcase_;
     // スライムの生活 (SlimeLife.inl) の処理: 触手の描画・研究所・試練・作成・更新・描画・UI・吸収・被弾
     void DrawLifeTentacles(GameContext&,const Chrono::LifeBody&);
     void SetSlimeLabOpen(bool);
@@ -70,6 +87,16 @@ private:
     void DamageSlimeLife(entt::registry&,Chrono::Player&,float,GameContext&,Chrono::Vec);
     void LifeHit(entt::registry&,Chrono::Player&,GameContext&,uint32_t,float,Chrono::LifeAction source=Chrono::LifeAction::Idle,Chrono::Vec from={});
     bool StartLifeAbsorb(int);
+    void CityTireDashHits(entt::registry&,GameContext&,const Chrono::LifeBody&,uint64_t);
+    void TickLifeChild(entt::registry&,Chrono::Player&,GameContext&,size_t,float);
+    void DrawLifeChildMarkers(GameContext&);
+    void StartMorphShowcase(entt::registry&,GameContext&,Chrono::LifeAction);
+    void UpdateMorphShowcase(entt::registry&,Chrono::Player&,GameContext&,float);
+    void DrawMorphShowcase(GameContext&);
+    void FireSignal(entt::registry&,Chrono::Player&,GameContext&,Chrono::SignalColor);
+    void UpdateSignalEffects(entt::registry&,Chrono::Player&,GameContext&,float);
+    void DrawSignal(GameContext&);
+    void DrawSignalUI(GameContext&);
     bool SaveSlimeLab();
     // 消火栓の水 (SlimeHydrant.inl): 水の発射と狙いの更新
     void UpdateHydrantWater(entt::registry&,Chrono::Player&,GameContext&,float,bool,bool);

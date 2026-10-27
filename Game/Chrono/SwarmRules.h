@@ -24,6 +24,8 @@ struct SwarmEnemy {
     bool bomber=false,flying=false,struck=false;SwarmPhase phase=SwarmPhase::Spawn;
     // 街のステージでの役割: 種類・出現した段階・巡回の経路・遠距離と装甲の状態
     uint8_t kind=0;int8_t step=0;bool alerted=false;Vec home{},patrol{};float shotClock=0,armor=0,stagger=0;
+    // 信号機: 赤で足を止められた残り時間・青で並ぶ位置 (並ぶ間だけ有効)・黄のマーカーの残り時間とそのときの位置
+    float signalStop=0,signalMark=0;Vec signalLine{},signalMarkAt{};bool signalLined=false;
 };
 // id から決まる 0〜1 のばらつき
 inline float SwarmVariation(uint32_t id,uint32_t cycle=0){uint32_t hash=id*747796405u+cycle*2891336453u+277803737u;hash=(hash^(hash>>16))*2246822519u;return float(hash&65535u)/65535.f;}
