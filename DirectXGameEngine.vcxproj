@@ -84,7 +84,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>_WINDOWS;_DEBUG;USE_IMGUI;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>$(SolutionDir)externals\DirectXTex\DirectXTex;$(ProjectDir)externals\DirectXTex;$(SolutionDir)externals\DirectXTex\Include;$(ProjectDir)externals\assimp\include;$(ProjectDir)externals\imgui;$(ProjectDir)externals\ufbx;$(ProjectDir)Engine;$(ProjectDir)Engine\ThirdParty;$(ProjectDir)externals\nlohmann;$(ProjectDir)externals\httplib;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)externals\DirectXTex\DirectXTex;$(ProjectDir)externals\DirectXTex;$(SolutionDir)externals\DirectXTex\Include;$(ProjectDir)externals\assimp\include;$(ProjectDir)externals\imgui;$(ProjectDir)externals\ufbx;$(ProjectDir)Engine;$(ProjectDir)Engine\ThirdParty;$(ProjectDir)externals\nlohmann;$(ProjectDir)externals\httplib;$(ProjectDir)externals\RTXNTC\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
@@ -100,7 +100,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>_WINDOWS;NDEBUG;USE_IMGUI;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>$(SolutionDir)externals\DirectXTex\DirectXTex;$(ProjectDir)externals\DirectXTex;$(SolutionDir)externals\DirectXTex\Include;$(ProjectDir)externals\assimp\include;$(ProjectDir)externals\imgui;$(ProjectDir)externals\ufbx;$(ProjectDir)Engine;$(ProjectDir)Engine\ThirdParty;$(ProjectDir)externals\nlohmann;$(ProjectDir)externals\httplib;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)externals\DirectXTex\DirectXTex;$(ProjectDir)externals\DirectXTex;$(SolutionDir)externals\DirectXTex\Include;$(ProjectDir)externals\assimp\include;$(ProjectDir)externals\imgui;$(ProjectDir)externals\ufbx;$(ProjectDir)Engine;$(ProjectDir)Engine\ThirdParty;$(ProjectDir)externals\nlohmann;$(ProjectDir)externals\httplib;$(ProjectDir)externals\RTXNTC\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
       <Optimization>MinSpace</Optimization>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
@@ -117,7 +117,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>_WINDOWS;USE_IMGUI;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>$(SolutionDir)externals\DirectXTex\DirectXTex;$(ProjectDir)externals\DirectXTex;$(SolutionDir)externals\DirectXTex\Include;$(ProjectDir)externals\assimp\include;$(ProjectDir)externals\imgui;$(ProjectDir)externals\ufbx;$(ProjectDir)Engine;$(ProjectDir)Engine\ThirdParty;$(ProjectDir)externals\nlohmann;$(ProjectDir)externals\httplib;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)externals\DirectXTex\DirectXTex;$(ProjectDir)externals\DirectXTex;$(SolutionDir)externals\DirectXTex\Include;$(ProjectDir)externals\assimp\include;$(ProjectDir)externals\imgui;$(ProjectDir)externals\ufbx;$(ProjectDir)Engine;$(ProjectDir)Engine\ThirdParty;$(ProjectDir)externals\nlohmann;$(ProjectDir)externals\httplib;$(ProjectDir)externals\RTXNTC\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
       <Optimization>Disabled</Optimization>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
@@ -145,6 +145,8 @@
     <ClCompile Include="Engine\ParticleEmitter.cpp" />
     <ClCompile Include="Engine\ParticleEditor.cpp" />
     <ClCompile Include="Engine\Renderer.cpp" />
+    <ClCompile Include="Engine\RendererNtc.cpp" />
+    <ClCompile Include="Engine\ShaderCache.cpp" />
     <ClCompile Include="Engine\FluidVolume.cpp" />
     <ClCompile Include="Engine\DynamicGlyphCache.cpp" />
     <ClCompile Include="Engine\Font.cpp" />
@@ -196,6 +198,8 @@
     <ClInclude Include="Engine\ParticleEmitter.h" />
     <ClInclude Include="Engine\ParticleEditor.h" />
     <ClInclude Include="Engine\Renderer.h" />
+    <ClInclude Include="Engine\ShaderCache.h" />
+    <ClInclude Include="Engine\LoadProfile.h" />
     <ClInclude Include="Engine\DynamicGlyphCache.h" />
     <ClInclude Include="Engine\Font.h" />
     <ClInclude Include="Engine\UnicodeUtils.h" />

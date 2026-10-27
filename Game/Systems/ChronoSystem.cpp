@@ -33,10 +33,16 @@ entt::entity ChronoSystem::Mesh(entt::registry& r,const std::string& name,const 
 
 // PLAY 開始時の初期化: モードを決め、前回のエンティティを消し、プレイヤー・音・ステージ・記録を用意する
 void ChronoSystem::Reset(entt::registry& r){
+    Engine::LoadProfile::Scope profile("phase","ChronoSystem::Reset");
     // 旧来の確認用のテストも動かせるようにする。通常のプレイは常に新しいシューターを使う
     // コマンドラインの引数で、インクのモードとスライムの生活モードを決める
+#ifdef NDEBUG
+    // Release packages contain the current city game; diagnostics use the same assets.
+    inkMode_=true;slimeLife_=true;
+#else
     inkMode_=!wcsstr(GetCommandLineW(),L"--chrono-smoke")&&!wcsstr(GetCommandLineW(),L"--creature-smoke")&&!wcsstr(GetCommandLineW(),L"--snake-smoke");
     slimeLife_=inkMode_&&(!wcsstr(GetCommandLineW(),L"-smoke")||wcsstr(GetCommandLineW(),L"--slime-life-smoke"))&&!wcsstr(GetCommandLineW(),L"--legacy-domain");
+#endif
     slimePlayerDemo_ = scene_->IsSlimePlayerDemo();
     if(slimePlayerDemo_) inkMode_ = slimeLife_ = true;
     // スライムの変形のターゲットを消す

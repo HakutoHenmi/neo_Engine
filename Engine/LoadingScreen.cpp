@@ -220,10 +220,9 @@ void LoadingScreen::Begin(const std::string& scene, bool startup) {
 		c.input.mouseX = c.input.mouseY = -1;
 		c.input.padMode = c.state.padMode;
 	}
-	// The startup splash stays up long enough to read the brand, unless skipped.
-	c.minimumSeconds = startup ? 3.f : 0.f;
-	// Clicking to focus the window must not cut the brand reveal short.
-	c.skippableAfter = startup ? 2.4f : 0.f;
+	// Keep a brief brand splash without adding three seconds to every launch.
+	c.minimumSeconds = startup ? 0.6f : 0.f;
+	c.skippableAfter = startup ? 0.3f : 0.f;
 	auto found = c.history.find(scene);
 	c.expected = found != c.history.end() ? found->second : DefaultExpectation(scene);
 	c.start = c.lastPump = Clock::now();

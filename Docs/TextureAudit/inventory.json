@@ -1,0 +1,2569 @@
+{
+  "zip": "dist\\SlimeAssault-Release.zip",
+  "zipBytes": 505434025,
+  "zipSha256": "b6edd42594ce56719014556723bc5252ebdebbbbb64fa27324a3239220dd9951",
+  "scope": "Current normal city route; legacy/test modes are separate",
+  "method": "Static source/data-flow audit plus optional ufbx material inspection; no runtime file-I/O trace",
+  "fbxBaseColorReferencesInspected": 29,
+  "sourceSha256": {
+    "Game/Systems/ChronoInk.cpp": "2a02d102880b23232175e2b2882381e4a574d9813f4fd9fe7bef8a86d067c49d",
+    "Game/Systems/CityStage.cpp": "6338e1836ea345aba9018b102810e4144b80ba00bbde548935ddad0672f2d8df",
+    "Game/Systems/ChronoSystem.cpp": "4fe5dba95d96834c8c8c69a9fc7f5eefce6311f21e7c471fba1c9d56bdc50868",
+    "Engine/Model.cpp": "8729d6155ac7440fea3d787ad34edbf61b6d5afd1d0fe4451cadd1ca8d9e6879",
+    "Engine/PathUtils.h": "542e3ab4458148508254caa84f40544d84552f7ce0af3ca130b3942ecc956edc",
+    "Resources/Data/game.json": "c99aa75bc7f18e035cfa9d18675a5a00367791bd7d3b0850850b8e36b0b407e2",
+    "scripts/SlimeResources.json": "0b5c6cdbc9ba4ec80c3e6a88c855c3de223d75c9105ccd8a557d91598083e2ec"
+  },
+  "groups": {
+    "runtime_reference_keep": {
+      "count": 35,
+      "compressedBytes": 28327131,
+      "bytes": 33618819
+    },
+    "test_only_candidate": {
+      "count": 3,
+      "compressedBytes": 5176206,
+      "bytes": 5176290
+    },
+    "no_runtime_reference_candidate": {
+      "count": 12,
+      "compressedBytes": 13121245,
+      "bytes": 13141039
+    },
+    "meadow_loaded_not_drawn_in_city": {
+      "count": 20,
+      "compressedBytes": 60640609,
+      "bytes": 60956397
+    },
+    "city_material": {
+      "count": 151,
+      "compressedBytes": 305586019,
+      "bytes": 308186728
+    },
+    "model_name_only_candidate": {
+      "count": 1,
+      "compressedBytes": 407883,
+      "bytes": 456989
+    }
+  },
+  "textures": [
+    {
+      "path": "Resources/Textures/ball.png",
+      "family": "ball",
+      "status": "runtime_reference_keep",
+      "bytes": 3506,
+      "compressedBytes": 2683,
+      "evidence": [
+        "Game/Scenes/GameScene.cpp:697",
+        "Game/Systems/CanAbilitySystem.cpp:310",
+        "Game/Systems/PlayerActionSystem.cpp:409",
+        "Game/Systems/PlayerActionSystem.cpp:447",
+        "Game/Systems/PlayerActionSystem.cpp:509",
+        "Game/Systems/PlayerActionSystem.cpp:716",
+        "Game/Systems/PlayerActionSystem.cpp:773",
+        "Game/Systems/PlayerActionSystem.cpp:851",
+        "Game/Systems/UISystem.cpp:68",
+        "Engine/Renderer.cpp:875"
+      ]
+    },
+    {
+      "path": "Resources/Textures/white1x1.png",
+      "family": "white1x1",
+      "status": "runtime_reference_keep",
+      "bytes": 119,
+      "compressedBytes": 116,
+      "evidence": [
+        "Game/Editor/EditorHierarchy.cpp:143",
+        "Game/Editor/EditorViewport.cpp:374",
+        "Game/Scenes/SelectScene.cpp:34",
+        "Game/Systems/CanAbilitySystem.cpp:283",
+        "Game/Systems/ChronoSystem.cpp:75",
+        "Game/Systems/PlayerActionSystem.cpp:277",
+        "Game/Systems/PlayerActionSystem.cpp:317",
+        "Game/Systems/PlayerActionSystem.cpp:669",
+        "Game/Systems/PlayerActionSystem.cpp:741",
+        "Game/Systems/PlayerActionSystem.cpp:789",
+        "Game/Systems/PlayerActionSystem.cpp:813",
+        "Game/Systems/PlayerActionSystem.cpp:882",
+        "Game/Systems/SlimePlayerDemo.cpp:18",
+        "Game/Systems/UISystem.cpp:65",
+        "Game/Systems/WaveSystem.cpp:88",
+        "Game/UI/GameUI.h:88"
+      ]
+    },
+    {
+      "path": "Resources/Textures/AmbientCG/grass004_color_1k.jpg",
+      "family": "grass004_color_1k",
+      "status": "test_only_candidate",
+      "bytes": 1985561,
+      "compressedBytes": 1985595,
+      "evidence": [
+        "tests/UIValidationScene.h:83"
+      ]
+    },
+    {
+      "path": "Resources/Textures/ColorGrading/CinematicLUT.png",
+      "family": "CinematicLUT",
+      "status": "runtime_reference_keep",
+      "bytes": 11336,
+      "compressedBytes": 11341,
+      "evidence": [
+        "Engine/Renderer.cpp:3883"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PBR/Grass004_AmbientOcclusion.jpg",
+      "family": "Grass004_AmbientOcclusion",
+      "status": "no_runtime_reference_candidate",
+      "bytes": 904824,
+      "compressedBytes": 904606,
+      "evidence": [
+        "No filename/runtime-family/inspected FBX base-color match; manual review required before removal"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PBR/Grass004_NormalDX.jpg",
+      "family": "Grass004_NormalDX",
+      "status": "test_only_candidate",
+      "bytes": 2339065,
+      "compressedBytes": 2339190,
+      "evidence": [
+        "tests/UIValidationScene.h:82"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PBR/Grass004_Roughness.jpg",
+      "family": "Grass004_Roughness",
+      "status": "test_only_candidate",
+      "bytes": 851664,
+      "compressedBytes": 851421,
+      "evidence": [
+        "tests/UIValidationScene.h:82"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PBR/namaqualand_boulders_01_AO.jpg",
+      "family": "namaqualand_boulders_01_AO",
+      "status": "no_runtime_reference_candidate",
+      "bytes": 704246,
+      "compressedBytes": 704090,
+      "evidence": [
+        "No filename/runtime-family/inspected FBX base-color match; manual review required before removal"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PBR/namaqualand_boulders_01_nor_dx.jpg",
+      "family": "namaqualand_boulders_01_nor_dx",
+      "status": "no_runtime_reference_candidate",
+      "bytes": 1157703,
+      "compressedBytes": 1156806,
+      "evidence": [
+        "No filename/runtime-family/inspected FBX base-color match; manual review required before removal"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PBR/namaqualand_boulders_01_Rough.jpg",
+      "family": "namaqualand_boulders_01_Rough",
+      "status": "no_runtime_reference_candidate",
+      "bytes": 440572,
+      "compressedBytes": 440290,
+      "evidence": [
+        "No filename/runtime-family/inspected FBX base-color match; manual review required before removal"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PBR/NeutralNormal.png",
+      "family": "NeutralNormal",
+      "status": "runtime_reference_keep",
+      "bytes": 120,
+      "compressedBytes": 113,
+      "evidence": [
+        "Engine/HdrBloom.inl:3",
+        "Engine/HdrBloom.inl:12"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PBR/rock_09_AO.jpg",
+      "family": "rock_09_AO",
+      "status": "meadow_loaded_not_drawn_in_city",
+      "bytes": 301722,
+      "compressedBytes": 296435,
+      "evidence": [
+        "Game/Systems/ChronoInk.cpp:40-54 (loads)",
+        "Game/Systems/ChronoInk.cpp:76 (city branch skips meadow geometry)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PBR/rock_09_nor_dx.jpg",
+      "family": "rock_09_nor_dx",
+      "status": "meadow_loaded_not_drawn_in_city",
+      "bytes": 747331,
+      "compressedBytes": 744950,
+      "evidence": [
+        "Game/Systems/ChronoInk.cpp:40-54 (loads)",
+        "Game/Systems/ChronoInk.cpp:76 (city branch skips meadow geometry)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PBR/rock_09_Rough.jpg",
+      "family": "rock_09_Rough",
+      "status": "meadow_loaded_not_drawn_in_city",
+      "bytes": 445567,
+      "compressedBytes": 442253,
+      "evidence": [
+        "Game/Systems/ChronoInk.cpp:40-54 (loads)",
+        "Game/Systems/ChronoInk.cpp:76 (city branch skips meadow geometry)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PBR/rock_face_02_AO.jpg",
+      "family": "rock_face_02_AO",
+      "status": "no_runtime_reference_candidate",
+      "bytes": 746043,
+      "compressedBytes": 745949,
+      "evidence": [
+        "No filename/runtime-family/inspected FBX base-color match; manual review required before removal"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PBR/rock_face_02_nor_dx.jpg",
+      "family": "rock_face_02_nor_dx",
+      "status": "no_runtime_reference_candidate",
+      "bytes": 1157650,
+      "compressedBytes": 1157024,
+      "evidence": [
+        "No filename/runtime-family/inspected FBX base-color match; manual review required before removal"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PBR/rock_face_02_Rough.jpg",
+      "family": "rock_face_02_Rough",
+      "status": "no_runtime_reference_candidate",
+      "bytes": 573271,
+      "compressedBytes": 573305,
+      "evidence": [
+        "No filename/runtime-family/inspected FBX base-color match; manual review required before removal"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/asphalt_02_AO_2k.jpg",
+      "family": "asphalt_02",
+      "status": "city_material",
+      "bytes": 2039487,
+      "compressedBytes": 2040078,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:101",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/asphalt_02_diff_2k.jpg",
+      "family": "asphalt_02",
+      "status": "city_material",
+      "bytes": 3075676,
+      "compressedBytes": 3076551,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:101",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/asphalt_02_nor_dx_2k.jpg",
+      "family": "asphalt_02",
+      "status": "city_material",
+      "bytes": 5052243,
+      "compressedBytes": 5048950,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:101",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/asphalt_02_Rough_2k.jpg",
+      "family": "asphalt_02",
+      "status": "city_material",
+      "bytes": 2230457,
+      "compressedBytes": 2230494,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:101",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/boulder_01_AO_2k.jpg",
+      "family": "boulder_01",
+      "status": "meadow_loaded_not_drawn_in_city",
+      "bytes": 1501468,
+      "compressedBytes": 1499155,
+      "evidence": [
+        "Game/Systems/ChronoInk.cpp:40-54 (loads)",
+        "Game/Systems/ChronoInk.cpp:76 (city branch skips meadow geometry)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/boulder_01_diff_2k.jpg",
+      "family": "boulder_01",
+      "status": "meadow_loaded_not_drawn_in_city",
+      "bytes": 3672483,
+      "compressedBytes": 3671675,
+      "evidence": [
+        "Game/Systems/ChronoInk.cpp:41",
+        "Game/Systems/ChronoInk.cpp:40-54 (loads)",
+        "Game/Systems/ChronoInk.cpp:76 (city branch skips meadow geometry)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/boulder_01_nor_dx_2k.jpg",
+      "family": "boulder_01",
+      "status": "meadow_loaded_not_drawn_in_city",
+      "bytes": 4674664,
+      "compressedBytes": 4672244,
+      "evidence": [
+        "Game/Systems/ChronoInk.cpp:40-54 (loads)",
+        "Game/Systems/ChronoInk.cpp:76 (city branch skips meadow geometry)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/boulder_01_Rough_2k.jpg",
+      "family": "boulder_01",
+      "status": "meadow_loaded_not_drawn_in_city",
+      "bytes": 1825938,
+      "compressedBytes": 1824200,
+      "evidence": [
+        "Game/Systems/ChronoInk.cpp:40-54 (loads)",
+        "Game/Systems/ChronoInk.cpp:76 (city branch skips meadow geometry)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/cannon_01_AO_2k.jpg",
+      "family": "cannon_01",
+      "status": "city_material",
+      "bytes": 1294637,
+      "compressedBytes": 1282308,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:451",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/cannon_01_diff_2k.jpg",
+      "family": "cannon_01",
+      "status": "city_material",
+      "bytes": 2692403,
+      "compressedBytes": 2692957,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:451",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/cannon_01_nor_dx_2k.jpg",
+      "family": "cannon_01",
+      "status": "city_material",
+      "bytes": 3057840,
+      "compressedBytes": 3057973,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:451",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/cannon_01_Rough_2k.jpg",
+      "family": "cannon_01",
+      "status": "city_material",
+      "bytes": 2304404,
+      "compressedBytes": 2304720,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:451",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/cardboard_box_01_AO_2k.jpg",
+      "family": "cardboard_box_01",
+      "status": "city_material",
+      "bytes": 401068,
+      "compressedBytes": 320251,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:355",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/cardboard_box_01_diff_2k.jpg",
+      "family": "cardboard_box_01",
+      "status": "city_material",
+      "bytes": 1987615,
+      "compressedBytes": 1951140,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:355",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/cardboard_box_01_nor_dx_2k.jpg",
+      "family": "cardboard_box_01",
+      "status": "city_material",
+      "bytes": 3068776,
+      "compressedBytes": 3032215,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:355",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/cardboard_box_01_Rough_2k.jpg",
+      "family": "cardboard_box_01",
+      "status": "city_material",
+      "bytes": 1163916,
+      "compressedBytes": 1124719,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:355",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/castle_wall_slates_AO_2k.jpg",
+      "family": "castle_wall_slates",
+      "status": "city_material",
+      "bytes": 1653941,
+      "compressedBytes": 1654439,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:103",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/castle_wall_slates_diff_2k.jpg",
+      "family": "castle_wall_slates",
+      "status": "city_material",
+      "bytes": 2381426,
+      "compressedBytes": 2382101,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:103",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/castle_wall_slates_nor_dx_2k.jpg",
+      "family": "castle_wall_slates",
+      "status": "city_material",
+      "bytes": 4138180,
+      "compressedBytes": 4139371,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:103",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/castle_wall_slates_Rough_2k.jpg",
+      "family": "castle_wall_slates",
+      "status": "city_material",
+      "bytes": 2005253,
+      "compressedBytes": 2005402,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:103",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/concrete_floor_worn_001_AO_2k.jpg",
+      "family": "concrete_floor_worn_001",
+      "status": "city_material",
+      "bytes": 689586,
+      "compressedBytes": 683401,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:101",
+        "Game/Systems/CityStage.cpp:103",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/concrete_floor_worn_001_diff_2k.jpg",
+      "family": "concrete_floor_worn_001",
+      "status": "city_material",
+      "bytes": 482906,
+      "compressedBytes": 479013,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:101",
+        "Game/Systems/CityStage.cpp:103",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/concrete_floor_worn_001_nor_dx_2k.jpg",
+      "family": "concrete_floor_worn_001",
+      "status": "city_material",
+      "bytes": 864456,
+      "compressedBytes": 855162,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:101",
+        "Game/Systems/CityStage.cpp:103",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/concrete_floor_worn_001_Rough_2k.jpg",
+      "family": "concrete_floor_worn_001",
+      "status": "city_material",
+      "bytes": 735249,
+      "compressedBytes": 732777,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:101",
+        "Game/Systems/CityStage.cpp:103",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/concrete_road_barrier_02_AO_2k.jpg",
+      "family": "concrete_road_barrier_02",
+      "status": "city_material",
+      "bytes": 1882910,
+      "compressedBytes": 1877141,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:413",
+        "Game/Systems/CityStage.cpp:434",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/concrete_road_barrier_02_diff_2k.jpg",
+      "family": "concrete_road_barrier_02",
+      "status": "city_material",
+      "bytes": 2974035,
+      "compressedBytes": 2963644,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:413",
+        "Game/Systems/CityStage.cpp:434",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/concrete_road_barrier_02_nor_dx_2k.jpg",
+      "family": "concrete_road_barrier_02",
+      "status": "city_material",
+      "bytes": 3514308,
+      "compressedBytes": 3510198,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:413",
+        "Game/Systems/CityStage.cpp:434",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/concrete_road_barrier_02_Rough_2k.jpg",
+      "family": "concrete_road_barrier_02",
+      "status": "city_material",
+      "bytes": 2315850,
+      "compressedBytes": 2307765,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:413",
+        "Game/Systems/CityStage.cpp:434",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/concrete_road_barrier_AO_2k.jpg",
+      "family": "concrete_road_barrier",
+      "status": "city_material",
+      "bytes": 2125158,
+      "compressedBytes": 2123344,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:413",
+        "Game/Systems/CityStage.cpp:434",
+        "Game/Systems/CityStage.cpp:437",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/concrete_road_barrier_diff_2k.jpg",
+      "family": "concrete_road_barrier",
+      "status": "city_material",
+      "bytes": 3189621,
+      "compressedBytes": 3184336,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:413",
+        "Game/Systems/CityStage.cpp:434",
+        "Game/Systems/CityStage.cpp:437",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/concrete_road_barrier_nor_dx_2k.jpg",
+      "family": "concrete_road_barrier",
+      "status": "city_material",
+      "bytes": 3881577,
+      "compressedBytes": 3877993,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:413",
+        "Game/Systems/CityStage.cpp:434",
+        "Game/Systems/CityStage.cpp:437",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/concrete_road_barrier_Rough_2k.jpg",
+      "family": "concrete_road_barrier",
+      "status": "city_material",
+      "bytes": 2087357,
+      "compressedBytes": 2080595,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:413",
+        "Game/Systems/CityStage.cpp:434",
+        "Game/Systems/CityStage.cpp:437",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/concrete_slab_wall_AO_2k.jpg",
+      "family": "concrete_slab_wall",
+      "status": "city_material",
+      "bytes": 2555454,
+      "compressedBytes": 2548905,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:102",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/concrete_slab_wall_diff_2k.jpg",
+      "family": "concrete_slab_wall",
+      "status": "city_material",
+      "bytes": 2419624,
+      "compressedBytes": 2418343,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:102",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/concrete_slab_wall_nor_dx_2k.jpg",
+      "family": "concrete_slab_wall",
+      "status": "city_material",
+      "bytes": 3451907,
+      "compressedBytes": 3440238,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:102",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/concrete_slab_wall_Rough_2k.jpg",
+      "family": "concrete_slab_wall",
+      "status": "city_material",
+      "bytes": 1269533,
+      "compressedBytes": 1254586,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:102",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/concrete_tile_facade_AO_2k.jpg",
+      "family": "concrete_tile_facade",
+      "status": "city_material",
+      "bytes": 2556693,
+      "compressedBytes": 2553568,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:102",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/concrete_tile_facade_diff_2k.jpg",
+      "family": "concrete_tile_facade",
+      "status": "city_material",
+      "bytes": 2720488,
+      "compressedBytes": 2719271,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:102",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/concrete_tile_facade_nor_dx_2k.jpg",
+      "family": "concrete_tile_facade",
+      "status": "city_material",
+      "bytes": 3759748,
+      "compressedBytes": 3760671,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:102",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/concrete_tile_facade_Rough_2k.jpg",
+      "family": "concrete_tile_facade",
+      "status": "city_material",
+      "bytes": 1691154,
+      "compressedBytes": 1673248,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:102",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/concrete_wall_008_AO_2k.jpg",
+      "family": "concrete_wall_008",
+      "status": "city_material",
+      "bytes": 2733036,
+      "compressedBytes": 2654191,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:102",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/concrete_wall_008_diff_2k.jpg",
+      "family": "concrete_wall_008",
+      "status": "city_material",
+      "bytes": 2666189,
+      "compressedBytes": 2581892,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:102",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/concrete_wall_008_nor_dx_2k.jpg",
+      "family": "concrete_wall_008",
+      "status": "city_material",
+      "bytes": 2347487,
+      "compressedBytes": 2271901,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:102",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/concrete_wall_008_Rough_2k.jpg",
+      "family": "concrete_wall_008",
+      "status": "city_material",
+      "bytes": 1458273,
+      "compressedBytes": 1378916,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:102",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/covered_car_AO_2k.jpg",
+      "family": "covered_car",
+      "status": "city_material",
+      "bytes": 1119811,
+      "compressedBytes": 1098256,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:405",
+        "Game/Systems/CityStage.cpp:410",
+        "Game/Systems/CityStage.cpp:430",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/covered_car_diff_2k.jpg",
+      "family": "covered_car",
+      "status": "city_material",
+      "bytes": 2034745,
+      "compressedBytes": 2033872,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:405",
+        "Game/Systems/CityStage.cpp:410",
+        "Game/Systems/CityStage.cpp:430",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/covered_car_nor_dx_2k.jpg",
+      "family": "covered_car",
+      "status": "city_material",
+      "bytes": 3044192,
+      "compressedBytes": 3011183,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:405",
+        "Game/Systems/CityStage.cpp:410",
+        "Game/Systems/CityStage.cpp:430",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/covered_car_Rough_2k.jpg",
+      "family": "covered_car",
+      "status": "city_material",
+      "bytes": 2156384,
+      "compressedBytes": 2110846,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:405",
+        "Game/Systems/CityStage.cpp:410",
+        "Game/Systems/CityStage.cpp:430",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/exterior_wall_cladding_02_AO_2k.jpg",
+      "family": "exterior_wall_cladding_02",
+      "status": "city_material",
+      "bytes": 1753237,
+      "compressedBytes": 1745092,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:102",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/exterior_wall_cladding_02_diff_2k.jpg",
+      "family": "exterior_wall_cladding_02",
+      "status": "city_material",
+      "bytes": 2135634,
+      "compressedBytes": 2132013,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:102",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/exterior_wall_cladding_02_nor_dx_2k.jpg",
+      "family": "exterior_wall_cladding_02",
+      "status": "city_material",
+      "bytes": 2464221,
+      "compressedBytes": 2463515,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:102",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/exterior_wall_cladding_02_Rough_2k.jpg",
+      "family": "exterior_wall_cladding_02",
+      "status": "city_material",
+      "bytes": 1250772,
+      "compressedBytes": 1211976,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:102",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/gothic_statue_AO_2k.jpg",
+      "family": "gothic_statue",
+      "status": "city_material",
+      "bytes": 2033724,
+      "compressedBytes": 2030839,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:449",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/gothic_statue_diff_2k.jpg",
+      "family": "gothic_statue",
+      "status": "city_material",
+      "bytes": 3663305,
+      "compressedBytes": 3661898,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:449",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/gothic_statue_nor_dx_2k.jpg",
+      "family": "gothic_statue",
+      "status": "city_material",
+      "bytes": 3279533,
+      "compressedBytes": 3279725,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:449",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/gothic_statue_Rough_2k.jpg",
+      "family": "gothic_statue",
+      "status": "city_material",
+      "bytes": 2255576,
+      "compressedBytes": 2256141,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:449",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/grass_bermuda_01_rgba_2k.png",
+      "family": "grass_bermuda_01_rgba_2k",
+      "status": "no_runtime_reference_candidate",
+      "bytes": 897520,
+      "compressedBytes": 883970,
+      "evidence": [
+        "No filename/runtime-family/inspected FBX base-color match; manual review required before removal"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/grass_medium_02_alpha_2k.png",
+      "family": "grass_medium_02_alpha_2k",
+      "status": "no_runtime_reference_candidate",
+      "bytes": 303260,
+      "compressedBytes": 301445,
+      "evidence": [
+        "No filename/runtime-family/inspected FBX base-color match; manual review required before removal"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/grass_medium_02_AO_2k.jpg",
+      "family": "grass_medium_02",
+      "status": "meadow_loaded_not_drawn_in_city",
+      "bytes": 256600,
+      "compressedBytes": 218964,
+      "evidence": [
+        "Game/Systems/ChronoInk.cpp:40-54 (loads)",
+        "Game/Systems/ChronoInk.cpp:76 (city branch skips meadow geometry)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/grass_medium_02_diff_2k.jpg",
+      "family": "grass_medium_02",
+      "status": "model_name_only_candidate",
+      "bytes": 456989,
+      "compressedBytes": 407883,
+      "evidence": [
+        "FBX base-color basename matches; inspect actual relative path and scene reachability"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/grass_medium_02_nor_dx_2k.jpg",
+      "family": "grass_medium_02",
+      "status": "meadow_loaded_not_drawn_in_city",
+      "bytes": 355230,
+      "compressedBytes": 305908,
+      "evidence": [
+        "Game/Systems/ChronoInk.cpp:40-54 (loads)",
+        "Game/Systems/ChronoInk.cpp:76 (city branch skips meadow geometry)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/grass_medium_02_rgba_2k.png",
+      "family": "grass_medium_02_rgba_2k",
+      "status": "meadow_loaded_not_drawn_in_city",
+      "bytes": 967911,
+      "compressedBytes": 958177,
+      "evidence": [
+        "Game/Systems/ChronoInk.cpp:44",
+        "Game/Systems/ChronoInk.cpp:40-54 (loads)",
+        "Game/Systems/ChronoInk.cpp:76 (city branch skips meadow geometry)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/grass_medium_02_Rough_2k.jpg",
+      "family": "grass_medium_02",
+      "status": "meadow_loaded_not_drawn_in_city",
+      "bytes": 548486,
+      "compressedBytes": 494689,
+      "evidence": [
+        "Game/Systems/ChronoInk.cpp:40-54 (loads)",
+        "Game/Systems/ChronoInk.cpp:76 (city branch skips meadow geometry)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/grey_tiles_AO_2k.jpg",
+      "family": "grey_tiles",
+      "status": "city_material",
+      "bytes": 238412,
+      "compressedBytes": 202068,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:102",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/grey_tiles_diff_2k.jpg",
+      "family": "grey_tiles",
+      "status": "city_material",
+      "bytes": 2156903,
+      "compressedBytes": 2154565,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:102",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/grey_tiles_nor_dx_2k.jpg",
+      "family": "grey_tiles",
+      "status": "city_material",
+      "bytes": 1526512,
+      "compressedBytes": 1507961,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:102",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/grey_tiles_Rough_2k.jpg",
+      "family": "grey_tiles",
+      "status": "city_material",
+      "bytes": 1908363,
+      "compressedBytes": 1898169,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:102",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/hand_truck_AO_2k.jpg",
+      "family": "hand_truck",
+      "status": "city_material",
+      "bytes": 867475,
+      "compressedBytes": 814047,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:366",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/hand_truck_diff_2k.jpg",
+      "family": "hand_truck",
+      "status": "city_material",
+      "bytes": 2936808,
+      "compressedBytes": 2935880,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:366",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/hand_truck_nor_dx_2k.jpg",
+      "family": "hand_truck",
+      "status": "city_material",
+      "bytes": 4218928,
+      "compressedBytes": 4207823,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:366",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/hand_truck_Rough_2k.jpg",
+      "family": "hand_truck",
+      "status": "city_material",
+      "bytes": 2675118,
+      "compressedBytes": 2672581,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:366",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/industrial_pastic_container_AO_2k.jpg",
+      "family": "industrial_pastic_container",
+      "status": "city_material",
+      "bytes": 1132969,
+      "compressedBytes": 1105915,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:366",
+        "Game/Systems/CityStage.cpp:411",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/industrial_pastic_container_diff_2k.jpg",
+      "family": "industrial_pastic_container",
+      "status": "city_material",
+      "bytes": 635975,
+      "compressedBytes": 589325,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:366",
+        "Game/Systems/CityStage.cpp:411",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/industrial_pastic_container_nor_dx_2k.jpg",
+      "family": "industrial_pastic_container",
+      "status": "city_material",
+      "bytes": 394174,
+      "compressedBytes": 331987,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:366",
+        "Game/Systems/CityStage.cpp:411",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/industrial_pastic_container_Rough_2k.jpg",
+      "family": "industrial_pastic_container",
+      "status": "city_material",
+      "bytes": 2388579,
+      "compressedBytes": 2387126,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:366",
+        "Game/Systems/CityStage.cpp:411",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/kloppenheim_06_puresky_8k_cube.dds",
+      "family": "kloppenheim_06_puresky_8k_cube",
+      "status": "runtime_reference_keep",
+      "bytes": 33554740,
+      "compressedBytes": 28264989,
+      "evidence": [
+        "Game/Scenes/GameScene.cpp:185",
+        "Engine/Renderer.cpp:313"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/korean_public_payphone_01_AO_2k.jpg",
+      "family": "korean_public_payphone_01",
+      "status": "city_material",
+      "bytes": 335369,
+      "compressedBytes": 301349,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:407",
+        "Game/Systems/CityStage.cpp:439",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/korean_public_payphone_01_diff_2k.jpg",
+      "family": "korean_public_payphone_01",
+      "status": "city_material",
+      "bytes": 570755,
+      "compressedBytes": 566548,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:407",
+        "Game/Systems/CityStage.cpp:439",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/korean_public_payphone_01_nor_dx_2k.jpg",
+      "family": "korean_public_payphone_01",
+      "status": "city_material",
+      "bytes": 228065,
+      "compressedBytes": 188890,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:407",
+        "Game/Systems/CityStage.cpp:439",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/korean_public_payphone_01_Rough_2k.jpg",
+      "family": "korean_public_payphone_01",
+      "status": "city_material",
+      "bytes": 498607,
+      "compressedBytes": 495211,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:407",
+        "Game/Systems/CityStage.cpp:439",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/large_grey_tiles_AO_2k.jpg",
+      "family": "large_grey_tiles",
+      "status": "city_material",
+      "bytes": 1515083,
+      "compressedBytes": 1515548,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:101",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/large_grey_tiles_diff_2k.jpg",
+      "family": "large_grey_tiles",
+      "status": "city_material",
+      "bytes": 1864784,
+      "compressedBytes": 1865299,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:101",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/large_grey_tiles_nor_dx_2k.jpg",
+      "family": "large_grey_tiles",
+      "status": "city_material",
+      "bytes": 2009150,
+      "compressedBytes": 2009400,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:101",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/large_grey_tiles_Rough_2k.jpg",
+      "family": "large_grey_tiles",
+      "status": "city_material",
+      "bytes": 1596490,
+      "compressedBytes": 1596342,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:101",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/leafy_grass_AO_2k.jpg",
+      "family": "leafy_grass",
+      "status": "meadow_loaded_not_drawn_in_city",
+      "bytes": 4175463,
+      "compressedBytes": 4133174,
+      "evidence": [
+        "Game/Systems/ChronoInk.cpp:40-54 (loads)",
+        "Game/Systems/ChronoInk.cpp:76 (city branch skips meadow geometry)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/leafy_grass_diff_4k.jpg",
+      "family": "leafy_grass",
+      "status": "meadow_loaded_not_drawn_in_city",
+      "bytes": 18554565,
+      "compressedBytes": 18515653,
+      "evidence": [
+        "Game/Systems/ChronoInk.cpp:40",
+        "Game/Systems/ChronoInk.cpp:40-54 (loads)",
+        "Game/Systems/ChronoInk.cpp:76 (city branch skips meadow geometry)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/leafy_grass_nor_dx_2k.jpg",
+      "family": "leafy_grass",
+      "status": "meadow_loaded_not_drawn_in_city",
+      "bytes": 6049495,
+      "compressedBytes": 6019210,
+      "evidence": [
+        "Game/Systems/ChronoInk.cpp:40-54 (loads)",
+        "Game/Systems/ChronoInk.cpp:76 (city branch skips meadow geometry)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/leafy_grass_Rough_2k.jpg",
+      "family": "leafy_grass",
+      "status": "meadow_loaded_not_drawn_in_city",
+      "bytes": 2274652,
+      "compressedBytes": 2265754,
+      "evidence": [
+        "Game/Systems/ChronoInk.cpp:40-54 (loads)",
+        "Game/Systems/ChronoInk.cpp:76 (city branch skips meadow geometry)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/medieval_wood_AO_2k.jpg",
+      "family": "medieval_wood",
+      "status": "city_material",
+      "bytes": 1548023,
+      "compressedBytes": 1548190,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:103",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/medieval_wood_diff_2k.jpg",
+      "family": "medieval_wood",
+      "status": "city_material",
+      "bytes": 3034644,
+      "compressedBytes": 3035495,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:103",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/medieval_wood_nor_dx_2k.jpg",
+      "family": "medieval_wood",
+      "status": "city_material",
+      "bytes": 2901581,
+      "compressedBytes": 2902416,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:103",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/medieval_wood_Rough_2k.jpg",
+      "family": "medieval_wood",
+      "status": "city_material",
+      "bytes": 1358722,
+      "compressedBytes": 1359130,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:103",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/metal_jerrycan_AO_2k.jpg",
+      "family": "metal_jerrycan",
+      "status": "city_material",
+      "bytes": 666537,
+      "compressedBytes": 637539,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:355",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/metal_jerrycan_diff_2k.jpg",
+      "family": "metal_jerrycan",
+      "status": "city_material",
+      "bytes": 2607406,
+      "compressedBytes": 2604491,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:355",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/metal_jerrycan_nor_dx_2k.jpg",
+      "family": "metal_jerrycan",
+      "status": "city_material",
+      "bytes": 3822502,
+      "compressedBytes": 3815178,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:355",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/metal_jerrycan_Rough_2k.jpg",
+      "family": "metal_jerrycan",
+      "status": "city_material",
+      "bytes": 3015888,
+      "compressedBytes": 3003336,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:355",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/namaqualand_boulder_02_AO_2k.jpg",
+      "family": "namaqualand_boulder_02",
+      "status": "meadow_loaded_not_drawn_in_city",
+      "bytes": 2263018,
+      "compressedBytes": 2263359,
+      "evidence": [
+        "Game/Systems/ChronoInk.cpp:40-54 (loads)",
+        "Game/Systems/ChronoInk.cpp:76 (city branch skips meadow geometry)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/namaqualand_boulder_02_diff_2k.jpg",
+      "family": "namaqualand_boulder_02",
+      "status": "meadow_loaded_not_drawn_in_city",
+      "bytes": 3867934,
+      "compressedBytes": 3858429,
+      "evidence": [
+        "Game/Systems/ChronoInk.cpp:42",
+        "Game/Systems/ChronoInk.cpp:40-54 (loads)",
+        "Game/Systems/ChronoInk.cpp:76 (city branch skips meadow geometry)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/namaqualand_boulder_02_nor_dx_2k.jpg",
+      "family": "namaqualand_boulder_02",
+      "status": "meadow_loaded_not_drawn_in_city",
+      "bytes": 4138543,
+      "compressedBytes": 4137356,
+      "evidence": [
+        "Game/Systems/ChronoInk.cpp:40-54 (loads)",
+        "Game/Systems/ChronoInk.cpp:76 (city branch skips meadow geometry)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/namaqualand_boulder_02_Rough_2k.jpg",
+      "family": "namaqualand_boulder_02",
+      "status": "meadow_loaded_not_drawn_in_city",
+      "bytes": 2232625,
+      "compressedBytes": 2232332,
+      "evidence": [
+        "Game/Systems/ChronoInk.cpp:40-54 (loads)",
+        "Game/Systems/ChronoInk.cpp:76 (city branch skips meadow geometry)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/namaqualand_boulders_01_diff_2k.jpg",
+      "family": "namaqualand_boulders_01",
+      "status": "no_runtime_reference_candidate",
+      "bytes": 2855649,
+      "compressedBytes": 2855046,
+      "evidence": [
+        "No filename/runtime-family/inspected FBX base-color match; manual review required before removal"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/old_tyre_AO_2k.jpg",
+      "family": "old_tyre",
+      "status": "city_material",
+      "bytes": 1856704,
+      "compressedBytes": 1838360,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:331",
+        "Game/Systems/CityStage.cpp:353",
+        "Game/Systems/CityStage.cpp:355",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/old_tyre_diff_2k.jpg",
+      "family": "old_tyre",
+      "status": "city_material",
+      "bytes": 2557591,
+      "compressedBytes": 2553842,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:331",
+        "Game/Systems/CityStage.cpp:353",
+        "Game/Systems/CityStage.cpp:355",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/old_tyre_nor_dx_2k.jpg",
+      "family": "old_tyre",
+      "status": "city_material",
+      "bytes": 3068722,
+      "compressedBytes": 3064452,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:331",
+        "Game/Systems/CityStage.cpp:353",
+        "Game/Systems/CityStage.cpp:355",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/old_tyre_Rough_2k.jpg",
+      "family": "old_tyre",
+      "status": "city_material",
+      "bytes": 2506371,
+      "compressedBytes": 2488623,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:331",
+        "Game/Systems/CityStage.cpp:353",
+        "Game/Systems/CityStage.cpp:355",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/painted_metal_shutter_AO_2k.jpg",
+      "family": "painted_metal_shutter",
+      "status": "city_material",
+      "bytes": 1084235,
+      "compressedBytes": 1028459,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:103",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/painted_metal_shutter_diff_2k.jpg",
+      "family": "painted_metal_shutter",
+      "status": "city_material",
+      "bytes": 2474114,
+      "compressedBytes": 2474193,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:103",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/painted_metal_shutter_nor_dx_2k.jpg",
+      "family": "painted_metal_shutter",
+      "status": "city_material",
+      "bytes": 3064129,
+      "compressedBytes": 3064454,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:103",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/painted_metal_shutter_Rough_2k.jpg",
+      "family": "painted_metal_shutter",
+      "status": "city_material",
+      "bytes": 2304207,
+      "compressedBytes": 2300817,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:103",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/plastic_container_AO_2k.jpg",
+      "family": "plastic_container",
+      "status": "city_material",
+      "bytes": 1146973,
+      "compressedBytes": 1119367,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:366",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/plastic_container_diff_2k.jpg",
+      "family": "plastic_container",
+      "status": "city_material",
+      "bytes": 1192199,
+      "compressedBytes": 1177602,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:366",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/plastic_container_nor_dx_2k.jpg",
+      "family": "plastic_container",
+      "status": "city_material",
+      "bytes": 1249104,
+      "compressedBytes": 1216788,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:366",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/plastic_container_Rough_2k.jpg",
+      "family": "plastic_container",
+      "status": "city_material",
+      "bytes": 1129658,
+      "compressedBytes": 1115210,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:366",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/plastic_crate_01_AO_2k.jpg",
+      "family": "plastic_crate_01",
+      "status": "city_material",
+      "bytes": 2437722,
+      "compressedBytes": 2423693,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:355",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/plastic_crate_01_diff_2k.jpg",
+      "family": "plastic_crate_01",
+      "status": "city_material",
+      "bytes": 1941465,
+      "compressedBytes": 1941497,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:355",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/plastic_crate_01_nor_dx_2k.jpg",
+      "family": "plastic_crate_01",
+      "status": "city_material",
+      "bytes": 2756172,
+      "compressedBytes": 2731174,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:355",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/plastic_crate_01_Rough_2k.jpg",
+      "family": "plastic_crate_01",
+      "status": "city_material",
+      "bytes": 2437857,
+      "compressedBytes": 2438405,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:355",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/plastic_crate_02_AO_2k.jpg",
+      "family": "plastic_crate_02",
+      "status": "city_material",
+      "bytes": 1425472,
+      "compressedBytes": 1395944,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:355",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/plastic_crate_02_diff_2k.jpg",
+      "family": "plastic_crate_02",
+      "status": "city_material",
+      "bytes": 1536549,
+      "compressedBytes": 1526663,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:355",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/plastic_crate_02_nor_dx_2k.jpg",
+      "family": "plastic_crate_02",
+      "status": "city_material",
+      "bytes": 1646332,
+      "compressedBytes": 1286635,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:355",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/plastic_crate_02_Rough_2k.jpg",
+      "family": "plastic_crate_02",
+      "status": "city_material",
+      "bytes": 1490507,
+      "compressedBytes": 1484968,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:355",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/power_box_01_AO_2k.jpg",
+      "family": "power_box_01",
+      "status": "city_material",
+      "bytes": 1499299,
+      "compressedBytes": 1492389,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:373",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/power_box_01_diff_2k.jpg",
+      "family": "power_box_01",
+      "status": "city_material",
+      "bytes": 1883678,
+      "compressedBytes": 1879499,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:373",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/power_box_01_nor_dx_2k.jpg",
+      "family": "power_box_01",
+      "status": "city_material",
+      "bytes": 2737550,
+      "compressedBytes": 2737576,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:373",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/power_box_01_Rough_2k.jpg",
+      "family": "power_box_01",
+      "status": "city_material",
+      "bytes": 2405923,
+      "compressedBytes": 2405962,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:373",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/propane_tank_AO_2k.jpg",
+      "family": "propane_tank",
+      "status": "city_material",
+      "bytes": 690031,
+      "compressedBytes": 661938,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:366",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/propane_tank_diff_2k.jpg",
+      "family": "propane_tank",
+      "status": "city_material",
+      "bytes": 2550827,
+      "compressedBytes": 2541928,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:366",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/propane_tank_nor_dx_2k.jpg",
+      "family": "propane_tank",
+      "status": "city_material",
+      "bytes": 2905911,
+      "compressedBytes": 2897677,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:366",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/propane_tank_Rough_2k.jpg",
+      "family": "propane_tank",
+      "status": "city_material",
+      "bytes": 1837621,
+      "compressedBytes": 1826744,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:366",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/rectangular_facade_tiles_02_AO_2k.jpg",
+      "family": "rectangular_facade_tiles_02",
+      "status": "city_material",
+      "bytes": 2497783,
+      "compressedBytes": 2497534,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:102",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/rectangular_facade_tiles_02_diff_2k.jpg",
+      "family": "rectangular_facade_tiles_02",
+      "status": "city_material",
+      "bytes": 2818495,
+      "compressedBytes": 2815956,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:102",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/rectangular_facade_tiles_02_nor_dx_2k.jpg",
+      "family": "rectangular_facade_tiles_02",
+      "status": "city_material",
+      "bytes": 3144000,
+      "compressedBytes": 3144333,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:102",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/rectangular_facade_tiles_02_Rough_2k.jpg",
+      "family": "rectangular_facade_tiles_02",
+      "status": "city_material",
+      "bytes": 3346806,
+      "compressedBytes": 3327411,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:102",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/rock_09_diff_2k.jpg",
+      "family": "rock_09",
+      "status": "meadow_loaded_not_drawn_in_city",
+      "bytes": 2102702,
+      "compressedBytes": 2086692,
+      "evidence": [
+        "Game/Systems/ChronoInk.cpp:43",
+        "Game/Systems/ChronoInk.cpp:40-54 (loads)",
+        "Game/Systems/ChronoInk.cpp:76 (city branch skips meadow geometry)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/rock_face_02_diff_2k.jpg",
+      "family": "rock_face_02",
+      "status": "no_runtime_reference_candidate",
+      "bytes": 3399918,
+      "compressedBytes": 3398355,
+      "evidence": [
+        "No filename/runtime-family/inspected FBX base-color match; manual review required before removal"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/rusty_metal_shutter_AO_2k.jpg",
+      "family": "rusty_metal_shutter",
+      "status": "city_material",
+      "bytes": 1669081,
+      "compressedBytes": 1665683,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:103",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/rusty_metal_shutter_diff_2k.jpg",
+      "family": "rusty_metal_shutter",
+      "status": "city_material",
+      "bytes": 2475569,
+      "compressedBytes": 2475217,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:103",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/rusty_metal_shutter_nor_dx_2k.jpg",
+      "family": "rusty_metal_shutter",
+      "status": "city_material",
+      "bytes": 2907545,
+      "compressedBytes": 2905565,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:103",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/rusty_metal_shutter_Rough_2k.jpg",
+      "family": "rusty_metal_shutter",
+      "status": "city_material",
+      "bytes": 1880930,
+      "compressedBytes": 1872907,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:103",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/street_rat_AO_2k.jpg",
+      "family": "street_rat",
+      "status": "city_material",
+      "bytes": 1001445,
+      "compressedBytes": 983397,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:451",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/street_rat_diff_2k.jpg",
+      "family": "street_rat",
+      "status": "city_material",
+      "bytes": 1823103,
+      "compressedBytes": 1817154,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:451",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/street_rat_nor_dx_2k.jpg",
+      "family": "street_rat",
+      "status": "city_material",
+      "bytes": 3057929,
+      "compressedBytes": 3049940,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:451",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/street_rat_Rough_2k.jpg",
+      "family": "street_rat",
+      "status": "city_material",
+      "bytes": 2811544,
+      "compressedBytes": 2797310,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:451",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/trashbag_AO_2k.jpg",
+      "family": "trashbag",
+      "status": "city_material",
+      "bytes": 1075998,
+      "compressedBytes": 1060230,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:355",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/trashbag_diff_2k.jpg",
+      "family": "trashbag",
+      "status": "city_material",
+      "bytes": 1142564,
+      "compressedBytes": 1125165,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:355",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/trashbag_nor_dx_2k.jpg",
+      "family": "trashbag",
+      "status": "city_material",
+      "bytes": 1632616,
+      "compressedBytes": 1618228,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:355",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/trashbag_Rough_2k.jpg",
+      "family": "trashbag",
+      "status": "city_material",
+      "bytes": 1891974,
+      "compressedBytes": 1884166,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:355",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/utility_box_01_AO_2k.jpg",
+      "family": "utility_box_01",
+      "status": "city_material",
+      "bytes": 651624,
+      "compressedBytes": 548361,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:408",
+        "Game/Systems/CityStage.cpp:440",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/utility_box_01_diff_2k.jpg",
+      "family": "utility_box_01",
+      "status": "city_material",
+      "bytes": 1983621,
+      "compressedBytes": 1981855,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:408",
+        "Game/Systems/CityStage.cpp:440",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/utility_box_01_nor_dx_2k.jpg",
+      "family": "utility_box_01",
+      "status": "city_material",
+      "bytes": 2396174,
+      "compressedBytes": 2393360,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:408",
+        "Game/Systems/CityStage.cpp:440",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/utility_box_01_Rough_2k.jpg",
+      "family": "utility_box_01",
+      "status": "city_material",
+      "bytes": 1968512,
+      "compressedBytes": 1967465,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:408",
+        "Game/Systems/CityStage.cpp:440",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/utility_box_02_AO_2k.jpg",
+      "family": "utility_box_02",
+      "status": "city_material",
+      "bytes": 672687,
+      "compressedBytes": 580904,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:408",
+        "Game/Systems/CityStage.cpp:440",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/utility_box_02_diff_2k.jpg",
+      "family": "utility_box_02",
+      "status": "city_material",
+      "bytes": 1960930,
+      "compressedBytes": 1941716,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:408",
+        "Game/Systems/CityStage.cpp:440",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/utility_box_02_nor_dx_2k.jpg",
+      "family": "utility_box_02",
+      "status": "city_material",
+      "bytes": 2372186,
+      "compressedBytes": 2350094,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:408",
+        "Game/Systems/CityStage.cpp:440",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/utility_box_02_Rough_2k.jpg",
+      "family": "utility_box_02",
+      "status": "city_material",
+      "bytes": 1986994,
+      "compressedBytes": 1967125,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:408",
+        "Game/Systems/CityStage.cpp:440",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/water_manhole_cover_AO_2k.jpg",
+      "family": "water_manhole_cover",
+      "status": "city_material",
+      "bytes": 900515,
+      "compressedBytes": 874203,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:374",
+        "Game/Systems/CityStage.cpp:415",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/water_manhole_cover_diff_2k.jpg",
+      "family": "water_manhole_cover",
+      "status": "city_material",
+      "bytes": 1519932,
+      "compressedBytes": 1515104,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:374",
+        "Game/Systems/CityStage.cpp:415",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/water_manhole_cover_nor_dx_2k.jpg",
+      "family": "water_manhole_cover",
+      "status": "city_material",
+      "bytes": 4196377,
+      "compressedBytes": 4190335,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:374",
+        "Game/Systems/CityStage.cpp:415",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/water_manhole_cover_Rough_2k.jpg",
+      "family": "water_manhole_cover",
+      "status": "city_material",
+      "bytes": 1648242,
+      "compressedBytes": 1644865,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:374",
+        "Game/Systems/CityStage.cpp:415",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/WetFloorSign_01_diff_2k.jpg",
+      "family": "WetFloorSign_01",
+      "status": "city_material",
+      "bytes": 115837,
+      "compressedBytes": 51753,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:355",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/WetFloorSign_01_nor_dx_2k.jpg",
+      "family": "WetFloorSign_01",
+      "status": "city_material",
+      "bytes": 234092,
+      "compressedBytes": 167168,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:355",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/WetFloorSign_01_Rough_2k.jpg",
+      "family": "WetFloorSign_01",
+      "status": "city_material",
+      "bytes": 385049,
+      "compressedBytes": 354910,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:355",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/white_bricks_AO_2k.jpg",
+      "family": "white_bricks",
+      "status": "city_material",
+      "bytes": 857529,
+      "compressedBytes": 857794,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:103",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/white_bricks_diff_2k.jpg",
+      "family": "white_bricks",
+      "status": "city_material",
+      "bytes": 3428026,
+      "compressedBytes": 3428942,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:103",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/white_bricks_nor_dx_2k.jpg",
+      "family": "white_bricks",
+      "status": "city_material",
+      "bytes": 1887010,
+      "compressedBytes": 1887538,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:103",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/white_bricks_Rough_2k.jpg",
+      "family": "white_bricks",
+      "status": "city_material",
+      "bytes": 2531419,
+      "compressedBytes": 2528804,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:103",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/wooden_crate_01_AO_2k.jpg",
+      "family": "wooden_crate_01",
+      "status": "city_material",
+      "bytes": 749045,
+      "compressedBytes": 720836,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:355",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/wooden_crate_01_diff_2k.jpg",
+      "family": "wooden_crate_01",
+      "status": "city_material",
+      "bytes": 2728494,
+      "compressedBytes": 2722856,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:355",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/wooden_crate_01_nor_dx_2k.jpg",
+      "family": "wooden_crate_01",
+      "status": "city_material",
+      "bytes": 2571626,
+      "compressedBytes": 2566626,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:355",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/wooden_crate_01_Rough_2k.jpg",
+      "family": "wooden_crate_01",
+      "status": "city_material",
+      "bytes": 2363871,
+      "compressedBytes": 2359201,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:355",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/wooden_crate_02_AO_2k.jpg",
+      "family": "wooden_crate_02",
+      "status": "city_material",
+      "bytes": 869320,
+      "compressedBytes": 833623,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:366",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/wooden_crate_02_diff_2k.jpg",
+      "family": "wooden_crate_02",
+      "status": "city_material",
+      "bytes": 2739157,
+      "compressedBytes": 2735392,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:366",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/wooden_crate_02_nor_dx_2k.jpg",
+      "family": "wooden_crate_02",
+      "status": "city_material",
+      "bytes": 2306998,
+      "compressedBytes": 2300866,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:366",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/PolyHaven/wooden_crate_02_Rough_2k.jpg",
+      "family": "wooden_crate_02",
+      "status": "city_material",
+      "bytes": 2402279,
+      "compressedBytes": 2397335,
+      "evidence": [
+        "Game/Systems/CityStage.cpp:366",
+        "Game/Systems/CityStage.cpp:93-105 (material path expansion)"
+      ]
+    },
+    {
+      "path": "Resources/Textures/UI/slime_circle.png",
+      "family": "slime_circle",
+      "status": "runtime_reference_keep",
+      "bytes": 1099,
+      "compressedBytes": 1104,
+      "evidence": [
+        "Game/UI/GameUI.h:95",
+        "Game/UI/LoadingUI.h:20"
+      ]
+    },
+    {
+      "path": "Resources/Textures/UI/slime_glow.png",
+      "family": "slime_glow",
+      "status": "runtime_reference_keep",
+      "bytes": 4664,
+      "compressedBytes": 4669,
+      "evidence": [
+        "Game/UI/GameUI.h:96",
+        "Game/UI/LoadingUI.h:21"
+      ]
+    },
+    {
+      "path": "Resources/Textures/UI/ui_brush.png",
+      "family": "ui_brush",
+      "status": "runtime_reference_keep",
+      "bytes": 8409,
+      "compressedBytes": 8188,
+      "evidence": [
+        "Game/UI/GameUI.h:91"
+      ]
+    },
+    {
+      "path": "Resources/Textures/UI/ui_fade.png",
+      "family": "ui_fade",
+      "status": "runtime_reference_keep",
+      "bytes": 731,
+      "compressedBytes": 664,
+      "evidence": [
+        "Game/UI/GameUI.h:94"
+      ]
+    },
+    {
+      "path": "Resources/Textures/UI/ui_grain.png",
+      "family": "ui_grain",
+      "status": "runtime_reference_keep",
+      "bytes": 18565,
+      "compressedBytes": 18575,
+      "evidence": [
+        "Game/UI/GameUI.h:93"
+      ]
+    },
+    {
+      "path": "Resources/Textures/UI/ui_round_ring.png",
+      "family": "ui_round_ring",
+      "status": "runtime_reference_keep",
+      "bytes": 762,
+      "compressedBytes": 762,
+      "evidence": [
+        "Game/UI/GameUI.h:90"
+      ]
+    },
+    {
+      "path": "Resources/Textures/UI/ui_round.png",
+      "family": "ui_round",
+      "status": "runtime_reference_keep",
+      "bytes": 607,
+      "compressedBytes": 586,
+      "evidence": [
+        "Game/UI/GameUI.h:89"
+      ]
+    },
+    {
+      "path": "Resources/Textures/UI/ui_splat.png",
+      "family": "ui_splat",
+      "status": "runtime_reference_keep",
+      "bytes": 4848,
+      "compressedBytes": 4620,
+      "evidence": [
+        "Game/UI/GameUI.h:92"
+      ]
+    },
+    {
+      "path": "Resources/Textures/UI/kenney_input-prompts_1.5/Keyboard & Mouse/Default/keyboard_enter.png",
+      "family": "keyboard_enter",
+      "status": "runtime_reference_keep",
+      "bytes": 387,
+      "compressedBytes": 361,
+      "evidence": [
+        "Game/Scenes/SelectScene.cpp:152",
+        "Game/Scenes/TitleScene.cpp:185"
+      ]
+    },
+    {
+      "path": "Resources/Textures/UI/kenney_input-prompts_1.5/Keyboard & Mouse/Default/keyboard_escape.png",
+      "family": "keyboard_escape",
+      "status": "runtime_reference_keep",
+      "bytes": 367,
+      "compressedBytes": 335,
+      "evidence": [
+        "Game/Scenes/AssignmentSceneDraw.cpp:263",
+        "Game/Scenes/SelectScene.cpp:153",
+        "Game/Systems/SlimeAssault.cpp:359",
+        "Game/UI/GameUI.h:572"
+      ]
+    },
+    {
+      "path": "Resources/Textures/UI/kenney_input-prompts_1.5/Keyboard & Mouse/Default/keyboard_r.png",
+      "family": "keyboard_r",
+      "status": "runtime_reference_keep",
+      "bytes": 341,
+      "compressedBytes": 305,
+      "evidence": [
+        "Game/Systems/ChronoSystem.cpp:389",
+        "Game/UI/GameUI.h:555"
+      ]
+    },
+    {
+      "path": "Resources/Textures/UI/kenney_input-prompts_1.5/Keyboard & Mouse/Default/keyboard_space.png",
+      "family": "keyboard_space",
+      "status": "runtime_reference_keep",
+      "bytes": 389,
+      "compressedBytes": 361,
+      "evidence": [
+        "Game/Systems/SlimeAssault.cpp:357"
+      ]
+    },
+    {
+      "path": "Resources/Textures/UI/kenney_input-prompts_1.5/Keyboard & Mouse/Default/keyboard_tab.png",
+      "family": "keyboard_tab",
+      "status": "runtime_reference_keep",
+      "bytes": 331,
+      "compressedBytes": 294,
+      "evidence": [
+        "Game/Systems/ChronoSystem.cpp:389",
+        "Game/UI/GameUI.h:556",
+        "Game/UI/GameUI.h:573"
+      ]
+    },
+    {
+      "path": "Resources/Textures/UI/kenney_input-prompts_1.5/Keyboard & Mouse/Default/keyboard_w.png",
+      "family": "keyboard_w",
+      "status": "runtime_reference_keep",
+      "bytes": 387,
+      "compressedBytes": 367,
+      "evidence": [
+        "Game/Scenes/AssignmentSceneDraw.cpp:260",
+        "Game/Systems/SlimeAssault.cpp:354"
+      ]
+    },
+    {
+      "path": "Resources/Textures/UI/kenney_input-prompts_1.5/Keyboard & Mouse/Default/mouse_left.png",
+      "family": "mouse_left",
+      "status": "runtime_reference_keep",
+      "bytes": 463,
+      "compressedBytes": 436,
+      "evidence": [
+        "Game/Scenes/AssignmentSceneDraw.cpp:261",
+        "Game/Scenes/SelectScene.cpp:151",
+        "Game/Systems/SlimeAssault.cpp:356"
+      ]
+    },
+    {
+      "path": "Resources/Textures/UI/kenney_input-prompts_1.5/Keyboard & Mouse/Default/mouse_right.png",
+      "family": "mouse_right",
+      "status": "runtime_reference_keep",
+      "bytes": 445,
+      "compressedBytes": 419,
+      "evidence": [
+        "Game/Scenes/AssignmentSceneDraw.cpp:262",
+        "Game/Systems/SlimeAssault.cpp:355"
+      ]
+    },
+    {
+      "path": "Resources/Textures/UI/kenney_input-prompts_1.5/Keyboard & Mouse/Default/mouse_scroll.png",
+      "family": "mouse_scroll",
+      "status": "runtime_reference_keep",
+      "bytes": 458,
+      "compressedBytes": 435,
+      "evidence": [
+        "Game/Systems/SlimeAssault.cpp:358"
+      ]
+    },
+    {
+      "path": "Resources/Textures/UI/kenney_input-prompts_1.5/Xbox Series/Default/xbox_button_a.png",
+      "family": "xbox_button_a",
+      "status": "runtime_reference_keep",
+      "bytes": 491,
+      "compressedBytes": 464,
+      "evidence": [
+        "Game/Scenes/SelectScene.cpp:151",
+        "Game/Scenes/TitleScene.cpp:185",
+        "Game/Systems/SlimeAssault.cpp:357",
+        "Game/UI/GameUI.h:459",
+        "Game/UI/GameUI.h:573",
+        "Game/UI/GraphicsUI.h:119",
+        "Game/UI/RogueliteUI.h:99",
+        "Game/UI/RogueliteUI.h:107"
+      ]
+    },
+    {
+      "path": "Resources/Textures/UI/kenney_input-prompts_1.5/Xbox Series/Default/xbox_button_b.png",
+      "family": "xbox_button_b",
+      "status": "runtime_reference_keep",
+      "bytes": 465,
+      "compressedBytes": 437,
+      "evidence": [
+        "Game/Scenes/SelectScene.cpp:153",
+        "Game/Systems/SlimeAssault.cpp:355",
+        "Game/UI/CreditsUI.h:75",
+        "Game/UI/GameUI.h:571",
+        "Game/UI/GameUI.h:572",
+        "Game/UI/GraphicsUI.h:119",
+        "Game/UI/GraphicsUI.h:183",
+        "Game/UI/RogueliteUI.h:154",
+        "Game/UI/RogueliteUI.h:163"
+      ]
+    },
+    {
+      "path": "Resources/Textures/UI/kenney_input-prompts_1.5/Xbox Series/Default/xbox_button_menu.png",
+      "family": "xbox_button_menu",
+      "status": "runtime_reference_keep",
+      "bytes": 408,
+      "compressedBytes": 377,
+      "evidence": [
+        "Game/Scenes/SelectScene.cpp:152",
+        "Game/Systems/SlimeAssault.cpp:359"
+      ]
+    },
+    {
+      "path": "Resources/Textures/UI/kenney_input-prompts_1.5/Xbox Series/Default/xbox_button_view.png",
+      "family": "xbox_button_view",
+      "status": "runtime_reference_keep",
+      "bytes": 443,
+      "compressedBytes": 414,
+      "evidence": [
+        "Game/Scenes/GameSceneDraw.cpp:220"
+      ]
+    },
+    {
+      "path": "Resources/Textures/UI/kenney_input-prompts_1.5/Xbox Series/Default/xbox_button_x.png",
+      "family": "xbox_button_x",
+      "status": "runtime_reference_keep",
+      "bytes": 512,
+      "compressedBytes": 488,
+      "evidence": [
+        "Game/Systems/ChronoSystem.cpp:389",
+        "Game/UI/GameUI.h:554",
+        "Game/UI/GameUI.h:555",
+        "Game/UI/RogueliteUI.h:105"
+      ]
+    },
+    {
+      "path": "Resources/Textures/UI/kenney_input-prompts_1.5/Xbox Series/Default/xbox_button_y.png",
+      "family": "xbox_button_y",
+      "status": "runtime_reference_keep",
+      "bytes": 475,
+      "compressedBytes": 448,
+      "evidence": [
+        "Game/Systems/ChronoSystem.cpp:389",
+        "Game/UI/GameUI.h:554",
+        "Game/UI/GameUI.h:556",
+        "Game/UI/RogueliteUI.h:104"
+      ]
+    },
+    {
+      "path": "Resources/Textures/UI/kenney_input-prompts_1.5/Xbox Series/Default/xbox_dpad.png",
+      "family": "xbox_dpad",
+      "status": "runtime_reference_keep",
+      "bytes": 217,
+      "compressedBytes": 203,
+      "evidence": [
+        "Game/UI/GraphicsUI.h:118",
+        "Game/UI/LoadingUI.h:345",
+        "Game/UI/LoadingUI.h:482",
+        "Game/UI/RogueliteUI.h:107",
+        "Game/UI/RogueliteUI.h:162"
+      ]
+    },
+    {
+      "path": "Resources/Textures/UI/kenney_input-prompts_1.5/Xbox Series/Default/xbox_lb.png",
+      "family": "xbox_lb",
+      "status": "runtime_reference_keep",
+      "bytes": 334,
+      "compressedBytes": 300,
+      "evidence": [
+        "Game/UI/CreditsUI.h:70",
+        "Game/UI/LoadingUI.h:346",
+        "Game/UI/LoadingUI.h:482"
+      ]
+    },
+    {
+      "path": "Resources/Textures/UI/kenney_input-prompts_1.5/Xbox Series/Default/xbox_rb.png",
+      "family": "xbox_rb",
+      "status": "runtime_reference_keep",
+      "bytes": 377,
+      "compressedBytes": 347,
+      "evidence": [
+        "Game/UI/CreditsUI.h:71",
+        "Game/UI/LoadingUI.h:346",
+        "Game/UI/LoadingUI.h:482"
+      ]
+    },
+    {
+      "path": "Resources/Textures/UI/kenney_input-prompts_1.5/Xbox Series/Default/xbox_rt.png",
+      "family": "xbox_rt",
+      "status": "runtime_reference_keep",
+      "bytes": 392,
+      "compressedBytes": 362,
+      "evidence": [
+        "Game/Systems/SlimeAssault.cpp:335",
+        "Game/Systems/SlimeAssault.cpp:356"
+      ]
+    },
+    {
+      "path": "Resources/Textures/UI/kenney_input-prompts_1.5/Xbox Series/Default/xbox_stick_l.png",
+      "family": "xbox_stick_l",
+      "status": "runtime_reference_keep",
+      "bytes": 619,
+      "compressedBytes": 599,
+      "evidence": [
+        "Game/Systems/SlimeAssault.cpp:354"
+      ]
+    },
+    {
+      "path": "Resources/Textures/UI/kenney_input-prompts_1.5/Xbox Series/Default/xbox_stick_r_press.png",
+      "family": "xbox_stick_r_press",
+      "status": "runtime_reference_keep",
+      "bytes": 697,
+      "compressedBytes": 684,
+      "evidence": [
+        "Game/Systems/SlimeAssault.cpp:358"
+      ]
+    },
+    {
+      "path": "Resources/Textures/UI/kenney_ui-pack/PNG/Grey/Default/button_rectangle_depth_flat.png",
+      "family": "button_rectangle_depth_flat",
+      "status": "no_runtime_reference_candidate",
+      "bytes": 383,
+      "compressedBytes": 359,
+      "evidence": [
+        "No filename/runtime-family/inspected FBX base-color match; manual review required before removal"
+      ]
+    },
+    {
+      "path": "Resources/Textures/UI/kenney_ui-pack/PNG/Grey/Default/button_rectangle_flat.png",
+      "family": "button_rectangle_flat",
+      "status": "runtime_reference_keep",
+      "bytes": 315,
+      "compressedBytes": 285,
+      "evidence": [
+        "Game/Systems/UISystem.cpp:81"
+      ]
+    }
+  ]
+}

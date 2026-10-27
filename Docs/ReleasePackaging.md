@@ -6,9 +6,17 @@ Release|x64をビルドすると、`scripts/SlimeResources.json`に列挙した�
 共通エンジンが起動時にコンパイルするシェーダーとそのinclude、素材ライセンスも必要です。
 
 ビルド後に `scripts/New-SlimeRelease.ps1` を実行すると、配布用の
-`dist/SlimeAssault/SlimeAssault.exe` と Resources、ZIPが作られます。
-EXEとResourcesを一緒にコピーしてください。古いEXEだけを使い回さないでください。
-外部DLLの直接依存はWindows標準DLLのみであることをdumpbinで確認しています。
+`dist/SlimeAssault/SlimeAssault.exe` と Resources、Streamline、NTC、ZIPが作られます。
+提出するのは `dist/SlimeAssault-Release.zip` です。受け取った側はZIPを展開してから
+`SlimeAssault.exe`を実行します。EXEと同じ階層にResources・Streamline・NTCを置き、
+中のフォルダー構成を変えないでください。StreamlineはDLSS用のDLLとライセンスを含みます。
+SDKが配置されていない環境ではStreamlineを同梱せず、ネイティブ描画で動きます。
+NTCは道路材質をロード時にGPUで復元する `libntc.dll` (NVIDIA RTX SDK) とライセンスを含みます。
+`externals/RTXNTC/bin/libntc.dll` が無い・ハッシュが違う場合はパッケージ作成を止めます。
+作成の途中で同梱EXEを一度起動し、起動からゲーム画面までに使うシェーダーを `Resources/ShaderCache` に書き出します
+（数十秒かかります。詳しくは [LoadTimeOptimization.md](LoadTimeOptimization.md)）。
+古いEXEだけを使い回さないでください。`.pdb`、`.lib`、ソース、ログは提出に不要です。
+外部DLLの直接依存はWindows標準DLLのみで、DLSSのDLLはStreamlineから、NTCのDLLはNTCから動的に読み込みます。
 
 ## 文字が消えていた原因
 

@@ -1,0 +1,223 @@
+﻿path,status,compressed_MiB,uncompressed_MiB,evidence
+Resources/Textures/ball.png,runtime_reference_keep,0.002559,0.003344,Game/Scenes/GameScene.cpp:697 | Game/Systems/CanAbilitySystem.cpp:310 | Game/Systems/PlayerActionSystem.cpp:409 | Game/Systems/PlayerActionSystem.cpp:447 | Game/Systems/PlayerActionSystem.cpp:509 | Game/Systems/PlayerActionSystem.cpp:716 | Game/Systems/PlayerActionSystem.cpp:773 | Game/Systems/PlayerActionSystem.cpp:851 | Game/Systems/UISystem.cpp:68 | Engine/Renderer.cpp:875
+Resources/Textures/white1x1.png,runtime_reference_keep,0.000111,0.000113,Game/Editor/EditorHierarchy.cpp:143 | Game/Editor/EditorViewport.cpp:374 | Game/Scenes/SelectScene.cpp:34 | Game/Systems/CanAbilitySystem.cpp:283 | Game/Systems/ChronoSystem.cpp:75 | Game/Systems/PlayerActionSystem.cpp:277 | Game/Systems/PlayerActionSystem.cpp:317 | Game/Systems/PlayerActionSystem.cpp:669 | Game/Systems/PlayerActionSystem.cpp:741 | Game/Systems/PlayerActionSystem.cpp:789 | Game/Systems/PlayerActionSystem.cpp:813 | Game/Systems/PlayerActionSystem.cpp:882 | Game/Systems/SlimePlayerDemo.cpp:18 | Game/Systems/UISystem.cpp:65 | Game/Systems/WaveSystem.cpp:88 | Game/UI/GameUI.h:88
+Resources/Textures/AmbientCG/grass004_color_1k.jpg,test_only_candidate,1.893611,1.893579,tests/UIValidationScene.h:83
+Resources/Textures/ColorGrading/CinematicLUT.png,runtime_reference_keep,0.010816,0.010811,Engine/Renderer.cpp:3883
+Resources/Textures/PBR/Grass004_AmbientOcclusion.jpg,no_runtime_reference_candidate,0.862700,0.862907,No filename/runtime-family/inspected FBX base-color match; manual review required before removal
+Resources/Textures/PBR/Grass004_NormalDX.jpg,test_only_candidate,2.230825,2.230706,tests/UIValidationScene.h:82
+Resources/Textures/PBR/Grass004_Roughness.jpg,test_only_candidate,0.811978,0.812210,tests/UIValidationScene.h:82
+Resources/Textures/PBR/namaqualand_boulders_01_AO.jpg,no_runtime_reference_candidate,0.671473,0.671621,No filename/runtime-family/inspected FBX base-color match; manual review required before removal
+Resources/Textures/PBR/namaqualand_boulders_01_nor_dx.jpg,no_runtime_reference_candidate,1.103216,1.104072,No filename/runtime-family/inspected FBX base-color match; manual review required before removal
+Resources/Textures/PBR/namaqualand_boulders_01_Rough.jpg,no_runtime_reference_candidate,0.419893,0.420162,No filename/runtime-family/inspected FBX base-color match; manual review required before removal
+Resources/Textures/PBR/NeutralNormal.png,runtime_reference_keep,0.000108,0.000114,Engine/HdrBloom.inl:3 | Engine/HdrBloom.inl:12
+Resources/Textures/PBR/rock_09_AO.jpg,meadow_loaded_not_drawn_in_city,0.282702,0.287745,Game/Systems/ChronoInk.cpp:40-54 (loads) | Game/Systems/ChronoInk.cpp:76 (city branch skips meadow geometry)
+Resources/Textures/PBR/rock_09_nor_dx.jpg,meadow_loaded_not_drawn_in_city,0.710440,0.712710,Game/Systems/ChronoInk.cpp:40-54 (loads) | Game/Systems/ChronoInk.cpp:76 (city branch skips meadow geometry)
+Resources/Textures/PBR/rock_09_Rough.jpg,meadow_loaded_not_drawn_in_city,0.421765,0.424926,Game/Systems/ChronoInk.cpp:40-54 (loads) | Game/Systems/ChronoInk.cpp:76 (city branch skips meadow geometry)
+Resources/Textures/PBR/rock_face_02_AO.jpg,no_runtime_reference_candidate,0.711392,0.711482,No filename/runtime-family/inspected FBX base-color match; manual review required before removal
+Resources/Textures/PBR/rock_face_02_nor_dx.jpg,no_runtime_reference_candidate,1.103424,1.104021,No filename/runtime-family/inspected FBX base-color match; manual review required before removal
+Resources/Textures/PBR/rock_face_02_Rough.jpg,no_runtime_reference_candidate,0.546746,0.546714,No filename/runtime-family/inspected FBX base-color match; manual review required before removal
+Resources/Textures/PolyHaven/asphalt_02_AO_2k.jpg,city_material,1.945570,1.945006,Game/Systems/CityStage.cpp:101 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/asphalt_02_diff_2k.jpg,city_material,2.934028,2.933193,Game/Systems/CityStage.cpp:101 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/asphalt_02_nor_dx_2k.jpg,city_material,4.815054,4.818194,Game/Systems/CityStage.cpp:101 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/asphalt_02_Rough_2k.jpg,city_material,2.127165,2.127130,Game/Systems/CityStage.cpp:101 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/boulder_01_AO_2k.jpg,meadow_loaded_not_drawn_in_city,1.429706,1.431911,Game/Systems/ChronoInk.cpp:40-54 (loads) | Game/Systems/ChronoInk.cpp:76 (city branch skips meadow geometry)
+Resources/Textures/PolyHaven/boulder_01_diff_2k.jpg,meadow_loaded_not_drawn_in_city,3.501582,3.502353,Game/Systems/ChronoInk.cpp:41 | Game/Systems/ChronoInk.cpp:40-54 (loads) | Game/Systems/ChronoInk.cpp:76 (city branch skips meadow geometry)
+Resources/Textures/PolyHaven/boulder_01_nor_dx_2k.jpg,meadow_loaded_not_drawn_in_city,4.455799,4.458107,Game/Systems/ChronoInk.cpp:40-54 (loads) | Game/Systems/ChronoInk.cpp:76 (city branch skips meadow geometry)
+Resources/Textures/PolyHaven/boulder_01_Rough_2k.jpg,meadow_loaded_not_drawn_in_city,1.739693,1.741350,Game/Systems/ChronoInk.cpp:40-54 (loads) | Game/Systems/ChronoInk.cpp:76 (city branch skips meadow geometry)
+Resources/Textures/PolyHaven/cannon_01_AO_2k.jpg,city_material,1.222904,1.234662,Game/Systems/CityStage.cpp:451 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/cannon_01_diff_2k.jpg,city_material,2.568204,2.567676,Game/Systems/CityStage.cpp:451 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/cannon_01_nor_dx_2k.jpg,city_material,2.916310,2.916183,Game/Systems/CityStage.cpp:451 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/cannon_01_Rough_2k.jpg,city_material,2.197952,2.197651,Game/Systems/CityStage.cpp:451 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/cardboard_box_01_AO_2k.jpg,city_material,0.305415,0.382488,Game/Systems/CityStage.cpp:355 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/cardboard_box_01_diff_2k.jpg,city_material,1.860752,1.895537,Game/Systems/CityStage.cpp:355 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/cardboard_box_01_nor_dx_2k.jpg,city_material,2.891746,2.926613,Game/Systems/CityStage.cpp:355 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/cardboard_box_01_Rough_2k.jpg,city_material,1.072616,1.109997,Game/Systems/CityStage.cpp:355 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/castle_wall_slates_AO_2k.jpg,city_material,1.577796,1.577321,Game/Systems/CityStage.cpp:103 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/castle_wall_slates_diff_2k.jpg,city_material,2.271749,2.271105,Game/Systems/CityStage.cpp:103 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/castle_wall_slates_nor_dx_2k.jpg,city_material,3.947612,3.946476,Game/Systems/CityStage.cpp:103 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/castle_wall_slates_Rough_2k.jpg,city_material,1.912500,1.912358,Game/Systems/CityStage.cpp:103 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/concrete_floor_worn_001_AO_2k.jpg,city_material,0.651742,0.657640,Game/Systems/CityStage.cpp:101 | Game/Systems/CityStage.cpp:103 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/concrete_floor_worn_001_diff_2k.jpg,city_material,0.456822,0.460535,Game/Systems/CityStage.cpp:101 | Game/Systems/CityStage.cpp:103 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/concrete_floor_worn_001_nor_dx_2k.jpg,city_material,0.815546,0.824409,Game/Systems/CityStage.cpp:101 | Game/Systems/CityStage.cpp:103 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/concrete_floor_worn_001_Rough_2k.jpg,city_material,0.698831,0.701188,Game/Systems/CityStage.cpp:101 | Game/Systems/CityStage.cpp:103 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/concrete_road_barrier_02_AO_2k.jpg,city_material,1.790181,1.795683,Game/Systems/CityStage.cpp:413 | Game/Systems/CityStage.cpp:434 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/concrete_road_barrier_02_diff_2k.jpg,city_material,2.826351,2.836261,Game/Systems/CityStage.cpp:413 | Game/Systems/CityStage.cpp:434 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/concrete_road_barrier_02_nor_dx_2k.jpg,city_material,3.347586,3.351505,Game/Systems/CityStage.cpp:413 | Game/Systems/CityStage.cpp:434 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/concrete_road_barrier_02_Rough_2k.jpg,city_material,2.200856,2.208567,Game/Systems/CityStage.cpp:413 | Game/Systems/CityStage.cpp:434 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/concrete_road_barrier_AO_2k.jpg,city_material,2.024979,2.026709,Game/Systems/CityStage.cpp:413 | Game/Systems/CityStage.cpp:434 | Game/Systems/CityStage.cpp:437 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/concrete_road_barrier_diff_2k.jpg,city_material,3.036819,3.041860,Game/Systems/CityStage.cpp:413 | Game/Systems/CityStage.cpp:434 | Game/Systems/CityStage.cpp:437 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/concrete_road_barrier_nor_dx_2k.jpg,city_material,3.698342,3.701760,Game/Systems/CityStage.cpp:413 | Game/Systems/CityStage.cpp:434 | Game/Systems/CityStage.cpp:437 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/concrete_road_barrier_Rough_2k.jpg,city_material,1.984210,1.990659,Game/Systems/CityStage.cpp:413 | Game/Systems/CityStage.cpp:434 | Game/Systems/CityStage.cpp:437 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/concrete_slab_wall_AO_2k.jpg,city_material,2.430825,2.437071,Game/Systems/CityStage.cpp:102 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/concrete_slab_wall_diff_2k.jpg,city_material,2.306312,2.307533,Game/Systems/CityStage.cpp:102 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/concrete_slab_wall_nor_dx_2k.jpg,city_material,3.280867,3.291995,Game/Systems/CityStage.cpp:102 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/concrete_slab_wall_Rough_2k.jpg,city_material,1.196466,1.210721,Game/Systems/CityStage.cpp:102 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/concrete_tile_facade_AO_2k.jpg,city_material,2.435272,2.438252,Game/Systems/CityStage.cpp:102 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/concrete_tile_facade_diff_2k.jpg,city_material,2.593299,2.594460,Game/Systems/CityStage.cpp:102 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/concrete_tile_facade_nor_dx_2k.jpg,city_material,3.586455,3.585575,Game/Systems/CityStage.cpp:102 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/concrete_tile_facade_Rough_2k.jpg,city_material,1.595734,1.612810,Game/Systems/CityStage.cpp:102 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/concrete_wall_008_AO_2k.jpg,city_material,2.531234,2.606426,Game/Systems/CityStage.cpp:102 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/concrete_wall_008_diff_2k.jpg,city_material,2.462284,2.542676,Game/Systems/CityStage.cpp:102 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/concrete_wall_008_nor_dx_2k.jpg,city_material,2.166654,2.238738,Game/Systems/CityStage.cpp:102 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/concrete_wall_008_Rough_2k.jpg,city_material,1.315037,1.390718,Game/Systems/CityStage.cpp:102 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/covered_car_AO_2k.jpg,city_material,1.047379,1.067935,Game/Systems/CityStage.cpp:405 | Game/Systems/CityStage.cpp:410 | Game/Systems/CityStage.cpp:430 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/covered_car_diff_2k.jpg,city_material,1.939651,1.940484,Game/Systems/CityStage.cpp:405 | Game/Systems/CityStage.cpp:410 | Game/Systems/CityStage.cpp:430 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/covered_car_nor_dx_2k.jpg,city_material,2.871688,2.903168,Game/Systems/CityStage.cpp:405 | Game/Systems/CityStage.cpp:410 | Game/Systems/CityStage.cpp:430 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/covered_car_Rough_2k.jpg,city_material,2.013060,2.056488,Game/Systems/CityStage.cpp:405 | Game/Systems/CityStage.cpp:410 | Game/Systems/CityStage.cpp:430 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/exterior_wall_cladding_02_AO_2k.jpg,city_material,1.664249,1.672017,Game/Systems/CityStage.cpp:102 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/exterior_wall_cladding_02_diff_2k.jpg,city_material,2.033246,2.036699,Game/Systems/CityStage.cpp:102 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/exterior_wall_cladding_02_nor_dx_2k.jpg,city_material,2.349391,2.350064,Game/Systems/CityStage.cpp:102 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/exterior_wall_cladding_02_Rough_2k.jpg,city_material,1.155830,1.192829,Game/Systems/CityStage.cpp:102 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/gothic_statue_AO_2k.jpg,city_material,1.936759,1.939510,Game/Systems/CityStage.cpp:449 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/gothic_statue_diff_2k.jpg,city_material,3.492258,3.493600,Game/Systems/CityStage.cpp:449 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/gothic_statue_nor_dx_2k.jpg,city_material,3.127789,3.127606,Game/Systems/CityStage.cpp:449 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/gothic_statue_Rough_2k.jpg,city_material,2.151624,2.151085,Game/Systems/CityStage.cpp:449 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/grass_bermuda_01_rgba_2k.png,no_runtime_reference_candidate,0.843019,0.855942,No filename/runtime-family/inspected FBX base-color match; manual review required before removal
+Resources/Textures/PolyHaven/grass_medium_02_alpha_2k.png,no_runtime_reference_candidate,0.287480,0.289211,No filename/runtime-family/inspected FBX base-color match; manual review required before removal
+Resources/Textures/PolyHaven/grass_medium_02_AO_2k.jpg,meadow_loaded_not_drawn_in_city,0.208820,0.244713,Game/Systems/ChronoInk.cpp:40-54 (loads) | Game/Systems/ChronoInk.cpp:76 (city branch skips meadow geometry)
+Resources/Textures/PolyHaven/grass_medium_02_diff_2k.jpg,model_name_only_candidate,0.388988,0.435819,FBX base-color basename matches; inspect actual relative path and scene reachability
+Resources/Textures/PolyHaven/grass_medium_02_nor_dx_2k.jpg,meadow_loaded_not_drawn_in_city,0.291737,0.338774,Game/Systems/ChronoInk.cpp:40-54 (loads) | Game/Systems/ChronoInk.cpp:76 (city branch skips meadow geometry)
+Resources/Textures/PolyHaven/grass_medium_02_rgba_2k.png,meadow_loaded_not_drawn_in_city,0.913789,0.923072,Game/Systems/ChronoInk.cpp:44 | Game/Systems/ChronoInk.cpp:40-54 (loads) | Game/Systems/ChronoInk.cpp:76 (city branch skips meadow geometry)
+Resources/Textures/PolyHaven/grass_medium_02_Rough_2k.jpg,meadow_loaded_not_drawn_in_city,0.471772,0.523077,Game/Systems/ChronoInk.cpp:40-54 (loads) | Game/Systems/ChronoInk.cpp:76 (city branch skips meadow geometry)
+Resources/Textures/PolyHaven/grey_tiles_AO_2k.jpg,city_material,0.192707,0.227367,Game/Systems/CityStage.cpp:102 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/grey_tiles_diff_2k.jpg,city_material,2.054753,2.056983,Game/Systems/CityStage.cpp:102 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/grey_tiles_nor_dx_2k.jpg,city_material,1.438104,1.455795,Game/Systems/CityStage.cpp:102 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/grey_tiles_Rough_2k.jpg,city_material,1.810235,1.819957,Game/Systems/CityStage.cpp:102 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/hand_truck_AO_2k.jpg,city_material,0.776336,0.827289,Game/Systems/CityStage.cpp:366 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/hand_truck_diff_2k.jpg,city_material,2.799873,2.800758,Game/Systems/CityStage.cpp:366 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/hand_truck_nor_dx_2k.jpg,city_material,4.012893,4.023483,Game/Systems/CityStage.cpp:366 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/hand_truck_Rough_2k.jpg,city_material,2.548772,2.551191,Game/Systems/CityStage.cpp:366 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/industrial_pastic_container_AO_2k.jpg,city_material,1.054683,1.080483,Game/Systems/CityStage.cpp:366 | Game/Systems/CityStage.cpp:411 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/industrial_pastic_container_diff_2k.jpg,city_material,0.562024,0.606513,Game/Systems/CityStage.cpp:366 | Game/Systems/CityStage.cpp:411 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/industrial_pastic_container_nor_dx_2k.jpg,city_material,0.316607,0.375914,Game/Systems/CityStage.cpp:366 | Game/Systems/CityStage.cpp:411 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/industrial_pastic_container_Rough_2k.jpg,city_material,2.276541,2.277926,Game/Systems/CityStage.cpp:366 | Game/Systems/CityStage.cpp:411 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/kloppenheim_06_puresky_8k_cube.dds,runtime_reference_keep,26.955594,32.000294,Game/Scenes/GameScene.cpp:185 | Engine/Renderer.cpp:313
+Resources/Textures/PolyHaven/korean_public_payphone_01_AO_2k.jpg,city_material,0.287389,0.319833,Game/Systems/CityStage.cpp:407 | Game/Systems/CityStage.cpp:439 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/korean_public_payphone_01_diff_2k.jpg,city_material,0.540302,0.544314,Game/Systems/CityStage.cpp:407 | Game/Systems/CityStage.cpp:439 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/korean_public_payphone_01_nor_dx_2k.jpg,city_material,0.180140,0.217500,Game/Systems/CityStage.cpp:407 | Game/Systems/CityStage.cpp:439 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/korean_public_payphone_01_Rough_2k.jpg,city_material,0.472270,0.475509,Game/Systems/CityStage.cpp:407 | Game/Systems/CityStage.cpp:439 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/large_grey_tiles_AO_2k.jpg,city_material,1.445339,1.444896,Game/Systems/CityStage.cpp:101 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/large_grey_tiles_diff_2k.jpg,city_material,1.778888,1.778397,Game/Systems/CityStage.cpp:101 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/large_grey_tiles_nor_dx_2k.jpg,city_material,1.916313,1.916075,Game/Systems/CityStage.cpp:101 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/large_grey_tiles_Rough_2k.jpg,city_material,1.522390,1.522532,Game/Systems/CityStage.cpp:101 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/leafy_grass_AO_2k.jpg,meadow_loaded_not_drawn_in_city,3.941702,3.982032,Game/Systems/ChronoInk.cpp:40-54 (loads) | Game/Systems/ChronoInk.cpp:76 (city branch skips meadow geometry)
+Resources/Textures/PolyHaven/leafy_grass_diff_4k.jpg,meadow_loaded_not_drawn_in_city,17.657903,17.695012,Game/Systems/ChronoInk.cpp:40 | Game/Systems/ChronoInk.cpp:40-54 (loads) | Game/Systems/ChronoInk.cpp:76 (city branch skips meadow geometry)
+Resources/Textures/PolyHaven/leafy_grass_nor_dx_2k.jpg,meadow_loaded_not_drawn_in_city,5.740366,5.769248,Game/Systems/ChronoInk.cpp:40-54 (loads) | Game/Systems/ChronoInk.cpp:76 (city branch skips meadow geometry)
+Resources/Textures/PolyHaven/leafy_grass_Rough_2k.jpg,meadow_loaded_not_drawn_in_city,2.160791,2.169277,Game/Systems/ChronoInk.cpp:40-54 (loads) | Game/Systems/ChronoInk.cpp:76 (city branch skips meadow geometry)
+Resources/Textures/PolyHaven/medieval_wood_AO_2k.jpg,city_material,1.476469,1.476310,Game/Systems/CityStage.cpp:103 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/medieval_wood_diff_2k.jpg,city_material,2.894874,2.894062,Game/Systems/CityStage.cpp:103 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/medieval_wood_nor_dx_2k.jpg,city_material,2.767960,2.767163,Game/Systems/CityStage.cpp:103 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/medieval_wood_Rough_2k.jpg,city_material,1.296167,1.295778,Game/Systems/CityStage.cpp:103 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/metal_jerrycan_AO_2k.jpg,city_material,0.608005,0.635659,Game/Systems/CityStage.cpp:355 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/metal_jerrycan_diff_2k.jpg,city_material,2.483836,2.486616,Game/Systems/CityStage.cpp:355 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/metal_jerrycan_nor_dx_2k.jpg,city_material,3.638437,3.645422,Game/Systems/CityStage.cpp:355 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/metal_jerrycan_Rough_2k.jpg,city_material,2.864204,2.876175,Game/Systems/CityStage.cpp:355 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/namaqualand_boulder_02_AO_2k.jpg,meadow_loaded_not_drawn_in_city,2.158507,2.158182,Game/Systems/ChronoInk.cpp:40-54 (loads) | Game/Systems/ChronoInk.cpp:76 (city branch skips meadow geometry)
+Resources/Textures/PolyHaven/namaqualand_boulder_02_diff_2k.jpg,meadow_loaded_not_drawn_in_city,3.679685,3.688749,Game/Systems/ChronoInk.cpp:42 | Game/Systems/ChronoInk.cpp:40-54 (loads) | Game/Systems/ChronoInk.cpp:76 (city branch skips meadow geometry)
+Resources/Textures/PolyHaven/namaqualand_boulder_02_nor_dx_2k.jpg,meadow_loaded_not_drawn_in_city,3.945690,3.946822,Game/Systems/ChronoInk.cpp:40-54 (loads) | Game/Systems/ChronoInk.cpp:76 (city branch skips meadow geometry)
+Resources/Textures/PolyHaven/namaqualand_boulder_02_Rough_2k.jpg,meadow_loaded_not_drawn_in_city,2.128918,2.129197,Game/Systems/ChronoInk.cpp:40-54 (loads) | Game/Systems/ChronoInk.cpp:76 (city branch skips meadow geometry)
+Resources/Textures/PolyHaven/namaqualand_boulders_01_diff_2k.jpg,no_runtime_reference_candidate,2.722784,2.723359,No filename/runtime-family/inspected FBX base-color match; manual review required before removal
+Resources/Textures/PolyHaven/old_tyre_AO_2k.jpg,city_material,1.753197,1.770691,Game/Systems/CityStage.cpp:331 | Game/Systems/CityStage.cpp:353 | Game/Systems/CityStage.cpp:355 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/old_tyre_diff_2k.jpg,city_material,2.435534,2.439109,Game/Systems/CityStage.cpp:331 | Game/Systems/CityStage.cpp:353 | Game/Systems/CityStage.cpp:355 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/old_tyre_nor_dx_2k.jpg,city_material,2.922489,2.926561,Game/Systems/CityStage.cpp:331 | Game/Systems/CityStage.cpp:353 | Game/Systems/CityStage.cpp:355 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/old_tyre_Rough_2k.jpg,city_material,2.373336,2.390262,Game/Systems/CityStage.cpp:331 | Game/Systems/CityStage.cpp:353 | Game/Systems/CityStage.cpp:355 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/painted_metal_shutter_AO_2k.jpg,city_material,0.980815,1.034007,Game/Systems/CityStage.cpp:103 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/painted_metal_shutter_diff_2k.jpg,city_material,2.359574,2.359499,Game/Systems/CityStage.cpp:103 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/painted_metal_shutter_nor_dx_2k.jpg,city_material,2.922491,2.922181,Game/Systems/CityStage.cpp:103 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/painted_metal_shutter_Rough_2k.jpg,city_material,2.194230,2.197463,Game/Systems/CityStage.cpp:103 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/plastic_container_AO_2k.jpg,city_material,1.067512,1.093839,Game/Systems/CityStage.cpp:366 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/plastic_container_diff_2k.jpg,city_material,1.123049,1.136970,Game/Systems/CityStage.cpp:366 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/plastic_container_nor_dx_2k.jpg,city_material,1.160419,1.191238,Game/Systems/CityStage.cpp:366 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/plastic_container_Rough_2k.jpg,city_material,1.063547,1.077326,Game/Systems/CityStage.cpp:366 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/plastic_crate_01_AO_2k.jpg,city_material,2.311414,2.324793,Game/Systems/CityStage.cpp:355 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/plastic_crate_01_diff_2k.jpg,city_material,1.851556,1.851525,Game/Systems/CityStage.cpp:355 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/plastic_crate_01_nor_dx_2k.jpg,city_material,2.604650,2.628490,Game/Systems/CityStage.cpp:355 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/plastic_crate_01_Rough_2k.jpg,city_material,2.325444,2.324922,Game/Systems/CityStage.cpp:355 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/plastic_crate_02_AO_2k.jpg,city_material,1.331276,1.359436,Game/Systems/CityStage.cpp:355 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/plastic_crate_02_diff_2k.jpg,city_material,1.455939,1.465367,Game/Systems/CityStage.cpp:355 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/plastic_crate_02_nor_dx_2k.jpg,city_material,1.227031,1.570065,Game/Systems/CityStage.cpp:355 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/plastic_crate_02_Rough_2k.jpg,city_material,1.416176,1.421458,Game/Systems/CityStage.cpp:355 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/power_box_01_AO_2k.jpg,city_material,1.423253,1.429843,Game/Systems/CityStage.cpp:373 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/power_box_01_diff_2k.jpg,city_material,1.792430,1.796415,Game/Systems/CityStage.cpp:373 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/power_box_01_nor_dx_2k.jpg,city_material,2.610756,2.610731,Game/Systems/CityStage.cpp:373 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/power_box_01_Rough_2k.jpg,city_material,2.294504,2.294467,Game/Systems/CityStage.cpp:373 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/propane_tank_AO_2k.jpg,city_material,0.631273,0.658065,Game/Systems/CityStage.cpp:366 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/propane_tank_diff_2k.jpg,city_material,2.424171,2.432658,Game/Systems/CityStage.cpp:366 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/propane_tank_nor_dx_2k.jpg,city_material,2.763440,2.771293,Game/Systems/CityStage.cpp:366 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/propane_tank_Rough_2k.jpg,city_material,1.742119,1.752492,Game/Systems/CityStage.cpp:366 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/rectangular_facade_tiles_02_AO_2k.jpg,city_material,2.381834,2.382071,Game/Systems/CityStage.cpp:102 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/rectangular_facade_tiles_02_diff_2k.jpg,city_material,2.685505,2.687926,Game/Systems/CityStage.cpp:102 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/rectangular_facade_tiles_02_nor_dx_2k.jpg,city_material,2.998670,2.998352,Game/Systems/CityStage.cpp:102 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/rectangular_facade_tiles_02_Rough_2k.jpg,city_material,3.173266,3.191763,Game/Systems/CityStage.cpp:102 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/rock_09_diff_2k.jpg,meadow_loaded_not_drawn_in_city,1.990025,2.005293,Game/Systems/ChronoInk.cpp:43 | Game/Systems/ChronoInk.cpp:40-54 (loads) | Game/Systems/ChronoInk.cpp:76 (city branch skips meadow geometry)
+Resources/Textures/PolyHaven/rock_face_02_diff_2k.jpg,no_runtime_reference_candidate,3.240924,3.242414,No filename/runtime-family/inspected FBX base-color match; manual review required before removal
+Resources/Textures/PolyHaven/rusty_metal_shutter_AO_2k.jpg,city_material,1.588519,1.591760,Game/Systems/CityStage.cpp:103 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/rusty_metal_shutter_diff_2k.jpg,city_material,2.360551,2.360887,Game/Systems/CityStage.cpp:103 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/rusty_metal_shutter_nor_dx_2k.jpg,city_material,2.770963,2.772851,Game/Systems/CityStage.cpp:103 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/rusty_metal_shutter_Rough_2k.jpg,city_material,1.786143,1.793795,Game/Systems/CityStage.cpp:103 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/street_rat_AO_2k.jpg,city_material,0.937840,0.955052,Game/Systems/CityStage.cpp:451 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/street_rat_diff_2k.jpg,city_material,1.732973,1.738647,Game/Systems/CityStage.cpp:451 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/street_rat_nor_dx_2k.jpg,city_material,2.908649,2.916268,Game/Systems/CityStage.cpp:451 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/street_rat_Rough_2k.jpg,city_material,2.667723,2.681297,Game/Systems/CityStage.cpp:451 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/trashbag_AO_2k.jpg,city_material,1.011114,1.026152,Game/Systems/CityStage.cpp:355 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/trashbag_diff_2k.jpg,city_material,1.073041,1.089634,Game/Systems/CityStage.cpp:355 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/trashbag_nor_dx_2k.jpg,city_material,1.543262,1.556984,Game/Systems/CityStage.cpp:355 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/trashbag_Rough_2k.jpg,city_material,1.796881,1.804327,Game/Systems/CityStage.cpp:355 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/utility_box_01_AO_2k.jpg,city_material,0.522958,0.621437,Game/Systems/CityStage.cpp:408 | Game/Systems/CityStage.cpp:440 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/utility_box_01_diff_2k.jpg,city_material,1.890044,1.891728,Game/Systems/CityStage.cpp:408 | Game/Systems/CityStage.cpp:440 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/utility_box_01_nor_dx_2k.jpg,city_material,2.282486,2.285170,Game/Systems/CityStage.cpp:408 | Game/Systems/CityStage.cpp:440 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/utility_box_01_Rough_2k.jpg,city_material,1.876321,1.877319,Game/Systems/CityStage.cpp:408 | Game/Systems/CityStage.cpp:440 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/utility_box_02_AO_2k.jpg,city_material,0.553993,0.641524,Game/Systems/CityStage.cpp:408 | Game/Systems/CityStage.cpp:440 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/utility_box_02_diff_2k.jpg,city_material,1.851765,1.870089,Game/Systems/CityStage.cpp:408 | Game/Systems/CityStage.cpp:440 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/utility_box_02_nor_dx_2k.jpg,city_material,2.241224,2.262293,Game/Systems/CityStage.cpp:408 | Game/Systems/CityStage.cpp:440 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/utility_box_02_Rough_2k.jpg,city_material,1.875997,1.894945,Game/Systems/CityStage.cpp:408 | Game/Systems/CityStage.cpp:440 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/water_manhole_cover_AO_2k.jpg,city_material,0.833705,0.858798,Game/Systems/CityStage.cpp:374 | Game/Systems/CityStage.cpp:415 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/water_manhole_cover_diff_2k.jpg,city_material,1.444916,1.449520,Game/Systems/CityStage.cpp:374 | Game/Systems/CityStage.cpp:415 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/water_manhole_cover_nor_dx_2k.jpg,city_material,3.996215,4.001977,Game/Systems/CityStage.cpp:374 | Game/Systems/CityStage.cpp:415 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/water_manhole_cover_Rough_2k.jpg,city_material,1.568666,1.571886,Game/Systems/CityStage.cpp:374 | Game/Systems/CityStage.cpp:415 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/WetFloorSign_01_diff_2k.jpg,city_material,0.049356,0.110471,Game/Systems/CityStage.cpp:355 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/WetFloorSign_01_nor_dx_2k.jpg,city_material,0.159424,0.223248,Game/Systems/CityStage.cpp:355 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/WetFloorSign_01_Rough_2k.jpg,city_material,0.338469,0.367211,Game/Systems/CityStage.cpp:355 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/white_bricks_AO_2k.jpg,city_material,0.818056,0.817803,Game/Systems/CityStage.cpp:103 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/white_bricks_diff_2k.jpg,city_material,3.270094,3.269220,Game/Systems/CityStage.cpp:103 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/white_bricks_nor_dx_2k.jpg,city_material,1.800097,1.799593,Game/Systems/CityStage.cpp:103 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/white_bricks_Rough_2k.jpg,city_material,2.411655,2.414149,Game/Systems/CityStage.cpp:103 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/wooden_crate_01_AO_2k.jpg,city_material,0.687443,0.714345,Game/Systems/CityStage.cpp:355 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/wooden_crate_01_diff_2k.jpg,city_material,2.596718,2.602095,Game/Systems/CityStage.cpp:355 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/wooden_crate_01_nor_dx_2k.jpg,city_material,2.447725,2.452494,Game/Systems/CityStage.cpp:355 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/wooden_crate_01_Rough_2k.jpg,city_material,2.249909,2.254363,Game/Systems/CityStage.cpp:355 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/wooden_crate_02_AO_2k.jpg,city_material,0.795005,0.829048,Game/Systems/CityStage.cpp:366 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/wooden_crate_02_diff_2k.jpg,city_material,2.608673,2.612264,Game/Systems/CityStage.cpp:366 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/wooden_crate_02_nor_dx_2k.jpg,city_material,2.194277,2.200125,Game/Systems/CityStage.cpp:366 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/PolyHaven/wooden_crate_02_Rough_2k.jpg,city_material,2.286277,2.290992,Game/Systems/CityStage.cpp:366 | Game/Systems/CityStage.cpp:93-105 (material path expansion)
+Resources/Textures/UI/slime_circle.png,runtime_reference_keep,0.001053,0.001048,Game/UI/GameUI.h:95 | Game/UI/LoadingUI.h:20
+Resources/Textures/UI/slime_glow.png,runtime_reference_keep,0.004453,0.004448,Game/UI/GameUI.h:96 | Game/UI/LoadingUI.h:21
+Resources/Textures/UI/ui_brush.png,runtime_reference_keep,0.007809,0.008019,Game/UI/GameUI.h:91
+Resources/Textures/UI/ui_fade.png,runtime_reference_keep,0.000633,0.000697,Game/UI/GameUI.h:94
+Resources/Textures/UI/ui_grain.png,runtime_reference_keep,0.017715,0.017705,Game/UI/GameUI.h:93
+Resources/Textures/UI/ui_round_ring.png,runtime_reference_keep,0.000727,0.000727,Game/UI/GameUI.h:90
+Resources/Textures/UI/ui_round.png,runtime_reference_keep,0.000559,0.000579,Game/UI/GameUI.h:89
+Resources/Textures/UI/ui_splat.png,runtime_reference_keep,0.004406,0.004623,Game/UI/GameUI.h:92
+Resources/Textures/UI/kenney_input-prompts_1.5/Keyboard & Mouse/Default/keyboard_enter.png,runtime_reference_keep,0.000344,0.000369,Game/Scenes/SelectScene.cpp:152 | Game/Scenes/TitleScene.cpp:185
+Resources/Textures/UI/kenney_input-prompts_1.5/Keyboard & Mouse/Default/keyboard_escape.png,runtime_reference_keep,0.000319,0.000350,Game/Scenes/AssignmentSceneDraw.cpp:263 | Game/Scenes/SelectScene.cpp:153 | Game/Systems/SlimeAssault.cpp:359 | Game/UI/GameUI.h:572
+Resources/Textures/UI/kenney_input-prompts_1.5/Keyboard & Mouse/Default/keyboard_r.png,runtime_reference_keep,0.000291,0.000325,Game/Systems/ChronoSystem.cpp:389 | Game/UI/GameUI.h:555
+Resources/Textures/UI/kenney_input-prompts_1.5/Keyboard & Mouse/Default/keyboard_space.png,runtime_reference_keep,0.000344,0.000371,Game/Systems/SlimeAssault.cpp:357
+Resources/Textures/UI/kenney_input-prompts_1.5/Keyboard & Mouse/Default/keyboard_tab.png,runtime_reference_keep,0.000280,0.000316,Game/Systems/ChronoSystem.cpp:389 | Game/UI/GameUI.h:556 | Game/UI/GameUI.h:573
+Resources/Textures/UI/kenney_input-prompts_1.5/Keyboard & Mouse/Default/keyboard_w.png,runtime_reference_keep,0.000350,0.000369,Game/Scenes/AssignmentSceneDraw.cpp:260 | Game/Systems/SlimeAssault.cpp:354
+Resources/Textures/UI/kenney_input-prompts_1.5/Keyboard & Mouse/Default/mouse_left.png,runtime_reference_keep,0.000416,0.000442,Game/Scenes/AssignmentSceneDraw.cpp:261 | Game/Scenes/SelectScene.cpp:151 | Game/Systems/SlimeAssault.cpp:356
+Resources/Textures/UI/kenney_input-prompts_1.5/Keyboard & Mouse/Default/mouse_right.png,runtime_reference_keep,0.000400,0.000424,Game/Scenes/AssignmentSceneDraw.cpp:262 | Game/Systems/SlimeAssault.cpp:355
+Resources/Textures/UI/kenney_input-prompts_1.5/Keyboard & Mouse/Default/mouse_scroll.png,runtime_reference_keep,0.000415,0.000437,Game/Systems/SlimeAssault.cpp:358
+Resources/Textures/UI/kenney_input-prompts_1.5/Xbox Series/Default/xbox_button_a.png,runtime_reference_keep,0.000443,0.000468,Game/Scenes/SelectScene.cpp:151 | Game/Scenes/TitleScene.cpp:185 | Game/Systems/SlimeAssault.cpp:357 | Game/UI/GameUI.h:459 | Game/UI/GameUI.h:573 | Game/UI/GraphicsUI.h:119 | Game/UI/RogueliteUI.h:99 | Game/UI/RogueliteUI.h:107
+Resources/Textures/UI/kenney_input-prompts_1.5/Xbox Series/Default/xbox_button_b.png,runtime_reference_keep,0.000417,0.000443,Game/Scenes/SelectScene.cpp:153 | Game/Systems/SlimeAssault.cpp:355 | Game/UI/CreditsUI.h:75 | Game/UI/GameUI.h:571 | Game/UI/GameUI.h:572 | Game/UI/GraphicsUI.h:119 | Game/UI/GraphicsUI.h:183 | Game/UI/RogueliteUI.h:154 | Game/UI/RogueliteUI.h:163
+Resources/Textures/UI/kenney_input-prompts_1.5/Xbox Series/Default/xbox_button_menu.png,runtime_reference_keep,0.000360,0.000389,Game/Scenes/SelectScene.cpp:152 | Game/Systems/SlimeAssault.cpp:359
+Resources/Textures/UI/kenney_input-prompts_1.5/Xbox Series/Default/xbox_button_view.png,runtime_reference_keep,0.000395,0.000422,Game/Scenes/GameSceneDraw.cpp:220
+Resources/Textures/UI/kenney_input-prompts_1.5/Xbox Series/Default/xbox_button_x.png,runtime_reference_keep,0.000465,0.000488,Game/Systems/ChronoSystem.cpp:389 | Game/UI/GameUI.h:554 | Game/UI/GameUI.h:555 | Game/UI/RogueliteUI.h:105
+Resources/Textures/UI/kenney_input-prompts_1.5/Xbox Series/Default/xbox_button_y.png,runtime_reference_keep,0.000427,0.000453,Game/Systems/ChronoSystem.cpp:389 | Game/UI/GameUI.h:554 | Game/UI/GameUI.h:556 | Game/UI/RogueliteUI.h:104
+Resources/Textures/UI/kenney_input-prompts_1.5/Xbox Series/Default/xbox_dpad.png,runtime_reference_keep,0.000194,0.000207,Game/UI/GraphicsUI.h:118 | Game/UI/LoadingUI.h:345 | Game/UI/LoadingUI.h:482 | Game/UI/RogueliteUI.h:107 | Game/UI/RogueliteUI.h:162
+Resources/Textures/UI/kenney_input-prompts_1.5/Xbox Series/Default/xbox_lb.png,runtime_reference_keep,0.000286,0.000319,Game/UI/CreditsUI.h:70 | Game/UI/LoadingUI.h:346 | Game/UI/LoadingUI.h:482
+Resources/Textures/UI/kenney_input-prompts_1.5/Xbox Series/Default/xbox_rb.png,runtime_reference_keep,0.000331,0.000360,Game/UI/CreditsUI.h:71 | Game/UI/LoadingUI.h:346 | Game/UI/LoadingUI.h:482
+Resources/Textures/UI/kenney_input-prompts_1.5/Xbox Series/Default/xbox_rt.png,runtime_reference_keep,0.000345,0.000374,Game/Systems/SlimeAssault.cpp:335 | Game/Systems/SlimeAssault.cpp:356
+Resources/Textures/UI/kenney_input-prompts_1.5/Xbox Series/Default/xbox_stick_l.png,runtime_reference_keep,0.000571,0.000590,Game/Systems/SlimeAssault.cpp:354
+Resources/Textures/UI/kenney_input-prompts_1.5/Xbox Series/Default/xbox_stick_r_press.png,runtime_reference_keep,0.000652,0.000665,Game/Systems/SlimeAssault.cpp:358
+Resources/Textures/UI/kenney_ui-pack/PNG/Grey/Default/button_rectangle_depth_flat.png,no_runtime_reference_candidate,0.000342,0.000365,No filename/runtime-family/inspected FBX base-color match; manual review required before removal
+Resources/Textures/UI/kenney_ui-pack/PNG/Grey/Default/button_rectangle_flat.png,runtime_reference_keep,0.000272,0.000300,Game/Systems/UISystem.cpp:81

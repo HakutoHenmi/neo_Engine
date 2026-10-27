@@ -3,6 +3,7 @@
 // 作業ディレクトリの設定、シーンの登録、エディタの接続、コマンドライン引数による
 // 起動シーンの切り替えを行い、エンジン (Engine::App) を起動する。
 #include "App.h"
+#include "../Engine/StartupTiming.h"
 // ゲームの各シーン
 #include "GameScene.h"
 #include "Scenes/SlimePlayerDemoScene.h"
@@ -14,6 +15,7 @@
 #include "Editor/EditorUI.h"
 // ロード画面とシーン切り替えの演出
 #include "UI/LoadingUI.h"
+#include "UI/SceneMusic.h"
 // ファイル入出力 / 構造化例外のヘッダー
 #include <fstream>
 #include <eh.h>
@@ -46,6 +48,7 @@ static std::string g_logPath;
 
 // 起動ログに追記する (起動途中で落ちたときの調査用。ファイルが決まる前は何もしない)
 void LogFileMain(const char* msg) {
+	Engine::StartupTiming::Mark(msg);
 	if (g_logPath.empty()) return;
 	// 追記モードで開く
 	FILE* f = nullptr;
@@ -62,6 +65,13 @@ void LogFileMain(const char* msg) {
 int WINAPI WinMain(_In_ HINSTANCE hInst, _In_opt_ HINSTANCE, _In_ LPSTR commandLine, _In_ int cmdShow) {
 	// コマンドライン文字列はここでは使わない (GetCommandLineW で読み直す)
 	(void)commandLine;
+	Engine::StartupTiming::Mark("WinMain entry");
+	// Keep the main COM apartment alive for WIC textures, dialogs and the editor;
+	// audio initialization now owns a separate apartment on its startup worker.
+	struct MainCOMApartment {
+		HRESULT result = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+		~MainCOMApartment() { if (SUCCEEDED(result)) CoUninitialize(); }
+	} comApartment;
 	// 高 DPI 環境でもウィンドウとマウス座標がずれないよう、モニターごとの DPI に対応させる
 	SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
 
@@ -162,8 +172,7 @@ int WINAPI WinMain(_In_ HINSTANCE hInst, _In_opt_ HINSTANCE, _In_ LPSTR commandL
 	// タイトルやデモなど GameScene 以外のシーンでも、同じエディタの中で確認できるようにする
 	app.SetEditorPresenter([](Engine::IScene& scene, const std::string& name) { Game::EditorUI::PresentScene(scene, name); });
 #ifndef NDEBUG
-	// タイトル・セレクトは本来 3D を使わない軽量な経路 (ImGui なし) で動くため、
-	// エディタを出す Development ビルドでは最初から通常の経路にする。リリースは従来どおり軽量起動
+	// 必要なシーンだけ 3D 初期化を強制する。タイトル・セレクトのエディタ表示も軽量経路で動く
 	{ const auto& names = Game::Data::Config().fullRendererScenes; app.GetSceneManager().SetFullRendererScenes({names.begin(), names.end()}); }
 #endif
 #endif
@@ -192,6 +201,8 @@ int WINAPI WinMain(_In_ HINSTANCE hInst, _In_opt_ HINSTANCE, _In_ LPSTR commandL
 		}
 		LocalFree(arguments);
 	}
+
+	app.SetStartupMusic("Title", Game::Music::Path(Game::Music::Title));
 
 	// エンジンの初期化 → メインループ → 終了処理。例外はログとメッセージボックスで知らせる
 	try {

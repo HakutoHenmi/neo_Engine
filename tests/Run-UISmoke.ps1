@@ -1,5 +1,6 @@
-param([string]$Executable = '', [switch]$Boss, [switch]$Dodge, [switch]$BeamCamera, [switch]$Graphics, [switch]$Shadows, [switch]$Oblique, [switch]$EditorLoading)
+param([string]$Executable = '', [switch]$Boss, [switch]$Dodge, [switch]$BeamCamera, [switch]$Graphics, [switch]$Shadows, [switch]$Oblique, [switch]$EditorLoading, [switch]$Startup, [switch]$StartupTransitions)
 $ErrorActionPreference = 'Stop'
+if ($StartupTransitions) { $Startup = $true }
 $repoPath = Split-Path $PSScriptRoot -Parent
 if (!$Executable) { $Executable = Join-Path $repoPath '../Generated/Outputs/Development/DirectXGameApp.exe' }
 $Executable = (Resolve-Path -LiteralPath $Executable).Path
@@ -14,15 +15,17 @@ foreach ($name in $logs) {
 }
 $validation = Join-Path $repoPath 'd3d12_validation_log.txt'
 $previousLines = @(Get-Content $validation -ErrorAction SilentlyContinue).Count
+$reportName = if ($StartupTransitions) { "startup-transitions.txt" } elseif ($Startup) { "startup-smoke.txt" } else { "ui-smoke.txt" }
 $process = $null
 try {
-    'RUNNING' | Set-Content (Join-Path $outputPath 'ui-smoke.txt')
-    $argument = if ($EditorLoading) { '--editor-loading-smoke' } elseif ($Shadows) { '--shadow-band-smoke --dlss-smoke --rt-smoke --graphics-validation' } elseif ($Graphics) { '--graphics-ui-smoke' } elseif ($BeamCamera) { '--beam-camera-smoke' } elseif ($Dodge) { '--dodge-smoke' } elseif ($Boss) { '--boss-smoke' } else { '--ui-smoke' }
+    'RUNNING' | Set-Content (Join-Path $outputPath $reportName)
+    $argument = if ($Startup) { "--startup-smoke" } elseif ($EditorLoading) { '--editor-loading-smoke' } elseif ($Shadows) { '--shadow-band-smoke --dlss-smoke --rt-smoke --graphics-validation' } elseif ($Graphics) { '--graphics-ui-smoke' } elseif ($BeamCamera) { '--beam-camera-smoke' } elseif ($Dodge) { '--dodge-smoke' } elseif ($Boss) { '--boss-smoke' } else { '--ui-smoke' }
+    if ($StartupTransitions) { $argument += ' --startup-transition-smoke' }
     if($Oblique){$argument+=' --shadow-oblique'}
     $process = Start-Process $Executable -ArgumentList $argument -WorkingDirectory $repoPath -WindowStyle Hidden -PassThru
     if (!$process.WaitForExit(95000)) { throw 'UI smoke timed out.' }
     $process.Refresh()
-    $report = Get-Content -Raw (Join-Path $outputPath 'ui-smoke.txt')
+    $report = Get-Content -Raw (Join-Path $outputPath $reportName)
     $newValidation = @(Get-Content $validation -ErrorAction SilentlyContinue | Select-Object -Skip $previousLines)
     $newValidation | Set-Content (Join-Path $outputPath 'ui-validation.txt')
     if ($newValidation -match '\[(ERROR|CORRUPTION)\]|Device removed') { throw 'D3D12 validation failed.' }

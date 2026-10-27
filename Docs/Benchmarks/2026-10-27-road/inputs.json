@@ -1,0 +1,28 @@
+{
+  "sdk": "v0.10.0-beta",
+  "sdkSha256": "2d349fae349a14d0f35e856963f2c53d1cbbc4bb5fb1fe129ea6159c93d9e39d",
+  "sourceCommit": "1830798aa54c38069f335cecab2406af97bda1d9",
+  "libraryCommit": "35ec039503ef5e151c661beccc82390948dd5218",
+  "inputs": [
+    {
+      "fileName": "asphalt_02_diff_2k.jpg",
+      "bytes": 3075676,
+      "sha256": "28f5ba8690553f192c0e5e1a5ff40f34765b4b93f4cc7059b1a3e9c795b6c28c"
+    },
+    {
+      "fileName": "asphalt_02_nor_dx_2k.jpg",
+      "bytes": 5052243,
+      "sha256": "64dc04b1fc4288e1ceea00202ad581ef6e1715b12fd7a3e30c9d8b325772fa80"
+    },
+    {
+      "fileName": "asphalt_02_Rough_2k.jpg",
+      "bytes": 2230457,
+      "sha256": "b9a516b61b7040a9245ac206642d5f767ad9589a0169c4a1668221429e8a998c"
+    },
+    {
+      "fileName": "asphalt_02_AO_2k.jpg",
+      "bytes": 2039487,
+      "sha256": "5fe1737cbbcd55f2fec3632d6170762e5733f24bbc7a7816afb22a23c710b11f"
+    }
+  ]
+}

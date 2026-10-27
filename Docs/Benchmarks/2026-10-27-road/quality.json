@@ -1,0 +1,10 @@
+[
+  {"variant": "bcn-readback", "map": "albedo", "mip": 0, "channels": 3, "psnrDb": 43.131083},
+  {"variant": "bcn-readback", "map": "normal", "mip": 0, "channels": 2, "psnrDb": 39.668889, "normalMeanDegrees": 1.708189, "normalP95Degrees": 3.823210},
+  {"variant": "bcn-readback", "map": "roughness", "mip": 0, "channels": 1, "psnrDb": 41.932553},
+  {"variant": "bcn-readback", "map": "ao", "mip": 0, "channels": 1, "psnrDb": 42.761561},
+  {"variant": "ntc-native", "map": "albedo", "mip": 0, "channels": 3, "psnrDb": 29.216790},
+  {"variant": "ntc-native", "map": "normal", "mip": 0, "channels": 2, "psnrDb": 25.612175, "normalMeanDegrees": 7.678069, "normalP95Degrees": 15.981149},
+  {"variant": "ntc-native", "map": "roughness", "mip": 0, "channels": 1, "psnrDb": 32.952283},
+  {"variant": "ntc-native", "map": "ao", "mip": 0, "channels": 1, "psnrDb": 29.250992}
+]

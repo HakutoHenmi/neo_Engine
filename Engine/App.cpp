@@ -1,7 +1,11 @@
 #include "App.h"
+#include "StartupTiming.h"
+#include <string_view>
+#include <future>
 #include <Windows.h>
 #include <chrono>
 #include <fstream>
+#include "../tests/StartupValidation.h"
 #include "JobSystem.h"
 #include "LoadingScreen.h"
 #include "Time/TimeManager.h" // ★追加
@@ -14,6 +18,7 @@ namespace Engine {
 #include <cstdio>
 
 static void LogFile(const char* msg) {
+	if (std::string_view(msg).starts_with("Step ") || std::string_view(msg).starts_with("App::Initialize")) StartupTiming::Mark(msg);
 	FILE* f = nullptr;
 	fopen_s(&f, "C:\\Users\\k024g\\source\\repos\\neo_Engine\\error_log.txt", "a");
 	if (f) {
@@ -24,6 +29,15 @@ static void LogFile(const char* msg) {
 }
 
 bool App::Initialize(HINSTANCE hInst, int cmdShow) {
+	StartupTiming::Mark("Audio initialize/preload (parallel)");
+	// Only this worker touches audio until get() below. The future also joins on
+	// early failure, before the App and its audio member can be destroyed.
+	auto audioStartup = std::async(std::launch::async, [this] {
+		if (!audio_.Initialize()) return false;
+		if (initialSceneKey_ == startupMusicScene_ && !startupMusicPath_.empty())
+			audio_.PreloadBGM(startupMusicPath_);
+		return true;
+	});
 	LogFile("Step 1: dx_.Initialize");
 	sceneManager_.SetDX(&dx_);
 	if (!dx_.Initialize(hInst, cmdShow, hwnd_))
@@ -44,12 +58,11 @@ bool App::Initialize(HINSTANCE hInst, int cmdShow) {
 	// splash covers the rest of startup.
 	if (!renderer_.Initialize(&dx_))
 		return false;
-	LoadingScreen::Begin("Startup", true);
+
 
 	LogFile("Step 6: camera_.Initialize");
 	camera_.Initialize();
-	LogFile("Step 7: audio_.Initialize");
-	audio_.Initialize();
+
 
 #ifdef USE_IMGUI
 	LogFile("Step 8: imgui_.Initialize");
@@ -64,6 +77,8 @@ bool App::Initialize(HINSTANCE hInst, int cmdShow) {
 		registrar_(sceneManager_, dx_);
 	}
 
+	StartupTiming::Mark("Audio join");
+	if (!audioStartup.get()) return false;
 	LogFile("Step 10: initialSceneKey Change");
 	if (!initialSceneKey_.empty()) {
 		sceneManager_.Change(initialSceneKey_);
@@ -75,12 +90,12 @@ bool App::Initialize(HINSTANCE hInst, int cmdShow) {
 			sceneManager_.Change(first);
 	}
 
-	LoadingScreen::End();
 	LogFile("App::Initialize complete");
 	return true;
 }
 
 void App::Run() {
+	StartupValidation startupValidation;
 	MSG msg{};
 	bool running = true;
 
@@ -177,15 +192,34 @@ void App::Run() {
 
 			// ★追加: シーン切り替えをBeginFrame前に処理（GPUフェンス不整合を防ぐ）
 		sceneManager_.ProcessPendingChange();
+		auto* presentedBackBuffer = dx_.GetCurrentBackBufferResource();
 
 		// Until a world scene has been loaded the 3D pipeline does not exist yet:
 		// UI-only scenes (title / select) draw through the lightweight UI frame.
 		if (!renderer_.Ready3D()) {
+#if defined(USE_IMGUI) && !defined(NDEBUG)
+			imgui_.NewFrame(dx_);
+#endif
 			renderer_.RenderUIFrame([&] {
 				sceneManager_.Update();
 				sceneManager_.Draw();
-				if (auto* scene = sceneManager_.Current()) scene->DrawUI();
+				if (auto* scene = sceneManager_.Current()) {
+					scene->DrawUI();
+#if defined(USE_IMGUI) && !defined(NDEBUG)
+					renderer_.SetEditorLoadingViewport(0, 0, 0, 0);
+					if (editorPresenter_) editorPresenter_(*scene, sceneManager_.CurrentName());
+					else scene->DrawEditor();
+#endif
+				}
+#if defined(USE_IMGUI) && !defined(NDEBUG)
+			}, [&](ID3D12GraphicsCommandList* commands) {
+				imgui_.Render(commands);
+#ifndef NDEBUG
+				if (editorPresenter_) renderer_.CaptureEditorLoadingBackground(commands);
+#endif
+#endif
 			});
+			startupValidation.OnPresented(dx_, renderer_, sceneManager_, presentedBackBuffer);
 			NetworkProfiler::GetInstance().CommitFrame();
 			continue;
 		}
@@ -250,6 +284,7 @@ void App::Run() {
 		dx_.EndFrame();
 		} catch (const std::exception& e) { LogFile("EXCEPTION in dx_.EndFrame():"); LogFile(e.what()); throw; } catch (...) { LogFile("UNKNOWN EXCEPTION in dx_.EndFrame()"); throw; }
 
+		startupValidation.OnPresented(dx_, renderer_, sceneManager_, presentedBackBuffer);
 		auto renderEnd = std::chrono::high_resolution_clock::now();
 		float renderTimeMs = std::chrono::duration<float, std::milli>(renderEnd - renderStart).count();
 		NetworkProfiler::GetInstance().SetGpuRenderTime(renderTimeMs);

@@ -1,0 +1,283 @@
+{
+  "date": "2026-10-27",
+  "selected": "hybrid-12",
+  "capacityAlternative": "hybrid-8",
+  "scope": "One fixed offscreen road material; not applied to shipping engine",
+  "normal": "Original BC5, payload identical across all 12 mips",
+  "notLossless": true,
+  "dllExcludedFromMaterialBytes": true,
+  "libntcDllBytes": 6968832,
+  "sourceSha256": {
+    "tests\\RoadTextureGpuTests.cpp": "27db01fc10c67903beaa40f527372773e8f61029a01b5d93e63acf32abf5d836",
+    "tests\\Run-RoadTextureTests.ps1": "5df91109a92abb97407b2c8bc1bb604b939f1cf37cba626efdc5b2910824e927",
+    "tests\\Run-RoadHybridTests.ps1": "9de357e4e6ac47207fecdf28e9575ed0f7f079137b568117eefd117653148ef0",
+    "tests\\Summarize-RoadHybridTests.py": "66f83358c413f75de1d52d83dc4797e28f600d46734518cd59d2c398ffcf9d81"
+  },
+  "profiles": [
+    {
+      "name": "hybrid-3",
+      "fileBytes": 7407200,
+      "finalGpuAllocationBytes": 16908288,
+      "peakOwnedDefaultAllocationBytes": 110821376,
+      "uploadHeapBytes": 7683624,
+      "firstLoadWallMs": 1365.3197,
+      "warmLoadWallMedianMs": 37.1122,
+      "warmLoadWallP95Ms": 47.0863,
+      "gpuTotalMedianMs": 12.251824,
+      "gpuTotalP95Ms": 12.560672,
+      "gpuUploadMedianMs": 0.847744,
+      "gpuInferenceMedianMs": 9.135568,
+      "gpuEncodeAndCopyMedianMs": 2.245408,
+      "syntheticDrawMedianMs": 0.075776,
+      "reductionVsBcnPercent": 55.851415863546116,
+      "reductionVsJpegPercent": 40.25421961833261,
+      "mip0Quality": {
+        "albedo": {
+          "variant": "hybrid-3",
+          "map": "albedo",
+          "mip": 0,
+          "channels": 3,
+          "psnrDb": 29.016845
+        },
+        "normal": {
+          "variant": "hybrid-3",
+          "map": "normal",
+          "mip": 0,
+          "channels": 2,
+          "psnrDb": 39.668889,
+          "normalMeanDegrees": 1.708189,
+          "normalP95Degrees": 3.82321
+        },
+        "roughness": {
+          "variant": "hybrid-3",
+          "map": "roughness",
+          "mip": 0,
+          "channels": 1,
+          "psnrDb": 33.066418
+        },
+        "ao": {
+          "variant": "hybrid-3",
+          "map": "ao",
+          "mip": 0,
+          "channels": 1,
+          "psnrDb": 28.400433
+        }
+      },
+      "renderedRgbPsnrVsBcnDb": 40.48941177449814,
+      "normalPayloadByteIdentical": true,
+      "ntcSha256": "87cc16b010c5a75e50c5863cf708f22620397f409e16960d260ea1fd236103cd"
+    },
+    {
+      "name": "hybrid-5",
+      "fileBytes": 8805924,
+      "finalGpuAllocationBytes": 16908288,
+      "peakOwnedDefaultAllocationBytes": 112197632,
+      "uploadHeapBytes": 9123368,
+      "firstLoadWallMs": 37.9833,
+      "warmLoadWallMedianMs": 42.86065,
+      "warmLoadWallP95Ms": 59.785,
+      "gpuTotalMedianMs": 10.913744,
+      "gpuTotalP95Ms": 12.377856,
+      "gpuUploadMedianMs": 0.684256,
+      "gpuInferenceMedianMs": 8.209088,
+      "gpuEncodeAndCopyMedianMs": 2.022256,
+      "syntheticDrawMedianMs": 0.074752,
+      "reductionVsBcnPercent": 47.51470506895743,
+      "reductionVsJpegPercent": 28.972243038981805,
+      "mip0Quality": {
+        "albedo": {
+          "variant": "hybrid-5",
+          "map": "albedo",
+          "mip": 0,
+          "channels": 3,
+          "psnrDb": 34.256872
+        },
+        "normal": {
+          "variant": "hybrid-5",
+          "map": "normal",
+          "mip": 0,
+          "channels": 2,
+          "psnrDb": 39.668889,
+          "normalMeanDegrees": 1.708189,
+          "normalP95Degrees": 3.82321
+        },
+        "roughness": {
+          "variant": "hybrid-5",
+          "map": "roughness",
+          "mip": 0,
+          "channels": 1,
+          "psnrDb": 36.030169
+        },
+        "ao": {
+          "variant": "hybrid-5",
+          "map": "ao",
+          "mip": 0,
+          "channels": 1,
+          "psnrDb": 31.279187
+        }
+      },
+      "renderedRgbPsnrVsBcnDb": 43.2068639779336,
+      "normalPayloadByteIdentical": true,
+      "ntcSha256": "9764ac360229c2dc5f0aa8cb686c15f76607bca351e688a01fe6f13b5b375662"
+    },
+    {
+      "name": "hybrid-8",
+      "fileBytes": 9728856,
+      "finalGpuAllocationBytes": 16908288,
+      "peakOwnedDefaultAllocationBytes": 113508352,
+      "uploadHeapBytes": 10561324,
+      "firstLoadWallMs": 36.7223,
+      "warmLoadWallMedianMs": 37.3238,
+      "warmLoadWallP95Ms": 44.0504,
+      "gpuTotalMedianMs": 10.9908,
+      "gpuTotalP95Ms": 11.003776,
+      "gpuUploadMedianMs": 0.759472,
+      "gpuInferenceMedianMs": 8.206336,
+      "gpuEncodeAndCopyMedianMs": 2.022784,
+      "syntheticDrawMedianMs": 0.075776,
+      "reductionVsBcnPercent": 42.01382200191108,
+      "reductionVsJpegPercent": 21.527960100865773,
+      "mip0Quality": {
+        "albedo": {
+          "variant": "hybrid-8",
+          "map": "albedo",
+          "mip": 0,
+          "channels": 3,
+          "psnrDb": 35.952867
+        },
+        "normal": {
+          "variant": "hybrid-8",
+          "map": "normal",
+          "mip": 0,
+          "channels": 2,
+          "psnrDb": 39.668889,
+          "normalMeanDegrees": 1.708189,
+          "normalP95Degrees": 3.82321
+        },
+        "roughness": {
+          "variant": "hybrid-8",
+          "map": "roughness",
+          "mip": 0,
+          "channels": 1,
+          "psnrDb": 36.375346
+        },
+        "ao": {
+          "variant": "hybrid-8",
+          "map": "ao",
+          "mip": 0,
+          "channels": 1,
+          "psnrDb": 32.520224
+        }
+      },
+      "renderedRgbPsnrVsBcnDb": 44.228883790112306,
+      "normalPayloadByteIdentical": true,
+      "ntcSha256": "477c9f8c23cff8c77c531d884d3ea3849666915c7268ff86e8bd9679e9a87fc4"
+    },
+    {
+      "name": "hybrid-12",
+      "fileBytes": 11601448,
+      "finalGpuAllocationBytes": 16908288,
+      "peakOwnedDefaultAllocationBytes": 115015680,
+      "uploadHeapBytes": 11875888,
+      "firstLoadWallMs": 39.7696,
+      "warmLoadWallMedianMs": 37.75525,
+      "warmLoadWallP95Ms": 50.8589,
+      "gpuTotalMedianMs": 11.20568,
+      "gpuTotalP95Ms": 11.213792,
+      "gpuUploadMedianMs": 0.894448,
+      "gpuInferenceMedianMs": 8.210608,
+      "gpuEncodeAndCopyMedianMs": 2.098976,
+      "syntheticDrawMedianMs": 0.074752,
+      "reductionVsBcnPercent": 30.85275095411294,
+      "reductionVsJpegPercent": 6.423808683803012,
+      "mip0Quality": {
+        "albedo": {
+          "variant": "hybrid-12",
+          "map": "albedo",
+          "mip": 0,
+          "channels": 3,
+          "psnrDb": 39.768043
+        },
+        "normal": {
+          "variant": "hybrid-12",
+          "map": "normal",
+          "mip": 0,
+          "channels": 2,
+          "psnrDb": 39.668889,
+          "normalMeanDegrees": 1.708189,
+          "normalP95Degrees": 3.82321
+        },
+        "roughness": {
+          "variant": "hybrid-12",
+          "map": "roughness",
+          "mip": 0,
+          "channels": 1,
+          "psnrDb": 37.79617
+        },
+        "ao": {
+          "variant": "hybrid-12",
+          "map": "ao",
+          "mip": 0,
+          "channels": 1,
+          "psnrDb": 36.499071
+        }
+      },
+      "renderedRgbPsnrVsBcnDb": 47.059061843605114,
+      "normalPayloadByteIdentical": true,
+      "ntcSha256": "6e6e454390ac0c91a4bfef16619f7fb56cd5b965341cbe5848eeb6a1195165f6"
+    },
+    {
+      "name": "hybrid-16",
+      "fileBytes": 14397936,
+      "finalGpuAllocationBytes": 16908288,
+      "peakOwnedDefaultAllocationBytes": 117833728,
+      "uploadHeapBytes": 14691888,
+      "firstLoadWallMs": 44.1287,
+      "warmLoadWallMedianMs": 41.27695,
+      "warmLoadWallP95Ms": 48.911,
+      "gpuTotalMedianMs": 11.43216,
+      "gpuTotalP95Ms": 11.448096,
+      "gpuUploadMedianMs": 1.109536,
+      "gpuInferenceMedianMs": 8.22384,
+      "gpuEncodeAndCopyMedianMs": 2.098448,
+      "syntheticDrawMedianMs": 0.074752,
+      "reductionVsBcnPercent": 14.18505118165051,
+      "reductionVsJpegPercent": -16.132401204949588,
+      "mip0Quality": {
+        "albedo": {
+          "variant": "hybrid-16",
+          "map": "albedo",
+          "mip": 0,
+          "channels": 3,
+          "psnrDb": 40.578931
+        },
+        "normal": {
+          "variant": "hybrid-16",
+          "map": "normal",
+          "mip": 0,
+          "channels": 2,
+          "psnrDb": 39.668889,
+          "normalMeanDegrees": 1.708189,
+          "normalP95Degrees": 3.82321
+        },
+        "roughness": {
+          "variant": "hybrid-16",
+          "map": "roughness",
+          "mip": 0,
+          "channels": 1,
+          "psnrDb": 38.34194
+        },
+        "ao": {
+          "variant": "hybrid-16",
+          "map": "ao",
+          "mip": 0,
+          "channels": 1,
+          "psnrDb": 39.336389
+        }
+      },
+      "renderedRgbPsnrVsBcnDb": 47.925338116220715,
+      "normalPayloadByteIdentical": true,
+      "ntcSha256": "0f53f6baf41ce9ad1a458c6490b60593e3cb2aed3e1e47aa4cdb018d82527ddc"
+    }
+  ]
+}

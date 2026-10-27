@@ -7,6 +7,7 @@
 #include <mfidl.h>
 #include <mfreadwrite.h>
 #include "NetworkProfiler.h"
+#include "LoadProfile.h"
 
 #pragma comment(lib, "xaudio2.lib")
 #pragma comment(lib, "mfplat.lib")
@@ -14,6 +15,15 @@
 #pragma comment(lib, "mfuuid.lib")
 
 namespace Engine {
+namespace {
+// Decoder calls can run on a startup worker. Balance COM on that same thread;
+// voices and decoded PCM are handed off only after the worker has joined.
+struct AudioCOMScope {
+    HRESULT result = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+    ~AudioCOMScope() { if (SUCCEEDED(result)) CoUninitialize(); }
+};
+}
+
 
 Audio* Audio::instance_ = nullptr;
 
@@ -25,7 +35,8 @@ Audio* Audio::GetInstance() { return instance_; }
 bool Audio::Initialize() {
 	instance_ = this; // インスタンス登録
 
-	HRESULT hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+	AudioCOMScope com;
+	HRESULT hr;
 	if (FAILED(XAudio2Create(&xa_, 0, XAUDIO2_DEFAULT_PROCESSOR)))
 		return false;
 
@@ -33,6 +44,7 @@ bool Audio::Initialize() {
 		return false;
 
 	hr = MFStartup(MF_VERSION);
+	mfStarted_ = SUCCEEDED(hr);
 	if (FAILED(hr))
 		return false;
 
@@ -57,14 +69,15 @@ void Audio::Shutdown() {
 		master_ = nullptr;
 	}
 	xa_.Reset();
-	MFShutdown();
-	CoUninitialize();
+	if (mfStarted_) MFShutdown();
+	mfStarted_ = false;
 
 	instance_ = nullptr;
 }
 
 // std::string 版 Load
 uint32_t Audio::Load(const std::string& path) {
+	LoadProfile::Scope profile("audio", path);
 	// ★修正: GetUnifiedPath を使用して絶対パスを解決し、ワイド文字に変換
 	std::wstring wpath = Engine::PathUtils::FromUTF8(Engine::PathUtils::GetUnifiedPath(path));
 
@@ -151,10 +164,17 @@ void Audio::StopAll() {
 	activeVoices_.clear();
 }
 
+bool Audio::PreloadBGM(const std::string& path) {
+	if (bgmSounds_.contains(path)) return true;
+	const uint32_t sound = Load(path);
+	if (sound == 0xFFFFFFFF) return false;
+	bgmSounds_[path] = sound;
+	return true;
+}
+
 bool Audio::PlayBGM(const std::string& path, float volume) {
 	if (path == bgmPath_ && IsBGMPlaying()) return true;
-	auto found = bgmSounds_.find(path);
-	uint32_t sound = found == bgmSounds_.end() ? Load(path) : found->second;
+	uint32_t sound = PreloadBGM(path) ? bgmSounds_.at(path) : 0xFFFFFFFF;
 	if (sound == 0xFFFFFFFF) {
 		OutputDebugStringA(("BGM load failed: " + path + "\n").c_str());
 		return false;
@@ -218,6 +238,7 @@ void Audio::GarbageCollect() {
 
 // MediaFoundationを使ったロード実装
 bool Audio::LoadViaMF(const std::wstring& path, SoundData& outData) {
+	AudioCOMScope com;
 	HRESULT hr;
 	Microsoft::WRL::ComPtr<IMFSourceReader> reader;
 	hr = MFCreateSourceReaderFromURL(path.c_str(), nullptr, &reader);

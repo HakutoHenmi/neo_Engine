@@ -108,6 +108,7 @@ bool ChronoSystem::SaveSlimeLab(){
 }
 // スライムの生活モードを作る: 保存したレシピを読み込み、体・敵・取り込める物・門・音を初期化する
 void ChronoSystem::BuildSlimeLife(entt::registry& r){
+    Engine::LoadProfile::Scope profile("phase","ChronoSystem::BuildSlimeLife");
     // 最初の 1 回だけ保存を読み込む (自動テスト中は読まない)
     if(!lifeLoaded_){lifeLoaded_=true;
         if(!slimePlayerDemo_ && !wcsstr(GetCommandLineW(),L"--slime-life-smoke"))try{

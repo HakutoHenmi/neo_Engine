@@ -1,6 +1,7 @@
 #include "SceneManager.h"
 #include "Renderer.h"
 #include "LoadingScreen.h"
+#include "LoadProfile.h"
 #include <Windows.h> // OutputDebugStringA
 #include <cstdio>
 
@@ -41,6 +42,7 @@ std::vector<std::string> SceneManager::RegisteredNames() const {
 }
 
 bool SceneManager::Change(const std::string& name, const SceneParameters& params) {
+	LoadProfile::Scope profile("scene", "Change " + name);
 	auto it = factories_.find(name);
 	if (it == factories_.end()) {
 		OutputDebugStringA("[SceneManager] Change failed: not registered\n");
@@ -65,7 +67,8 @@ bool SceneManager::Change(const std::string& name, const SceneParameters& params
 	auto* renderer = Renderer::GetInstance();
 	// The first world scene also finishes the renderer's deferred 3D setup.
 	const bool needs3D = next && (next->RequiresFullRenderer() || fullRendererScenes_.count(name) != 0) && renderer && !renderer->Ready3D();
-	LoadingScreen::Begin(needs3D ? name + "+Engine" : name, startup);
+	const bool showLoading = !startup || needs3D;
+	if (showLoading) LoadingScreen::Begin(needs3D ? name + "+Engine" : name, startup);
 	if (needs3D) renderer->InitializeDeferred();
 	current_ = std::move(next);
 	currentName_ = name;
@@ -75,8 +78,9 @@ bool SceneManager::Change(const std::string& name, const SceneParameters& params
 		OutputDebugStringA("[SceneManager] Initialize scene\n");
 		current_->Initialize(dx_, params);
 	}
-	LoadingScreen::End();
-	if (transitionDrawer_) BeginReveal(from, LoadingScreen::Active() || LoadingScreen::Last().elapsed > 0.35f);
+	if (showLoading) LoadingScreen::End();
+	// The startup splash already covers initialization; show the first scene immediately.
+	if (transitionDrawer_ && !startup) BeginReveal(from, LoadingScreen::Active() || LoadingScreen::Last().elapsed > 0.35f);
 
 	pendingNext_.clear();
 	pendingParams_ = {};

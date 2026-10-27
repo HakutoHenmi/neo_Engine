@@ -5,6 +5,7 @@
 namespace Game {
 // インクのステージを作る: プレイヤーの状態・古いエンティティの削除・当たり判定・塗れる面・地形と景観・シェーダー・音・群れ
 void ChronoSystem::BuildInk(entt::registry& r){
+    Engine::LoadProfile::Scope profile("phase","ChronoSystem::BuildInk");
     // インクのプレイヤーの状態を付け、体の量を満タンにする
     r.emplace_or_replace<InkPlayer>(player_);auto& p=r.get<Player>(player_);p.mass=SlimeMaximumMass;p.automatic=false;
     // 開幕のムービーは UpdateInk より前に動くので、描画の時点で体の量を満タンにしておく
@@ -31,8 +32,24 @@ void ChronoSystem::BuildInk(entt::registry& r){
     // フィールドが広くなっても跡の細かさを保つため、塗れる面を 9 枚に分ける
     auto add=[&](V origin,V u,V v,float width,float depth){InkSurface surface;surface.origin=origin;surface.u=u;surface.v=v;surface.width=width;surface.depth=depth;inkSurfaces_.push_back(surface);};
     for(float z:{-340.f,-100.f,140.f})for(float x:{-330.f,-110.f,110.f})add({x,0,z},{1,0,0},{0,0,1},220,240);
-    // 景観用のシェーダーとテクスチャ (PBR の法線・粗さ・AO を含む)
     auto* render=Engine::Renderer::GetInstance();
+    // 草原は元の近距離の影を使う。街は塔のために範囲を広げる
+    // 影の範囲 (草原は近距離)
+    render->SetDirectionalShadowRange(100,100);
+    // 太陽: シーンの「Sun」エンティティが毎フレーム光を決める。草原は元の
+    // 45/30 度の太陽、街は高くして通りの向きにそろえる
+    // 「Sun」エンティティの角度と明るさを設定する
+    for(auto e:r.view<NameComponent,TransformComponent,DirectionalLightComponent>())if(r.get<NameComponent>(e).name=="Sun"){
+        auto& t=r.get<TransformComponent>(e);auto& light=r.get<DirectionalLightComponent>(e);
+        if(slimeLife_){t.rotate={DirectX::XMConvertToRadians(62.f),DirectX::XMConvertToRadians(8.f),0};light.intensity=1.1f;}
+        else{t.rotate={DirectX::XMConvertToRadians(45.f),DirectX::XMConvertToRadians(30.f),0};light.intensity=1;}}
+    // スライムの生活モードなら街のステージを作り、草原の景観はとばす
+    // 子分の縁取り: 見えている所と、壁越し (深度を見ない) の 2 種類
+    if(slimeLife_){render->CreateShaderPipelineTransparent("SlimeChildGlow",L"Resources/shaders/InstancedObjVS.hlsl",L"Resources/shaders/SlimeChildHighlightPS.hlsl",true,true);
+        render->CreateShaderPipelineTransparent("SlimeChildXRay",L"Resources/shaders/InstancedObjVS.hlsl",L"Resources/shaders/SlimeChildHighlightPS.hlsl",true,false);}
+    if(slimeLife_){if(slimePlayerDemo_) BuildSlimePlayerDemo(r);else BuildCityStage(r);}
+    else {
+    // 景観用のシェーダーとテクスチャ (PBR の法線・粗さ・AO を含む)
     render->CreateShaderPipeline("EnvironmentSurface",L"Resources/shaders/InstancedObjVS.hlsl",L"Resources/shaders/EnvironmentSurfacePS.hlsl");
     render->CreateShaderPipeline("MeadowGrass",L"Resources/shaders/InstancedObjVS.hlsl",L"Resources/shaders/MeadowGrassPS.hlsl");
     render->CreateShaderPipeline("MeadowGround",L"Resources/shaders/InstancedObjVS.hlsl",L"Resources/shaders/MeadowGroundPS.hlsl");
@@ -59,21 +76,6 @@ void ChronoSystem::BuildInk(entt::registry& r){
         if(pbr.count(texture))mr.extraTextureHandles=pbr[texture];
         r.remove<CameraOccluder>(e);return e;
     };
-    // 草原は元の近距離の影を使う。街は塔のために範囲を広げる
-    // 影の範囲 (草原は近距離)
-    render->SetDirectionalShadowRange(100,100);
-    // 太陽: シーンの「Sun」エンティティが毎フレーム光を決める。草原は元の
-    // 45/30 度の太陽、街は高くして通りの向きにそろえる
-    // 「Sun」エンティティの角度と明るさを設定する
-    for(auto e:r.view<NameComponent,TransformComponent,DirectionalLightComponent>())if(r.get<NameComponent>(e).name=="Sun"){
-        auto& t=r.get<TransformComponent>(e);auto& light=r.get<DirectionalLightComponent>(e);
-        if(slimeLife_){t.rotate={DirectX::XMConvertToRadians(62.f),DirectX::XMConvertToRadians(8.f),0};light.intensity=1.1f;}
-        else{t.rotate={DirectX::XMConvertToRadians(45.f),DirectX::XMConvertToRadians(30.f),0};light.intensity=1;}}
-    // スライムの生活モードなら街のステージを作り、草原の景観はとばす
-    // 子分の縁取り: 見えている所と、壁越し (深度を見ない) の 2 種類
-    if(slimeLife_){render->CreateShaderPipelineTransparent("SlimeChildGlow",L"Resources/shaders/InstancedObjVS.hlsl",L"Resources/shaders/SlimeChildHighlightPS.hlsl",true,true);
-        render->CreateShaderPipelineTransparent("SlimeChildXRay",L"Resources/shaders/InstancedObjVS.hlsl",L"Resources/shaders/SlimeChildHighlightPS.hlsl",true,false);}
-    if(slimeLife_){if(slimePlayerDemo_) BuildSlimePlayerDemo(r);else BuildCityStage(r);goto sceneryDone;}
     // 草原の地面: 高さの関数から格子状の地形メッシュを作る
     {auto floor=scenery("Meadow ground","Resources/Models/Environment/meadow-floor.obj",groundTex,{0,0,0},{1,1,1},"MeadowGround");
     std::vector<Engine::VertexData> terrainVertices;std::vector<uint32_t> terrainIndices;
@@ -175,7 +177,7 @@ void ChronoSystem::BuildInk(entt::registry& r){
     natural("Foreground sandstone",boulderMesh,boulderTex,{25,-.1f,32},5.5f,2.3f);
     }
     // インクの面のメッシュ・ビームや領域のシェーダー・音を用意し、群れ (とスライムの生活) を作る
-    sceneryDone:
+    } // Legacy meadow resources never load in the city.
     // インクの面のシェーダーとメッシュ (塗れる面ごと)
     render->CreateShaderPipeline("InkSurface",L"Resources/shaders/ObjVS.hlsl",L"Resources/shaders/InkSurfacePS.hlsl");
     for(int i=0;i<static_cast<int>(inkSurfaces_.size());++i)inkMeshes_.push_back(render->LoadObjMesh("Resources/Models/Ink/surface"+std::to_string(i)+".obj"));

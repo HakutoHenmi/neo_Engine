@@ -1,0 +1,15 @@
+{
+  "adapter": "NVIDIA GeForce RTX 4060 Laptop GPU",
+  "debugLayer": true,
+  "driverVersionRaw": 9007199255790646,
+  "timestampFrequency": 1000000000,
+  "warmups": 3, "samples": 32,
+  "variants": [
+    {"name": "bcn", "fileBytes": 16777888, "finalGpuAllocationBytes": 16908288, "peakOwnedDefaultAllocationBytes": 16908288, "uploadHeapBytes": 16795696, "firstLoadWallMs": 15.682100, "warmLoadWallMedianMs": 13.410900, "warmLoadWallP95Ms": 15.645600, "gpuTotalMedianMs": 1.297408, "gpuTotalP95Ms": 1.302560, "gpuUploadMedianMs": 1.296160, "gpuInferenceMedianMs": 0.000928, "gpuEncodeAndCopyMedianMs": 0.000352, "syntheticDrawMedianMs": 0.072704},
+    {"name": "hybrid-3", "fileBytes": 7407200, "finalGpuAllocationBytes": 16908288, "peakOwnedDefaultAllocationBytes": 110821376, "uploadHeapBytes": 7683624, "firstLoadWallMs": 1381.578700, "warmLoadWallMedianMs": 36.141700, "warmLoadWallP95Ms": 45.313900, "gpuTotalMedianMs": 11.903728, "gpuTotalP95Ms": 12.226208, "gpuUploadMedianMs": 0.572512, "gpuInferenceMedianMs": 9.113584, "gpuEncodeAndCopyMedianMs": 2.219408, "syntheticDrawMedianMs": 0.074752},
+    {"name": "hybrid-5", "fileBytes": 8805924, "finalGpuAllocationBytes": 16908288, "peakOwnedDefaultAllocationBytes": 112197632, "uploadHeapBytes": 9123368, "firstLoadWallMs": 40.249800, "warmLoadWallMedianMs": 37.165900, "warmLoadWallP95Ms": 45.353600, "gpuTotalMedianMs": 10.905968, "gpuTotalP95Ms": 10.914720, "gpuUploadMedianMs": 0.680336, "gpuInferenceMedianMs": 8.207872, "gpuEncodeAndCopyMedianMs": 2.017264, "syntheticDrawMedianMs": 0.073728},
+    {"name": "hybrid-8", "fileBytes": 9728856, "finalGpuAllocationBytes": 16908288, "peakOwnedDefaultAllocationBytes": 113508352, "uploadHeapBytes": 10561324, "firstLoadWallMs": 40.672100, "warmLoadWallMedianMs": 37.987200, "warmLoadWallP95Ms": 49.131800, "gpuTotalMedianMs": 10.988864, "gpuTotalP95Ms": 10.998272, "gpuUploadMedianMs": 0.758688, "gpuInferenceMedianMs": 8.205264, "gpuEncodeAndCopyMedianMs": 2.023488, "syntheticDrawMedianMs": 0.072704},
+    {"name": "hybrid-12", "fileBytes": 11601448, "finalGpuAllocationBytes": 16908288, "peakOwnedDefaultAllocationBytes": 115015680, "uploadHeapBytes": 11875888, "firstLoadWallMs": 42.066900, "warmLoadWallMedianMs": 40.365950, "warmLoadWallP95Ms": 52.719400, "gpuTotalMedianMs": 11.201936, "gpuTotalP95Ms": 11.216096, "gpuUploadMedianMs": 0.895776, "gpuInferenceMedianMs": 8.209232, "gpuEncodeAndCopyMedianMs": 2.096416, "syntheticDrawMedianMs": 0.074752},
+    {"name": "hybrid-16", "fileBytes": 14397936, "finalGpuAllocationBytes": 16908288, "peakOwnedDefaultAllocationBytes": 117833728, "uploadHeapBytes": 14691888, "firstLoadWallMs": 44.689200, "warmLoadWallMedianMs": 43.242450, "warmLoadWallP95Ms": 48.176500, "gpuTotalMedianMs": 11.434416, "gpuTotalP95Ms": 11.445536, "gpuUploadMedianMs": 1.109760, "gpuInferenceMedianMs": 8.224336, "gpuEncodeAndCopyMedianMs": 2.099152, "syntheticDrawMedianMs": 0.072704}
+  ]
+}

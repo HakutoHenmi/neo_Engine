@@ -79,7 +79,8 @@ float4 main(float4 svpos:SV_POSITION,float3 worldPos:TEXCOORD0,float3 normal:TEX
         float3 tangent=normalize((px*ty.y-py*tx.y)/determinant);
         tangent=normalize(tangent-n*dot(n,tangent));
         float3 bitangent=normalize(cross(n,tangent))*sign(determinant);
-        float3 map=normalMap.Sample(gSmp,uv).xyz*2-1;map.y=-map.y; // DirectX normal maps.
+        // DirectX normal maps. Z is rebuilt from XY so two-channel BC5 maps work like RGB ones.
+        float3 map;map.xy=normalMap.Sample(gSmp,uv).xy*2-1;map.y=-map.y;map.z=sqrt(saturate(1-dot(map.xy,map.xy)));
         n=normalize(tangent*map.x+bitangent*map.y+n*map.z);
     }
     float3 light=gDir[0].enabled?normalize(-gDir[0].dir):normalize(float3(-.4f,.8f,-.3f));

@@ -61,7 +61,8 @@ bool TraceSurface(float3 origin,float3 direction,float maximum,float footprint,o
     if(abs(determinant)>1e-7){
         float3 tangent=mul(toWorld,((tri.p[1].xyz-tri.p[0].xyz)*uvB.y-(tri.p[2].xyz-tri.p[0].xyz)*uvA.y)/determinant);
         tangent=SafeNormal(tangent-n*dot(n,tangent),float3(1,0,0));float3 bitangent=SafeNormal(cross(n,tangent),float3(0,0,1))*sign(determinant);
-        float3 map=MaterialSample(material.normal,uv,density,surface.footprint).xyz*2-1;map.y=-map.y;
+        // Z is rebuilt from XY so two-channel BC5 normal maps work like RGB ones.
+        float3 map;map.xy=MaterialSample(material.normal,uv,density,surface.footprint).xy*2-1;map.y=-map.y;map.z=sqrt(saturate(1-dot(map.xy,map.xy)));
         map.xy*=material.ground!=0?.35:1;
         n=SafeNormal(tangent*map.x+bitangent*map.y+n*map.z,n);
     }

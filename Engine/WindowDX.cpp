@@ -1,3 +1,5 @@
+#include "StartupTiming.h"
+#include <future>
 #include "WindowDX.h"
 #include "DlssRuntime.h"
 #include "Input.h"
@@ -403,7 +405,10 @@ bool WindowDX::InitWindow_(HINSTANCE hInst, int cmdShow, HWND& outHwnd) {
 }
 
 bool WindowDX::InitDX_() {
-    DlssRuntime::Get().Initialize();
+    // Manual hooking permits device creation before slInit. Join before queue /
+    // swapchain creation, whose Streamline hooks must already be installed.
+    StartupTiming::Mark("DLSS initialize + native device (parallel)");
+    auto dlssInitialization = std::async(std::launch::async, [] { DlssRuntime::Get().Initialize(); });
     bool validate=wcsstr(GetCommandLineW(),L"--graphics-validation")!=nullptr;
 #ifdef _DEBUG
     validate=true;
@@ -418,7 +423,7 @@ bool WindowDX::InitDX_() {
     }
 	if (FAILED(CreateDXGIFactory2(factoryFlags, IID_PPV_ARGS(&factory_))))
 		return false;
-    DlssRuntime::Get().UpgradeFactory(factory_);
+
 	// Prefer the OS high-performance ordering, not the default display adapter.
 	Microsoft::WRL::ComPtr<IDXGIAdapter1> selectedAdapter;
 	for (UINT index = 0; ; ++index) {
@@ -440,7 +445,11 @@ bool WindowDX::InitDX_() {
 	}
 	DXGI_ADAPTER_DESC1 selectedDesc{};
 	selectedAdapter->GetDesc1(&selectedDesc);
+    dlssInitialization.get();
+    DlssRuntime::Get().UpgradeFactory(factory_);
+    StartupTiming::Mark("DLSS set device");
     DlssRuntime::Get().SetDevice(dev_.Get(),selectedDesc.AdapterLuid);
+    StartupTiming::Mark("DX command queue/swapchain");
     AppendDebugLog(("[DLSS] "+DlssRuntime::Get().Status()+"\n").c_str());
 	char gpuName[512]{};
 	WideCharToMultiByte(CP_UTF8, 0, selectedDesc.Description, -1, gpuName, sizeof(gpuName), nullptr, nullptr);
