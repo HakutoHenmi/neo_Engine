@@ -64,6 +64,8 @@ DLSS を使う場合は、NVIDIA Streamline SDK を [`scripts/Setup-Streamline.p
 
 エディタの操作 (Ctrl+P で再生と停止など) は [Docs/DevelopmentLog.md](Docs/DevelopmentLog.md) にまとめています。
 
+スライムの移動と変形だけを試す場合は **Scenes → Demos → Slime Player Demo** を開きます。5種類の変形を解放した専用フィールドです。操作と検証方法は [Docs/SlimePlayerDemo.md](Docs/SlimePlayerDemo.md) にまとめています。
+
 ## フォルダー構成
 
 ```

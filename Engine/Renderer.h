@@ -517,6 +517,10 @@ public:
 	Microsoft::WRL::ComPtr<ID3D12RootSignature> rootSigVolumeShadow_;
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> psoVolumeShadow_;
 	D3D12_GPU_VIRTUAL_ADDRESS volumeFrameSettings_=0;
+    D3D12_GPU_VIRTUAL_ADDRESS farWaterFrameSettings_=0;
+    Microsoft::WRL::ComPtr<ID3D12PipelineState> psoFarWaterSplat_;
+    Microsoft::WRL::ComPtr<ID3D12Resource> farWaterAccum_,farWaterMomentum_,farWaterTextures_[4];
+    D3D12_GPU_DESCRIPTOR_HANDLE farWaterSrv_[4]{},farWaterUav_[4]{};
 	uint32_t volumeDrawCount_=0;
 	Vector3 volumeShadowLow_{},volumeShadowHigh_{};
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> psoVolumeClear_, psoVolumeShapes_, psoVolumeSplat_, psoVolumeResolve_, psoVolumeSmooth_, psoVolumeTemporal_, psoVolumeOccupancy_, psoVolumeRaymarch_, psoVolumeSpray_;
@@ -652,6 +656,13 @@ public:
 	// it before the 3D pipeline exists, and the loading screen calls it from its own
 	// thread while the main thread keeps loading.
 	void RenderUIFrame(const std::function<void()>& draw);
+	// Client coordinates, supplied only by the editor Game view. An empty rectangle
+	// preserves the editor while the Game tab is hidden.
+	void SetEditorLoadingViewport(float x, float y, float w, float h);
+	void CaptureEditorLoadingBackground();
+	bool PrepareEditorLoadingFrame();
+	void FinishEditorLoadingFrame() { preserveEditorLoading_ = false; }
+	bool MapLoadingPointer(float& x, float& y) const;
 	bool UIReady() const { return pso2D_.Get() != nullptr && uiList_ != nullptr; }
 	// The heavy 3D setup (pipelines, post-process, fluid, ray tracing, sky) is
 	// deferred until the first scene that renders the world needs it.
@@ -1084,6 +1095,9 @@ private:
 	void FlushOverlayQueue();
 	bool InitSpritePipeline_();
 	bool InitUIFrame_();
+	bool editorPresented_ = false, preserveEditorLoading_ = false;
+	D3D12_VIEWPORT editorLoadingViewport_{};
+	Microsoft::WRL::ComPtr<ID3D12Resource> editorLoadingBackground_;
 	TextureHandle LoadTexture2DUncached_(const std::string& filePath, bool sRGB);
 	Microsoft::WRL::ComPtr<ID3D12CommandAllocator> uiAlloc_[2];
 	Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> uiList_;

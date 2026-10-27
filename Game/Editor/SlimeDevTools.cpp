@@ -71,6 +71,7 @@ const char* ActionName(Chrono::LifeAction action) {
 	case Chrono::LifeAction::Tire: return "タイヤ";
 	case Chrono::LifeAction::Hydrant: return "消火栓";
 	case Chrono::LifeAction::Restore: return "復元中";
+	case Chrono::LifeAction::Signal: return "信号機";
 	}
 	return "?";
 }
@@ -270,11 +271,11 @@ void SlimeDevTools::DrawSlime(GameScene* scene) {
 	ImGui::DragFloat("##Mass", &massInput_, 5.0f, 1.0f, Chrono::LifeMaxMass, "質量 %.0f");
 	ImGui::SameLine();
 	if (ImGui::Button("質量を設定")) SetMass(scene, massInput_);
-	// 質量のプリセット (形態の解放に必要な質量など)
+	// 質量のプリセット (子分の上限が増える質量など)
 	// 表示名はゲームの規則の値から作る (名前と値がずれないように)
 	struct Preset { const char* name; float mass; };
-	const Preset presets[] = {{"開始", Chrono::LifeStartMass}, {"ハンマー", Chrono::LifeHammerMass}, {"剣", Chrono::LifeSwordMass},
-		{"飛行機", Chrono::LifePlaneMass}, {"門", Chrono::CityGateAbsorbMass()}, {"最大", Chrono::LifeMaxMass}};
+	const Preset presets[] = {{"開始", Chrono::LifeStartMass}, {"子分6", Chrono::LifeHammerMass}, {"中盤", Chrono::LifeSwordMass},
+		{"子分12", Chrono::LifePlaneMass}, {"門", Chrono::CityGateAbsorbMass()}, {"最大", Chrono::LifeMaxMass}};
 	// 3 個ずつ並べ、押したらその質量にする
 	for (size_t i = 0; i < std::size(presets); ++i) {
 		if (i % 3) ImGui::SameLine();
@@ -292,6 +293,8 @@ void SlimeDevTools::DrawSlime(GameScene* scene) {
 	ImGui::Checkbox("タイヤ解放", &body.tireUnlocked);
 	ImGui::SameLine();
 	ImGui::Checkbox("消火栓解放", &body.hydrantUnlocked);
+	ImGui::SameLine();
+	ImGui::Checkbox("信号機解放", &body.signalUnlocked);
 
 	// 無敵なら、プレイヤーの無敵時間を保ち、HP が 0 にならないようにする
 	if (invincible_) {
@@ -312,7 +315,8 @@ void SlimeDevTools::DrawWindow(GameScene* scene) {
 	// 調合室を開いているときの注意
 	if (life.lab) ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.35f, 1.0f), "調合室を開いています (SAVE & DEPLOY で出撃)");
 	// 各欄 (ステージ進行・スライム・ビューポート表示)
-	if (ImGui::CollapsingHeader("ステージ進行", ImGuiTreeNodeFlags_DefaultOpen)) DrawStage(scene);
+	if (scene->IsSlimePlayerDemo()) ImGui::TextWrapped("スライム試験場: 全形態解放 / F5でリセット / Hで被弾分裂");
+	else if (ImGui::CollapsingHeader("ステージ進行", ImGuiTreeNodeFlags_DefaultOpen)) DrawStage(scene);
 	if (ImGui::CollapsingHeader("スライム", ImGuiTreeNodeFlags_DefaultOpen)) DrawSlime(scene);
 	if (ImGui::CollapsingHeader("ビューポート表示")) {
 		ImGui::Checkbox("敵の位置と体力", &showEnemies_);

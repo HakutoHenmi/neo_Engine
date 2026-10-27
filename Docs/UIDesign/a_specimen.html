@@ -1,0 +1,62 @@
+<!doctype html><html lang="ja"><head><meta charset="utf-8"><title>Specimen HUD</title>
+<link href="https://fonts.googleapis.com/css2?family=Special+Elite&family=Yusei+Magic&family=Zen+Old+Mincho:wght@700;900&display=block" rel="stylesheet">
+<style>
+:root{--paper:#efe4c8;--ink:#2b2a26;--pencil:#3d4f73;--slime:#8fd13a;--slime2:#4f9a1c;--red:#c2392b}
+*{box-sizing:border-box;margin:0}
+body{width:1280px;height:720px;overflow:hidden;background:#000 url(bg.jpg) center/cover;font-family:"Zen Old Mincho",serif;color:var(--ink);position:relative}
+/* 目標: マスキングテープで留めた標本ラベル */
+.tag{position:absolute;left:26px;top:22px;width:390px;padding:16px 20px 14px;background:var(--paper);transform:rotate(-1.6deg);
+ box-shadow:0 6px 14px rgba(0,0,0,.45);background-image:repeating-linear-gradient(transparent 0 25px,rgba(60,80,120,.16) 25px 26px)}
+.tag:before{content:"";position:absolute;left:150px;top:-12px;width:96px;height:26px;background:rgba(232,214,160,.85);transform:rotate(3deg)}
+.no{font-family:"Special Elite";font-size:13px;letter-spacing:1px;color:#6b604a}
+.title{font-size:23px;font-weight:900;margin-top:2px}
+.goal{font-family:"Yusei Magic";font-size:15px;color:var(--pencil);margin-top:6px;line-height:1.35}
+.stamp{position:absolute;right:16px;top:12px;width:62px;height:62px;border:3px solid var(--red);border-radius:50%;color:var(--red);
+ font-family:"Special Elite";text-align:center;transform:rotate(12deg);opacity:.85;padding-top:7px;font-size:10px;line-height:1}
+.stamp b{display:block;font-size:26px;font-family:"Zen Old Mincho";font-weight:900}
+/* 体力: 目盛り付きのフラスコ */
+.flask{position:absolute;left:24px;bottom:18px;width:150px;height:190px}
+.reading{position:absolute;left:176px;bottom:30px;font-family:"Special Elite";color:var(--paper);text-shadow:0 2px 3px #000}
+.reading .big{font-size:34px;line-height:1}
+.reading .sub{font-size:13px;opacity:.85;margin-top:4px}
+.tubes{display:flex;gap:5px;margin-top:10px}
+.tube{width:9px;height:30px;border:1.5px solid rgba(239,228,200,.85);border-top:none;border-radius:0 0 5px 5px;position:relative;overflow:hidden}
+.tube.on:after{content:"";position:absolute;left:0;right:0;bottom:0;height:70%;background:var(--slime)}
+.tube.down:after{content:"";position:absolute;left:0;right:0;bottom:0;height:25%;background:#8b8b80}
+/* 変形: 索引カード */
+.cards{position:absolute;left:50%;bottom:22px;transform:translateX(-44%);display:flex;gap:10px}
+.card{width:78px;height:96px;background:var(--paper);box-shadow:0 5px 10px rgba(0,0,0,.5);padding:6px;position:relative;color:var(--ink)}
+.card:nth-child(odd){transform:rotate(-2deg)}.card:nth-child(even){transform:rotate(1.5deg) translateY(4px)}
+.card .n{font-family:"Special Elite";font-size:12px;color:#7d6f52}
+.card svg{width:40px;height:40px;display:block;margin:2px auto 0;color:var(--slime2)}
+.card .nm{font-size:12px;text-align:center;font-weight:700;margin-top:2px}
+.card.sel{outline:3px solid var(--slime);outline-offset:3px;transform:translateY(-10px) rotate(0)}
+.card.lock svg{color:#b1a688}.card.lock .nm{color:#9a8f73}
+.card.lock:after{content:"未採取";position:absolute;left:8px;top:38px;border:2px solid var(--red);color:var(--red);font-size:13px;font-weight:900;padding:1px 5px;transform:rotate(-14deg);background:rgba(239,228,200,.6)}
+.note{position:absolute;right:28px;bottom:26px;font-family:"Yusei Magic";font-size:15px;color:var(--paper);text-shadow:0 2px 3px #000;text-align:right;line-height:1.6}
+.note kbd{font-family:"Special Elite";border:1.5px solid var(--paper);border-radius:3px;padding:0 5px;margin-right:4px;font-size:12px}
+</style></head><body>
+<!--ICONS-->
+<div class="tag"><div class="no">SPECIMEN No.03 ── AREA 2 / 市街地</div><div class="title">大通りの警備隊</div>
+ <div class="goal">消火栓を吸収し、放水で盾を崩して<br>水で矢を防ぐ</div><div class="stamp">残り<b>5</b></div></div>
+<svg class="flask" viewBox="0 0 150 190">
+ <defs><clipPath id="fl"><path d="M58 8h34v52l46 104c4 10-2 20-12 20H24c-10 0-16-10-12-20L58 60z"/></clipPath></defs>
+ <g clip-path="url(#fl)"><rect x="0" y="0" width="150" height="190" fill="rgba(239,228,200,.12)"/>
+  <rect x="0" y="62" width="150" height="130" fill="#8fd13a" opacity=".85"/><path d="M0 64q20-8 40 0t40 0 40 0 40 0v6H0z" fill="#c7f07a"/>
+  <circle cx="60" cy="130" r="5" fill="#d8ff9a" opacity=".7"/><circle cx="90" cy="150" r="3" fill="#d8ff9a" opacity=".7"/><circle cx="76" cy="100" r="4" fill="#d8ff9a" opacity=".6"/></g>
+ <path d="M58 8h34v52l46 104c4 10-2 20-12 20H24c-10 0-16-10-12-20L58 60z" fill="none" stroke="#efe4c8" stroke-width="3"/>
+ <rect x="52" y="2" width="46" height="9" rx="3" fill="#efe4c8"/>
+ <g stroke="#2b2a26" stroke-width="2"><line x1="40" y1="100" x2="54" y2="100"/><line x1="30" y1="125" x2="44" y2="125"/><line x1="22" y1="150" x2="36" y2="150"/></g>
+</svg>
+<div class="reading"><div class="big">780<span style="font-size:16px"> / 780 ml</span></div><div class="sub">MASS 900 g ・ 後期</div>
+ <div class="tubes"><i class="tube on"></i><i class="tube on"></i><i class="tube on"></i><i class="tube on"></i><i class="tube on"></i><i class="tube down"></i><i class="tube"></i><i class="tube"></i><i class="tube"></i><i class="tube"></i><i class="tube"></i><i class="tube"></i></div>
+ <div class="sub">分裂体 5 / 12</div></div>
+<div class="cards">
+ <div class="card sel"><div class="n">01</div><svg><use href="#i-hammer"/></svg><div class="nm">ハンマー</div></div>
+ <div class="card"><div class="n">02</div><svg><use href="#i-sword"/></svg><div class="nm">剣</div></div>
+ <div class="card"><div class="n">03</div><svg><use href="#i-plane"/></svg><div class="nm">飛行機</div></div>
+ <div class="card lock"><div class="n">04</div><svg><use href="#i-tire"/></svg><div class="nm">タイヤ</div></div>
+ <div class="card lock"><div class="n">05</div><svg><use href="#i-hydrant"/></svg><div class="nm">消火栓</div></div>
+</div>
+<div class="note"><kbd>左</kbd>変形　<kbd>右 長押し</kbd>吸収<br><kbd>Space</kbd>跳ぶ　<kbd>R</kbd>戻る</div>
+</body></html>

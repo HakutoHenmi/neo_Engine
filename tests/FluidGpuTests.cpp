@@ -717,9 +717,11 @@ void TestVolume(Gpu& g, int waterLayers=2, float waterOffset=0, bool draw=true, 
 #include "GraphicsPostValidation.inl"
 #include "FluidSandboxTests.inl"
 #include "HydrantFluidTests.inl"
+#include "FarWaterTests.inl"
 int main(int argc,char** argv) {
     if(argc>1&&std::strcmp(argv[1],"--graphics-only")==0){try{Check(CoInitializeEx(nullptr,COINIT_MULTITHREADED));Gpu gpu;TestGraphicsPost(gpu);return 0;}catch(const std::exception& error){fprintf(stderr,"FAIL graphics: %s\n",error.what());return 2;}}
     try {
+        if(argc>1&&std::strcmp(argv[1],"--far-water-only")==0){Check(CoInitializeEx(nullptr,COINIT_MULTITHREADED));Gpu gpu;TestFarWater(gpu);return 0;}
         if(argc>1&&std::strcmp(argv[1],"--hydrant-only")==0){Check(CoInitializeEx(nullptr,COINIT_MULTITHREADED));Gpu gpu;TestHydrantFluid(gpu);return 0;}
         if(argc>1 && std::strcmp(argv[1],"--growth-only")==0){Check(CoInitializeEx(nullptr,COINIT_MULTITHREADED));Gpu gpu;TestScaleInvariantDensity(gpu);return 0;}
         if(argc>1 && std::strcmp(argv[1],"--surface-only")==0) { Check(CoInitializeEx(nullptr,COINIT_MULTITHREADED));Gpu gpu;TestFluidTendrils(gpu);TestHammerSurface(gpu);TestHammerSurface(gpu,true);TestHammerSurface(gpu,false,Game::Chrono::LifeAction::Sword);TestHammerSurface(gpu,false,Game::Chrono::LifeAction::Plane);TestHammerSurface(gpu,true,Game::Chrono::LifeAction::Hammer,Game::Chrono::LifeMaxMass);for(auto form:{Game::Chrono::LifeAction::Hammer,Game::Chrono::LifeAction::Sword,Game::Chrono::LifeAction::Plane})TestHammerSurface(gpu,false,form,Game::Chrono::LifeMaxMass);return 0; }

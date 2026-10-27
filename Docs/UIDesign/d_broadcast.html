@@ -1,0 +1,57 @@
+<!doctype html><html lang="ja"><head><meta charset="utf-8"><title>Broadcast HUD</title>
+<link href="https://fonts.googleapis.com/css2?family=Dela+Gothic+One&family=Noto+Sans+JP:wght@700;900&family=Oswald:wght@500;700&display=block" rel="stylesheet">
+<style>
+:root{--red:#d7261e;--navy:#10203f;--white:#fafaf5;--yellow:#ffd23a;--slime:#8be03a}
+*{box-sizing:border-box;margin:0}
+body{width:1280px;height:720px;overflow:hidden;background:#000 url(bg.jpg) center/cover;font-family:"Noto Sans JP",sans-serif;color:var(--white);position:relative}
+body:after{content:"";position:absolute;inset:0;background:repeating-linear-gradient(transparent 0 2px,rgba(0,0,0,.08) 2px 3px);pointer-events:none}
+/* 右上: 中継の印 */
+.bug{position:absolute;right:28px;top:22px;display:flex;align-items:center;gap:10px;font-family:"Oswald";font-weight:700}
+.live{background:var(--red);padding:3px 10px;font-size:18px;letter-spacing:2px;display:flex;align-items:center;gap:6px}
+.live:before{content:"";width:10px;height:10px;border-radius:50%;background:var(--white)}
+.ch{font-family:"Dela Gothic One";font-size:22px;text-shadow:0 2px 4px #000}
+.ch span{color:var(--slime)}
+.time{position:absolute;right:28px;top:56px;font-family:"Oswald";font-size:14px;text-shadow:0 1px 3px #000;opacity:.9}
+/* 左上: 現場の地名 */
+.loc{position:absolute;left:28px;top:24px;background:rgba(16,32,63,.88);border-left:6px solid var(--yellow);padding:6px 14px}
+.loc .s{font-family:"Oswald";font-size:12px;letter-spacing:3px;color:var(--yellow)}
+.loc .p{font-weight:900;font-size:18px}
+/* 左: 分裂体の確認数・残りの警備 */
+.stats{position:absolute;left:28px;top:96px;display:flex;flex-direction:column;gap:6px}
+.stat{background:rgba(10,10,10,.6);padding:4px 12px;font-size:13px;display:flex;gap:10px;align-items:baseline}
+.stat b{font-family:"Oswald";font-size:22px;color:var(--yellow)}
+/* 下: テロップ (目標が速報の見出しになる) */
+.lower{position:absolute;left:0;right:0;bottom:44px;height:96px;display:flex}
+.flag{background:var(--red);width:118px;display:grid;place-items:center;font-family:"Dela Gothic One";font-size:34px;letter-spacing:2px}
+.head{flex:1;background:linear-gradient(90deg,rgba(250,250,245,.97),rgba(250,250,245,.9));color:var(--navy);padding:10px 20px}
+.head .h{font-weight:900;font-size:27px;line-height:1.2}
+.head .sub{font-size:15px;font-weight:700;color:#3a4766;margin-top:4px}
+/* 体積メーターと変形の目撃 */
+.meter{width:330px;background:var(--navy);padding:10px 16px}
+.meter .l{font-family:"Oswald";font-size:12px;letter-spacing:2px;color:var(--yellow);display:flex;justify-content:space-between}
+.bar{height:16px;background:#2a3a5c;margin-top:4px;position:relative}
+.bar i{position:absolute;inset:0;width:100%;background:var(--slime)}
+.bar2{height:5px;background:#2a3a5c;margin-top:4px}.bar2 i{display:block;height:100%;width:15%;background:var(--white)}
+.forms{display:flex;gap:6px;margin-top:8px}
+.fm{width:52px;height:20px;background:#22355c;font-family:"Oswald";font-size:11px;display:flex;align-items:center;justify-content:center;gap:3px;color:#a9b6d1}
+.fm svg{width:13px;height:13px;color:currentColor}
+.fm.sel{background:var(--yellow);color:var(--navy)}
+.fm.lock{opacity:.4}
+/* 最下段: 流れるニュース (操作の説明を流す) */
+.ticker{position:absolute;left:0;right:0;bottom:12px;height:32px;background:var(--navy);display:flex;align-items:center;font-size:14px;font-weight:700;white-space:nowrap;overflow:hidden}
+.ticker .tag{background:var(--yellow);color:var(--navy);height:100%;padding:0 14px;display:flex;align-items:center;font-weight:900}
+.ticker .run{padding-left:18px}
+.ticker .run b{color:var(--yellow);margin:0 4px 0 22px}
+</style></head><body>
+<!--ICONS-->
+<div class="bug"><div class="ch">SLM<span>TV</span></div><div class="live">LIVE</div></div>
+<div class="time">緊急中継　22:47</div>
+<div class="loc"><div class="s">AREA 2 ・ STEP 3/8</div><div class="p">市街地　大通り</div></div>
+<div class="stats"><div class="stat">残る警備隊<b>5</b></div><div class="stat">分裂体を確認<b>5</b>/ 12</div></div>
+<div class="lower"><div class="flag">速報</div>
+ <div class="head"><div class="h">大通りに警備隊が集結　消火栓が狙われる</div><div class="sub">目標：消火栓を吸収し、放水で盾を崩して水で矢を防ぐ</div></div>
+ <div class="meter"><div class="l"><span>BODY 780 / 780</span><span>MASS 900</span></div><div class="bar"><i></i></div><div class="bar2"><i></i></div>
+  <div class="forms"><div class="fm sel"><svg><use href="#i-hammer"/></svg>1</div><div class="fm"><svg><use href="#i-sword"/></svg>2</div><div class="fm"><svg><use href="#i-plane"/></svg>3</div><div class="fm lock"><svg><use href="#i-tire"/></svg>4</div><div class="fm lock"><svg><use href="#i-hydrant"/></svg>5</div></div></div>
+</div>
+<div class="ticker"><div class="tag">操作</div><div class="run"><b>左クリック</b>変形・攻撃<b>右クリック長押し</b>正面をまとめて吸収<b>SPACE</b>ジャンプ<b>R</b>スライムに戻る<b>1〜5</b>形を選ぶ<b>TAB</b>調合室</div></div>
+</body></html>

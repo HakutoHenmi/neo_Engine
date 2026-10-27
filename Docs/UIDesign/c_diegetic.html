@@ -1,0 +1,59 @@
+<!doctype html><html lang="ja"><head><meta charset="utf-8"><title>Diegetic HUD</title>
+<link href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@500;900&family=Bricolage+Grotesque:wght@600;800&display=block" rel="stylesheet">
+<style>
+:root{--slime:#a6ec4a;--ink:#f6f7ee;--shade:rgba(10,14,10,.55)}
+*{box-sizing:border-box;margin:0}
+body{width:1280px;height:720px;overflow:hidden;background:#000 url(bg.jpg) center/cover;font-family:"Zen Kaku Gothic New",sans-serif;color:var(--ink);position:relative}
+/* 上部中央: 章の見出し (入った時だけ出て、数秒で消える) */
+.chapter{position:absolute;top:26px;left:0;right:0;text-align:center;text-shadow:0 2px 8px rgba(0,0,0,.8)}
+.chapter .k{font-family:"Bricolage Grotesque";font-weight:600;font-size:13px;letter-spacing:6px;opacity:.75}
+.chapter .t{font-weight:900;font-size:30px;margin-top:2px}
+.chapter .rule{width:280px;height:2px;margin:8px auto;background:linear-gradient(90deg,transparent,var(--slime),transparent)}
+.chapter .g{font-size:15px;opacity:.92}
+/* 地面の輪: 体力 (内側) と量 (外側) をスライムの足元に */
+svg.ring{position:absolute;left:0;top:0;width:1280px;height:720px;pointer-events:none}
+/* 右端: 変形の縦の並び */
+.forms{position:absolute;right:26px;top:50%;transform:translateY(-50%);display:flex;flex-direction:column;gap:10px;align-items:flex-end}
+.f{display:flex;align-items:center;gap:10px;opacity:.6}
+.f svg{width:30px;height:30px;color:var(--ink);filter:drop-shadow(0 2px 3px #000)}
+.f .lbl{font-weight:900;font-size:14px;text-shadow:0 2px 4px #000;display:none}
+.f .key{font-family:"Bricolage Grotesque";font-size:12px;width:18px;text-align:center;text-shadow:0 1px 3px #000}
+.f.sel{opacity:1}.f.sel .lbl{display:block;font-size:20px;color:var(--slime)}.f.sel svg{width:46px;height:46px;color:var(--slime)}
+.f.lock{opacity:.28}
+/* 左下: 子分の数 (小さな塊) */
+.crew{position:absolute;left:28px;bottom:26px;display:flex;align-items:flex-end;gap:4px}
+.crew svg{width:18px;height:18px;color:var(--slime);filter:drop-shadow(0 1px 2px #000)}
+.crew svg.off{color:rgba(255,255,255,.22)}
+.crew span{font-family:"Bricolage Grotesque";font-weight:800;font-size:22px;margin-left:8px;text-shadow:0 2px 4px #000;line-height:1}
+.crew small{font-size:11px;opacity:.7;margin-left:4px}
+/* 右下: その場で使える操作だけ */
+.hint{position:absolute;right:28px;bottom:24px;display:flex;gap:14px;font-size:13px;text-shadow:0 1px 4px #000;align-items:center}
+.hint i{font-style:normal;font-family:"Bricolage Grotesque";font-weight:800;font-size:11px;border:1.5px solid var(--ink);border-radius:999px;padding:1px 8px;margin-right:5px}
+.prompt{position:absolute;left:0;right:0;top:520px;text-align:center;font-weight:900;font-size:17px;text-shadow:0 2px 6px #000}
+.prompt i{font-style:normal;background:var(--ink);color:#111;border-radius:999px;padding:0 9px;margin-right:6px;font-family:"Bricolage Grotesque";font-size:13px}
+.enemy{position:absolute;top:30px;right:30px;font-family:"Bricolage Grotesque";font-weight:800;font-size:26px;text-shadow:0 2px 6px #000;text-align:right;line-height:1}
+.enemy small{display:block;font-family:"Zen Kaku Gothic New";font-size:11px;font-weight:500;opacity:.8}
+</style></head><body>
+<!--ICONS-->
+<div class="chapter"><div class="k">AREA 2 ・ STEP 3/8</div><div class="t">大通りの警備隊</div><div class="rule"></div><div class="g">消火栓を吸収し、放水で盾を崩して水で矢を防ぐ</div></div>
+<div class="enemy">5<small>のこり</small></div>
+<svg class="ring" viewBox="0 0 1280 720">
+ <g transform="translate(640 432) scale(1 .32)">
+  <circle r="150" fill="none" stroke="rgba(0,0,0,.35)" stroke-width="14"/>
+  <circle r="150" fill="none" stroke="#a6ec4a" stroke-width="10" stroke-dasharray="785 942" transform="rotate(-90)" stroke-linecap="round"/>
+  <circle r="172" fill="none" stroke="rgba(255,255,255,.18)" stroke-width="4"/>
+  <circle r="172" fill="none" stroke="#f6f7ee" stroke-width="4" stroke-dasharray="162 1081" transform="rotate(-90)"/>
+ </g>
+ <text x="640" y="508" text-anchor="middle" font-family="Bricolage Grotesque" font-weight="800" font-size="15" fill="#f6f7ee" style="paint-order:stroke" stroke="rgba(0,0,0,.6)" stroke-width="3">780</text>
+</svg>
+<div class="forms">
+ <div class="f sel"><span class="lbl">ハンマー</span><svg><use href="#i-hammer"/></svg><span class="key">1</span></div>
+ <div class="f"><span class="lbl">剣</span><svg><use href="#i-sword"/></svg><span class="key">2</span></div>
+ <div class="f"><span class="lbl">飛行機</span><svg><use href="#i-plane"/></svg><span class="key">3</span></div>
+ <div class="f lock"><span class="lbl">タイヤ</span><svg><use href="#i-tire"/></svg><span class="key">4</span></div>
+ <div class="f lock"><span class="lbl">消火栓</span><svg><use href="#i-hydrant"/></svg><span class="key">5</span></div>
+</div>
+<div class="crew"><svg><use href="#i-blob"/></svg><svg><use href="#i-blob"/></svg><svg><use href="#i-blob"/></svg><svg><use href="#i-blob"/></svg><svg><use href="#i-blob"/></svg><svg class="off"><use href="#i-blob"/></svg><span>5</span><small>/ 12</small></div>
+<div class="prompt"><i>右 長押し</i>正面をまとめて吸収</div>
+<div class="hint"><span><i>左</i>変形</span><span><i>SPACE</i>ジャンプ</span><span><i>R</i>戻る</span></div>
+</body></html>

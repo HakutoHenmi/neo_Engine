@@ -37,6 +37,8 @@ void ChronoSystem::Reset(entt::registry& r){
     // コマンドラインの引数で、インクのモードとスライムの生活モードを決める
     inkMode_=!wcsstr(GetCommandLineW(),L"--chrono-smoke")&&!wcsstr(GetCommandLineW(),L"--creature-smoke")&&!wcsstr(GetCommandLineW(),L"--snake-smoke");
     slimeLife_=inkMode_&&(!wcsstr(GetCommandLineW(),L"-smoke")||wcsstr(GetCommandLineW(),L"--slime-life-smoke"))&&!wcsstr(GetCommandLineW(),L"--legacy-domain");
+    slimePlayerDemo_ = scene_->IsSlimePlayerDemo();
+    if(slimePlayerDemo_) inkMode_ = slimeLife_ = true;
     // スライムの変形のターゲットを消す
     Engine::Renderer::GetInstance()->SetFluidMorphTargets({},0);
     if(inkMode_){creature_=true;arena_=false;inkShots_.clear();inkSurfaces_.clear();inkMeshes_.clear();inkDirty_=true;}
@@ -233,6 +235,7 @@ void ChronoSystem::Update(entt::registry& r,GameContext& ctx){
     // 初期化前・プレイヤーがいないときは何もしない
     if(!initialized_||!r.valid(player_))return;
     // スライムの生活モードで確認用のやり直しの指示があれば初期化する
+    if(slimePlayerDemo_ && ctx.input && ctx.input->Trigger(DIK_F5)){Reset(r);return;}
     if(slimeLife_){const auto* control=r.try_get<ControlFrame>(player_);if(control&&control->restart){Reset(r);return;}}
     if(finished_){
         auto& p=r.get<Player>(player_);

@@ -5,6 +5,7 @@
     { "group": "Game Flow", "label": "Select", "scene": "Select", "stage": "", "note": "Stage select" },
     { "group": "Game Flow", "label": "City Stage", "scene": "Game", "stage": "", "note": "Slime city stage (main game)" },
     { "group": "Game Flow", "label": "Game Over", "scene": "GameOver", "stage": "", "note": "Result screen" },
+    { "group": "Demos", "label": "Slime Player Demo", "scene": "SlimePlayerDemo", "stage": "Resources/Scenes/slime_player_demo.json", "note": "Movement, jumping, all five forms, hit splitting and reset (F5)" },
     { "group": "Demos", "label": "Assignment Demo", "scene": "Assignment", "stage": "", "note": "Skinning, animation blending, bones, GPU particles" },
     { "group": "Demos", "label": "Fluid Sandbox", "scene": "Game", "stage": "Resources/Scenes/fluid_sandbox.json", "note": "Glass tank and water preview" }
   ],

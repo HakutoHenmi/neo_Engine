@@ -49,6 +49,11 @@ inline const GameConfig& Config() {
 // 本編のシーンファイル
 inline const std::string& MainStagePath() { return Config().mainStage; }
 
+inline constexpr const char* SlimePlayerDemoStage = "Resources/Scenes/slime_player_demo.json";
+inline bool IsSlimePlayerDemoStage(const std::string& path) {
+    return std::filesystem::path(path).filename() == "slime_player_demo.json";
+}
+
 // 本編のシーンか (空ならシーンの指定なし = 本編)。ファイル名で比べるので絶対パスでもよい
 inline bool IsMainStage(const std::string& stagePath) {
     if (stagePath.empty()) return true;

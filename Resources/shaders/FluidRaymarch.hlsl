@@ -1,5 +1,6 @@
 #define FLUID_VOLUME_CORE
 #include "FluidVolumeCommon.hlsli"
+#include "FluidFarWater.hlsli"
 cbuffer Camera : register(b0) {
     row_major float4x4 view;
     row_major float4x4 projection;
@@ -16,6 +17,13 @@ Texture2D<float> fluidDepth : register(t6);
 Texture3D<float4> occupancy : register(t7);
 StructuredBuffer<VolumeParticle> originalParticles : register(t8);
 Texture3D<float4> fluidVelocity : register(t9);
+cbuffer FarWaterSettings:register(b2){
+    float3 farWaterOrigin;float farWaterCell;
+    uint3 farWaterSize;uint farWaterEnabled;
+};
+Texture3D<float4> farWaterDensity:register(t10);
+Texture3D<float4> farWaterVelocity:register(t11);
+Texture3D<float4> farWaterOccupancy:register(t12);
 SamplerState linearClamp : register(s0);
 
 // Morphing uses a fitted domain: its physical extent changes with the shape.
@@ -27,6 +35,19 @@ float NearVolumeWeight(float3 world) {
     return smoothstep(0,NearVolumeBorder(),min(margin.x,min(margin.y,margin.z)));
 }
 
+float FarWaterWeight(float3 world){
+    if(farWaterEnabled==0)return 0;
+    float3 margin=min(world-farWaterOrigin,farWaterOrigin+FarWaterSpacing(farWaterCell)*farWaterSize-world);
+    return smoothstep(0,2*farWaterCell,min(margin.x,min(margin.y,margin.z)));
+}
+float SurfaceWeight(float3 world,uint phase){return phase==2?max(NearVolumeWeight(world),FarWaterWeight(world)):NearVolumeWeight(world);}
+float3 ReadFarWater(Texture3D<float4> field,float3 world){
+    if(farWaterEnabled==0)return 0;
+    float3 uv=(world-farWaterOrigin)/(FarWaterSpacing(farWaterCell)*farWaterSize);
+    if(any(uv<0)||any(uv>1))return 0;
+    return field.SampleLevel(linearClamp,uv,0).xyz;
+}
+
 float ViewDepth(float2 uv) {
     uint w,h; sceneDepth.GetDimensions(w,h);
     float z=sceneDepth.Load(int3(clamp(int2(uv*float2(w,h)),0,int2(w,h)-1),0));
@@ -34,15 +55,22 @@ float ViewDepth(float2 uv) {
 }
 float3 Density(float3 p) {
     float3 uv=(p-volumeOrigin)/(voxelSize*volumeSize);
-    if(any(uv<0) || any(uv>1)) return 0;
-    return fluidDensity.SampleLevel(linearClamp,uv,0).xyz;
+    float3 density=0;
+    if(all(uv>=0)&&all(uv<=1))density=fluidDensity.SampleLevel(linearClamp,uv,0).xyz;
+    if(farWaterEnabled!=0){
+        float coarse=ReadFarWater(farWaterDensity,p).z*FarWaterWeight(p);
+        density.z=lerp(coarse,density.z,NearVolumeWeight(p));
+    }
+    return density;
 }
 float3 Normal(float3 p, uint phase, float3 fallback) {
-    float h=voxelSize*0.75f;
+    float3 h=voxelSize*.75f;
+    if(phase==2&&farWaterEnabled!=0)h=lerp(FarWaterSpacing(farWaterCell)*.75f,h,NearVolumeWeight(p));
     float3 g=float3(
-        Density(p+float3(h,0,0))[phase]-Density(p-float3(h,0,0))[phase],
-        Density(p+float3(0,h,0))[phase]-Density(p-float3(0,h,0))[phase],
-        Density(p+float3(0,0,h))[phase]-Density(p-float3(0,0,h))[phase]);
+        Density(p+float3(h.x,0,0))[phase]-Density(p-float3(h.x,0,0))[phase],
+        Density(p+float3(0,h.y,0))[phase]-Density(p-float3(0,h.y,0))[phase],
+        Density(p+float3(0,0,h.z))[phase]-Density(p-float3(0,0,h.z))[phase]);
+    g/=h;
     return dot(g,g)>1e-10f ? -normalize(g) : fallback;
 }
 bool RayBox(float3 origin, float3 ray, out float nearT, out float farT) {
@@ -53,6 +81,26 @@ bool RayBox(float3 origin, float3 ray, out float nearT, out float farT) {
     nearT=max(0,max(lo.x,max(lo.y,lo.z)));
     farT=min(hi.x,min(hi.y,hi.z));
     return farT>nearT;
+}
+bool FarWaterRayBox(float3 origin,float3 ray,out float nearT,out float farT){
+    float3 safe=float3(abs(ray.x)<1e-7f?1e-7f:ray.x,abs(ray.y)<1e-7f?1e-7f:ray.y,abs(ray.z)<1e-7f?1e-7f:ray.z);
+    float3 a=(farWaterOrigin-origin)/safe,b=(farWaterOrigin+FarWaterSpacing(farWaterCell)*farWaterSize-origin)/safe;
+    float3 lo=min(a,b),hi=max(a,b);nearT=max(0,max(lo.x,max(lo.y,lo.z)));farT=min(hi.x,min(hi.y,hi.z));
+    return farWaterEnabled!=0&&farT>nearT;
+}
+// A skip stops at either grid's next boundary, including entry into the fine
+// volume. Neither the narrow jet nor the overlap may be skipped by a coarse cell.
+float GridAdvance(float3 world,float3 ray,float3 origin,float3 spacing,uint3 size,out int3 block){
+    float3 local=(world-origin)/spacing;block=(int3)floor(local/4);
+    float3 safe=float3(abs(ray.x)<1e-7f?1e-7f:ray.x,abs(ray.y)<1e-7f?1e-7f:ray.y,abs(ray.z)<1e-7f?1e-7f:ray.z);
+    if(all(local>=-.0001f)&&all(local<=(float3)size+.0001f)){
+        block=clamp(block,0,(int3)((size+3)/4)-1);
+        float3 boundary=origin+(float3(block)+step(0,ray))*spacing*4;
+        float3 travel=(boundary-world)/safe;return max(0,min(travel.x,min(travel.y,travel.z)));
+    }
+    float3 a=(origin-world)/safe,b=(origin+spacing*size-world)/safe;
+    float3 lo=min(a,b),hi=max(a,b);float entry=max(lo.x,max(lo.y,lo.z)),exit=min(hi.x,min(hi.y,hi.z));
+    return entry>0&&exit>entry?entry:1e20f;
 }
 float3 Reflection(float3 normal,float3 ray,float roughness) {
     // Cubemap can be a typed null descriptor; retain a restrained sky fallback.
@@ -67,8 +115,18 @@ float3 SunTravel(){return sunDirection.w>0?sunDirection.xyz:normalize(float3(.45
 float SunIntensity(){return sunDirection.w>0?sunDirection.w:1;}
 float3 FlowVelocity(float3 p){
     float3 uv=(p-volumeOrigin)/(voxelSize*volumeSize);
-    if(any(uv<0) || any(uv>1)) return 0;
-    return fluidVelocity.SampleLevel(linearClamp,uv,0).xyz;
+    float3 velocity=0;
+    if(all(uv>=0)&&all(uv<=1)){
+        float4 sample=fluidVelocity.SampleLevel(linearClamp,uv,0);velocity=sample.xyz/max(sample.w,.001f);
+    }
+    if(farWaterEnabled!=0){
+        float3 coarseUV=(p-farWaterOrigin)/(FarWaterSpacing(farWaterCell)*farWaterSize);float3 coarse=0;
+        if(all(coarseUV>=0)&&all(coarseUV<=1)){
+            float4 sample=farWaterVelocity.SampleLevel(linearClamp,coarseUV,0);coarse=sample.xyz/max(sample.w,.001f);
+        }
+        velocity=lerp(coarse,velocity,NearVolumeWeight(p));
+    }
+    return velocity;
 }
 float WaterHash(float3 p){p=frac(p*float3(.1031f,.1030f,.0973f));p+=dot(p,p.yxz+33.33f);return frac((p.x+p.y)*p.z);}
 float WaterNoise(float3 p){
@@ -127,7 +185,10 @@ RayResult RaymarchPS(FullscreenIn input) {
     float3 viewRay=normalize(float3((uv*float2(2,-2)+float2(-1,1))/float2(projection[0][0],projection[1][1]),1));
     float3 ray=normalize(mul(viewRay,transpose((float3x3)view)));
     float nearT,farT;
-    if(!RayBox(cameraPosition,ray,nearT,farT)) return output;
+    bool nearHit=RayBox(cameraPosition,ray,nearT,farT);
+    float coarseNear,coarseFar;bool coarseHit=FarWaterRayBox(cameraPosition,ray,coarseNear,coarseFar);
+    if(coarseHit){nearT=nearHit?min(nearT,coarseNear):coarseNear;farT=nearHit?max(farT,coarseFar):coarseFar;}
+    if(!nearHit&&!coarseHit)return output;
     farT=min(farT,ViewDepth(uv)/max(viewRay.z,1e-5f));
     if(farT<=nearT) return output;
     float3 hits=float3(-1,-1,-1), thickness=0;
@@ -139,6 +200,8 @@ RayResult RaymarchPS(FullscreenIn input) {
     uint steps=0;
     [loop] for(;steps<640 && t<farT;++steps) {
         float3 world=cameraPosition+ray*t;
+        float nextT;
+        if(farWaterEnabled==0){
         int3 block=clamp((int3)floor((world-volumeOrigin)/(voxelSize*4)),0,(int3)((volumeSize+3)/4)-1);
         float3 maxD=occupancy.Load(int4(block,0)).xyz;
         if(max(maxD.x,max(maxD.y,maxD.z))<isoValue) {
@@ -149,7 +212,31 @@ RayResult RaymarchPS(FullscreenIn input) {
             previousT=t; previousDensity=Density(cameraPosition+ray*t);
             continue;
         }
-        float nextT=min(t+voxelSize*0.5f,farT);
+        nextT=min(t+voxelSize*0.5f,farT);
+        }else{
+        int3 block,coarseBlock;
+        float advance=GridAdvance(world,ray,volumeOrigin,voxelSize,volumeSize,block);
+        bool inNear=all(block>=0)&&all(block<(int3)((volumeSize+3)/4));
+        float3 maxD=inNear?occupancy.Load(int4(block,0)).xyz:0;
+        if(farWaterEnabled!=0){
+            float coarseAdvance=GridAdvance(world,ray,farWaterOrigin,FarWaterSpacing(farWaterCell),farWaterSize,coarseBlock);
+            advance=min(advance,coarseAdvance);
+            if(all(coarseBlock>=0)&&all(coarseBlock<(int3)((farWaterSize+3)/4)))maxD.z=max(maxD.z,farWaterOccupancy.Load(int4(coarseBlock,0)).z);
+        }
+        if(max(maxD.x,max(maxD.y,maxD.z))<isoValue){
+            t=min(farT,t+max(advance,voxelSize*.01f)+voxelSize*.001f);
+            previousT=t;previousDensity=Density(cameraPosition+ray*t);continue;
+        }
+        float rayStep=voxelSize*.5f;
+        if(farWaterEnabled!=0){
+            float3 rate=abs(ray)/FarWaterSpacing(farWaterCell);
+            float coarseStep=.5f/max(rate.x,max(rate.y,rate.z));
+            rayStep=lerp(coarseStep,rayStep,NearVolumeWeight(world));
+            // Bound steps at entry to the fine grid too.
+            float entry,exit;if(RayBox(cameraPosition,ray,entry,exit)&&entry>t)rayStep=min(rayStep,entry-t+voxelSize*.001f);
+        }
+        nextT=min(t+rayStep,farT);
+        }
         float3 nextDensity=Density(cameraPosition+ray*nextT);
         [unroll] for(uint phase=0;phase<3;++phase) {
             float d0=previousDensity[phase], d1=nextDensity[phase];
@@ -231,7 +318,7 @@ RayResult RaymarchPS(FullscreenIn input) {
     if(playerDecoration>0.001f && nearestPhase==0 &&
        length(nearestWorld-playerBodyCenter)<max(playerRadii.x,playerRadii.z)*(1+.55f*playerMotion)*1.6f)
         result=lerp(result,lerp(phaseColor[0].rgb,1.f,.12f),pow(1-saturate(dot(normal,-ray)),2)*.28f*saturate(playerDecoration));
-    output.color=float4(lerp(background,result,NearVolumeWeight(nearestWorld)),1);
+    output.color=float4(lerp(background,result,SurfaceWeight(nearestWorld,nearestPhase)),1);
     return output;
 }
 
@@ -246,6 +333,20 @@ struct SprayOut {
     nointerpolation uint phase:TEXCOORD5;
     float3 centerWorld:TEXCOORD6;
 };
+FluidShape WaterFallbackShape(FluidShape shape,VolumeParticle p){
+    bool sheet=p.type>1.05f&&p.type<1.25f&&p.pad.z>0&&abs(p.position.y-p.pad.y)<.35f&&abs(p.velocity.y)<2.5f;
+    if(sheet){
+        // Outside both volumes this pass draws an entire ellipsoid, not a
+        // density isosurface. Its bounds must represent one sample's real
+        // volume, rather than the much wider sheet reconstruction kernel.
+        float radius=pow(FluidReconstructionVolume(p.type,p.density)/(4.f*3.14159265f*.3f/3.f),1.f/3.f);
+        shape.row0=float4(1/radius,0,0,p.position.x);
+        shape.row1=float4(0,1/(radius*.3f),0,p.position.y);
+        shape.row2=float4(0,0,1/radius,p.position.z);
+        shape.info.y=radius;
+    }
+    return shape;
+}
 SprayOut SprayVS(uint vertex:SV_VertexID, uint instance:SV_InstanceID) {
     SprayOut o=(SprayOut)0;
     float2 corners[6]={float2(-1,-1),float2(-1,1),float2(1,-1),float2(1,-1),float2(-1,1),float2(1,1)};
@@ -308,6 +409,9 @@ SprayOut SprayVS(uint vertex:SV_VertexID, uint instance:SV_InstanceID) {
     VolumeParticle p=renderParticles[instance];
     float3 margin=NearVolumeMargin(ShapeCenter(s));
     bool distant=s.info.x>0 && min(margin.x,min(margin.y,margin.z))<NearVolumeBorder()+s.info.y;
+    if(distant&&VolumePhase(p.type)==2&&s.info.x>0&&farWaterEnabled!=0&&FarWaterWeight(ShapeCenter(s))>.999f){
+        o.position=float4(2,2,2,1);return o;
+    }
     if(s.info.w!=0 && s.info.z<0.005f && !distant && p.type>1.05f && p.type<1.25f) {
         // Hydrant mist: a seeded subset of resolved droplets also sheds a soft
         // puff. Airborne water shreds into a widening sheath as it travels;
@@ -360,6 +464,7 @@ SprayOut SprayVS(uint vertex:SV_VertexID, uint instance:SV_InstanceID) {
         return o;
     }
     if(s.info.w==0 || (s.info.z<0.005f && !distant)) { o.position=float4(2,2,2,1); return o; }
+    if(distant)s=WaterFallbackShape(s,p);
     o.shapeIndex=instance; o.distantBulk=distant ? 1 : 0;
     o.phase=VolumePhase(p.type);
     o.centerView=mul(float4(distant ? ShapeCenter(s) : p.position,1),view).xyz;
@@ -458,6 +563,7 @@ float4 SprayPS(SprayOut input):SV_Target {
         float3 viewRay=normalize(float3((uv*float2(2,-2)+float2(-1,1))/float2(projection[0][0],projection[1][1]),1));
         float3 ray=normalize(mul(viewRay,transpose((float3x3)view)));
         FluidShape shape=particleShapes[input.shapeIndex];
+        shape=WaterFallbackShape(shape,renderParticles[input.shapeIndex]);
         float3 origin=ShapePoint(shape,cameraPosition-ShapeCenter(shape));
         float3 direction=ShapePoint(shape,ray);
         float a=dot(direction,direction), b=dot(origin,direction), c=dot(origin,origin)-1;
@@ -467,7 +573,7 @@ float4 SprayPS(SprayOut input):SV_Target {
         float t=max(0,(-b-root)/a), endT=(-b+root)/a;
         if(endT<=t) discard;
         float3 world=cameraPosition+ray*t;
-        float weight=1-NearVolumeWeight(world);
+        float weight=1-SurfaceWeight(world,input.phase);
         if(weight<=0 || t*viewRay.z>ViewDepth(uv)) discard;
         float nearDepth=fluidDepth.Load(int3((int2)input.position.xy,0));
         if(nearDepth>0 && t*viewRay.z>nearDepth &&

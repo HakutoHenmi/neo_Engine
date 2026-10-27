@@ -8,6 +8,10 @@
   "fullRendererScenes": ["Title", "Select"],
   "_launchComment": "コマンドライン引数で起動シーンを差し替える (自動テスト用)。debugOnly のものは Debug / Development ビルドだけで受け付ける。log はログに残す文。",
   "launchOptions": [
+    { "flag": "--far-water-demo-smoke", "scene": "SlimePlayerDemoValidation", "debugOnly": true },
+    { "flag": "--stopped-camera-check", "scene": "SlimePlayerDemoValidation", "debugOnly": true },
+    { "flag": "--slime-player-demo-smoke", "scene": "SlimePlayerDemoValidation", "debugOnly": true },
+    { "flag": "--slime-player-demo", "scene": "SlimePlayerDemo", "debugOnly": true },
     { "flag": "--package-smoke", "scene": "PackageValidation" },
     { "flag": "--dlss-package-smoke", "scene": "DlssPackageValidation" },
     { "flag": "--rt-lighting-smoke", "scene": "RtLightingValidation" },

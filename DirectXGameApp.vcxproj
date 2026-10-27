@@ -207,6 +207,9 @@ exit /b 0
     <ClCompile Include="Game\Systems\RogueliteCombat.cpp" />
     <ClCompile Include="Game\Systems\SlimeAssault.cpp" />
     <ClCompile Include="Game\Systems\SlimeHydrant.cpp" />
+    <ClCompile Include="Game\Systems\SlimeShowcase.cpp" />
+    <ClCompile Include="Game\Systems\SlimeSignal.cpp" />
+    <ClCompile Include="Game\Systems\SlimePlayerDemo.cpp" />
     <ClCompile Include="Game\Systems\SlimeLife.cpp" />
     <ClCompile Include="Game\Systems\ChronoChainMode.cpp" />
     <ClCompile Include="Game\Systems\ChronoCreature.cpp" />
@@ -253,6 +256,7 @@ exit /b 0
     <ClInclude Include="Game\Scenes\AssignmentConfig.h" />
     <ClInclude Include="Game\Scenes\AssignmentScene.h" />
     <ClInclude Include="Game\Scenes\GameOverScene.h" />
+    <ClInclude Include="Game\Scenes\SlimePlayerDemoScene.h" />
     <ClInclude Include="Game\Scenes\GameScene.h" />
     <ClInclude Include="Game\Scenes\SelectScene.h" />
     <ClInclude Include="Game\Scenes\TitleScene.h" />
@@ -295,6 +299,7 @@ exit /b 0
     <ClInclude Include="Game\Chrono\MeadowTerrain.h" />
     <ClInclude Include="Game\Chrono\RogueliteRules.h" />
     <ClInclude Include="Game\Chrono\SlimeHydrantRules.h" />
+    <ClInclude Include="Game\Chrono\SlimeSignalRules.h" />
     <ClInclude Include="Game\Chrono\SlimeLifeRules.h" />
     <ClInclude Include="Game\Chrono\SlimeTentacleRules.h" />
     <ClInclude Include="Game\Chrono\SlimeWeaponRules.h" />
@@ -338,6 +343,8 @@ exit /b 0
     <ClInclude Include="tests\SlimeLifeValidationScene.h" />
     <ClInclude Include="tests\SlimeValidation.inl" />
     <ClInclude Include="tests\UIGalleryScene.h" />
+    <ClInclude Include="tests\SlimePlayerDemoValidationScene.h" />
+    <ClInclude Include="tests\EditorLoadingValidationScene.h" />
     <ClInclude Include="tests\UIValidationScene.h" />
   </ItemGroup>
   <ItemGroup>
@@ -503,6 +510,7 @@ exit /b 0
     <None Include="Resources\shaders\FluidSpherePS.hlsl" />
     <None Include="Resources\shaders\FluidSphereVS.hlsl" />
     <None Include="Resources\shaders\FluidSurfacePS.hlsl" />
+    <None Include="Resources\shaders\FluidFarWater.hlsli" />
     <None Include="Resources\shaders\FluidVolumeCommon.hlsli" />
     <None Include="Resources\shaders\FluidVolumeCS.hlsl" />
     <None Include="Resources\shaders\ForceFieldPS.hlsl" />
@@ -544,6 +552,7 @@ exit /b 0
     <None Include="Resources\shaders\MeadowGroundPS.hlsl" />
     <None Include="Resources\shaders\MetaballPS.hlsl" />
     <None Include="Resources\shaders\MorphItemHighlightPS.hlsl" />
+    <None Include="Resources\shaders\SlimeChildHighlightPS.hlsl" />
     <None Include="Resources\shaders\Obj.hlsli" />
     <None Include="Resources\shaders\Object3d.PS.hlsl" />
     <None Include="Resources\shaders\ObjPS.hlsl" />

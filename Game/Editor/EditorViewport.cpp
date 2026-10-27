@@ -137,9 +137,10 @@ void EditorUI::DrawSceneToolbar(GameScene* scene, const ImVec2& imageMin) {
 // もう一方のビューが描画中であることの案内と、こちらへ切り替えるボタン
 static void DrawInactiveViewNotice(const char* active, bool& switchHere) {
 	// 左上に案内を書く
-	ImGui::SetCursorPos(ImVec2(16.0f, 16.0f));
+	const ImVec2 contentStart = ImGui::GetCursorPos();
+	ImGui::SetCursorPos(ImVec2(contentStart.x + 16.0f, contentStart.y + 16.0f));
 	ImGui::TextWrapped("The %s view is being rendered. Only one view is rendered per frame.", active);
-	ImGui::SetCursorPosX(16.0f);
+	ImGui::SetCursorPosX(contentStart.x + 16.0f);
 	// 押されたらこちらへ切り替える
 	switchHere = ImGui::Button("Render this view");
 }
@@ -254,7 +255,10 @@ void EditorUI::DrawViewport(Engine::Renderer* renderer, GameScene* gameScene, bo
 	if (!sceneView) {
 		// Game ビューのツールバー (Unity と同じく縦横比と Stats はここで切り替える)
 		// 縦横比の選択
-		ImGui::SetCursorPos(ImVec2(6.0f, 4.0f));
+		// Begin() places the cursor below the title/docking tabs. Keep that
+		// content origin instead of positioning relative to the window border.
+		const ImVec2 contentStart = ImGui::GetCursorPos();
+		ImGui::SetCursorPos(ImVec2(contentStart.x + 6.0f, contentStart.y + 4.0f));
 		ImGui::SetNextItemWidth(90.0f);
 		if (ImGui::BeginCombo("##Aspect", aspects[currentAspect])) {
 			for (int n = 0; n < IM_ARRAYSIZE(aspects); n++) {
@@ -314,6 +318,7 @@ void EditorUI::DrawViewport(Engine::Renderer* renderer, GameScene* gameScene, bo
 	// 実際に画像を描いた画面上の範囲を取得する
 	gameImageMin = ImGui::GetItemRectMin();
 	gameImageMax = ImGui::GetItemRectMax();
+	if (!sceneView) renderer->SetEditorLoadingViewport(gameImageMin.x, gameImageMin.y, renderW, renderH);
 	const bool imageHovered = ImGui::IsItemHovered();
 	// Scene ビュー左上のツールバー。ここをクリックしてもピッキングしない
 	const ImVec2 toolbarMax(gameImageMin.x + 420.0f, gameImageMin.y + ImGui::GetFrameHeightWithSpacing() + 8.0f);

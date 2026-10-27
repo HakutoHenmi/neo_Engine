@@ -234,11 +234,17 @@ void App::Run() {
 #ifdef USE_IMGUI
 		if (currentScene) {
 #ifndef NDEBUG
-			if (editorPresenter_) editorPresenter_(*currentScene, sceneManager_.CurrentName());
+			if (editorPresenter_) {
+				renderer_.SetEditorLoadingViewport(0, 0, 0, 0);
+				editorPresenter_(*currentScene, sceneManager_.CurrentName());
+			}
 			else currentScene->DrawEditor();
 #endif
 		}
 		imgui_.Render(dx_);
+#ifndef NDEBUG
+		if (editorPresenter_) renderer_.CaptureEditorLoadingBackground();
+#endif
 #endif
 		try {
 		dx_.EndFrame();

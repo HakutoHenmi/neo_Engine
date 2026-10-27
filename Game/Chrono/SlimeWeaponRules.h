@@ -35,7 +35,7 @@ inline Vec LifeWeaponFacing(Vec facing,Vec desired,float dt){
     return {std::sin(yaw),0,std::cos(yaw)};
 }
 // カメラの向きを向く形か / 体の向きを更新する (タイヤはゆっくり曲がる)
-inline bool LifeFacesCamera(LifeAction form){return form==LifeAction::Hammer||form==LifeAction::Plane||form==LifeAction::Hydrant;}
+inline bool LifeFacesCamera(LifeAction form){return form==LifeAction::Hammer||form==LifeAction::Plane||form==LifeAction::Hydrant||form==LifeAction::Signal;}
 // カメラを向く形ならカメラの向きへ
 inline void LifeUpdateFacing(LifeBody& body,Vec movement,Vec cameraForward,float dt){
     if(LifeFacesCamera(body.action))body.forward=LifeWeaponFacing(body.forward,cameraForward,dt);
@@ -75,6 +75,43 @@ inline Vec LifeTireMoveVelocity(const LifeBody& body,Vec velocity,Vec wish,const
     float blend=1-std::exp(-rate*dt);Vec goal=body.forward*(top*amount);
     velocity.x+=(goal.x-velocity.x)*blend;velocity.z+=(goal.z-velocity.z)*blend;return velocity;
 }
+// タイヤの溜めと突進: 溜めきる時間・突進できる最小の溜め・溜めたときの最高の回転の速さ
+inline constexpr float LifeTireChargeTime=1.1f,LifeTireMinCharge=.15f,LifeTireSpinMax=42;
+// 突進の長さと速さ (溜めが強いほど長く速い)
+inline float LifeTireDashDuration(float power){return .4f+.6f*power;}
+inline float LifeTireDashSpeed(const LifeBody& body,const SlimeRecipe& recipe,float power){
+    return recipe.Speed()*(2.1f+std::min(.5f,.08f*LifeScale(body.mass)))*(1.7f+1.8f*power);
+}
+// 突進が敵に与えるダメージ / バリケードや門に与えるダメージ
+inline float LifeTireDashDamage(const LifeBody& body,float power){return (22+48*power)*LifeScale(body.mass);}
+inline float LifeTireDashGateDamage(float power){return 45+75*power;}
+// タイヤの溜めを進める。押している間はその場で回転を溜め、離したら溜めの分だけ突進を始める (始めたら true)
+inline bool LifeTickTireCharge(LifeBody& body,bool held,float dt){
+    auto& w=body.weapon;w.dash=std::max(0.f,w.dash-dt);
+    if(body.action!=LifeAction::Tire||!w.ready){w.charging=false;w.charge=0;return false;}
+    // 突進の最中は溜め直せない
+    if(held&&w.dash<=0){w.charging=true;w.charge=std::min(1.f,w.charge+dt/LifeTireChargeTime);return false;}
+    if(!held&&w.charging){w.charging=false;float power=w.charge;w.charge=0;
+        if(power>=LifeTireMinCharge){w.dashPower=power;w.dash=LifeTireDashDuration(power);return true;}}
+    return false;
+}
+// 溜めている間は止まり、突進中は前へ一気に進む (向きは少しだけ曲げられる)。それ以外は普通に転がる
+inline Vec LifeTireChargeVelocity(LifeBody& body,Vec velocity,Vec wish,const SlimeRecipe& recipe,bool grounded,float dt){
+    const auto& w=body.weapon;
+    if(w.charging){float brake=1-std::exp(-9*dt);velocity.x-=velocity.x*brake;velocity.z-=velocity.z*brake;return velocity;}
+    if(w.dash>0){
+        if(Length(wish)>.05f){float yaw=std::atan2(body.forward.x,body.forward.z),delta=std::remainder(std::atan2(wish.x,wish.z)-yaw,6.2831853f);
+            yaw+=std::clamp(delta,-1.6f*dt,1.6f*dt);body.forward={std::sin(yaw),0,std::cos(yaw)};}
+        float speed=LifeTireDashSpeed(body,recipe,w.dashPower)*std::min(1.f,.35f+w.dash/.25f);
+        return {body.forward.x*speed,velocity.y,body.forward.z*speed};
+    }
+    return LifeTireMoveVelocity(body,velocity,wish,recipe,grounded,dt);
+}
+// その場の回転の速さ: 溜めている間は溜めに合わせて上がり、離すと落ちる
+inline float LifeTireSpinRate(const LifeBody& body,float dt){
+    float goal=body.weapon.charging?LifeTireSpinMax*(.25f+.75f*body.weapon.charge):0;
+    return body.tireSpin+(goal-body.tireSpin)*(1-std::exp(-(body.weapon.charging?6.f:3.f)*dt));
+}
 // カメラが映す対象と、それが画面に収まるカメラの距離
 struct LifeCameraSubject {Vec center{};float radius=1;};
 inline float LifeCameraDistance(float radius,float fovY,float aspect){
@@ -93,7 +130,7 @@ inline float LifeWeaponDuration(LifeAction form){
 inline bool LifeTickWeapon(SlimeLife& life,LifeBody& body,float dt,bool pressed,bool held,bool formed){
     if(!LifeWeaponForm(body.action))return false;
     // タイヤと消火栓は攻撃の時間が無い (形ができたかだけ記録する)
-    if(body.action==LifeAction::Tire||body.action==LifeAction::Hydrant){body.weapon.ready|=formed;return false;}
+    if(body.action==LifeAction::Tire||body.action==LifeAction::Hydrant||body.action==LifeAction::Signal){body.weapon.ready|=formed;return false;}
     auto& attack=body.weapon;attack.ready|=formed;
     // 先行入力は 0.24 秒残る
     attack.buffer=pressed?.24f:std::max(0.f,attack.buffer-dt);
@@ -157,7 +194,7 @@ inline Vec LifeWeaponVelocity(const LifeBody& body,Vec point,float dt){
     Vec current,previous;
     // タイヤは転がる角度から、前後のフレームの位置を求める
     if(body.action==LifeAction::Tire){
-        float angular=Dot(body.velocity,body.forward)/(LifeTireRadius*LifeScale(body.mass));
+        float angular=Dot(body.velocity,body.forward)/(LifeTireRadius*LifeScale(body.mass))+body.tireSpin;
         current=LifeTirePose(point,body.tireAngle);previous=LifeTirePose(point,body.tireAngle-angular*dt);
     // それ以外は攻撃の姿勢から前後のフレームの位置を求める
     }else{current=LifeWeaponPoseAt(body.action,point,body.weapon.active,body.weapon.age,body.age);

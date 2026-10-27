@@ -13,12 +13,14 @@ inline constexpr float LifeInitialGroupMass=LifeStartMass;
 inline constexpr float LifeHammerMass=180,LifeSwordMass=300,LifePlaneMass=480;
 inline constexpr float LifeContactAbsorbMass=180;
 inline constexpr size_t LifeBodyCount=13;
+// 子分の行動範囲: 本体から離れて狩れる距離・索敵の距離・本体へ戻り始める距離・見失って呼び戻す距離・撤退する体力の割合
+inline constexpr float LifeChildHuntRange=48,LifeChildSight=36,LifeChildLeash=62,LifeChildLostRange=120,LifeChildRetreatHealth=.35f;
 // 体の行動 (待機・取り込み・各武器・回復) と、変形を解放するアイテム
-enum class LifeAction {Idle,Engulf,Hammer,Sword,Plane,Tire,Hydrant,Restore};
-enum class LifeMorphItem {None,Tire,Hydrant};
+enum class LifeAction {Idle,Engulf,Hammer,Sword,Plane,Tire,Hydrant,Restore,Signal};
+enum class LifeMorphItem {None,Tire,Hydrant,Signal};
 // 変形に必要な量 / 量が足りるか
 inline float LifeRequiredMass(LifeAction action){
-    return action==LifeAction::Hammer?LifeHammerMass:action==LifeAction::Sword?LifeSwordMass:action==LifeAction::Plane?LifePlaneMass:(action==LifeAction::Tire||action==LifeAction::Hydrant)?1.f:0;
+    return action==LifeAction::Hammer?LifeHammerMass:action==LifeAction::Sword?LifeSwordMass:action==LifeAction::Plane?LifePlaneMass:(action==LifeAction::Tire||action==LifeAction::Hydrant||action==LifeAction::Signal)?1.f:0;
 }
 inline bool LifeCanMorph(float mass,LifeAction action){
     return LifeRequiredMass(action)>0&&mass>=LifeRequiredMass(action);
@@ -88,6 +90,9 @@ struct LifeWeaponAttack {
     // 攻撃の経過時間・前フレームの経過時間・先行入力
     float age=0,previousAge=0,buffer=0;
     bool active=false,ready=false;
+    // タイヤ: その場で溜めた回転 (0〜1)・突進の残り時間・突進の強さ・溜めているか
+    float charge=0,dash=0,dashPower=0;
+    bool charging=false;
 };
 // 触手でつかんだ対象 (対象・位置・報酬・確定・取り消し)
 struct LifeGrab {
@@ -126,11 +131,18 @@ struct LifeBody {
     bool down=false,committed=false,reboundAvailable=false;
     bool tireUnlocked=false;
     bool hydrantUnlocked=false;
+    bool signalUnlocked=false;
     float tireAngle=0;
+    float tireSpin=0; // その場で溜めているタイヤの回転の速さ (ラジアン/秒)
+    // 子分の自律行動: 狙っている敵・巡回の目標と残り時間・撤退中か
+    uint32_t hunt=0xffffffffu;
+    Vec patrol{};
+    float patrolClock=0;
+    bool retreating=false;
 };
-// 体が変形できるか (タイヤと消火栓は解放が必要)
+// 体が変形できるか (タイヤ・消火栓・信号機は解放が必要)
 inline bool LifeCanMorph(const LifeBody& body,LifeAction action){
-    return LifeCanMorph(body.mass,action)&&(action!=LifeAction::Tire||body.tireUnlocked)&&(action!=LifeAction::Hydrant||body.hydrantUnlocked);
+    return LifeCanMorph(body.mass,action)&&(action!=LifeAction::Tire||body.tireUnlocked)&&(action!=LifeAction::Hydrant||body.hydrantUnlocked)&&(action!=LifeAction::Signal||body.signalUnlocked);
 }
 // 開始の大きさより上では強く成長する。小さな破片は小さな体積のまま
 inline float LifeScale(float mass){float ratio=std::max(1.f,mass)/LifeStartMass;return ratio>1?std::sqrt(ratio):std::cbrt(ratio);}
@@ -215,6 +227,10 @@ struct LifeCollectible {Vec at{};float required=20,reward=12;bool active=true;ui
 inline int LifeOrbTier(float reward){return reward>=30?2:reward>=18?1:0;}
 inline float LifeOrbRadius(float reward){const float radii[]={.42f,.68f,.96f};return radii[LifeOrbTier(reward)];}
 inline Vec LifeOrbColor(float reward){const Vec colors[]={{.12f,.85f,1},{1,.68f,.12f},{.76f,.3f,1}};return colors[LifeOrbTier(reward)];}
+// 信号機の色と状態: 次に出す色・次に使えるまでの待ち時間 (とその長さ)・光らせる残り時間と色。
+// 色は赤 → 青 → 黄の順にしか進まず、黄の後は長く点検する
+enum class SignalColor : uint8_t {Red,Green,Yellow};
+struct SignalState {SignalColor next=SignalColor::Red,flashed=SignalColor::Red;float wait=0,waitTotal=0,flash=0;};
 // スライムの生活の全体の状態 (体・取り込める物・レシピ・調合室の見本・成績・段階・入力の前回値)
 struct SlimeLife {
     // 本体・子 (13 体)
@@ -236,11 +252,13 @@ struct SlimeLife {
     bool previewAuto=true,previewPoke=false,previewJump=false;
     int colorDrag=0;
     // 選んでいる変形
-    LifeAction form=LifeAction::Hammer;
+    LifeAction form=LifeAction::Tire;
     // 時間・メッセージ・待ち時間・変形の時間
     float age=0,messageAge=0,stompCooldown=0,contactCooldown=0,morphAge=0;
     // 取り込んだ量・タックル・タイヤのお知らせ
-    float absorbedMass=0,tackleTime=0,tireNotice=0;
+    float absorbedMass=0,tackleTime=0,tireNotice=0,signalNotice=0;
+    // 信号機の色の順と待ち時間
+    SignalState signal;
     // 消火栓のお知らせ・水の発射の残り
     float hydrantNotice=0,waterAttackBudget=0,waterGuardBudget=0,waterHitClock=0;
     bool waterAttack=false,waterGuard=false;
@@ -256,6 +274,7 @@ struct SlimeLife {
     uint64_t nextAttack=1;
     // 調合室・前フレームの入力
     bool lab=true,previousAbsorb=false,previousFire=false,previousReturn=false;
+    bool chargeLocked=false; // 変形に使った押下では、離すまでタイヤの溜めを始めない
     bool previousLab=false,stomping=false,deployRequested=false;
     // メッセージ
     std::string message;
@@ -279,6 +298,7 @@ inline void LifeUnlockMorphItem(SlimeLife& life,uint32_t target){
     // タイヤか消火栓のアイテムなら本体の形を解放する
     if(index<life.props.size()&&life.props[index].morphItem==LifeMorphItem::Tire)life.bodies[0].tireUnlocked=true;
     if(index<life.props.size()&&life.props[index].morphItem==LifeMorphItem::Hydrant)life.bodies[0].hydrantUnlocked=true;
+    if(index<life.props.size()&&life.props[index].morphItem==LifeMorphItem::Signal)life.bodies[0].signalUnlocked=true;
 }
 // 対象が既に触手でつかまれているか
 inline bool LifeTargetReserved(const SlimeLife& life,uint32_t target){
@@ -339,6 +359,8 @@ inline float LifeTravelScale(const LifeBody& body){
     // タイヤは速いまま、消火栓は少し遅い
     if(body.action==LifeAction::Tire)return 1;
     if(body.action==LifeAction::Hydrant)return .85f;
+    // 信号機は構えて撃つ形なのでゆっくり
+    if(body.action==LifeAction::Signal)return .6f;
     // 武器は攻撃中は遅く、それ以外も少し遅い
     if(LifeRequiredMass(body.action)>0)return body.weapon.active?.4f:.7f;
     return body.action==LifeAction::Restore?.8f:1.f;

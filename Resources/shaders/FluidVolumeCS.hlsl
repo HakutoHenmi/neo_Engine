@@ -1,4 +1,5 @@
 #include "FluidVolumeCommon.hlsli"
+#include "FluidFarWater.hlsli"
 StructuredBuffer<VolumeParticle> particles : register(t0);
 StructuredBuffer<uint> originalIndices : register(t1);
 StructuredBuffer<uint> gridCount : register(t2);
@@ -166,7 +167,9 @@ void BuildShapes(uint3 id : SV_DispatchThreadID) {
     float volume=FluidReconstructionVolume(p.type,p.density);
     // Sub-voxel films otherwise vanish during sampling. Give supported sheets
     // a one-voxel reconstruction footprint; this does not change simulation mass.
-    if (supported && neighbours>0)
+    // Hydrant films must retain their actual water volume. Inferring volume
+    // from neighbour distance made a sparse splash grow as it spread apart.
+    if (supported && neighbours>0 && !(p.type>1.05f&&p.type<1.25f))
         volume=max(volume,min(nearestDistance,0.65f)*min(nearestDistance,0.65f)*voxelSize);
     float amplitude=(315.0f/(64.0f*3.14159265f))*volume/(axes.x*axes.y*axes.z);
     // A tiny detached slime group still represents visible gameplay mass.
@@ -224,7 +227,7 @@ void ResolveDensity(uint3 p : SV_DispatchThreadID) {
     uint index=VolumeIndex(p);
     outputDensity[p]=float4(densityAccum[index])/4096.0f;
     int4 momentum=momentumAccum[index];
-    outputVelocity[p]=float4(float3(momentum.xyz)/max(momentum.w,1),0);
+    outputVelocity[p]=float4(float3(momentum.xyz)/max(momentum.w,1),momentum.w>0?1.f:0.f);
 }
 
 float4 ReadDensity(int3 p) {
@@ -271,4 +274,44 @@ void BuildOccupancy(uint3 block : SV_DispatchThreadID) {
     [loop] for(int z=-1;z<=4;++z) [loop] for(int y=-1;y<=4;++y) [loop] for(int x=-1;x<=4;++x)
         maximum=max(maximum,ReadDensity((int3)block*4+int3(x,y,z)));
     outputDensity[block]=maximum;
+}
+
+// Coarse water-only reconstruction. Isolated spray stays in the droplet pass.
+[numthreads(64,1,1)]
+void SplatFarWater(uint3 id:SV_DispatchThreadID){
+    uint i=id.x;if(i>=particleCount)return;
+    VolumeParticle p=particles[i];FluidShape s=shapes[i];
+    if(VolumePhase(p.type)!=2||s.info.w==0||s.info.x<=0)return;
+    float3 spacing=FarWaterSpacing(voxelSize),center=ShapeCenter(s);
+    bool sheet=p.pad.z>0&&abs(p.position.y-p.pad.y)<.35f&&abs(p.velocity.y)<2.5f;
+    float3 lengths=float3(1/length(s.row0.xyz),1/length(s.row1.xyz),1/length(s.row2.xyz));
+    float3 axes=max(lengths,sheet?float3(voxelSize*1.35f,spacing.y,voxelSize*1.35f):voxelSize*.9f);
+    float amplitude;
+    if(sheet){
+        // A coarse cell is a larger reconstruction footprint, not extra water.
+        // A per-particle density floor turns a handful of landed spray samples
+        // into a metre-wide puddle disconnected from the actual runoff.
+        float volume=FluidReconstructionVolume(p.type,p.density);
+        amplitude=(315.f/(64.f*3.14159265f))*volume*saturate(p.color.a)/(axes.x*axes.y*axes.z);
+    }else{
+        // The fast airborne jet still needs sub-voxel coverage between samples.
+        amplitude=max(s.info.x*(lengths.x*lengths.y*lengths.z)/(axes.x*axes.y*axes.z),.7f*saturate(p.color.a));
+    }
+    // Respect the same drainage fade as the fine volume.
+    if(sheet&&p.type>1.05f&&p.type<1.25f)amplitude*=1-smoothstep(1.5f,4.5f,p.pad.x);
+    s.row0.xyz=normalize(s.row0.xyz)/axes.x;s.row1.xyz=normalize(s.row1.xyz)/axes.y;s.row2.xyz=normalize(s.row2.xyz)/axes.z;
+    float3 a0=s.row0.xyz*axes.x*axes.x,a1=s.row1.xyz*axes.y*axes.y,a2=s.row2.xyz*axes.z*axes.z;
+    float3 extent=sqrt(a0*a0+a1*a1+a2*a2);
+    int3 lo=max(0,(int3)floor((center-extent-volumeOrigin)/spacing-.5f));
+    int3 hi=min((int3)volumeSize-1,(int3)ceil((center+extent-volumeOrigin)/spacing-.5f));
+    [loop]for(int z=lo.z;z<=hi.z;++z)[loop]for(int y=lo.y;y<=hi.y;++y)[loop]for(int x=lo.x;x<=hi.x;++x){
+        uint3 cell=uint3(x,y,z);float3 d=ShapePoint(s,volumeOrigin+(cell+.5f)*spacing-center);
+        float w=saturate(1-dot(d,d));if(w<=0)continue;
+        float density=amplitude*w*w*w;uint index=VolumeIndex(cell);
+        InterlockedAdd(densityAccum[index].z,(uint)round(min(density,16.f)*4096.f));
+        int weight=(int)round(min(density,1.f)*128.f);if(weight==0)continue;
+        int3 momentum=(int3)round(clamp(p.velocity,-30,30)*weight);
+        InterlockedAdd(momentumAccum[index].x,momentum.x);InterlockedAdd(momentumAccum[index].y,momentum.y);
+        InterlockedAdd(momentumAccum[index].z,momentum.z);InterlockedAdd(momentumAccum[index].w,weight);
+    }
 }

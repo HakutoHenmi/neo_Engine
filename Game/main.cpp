@@ -5,6 +5,7 @@
 #include "App.h"
 // ゲームの各シーン
 #include "GameScene.h"
+#include "Scenes/SlimePlayerDemoScene.h"
 #include "GameOverScene.h"
 #include "TitleScene.h"
 #include "SelectScene.h"
@@ -34,6 +35,8 @@
 #include "../tests/FluidGameBenchmarkScene.h"
 #include "../tests/ChronoValidationScene.h"
 #include "../tests/UIValidationScene.h"
+#include "../tests/EditorLoadingValidationScene.h"
+#include "../tests/SlimePlayerDemoValidationScene.h"
 #include "../tests/UIGalleryScene.h"
 #include "../tests/ComponentValidationScene.h"
 #endif
@@ -119,7 +122,8 @@ int WINAPI WinMain(_In_ HINSTANCE hInst, _In_opt_ HINSTANCE, _In_ LPSTR commandL
 		// ゲームの通常の流れ: タイトル → セレクト → ゲーム → ゲームオーバー
 		sm.Register("Title", []() -> std::unique_ptr<Engine::IScene> { return std::unique_ptr<Engine::IScene>(new Game::TitleScene()); });
 		sm.Register("Select", []() -> std::unique_ptr<Engine::IScene> { return std::unique_ptr<Engine::IScene>(new Game::SelectScene()); });
-		sm.Register("Game", []() -> std::unique_ptr<Engine::IScene> { return std::unique_ptr<Engine::IScene>(new Game::GameScene()); });
+		sm.Register("SlimePlayerDemo", []() -> std::unique_ptr<Engine::IScene> { return std::make_unique<Game::SlimePlayerDemoScene>(); });
+        sm.Register("Game", []() -> std::unique_ptr<Engine::IScene> { return std::unique_ptr<Engine::IScene>(new Game::GameScene()); });
 		// 評価課題の確認用デモ (スキニング・パーティクルなど)
 		sm.Register("Assignment", []() -> std::unique_ptr<Engine::IScene> { return std::unique_ptr<Engine::IScene>(new Game::AssignmentScene()); });
 		sm.Register("GameOver", []() -> std::unique_ptr<Engine::IScene> { return std::unique_ptr<Engine::IScene>(new Game::GameOverScene()); });
@@ -135,6 +139,8 @@ int WINAPI WinMain(_In_ HINSTANCE hInst, _In_opt_ HINSTANCE, _In_ LPSTR commandL
 		sm.Register("ComponentEditor", []() -> std::unique_ptr<Engine::IScene> { return std::make_unique<ComponentValidationScene>(true); });
 		// UI の検証と見本
 		sm.Register("UIResultValidation", []() -> std::unique_ptr<Engine::IScene> { return std::make_unique<UIResultValidationScene>(); });
+        sm.Register("SlimePlayerDemoValidation", []() -> std::unique_ptr<Engine::IScene> { return std::make_unique<SlimePlayerDemoValidationScene>(); });
+        sm.Register("EditorLoadingValidation", []() -> std::unique_ptr<Engine::IScene> { return std::make_unique<EditorLoadingValidationScene>(); });
         sm.Register("UIValidation", []() -> std::unique_ptr<Engine::IScene> { return std::make_unique<UIValidationScene>(); });
         sm.Register("UIGallery", []() -> std::unique_ptr<Engine::IScene> { return std::make_unique<UIGalleryScene>(); });
         // 描画・影・ボス・回避・ビームのカメラの検証
@@ -171,6 +177,9 @@ int WINAPI WinMain(_In_ HINSTANCE hInst, _In_opt_ HINSTANCE, _In_ LPSTR commandL
 		// 0 番目は実行ファイル名なので 1 番目から
 		for (int i = 1; i < argumentCount; ++i) {
 			const std::string argument = Engine::PathUtils::ToUTF8(arguments[i]);
+#ifndef NDEBUG
+			if (argument == "--editor-loading-smoke") app.SetInitialSceneKey("EditorLoadingValidation");
+#endif
 			for (const auto& option : Game::Data::Config().launchOptions) {
 				if (option.flag != argument) continue;
 #ifdef NDEBUG

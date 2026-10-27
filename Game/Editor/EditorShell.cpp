@@ -990,7 +990,10 @@ void EditorUI::ShowSceneHost(Engine::IScene& scene, const std::string& sceneName
 	}
 	// 見えていれば、縦横比と Stats の切り替えを上に並べる
 	if (gameVisible && renderer) {
-		ImGui::SetCursorPos(ImVec2(6.0f, 4.0f));
+		// Begin() places the cursor below the title/docking tabs. Keep that
+		// content origin instead of positioning relative to the window border.
+		const ImVec2 contentStart = ImGui::GetCursorPos();
+		ImGui::SetCursorPos(ImVec2(contentStart.x + 6.0f, contentStart.y + 4.0f));
 		ImGui::SetNextItemWidth(90.0f);
 		if (ImGui::BeginCombo("##HostAspect", aspects[currentAspect])) {
 			for (int n = 0; n < IM_ARRAYSIZE(aspects); n++) {
@@ -1018,6 +1021,7 @@ void EditorUI::ShowSceneHost(Engine::IScene& scene, const std::string& sceneName
 		// 画像の範囲を覚える
 		gameImageMin = ImGui::GetItemRectMin();
 		gameImageMax = ImGui::GetItemRectMax();
+		renderer->SetEditorLoadingViewport(gameImageMin.x, gameImageMin.y, w, h);
 		// ImGui の座標はクライアント座標なので、そのまま Input の換算範囲に使える
 		if (auto* input = Engine::Input::GetInstance()) input->SetPointerViewport(gameImageMin.x, gameImageMin.y, w, h);
 		// Stats: FPS と表示の大きさを左上に重ねる

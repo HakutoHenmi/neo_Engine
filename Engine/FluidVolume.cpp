@@ -12,6 +12,10 @@ namespace Engine {
 namespace {
 constexpr UINT kVolumeWidth = 176;
 constexpr UINT kVolumeHeight = 64;
+constexpr UINT kFarWaterWidth=128,kFarWaterHeight=64;
+constexpr float kFarWaterCell=1.f;
+struct FarWaterConstants {Vector3 origin;float cell;UINT dimensions[3];UINT enabled;};
+static_assert(sizeof(FarWaterConstants)==32);
 constexpr float kVoxelSize = 0.56f;
 constexpr float kVolumeHalfWidth = kVolumeWidth * kVoxelSize * 0.5f;
 constexpr D3D12_RESOURCE_STATES kVolumeRead = static_cast<D3D12_RESOURCE_STATES>(
@@ -34,7 +38,7 @@ struct VolumeConstants {
 constexpr UINT kVolumeComputeConstantCount=44;
 static_assert(sizeof(VolumeConstants)==224);
 static_assert(kVolumeComputeConstantCount+7*2+5<=64);
-static_assert(2*2+3*2+7<=64); // Two CBVs, three structured SRVs, seven tables.
+static_assert(3*2+3*2+10<=64); // Three CBVs, three structured SRVs, ten tables.
 static_assert(sizeof(Renderer::GPUFluidParticle) == 64);
 }
 
@@ -61,8 +65,8 @@ bool Renderer::InitFluidVolume() {
         return SUCCEEDED(dev_->CreateRootSignature(0,blob->GetBufferPointer(),blob->GetBufferSize(),IID_PPV_ARGS(&result)));
     };
     if(!root(compute,_countof(compute),rootSigVolumeCompute_)) return false;
-    CD3DX12_ROOT_PARAMETER draw[12];
-    CD3DX12_DESCRIPTOR_RANGE drawRanges[7];
+    CD3DX12_ROOT_PARAMETER draw[16];
+    CD3DX12_DESCRIPTOR_RANGE drawRanges[10];
     draw[0].InitAsConstantBufferView(0);
     draw[1].InitAsConstantBufferView(1);
     for(UINT i=0;i<4;++i) {
@@ -79,6 +83,11 @@ bool Renderer::InitFluidVolume() {
     // Resolved fluid velocity: aerates fast water into white foam in RaymarchPS.
     drawRanges[6].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV,1,9);
     draw[11].InitAsDescriptorTable(1,&drawRanges[6],D3D12_SHADER_VISIBILITY_PIXEL);
+    draw[12].InitAsConstantBufferView(2);
+    for(UINT i=0;i<3;++i){
+        drawRanges[7+i].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV,1,10+i);
+        draw[13+i].InitAsDescriptorTable(1,&drawRanges[7+i]);
+    }
     if(!root(draw,_countof(draw),rootSigVolumeDraw_)) return false;
     CD3DX12_ROOT_PARAMETER shadow[4];CD3DX12_DESCRIPTOR_RANGE shadowRanges[2];
     shadow[0].InitAsConstantBufferView(0);shadow[1].InitAsConstantBufferView(1);
@@ -104,7 +113,7 @@ bool Renderer::InitFluidVolume() {
     if(!computePso("ClearVolume",psoVolumeClear_) || !computePso("BuildShapes",psoVolumeShapes_) ||
        !computePso("SplatDensity",psoVolumeSplat_) || !computePso("ResolveDensity",psoVolumeResolve_) ||
        !computePso("SmoothDensity",psoVolumeSmooth_) || !computePso("TemporalDensity",psoVolumeTemporal_) ||
-       !computePso("BuildOccupancy",psoVolumeOccupancy_) || !computePso("SplatTendrils",psoVolumeTendrils_)) return false;
+       !computePso("SplatFarWater",psoFarWaterSplat_) || !computePso("BuildOccupancy",psoVolumeOccupancy_) || !computePso("SplatTendrils",psoVolumeTendrils_)) return false;
     auto vs=CompileShaderFromFile(L"Resources/shaders/FluidCompositeVS.hlsl","main","vs_5_0");
     auto ps=CompileShaderFromFile(L"Resources/shaders/FluidRaymarch.hlsl","RaymarchPS","ps_5_0");
     auto sprayVS=CompileShaderFromFile(L"Resources/shaders/FluidRaymarch.hlsl","SprayVS","vs_5_0");
@@ -161,6 +170,20 @@ bool Renderer::InitFluidVolume() {
         dev_->CreateUnorderedAccessView(volumeTextures_[i].Get(),nullptr,&uav,window_->SRV_CPU(index));
         dev_->CreateUnorderedAccessView(volumeTextures_[i].Get(),nullptr,&uav,window_->SRV_CPU_Master(index));
         volumeUav_[i]=window_->SRV_GPU(index);
+    }
+    const UINT64 farVoxels=UINT64(kFarWaterWidth)*kFarWaterHeight*kFarWaterWidth;
+    if(!buffer(farVoxels*16,farWaterAccum_)||!buffer(farVoxels*16,farWaterMomentum_))return false;
+    for(UINT i=0;i<4;++i){
+        UINT width=i==3?kFarWaterWidth/4:kFarWaterWidth,height=i==3?kFarWaterHeight/4:kFarWaterHeight;
+        auto desc=CD3DX12_RESOURCE_DESC::Tex3D(DXGI_FORMAT_R16G16B16A16_FLOAT,width,height,UINT16(width),1,D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
+        if(FAILED(dev_->CreateCommittedResource(&heap,D3D12_HEAP_FLAG_NONE,&desc,kVolumeRead,nullptr,IID_PPV_ARGS(&farWaterTextures_[i]))))return false;
+        D3D12_SHADER_RESOURCE_VIEW_DESC srv{};srv.Shader4ComponentMapping=D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+        srv.Format=desc.Format;srv.ViewDimension=D3D12_SRV_DIMENSION_TEXTURE3D;srv.Texture3D.MipLevels=1;
+        UINT index=AllocateSrvIndex();dev_->CreateShaderResourceView(farWaterTextures_[i].Get(),&srv,window_->SRV_CPU(index));
+        dev_->CreateShaderResourceView(farWaterTextures_[i].Get(),&srv,window_->SRV_CPU_Master(index));farWaterSrv_[i]=window_->SRV_GPU(index);
+        D3D12_UNORDERED_ACCESS_VIEW_DESC uav{};uav.Format=desc.Format;uav.ViewDimension=D3D12_UAV_DIMENSION_TEXTURE3D;uav.Texture3D.WSize=width;
+        index=AllocateSrvIndex();dev_->CreateUnorderedAccessView(farWaterTextures_[i].Get(),nullptr,&uav,window_->SRV_CPU(index));
+        dev_->CreateUnorderedAccessView(farWaterTextures_[i].Get(),nullptr,&uav,window_->SRV_CPU_Master(index));farWaterUav_[i]=window_->SRV_GPU(index);
     }
     auto depthDesc=CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R32_FLOAT,sceneWidth_,sceneHeight_,1,1,1,0,D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET);
     if(FAILED(dev_->CreateCommittedResource(&heap,D3D12_HEAP_FLAG_NONE,&depthDesc,D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,nullptr,IID_PPV_ARGS(&volumeSurfaceDepth_)))) return false;
@@ -353,6 +376,41 @@ void Renderer::PrepareFluidVolume() {
     transition(volumeTextures_[5].Get(),kVolumeRead,D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
     list_->SetPipelineState(psoVolumeOccupancy_.Get()); list_->Dispatch(kVolumeWidth/16,kVolumeHeight/16,kVolumeWidth/16);
     transition(volumeTextures_[5].Get(),D3D12_RESOURCE_STATE_UNORDERED_ACCESS,kVolumeRead);
+    // Coarse water-only volume; fine shapes and the near history stay intact.
+    FarWaterConstants farSettings{};farSettings.cell=kFarWaterCell;farSettings.dimensions[0]=farSettings.dimensions[2]=kFarWaterWidth;farSettings.dimensions[1]=kFarWaterHeight;
+    farSettings.enabled=(gpuFluidPhaseMask_&4u)!=0;
+    farSettings.origin={std::floor(center.x/farSettings.cell)*farSettings.cell-kFarWaterWidth*farSettings.cell*.5f,
+        std::floor((center.y-4)/(farSettings.cell*.4f))*(farSettings.cell*.4f),
+        std::floor(center.z/farSettings.cell)*farSettings.cell-kFarWaterWidth*farSettings.cell*.5f};
+    UINT farOffset=fluidUpload.Allocate(sizeof(farSettings),256);farWaterFrameSettings_=0;
+    if(farOffset!=UINT32_MAX){std::memcpy(fluidUpload.mapped+farOffset,&farSettings,sizeof(farSettings));farWaterFrameSettings_=fluidUpload.buffer->GetGPUVirtualAddress()+farOffset;}
+    if(farSettings.enabled&&farWaterFrameSettings_){
+        auto coarse=cb;coarse.origin=farSettings.origin;coarse.cell=farSettings.cell;
+        coarse.dimensions[0]=coarse.dimensions[2]=kFarWaterWidth;coarse.dimensions[1]=kFarWaterHeight;coarse.historyValid=0;
+        list_->SetComputeRoot32BitConstants(0,kVolumeComputeConstantCount,&coarse,0);
+        list_->SetComputeRootUnorderedAccessView(5,farWaterAccum_->GetGPUVirtualAddress());
+        list_->SetComputeRootUnorderedAccessView(6,farWaterMomentum_->GetGPUVirtualAddress());
+        list_->SetPipelineState(psoVolumeClear_.Get());list_->Dispatch(kFarWaterWidth/4,kFarWaterHeight/4,kFarWaterWidth/4);uavBarrier();
+        list_->SetPipelineState(psoFarWaterSplat_.Get());list_->Dispatch(groups,1,1);uavBarrier();
+        list_->SetComputeRootDescriptorTable(8,farWaterUav_[0]);list_->SetComputeRootDescriptorTable(9,farWaterUav_[2]);
+        transition(farWaterTextures_[0].Get(),kVolumeRead,D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+        transition(farWaterTextures_[2].Get(),kVolumeRead,D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+        list_->SetPipelineState(psoVolumeResolve_.Get());list_->Dispatch(kFarWaterWidth/4,kFarWaterHeight/4,kFarWaterWidth/4);
+        transition(farWaterTextures_[0].Get(),D3D12_RESOURCE_STATE_UNORDERED_ACCESS,kVolumeRead);
+        transition(farWaterTextures_[2].Get(),D3D12_RESOURCE_STATE_UNORDERED_ACCESS,kVolumeRead);
+        // Horizontal filtering connects ground films without thickening them.
+        for(UINT pass=0;pass<2;++pass){UINT source=pass,destination=1-pass;coarse.axis=pass==0?0.f:2.f;
+            list_->SetComputeRoot32BitConstants(0,kVolumeComputeConstantCount,&coarse,0);
+            list_->SetComputeRootDescriptorTable(10,farWaterSrv_[source]);list_->SetComputeRootDescriptorTable(8,farWaterUav_[destination]);
+            transition(farWaterTextures_[destination].Get(),kVolumeRead,D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+            list_->SetPipelineState(psoVolumeSmooth_.Get());list_->Dispatch(kFarWaterWidth/4,kFarWaterHeight/4,kFarWaterWidth/4);
+            transition(farWaterTextures_[destination].Get(),D3D12_RESOURCE_STATE_UNORDERED_ACCESS,kVolumeRead);
+        }
+        list_->SetComputeRootDescriptorTable(10,farWaterSrv_[0]);list_->SetComputeRootDescriptorTable(8,farWaterUav_[3]);
+        transition(farWaterTextures_[3].Get(),kVolumeRead,D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+        list_->SetPipelineState(psoVolumeOccupancy_.Get());list_->Dispatch(kFarWaterWidth/16,kFarWaterHeight/16,kFarWaterWidth/16);
+        transition(farWaterTextures_[3].Get(),D3D12_RESOURCE_STATE_UNORDERED_ACCESS,kVolumeRead);
+    }
     EndFluidProfile(FluidFiltering);
     std::memcpy(fluidUpload.mapped+settingsOffset,&cb,sizeof(cb));
     volumeFrameSettings_=fluidUpload.buffer->GetGPUVirtualAddress()+settingsOffset;
@@ -362,7 +420,7 @@ void Renderer::PrepareFluidVolume() {
 }
 
 void Renderer::DrawFluidVolume() {
-    if(!volumeFrameSettings_)return;
+    if(!volumeFrameSettings_||!farWaterFrameSettings_)return;
     auto transition=[&](ID3D12Resource* resource,D3D12_RESOURCE_STATES before,D3D12_RESOURCE_STATES after){auto b=CD3DX12_RESOURCE_BARRIER::Transition(resource,before,after);list_->ResourceBarrier(1,&b);};
     auto& fluidUpload=upload_[window_->FrameIndex()];
     ID3D12Resource* simulationReads[]={gpuFluidSortedParticlesBuffer_.Get(),gpuFluidBuffer_.Get()};
@@ -398,6 +456,10 @@ void Renderer::DrawFluidVolume() {
     list_->SetGraphicsRootDescriptorTable(9,volumeSrv_[5]);
     list_->SetGraphicsRootShaderResourceView(10,gpuFluidBuffer_->GetGPUVirtualAddress());
     list_->SetGraphicsRootDescriptorTable(11,volumeSrv_[4]);
+    list_->SetGraphicsRootConstantBufferView(12,farWaterFrameSettings_);
+    list_->SetGraphicsRootDescriptorTable(13,farWaterSrv_[0]);
+    list_->SetGraphicsRootDescriptorTable(14,farWaterSrv_[2]);
+    list_->SetGraphicsRootDescriptorTable(15,farWaterSrv_[3]);
     list_->SetPipelineState(psoVolumeRaymarch_.Get());
     list_->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     list_->DrawInstanced(3,1,0,0);
