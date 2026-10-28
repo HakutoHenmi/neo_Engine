@@ -50,11 +50,12 @@ class SlimeLifeValidationScene final:public Game::GameScene {
     int tirePhase_=0;float tireClock_=0,tireSpeed_=0;bool tireValid_=true;size_t tireProp_=0;
     void UpdateTire(){
         using namespace Game;using namespace Game::Chrono;
-        auto player=FindObjectByName("Player");auto& input=GetComponents().get<ControlFrame>(player);input={};input.pitch=.33f;input.morphForm=1;
+        auto player=FindObjectByName("Player");auto& input=GetComponents().get<ControlFrame>(player);input={};input.pitch=.33f;input.morphForm=2;
         auto& life=const_cast<SlimeLife&>(GetChronoSystem()->LifeState());auto& body=life.bodies[0];auto& controller=GetComponents().get<Player>(player);controller.invincible=60;
         auto& enemies=const_cast<std::vector<SwarmEnemy>&>(GetChronoSystem()->LifeEnemies());
         for(auto& enemy:enemies){enemy.attackDelay=60;enemy.shotClock=60;enemy.alerted=false;}
-        if(frames_==0){float nearest=1e9f;bool found=false;
+        if(frames_==0){GetChronoSystem()->OpenCityGates(const_cast<entt::registry&>(GetRegistry()),1);body.at=CityTireItem()+Vec{-6,1.25f,-8};body.forward=body.liquidForward={0,0,1};controller.velocity={};++life.revision;
+            float nearest=1e9f;bool found=false;
             for(size_t i=0;i<life.props.size();++i)if(life.props[i].morphItem==LifeMorphItem::Tire){float d=LifeDistance(body.at,life.props[i].at);if(d<nearest){tireProp_=i;nearest=d;found=true;}}
             tireValid_&=found&&nearest<life.recipe.AbsorbRange();}
         if(tirePhase_==0)input.attack=tireClock_<.1f;
@@ -67,7 +68,7 @@ class SlimeLifeValidationScene final:public Game::GameScene {
         if(tirePhase_==4)input.move={1,0,0};
         if(tirePhase_==5)input.returnToSlime=true;
         float before=life.age;Game::GameScene::Update();++frames_;tireClock_+=life.age-before;
-        auto next=[&](){trace_<<"tire phase="<<tirePhase_<<" action="<<int(body.action)<<" ready="<<body.weapon.ready<<" mass="<<body.mass<<'\n';trace_.flush();++tirePhase_;tireClock_=0;};
+        auto next=[&](){trace_<<"tire phase="<<tirePhase_<<" valid="<<tireValid_<<" action="<<int(body.action)<<" ready="<<body.weapon.ready<<" mass="<<body.mass<<'\n';trace_.flush();++tirePhase_;tireClock_=0;};
         if(tirePhase_==0&&tireClock_>.8f){tireValid_&=!body.tireUnlocked&&body.action==LifeAction::Idle;Capture(L"tests/out/slime-life-tire-highlight.png");next();}
         else if(tirePhase_==1&&body.tireUnlocked&&body.action==LifeAction::Idle){tireValid_&=!life.props[tireProp_].active;Capture(L"tests/out/slime-life-tire-unlocked.png");next();}
         else if(tirePhase_==2&&body.action==LifeAction::Tire&&body.weapon.ready){tireValid_&=!body.weapon.active&&body.mass<LifeHammerMass;Capture(L"tests/out/slime-life-tire-form.png");next();}
@@ -75,7 +76,7 @@ class SlimeLifeValidationScene final:public Game::GameScene {
         else if(tirePhase_==4&&tireClock_>.2f){tireValid_&=body.forward.z>.8f;next();}
         else if(tirePhase_==5&&body.action==LifeAction::Idle){tireValid_&=body.tireUnlocked;next();}
         else if(tirePhase_==6&&body.action==LifeAction::Tire&&body.weapon.ready){
-            tireValid_&=body.tireUnlocked;body.mass=body.health=body.maxHealth=1200;body.at={78,1.25f,-400};controller.velocity={};++life.revision;
+            tireValid_&=body.tireUnlocked;body.mass=body.health=body.maxHealth=1200;body.at={102,1.25f,-400};controller.velocity={};++life.revision;
             GetChronoSystem()->OpenCityGates(const_cast<entt::registry&>(GetRegistry()));next();}
         else if(tirePhase_==7&&tireClock_>2&&GetRenderer()->FluidMorphReady(life.revision,0,LifeScale(body.mass))){Capture(L"tests/out/slime-life-tire-large.png");next();}
         for(auto p:GetRenderer()->GetFluidBodySnapshot().offsets)tireValid_&=std::isfinite(p.x)&&std::isfinite(p.y)&&std::isfinite(p.z);
@@ -96,13 +97,13 @@ class SlimeLifeValidationScene final:public Game::GameScene {
     int aimPhase_=0,aimHits_=0;float aimClock_=0;bool aimValid_=true;
     void UpdateHydrantAiming(){
         using namespace Game;using namespace Game::Chrono;
-        auto player=FindObjectByName("Player");auto& input=GetComponents().get<ControlFrame>(player);input={};input.morphForm=2;
+        auto player=FindObjectByName("Player");auto& input=GetComponents().get<ControlFrame>(player);input={};input.morphForm=3;
         auto& life=const_cast<SlimeLife&>(GetChronoSystem()->LifeState());auto& body=life.bodies[0];
         auto& controller=GetComponents().get<Player>(player);auto& enemies=const_cast<std::vector<SwarmEnemy>&>(GetChronoSystem()->LifeEnemies());
         constexpr float masses[]={100,905,905,905};constexpr Vec offsets[]={{0,0,14},{0,0,55},{12,12,28},{0,80,80}};
         if(aimClock_==0){
             GetChronoSystem()->OpenCityGates(const_cast<entt::registry&>(GetRegistry()));
-            life.step=2;life.props.clear();life.bodies={};body.at={78,1.25f,-360};body.mass=body.health=body.maxHealth=masses[aimPhase_];body.particles=6600;body.hydrantUnlocked=true;body.forward=body.liquidForward={0,0,1};
+            life.step=2;life.props.clear();life.bodies={};body.at={102,1.25f,-360};body.mass=body.health=body.maxHealth=masses[aimPhase_];body.particles=6600;body.hydrantUnlocked=true;body.forward=body.liquidForward={0,0,1};
             LifeEnterWeapon(body,LifeAction::Hydrant,{0,0,1});controller.velocity={};++life.revision;
             enemies.clear();Vec target=body.at+offsets[aimPhase_];enemies.push_back(CitySpawnEnemy({CityEnemy::Shield,target,target},9001,2));
             enemies.front().health=enemies.front().maxHealth=1000;aimHits_=life.waterHits;
@@ -147,8 +148,8 @@ class SlimeLifeValidationScene final:public Game::GameScene {
         auto& life=const_cast<SlimeLife&>(GetChronoSystem()->LifeState());auto& body=life.bodies[0];auto& controller=GetComponents().get<Player>(player);
         auto& enemies=const_cast<std::vector<SwarmEnemy>&>(GetChronoSystem()->LifeEnemies());
         life.stepDelay=120;controller.invincible=60;
-        if(frames_==0){GetChronoSystem()->OpenCityGates(const_cast<entt::registry&>(GetRegistry()),true);enemies.clear();life.step=2;life.props.clear();
-            body.at={78,1.25f,-430};body.mass=body.health=body.maxHealth=900;body.forward=body.liquidForward={0,0,1};controller.velocity={};life.absorbedMass=800;
+        if(frames_==0){GetChronoSystem()->OpenCityGates(const_cast<entt::registry&>(GetRegistry()),2);enemies.clear();life.step=2;life.props.clear();
+            body.at={102,1.25f,-560};body.mass=body.health=body.maxHealth=900;body.forward=body.liquidForward={0,0,1};controller.velocity={};life.absorbedMass=800;
             for(int i=0;i<6;++i)LifeTakeHit(life,1);body.health=body.maxHealth;
             const Vec offsets[]={{-14,0,30},{12,0,34},{-22,0,14},{20,0,18},{0,0,42},{-6,0,-24}};uint32_t id=9001;
             for(auto offset:offsets){Vec at=body.at+offset;enemies.push_back(CitySpawnEnemy({CityEnemy::Rat,at,at},id++,life.step));enemies.back().at.y=CityStats(CityEnemy::Rat).scale;}
@@ -180,7 +181,8 @@ class SlimeLifeValidationScene final:public Game::GameScene {
         auto player=FindObjectByName("Player");auto& input=GetComponents().get<ControlFrame>(player);input={};input.pitch=.33f;input.showcase=true;
         auto& life=const_cast<SlimeLife&>(GetChronoSystem()->LifeState());auto& body=life.bodies[0];GetComponents().get<Player>(player).invincible=60;
         auto& enemies=const_cast<std::vector<SwarmEnemy>&>(GetChronoSystem()->LifeEnemies());
-        if(frames_==0){float nearest=1e9f;bool found=false;
+        if(frames_==0){GetChronoSystem()->OpenCityGates(const_cast<entt::registry&>(GetRegistry()),1);body.at=CityTireItem()+Vec{0,1.25f,-6};body.forward=body.liquidForward={0,0,1};GetComponents().get<Player>(player).velocity={};++life.revision;
+            float nearest=1e9f;bool found=false;
             for(size_t i=0;i<life.props.size();++i)if(life.props[i].morphItem==LifeMorphItem::Tire){float d=LifeDistance(body.at,life.props[i].at);if(d<nearest){showProp_=i;nearest=d;found=true;}}
             showValid_&=found&&nearest<life.recipe.AbsorbRange();
             // 動き回る敵を 1 体置き、見せ場の間に止まるかを見る
@@ -211,11 +213,11 @@ class SlimeLifeValidationScene final:public Game::GameScene {
     // 大交差点で信号機を 1 周 (赤 → 青 → 黄) 使い、色ごとの効果と点検の制限を確かめる
     void UpdateSignal(){
         using namespace Game;using namespace Game::Chrono;
-        auto player=FindObjectByName("Player");auto& input=GetComponents().get<ControlFrame>(player);input={};input.pitch=.42f;input.morphForm=3;
+        auto player=FindObjectByName("Player");auto& input=GetComponents().get<ControlFrame>(player);input={};input.pitch=.42f;input.morphForm=4;
         auto& life=const_cast<SlimeLife&>(GetChronoSystem()->LifeState());auto& body=life.bodies[0];auto& controller=GetComponents().get<Player>(player);controller.invincible=60;
         auto& enemies=const_cast<std::vector<SwarmEnemy>&>(GetChronoSystem()->LifeEnemies());life.stepDelay=120;
         // 前の 5 体は赤の範囲、遠い 1 体 (最後) は範囲外で走ってくる
-        if(frames_==0){GetChronoSystem()->OpenCityGates(const_cast<entt::registry&>(GetRegistry()),true);enemies.clear();life.step=6;
+        if(frames_==0){GetChronoSystem()->OpenCityGates(const_cast<entt::registry&>(GetRegistry()),2);enemies.clear();life.step=6;
             body.at=CityCrossing()+Vec{0,1.25f,-60};body.mass=body.health=body.maxHealth=900;body.signalUnlocked=body.tireUnlocked=true;body.forward=body.liquidForward={0,0,1};controller.velocity={};life.absorbedMass=800;
             const Vec offsets[]={{-12,0,14},{-4,0,18},{6,0,15},{14,0,20},{0,0,25},{-36,0,44}};uint32_t id=9001;
             for(auto offset:offsets){Vec at=body.at+offset,patrol=offset.z>30?body.at+Vec{36,0,44}:at;enemies.push_back(CitySpawnEnemy({CityEnemy::Soldier,at,patrol},id++,life.step));auto& e=enemies.back();e.at.y=CityStats(CityEnemy::Soldier).scale;e.health=e.maxHealth=2000;e.alerted=offset.z<30;}
@@ -230,7 +232,7 @@ class SlimeLifeValidationScene final:public Game::GameScene {
         if((signalPhase_==0||signalPhase_==1||signalPhase_==2)&&press)input.attack=true;
         // 点検中に押す / 数字キーの 1 でタイヤへ、3 で信号機へ戻る (入力は更新の前に決める)
         if(signalPhase_==4)input.attack=signalClock_<.1f;
-        if(signalPhase_==5||signalPhase_==6){input.morphForm=signalPhase_==5?1:3;input.morphNow=signalClock_<.05f;}
+        if(signalPhase_==5||signalPhase_==6){input.morphForm=signalPhase_==5?2:4;input.morphNow=signalClock_<.05f;}
         float before=life.age;Game::GameScene::Update();++frames_;signalClock_+=life.age-before;
         auto next=[&](){trace_<<"signal phase="<<signalPhase_<<" valid="<<signalValid_<<" next="<<int(life.signal.next)<<" wait="<<life.signal.wait<<'\n';trace_.flush();++signalPhase_;signalClock_=0;};
         if(frames_%20==0&&enemies.size()==6){const auto& e=enemies[5];trace_<<"signal runner at="<<e.at.x<<","<<e.at.z<<" phase="<<int(e.phase)<<" alerted="<<e.alerted<<" stop="<<e.signalStop<<" mark="<<e.signalMark<<" hp="<<e.health<<'\n';}
@@ -272,13 +274,13 @@ class SlimeLifeValidationScene final:public Game::GameScene {
     bool hydrantValid_=true,hydrantAttackImage_=false,hydrantGuardImage_=false,hydrantUnprotected_=false;
     void UpdateHydrant(){
         using namespace Game;using namespace Game::Chrono;
-        auto player=FindObjectByName("Player");auto& input=GetComponents().get<ControlFrame>(player);input={};input.morphForm=2;input.pitch=.2f;
+        auto player=FindObjectByName("Player");auto& input=GetComponents().get<ControlFrame>(player);input={};input.morphForm=3;input.pitch=.2f;
         auto& life=const_cast<SlimeLife&>(GetChronoSystem()->LifeState());auto& body=life.bodies[0];auto& controller=GetComponents().get<Player>(player);
         auto& enemies=const_cast<std::vector<SwarmEnemy>&>(GetChronoSystem()->LifeEnemies());
         life.stepDelay=120;controller.invincible=hydrantPhase_==4||hydrantPhase_==5?0.f:60.f;
         auto spawn=[&](CityEnemy kind,Vec at){enemies.clear();enemies.push_back(CitySpawnEnemy({kind,at,at},9001,life.step));enemies.back().at.y=CityStats(kind).scale;};
-        if(frames_==0){GetChronoSystem()->OpenCityGates(const_cast<entt::registry&>(GetRegistry()),true);enemies.clear();life.step=2;
-            body.at={86,1.25f,-470};body.mass=body.health=body.maxHealth=320;body.forward=body.liquidForward={0,0,1};controller.velocity={};++life.revision;
+        if(frames_==0){GetChronoSystem()->OpenCityGates(const_cast<entt::registry&>(GetRegistry()),2);enemies.clear();life.step=3;
+            body.at={40,1.25f,478};body.mass=body.health=body.maxHealth=320;body.forward=body.liquidForward={0,0,1};controller.velocity={};++life.revision;
             bool found=false;float nearest=1e9f;for(size_t i=0;i<life.props.size();++i)if(life.props[i].morphItem==LifeMorphItem::Hydrant){float d=LifeDistance(body.at,life.props[i].at);if(d<nearest){found=true;nearest=d;hydrantProp_=i;}}
             hydrantValid_&=found&&nearest<life.recipe.AbsorbRange()*LifeScale(body.mass);}
         if(hydrantPhase_==0)input.attack=hydrantClock_<.1f;
@@ -304,7 +306,7 @@ class SlimeLifeValidationScene final:public Game::GameScene {
         else if(hydrantPhase_==4){
             if(hydrantClock_>1&&!hydrantGuardImage_){Capture(L"tests/out/slime-life-hydrant-defense.png");hydrantGuardImage_=true;}
             if(hydrantClock_>4&&life.waterBlocks>=2){hydrantValid_&=body.health==hydrantHp_;hydrantHp_=body.health;next();}}
-        else if(hydrantPhase_==5&&body.health<hydrantHp_){hydrantValid_&=body.weapon.ready;hydrantUnprotected_=true;enemies.clear();life.step=4;body.at={78,1.25f,-88};controller.velocity={};++life.revision;next();}
+        else if(hydrantPhase_==5&&body.health<hydrantHp_){hydrantValid_&=body.weapon.ready;hydrantUnprotected_=true;enemies.clear();life.step=4;body.at={102,1.25f,906};controller.velocity={};++life.revision;next();}
         else if(hydrantPhase_==6&&GetChronoSystem()->CityGateState().gateOpen){Capture(L"tests/out/slime-life-hydrant-gate.png");next();}
         else if(hydrantPhase_==7&&body.action==LifeAction::Idle){hydrantValid_&=body.hydrantUnlocked&&!life.waterAttack&&!life.waterGuard;next();}
         else if(hydrantPhase_==8&&body.action==LifeAction::Hydrant&&body.weapon.ready){next();}
@@ -371,7 +373,7 @@ class SlimeLifeValidationScene final:public Game::GameScene {
             progressionValid_&=alive==int(CityStepSpawns(life.step).size());
         }
         // Leave one survivor first: a step must not advance while it lives.
-        if(progressionFrame_==0){if(life.step==0)for(auto& enemy:enemies)if(SwarmAlive(enemy)&&enemy.id!=enemies.back().id){enemy.health=0;enemy.phase=SwarmPhase::Dead;++ink.swarmKills;}life.stepDelay=0;}
+        if(progressionFrame_==0){if(life.step==1)for(auto& enemy:enemies)if(SwarmAlive(enemy)&&enemy.id!=enemies.back().id){enemy.health=0;enemy.phase=SwarmPhase::Dead;++ink.swarmKills;}life.stepDelay=0;}
         if(progressionFrame_<4)progressionValid_&=life.step==progressionWave_;
         if(progressionFrame_==4){
             body.mass=body.health=body.maxHealth=std::min(LifeMaxMass,100.f+float(life.step+1)*850);life.absorbedMass=body.mass-100;++life.revision;
@@ -382,7 +384,7 @@ class SlimeLifeValidationScene final:public Game::GameScene {
         // Gate steps wait for their gate even after every enemy falls.
         if(progressionFrame_==30){if(life.step==CityStepCount-1)Capture(L"tests/out/slime-life-final-wave.png");
             for(auto& enemy:enemies)if(SwarmAlive(enemy)){enemy.health=0;enemy.phase=SwarmPhase::Dead;++ink.swarmKills;}}
-        if(progressionFrame_==40&&(life.step==1||life.step==4)){progressionValid_&=life.step==progressionWave_;GetChronoSystem()->OpenCityGates(const_cast<entt::registry&>(GetRegistry()));}
+        if(progressionFrame_==40&&(life.step==0||life.step==2||life.step==4)){progressionValid_&=life.step==progressionWave_;GetChronoSystem()->OpenCityGates(const_cast<entt::registry&>(GetRegistry()),life.step/2+1);}
         Game::GameScene::Update();++frames_;++progressionFrame_;
         for(auto p:GetRenderer()->GetFluidBodySnapshot().offsets)progressionValid_&=std::isfinite(p.x)&&std::isfinite(p.y)&&std::isfinite(p.z);
         if(GetChronoSystem()->Finished()||frames_>900){
@@ -513,9 +515,11 @@ class SlimeLifeValidationScene final:public Game::GameScene {
         auto player=FindObjectByName("Player");auto& input=GetComponents().get<ControlFrame>(player);input={};input.pitch=.3f;
         const auto& before=GetChronoSystem()->LifeState();const auto& body=before.bodies[0];
         GetComponents().get<Player>(player).invincible=60; // Observe progression without damage splits changing size.
-        if(frames_==0){growthInitial_=before.ChildCount()==0&&before.ChildLimit()==2&&body.mass==LifeStartMass;growthStartScale_=LifeScale(body.mass);}
+        if(frames_==0){growthInitial_=before.ChildCount()==0&&before.ChildLimit()==2&&body.mass==LifeStartMass;growthStartScale_=LifeScale(body.mass);
+            // 路地の壁はハンマーで壊すもの (別のテスト)。ここでは吸収だけで路地を回れるよう先に開ける
+            GetChronoSystem()->OpenCityGates(const_cast<entt::registry&>(GetRegistry()),1);}
         // タイヤを解放する前に攻撃するとタックルになる
-        if(frames_==2){input.attack=true;input.morphForm=1;}
+        if(frames_==2){input.attack=true;input.morphForm=2;}
         else if(frames_>10&&body.action==LifeAction::Idle){
             const LifeCollectible* target=nullptr;float nearest=1e9f;
             for(const auto& prop:before.props)if(prop.active&&prop.morphItem==LifeMorphItem::None&&LifeCanAbsorb(body.mass,prop.required)&&CityAreaAt(prop.at)==CityAreaAt(body.at)){
@@ -540,61 +544,57 @@ class SlimeLifeValidationScene final:public Game::GameScene {
             PostQuitMessage(pass?0:2);
         }
     }
-    int alleyPhase_=0;float alleyHold_=0;bool alleyImages_[3]{},alleyOnlyTire_=true;size_t alleyProp_=0;int alleyDashes_=0;
-    // 一つ目の区画 (路地裏) を、タイヤの溜め突進だけで敵を倒し、バリケードを壊して抜けられるか
+    int alleyPhase_=-1,alleyFrame_=0,alleySwings_=0;bool alleyImages_[2]{},alleyOnlyHammer_=true;
+    // 一つ目の区画 (脱出路地) を、ハンマーだけで板塀・ブロック塀・金網を壊して抜けられるか。敵は出ない
     void UpdateAlley(){
         using namespace Game;using namespace Game::Chrono;
-        auto player=FindObjectByName("Player");auto& input=GetComponents().get<ControlFrame>(player);input={};input.pitch=.3f;input.morphForm=1;
+        auto player=FindObjectByName("Player");auto& input=GetComponents().get<ControlFrame>(player);input={};input.pitch=.25f;input.morphForm=1;
         auto& life=const_cast<SlimeLife&>(GetChronoSystem()->LifeState());auto& body=life.bodies[0];GetComponents().get<Player>(player).invincible=60;
-        if(frames_==0){float nearest=1e9f;for(size_t i=0;i<life.props.size();++i)if(life.props[i].morphItem==LifeMorphItem::Tire){float d=LifeDistance(body.at,life.props[i].at);if(d<nearest){alleyProp_=i;nearest=d;}}}
-        const auto& gates=GetChronoSystem()->CityGateState();
-        // 1. 金色のタイヤを吸収して解放する
-        if(!body.tireUnlocked){if(body.action==LifeAction::Idle){input.absorb=true;auto d=life.props[alleyProp_].at-body.at;input.yaw=std::atan2(d.x,d.z);}}
-        // 2. タイヤに変形する
-        else if(body.action!=LifeAction::Tire){input.attack=body.action==LifeAction::Idle&&!life.previousFire;}
-        // 3. 一番近い敵 (いなければバリケード) へ向けて溜め、溜めきって向きがそろったら離して突進する
-        else if(body.weapon.ready){
-            Vec target{};bool found=false;float nearest=1e9f;
-            for(const auto& enemy:GetChronoSystem()->LifeEnemies())if(SwarmAlive(enemy)&&enemy.step==life.step){float d=LifeDistance(enemy.at,body.at);if(d<nearest){nearest=d;target=enemy.at;found=true;}}
-            if(!found&&life.step==1&&!gates.barricadeOpen){target=CityBarricadeCenter();found=true;}
-            if(found){Vec d=target-body.at;d.y=0;
-                // 曲がり角の向こうの的は、角を経由して狙う
-                if(body.at.z<-584&&target.x>30)d=Vec{4,0,-560}-body.at,d.y=0;
-                else if(body.at.x<50&&target.z>-540)d=Vec{78,0,-562}-body.at,d.y=0;
-                input.yaw=std::atan2(d.x,d.z);
-                if(body.weapon.dash>0)input.move={0,0,1};
-                else{bool aligned=Dot(body.forward,Unit(d))>.97f;
-                    if(body.weapon.charging&&body.weapon.charge>=1&&aligned){input.attack=false;++alleyDashes_;}
-                    else input.attack=!(life.previousFire&&!body.weapon.charging);}}
+        const auto& gates=GetChronoSystem()->CityGateState();const auto& walls=CityWalls();
+        // 次に壊す壁 (無ければすべて壊れた)
+        int next=-1;for(size_t i=0;i<walls.size();++i)if(!gates.WallOpen(i)){next=int(i);break;}
+        if(next>=0){const auto& wall=walls[size_t(next)];Vec out{wall.Axis().z,0,-wall.Axis().x};
+            // 開始位置に近い側から近づく
+            if(LifeDistance(wall.Center()+out*11,CityStart())>LifeDistance(wall.Center()-out*11,CityStart()))out=out*-1.f;
+            if(next!=alleyPhase_){alleyPhase_=next;alleyFrame_=0;
+                // 壁の手前に本体を置き、ハンマーに変形できる大きさにする
+                body.mass=body.health=body.maxHealth=std::max(body.mass,220.f);life.absorbedMass=std::max(life.absorbedMass,120.f);
+                body.at=wall.Center()+out*11+Vec{0,1.25f,0};body.forward=body.liquidForward=out*-1.f;GetComponents().get<Player>(player).velocity={};++life.revision;}
+            input.yaw=std::atan2(-out.x,-out.z);
+            // 変形するまでは数字キー、変形したら壁へ寄りながら押し続けて叩く
+            if(body.action!=LifeAction::Hammer){input.morphNow=alleyFrame_%20==1;}
+            else{input.move={0,0,1};input.attack=true;}
         }
-        float before=life.age;Game::GameScene::Update();++frames_;
-        alleyOnlyTire_&=body.action==LifeAction::Idle||body.action==LifeAction::Engulf||body.action==LifeAction::Restore||body.action==LifeAction::Tire;
-        if(body.weapon.charging&&body.weapon.charge>.7f&&!alleyImages_[0]){Capture(L"tests/out/slime-life-alley-charge.png");alleyImages_[0]=true;}
-        if(body.weapon.dash>.2f&&body.weapon.dash<LifeTireDashDuration(body.weapon.dashPower)-.2f&&body.weapon.dashPower>.9f&&!alleyImages_[1]){Capture(L"tests/out/slime-life-alley-dash.png");alleyImages_[1]=true;}
-        if(gates.barricadeOpen&&!alleyImages_[2]){alleyHold_+=life.age-before;if(alleyHold_>.6f){Capture(L"tests/out/slime-life-alley-barricade.png");alleyImages_[2]=true;}}
-        if(frames_%60==0){trace_<<"alley step="<<life.step<<" alive="<<std::count_if(GetChronoSystem()->LifeEnemies().begin(),GetChronoSystem()->LifeEnemies().end(),[&](const SwarmEnemy& e){return SwarmAlive(e)&&e.step==life.step;})<<" barricade="<<gates.barricadeOpen<<" action="<<int(body.action)<<" charge="<<body.weapon.charge<<" dash="<<body.weapon.dash<<" dashes="<<alleyDashes_<<" at="<<body.at.x<<","<<body.at.z<<'\n';trace_.flush();}
+        int before=life.step;Game::GameScene::Update();++frames_;++alleyFrame_;
+        alleyOnlyHammer_&=body.action==LifeAction::Idle||body.action==LifeAction::Restore||body.action==LifeAction::Hammer;
+        if(body.weapon.active&&body.weapon.age<.02f)++alleySwings_;
+        if(next==0&&body.action==LifeAction::Hammer&&body.weapon.active&&!alleyImages_[0]){Capture(L"tests/out/slime-life-alley-hammer.png");alleyImages_[0]=true;}
+        if(life.step>before&&!alleyImages_[1]){Capture(L"tests/out/slime-life-alley-cleared.png");alleyImages_[1]=true;}
+        if(frames_%60==0){trace_<<"alley step="<<life.step<<" wall="<<next<<" open="<<gates.wallsOpen<<" action="<<int(body.action)<<" swings="<<alleySwings_<<" at="<<body.at.x<<","<<body.at.z<<'\n';trace_.flush();}
         float real=std::chrono::duration<float>(std::chrono::steady_clock::now()-start_).count();
-        bool cleared=life.step>=2&&gates.barricadeOpen&&alleyImages_[2];
-        if(cleared||real>180){bool pass=cleared&&alleyOnlyTire_&&alleyImages_[0]&&alleyImages_[1];
-            std::ofstream("tests/out/slime-life-alley.txt")<<(pass?"PASS":"FAIL")<<" alley step="<<life.step<<" barricade="<<gates.barricadeOpen<<" only_tire="<<alleyOnlyTire_<<" dashes="<<alleyDashes_<<" kills="<<GetComponents().get<InkPlayer>(player).swarmKills<<" seconds="<<life.age;
+        bool cleared=life.step>=1&&gates.AlleyOpen()&&alleyImages_[1];
+        if(cleared||real>180){bool pass=cleared&&alleyOnlyHammer_&&alleyImages_[0]&&CityStepSpawns(0).empty();
+            std::ofstream("tests/out/slime-life-alley.txt")<<(pass?"PASS":"FAIL")<<" alley step="<<life.step<<" walls="<<gates.wallsOpen<<" only_hammer="<<alleyOnlyHammer_<<" swings="<<alleySwings_<<" seconds="<<life.age;
             PostQuitMessage(pass?0:2);}
     }
-    // City stage tour: teleports through the three areas with every enemy role on stage and saves one image per view.
+    // City stage tour: teleports through the four areas with every enemy role on stage and saves one image per view.
     int tourStop_=0,tourFrame_=0;bool tourSpawned_=false;
     void UpdateCityTour(){
         using namespace Game;using namespace Game::Chrono;
         struct Stop {Vec at;float yaw,pitch,mass;const wchar_t* image;bool open;};
         static const Stop stops[]={
-            {{0,0,-680},0,.22f,100,L"tests/out/city-alley-start.png",false},
-            {{-4,0,-622},.35f,.18f,140,L"tests/out/city-alley-rats.png",false},
-            {{40,0,-562},1.2f,.2f,180,L"tests/out/city-alley-bend.png",false},
-            {{78,0,-512},0,.22f,260,L"tests/out/city-barricade.png",false},
-            {{78,0,-150},0,.18f,1500,L"tests/out/city-gate.png",false},
-            {{78,0,-440},0,.2f,700,L"tests/out/city-street.png",true},
-            {{120,0,-265},-1.5708f,.2f,900,L"tests/out/city-side-street.png",true},
-            {{78,0,30},0,.16f,3000,L"tests/out/city-crossing.png",true},
-            {{-120,0,160},.75f,.3f,5200,L"tests/out/city-guardian.png",true},
-            {{330,0,600},-2.4f,.25f,5200,L"tests/out/city-crossing-corner.png",true},
+            {{0,0,-1200},0,.22f,100,L"tests/out/city-alley-start.png",false},
+            {{0,0,-1150},0,.2f,180,L"tests/out/city-alley-wood-fence.png",false},
+            {{20,0,-1046},1.5708f,.2f,200,L"tests/out/city-alley-block-wall.png",false},
+            {{102,0,-1000},0,.2f,220,L"tests/out/city-alley-wire-fence.png",false},
+            {{102,0,-860},0,.18f,400,L"tests/out/city-avenue-entrance.png",false},
+            {{102,0,-200},0,.16f,900,L"tests/out/city-avenue.png",false},
+            {{102,0,330},0,.2f,1200,L"tests/out/city-barricade.png",false},
+            {{102,0,500},0,.2f,1500,L"tests/out/city-fire-scene.png",true},
+            {{60,0,780},.8f,.22f,1800,L"tests/out/city-fire-gate.png",true},
+            {{102,0,1030},0,.16f,3000,L"tests/out/city-crossing.png",true},
+            {{-60,0,1200},.75f,.3f,5200,L"tests/out/city-crossing-crash.png",true},
+            {{354,0,1596},-2.4f,.25f,5200,L"tests/out/city-crossing-corner.png",true},
         };
         constexpr int count=int(sizeof(stops)/sizeof(stops[0]));
         auto player=FindObjectByName("Player");auto& input=GetComponents().get<ControlFrame>(player);input={};
@@ -690,7 +690,7 @@ public:
             const SwarmEnemy* target=nullptr;float distance=1e9f;
             for(const auto& enemy:GetChronoSystem()->LifeEnemies())if(SwarmAlive(enemy)){float d=LifeDistance(enemy.at,body.at);if(d<distance){distance=d;target=&enemy;}}
             if(target){auto delta=target->at-body.at;input.yaw=std::atan2(delta.x,delta.z);input.move=distance>(draining_?2.f:5.f)?Vec{0,0,1}:Vec{};}
-            input.morphForm=1;const_cast<LifeBody&>(body).tireUnlocked=true;
+            input.morphForm=2;const_cast<LifeBody&>(body).tireUnlocked=true;
             if(life.splits>0&&!draining_&&body.action==LifeAction::Idle&&body.cooldown<=0&&frames_%2==0)input.attack=true;
             // タイヤになったら溜めきるまで押し、離して突進する
             if(life.splits>0&&!draining_&&body.action==LifeAction::Tire&&body.weapon.ready)input.attack=!(body.weapon.charging&&body.weapon.charge>=1)&&!(life.previousFire&&!body.weapon.charging);

@@ -107,7 +107,7 @@ public:
             for(int i=0;i<2;++i)report<<" form"<<i+1<<"="<<forms_[i]<<" attack"<<i+1<<"="<<attacks_[i];
             PostQuitMessage(pass?0:2);return;
         }
-        input.morphForm=form_;input.attack=(age_>.1f&&age_<.25f)||(readyAge_>.2f&&readyAge_<.65f);
+        input.morphForm=form_+1;input.attack=(age_>.1f&&age_<.25f)||(readyAge_>.2f&&readyAge_<.65f);
         input.returnToSlime=readyAge_>1.8f;
         input.move=(age_>.4f&&age_<1.7f)?Vec{1,0,0}:Vec{};
         input.jump=age_>.5f&&age_<.65f;
