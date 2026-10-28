@@ -10,14 +10,14 @@ namespace Game {
 namespace {
 // 街の材質の種類 (道路・歩道・塗装・コンクリート・ガラス・金属など)
 enum CityMaterialId {CityRoad,CitySidewalk,CityAlleyFloor,CityPaint,CityPaintYellow,CityConcrete,CityCladding,CityFacadeTiles,CityDarkTiles,
-    CitySlab,CityGreyTiles,CityShutter,CityRustShutter,CityGlass,CityMetal,CityWhiteBrick,CityWood,CityStoneSkin,CityMaterialCount};
+    CitySlab,CityGreyTiles,CityShutter,CityRustShutter,CityGlass,CityMetal,CityWhiteBrick,CityWood,CityStoneSkin,CityScorch,CityMaterialCount};
 // 材質ごとの頂点と添字
 struct CityGeometry {std::vector<Engine::VertexData> vertices;std::vector<uint32_t> indices;};
 // 街の形を材質ごとのメッシュとして組み立てる
 struct CityBuilder {
     // 材質ごとの形と、テクスチャを繰り返す大きさ
     std::array<CityGeometry,CityMaterialCount> geometry;
-    std::array<float,CityMaterialCount> tile{30,10,16,6,6,20,8,12,14,18,8,8,8,8,6,10,8,22};
+    std::array<float,CityMaterialCount> tile{30,10,16,6,6,20,8,12,14,18,8,8,8,8,6,10,8,22,30};
     // UV は面の平面に沿ってワールドの単位で付けるので、繰り返しの大きさが物理的にそろう
     // 多角形を三角形に分けて追加する (法線から UV の向きを決める)
     void Polygon(int material,std::initializer_list<Chrono::Vec> points,Chrono::Vec normal){
@@ -109,7 +109,7 @@ void ChronoSystem::BuildCityStage(entt::registry& r){
     // 材質ごとの Poly Haven の素材の名前
     const char* surfaceIds[CityMaterialCount]={"asphalt_02","large_grey_tiles","concrete_floor_worn_001","concrete_floor_worn_001","concrete_floor_worn_001",
         "concrete_wall_008","exterior_wall_cladding_02","rectangular_facade_tiles_02","concrete_tile_facade","concrete_slab_wall","grey_tiles",
-        "painted_metal_shutter","rusty_metal_shutter","concrete_floor_worn_001","concrete_floor_worn_001","white_bricks","medieval_wood","castle_wall_slates"};
+        "painted_metal_shutter","rusty_metal_shutter","concrete_floor_worn_001","concrete_floor_worn_001","white_bricks","medieval_wood","castle_wall_slates","asphalt_02"};
     // 材質を読み込む
     std::array<CityModel,CityMaterialCount> surfaces;for(int i=0;i<CityMaterialCount;++i)surfaces[size_t(i)]=material(surfaceIds[i]);
     Engine::LoadProfile::Record("mark","city: surfaces requested",0);
@@ -117,39 +117,49 @@ void ChronoSystem::BuildCityStage(entt::registry& r){
     auto tint=[](int i)->DirectX::XMFLOAT4{
         // 塗装は明るく、黄色の塗装・ガラス・金属・道路は色を変える
         switch(i){case CityPaint:return {2.5f,2.5f,2.45f,1};case CityPaintYellow:return {2.5f,1.85f,.45f,1};case CityAlleyFloor:return {1.3f,1.28f,1.25f,1};case CityGlass:return {.2f,.26f,.33f,1};
-            case CityMetal:return {.24f,.25f,.27f,1};case CityRoad:return {.85f,.85f,.85f,1};default:return {1,1,1,1};}};
+            case CityMetal:return {.24f,.25f,.27f,1};case CityRoad:return {.85f,.85f,.85f,1};case CityScorch:return {.16f,.14f,.13f,1};default:return {1,1,1,1};}};
     // 敵や破片に使う材質を記録する
-    cityWood_=surfaces[CityWood];cityStoneSkin_=surfaces[CityStoneSkin];cityIron_=surfaces[CityShutter];cityArmor_=surfaces[CityMetal];
+    cityWood_=surfaces[CityWood];cityStoneSkin_=surfaces[CityStoneSkin];cityIron_=surfaces[CityShutter];cityArmor_=surfaces[CityMetal];cityBlock_=surfaces[CityConcrete];
     CityBuilder city;
     // 道路: 全体をアスファルトにし、歩道・路地の床・塗装を重ねる
-    city.Polygon(CityRoad,{{-1100,-.2f,-900},{1200,-.2f,-900},{1200,-.2f,1400},{-1100,-.2f,1400}},{0,1,0});
+    city.Polygon(CityRoad,{{-1500,-.2f,-1600},{1700,-.2f,-1600},{1700,-.2f,2500},{-1500,-.2f,2500}},{0,1,0});
     // 床の四角形を作る関数
     auto floorQuad=[&](int m,CityRect w,float y){city.Polygon(m,{{w.x0,y,w.z0},{w.x1,y,w.z0},{w.x1,y,w.z1},{w.x0,y,w.z1}},{0,1,0});};
-    // 路地の床
+    // 区画 1: 脱出路地の床
     for(int i=0;i<3;++i)floorQuad(CityAlleyFloor,CityWalk()[size_t(i)],0);
     // 歩道 (縁石を付ける辺を選べる)
     auto pavement=[&](CityRect w,bool curbX0,bool curbX1,bool curbZ0,bool curbZ1){floorQuad(CitySidewalk,w,.15f);
         // 縁石: 道路側の端に沿った低いコンクリートの帯 (見た目だけで、床は平らのまま)
         if(curbX0)city.Box(CityConcrete,{w.x0-.6f,-.05f,w.z0},{w.x0+.6f,.45f,w.z1});if(curbX1)city.Box(CityConcrete,{w.x1-.6f,-.05f,w.z0},{w.x1+.6f,.45f,w.z1});
         if(curbZ0)city.Box(CityConcrete,{w.x0,-.05f,w.z0-.6f},{w.x1,.45f,w.z0+.6f});if(curbZ1)city.Box(CityConcrete,{w.x0,-.05f,w.z1-.6f},{w.x1,.45f,w.z1+.6f});};
-    // 大通り: 幅 30 の歩道の間の 4 車線
-    pavement({-12,-472,18,-300},false,true,false,false);pavement({-12,-230,18,-72},false,true,false,false);
-    pavement({138,-472,168,-300},true,false,false,false);pavement({138,-230,168,-72},true,false,false,false);
-    // 車線の白線と中央の黄色い線
-    for(float z=-462;z<-82;z+=40){if(z>-312&&z<-218)continue;city.Strip(CityPaint,{48,0,z},{48,0,z+20},1);city.Strip(CityPaint,{108,0,z},{108,0,z+20},1);}
-    city.Strip(CityPaintYellow,{77,0,-466},{77,0,-90},.8f);city.Strip(CityPaintYellow,{79,0,-466},{79,0,-90},.8f);
     // 横断歩道の縞
     auto zebra=[&](CityRect band,bool alongZ){// 縞は道路を横切る。alongZ は道路が z 方向に通っていること
         if(alongZ){for(float x=band.x0+3;x<band.x1-2;x+=9)city.Strip(CityPaint,{x,0,band.z0},{x,0,band.z1},4.5f);}
         else for(float z=band.z0+3;z<band.z1-2;z+=9)city.Strip(CityPaint,{band.x0,0,z},{band.x1,0,z},4.5f);};
-    // 大通りの横断歩道
-    zebra({18,-110,138,-86},true);zebra({18,-470,138,-450},true);
-    // 横の通り: 両側に歩道
-    // 東西の横の通りの歩道
-    for(float x0:{-160.f,164.f}){float x1=x0+152;pavement({x0,-300,x1,-286},false,false,false,true);pavement({x0,-244,x1,-230},false,false,true,false);}
-    // スクランブル交差点: 幅 160 の道路 2 本が中心で交わり、四隅は歩道
+    // 焦げ跡やタイヤ痕: 道路の塗装より少し上に置く、黒い不規則な多角形
+    auto scorch=[&](V at,float radius,int seedBase){std::vector<V> rim;for(int k=0;k<10;++k){float a=float(k)*.6283f,r=radius*(.65f+.5f*CityNoise(seedBase*11+k));rim.push_back(at+V{std::cos(a)*r,0,std::sin(a)*r});}
+        for(int k=0;k<10;++k){V a=rim[size_t(k)],b=rim[size_t((k+1)%10)];a.y=b.y=at.y;city.Polygon(CityScorch,{at,b,a},{0,1,0});}};
+    // 区画 2: 都心大通り。両側に幅 30 の歩道、間は 6 車線 (脇道の入口で歩道が切れる)
+    const CityRect avenue=CityWalk()[3];const float avenueX=(avenue.x0+avenue.x1)*.5f,road0=avenue.x0+30,road1=avenue.x1-30;
+    const float sideGaps[2][2]={{-430,-370},{-40,20}};
+    {float z=avenue.z0;for(int g=0;g<=2;++g){float z1=g<2?sideGaps[g][0]:avenue.z1;
+        pavement({avenue.x0,z,road0,z1},false,true,false,false);pavement({road1,z,avenue.x1,z1},true,false,false,false);if(g<2)z=sideGaps[g][1];}}
+    // 車線の白線と中央の黄色い線 (交差する脇道の所は空ける)
+    for(float z=avenue.z0+18;z<avenue.z1-20;z+=40){bool gap=false;for(const auto& s:sideGaps)gap|=z>s[0]-34&&z<s[1]+14;if(gap)continue;
+        for(float lane:{-72.f,-36.f,36.f,72.f})city.Strip(CityPaint,{avenueX+lane,0,z},{avenueX+lane,0,z+20},1);}
+    city.Strip(CityPaintYellow,{avenueX-1,0,avenue.z0+10},{avenueX-1,0,avenue.z1-10},.8f);city.Strip(CityPaintYellow,{avenueX+1,0,avenue.z0+10},{avenueX+1,0,avenue.z1-10},.8f);
+    // 脇道の前後と大通りの両端の横断歩道
+    for(const auto& s:sideGaps){zebra({road0,s[0]-30,road1,s[0]-8},true);zebra({road0,s[1]+8,road1,s[1]+30},true);}
+    zebra({road0,avenue.z0+40,road1,avenue.z0+62},true);zebra({road0,avenue.z1-36,road1,avenue.z1-14},true);
+    // 区画 3: 大火事現場。外周は歩道、中は焼けたアスファルトと焦げ跡
+    const CityRect fire=CityWalk()[9];
+    pavement({fire.x0,fire.z0,fire.x0+24,fire.z1},false,true,false,false);pavement({fire.x1-24,fire.z0,fire.x1,fire.z1},true,false,false,false);
+    pavement({fire.x0+24,fire.z1-24,fire.x1-24,fire.z1},false,false,true,false);
+    {int k=0;for(const auto& spot:CityFires()){scorch(spot.at+V{0,-.06f,0},spot.radius*2.4f,++k);}
+        for(V at:{V{-40,0,640},V{120,0,560},V{260,0,760},V{100,0,820},V{-110,0,520}})scorch(at+V{0,-.065f,0},26,++k);}
+    // 区画 4: 事故多発交差点。幅 160 の道路 2 本が中心で交わり、四隅は歩道
     // 交差点の中心と道路の幅の半分
-    const CityRect plaza=CityWalk()[7];const float cx=CityCrossing().x,cz=CityCrossing().z,h=CityRoadHalf();
+    const CityRect plaza=CityWalk().back();const float cx=CityCrossing().x,cz=CityCrossing().z,h=CityRoadHalf();
     // 交差点の四隅の歩道
     pavement({plaza.x0,plaza.z0,cx-h,cz-h},false,true,false,true);pavement({cx+h,plaza.z0,plaza.x1,cz-h},true,false,false,true);
     pavement({plaza.x0,cz+h,cx-h,plaza.z1},false,true,true,false);pavement({cx+h,cz+h,plaza.x1,plaza.z1},true,false,true,false);
@@ -163,9 +173,16 @@ void ChronoSystem::BuildCityStage(entt::registry& r){
     // 停止線
     for(float s:{-1.f,1.f}){city.Strip(CityPaint,{cx-h,0,cz+s*(h+52)},{cx+h,0,cz+s*(h+52)},2);city.Strip(CityPaint,{cx+s*(h+52),0,cz-h},{cx+s*(h+52),0,cz+h},2);}
     // 交差点から延びる道路: 車線の線を遠くまで続ける
-    for(float t=plaza.z1+20;t<1350;t+=40){city.Strip(CityPaint,{cx-40,0,t},{cx-40,0,t+20},1);city.Strip(CityPaint,{cx+40,0,t},{cx+40,0,t+20},1);}
-    for(float t=plaza.x1+20;t<1150;t+=40){city.Strip(CityPaint,{t,0,cz-40},{t+20,0,cz-40},1);city.Strip(CityPaint,{t,0,cz+40},{t+20,0,cz+40},1);}
-    for(float t=plaza.x0-20;t>-1050;t-=40){city.Strip(CityPaint,{t,0,cz-40},{t-20,0,cz-40},1);city.Strip(CityPaint,{t,0,cz+40},{t-20,0,cz+40},1);}
+    for(float t=plaza.z1+20;t<2350;t+=40){city.Strip(CityPaint,{cx-40,0,t},{cx-40,0,t+20},1);city.Strip(CityPaint,{cx+40,0,t},{cx+40,0,t+20},1);}
+    for(float t=plaza.x1+20;t<1650;t+=40){city.Strip(CityPaint,{t,0,cz-40},{t+20,0,cz-40},1);city.Strip(CityPaint,{t,0,cz+40},{t+20,0,cz+40},1);}
+    for(float t=plaza.x0-20;t>-1450;t-=40){city.Strip(CityPaint,{t,0,cz-40},{t-20,0,cz-40},1);city.Strip(CityPaint,{t,0,cz+40},{t-20,0,cz+40},1);}
+    // 事故の跡: 衝突した車の組 (中心と向き)。急ブレーキのタイヤ痕と、こぼれた油の染み
+    const std::array<std::pair<V,float>,6> crashes={{{{cx+40,0,cz+60},.4f},{{cx-60,0,cz-50},2.2f},{{cx+120,0,cz-20},-1.2f},
+        {{cx-20,0,cz+170},3.6f},{{cx-140,0,cz+30},.9f},{{cx+30,0,cz-170},-.4f}}};
+    {int k=40;for(const auto& [at,yaw]:crashes){V d{std::sin(yaw),0,std::cos(yaw)},side{d.z,0,-d.x};
+        for(float lane:{-4.f,4.f})for(int i=0;i<12;++i){float t0=float(i)/12,t1=float(i+1)/12;
+            auto point=[&](float t){return at-d*(90*(1-t))+side*(lane+std::sin(t*2.2f)*12);};city.Strip(CityScorch,point(t0),point(t1),1.3f,-.07f);}
+        scorch(at+side*9+V{0,-.065f,0},7,++k);}}
     // 床の範囲の外側に沿って建物を並べる
     // 建物の一覧と乱数の種
     std::vector<CityBuilding> buildings;int seed=0;
@@ -188,32 +205,33 @@ void ChronoSystem::BuildCityStage(entt::registry& r){
             int trim=style==CityStyleTower?(CityNoise(++seed)<.5f?CityDarkTiles:CitySlab):CityConcrete;
             buildings.push_back({foot,out,height,style,skin,trim,style==CityStyleTower});at+=width;}
     };
-    // 裏路地: 高く近い壁
-    // 裏路地の両側の壁
-    row(-22,-700,-540,{1,0,0},50,6,10,CityStyleAlley);row(22,-700,-584,{-1,0,0},50,6,10,CityStyleAlley);
-    row(-700,-72,72,{0,0,1},50,7,10,CityStyleAlley);row(-540,-72,6,{0,0,-1},50,6,9,CityStyleAlley);
-    row(56,-540,-480,{1,0,0},50,6,8,CityStyleAlley);row(-584,72,150,{0,0,1},50,6,9,CityStyleAlley);row(100,-584,-480,{-1,0,0},50,6,10,CityStyleAlley);
-    // 大通りの手前の路地
-    row(-472,-62,54,{0,0,1},8,6,8,CityStyleStreet);row(-472,102,218,{0,0,1},8,6,8,CityStyleStreet);
-    // 大通りと横の通り
-    row(-12,-472,-300,{1,0,0},50,8,14,CityStyleStreet);row(-12,-230,-72,{1,0,0},50,8,14,CityStyleStreet);
-    row(168,-472,-300,{-1,0,0},50,8,14,CityStyleStreet);row(168,-230,-72,{-1,0,0},50,8,14,CityStyleStreet);
-    // 横の通りの建物
-    row(-230,-160,-62,{0,0,-1},50,6,10,CityStyleStreet);row(-300,-160,-62,{0,0,1},50,6,10,CityStyleStreet);row(-160,-300,-230,{1,0,0},50,6,10,CityStyleStreet);
-    row(-230,218,316,{0,0,-1},50,6,10,CityStyleStreet);row(-300,218,316,{0,0,1},50,6,10,CityStyleStreet);row(316,-300,-230,{-1,0,0},50,6,10,CityStyleStreet);
-    // 双子の塔が大通りと交差点の間のシャッターの門を挟む
-    // シャッターの門の両側の双子の塔
-    buildings.push_back({{-62,-72,48,-40},{0,0,-1},CityGroundFloor+17*CityFloor,CityStyleTower,CityGlass,CityDarkTiles,true});
-    buildings.push_back({{108,-72,218,-40},{0,0,-1},CityGroundFloor+19*CityFloor,CityStyleTower,CityGlass,CitySlab,true});
-    // スクランブル交差点: 四隅に高層ビル。延びる道路の間は中層の建物
-    // 交差点の四隅の高層ビルと、延びる道路沿いの建物
-    row(-40,-352,-62,{0,0,1},60,12,26,CityStyleTower);row(-40,218,508,{0,0,1},60,12,26,CityStyleTower);
-    row(plaza.x0,-40,cz-h,{1,0,0},60,14,30,CityStyleTower);row(plaza.x0,cz+h,plaza.z1,{1,0,0},60,14,30,CityStyleTower);
-    row(plaza.x1,-40,cz-h,{-1,0,0},60,14,30,CityStyleTower);row(plaza.x1,cz+h,plaza.z1,{-1,0,0},60,14,30,CityStyleTower);
-    row(plaza.z1,-352,cx-h,{0,0,-1},60,16,32,CityStyleTower);row(plaza.z1,cx+h,508,{0,0,-1},60,16,32,CityStyleTower);
-    row(cx-h,plaza.z1+60,1300,{1,0,0},50,8,16,CityStyleStreet);row(cx+h,plaza.z1+60,1300,{-1,0,0},50,8,16,CityStyleStreet);
-    row(cz-h,-1050,plaza.x0-60,{0,0,1},50,8,16,CityStyleStreet);row(cz+h,-1050,plaza.x0-60,{0,0,-1},50,8,16,CityStyleStreet);
-    row(cz-h,plaza.x1+60,1150,{0,0,1},50,8,16,CityStyleStreet);row(cz+h,plaza.x1+60,1150,{0,0,-1},50,8,16,CityStyleStreet);
+    // 区画 1: 脱出路地。高く近い壁が折れ曲がった細い道を作る
+    row(-18,-1220,-1028,{1,0,0},50,6,10,CityStyleAlley);row(18,-1220,-1064,{-1,0,0},50,6,10,CityStyleAlley);row(-1220,-68,68,{0,0,1},50,7,10,CityStyleAlley);
+    row(-1028,-68,84,{0,0,-1},50,6,9,CityStyleAlley);row(-1064,68,120,{0,0,1},50,6,9,CityStyleAlley);
+    row(120,-1114,-888,{-1,0,0},50,6,10,CityStyleAlley);row(84,-978,-888,{1,0,0},50,6,8,CityStyleAlley);
+    // 区画 2: 都心大通り。両側に高いビルが並び、脇道は奥の建物で行き止まり
+    row(avenue.z0,-88,34,{0,0,1},50,8,12,CityStyleStreet);row(avenue.z0,170,292,{0,0,1},50,8,12,CityStyleStreet);
+    {float z=avenue.z0;for(int g=0;g<=2;++g){float z1=g<2?sideGaps[g][0]:avenue.z1;
+        row(avenue.x0,z,z1,{1,0,0},50,10,18,CityStyleStreet);row(avenue.x1,z,z1,{-1,0,0},50,10,18,CityStyleStreet);if(g<2)z=sideGaps[g][1];}}
+    for(const auto& s:sideGaps){row(avenue.x0-50,s[0],s[1],{1,0,0},50,6,10,CityStyleStreet);row(avenue.x1+50,s[0],s[1],{-1,0,0},50,6,10,CityStyleStreet);}
+    // 大通りの北の端: バリケードの通路の両側
+    const CityRect passage=CityWalk()[8];
+    row(avenue.z1,-88,passage.x0,{0,0,-1},56,9,14,CityStyleStreet);row(avenue.z1,passage.x1,292,{0,0,-1},56,9,14,CityStyleStreet);
+    // 区画 3: 大火事現場を囲む建物 (焼けた窓の光は後で付ける)
+    row(fire.z0,-210,passage.x0,{0,0,1},56,6,10,CityStyleStreet);row(fire.z0,passage.x1,414,{0,0,1},56,6,10,CityStyleStreet);
+    row(fire.x0,fire.z0,fire.z1,{1,0,0},50,6,11,CityStyleStreet);row(fire.x1,fire.z0,fire.z1,{-1,0,0},50,6,11,CityStyleStreet);
+    // 双子の塔が火事場と交差点の間のシャッターの門を挟む
+    const CityRect gateWay=CityWalk()[10];
+    buildings.push_back({{plaza.x0+240,fire.z1,gateWay.x0,plaza.z0},{0,0,-1},CityGroundFloor+17*CityFloor,CityStyleTower,CityGlass,CityDarkTiles,true});
+    buildings.push_back({{gateWay.x1,fire.z1,plaza.x0+520,plaza.z0},{0,0,-1},CityGroundFloor+19*CityFloor,CityStyleTower,CityGlass,CitySlab,true});
+    // 区画 4: 交差点の四隅に高層ビル。延びる道路の間は中層の建物
+    row(plaza.z0,plaza.x0-50,plaza.x0+240,{0,0,1},60,12,26,CityStyleTower);row(plaza.z0,plaza.x0+520,plaza.x1+50,{0,0,1},60,12,26,CityStyleTower);
+    row(plaza.x0,plaza.z0,cz-h,{1,0,0},60,14,30,CityStyleTower);row(plaza.x0,cz+h,plaza.z1,{1,0,0},60,14,30,CityStyleTower);
+    row(plaza.x1,plaza.z0,cz-h,{-1,0,0},60,14,30,CityStyleTower);row(plaza.x1,cz+h,plaza.z1,{-1,0,0},60,14,30,CityStyleTower);
+    row(plaza.z1,plaza.x0-50,cx-h,{0,0,-1},60,16,32,CityStyleTower);row(plaza.z1,cx+h,plaza.x1+50,{0,0,-1},60,16,32,CityStyleTower);
+    row(cx-h,plaza.z1+60,2300,{1,0,0},50,8,16,CityStyleStreet);row(cx+h,plaza.z1+60,2300,{-1,0,0},50,8,16,CityStyleStreet);
+    row(cz-h,-1400,plaza.x0-60,{0,0,1},50,8,16,CityStyleStreet);row(cz+h,-1400,plaza.x0-60,{0,0,-1},50,8,16,CityStyleStreet);
+    row(cz-h,plaza.x1+60,1600,{0,0,1},50,8,16,CityStyleStreet);row(cz+h,plaza.x1+60,1600,{0,0,-1},50,8,16,CityStyleStreet);
     // 光る看板の一覧と、ネオンの色
     cityGlows_.clear();
     const Engine::Vector4 neon[]={{1,.25f,.55f,1},{.2f,.85f,1,1},{1,.75f,.2f,1},{.55f,1,.35f,1},{.75f,.4f,1,1}};
@@ -302,8 +320,16 @@ void ChronoSystem::BuildCityStage(entt::registry& r){
         r.emplace<BoxColliderComponent>(e).size=Write(V{f.x1-f.x0,b.height,f.z1-f.z0});
         r.emplace<TagComponent>(e).tag=TagType::Wall;r.emplace<Solid>(e);
     }
+    // 火事場を囲む建物: 窓の奥で炎が揺らぎ、屋上から火の手が上がる
+    for(const auto& b:buildings){const auto& f=b.foot;V c{(f.x0+f.x1)*.5f,0,(f.z0+f.z1)*.5f};
+        if(b.style!=CityStyleStreet||CityAreaAt(c)!=CityArea::Fire||c.x<fire.x0-60||c.x>fire.x1+60)continue;
+        V out=b.out,along=std::abs(out.x)>.5f?V{0,0,1}:V{1,0,0};float width=std::abs(out.x)>.5f?f.z1-f.z0:f.x1-f.x0;
+        V face=std::abs(out.x)>.5f?V{out.x>0?f.x1:f.x0,0,(f.z0+f.z1)*.5f}:V{(f.x0+f.x1)*.5f,0,out.z>0?f.z1:f.z0};
+        for(int k=0;k<4;++k){float s=(CityNoise(++seed)-.5f)*(width-12),y=CityGroundFloor+10+float(int(CityNoise(++seed)*4))*CityFloor;if(y>b.height-8)continue;
+            cityGlows_.push_back({face+along*s+V{0,y,0}+out*.6f,along,{0,1,0},{6,7,.3f},{1.6f,.5f,.1f,1},1,CityNoise(++seed)*6.283f});}
+        if(CityNoise(++seed)<.5f)for(int k=0;k<3;++k)cityGlows_.push_back({c+V{(CityNoise(++seed)-.5f)*12,b.height+4+float(k)*3,(CityNoise(++seed)-.5f)*12},{1,0,0},{0,1,0},{9-float(k)*2.5f,8,9-float(k)*2.5f},{1.6f,.45f,.08f,1},1,CityNoise(++seed)*6.283f});}
     // シャッターの門の上のまぐさで双子の塔をつなぐ
-    city.Box(CityDarkTiles,{46,58,-64},{110,96,-48});
+    {const V g=CityGateCenter();city.Box(CityDarkTiles,{g.x-32,58,g.z-8},{g.x+32,96,g.z+8});}
     Engine::LoadProfile::Record("mark","city: geometry built",0);
     // 材質ごとのメッシュをエンティティとして置く
     for(int i=0;i<CityMaterialCount;++i){auto& g=city.geometry[size_t(i)];if(g.indices.empty())continue;
@@ -326,7 +352,7 @@ void ChronoSystem::BuildCityStage(entt::registry& r){
     Engine::LoadProfile::Record("mark","city: surface entities",0);
     cityProps_.clear();cityVisuals_.clear();
     // スキャンした小物を置く (required が 0 より大きければ取り込める物になる)
-    auto place=[&](const std::string& id,V at,float width,float yaw,float required=0,float reward=0){
+    auto place=[&](const std::string& id,V at,float width,float yaw,float required=0,float reward=0,LifeMorphItem item=LifeMorphItem::None){
         // 幅から拡大率を決め、一番低い頂点を地面に合わせて置く
         const auto& m=model(id);V lo=m.lo,hi=m.hi;
         float scale=width/std::max({hi.x-lo.x,hi.z-lo.z,.001f});V mid=(lo+hi)*.5f;float cs=std::cos(yaw),sn=std::sin(yaw);
@@ -340,7 +366,7 @@ void ChronoSystem::BuildCityStage(entt::registry& r){
         V center=V{at.x,at.y+(mid.y-lo.y)*scale,at.z};
         cityVisuals_[uint32_t(e)]={m.mesh,m.texture,m.extra,{scale,scale,scale},{0,yaw,0},center-Read(t.translate),(hi.y-lo.y)*scale,"CitySurface"};
         // 触手は背の高い小物を足元近くでつかむので、取り込みの高さの判定が路面と合う
-        if(required>0)cityProps_.push_back({e,V{at.x,at.y+std::min(1.2f,(mid.y-lo.y)*scale),at.z},required,reward,id=="old_tyre"?LifeMorphItem::Tire:LifeMorphItem::None});
+        if(required>0)cityProps_.push_back({e,V{at.x,at.y+std::min(1.2f,(mid.y-lo.y)*scale),at.z},required,reward,item});
         return e;};
     // 作った小物 (街灯・シャッターの門) はそれぞれ 1 つのメッシュを共有し、スキャンと同じように取り込める
     // 作ったメッシュの小物を置く (取り込める物にもできる)
@@ -359,39 +385,82 @@ void ChronoSystem::BuildCityStage(entt::registry& r){
         b.Box(CityMetal,{0,40.4f,-.3f},{12,41.2f,.3f});b.Box(CityMetal,{9,39.2f,-1.4f},{14.5f,40.6f,1.4f});});
     // 街灯を置く
     auto lamp=[&](V at,float yaw){placeMesh("street light",lampMesh,CityMetal,at,yaw,42,420,30);};
-    // エリア 1: スライムの大きさに合った裏路地の散らかった物 (最初から取り込める)
-    // 見える所の、最初の取り込み範囲に必ず触媒を置く
-    // タイヤ (変形アイテム)
-    place("old_tyre",{6,0,-672},3.8f,.35f,15,12);
+    // 区画 1: 脱出路地。敵はおらず、散らかった物を吸い込んで大きくなり、ハンマーで塀を壊して進む
     // 小さな散らかった物の種類・幅・報酬
-    const char* smallIds[]={"trashbag","cardboard_box_01","plastic_crate_01","plastic_crate_02","metal_jerrycan","old_tyre","WetFloorSign_01","wooden_crate_01"};
+    const char* smallIds[]={"trashbag","cardboard_box_01","plastic_crate_01","plastic_crate_02","metal_jerrycan","trashbag","WetFloorSign_01","wooden_crate_01"};
     const float smallWidth[]={3.4f,3.2f,3,3.4f,2.6f,3.8f,2.4f,4.6f},smallReward[]={12,12,10,10,10,12,8,14};
-    // 散らかった物を順に置く
+    // 散らかった物を順に置く (路地にタイヤは置かない。タイヤは大通りで手に入れる)
     int clutter=0;
     // 小さな散らかった物を置く
     auto scatter=[&](V at){int k=clutter%8;place(smallIds[k],at,smallWidth[k]*(.9f+.25f*CityNoise(clutter*3+1)),CityNoise(clutter*3+2)*6.283f,15,smallReward[k]);++clutter;};
-    // 路地の散らかった物の位置
-    for(V at:{V{-16,0,-690},V{-12,0,-684},V{15,0,-672},V{17,0,-664},V{-17,0,-652},V{-14,0,-646},V{16,0,-636},V{-17,0,-622},V{18,0,-608},
-              V{-15,0,-600},V{-17,0,-572},V{4,0,-556},V{22,0,-578},V{40,0,-580},V{94,0,-572},V{94,0,-548},V{61,0,-536},V{94,0,-526},
-              V{62,0,-512},V{95,0,-500},V{0,0,-661},V{-6,0,-592},V{60,0,-492},V{96,0,-490}})scatter(at);
+    // 最初の塀の手前だけでハンマーの大きさ (本体 180) に届く量を置く
+    for(V at:{V{-14,0,-1212},V{14,0,-1206},V{-15,0,-1196},V{15,0,-1188},V{-14,0,-1178},V{13,0,-1170},V{-15,0,-1160},V{15,0,-1150},
+              V{-13,0,-1142},V{14,0,-1134},V{4,0,-1200},V{-4,0,-1160},V{6,0,-1140},
+              // 板塀とブロック塀の間
+              V{-14,0,-1100},V{15,0,-1090},V{-15,0,-1076},V{10,0,-1034},V{30,0,-1060},V{-12,0,-1040},
+              // ブロック塀と金網の間、金網の先
+              V{66,0,-1060},V{76,0,-1032},V{116,0,-1060},V{116,0,-1040},V{88,0,-1010},V{116,0,-1000},V{88,0,-985},V{116,0,-975},
+              V{88,0,-940},V{116,0,-920},V{88,0,-900}})scatter(at);
     // 中くらいの物の種類・幅・取り込みに必要な量
     const char* mediumIds[]={"industrial_pastic_container","plastic_container","propane_tank","wooden_crate_02","hand_truck"};
     const float mediumWidth[]={6,5.6f,3.6f,6.8f,4};const float mediumRequired[]={120,100,110,140,130};
     int medium=0;
     // 中くらいの物を置く
-    for(V at:{V{-15,0,-676},V{16,0,-628},V{-16,0,-612},V{14,0,-590},V{90,0,-566},V{62,0,-550},V{94,0,-512},V{62,0,-500},V{-14,0,-560},V{30,0,-552}}){
+    for(V at:{V{-14,0,-1186},V{14,0,-1104},V{36,0,-1034},V{100,0,-1046},V{90,0,-996},V{114,0,-930}}){
         int k=medium%5;place(mediumIds[k],at,mediumWidth[k],CityNoise(medium*5+3)*6.283f,mediumRequired[k],30);++medium;}
     // 配電盤とマンホール
-    for(V at:{V{-19,0,-640},V{19,0,-598},V{97,0,-534}})place("power_box_01",at,3.4f,at.x<0?1.5708f:-1.5708f,160,26);
-    place("water_manhole_cover",{2,.02f,-644},4.4f,0);place("water_manhole_cover",{78,.02f,-520},4.4f,.7f);
-    // 工事のバリケード: 柱の間の合板の囲いと、後ろに積んだ木箱。ハンマーで壊す
+    for(V at:{V{-15,0,-1090},V{117,0,-1020}})place("power_box_01",at,3.4f,at.x<0?1.5708f:-1.5708f,160,26);
+    place("water_manhole_cover",{0,.02f,-1180},4.4f,0);place("water_manhole_cover",{102,.02f,-1000},4.4f,.7f);
+    // 路地の塀とフェンス: 部品を立方体で組む。壁の延びる向きをローカルの x にする
+    cityWalls_.clear();
+    for(const auto& wall:CityWalls()){CityWallState state;V c=wall.Center(),along=wall.Axis(),out{along.z,0,-along.x};float half=wall.Span()*.5f+1,yaw=wall.AlongX()?0.f:1.5708f;
+        auto piece=[&](float x,float y,float z,V size,int material,float roll=0){state.pieces.push_back({c+along*x+out*z+V{0,y,0},size,{0,yaw,roll},material});};
+        if(wall.kind==CityWallKind::Wood){
+            // 板塀: 柱の間に横板を重ね、上に笠木
+            for(float x=-half;x<=half+.1f;x+=8)piece(x,6.5f,0,{1.3f,13,1.3f},0);
+            for(int i=0;i<6;++i)piece((CityNoise(i+70)-.5f)*.8f,1.2f+float(i)*2.05f,.75f,{half*2,1.8f,.45f},0,(CityNoise(i+90)-.5f)*.02f);
+            piece(0,13.3f,0,{half*2+1,.6f,1.8f},0);}
+        else if(wall.kind==CityWallKind::Block){
+            // ブロック塀: 段ごとに半分ずらして積む
+            for(int course=0;course<7;++course){float shift=course%2?2.f:0.f;
+                for(float x=-half+shift;x<half;x+=4){float x1=std::min(half,x+4);piece((x+x1)*.5f,1+float(course)*2,0,{x1-x-.15f,1.9f,2},2);}}
+            piece(0,14.4f,0,{half*2,.8f,2.4f},2);}
+        else{
+            // 金網フェンス: 柱と上下の横棒、細い針金の格子
+            for(float x=-half;x<=half+.1f;x+=10)piece(x,7,0,{.7f,14,.7f},3);
+            for(float y:{.6f,13.6f})piece(0,y,0,{half*2,.4f,.4f},3);
+            for(float x=-half+1.5f;x<half;x+=1.5f)piece(x,7,0,{.12f,13,.12f},3);
+            for(float y=2;y<13.5f;y+=1.5f)piece(0,y,0,{half*2,.12f,.12f},3);}
+        cityWalls_.push_back(std::move(state));}
+    // 区画 2: 都心大通り。入口に金色のタイヤ (変形アイテム)、両側に街灯・止めた車・公衆電話・配電盤
+    place("old_tyre",CityTireItem(),4.6f,.35f,15,12,LifeMorphItem::Tire);
+    // 街灯を置く
+    for(float z=avenue.z0+40;z<avenue.z1-10;z+=120){bool gap=false;for(const auto& s:sideGaps)gap|=z>s[0]-10&&z<s[1]+10;if(gap)continue;
+        lamp({avenue.x0+24,0,z},0);lamp({avenue.x1-24,0,z+60},3.14159f);}
+    // 路肩に止めた車
+    for(V at:{V{road0+14,0,-820},V{road0+14,0,-700},V{road0+14,0,-560},V{road0+14,0,-300},V{road0+14,0,-160},V{road0+14,0,120},V{road0+14,0,280},
+              V{road1-14,0,-760},V{road1-14,0,-640},V{road1-14,0,-500},V{road1-14,0,-260},V{road1-14,0,-120},V{road1-14,0,100},V{road1-14,0,300}})
+        place("covered_car",at,26,0,600,45);
+    // 公衆電話・配電盤
+    for(V at:{V{avenue.x0+8,0,-620},V{avenue.x1-8,0,-340},V{avenue.x0+8,0,140},V{avenue.x1-8,0,220}})place("korean_public_payphone_01",at,4.4f,at.x<avenueX?1.5708f:-1.5708f,300,24);
+    for(V at:{V{avenue.x0+6,0,-760},V{avenue.x1-6,0,-560},V{avenue.x0+6,0,-200},V{avenue.x1-6,0,-80},V{avenue.x0+6,0,300}})
+        place(CityNoise(int(at.z))<.5f?"utility_box_01":"utility_box_02",at,5.4f,at.x<avenueX?1.5708f:-1.5708f,260,20);
+    // 脇道の奥の封鎖と、置かれたコンテナ
+    for(const auto& s:sideGaps){float zc=(s[0]+s[1])*.5f;
+        for(float t:{-18.f,0.f,18.f}){place("concrete_road_barrier",{avenue.x0-40,0,zc+t},10,1.5708f,350,25);place("concrete_road_barrier",{avenue.x1+40,0,zc+t},10,1.5708f,350,25);}
+        place("industrial_pastic_container",{avenue.x0-20,0,zc-20},6,CityNoise(int(zc))*6.283f,120,22);place("industrial_pastic_container",{avenue.x1+20,0,zc+20},6,CityNoise(int(zc)+5)*6.283f,120,22);}
+    // マンホール
+    for(V at:{V{avenueX-50,0,-600},V{avenueX+50,0,-200},V{avenueX-50,0,200}})place("water_manhole_cover",at+V{0,.02f,0},4.4f,0);
+    // 道路封鎖のバリケード: 通路をふさぐ柱と合板の囲い、後ろに積んだ木箱。タイヤの溜め突進で壊す
     // バリケードの柱・板・斜めの補強・木箱
-    cityBarricade_.clear();const V bc=CityBarricadeCenter();
-    for(float x:{-21.f,0.f,21.f})cityBarricade_.push_back({bc+V{x,7,0},{1.6f,14,1.6f},{0,0,0}});
-    for(int i=0;i<6;++i){float y=1.6f+float(i)*2.25f;cityBarricade_.push_back({bc+V{(CityNoise(i)-.5f)*2.f,y,.8f+float(i%2)*.4f},{46,1.7f,.55f},{0,0,(CityNoise(i+9)-.5f)*.06f}});}
-    for(float s:{-1.f,1.f})cityBarricade_.push_back({bc+V{s*10,7,1.6f},{25,1.4f,.5f},{0,0,s*.48f}});
-    for(int i=0;i<5;++i)cityBarricade_.push_back({bc+V{-16+float(i)*8,2.4f,-3.5f},{4.8f,4.8f,4.8f},{0,CityNoise(i+31)*.6f,0}});
-    // エリア 2: 大通り。街灯・止めた車・公衆電話・配電盤
+    cityBarricade_.clear();const V bc=CityBarricadeCenter();const float bw=(CityBarricade().x1-CityBarricade().x0)*.5f;
+    for(float x=-bw;x<=bw+.1f;x+=bw*.5f)cityBarricade_.push_back({bc+V{x,7,0},{1.6f,14,1.6f},{0,0,0}});
+    for(int i=0;i<6;++i){float y=1.6f+float(i)*2.25f;cityBarricade_.push_back({bc+V{(CityNoise(i)-.5f)*2.f,y,.8f+float(i%2)*.4f},{bw*2+2,1.7f,.55f},{0,0,(CityNoise(i+9)-.5f)*.04f}});}
+    for(float s:{-1.f,1.f})for(float k:{.25f,.75f})cityBarricade_.push_back({bc+V{s*bw*k,7,1.6f},{bw*.55f,1.4f,.5f},{0,0,s*.48f}});
+    for(int i=0;i<9;++i)cityBarricade_.push_back({bc+V{-bw+5+float(i)*(bw*2-10)/8,2.4f,-3.5f},{4.8f,4.8f,4.8f},{0,CityNoise(i+31)*.6f,0}});
+    // 封鎖の手前の標識
+    for(float s:{-1.f,1.f})place("WetFloorSign_01",bc+V{s*(bw-6),0,-14},2.6f,s*.4f,15,8);
+    // 区画 3: 大火事現場。入口の消火栓 (変形アイテム)・焼けた車・崩れた瓦礫
     // 消火栓のメッシュ (円柱を組み合わせる)
     uint32_t hydrantMesh=localMesh([](CityBuilder& b){
         // 円柱 (先細りも可) を作る
@@ -408,31 +477,23 @@ void ChronoSystem::BuildCityStage(entt::registry& r){
         cylinder({0,3.1f,1},{0,0,1},{1,0,0},{0,1,0},.5f,.5f,1.2f);
     });
     // 消火栓を置く (赤くする)
-    for(V at:{V{86,0,-460},V{8,0,-270},V{144,0,-120}}){auto e=placeMesh("fire hydrant",hydrantMesh,CityMetal,at,0,5.1f,15,24,LifeMorphItem::Hydrant);
+    for(V at:{V{40,0,fire.z0+18},V{164,0,fire.z0+18},V{fire.x0+12,0,700},V{fire.x1-12,0,760}}){auto e=placeMesh("fire hydrant",hydrantMesh,CityMetal,at,0,5.1f,15,24,LifeMorphItem::Hydrant);
         r.get<MeshRendererComponent>(e).color={1.8f,.22f,.08f,1};}
-    // 街灯を両側に置く
-    for(int i=0;i<5;++i){float z=-440+float(i)*72;if(z>-312&&z<-218)z+=96;lamp({14,0,z},0);lamp({142,0,z+36},3.14159f);}
-    // 止めた車
-    for(V at:{V{30,0,-430},V{30,0,-360},V{126,0,-400},V{126,0,-330},V{30,0,-190},V{126,0,-150},V{126,0,-200},V{30,0,-130}})
-        place("covered_car",at,26,0,600,45);
-    // 公衆電話・配電盤
-    for(V at:{V{0,0,-420},V{156,0,-180},V{2,0,-140}})place("korean_public_payphone_01",at,4.4f,at.x<50?1.5708f:-1.5708f,300,24);
-    for(V at:{V{-2,0,-350},V{158,0,-430},V{158,0,-110},V{-2,0,-100}})place(CityNoise(int(at.z))<.5f?"utility_box_01":"utility_box_02",at,5.4f,at.x<50?1.5708f:-1.5708f,260,20);
-    // 横の通りの車とコンテナ
-    for(V at:{V{-120,0,-265},V{-60,0,-265},V{220,0,-265},V{290,0,-265}})place("covered_car",at,26,1.5708f,600,45);
-    for(V at:{V{-148,0,-292},V{-20,0,-236},V{176,0,-238},V{304,0,-292}})place("industrial_pastic_container",at,6,CityNoise(int(at.x))*6.283f,120,22);
-    // 交差点の手前のバリア
-    for(float x:{58.f,78.f,98.f})place(x==78?"concrete_road_barrier_02":"concrete_road_barrier",{x,0,-96},10,0,350,25);
-    // マンホール
-    for(V at:{V{6,0,-460},V{150,0,-460}})place("water_manhole_cover",at+V{0,.02f,0},4.4f,0);
-    // 鋼鉄のシャッターの門: 騎士団を倒した後に取り込むか壊す
+    // 焼けた車 (黒く煤けた色) と崩れた瓦礫
+    for(V at:{V{-60,0,600},V{150,0,690},V{270,0,600},V{-120,0,790},V{60,0,880},V{320,0,820}}){
+        auto e=place("covered_car",at,26,CityNoise(int(at.x*3+at.z))*6.283f,600,45);r.get<MeshRendererComponent>(e).color={.22f,.19f,.17f,1};}
+    for(V at:{V{-140,0,560},V{-30,0,690},V{110,0,760},V{240,0,680},V{340,0,560},V{-130,0,880},V{220,0,880},V{30,0,560}}){
+        place(CityNoise(int(at.x+at.z))<.5f?"boulder_01":"wooden_crate_02",at,CityNoise(int(at.z))<.5f?7.f:6.f,CityNoise(int(at.x))*6.283f,140,30);}
+    for(V at:{V{-150,0,620},V{350,0,720},V{-40,0,880},V{250,0,500}})place("propane_tank",at,3.6f,0,110,30);
+    for(float x:{fire.x0+40,fire.x1-40})for(float z:{fire.z0+120,fire.z1-120})lamp({x,0,z},x<avenueX?0.f:3.14159f);
+    // 鋼鉄のシャッターの門: 火事場を制圧した後に取り込むか壊す
     // シャッターの門のメッシュ (板と枠)
     uint32_t gateMesh=[&]{CityBuilder local;local.Box(CityShutter,{-31,0,-1.2f},{31,58,1.2f});local.Box(CityShutter,{-32,52,-3.5f},{32,58,3.5f});
         auto& g=local.geometry[CityShutter];return render->CreateDynamicMesh(g.vertices,g.indices);}();
     // 門を置き、当たり判定を付ける
     cityGateEntity_=placeMesh("shutter gate",gateMesh,CityShutter,CityGateCenter(),0,58,0,0);
     {auto& collider=r.emplace<BoxColliderComponent>(cityGateEntity_);collider.size={64,58,2.4f};collider.center={0,29,0};r.emplace<TagComponent>(cityGateEntity_).tag=TagType::Wall;}
-    // エリア 3: スクランブル交差点。四隅の街灯・放置された車・バリアの列・像
+    // 区画 4: 事故多発交差点。四隅の街灯・衝突した車・倒れたバリア・像
     // 交差点の四隅と辺の街灯
     for(float sx:{-1.f,1.f})for(float sz:{-1.f,1.f}){V corner{cx+sx*(h+10),0,cz+sz*(h+10)};
         lamp(corner,sx>0?(sz>0?-2.356f:2.356f):(sz>0?-.785f:.785f));
@@ -440,23 +501,29 @@ void ChronoSystem::BuildCityStage(entt::registry& r){
     // 放置された車 (交差点の中だけ)
     for(int i=0;i<14;++i){float a=float(i)*.4488f,radius=40+CityNoise(i*7)*120;V at{cx+std::cos(a)*radius,0,cz+std::sin(a)*radius};
         if(std::abs(at.x-cx)>h&&std::abs(at.z-cz)>h)continue;place("covered_car",at,26,a+CityNoise(i*11)*1.2f,600,45);}
+    // 衝突した車の組: 2 台がぶつかった向きで重なり、上で非常灯が点滅する
+    {int k=0;for(const auto& [at,yaw]:crashes){V d{std::sin(yaw),0,std::cos(yaw)},side{d.z,0,-d.x};
+        place("covered_car",at,26,yaw,600,45);place("covered_car",at+d*14+side*10,26,yaw+1.3f+CityNoise(k*5)*.5f,600,45);
+        for(V beacon:{at+V{0,7.5f,0},at+d*14+side*10+V{0,7.5f,0}})cityGlows_.push_back({beacon,{1,0,0},{0,1,0},{1.4f,.7f,1.4f},{1,.55f,.05f,1},2,float(k)*1.3f});
+        place(k%2?"concrete_road_barrier_02":"concrete_road_barrier",at-side*18+d*6,10,yaw+.9f,350,25);++k;}}
     // 大砲の周りのバリア
-    for(V cannon:{V{-172,0,90},V{328,0,90},V{-172,0,590},V{328,0,590}})
+    for(const auto& spawn:CityStepSpawns(5))if(spawn.kind==CityEnemy::Cannon){V cannon=spawn.at;
         for(int k=0;k<3;++k){float a=float(k)*1.0472f+(cannon.z>cz?3.6652f:.5236f)+(cannon.x>cx?.5236f:0);
-            place(k==1?"concrete_road_barrier_02":"concrete_road_barrier",cannon+V{std::cos(a)*20,0,std::sin(a)*20},10,a+1.5708f,350,25);}
+            place(k==1?"concrete_road_barrier_02":"concrete_road_barrier",cannon+V{std::cos(a)*20,0,std::sin(a)*20},10,a+1.5708f,350,25);}}
     // 遊べる交差点の端で、延びる道路を封鎖する
     // 延びる道路の封鎖
     for(float t=-60;t<=60;t+=20){place("concrete_road_barrier",{cx+t,0,plaza.z1-6},10,0);place("concrete_road_barrier",{plaza.x0+6,0,cz+t},10,1.5708f);place("concrete_road_barrier",{plaza.x1-6,0,cz+t},10,1.5708f);}
     // 公衆電話・配電盤
-    for(V at:{V{-280,0,-20},V{440,0,-20},V{-280,0,700},V{440,0,700}})place("korean_public_payphone_01",at,4.4f,0,300,24);
-    for(V at:{V{-40,0,200},V{196,0,200},V{-40,0,480},V{196,0,480},V{-260,0,240},V{420,0,440}})place(CityNoise(int(at.x+at.z))<.5f?"utility_box_01":"utility_box_02",at,5.4f,0,260,20);
-    // 変形アイテムの信号機: 台座・柱・灯器の箱 (信号機の形を 1.4 倍にした寸法)。大交差点の入口に置く
+    for(V at:{V{plaza.x0+22,0,plaza.z0+20},V{plaza.x1-18,0,plaza.z0+20},V{plaza.x0+22,0,plaza.z1-16},V{plaza.x1-18,0,plaza.z1-16}})place("korean_public_payphone_01",at,4.4f,0,300,24);
+    for(V at:{V{cx-118,0,cz-140},V{cx+118,0,cz-140},V{cx-118,0,cz+140},V{cx+118,0,cz+140},V{cx-338,0,cz-100},V{cx+318,0,cz+100}})place(CityNoise(int(at.x+at.z))<.5f?"utility_box_01":"utility_box_02",at,5.4f,0,260,20);
+    // 変形アイテムの信号機: 台座・柱・灯器の箱 (信号機の形を 1.4 倍にした寸法)。交差点の入口に置く
+    signalItemAt_=CitySignalItem();
     {CityBuilder local;const float k=SignalItemScale;local.Box(CityMetal,{-1.2f*k,0,-1.2f*k},{1.2f*k,.4f*k,1.2f*k});local.Box(CityMetal,{-.42f*k,.4f*k,-.42f*k},{.42f*k,5.2f*k,.42f*k});
         local.Box(CityMetal,{-2.3f*k,(SignalHousingY-.8f)*k,-.55f*k},{2.3f*k,(SignalHousingY+.8f)*k,.55f*k});auto& g=local.geometry[CityMetal];
         auto e=placeMesh("traffic signal",render->CreateDynamicMesh(g.vertices,g.indices),CityMetal,signalItemAt_,0,SignalHeight*k,15,24,LifeMorphItem::Signal);
         r.get<MeshRendererComponent>(e).color={.32f,.34f,.36f,1};}
     // 台座と像
-    {V pedestal{-200,0,-10};CityBuilder local;local.Box(CityMetal,{-8,0,-8},{8,6,8});auto& g=local.geometry[CityMetal];
+    {V pedestal{plaza.x0+102,0,plaza.z0+30};CityBuilder local;local.Box(CityMetal,{-8,0,-8},{8,6,8});auto& g=local.geometry[CityMetal];
         placeMesh("statue pedestal",render->CreateDynamicMesh(g.vertices,g.indices),CityConcrete,pedestal,0,6,0,0);
         place("gothic_statue",pedestal+V{0,6,0},12,.6f,2200,260);}
     // 敵のモデル (ネズミと大砲)
@@ -472,7 +539,7 @@ void ChronoSystem::BuildCityStage(entt::registry& r){
     cityCube_=render->CreateDynamicMesh(cube,cubeIndex);
     // 門・弾・破片などの状態を初期化する
     cityGates_={};cityBarricadeHealth_=CityBarricadeHealth();cityGateHealth_=CityGateHealth();cityBarricadeShake_=cityGateShake_=0;
-    cityShots_.clear();cityDebris_.clear();cityStomps_.clear();cityGateProp_=-1;cityAnnounced_=-1;
+    cityShots_.clear();cityDebris_.clear();cityStomps_.clear();cityGateProp_=-1;cityAnnounced_=-1;ResetCityHazards();
 }
 // 段階の敵を出す
 void ChronoSystem::SpawnCityStep(int step){
@@ -486,6 +553,26 @@ int ChronoSystem::CityStepAlive()const{
     // 今の段階で生きている敵を数える
     int alive=0;for(const auto& enemy:swarm_)if(SwarmAlive(enemy)&&enemy.step==life_.step)++alive;return alive;
 }
+// 路地の壁の体力と火事場の炎を最初の状態に戻す
+void ChronoSystem::ResetCityHazards(){
+    using namespace Chrono;
+    for(size_t i=0;i<cityWalls_.size()&&i<CityWalls().size();++i){cityWalls_[i].health=CityWalls()[i].health;cityWalls_[i].shake=0;cityWalls_[i].hit=0;}
+    cityFires_.clear();for(const auto& spot:CityFires())cityFires_.push_back({spot.at,spot.radius,CityFireHealth(),0});
+    cityHammerAnnounced_=false;
+}
+// 路地の壁を壊す (部品を破片にして飛ばし、通れるようにする。すべて壊れたら大通りへ)
+void ChronoSystem::BreakCityWall(size_t index){
+    using namespace Chrono;
+    if(index>=CityWalls().size()||cityGates_.WallOpen(index))return;
+    cityGates_.wallsOpen|=1u<<index;
+    // 部品の一部をそのまま破片にして飛ばす (長い部品は短く切る)
+    if(index<cityWalls_.size()){int i=0;for(const auto& piece:cityWalls_[index].pieces){if(i++%2)continue;
+        float a=CityNoise(i*7+int(index)*13)*6.283f,u=CityNoise(i*13+int(index));V size=piece.size;size.x=std::min(size.x,6.f);
+        cityDebris_.push_back({piece.at,V{std::cos(a)*6*(.4f+u),10+u*14,std::sin(a)*6*(.4f+u)},V{u*6,a,u*4},size,piece.rotate,0,piece.material});}}
+    const auto& wall=CityWalls()[index];int left=0;for(size_t i=0;i<CityWalls().size();++i)if(!cityGates_.WallOpen(i))++left;
+    life_.message=left?wall.name+"を破壊！ 残り "+std::to_string(left)+" か所":wall.name+"を破壊！ 路地を抜けて大通りへ";life_.messageAge=3;
+    auto* audio=Engine::Audio::GetInstance();audio->Play(lifeSplitSounds_[2],false,.7f*audio->GetMasterSEVolume(),.55f);
+}
 // バリケードか門を壊す (破片を飛ばし、通れるようにしてメッセージを出す)
 void ChronoSystem::BreakCityGate(entt::registry& r,bool barricade,bool absorbed){
     using namespace Chrono;
@@ -498,20 +585,31 @@ void ChronoSystem::BreakCityGate(entt::registry& r,bool barricade,bool absorbed)
     };
     // バリケード: 開けて破片を飛ばす
     if(barricade){cityGates_.barricadeOpen=true;burst(CityBarricadeCenter()+V{0,4,0},{44,14,1},0,26,10);
-        life_.message="バリケード破壊！ 市街地へ";life_.messageAge=3;}
+        life_.message="バリケード突破！ 大火事現場へ";life_.messageAge=3;}
     // 門: 開けて当たり判定と表示を消す (取り込んだときは破片なし)
     else{cityGates_.gateOpen=true;
         if(auto* collider=r.try_get<BoxColliderComponent>(cityGateEntity_))collider->enabled=false;
         if(r.valid(cityGateEntity_))r.get<MeshRendererComponent>(cityGateEntity_).enabled=false;
         if(cityGateProp_>=0&&size_t(cityGateProp_)<life_.props.size())life_.props[size_t(cityGateProp_)].active=false;
         if(!absorbed)burst(CityGateCenter()+V{0,10,0},{60,50,1},1,30,14);
-        life_.message=absorbed?"シャッターごと吸い込んだ！ 大交差点へ":"シャッターを破壊！ 大交差点へ";life_.messageAge=3;}
+        life_.message=absorbed?"シャッターごと吸い込んだ！ 事故多発交差点へ":"シャッターを破壊！ 事故多発交差点へ";life_.messageAge=3;}
     // 壊れた音
     auto* audio=Engine::Audio::GetInstance();audio->Play(lifeSplitSounds_[2],false,.7f*audio->GetMasterSEVolume(),.55f);
 }
-// スライムの武器がバリケードや門に当たったか (ハンマーで壊せる。門は騎士団を倒した後だけ)
+// スライムの武器が路地の壁・バリケード・門に当たったか (路地の壁はハンマーだけで壊せる。門は火事場を制圧した後だけ)
 void ChronoSystem::CityWeaponHits(entt::registry& r,GameContext& ctx,const Chrono::LifeBody& b,int pulse,uint64_t hitKey){
     using namespace Chrono;
+    // 路地の壁: 壁に沿って並べた点のどこかに武器が触れたら、ハンマーなら体力を減らす
+    for(size_t i=0;i<CityWalls().size()&&i<cityWalls_.size();++i){if(cityGates_.WallOpen(i)||cityWalls_[i].hit==hitKey)continue;
+        const auto& wall=CityWalls()[i];auto& state=cityWalls_[i];bool touched=false;
+        for(float s:{-.35f,0.f,.35f})for(float y:{2.f,6.f})touched|=LifeWeaponTouches(b,wall.Center()+wall.Axis()*(s*wall.Span())+V{0,y,0},6,pulse);
+        if(!touched)continue;state.hit=hitKey;
+        if(b.action!=LifeAction::Hammer){life_.message=wall.name+"はハンマーで叩き壊せる";life_.messageAge=2;continue;}
+        state.health-=LifeWeaponDamage(b);state.shake=.35f;
+        ctx.camera->StartImpactShake(.12f,.15f,{0,1,0},16);swarmEffects_.push_back({wall.Center()+V{0,4,0},0,8,2});
+        auto* audio=Engine::Audio::GetInstance();audio->Play(hitSound_,false,.55f*audio->GetMasterSEVolume(),.8f);
+        if(state.health<=0)BreakCityWall(i);
+        else{life_.message=wall.name+" 残り "+std::to_string(int(std::ceil(state.health/wall.health*100)))+"%";life_.messageAge=1.2f;}}
     // 武器が中心から左右に並んだ点のどこかに触れたか
     auto touches=[&](V center,float y,float radius){for(float x:{-16.f,0.f,16.f})if(LifeWeaponTouches(b,center+V{x,y,0},radius,pulse))return true;return false;};
     // バリケード: ハンマーなら体力を減らし、尽きたら壊す。それ以外の武器は案内を出す
@@ -520,18 +618,18 @@ void ChronoSystem::CityWeaponHits(entt::registry& r,GameContext& ctx,const Chron
             ctx.camera->StartImpactShake(.12f,.14f,{0,1,0},16);swarmEffects_.push_back({CityBarricadeCenter()-V{0,0,4},0,10,2});
             if(cityBarricadeHealth_<=0)BreakCityGate(r,true,false);
             else{life_.message="バリケード 残り "+std::to_string(int(std::ceil(cityBarricadeHealth_/CityBarricadeHealth()*100)))+"%";life_.messageAge=1.2f;}}
-        else{life_.message="工事バリケードはタイヤの溜め突進で壊せる";life_.messageAge=2;}
+        else{life_.message="道路封鎖のバリケードはタイヤの溜め突進で壊せる";life_.messageAge=2;}
     }
     // 門: 騎士団を倒すまでは案内だけ。それ以外は体力を減らし、尽きたら壊す
     if(!cityGates_.gateOpen&&cityGateHit_!=hitKey&&(touches(CityGateCenter(),10,10)||touches(CityGateCenter()+V{0,0,-3},30,10))){cityGateHit_=hitKey;
-        if(!cityGateUnlocked_){life_.message="騎士団がシャッターを守っている / 先に騎士団を倒そう";life_.messageAge=2;return;}
+        if(!cityGateUnlocked_){life_.message="兵士がシャッターを守っている / 先に火事場を制圧しよう";life_.messageAge=2;return;}
         cityGateHealth_-=LifeWeaponDamage(b)*(b.action==LifeAction::Hammer?1.4f:1.f);cityGateShake_=.35f;
         ctx.camera->StartImpactShake(.12f,.16f,{0,1,0},14);swarmEffects_.push_back({CityGateCenter()-V{0,0,6},0,14,2});
         if(cityGateHealth_<=0)BreakCityGate(r,false,false);
         else{life_.message="封鎖シャッター 残り "+std::to_string(int(std::ceil(cityGateHealth_/CityGateHealth()*100)))+"% / 本体"+std::to_string(int(CityGateAbsorbMass()))+"ならシャッターごと吸い込める";life_.messageAge=1.4f;}
     }
 }
-// タイヤの突進がバリケードや門に当たったか (溜めが強いほど大きく削る。門は騎士団を倒した後だけ)
+// タイヤの突進がバリケードや門に当たったか (溜めが強いほど大きく削る。門は火事場を制圧した後だけ)
 void ChronoSystem::CityTireDashHits(entt::registry& r,GameContext& ctx,const Chrono::LifeBody& b,uint64_t hitKey){
     using namespace Chrono;
     // 体の中心から範囲の矩形までの水平の距離
@@ -544,7 +642,7 @@ void ChronoSystem::CityTireDashHits(entt::registry& r,GameContext& ctx,const Chr
         if(cityBarricadeHealth_<=0)BreakCityGate(r,true,false);
         else{life_.message="バリケード 残り "+std::to_string(int(std::ceil(cityBarricadeHealth_/CityBarricadeHealth()*100)))+"% / もっと溜めて突進しよう";life_.messageAge=1.4f;}}
     if(!cityGates_.gateOpen&&cityGateHit_!=hitKey&&touching(CityIronGate())){cityGateHit_=hitKey;
-        if(!cityGateUnlocked_){life_.message="騎士団がシャッターを守っている / 先に騎士団を倒そう";life_.messageAge=2;return;}
+        if(!cityGateUnlocked_){life_.message="兵士がシャッターを守っている / 先に火事場を制圧しよう";life_.messageAge=2;return;}
         cityGateHealth_-=damage*1.4f;cityGateShake_=.35f;
         ctx.camera->StartImpactShake(.12f,.16f,{0,1,0},14);swarmEffects_.push_back({CityGateCenter()-V{0,0,6},0,14,2});
         if(cityGateHealth_<=0)BreakCityGate(r,false,false);
@@ -555,32 +653,47 @@ void ChronoSystem::UpdateCityStage(entt::registry& r,Chrono::Player& p,GameConte
     using namespace Chrono;auto& body=life_.bodies[0];
     // 揺れとヒントの時間を減らす
     cityBarricadeShake_=std::max(0.f,cityBarricadeShake_-dt);cityGateShake_=std::max(0.f,cityGateShake_-dt);cityHintClock_=std::max(0.f,cityHintClock_-dt);
+    for(auto& wall:cityWalls_)wall.shake=std::max(0.f,wall.shake-dt);
+    // 本体がハンマーに変形できる大きさになったら、一度だけ知らせて形を選んでおく
+    if(!cityHammerAnnounced_&&LifeCanMorph(body,LifeAction::Hammer)){cityHammerAnnounced_=true;life_.form=LifeAction::Hammer;
+        life_.message=UI::UsingPad()?"ハンマー変形 解放！ RTで変形して叩きつけ、塀を壊そう":"ハンマー変形 解放！ 1で変形し、左クリックで叩きつけて塀を壊そう";life_.messageAge=4;}
     // 新しいエリアに入ったら名前を表示する
     auto area=CityAreaAt(body.at);
     if(int(area)!=cityAnnounced_){cityAnnounced_=int(area);
         life_.message="AREA "+std::to_string(int(area)+1)+"  "+CityAreaName(area);life_.messageAge=3;}
     // 今の段階で生きている敵の数
     int alive=CityStepAlive();
-    // 騎士団が倒れると、鉄の門が取り込める (または壊せる) 対象になる
+    // 火事場の兵士が倒れると、鉄の門が取り込める (または壊せる) 対象になる
     if(!cityGateUnlocked_&&(life_.step>4||(life_.step==4&&alive==0))){cityGateUnlocked_=true;
-        if(cityGateProp_>=0)life_.props[size_t(cityGateProp_)].active=true;
+        if(cityGateProp_>=0&&size_t(cityGateProp_)<life_.props.size())life_.props[size_t(cityGateProp_)].active=true;
         life_.message="シャッターの守りが解けた！ 本体"+std::to_string(int(CityGateAbsorbMass()))+"でシャッターごと吸い込む / 武器で破壊";life_.messageAge=4;}
     // 門が取り込まれたら壊す
-    if(cityGateUnlocked_&&!cityGates_.gateOpen&&cityGateProp_>=0&&!life_.props[size_t(cityGateProp_)].active)BreakCityGate(r,false,true);
+    if(cityGateUnlocked_&&!cityGates_.gateOpen&&cityGateProp_>=0&&size_t(cityGateProp_)<life_.props.size()&&!life_.props[size_t(cityGateProp_)].active)BreakCityGate(r,false,true);
     // 閉じた門に近づいたら、大きさに応じたヒントを出す
     if(cityHintClock_<=0&&life_.messageAge<=0){
-        if(!cityGates_.barricadeOpen&&LifeDistance(body.at,CityBarricadeCenter())<34){cityHintClock_=4;
-            life_.message=!body.tireUnlocked?std::string("金色のタイヤを吸収してタイヤ変形を解放しよう"):body.action!=LifeAction::Tire?std::string("1でタイヤを選んで変形し、溜め突進でバリケードを壊そう"):std::string("左長押しで回転を溜め、離して突進！ 溜めきればひと突きで壊せる");life_.messageAge=3;}
+        // 路地の壁: 大きさが足りなければ吸収を、足りればハンマーへの変形を促す
+        size_t nearWall=CityWalls().size();for(size_t i=0;i<CityWalls().size();++i)if(!cityGates_.WallOpen(i)&&LifeDistance(body.at,CityWalls()[i].Center())<36)nearWall=i;
+        if(nearWall<CityWalls().size()){cityHintClock_=4;const auto& name=CityWalls()[nearWall].name;
+            life_.message=!LifeCanMorph(body,LifeAction::Hammer)?"ゴミを吸い込んで本体"+std::to_string(int(LifeHammerMass))+"まで育つと、ハンマーで"+name+"を壊せる"
+                :body.action!=LifeAction::Hammer?"1でハンマーに変形し、"+name+"を叩き壊そう":std::string("左クリックで叩きつけ！ 押し続けると連続で叩く");life_.messageAge=3;}
+        else if(!cityGates_.barricadeOpen&&LifeDistance(body.at,CityBarricadeCenter())<40){cityHintClock_=4;
+            life_.message=!body.tireUnlocked?std::string("大通りの入口の金色のタイヤを吸収してタイヤ変形を解放しよう"):body.action!=LifeAction::Tire?std::string("2でタイヤに変形し、溜め突進でバリケードを壊そう"):std::string("左長押しで回転を溜め、離して突進！ 溜めきればひと突きで壊せる");life_.messageAge=3;}
         else if(!cityGates_.gateOpen&&LifeDistance(body.at,CityGateCenter())<50){cityHintClock_=4;
-            life_.message=!cityGateUnlocked_?std::string("騎士団を倒すとシャッターの守りが解ける"):body.mass<CityGateAbsorbMass()?"本体"+std::to_string(int(CityGateAbsorbMass()))+"でシャッターごと吸い込める / 今は武器で破壊":std::string("右クリック／Xでシャッターごと吸い込もう");life_.messageAge=3;}
+            life_.message=!cityGateUnlocked_?std::string("火事場の兵士を倒すとシャッターの守りが解ける"):body.mass<CityGateAbsorbMass()?"本体"+std::to_string(int(CityGateAbsorbMass()))+"でシャッターごと吸い込める / 今は武器で破壊":std::string("右クリック／Xでシャッターごと吸い込もう");life_.messageAge=3;}
     }
     // 門が開いていて敵がいなければ、少し待って次の段階へ進む
-    bool gate=life_.step==1?cityGates_.barricadeOpen:life_.step==4?cityGates_.gateOpen:true;
+    // 区画の出口: 路地の壁 (段階 1)・バリケード (段階 3)・シャッター (段階 5) が開くまで次へ進まない
+    bool gate=life_.step==0?cityGates_.AlleyOpen():life_.step==2?cityGates_.barricadeOpen:life_.step==4?cityGates_.gateOpen:true;
     if(alive==0&&gate&&life_.step+1<CityStepCount){
         life_.stepDelay=std::max(0.f,life_.stepDelay-dt);
         if(life_.stepDelay<=0){++life_.step;life_.stepDelay=2;SpawnCityStep(life_.step);
             life_.message="段階 "+std::to_string(life_.step+1)+" / "+std::to_string(CityStepCount)+"  "+CityStepInfo(life_.step).title;life_.messageAge=3.5f;}
     }
+    // 火事場の炎: 触れると燃える (被弾の無敵時間ごとにダメージ)。消火栓の放水で小さくなり、消える
+    for(auto& fire:cityFires_){fire.hiss=std::max(0.f,fire.hiss-dt);if(fire.health<=0)continue;
+        float size=fire.radius*(.45f+.55f*fire.health/CityFireHealth());
+        if(body.mass>0&&!body.down&&LifeDistance(body.at,fire.at)<size*.8f+LifeRadii(body,life_.recipe).x*.5f){Damage(r,p,CityFireDamage(),ctx,fire.at);
+            if(cityHintClock_<=0){cityHintClock_=3;life_.message=body.hydrantUnlocked?"熱い！ 消火栓に変形して放水で火を消そう":"熱い！ 火事場の入口の金色の消火栓を吸収しよう";life_.messageAge=2;}}}
     // 破片は重力で落ち、地面で弾む
     for(auto& d:cityDebris_){d.age+=dt;d.velocity.y-=34*dt;d.at=d.at+d.velocity*dt;d.rotate=d.rotate+d.spin*dt;
         if(d.at.y<d.size.y*.5f){d.at.y=d.size.y*.5f;d.velocity=d.velocity*.35f;d.velocity.y=std::abs(d.velocity.y)*.3f;d.spin=d.spin*.5f;}}
@@ -737,9 +850,34 @@ void ChronoSystem::DrawCityStage(GameContext& ctx){
         float wear=1-.45f*(1-cityBarricadeHealth_/CityBarricadeHealth());
         for(const auto& plank:cityBarricade_){V right,up,forward;euler(plank.rotate,right,up,forward);
             part(cityWood_,plank.at+V{shake,0,0},right,up,forward,plank.size,{wear,wear*.95f,wear*.9f,1});}}
+    // 材質の番号 (0 木・1 鉄・2 ブロック・3 金属) から立方体の材質を選ぶ
+    auto skinOf=[&](int material)->const CityModel& {return material==0?cityWood_:material==1?cityIron_:material==2?cityBlock_:cityArmor_;};
+    // 路地の壁: 揺れと、壊れ具合で暗くなる色
+    for(size_t i=0;i<cityWalls_.size()&&i<CityWalls().size();++i){if(cityGates_.WallOpen(i))continue;const auto& wall=cityWalls_[i];
+        V shake=CityWalls()[i].Axis()*(wall.shake>0?std::sin(wall.shake*90)*wall.shake:0.f);float wear=1-.45f*(1-wall.health/CityWalls()[i].health);
+        for(const auto& piece:wall.pieces){V right,up,forward;euler(piece.rotate,right,up,forward);
+            Engine::Vector4 color=piece.material==3?Engine::Vector4{.6f*wear,.62f*wear,.65f*wear,1}:piece.material==2?Engine::Vector4{.95f*wear,.93f*wear,.9f*wear,1}:Engine::Vector4{wear,wear*.95f,wear*.9f,1};
+            part(skinOf(piece.material),piece.at+shake,right,up,forward,piece.size,color);}}
     // 破片: 時間が経つと小さくなる
     for(const auto& d:cityDebris_){V right,up,forward;euler(d.rotate,right,up,forward);float fade=std::clamp(4-d.age,0.f,1.f);
-        part(d.material==0?cityWood_:cityIron_,d.at,right,up,forward,d.size*fade,{1,1,1,1});}
+        part(skinOf(d.material),d.at,right,up,forward,d.size*fade,{1,1,1,1});}
+    // 火事場の炎: 揺らぐ炎の舌を輪に並べ、中心は明るい芯。火が弱まるほど小さくなる
+    {float t=life_.age;
+    // 光る立方体を軸と大きさで描く
+    auto glowBox=[&](V center,V right,V up,V forward,V size,Engine::Vector4 color){Engine::Matrix4x4 m{};V axes[3]={right*size.x,up*size.y,forward*size.z};
+        for(int k=0;k<3;++k){m.m[k][0]=axes[k].x;m.m[k][1]=axes[k].y;m.m[k][2]=axes[k].z;m.m[k][3]=0;}
+        m.m[3][0]=center.x;m.m[3][1]=center.y;m.m[3][2]=center.z;m.m[3][3]=1;render->DrawMeshInstanced(cityCube_,white_,m,color,"DomainGlow");};
+    for(size_t i=0;i<cityFires_.size();++i){const auto& fire=cityFires_[i];if(fire.health<=0)continue;
+        float power=.35f+.65f*fire.health/CityFireHealth(),size=fire.radius*power;V ground{fire.at.x,InkGround(fire.at),fire.at.z};
+        // 外側は低く赤い炎、内側ほど高く黄色い炎。舌は細く、高さと傾きが揺らぐ
+        for(int k=0;k<14;++k){float ring=k<8?.6f:.25f,a=float(k)*(k<8?.785f:1.047f)+float(i),wave=std::sin(t*(6+float(k%4))+float(k)*1.7f+float(i));
+            float height=size*(k<8?.7f:1.25f)*(.75f+.3f*wave)+3,lean=.12f*std::sin(t*3.1f+float(k));
+            V out{std::cos(a),0,std::sin(a)},side{-out.z,0,out.x},up=Unit(V{0,1,0}+side*lean);
+            V at=ground+out*(size*ring)+up*(height*.5f);float width=size*(k<8?.2f:.26f);
+            glowBox(at,side,up,out,{width,height,width},k<8?Engine::Vector4{1.7f,.32f+.08f*wave,.05f,1}:Engine::Vector4{1.8f,.75f+.15f*wave,.15f,1});}
+        float flicker=1+.15f*std::sin(t*17+float(i)*3);
+        glowBox(ground+V{0,size*.35f,0},{1,0,0},{0,1,0},{0,0,1},{size*.5f,size*.7f*flicker,size*.5f},{1.9f,1.05f,.3f,1});
+        floorRing(fire.at,size*1.2f,0,.5f+.4f*std::sin(t*3+float(i)),{1,.35f,.05f,1});}}
     // 弾: 砲弾は球と着弾点の輪、矢は細長い箱
     for(const auto& shot:cityShots_){
         if(shot.shell){Engine::Transform t;t.translate=EV(shot.at);t.scale={1.3f,1.3f,1.3f};render->DrawMeshInstanced(sphere_,white_,t,{.06f,.06f,.07f,1});
@@ -747,15 +885,20 @@ void ChronoSystem::DrawCityStage(GameContext& ctx){
         else{V forward=Unit(shot.velocity),right=Unit(SwarmCross({0,1,0},forward)),up=SwarmCross(forward,right);
             part(cityWood_,shot.at,right,up,forward,{.25f,.25f,3.2f},{.75f,.6f,.45f,1});}
     }
-    // 光る看板
+    // 光る看板・燃える窓 (揺らぐ)・非常灯 (点滅する)
     for(const auto& glow:cityGlows_){V forward=SwarmCross(glow.right,glow.up);Engine::Matrix4x4 m{};V axes[3]={glow.right*glow.size.x,glow.up*glow.size.y,forward*glow.size.z};
+        Engine::Vector4 color=glow.color;float t=life_.age+glow.phase;
+        if(glow.kind==1){float f=.7f+.25f*std::sin(t*9)+.12f*std::sin(t*23+glow.phase*2);color={color.x*f,color.y*f,color.z*f,color.w};axes[1]=axes[1]*(.85f+.2f*std::sin(t*5));}
+        else if(glow.kind==2&&std::fmod(t,1.f)>.5f)continue;
         for(int i=0;i<3;++i){m.m[i][0]=axes[i].x;m.m[i][1]=axes[i].y;m.m[i][2]=axes[i].z;m.m[i][3]=0;}
         m.m[3][0]=glow.center.x;m.m[3][1]=glow.center.y;m.m[3][2]=glow.center.z;m.m[3][3]=1;
-        render->DrawMeshInstanced(cityCube_,white_,m,glow.color,"DomainGlow");}
+        render->DrawMeshInstanced(cityCube_,white_,m,color,"DomainGlow");}
     // 踏みつけの予告の輪
     for(const auto& stomp:cityStomps_)if(stomp.age<.85f)floorRing(stomp.at,stomp.radius,0,stomp.age/.85f,{1,.25f,.04f,1});
     // 各敵: 光・状態異常の色・向き・地面の位置・出現の高さ
     for(const auto& enemy:swarm_)if(SwarmAlive(enemy)){auto kind=CityKind(enemy);
+        // 今の段階の敵は足元に赤い輪を出して目立たせる
+        if(enemy.step==life_.step&&enemy.phase!=SwarmPhase::Spawn)floorRing(enemy.at,std::max(4.f,enemy.scale*3.f),0,.55f+.3f*std::sin(life_.age*5+float(enemy.id)),{1,.12f,.08f,1});
         float glow=1+enemy.flash*5;Engine::Vector4 tint{glow,glow,glow,1};if(enemy.corrosion>0)tint={.55f*glow,1.1f*glow,.55f*glow,1};
         float yaw=std::atan2(enemy.heading.x,enemy.heading.z);V ground{enemy.at.x,InkGround(enemy.at),enemy.at.z};
         float rise=enemy.phase==SwarmPhase::Spawn?std::clamp(enemy.clock/.6f,.05f,1.f):1.f;

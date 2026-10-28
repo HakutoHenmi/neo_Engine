@@ -37,8 +37,11 @@ public:
     bool MorphShowcaseActive()const {return showcase_.active;}
     const Chrono::CityGates& CityGateState()const {return cityGates_;}
     const Chrono::HydrantAim& HydrantAimState()const {return hydrantAim_;}
-    // 確認用: バリケードと鉄の門を壊したように開ける
-    void OpenCityGates(entt::registry& r,bool alleyOnly=false){if(!cityGates_.barricadeOpen)BreakCityGate(r,true,false);if(!alleyOnly&&!cityGates_.gateOpen){cityGateUnlocked_=true;BreakCityGate(r,false,false);}}
+    // 確認用: 区画の出口を手前から exits 個だけ壊したように開ける (1 路地の壁・2 バリケード・3 鉄の門)
+    void OpenCityGates(entt::registry& r,int exits=3){
+        if(exits>=1)for(size_t i=0;i<Chrono::CityWalls().size();++i)if(!cityGates_.WallOpen(i))BreakCityWall(i);
+        if(exits>=2&&!cityGates_.barricadeOpen)BreakCityGate(r,true,false);
+        if(exits>=3&&!cityGates_.gateOpen){cityGateUnlocked_=true;BreakCityGate(r,false,false);}}
     // スライムの研究所の画面を描く
     void DrawSlimeLab(entt::registry&,GameContext&);
     // 次の Update で作り直す (シーンを空にしたときも同じ)
@@ -68,7 +71,7 @@ private:
     struct SignalWalk {Chrono::Vec center{},side{},forward{};float length=14,age=0,damage=1,size=1,dir=1;std::vector<uint64_t> hits;};
     struct SignalPulse {Chrono::Vec at{};float age=0,radius=10;Chrono::SignalColor color=Chrono::SignalColor::Red;};
     std::vector<SignalWalk> signalWalks_;std::vector<SignalPulse> signalPulses_;int signalWalkCount_=0; // 横断歩道を敷く向きを交互にする
-    Chrono::Vec signalItemAt_{126,0,6};static constexpr float SignalItemScale=1.4f;
+    Chrono::Vec signalItemAt_{};static constexpr float SignalItemScale=1.4f;
     // 変形の見せ場: 形・経過時間・形が完成した時刻・寄る構図の中心と半径・戻す太陽の強さと被写界深度
     struct MorphShowcase {bool active=false,morphed=false;Chrono::LifeAction form=Chrono::LifeAction::Tire;float age=0,readyAt=-1,radius=1,sun=1;
         Chrono::Vec center{},facing{0,0,1};float dofFocus=30,dofRange=30,dofStrength=0;} showcase_;
@@ -90,6 +93,7 @@ private:
     void CityTireDashHits(entt::registry&,GameContext&,const Chrono::LifeBody&,uint64_t);
     void TickLifeChild(entt::registry&,Chrono::Player&,GameContext&,size_t,float);
     void DrawLifeChildMarkers(GameContext&);
+    void DrawLifeEnemyMarkers(GameContext&);
     void StartMorphShowcase(entt::registry&,GameContext&,Chrono::LifeAction);
     void UpdateMorphShowcase(entt::registry&,Chrono::Player&,GameContext&,float);
     void DrawMorphShowcase(GameContext&);
@@ -108,13 +112,13 @@ private:
     struct CityModel {uint32_t mesh=0,texture=0;std::vector<uint32_t> extra;Chrono::Vec lo{},hi{};};
     // 街の小物の見た目
     struct CityPropVisual {uint32_t mesh=0,texture=0;std::vector<uint32_t> extra;Chrono::Vec scale{1,1,1},rotate{},center{};float height=1;std::string shader="EnvironmentSurface";};
-    // 街の光る看板など
-    struct CityGlow {Chrono::Vec center{},right{},up{},size{};Engine::Vector4 color{1,1,1,1};};
+    // 街の光る看板など (kind: 0 は光り続ける、1 は炎のように揺らぐ、2 は非常灯のように点滅する)
+    struct CityGlow {Chrono::Vec center{},right{},up{},size{};Engine::Vector4 color{1,1,1,1};int kind=0;float phase=0;};
     std::vector<CityGlow> cityGlows_;
     // 街の小物 (触手で取り込める物)
     struct CityPropSeed {entt::entity entity=entt::null;Chrono::Vec at{};float required=0,reward=0;Chrono::LifeMorphItem morphItem=Chrono::LifeMorphItem::None;};
-    // バリケードの板・敵の弾・壊れた破片・踏みつけの衝撃
-    struct CityPlank {Chrono::Vec at{},size{},rotate{};};
+    // バリケードや塀の部品 (材質: 0 木・1 鉄・2 ブロック・3 金属)・敵の弾・壊れた破片・踏みつけの衝撃
+    struct CityPlank {Chrono::Vec at{},size{},rotate{};int material=0;};
     struct CityShot {Chrono::Vec at{},velocity{};float age=0;bool shell=false;Chrono::Vec target{};};
     struct CityDebris {Chrono::Vec at{},velocity{},spin{},size{},rotate{};float age=0;int material=0;};
     struct CityStomp {Chrono::Vec at{};float age=0,radius=30;};
@@ -122,23 +126,31 @@ private:
     std::map<uint32_t,CityPropVisual> cityVisuals_;
     std::vector<CityPropSeed> cityProps_;
     std::vector<CityPlank> cityBarricade_;
+    // 路地裏の壁 (部品・体力・揺れ・最後に当たった攻撃)
+    struct CityWallState {std::vector<CityPlank> pieces;float health=0,shake=0;uint64_t hit=0;};
+    std::vector<CityWallState> cityWalls_;
+    // 火事場の炎 (残りの火の量。0 で消える)・炎に触れた時間
+    struct CityFire {Chrono::Vec at{};float radius=12,health=0,hiss=0;};
+    std::vector<CityFire> cityFires_;
     std::vector<CityShot> cityShots_;
     std::vector<CityDebris> cityDebris_;
     std::vector<CityStomp> cityStomps_;
     // 街の敵とバリケード・門のモデル
-    CityModel cityRat_,cityCannon_,cityWood_,cityStoneSkin_,cityIron_,cityArmor_;
+    CityModel cityRat_,cityCannon_,cityWood_,cityStoneSkin_,cityIron_,cityArmor_,cityBlock_;
     uint32_t cityCube_=0;
     // 門のエンティティと門の状態・体力・揺れ・ヒントの時間
     entt::entity cityGateEntity_=entt::null;
     Chrono::CityGates cityGates_{};
     float cityBarricadeHealth_=0,cityGateHealth_=0,cityBarricadeShake_=0,cityGateShake_=0,cityHintClock_=0;
     uint64_t cityBarricadeHit_=0,cityGateHit_=0;
-    int cityGateProp_=-1,cityAnnounced_=-1;bool cityGateUnlocked_=false;
+    int cityGateProp_=-1,cityAnnounced_=-1;bool cityGateUnlocked_=false,cityHammerAnnounced_=false;
     // 街のステージの作成・敵の出現・門の破壊・武器の当たり・更新・描画
     void BuildCityStage(entt::registry&);
     void SpawnCityStep(int);
     int CityStepAlive()const;
     void BreakCityGate(entt::registry&,bool barricade,bool absorbed);
+    void BreakCityWall(size_t);
+    void ResetCityHazards();
     void CityWeaponHits(entt::registry&,GameContext&,const Chrono::LifeBody&,int pulse,uint64_t hitKey);
     void UpdateCityStage(entt::registry&,Chrono::Player&,GameContext&,float);
     void UpdateCityEnemies(entt::registry&,Chrono::Player&,GameContext&,float);
@@ -246,6 +258,8 @@ private:
     // カメラの追従・構図・ポスト効果の強さ・音・テクスチャ
     V cameraFollow_{},composition_{};
     bool cameraReady_=false;
+    // 街のカメラ: 後ろが塞がれたときに持ち上げる量と、届く距離の割合 (なめらかに戻す)
+    float cameraLift_=0,cameraReach_=1;
     float viewPitch_=0.12f,postStrength_=0;
     uint32_t hitSound_=0xffffffff,coreSound_=0xffffffff;
     uint32_t white_=0,sphere_=0;

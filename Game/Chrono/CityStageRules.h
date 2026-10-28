@@ -10,12 +10,13 @@
 #include <vector>
 #include "../Data/GameData.h"
 // スライムの大きさで進む、1 つにつながった現代の街のステージ (Docs/SlimeLife.md)。
-// 裏路地 → (工事バリケード, ハンマー) → 大通り → (鋼鉄のシャッターの門, 取り込みか破壊)
-// → スクランブル交差点と守護者。ワールドの単位は約 6 単位で 1 メートル (交差点は
-// 約 127 m 四方)。遊べる床は y=0 で平ら
+// 脱出路地 (塀とフェンス, ハンマー) → 都心大通り (道路封鎖のバリケード, タイヤ)
+// → 大火事現場 (鋼鉄のシャッターの門, 消火栓) → 事故多発交差点と守護者。ワールドの単位は
+// 約 6 単位で 1 メートル (交差点は約 127 m 四方)。遊べる床は y=0 で平ら
 namespace Game::Chrono {
 // 街のエリアと、敵の種類
-enum class CityArea : uint8_t {Alley,Street,Plaza};
+enum class CityArea : uint8_t {Alley,Avenue,Fire,Crossing};
+inline constexpr int CityAreaCount=4;
 enum class CityEnemy : uint8_t {Rat,Guard,Archer,Shield,Knight,Cannon,Soldier,Guardian};
 // XZ 平面の矩形
 struct CityRect {
@@ -23,20 +24,33 @@ struct CityRect {
     bool Contains(Vec p)const {return p.x>=x0&&p.x<=x1&&p.z>=z0&&p.z<=z1;}
     Vec Center()const {return {(x0+x1)*.5f,0,(z0+z1)*.5f};}
 };
+// 路地裏をふさぐ壁の種類 (板塀・ブロック塀・金網フェンス) と情報
+enum class CityWallKind : uint8_t {Wood,Block,Fence};
+struct CityWall {
+    CityWallKind kind=CityWallKind::Wood;std::string name;CityRect rect{};float health=0;
+    // 壁の中心と、壁が延びる向き (長い辺の向き) と長さ
+    Vec Center()const {return rect.Center();}
+    bool AlongX()const {return rect.x1-rect.x0>=rect.z1-rect.z0;}
+    Vec Axis()const {return AlongX()?Vec{1,0,0}:Vec{0,0,1};}
+    float Span()const {return AlongX()?rect.x1-rect.x0:rect.z1-rect.z0;}
+};
 // 敵の能力 (大きさ・体力・取り込みに必要な量・報酬・装甲)
 struct CityEnemyStats {float scale,health,required,reward,armor;};
 // 出現の情報 / 段階の情報 (エリア・題名・目標)
 struct CitySpawn {CityEnemy kind;Vec at,patrol;};
 struct CityStep {CityArea area;const char* title;const char* goal;};
+// 火事場の炎 (位置と半径)
+struct CityFireSpot {Vec at;float radius;};
 // 段階の数と敵の種類の数 (JSON もこの数にする)
 inline constexpr int CityStepCount=8;
 inline constexpr int CityEnemyKindCount=8;
 // city_stage.json の中身
 struct CityStageData {
-    std::array<CityRect,8> walk{};CityRect barricade{},ironGate{};
-    Vec barricadeCenter{},gateCenter{},crossing{},start{};float roadHalf=0,alleyEndZ=0,streetEndZ=0;
-    std::array<std::string,3> areaNames;
-    float barricadeHealth=0,gateHealth=0,gateAbsorbMass=0,gateReward=0,arrowDamage=0,shellDamage=0;
+    std::vector<CityRect> walk;std::vector<CityWall> walls;CityRect barricade{},ironGate{};
+    Vec barricadeCenter{},gateCenter{},crossing{},start{},tireItem{},signalItem{};float roadHalf=0;std::array<float,CityAreaCount-1> areaEnds{};
+    std::array<std::string,CityAreaCount> areaNames;
+    float barricadeHealth=0,gateHealth=0,gateAbsorbMass=0,gateReward=0,arrowDamage=0,shellDamage=0,fireDamage=0,fireHealth=0;
+    std::vector<CityFireSpot> fires;
     std::array<CityEnemyStats,CityEnemyKindCount> stats{};std::array<float,CityEnemyKindCount> damage{},alertRange{},standoff{};
     std::array<std::string,CityEnemyKindCount> names;
     std::array<std::string,CityStepCount> titles,goals;std::array<CityStep,CityStepCount> steps{};
@@ -50,24 +64,32 @@ inline const CityStageData& CityData(){
         CityStageData out;
         auto vec=[&](const nlohmann::json& v,const char* where){auto a=Data::ReadArray<float,3>(v,std::string(file)+" "+where);return Vec{a[0],a[1],a[2]};};
         auto rect=[&](const nlohmann::json& v,const char* where){auto a=Data::ReadArray<float,4>(v,std::string(file)+" "+where);return CityRect{a[0],a[1],a[2],a[3]};};
-        const char* areaIds[]={"Alley","Street","Plaza"};
+        const char* areaIds[]={"Alley","Avenue","Fire","Crossing"};
         const char* kindIds[]={"Rat","Guard","Archer","Shield","Knight","Cannon","Soldier","Guardian"};
-        auto areaOf=[&](const std::string& id){for(int i=0;i<3;++i)if(id==areaIds[i])return CityArea(i);throw std::runtime_error(std::string(file)+": unknown area "+id);};
+        const char* wallIds[]={"Wood","Block","Fence"};
+        auto areaOf=[&](const std::string& id){for(int i=0;i<CityAreaCount;++i)if(id==areaIds[i])return CityArea(i);throw std::runtime_error(std::string(file)+": unknown area "+id);};
         auto kindOf=[&](const std::string& id){for(int i=0;i<CityEnemyKindCount;++i)if(id==kindIds[i])return CityEnemy(i);throw std::runtime_error(std::string(file)+": unknown enemy "+id);};
-        // 床の配置と門
+        auto wallOf=[&](const std::string& id){for(int i=0;i<3;++i)if(id==wallIds[i])return CityWallKind(i);throw std::runtime_error(std::string(file)+": unknown wall "+id);};
+        // 床の配置・路地の壁・門
         const auto& layout=Data::Require(json,"layout",file);
-        const auto& walk=layout.at("walk");
-        if(walk.size()!=out.walk.size())throw std::runtime_error(std::string(file)+": layout.walk must have 8 rectangles");
-        for(size_t i=0;i<out.walk.size();++i)out.walk[i]=rect(walk[i],"layout.walk");
+        for(const auto& w:layout.at("walk"))out.walk.push_back(rect(w,"layout.walk"));
+        if(out.walk.empty())throw std::runtime_error(std::string(file)+": layout.walk is empty");
+        for(const auto& w:layout.at("walls"))out.walls.push_back({wallOf(w.at("kind").get<std::string>()),w.at("name").get<std::string>(),rect(w.at("rect"),"layout.walls.rect"),w.at("health").get<float>()});
+        if(out.walls.empty()||out.walls.size()>32)throw std::runtime_error(std::string(file)+": layout.walls must have 1 to 32 walls");
         out.barricade=rect(layout.at("barricade"),"layout.barricade");out.ironGate=rect(layout.at("ironGate"),"layout.ironGate");
         out.barricadeCenter=vec(layout.at("barricadeCenter"),"layout.barricadeCenter");out.gateCenter=vec(layout.at("gateCenter"),"layout.gateCenter");
         out.crossing=vec(layout.at("crossing"),"layout.crossing");out.start=vec(layout.at("start"),"layout.start");
-        out.roadHalf=layout.at("roadHalf").get<float>();out.alleyEndZ=layout.at("alleyEndZ").get<float>();out.streetEndZ=layout.at("streetEndZ").get<float>();
+        out.tireItem=vec(layout.at("tireItem"),"layout.tireItem");out.signalItem=vec(layout.at("signalItem"),"layout.signalItem");
+        out.roadHalf=layout.at("roadHalf").get<float>();out.areaEnds=Data::ReadArray<float,CityAreaCount-1>(layout.at("areaEnds"),std::string(file)+" layout.areaEnds");
         const auto& areas=Data::Require(json,"areas",file);
-        for(int i=0;i<3;++i)out.areaNames[size_t(i)]=areas.at(areaIds[i]).get<std::string>();
+        for(int i=0;i<CityAreaCount;++i)out.areaNames[size_t(i)]=areas.at(areaIds[i]).get<std::string>();
         const auto& gates=Data::Require(json,"gates",file);
         out.barricadeHealth=gates.at("barricadeHealth").get<float>();out.gateHealth=gates.at("gateHealth").get<float>();
         out.gateAbsorbMass=gates.at("gateAbsorbMass").get<float>();out.gateReward=gates.at("gateReward").get<float>();
+        // 火事場の炎
+        const auto& fires=Data::Require(json,"fires",file);
+        out.fireDamage=fires.at("damage").get<float>();out.fireHealth=fires.at("health").get<float>();
+        for(const auto& f:fires.at("spots")){auto a=Data::ReadArray<float,3>(f,std::string(file)+" fires.spots");out.fires.push_back({{a[0],0,a[1]},a[2]});}
         const auto& shots=Data::Require(json,"shotDamage",file);
         out.arrowDamage=shots.at("arrow").get<float>();out.shellDamage=shots.at("shell").get<float>();
         // 敵の種類ごとの能力 (列挙型の順)
@@ -80,7 +102,7 @@ inline const CityStageData& CityData(){
             out.damage[i]=e.at("damage").get<float>();out.alertRange[i]=e.at("alertRange").get<float>();out.standoff[i]=e.at("standoff").get<float>();
             out.names[i]=e.at("name").get<std::string>();
         }
-        // 段階ごとの題名・目標・出現 (patrol が無ければその場にとどまる)
+        // 段階ごとの題名・目標・出現 (patrol が無ければその場にとどまる。敵のいない段階もある)
         const auto& steps=Data::Require(json,"steps",file);
         if(steps.size()!=size_t(CityStepCount))throw std::runtime_error(std::string(file)+": steps must have 8 entries");
         for(size_t i=0;i<steps.size();++i){
@@ -97,13 +119,17 @@ inline const CityStageData& CityData(){
     return data;
 }
 // 床の範囲。外側の端にはすべて建物が並ぶ。重なりで隣の範囲とつながる
-inline const std::array<CityRect,8>& CityWalk(){return CityData().walk;}
-// バリケードと鉄の門の範囲・中心・交差点・開始位置
+inline const std::vector<CityRect>& CityWalk(){return CityData().walk;}
+// 路地裏の壁 (ハンマーで壊す)
+inline const std::vector<CityWall>& CityWalls(){return CityData().walls;}
+// バリケードと鉄の門の範囲・中心・交差点・開始位置・変形アイテムの位置
 inline const CityRect& CityBarricade(){return CityData().barricade;}
 inline const CityRect& CityIronGate(){return CityData().ironGate;}
 inline Vec CityBarricadeCenter(){return CityData().barricadeCenter;}
 inline Vec CityGateCenter(){return CityData().gateCenter;}
 inline Vec CityCrossing(){return CityData().crossing;}
+inline Vec CityTireItem(){return CityData().tireItem;}
+inline Vec CitySignalItem(){return CityData().signalItem;}
 // 交差する 2 本の道路の幅の半分
 inline float CityRoadHalf(){return CityData().roadHalf;}
 inline Vec CityStart(){return CityData().start;}
@@ -112,17 +138,30 @@ inline float CityBarricadeHealth(){return CityData().barricadeHealth;}
 inline float CityGateHealth(){return CityData().gateHealth;}
 inline float CityGateAbsorbMass(){return CityData().gateAbsorbMass;}
 inline float CityGateReward(){return CityData().gateReward;}
+// 火事場の炎: 位置と半径・触れたときのダメージ・消すのに必要な水の量
+inline const std::vector<CityFireSpot>& CityFires(){return CityData().fires;}
+inline float CityFireDamage(){return CityData().fireDamage;}
+inline float CityFireHealth(){return CityData().fireHealth;}
 // 位置からエリアを求める / エリアの名前
-inline CityArea CityAreaAt(Vec p){const auto& d=CityData();return p.z<d.alleyEndZ?CityArea::Alley:p.z<d.streetEndZ?CityArea::Street:CityArea::Plaza;}
+inline CityArea CityAreaAt(Vec p){const auto& ends=CityData().areaEnds;int area=0;while(area<CityAreaCount-1&&p.z>=ends[size_t(area)])++area;return CityArea(area);}
 inline const char* CityAreaName(CityArea area){return CityData().areaNames[size_t(area)].c_str();}
-// 門が開いているか
-struct CityGates {bool barricadeOpen=false,gateOpen=false;};
+// 門が開いているか。路地の壁は壊れたものの番号のビット
+struct CityGates {
+    bool barricadeOpen=false,gateOpen=false;uint32_t wallsOpen=0;
+    bool WallOpen(size_t i)const {return (wallsOpen>>i)&1u;}
+    // 路地の壁がすべて壊れたか
+    bool AlleyOpen()const {for(size_t i=0;i<CityWalls().size();++i)if(!WallOpen(i))return false;return true;}
+    // すべて開いた状態 (確認用)
+    static CityGates AllOpen(){CityGates g;g.barricadeOpen=g.gateOpen=true;g.wallsOpen=0xffffffffu;return g;}
+};
 // 半径 margin の円が床の上にあること: 中心と縁の 8 点を調べるので、
 // 重なった範囲のつなぎ目は通れ、壁と閉じた門はふさぐ
 inline bool CityWalkable(Vec p,float margin,CityGates gates){
     auto onFloor=[&](Vec q){
         if(!gates.barricadeOpen&&CityBarricade().Contains(q))return false;
         if(!gates.gateOpen&&CityIronGate().Contains(q))return false;
+        const auto& walls=CityWalls();
+        for(size_t i=0;i<walls.size();++i)if(!gates.WallOpen(i)&&walls[i].rect.Contains(q))return false;
         for(const auto& rect:CityWalk())if(rect.Contains(q))return true;
         return false;};
     if(!onFloor(p))return false;

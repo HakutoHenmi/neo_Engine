@@ -52,7 +52,7 @@ void ChronoSystem::UpdateSlimePlayerDemo(entt::registry& r,Player& player,GameCo
 void ChronoSystem::DrawSlimePlayerDemoUI(GameContext& ctx) {
     UI::Canvas ui(ctx.renderer,ctx.viewportSize.x,ctx.viewportSize.y);
     const auto& b=life_.bodies[0];
-    const char* selected=life_.form==LifeAction::Tire?"TIRE":life_.form==LifeAction::Hydrant?"HYDRANT":"SIGNAL";
+    const char* selected=life_.form==LifeAction::Hammer?"HAMMER":life_.form==LifeAction::Tire?"TIRE":life_.form==LifeAction::Hydrant?"HYDRANT":"SIGNAL";
     ui.Rounded({22,20,510,152},{.025f,.045f,.055f,.88f},16);
     ui.Label("SLIME PLAYER / PRACTICE FIELD",40,35,20,UI::Lime);
     ui.Text("移動・ジャンプ・変形を自由に試せます",40,66,20,UI::Paper,UI::JapaneseFont);

@@ -283,7 +283,28 @@ void ChronoSystem::InkCamera(entt::registry& r,Player& p,GameContext& ctx){
     }
     // 壁やインクの面でカメラが埋まらないよう手前に寄せる
     float f;V n;
+    if(slimeLife_&&!hydrant){
+        // 注視点からの向きへ太い箱を掃引し、遮られずに届く割合を返す。注視点を含む箱は無視する
+        auto reach=[&](V direction,float distance){float best=1;V delta=direction*distance;
+            auto test=[&](Chrono::Bounds b){if(Chrono::Sweep(focus,delta,b,{.9f,.9f,.9f},f,n)&&f>0&&f<best)best=f;};
+            for(const auto& box:solids_)test(box);
+            if(!cityGates_.barricadeOpen){const auto& b=CityBarricade();test({V{b.x0,0,b.z0-4},V{b.x1,14,b.z1}});}
+            for(size_t i=0;i<CityWalls().size();++i)if(!cityGates_.WallOpen(i)){const auto& w=CityWalls()[i].rect;test({V{w.x0,0,w.z0},V{w.x1,14,w.z1}});}
+            if(!cityGates_.gateOpen)test({CityGateCenter()+V{-32,0,-1.5f},CityGateCenter()+V{32,58,1.5f}});
+            return best;};
+        float distance=std::max(Length(wanted-focus),.01f);V back=(wanted-focus)*(1/distance);
+        // 後ろが塞がれていたら、届くまで上へ傾けた向きを試す (路地の壁際では体の上から見下ろす)
+        auto lifted=[&](float k){return Unit(back+V{0,k,0});};
+        const float lifts[]={0,.35f,.8f,1.5f,3};float goal=0,best=-1;
+        for(float k:lifts){float open=reach(lifted(k),distance);if(open>best+.02f){best=open;goal=k;}if(open>=.97f)break;}
+        // 持ち上げは速く、戻すのはゆっくり。届く距離は縮めるときは即座に、伸ばすときはゆっくり
+        cameraLift_+=(goal-cameraLift_)*(1-std::exp(-(goal>cameraLift_?10.f:2.5f)*ctx.dt));
+        V direction=lifted(cameraLift_);float open=reach(direction,distance);
+        cameraReach_=open<cameraReach_?open:cameraReach_+(open-cameraReach_)*(1-std::exp(-3*ctx.dt));
+        wanted=focus+direction*std::max(.5f,cameraReach_*distance-.3f);
+    }else{
     for(const auto& box:solids_)if(Chrono::Sweep(focus,wanted-focus,box,{.3f,.3f,.3f},f,n))wanted=focus+(wanted-focus)*std::max(.05f,f-.025f);
+    }
     for(const auto& surface:inkSurfaces_){V hit;if(surface.Ray(focus,wanted-focus,f,hit))wanted=focus+(wanted-focus)*std::max(.05f,f-.06f);}
     wanted.y=std::max(wanted.y,.7f);
     // 撃っているときはビームの方向を見る

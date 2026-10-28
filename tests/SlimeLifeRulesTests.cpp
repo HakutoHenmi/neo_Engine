@@ -176,22 +176,36 @@ void TestLifeWeapons(){
     puts("PASS persistent weapons: manual return, formation gating, held vertical hammer, repeated single horizontal sword sweep, shared pose/collision, smooth heading/angular velocity, 30/60/120Hz");
 }
 void TestCityStage(){
-    CityGates closed{},open{true,true};
-    // Start, every spawn and the route through all three areas lie on the floor.
+    CityGates closed{},open=CityGates::AllOpen();
+    // Start, every spawn and the route through all four areas lie on the floor.
     CheckLife(CityWalkable(CityStart(),4,closed),"stage start is blocked");
-    for(Vec at:{Vec{0,0,-640},Vec{40,0,-562},Vec{78,0,-500},Vec{78,0,-300},Vec{-100,0,-265},Vec{250,0,-265},Vec{78,0,-50},Vec{78,0,340},Vec{-250,0,650},Vec{400,0,0}})
+    for(Vec at:{Vec{0,0,-1180},Vec{40,0,-1046},Vec{102,0,-1000},Vec{102,0,-900},Vec{102,0,-600},Vec{-60,0,-400},Vec{270,0,-10},Vec{102,0,380},
+                Vec{102,0,450},Vec{-140,0,700},Vec{340,0,880},Vec{102,0,930},Vec{102,0,1336},Vec{-250,0,1690},Vec{450,0,980}})
         CheckLife(CityWalkable(at,3,open),"stage route is not walkable");
-    // Closed gates block; opened gates let the body through. Walls block in every area.
+    // Closed exits block; opened exits let the body through. Walls block in every area.
+    CheckLife(CityWalls().size()>=2,"the alley needs several walls to break");
+    for(size_t i=0;i<CityWalls().size();++i){Vec c=CityWalls()[i].Center();CityGates one=closed;one.wallsOpen=1u<<i;
+        CheckLife(!CityWalkable(c,3,closed)&&CityWalkable(c,3,one),"alley wall gating is wrong");}
+    CheckLife(!closed.AlleyOpen()&&open.AlleyOpen(),"alley exit state is wrong");
     CheckLife(!CityWalkable(CityBarricadeCenter(),3,closed)&&CityWalkable(CityBarricadeCenter(),3,open),"barricade gating is wrong");
     CheckLife(!CityWalkable(CityGateCenter(),3,closed)&&CityWalkable(CityGateCenter(),3,open),"shutter gate gating is wrong");
-    CheckLife(!CityWalkable({0,0,-480},3,open)&&!CityWalkable({-50,0,-650},3,open)&&!CityWalkable({0,0,-56},3,open)&&!CityWalkable({78,0,760},3,open),"walls do not block");
-    Vec slid=CityConstrain({10,0,-660},{40,0,-650},4,closed);CheckLife(slid.x<22&&slid.z>-660.01f,"walls do not slide the body");
+    CheckLife(!CityWalkable({40,0,-1180},3,open)&&!CityWalkable({60,0,-960},3,open)&&!CityWalkable({-60,0,-200},3,open)&&!CityWalkable({20,0,400},3,open)&&
+        !CityWalkable({40,0,930},3,open)&&!CityWalkable({102,0,1760},3,open),"walls do not block");
+    Vec slid=CityConstrain({10,0,-1180},{40,0,-1170},4,closed);CheckLife(slid.x<18&&slid.z>-1180.01f,"walls do not slide the body");
     // Pushing straight along a wall into an inner corner rounds it instead of pinning the body.
-    Vec cornered=CityConstrain({21.92f,0,-580},{22.22f,0,-580},4.3f,closed);CheckLife(Length(cornered-Vec{21.92f,0,-580})>.1f,"body pinned in an inner corner");
-    Vec stopped=CityConstrain({78,0,-500},{78,0,-470},4,closed);CheckLife(stopped.z<-486,"barricade lets the body pass");
+    Vec cornered=CityConstrain({17.92f,0,-1060},{18.22f,0,-1060},4.3f,closed);CheckLife(Length(cornered-Vec{17.92f,0,-1060})>.1f,"body pinned in an inner corner");
+    Vec stopped=CityConstrain({0,0,-1140},{0,0,-1110},4,closed);CheckLife(stopped.z<-1126,"the first alley wall lets the body pass");
+    stopped=CityConstrain({102,0,380},{102,0,420},4,closed);CheckLife(stopped.z<410,"barricade lets the body pass");
+    // The alley has no enemies; the tire and signal items lie in their own areas.
+    CheckLife(CityStepSpawns(0).empty()&&CityStepInfo(0).area==CityArea::Alley,"the alley must be free of enemies");
+    CheckLife(CityAreaAt(CityTireItem())==CityArea::Avenue&&CityWalkable(CityTireItem(),2,closed),"tire item is not at the avenue entrance");
+    CheckLife(CityAreaAt(CitySignalItem())==CityArea::Crossing&&CityWalkable(CitySignalItem(),2,open),"signal item is off the crossing");
+    for(const auto& fire:CityFires())CheckLife(CityAreaAt(fire.at)==CityArea::Fire&&CityWalkable(fire.at,fire.radius*.5f,open),"fire spot is outside the fire scene");
+    // The avenue is long and wide enough for tire dashes.
+    CheckLife(CityWalk()[3].x1-CityWalk()[3].x0>=200&&CityWalk()[3].z1-CityWalk()[3].z0>=1000,"avenue is too small for the tire");
     // Steps: areas in order, every enemy spawns on the floor, roles grow with the stage.
     int total=0;CityArea area=CityArea::Alley;float previousRequired=0;
-    for(int step=0;step<CityStepCount;++step){auto spawns=CityStepSpawns(step);CheckLife(!spawns.empty(),"empty stage step");
+    for(int step=0;step<CityStepCount;++step){auto spawns=CityStepSpawns(step);CheckLife(step==0||!spawns.empty(),"empty stage step");
         CheckLife(int(CityStepInfo(step).area)>=int(area),"stage steps go back an area");area=CityStepInfo(step).area;
         static float required=0;if(step==0||CityStepInfo(step-1).area!=area)required=0;
         for(const auto& spawn:spawns){auto enemy=CitySpawnEnemy(spawn,uint32_t(++total),step);
@@ -199,17 +213,17 @@ void TestCityStage(){
             CheckLife(CityWalkable(spawn.patrol,1,open),"patrol point is off the floor");
             CheckLife(enemy.health>0&&CityEnemyRequired(enemy)>0&&CityEnemyReward(enemy)>0&&enemy.step==step,"invalid city enemy stats");
             required=std::max(required,CityEnemyRequired(enemy));}
-        // Each area's largest absorb requirement exceeds every earlier area's.
-        if(step+1==CityStepCount||CityStepInfo(step+1).area!=area){CheckLife(required>previousRequired,"later areas need less size");previousRequired=required;}}
-    CheckLife(total==CityEnemyTotal()&&CityStepInfo(CityStepCount-1).area==CityArea::Plaza,"stage totals disagree");
-    CheckLife(CityAreaAt({0,0,-640})==CityArea::Alley&&CityAreaAt({78,0,-300})==CityArea::Street&&CityAreaAt(CityCrossing())==CityArea::Plaza,"area lookup is wrong");
+        // Each area's largest absorb requirement exceeds every earlier area's (the empty alley needs none).
+        if(step+1==CityStepCount||CityStepInfo(step+1).area!=area){CheckLife(spawns.empty()||required>previousRequired,"later areas need less size");previousRequired=std::max(previousRequired,required);}}
+    CheckLife(total==CityEnemyTotal()&&CityStepInfo(CityStepCount-1).area==CityArea::Crossing,"stage totals disagree");
+    CheckLife(CityAreaAt({0,0,-1180})==CityArea::Alley&&CityAreaAt({102,0,-300})==CityArea::Avenue&&CityAreaAt({102,0,600})==CityArea::Fire&&CityAreaAt(CityCrossing())==CityArea::Crossing,"area lookup is wrong");
     // Shields block frontal non-sword hits; the sword and attacks from behind get through.
     SwarmEnemy shield;shield.kind=uint8_t(CityEnemy::Shield);shield.at={0,0,0};shield.heading={0,0,-1};
     CheckLife(CityShieldBlocks(shield,{0,0,-5},false)&&!CityShieldBlocks(shield,{0,0,-5},true)&&!CityShieldBlocks(shield,{0,0,5},false),"shield facing rules are wrong");
     // A cannon shell lands on its target.
     Vec from{0,5,0},target{30,0,40},v=CityShellVelocity(from,target,1.7f),at=from;for(int i=0;i<1700;++i){v.y-=30*.001f;at=at+v*.001f;}
     CheckLife(Length(at-target)<.2f,"cannon shell misses its target");
-    puts("PASS city stage: walkable route, wall sliding, barricade/shutter gate gating, 8 steps in area order, spawn placement, shields and shells");
+    puts("PASS city stage: walkable 4-area route, wall sliding, alley wall/barricade/shutter gating, enemy-free alley, item and fire placement, 8 steps in area order, shields and shells");
 }
 void TestTireMorph(){
     SlimeLife life;LifeInitializeBodies(life,6600);auto& body=life.bodies[0];body.at={0,1.25f,0};

@@ -160,8 +160,8 @@ void SlimeDevTools::JumpToStep(GameScene* scene, int step) {
 	step = std::clamp(step, 0, Chrono::CityStepCount - 1);
 	// 生きている敵をすべて倒す
 	KillStepEnemies(scene, true);
-	// 段階2 (見回り) より先はバリケード、段階5 (騎士団) より先は鉄門を越えている前提
-	if (step >= 2) chrono->OpenCityGates(Registry(scene), step < 5);
+	// 段階2 (大通り) より先は路地の壁、段階4 (火事場) より先はバリケード、段階6 (交差点) より先は鉄門を越えている前提
+	if (step >= 1) chrono->OpenCityGates(Registry(scene), step >= 5 ? 3 : step >= 3 ? 2 : 1);
 	// 段階を設定し、少し待ってからその段階の敵を出す
 	life.step = step;
 	life.stepDelay = 2;
@@ -214,7 +214,7 @@ void SlimeDevTools::DrawStage(GameScene* scene) {
 	ImGui::Text("この段階の敵: %d   生存中の全敵: %d", alive, total);
 	// 門の状態
 	const auto gates = chrono->cityGates_;
-	ImGui::Text("工事バリケード: %s   鉄門: %s", gates.barricadeOpen ? "開" : "閉", gates.gateOpen ? "開" : "閉");
+	ImGui::Text("路地の壁: %s   バリケード: %s   鉄門: %s", gates.AlleyOpen() ? "開" : "閉", gates.barricadeOpen ? "開" : "閉", gates.gateOpen ? "開" : "閉");
 
 	// 敵の全滅と、次の段階への移動のボタン
 	if (ImGui::Button("この段階の敵を全滅")) KillStepEnemies(scene, false);
@@ -222,13 +222,15 @@ void SlimeDevTools::DrawStage(GameScene* scene) {
 	if (ImGui::Button("次の段階へ")) {
 		// 自然な進行と同じ経路を通す: 全滅させ、必要な門を開け、待ち時間を0にする
 		KillStepEnemies(scene, false);
-		if (life.step == 1 || life.step == 4) chrono->OpenCityGates(Registry(scene), life.step == 1);
+		if (life.step == 0 || life.step == 2 || life.step == 4) chrono->OpenCityGates(Registry(scene), life.step / 2 + 1);
 		life.stepDelay = 0;
 	}
 	// 門を開くボタン
-	if (ImGui::Button("バリケードを開く")) chrono->OpenCityGates(Registry(scene), true);
+	if (ImGui::Button("路地の壁を壊す")) chrono->OpenCityGates(Registry(scene), 1);
 	ImGui::SameLine();
-	if (ImGui::Button("すべての門を開く")) chrono->OpenCityGates(Registry(scene), false);
+	if (ImGui::Button("バリケードまで開く")) chrono->OpenCityGates(Registry(scene), 2);
+	ImGui::SameLine();
+	if (ImGui::Button("すべての門を開く")) chrono->OpenCityGates(Registry(scene), 3);
 
 	// 開始する段階を選ぶ一覧と、開始ボタン
 	static int jumpStep = 0;

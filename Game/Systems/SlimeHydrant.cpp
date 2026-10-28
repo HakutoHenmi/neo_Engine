@@ -21,7 +21,8 @@ void ChronoSystem::UpdateHydrantAim(GameContext& ctx){
         float nearest=1,f;V normal;enemy=false;
         auto box=[&](Bounds bounds){if(Chrono::Sweep(from,delta,bounds,{},f,normal)&&f<nearest){nearest=f;enemy=false;}};
         for(const auto& solid:solids_)box(solid);
-        if(!cityGates_.barricadeOpen)box({CityBarricadeCenter()+V{-23,0,-6},CityBarricadeCenter()+V{23,14,2}});
+        if(!cityGates_.barricadeOpen){const auto& b=CityBarricade();box({V{b.x0,0,b.z0-4},V{b.x1,14,b.z1}});}
+        for(size_t i=0;i<CityWalls().size();++i)if(!cityGates_.WallOpen(i)){const auto& w=CityWalls()[i].rect;box({V{w.x0,0,w.z0},V{w.x1,14,w.z1}});}
         if(!cityGates_.gateOpen)box({CityGateCenter()+V{-32,0,-1.5f},CityGateCenter()+V{32,58,1.5f}});
         if(delta.y<0){f=(.22f-from.y)/delta.y;if(f>=0&&f<nearest){nearest=f;enemy=false;}}
         if(enemies){float distance=Length(delta);V ray=Unit(delta);
@@ -106,6 +107,16 @@ void ChronoSystem::UpdateHydrantWater(entt::registry& r,Player& player,GameConte
         for(const auto& sample:snapshot.particles)if(sample.type<1.15f&&active(sample)&&std::abs(sample.at.x-CityGateCenter().x)<32&&
             std::abs(sample.at.z-CityGateCenter().z)<4&&sample.at.y>.3f&&sample.at.y<58)++hits;
         if(hits>=2){cityGateHealth_-=120*step;cityGateShake_=.12f;if(cityGateHealth_<=0)BreakCityGate(r,false,false);}
+    }
+    // 火事場の炎: 水 (攻撃でも防御でも) がかかった分だけ火が弱まり、尽きたら消える
+    for(auto& fire:cityFires_){if(fire.health<=0)continue;int hits=0;
+        for(const auto& sample:snapshot.particles)if(active(sample)&&sample.at.y<12&&LifeDistance({sample.at.x,0,sample.at.z},fire.at)<fire.radius)++hits;
+        if(hits<2)continue;
+        fire.health-=40*step*std::min(1.f,float(hits)/6);
+        if(fire.hiss<=0){fire.hiss=.25f;if(swarmEffects_.size()<128)swarmEffects_.push_back({fire.at+V{0,2,0},0,fire.radius*.5f,2});}
+        if(fire.health<=0){fire.health=0;int left=0;for(const auto& other:cityFires_)if(other.health>0)++left;
+            life_.message=left?"鎮火！ 残りの火 "+std::to_string(left)+" か所":std::string("火事場の火をすべて消した！");life_.messageAge=2.5f;
+            auto* audio=Engine::Audio::GetInstance();audio->Play(lifeSplitSounds_[1],false,.5f*audio->GetMasterSEVolume(),1.4f);}
     }
 }
 }
