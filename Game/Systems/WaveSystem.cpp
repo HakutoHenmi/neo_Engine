@@ -203,12 +203,12 @@ void WaveSystem::ConfirmSelection() {
 	// やり直し: 同じ設定でゲームを開き直す
 	if (selectedButton_ == 0) {
 		Engine::SceneManager::GetInstance()->RequestChange("Game", Engine::SceneManager::GetInstance()->CurrentParameters());
-	// 装備: 同じ設定でセレクトへ
+	// 装備: タイトルへ
 	} else if (selectedButton_ == 1) {
-		Engine::SceneManager::GetInstance()->RequestChange("Select", Engine::SceneManager::GetInstance()->CurrentParameters());
-	// セレクト: 設定を引き継がずにセレクトへ
+		Engine::SceneManager::GetInstance()->RequestChange("Title");
+	// タイトルへ戻る
 	} else {
-		Engine::SceneManager::GetInstance()->RequestChange("Select");
+		Engine::SceneManager::GetInstance()->RequestChange("Title");
 	}
 }
 

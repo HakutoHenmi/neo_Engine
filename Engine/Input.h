@@ -57,6 +57,8 @@ public:
 	float PadRY() const { return padRY_; }
 	// 押されているボタンを離すまで無効化する（メニュー決定がゲーム操作へ漏れないように）
 	void LatchPad() { padLatch_ |= padButtons_; }
+	// 振動 (0〜1。low は左の重いモーター、high は右の軽いモーター)。値が変わったときだけ送る
+	void SetPadVibration(float low, float high);
 
 	// 最後に操作されたデバイスがゲームパッドか。UIの表示切り替えに使う
 	bool UsingGamepad() const { return usingGamepad_; }
@@ -95,6 +97,8 @@ private:
 	uint32_t padLatch_ = 0;
 	float padLX_ = 0.0f, padLY_ = 0.0f, padRX_ = 0.0f, padRY_ = 0.0f;
 	bool usingGamepad_ = false;
+	WORD vibrationLow_ = 0, vibrationHigh_ = 0;
+	int vibrationPad_ = -1;
 	uint64_t frame_ = 0;
 
 	static Input* instance_;

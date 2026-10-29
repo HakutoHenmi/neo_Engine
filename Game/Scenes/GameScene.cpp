@@ -28,6 +28,7 @@
 #include "../../Engine/Audio.h"
 #include "../../Engine/PathUtils.h"
 #include "../../Engine/SceneManager.h"
+#include "../Systems/GameRumble.h"
 // エディタとスクリプト
 #include "../Editor/EditorUI.h"
 #include "../Scripts/ScriptEngine.h"
@@ -72,6 +73,8 @@ namespace Game {
 
 // 破棄: シグナルの接続を外し、シーンとシステムを片付ける
 GameScene::~GameScene() {
+    // 振動を止める
+    Rumble::Stop();
     // タグとスクリプトの追加・削除のコールバックを外す
     registry_.on_construct<TagComponent>().disconnect<&GameScene::OnTagAdded>(this);
     registry_.on_destroy<TagComponent>().disconnect<&GameScene::OnTagRemoved>(this);
@@ -337,6 +340,8 @@ void GameScene::Initialize(Engine::WindowDX* dx, const Engine::SceneParameters& 
 void GameScene::Update() {
 	// エディタの Pause 中は、Step で要求された分だけ進める
 	if (!renderer_) return;
+	// コントローラーの振動を進める (プレイ外・ポーズ中・エディタの一時停止中は止める)
+	Rumble::Update(std::clamp(Engine::TimeManager::GetInstance().GetUnscaledDeltaTime(),0.f,.1f),isPlaying_&&!editorPaused_&&!isPaused_);
 	if (isPlaying_ && editorPaused_) {
 		// Step が要求された分だけ1フレームずつ進める。それ以外は描画のみ (GPU の流体も止める)
 		// Step の要求が無ければ世界を止めて何もしない
@@ -559,7 +564,7 @@ bool GameScene::HandlePlayInput(float dt, bool stageClear) {
 			bool upgradeOpen=false;for(auto e:registry_.view<Chrono::InkPlayer>())upgradeOpen|=registry_.get<Chrono::InkPlayer>(e).rogue.menu;
 			upgradeOpen|=chronoSystem_&&chronoSystem_->SlimeLabOpen();
 			// カットシーン中か
-			const bool cinematic = chronoSystem_ && chronoSystem_->CinematicActive();
+			const bool cinematic = chronoSystem_ && (chronoSystem_->CinematicActive() || chronoSystem_->StageIntroActive());
 			// どちらでもなければプレイ時間を進める
 			if(!upgradeOpen&&!cinematic)playTime_ += dt;
 			
@@ -1066,7 +1071,7 @@ void GameScene::SetIsPlaying(bool play) {
 			}
 		}
 
-		isPlaying_ = false;
+		isPlaying_ = false;Rumble::Stop();
 		gpuSlimeEmitted_ = false; // GPU スライムの放出フラグを戻す
 		Engine::WindowDX::SetCursorVisible(true); // カーソルを表示する
 

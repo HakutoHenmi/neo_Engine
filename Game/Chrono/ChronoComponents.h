@@ -61,6 +61,7 @@ struct ControlFrame {
     bool morphNow=false; // 数字キーと同じく、morphForm の形へすぐ変形する
     bool demoHit=false; // practice-field input for scripted checks
     bool showcase=false; // スクリプトの確認でも変形の見せ場を出す (通常の確認は自分のタイミングで進める)
+    bool intro=false; // スクリプトの確認でもステージ開始のカメラ演出を出す
     // カメラの向き
     float yaw=0, pitch=0;
 };

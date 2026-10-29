@@ -20,7 +20,7 @@ void GameOverScene::Initialize(Engine::WindowDX* dx, const Engine::SceneParamete
     Engine::WindowDX::SetCursorVisible(true);
     if(auto* r=Engine::Renderer::GetInstance()){r->ResetGPUFluid();r->SetPostEffect("Default");}
 }
-// 更新: リトライ (R / Enter / X / ボタン) か、ステージ選択 (Tab / Y / ボタン) へ移る
+// 更新: リトライ (R / Enter / X / ボタン) か、タイトル (Tab / Y / ボタン) へ戻る
 void GameOverScene::Update() {
     // 入力が無ければ何もしない
     auto* input=Engine::Input::GetInstance(); if(!input)return;
@@ -31,7 +31,7 @@ void GameOverScene::Update() {
         Engine::SceneParameters params;params.stagePath=Data::MainStagePath();
         Engine::SceneManager::GetInstance()->RequestChange("Game",params);
     } else if(input->Trigger(DIK_TAB)||input->PadTrigger(XINPUT_GAMEPAD_Y)||ui.Click(UI::Select)) {
-        Engine::SceneManager::GetInstance()->RequestChange("Select");
+        Engine::SceneManager::GetInstance()->RequestChange("Title");
     }
 }
 // 描画: 失敗の結果カードを表示する

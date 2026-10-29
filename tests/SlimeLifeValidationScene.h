@@ -175,6 +175,35 @@ class SlimeLifeValidationScene final:public Game::GameScene {
     Game::Chrono::Vec showEnemyAt_{};
     // 太陽の明るさ
     float SunIntensity(){for(auto e:GetComponents().view<Game::NameComponent,Game::DirectionalLightComponent>())if(GetComponents().get<Game::NameComponent>(e).name=="Sun")return GetComponents().get<Game::DirectionalLightComponent>(e).intensity;return -1;}
+    // ステージ開始のカメラ演出: 最後まで流れて各カットを写し、やり直した後は長押しでスキップできるか
+    int introPhase_=0,introShots_=0,introSkipFrames_=0;bool introValid_=true;
+    void UpdateIntro(){
+        using namespace Game;using namespace Game::Chrono;
+        auto player=FindObjectByName("Player");auto& input=GetComponents().get<ControlFrame>(player);input={};input.intro=true;
+        GetComponents().get<Player>(player).invincible=60;
+        auto* chrono=GetChronoSystem();
+        // 1 回目: 各カットの途中を写し、最後まで流れきるか
+        if(introPhase_==0){
+            const float shots[]={1.6f,4.2f,6.8f,9.f,10.7f};
+            const wchar_t* images[]={L"tests/out/slime-life-intro-goal.png",L"tests/out/slime-life-intro-fire.png",L"tests/out/slime-life-intro-avenue.png",L"tests/out/slime-life-intro-alley.png",L"tests/out/slime-life-intro-descend.png"};
+            Game::GameScene::Update();++frames_;
+            if(introShots_<5&&chrono->StageIntroActive()&&chrono->StageIntroAge()>=shots[introShots_]){Capture(images[introShots_]);++introShots_;}
+            if(!chrono->StageIntroActive()){introValid_&=introShots_==5&&chrono->StageIntroAge()>=11.f;Capture(L"tests/out/slime-life-intro-end.png");introPhase_=1;}
+            else if(frames_>2400){introValid_=false;introPhase_=1;}
+            return;
+        }
+        // やり直して演出を始め直す
+        if(introPhase_==1){input.restart=true;Game::GameScene::Update();++frames_;introValid_&=chrono->StageIntroActive();introPhase_=2;return;}
+        // 2 回目: 長押しでスキップし、すぐ終わるか
+        input.jump=true;
+        Game::GameScene::Update();++frames_;++introSkipFrames_;
+        if(introSkipFrames_==20)Capture(L"tests/out/slime-life-intro-skip.png");
+        if(!chrono->StageIntroActive()||introSkipFrames_>600){
+            bool pass=introValid_&&!chrono->StageIntroActive()&&chrono->StageIntroAge()<2.f;
+            std::ofstream("tests/out/slime-life-intro.txt")<<(pass?"PASS":"FAIL")<<" shots="<<introShots_<<" skip_age="<<chrono->StageIntroAge()<<" skip_frames="<<introSkipFrames_;
+            PostQuitMessage(pass?0:1);
+        }
+    }
     // 変形アイテムを初めて取ると、周りが止まってカメラが正面へ寄り、変形した姿を見せてから元に戻るか
     void UpdateShowcase(){
         using namespace Game;using namespace Game::Chrono;
@@ -315,6 +344,27 @@ class SlimeLifeValidationScene final:public Game::GameScene {
         if(hydrantPhase_==9||real>160){bool pass=hydrantPhase_==9&&hydrantValid_&&hydrantWaterPeak_>100&&hydrantAttackImage_&&hydrantGuardImage_&&hydrantUnprotected_;
             std::ofstream("tests/out/slime-life-hydrant.txt")<<(pass?"PASS":"FAIL")<<" hydrant phase="<<hydrantPhase_<<" valid="<<hydrantValid_<<" water_peak="<<hydrantWaterPeak_<<" hits="<<life.waterHits<<" blocks="<<life.waterBlocks<<" unprotected_hit="<<hydrantUnprotected_<<" gate="<<GetChronoSystem()->CityGateState().gateOpen;
             PostQuitMessage(pass?0:2);}
+    }
+    // 通常のスライムと各変形を行き来する間、カメラが 1 フレームで大きく跳ばずになめらかに動くか
+    int morphCameraFrame_=0;float morphCameraJump_=0,morphCameraJerk_=0;Game::Chrono::Vec morphCameraLast_{},morphCameraStep_{};bool morphCameraValid_=true;
+    void UpdateMorphCamera(){
+        using namespace Game;using namespace Game::Chrono;
+        auto player=FindObjectByName("Player");auto& input=GetComponents().get<ControlFrame>(player);input={};input.pitch=.3f;
+        auto& life=const_cast<SlimeLife&>(GetChronoSystem()->LifeState());auto& body=life.bodies[0];GetComponents().get<Player>(player).invincible=60;
+        if(morphCameraFrame_==0){body.mass=body.health=body.maxHealth=900;life.absorbedMass=800;body.tireUnlocked=body.hydrantUnlocked=body.signalUnlocked=true;life.props.clear();++life.revision;}
+        for(auto& enemy:const_cast<std::vector<SwarmEnemy>&>(GetChronoSystem()->LifeEnemies())){enemy.at=body.at+Vec{300,0,300};enemy.attackDelay=60;}
+        // 2 秒ごとに ハンマー → 戻る → タイヤ → 戻る → 消火栓 → 戻る → 信号機 → 戻る
+        const int forms[]={1,0,2,0,3,0,4,0};int slot=morphCameraFrame_/120-1,local=morphCameraFrame_%120;
+        if(slot>=0&&slot<8&&local==0){if(forms[slot]){input.morphForm=forms[slot];input.morphNow=true;}else input.returnToSlime=true;}
+        Game::GameScene::Update();++morphCameraFrame_;
+        auto at=GetCamera().Position();Vec camera{at.x,at.y,at.z},step=camera-morphCameraLast_;
+        // 立ち止まっているので、カメラの動きは変形による構図の変化だけ。1 フレームの移動量とその変化 (急な加速) を測る
+        if(morphCameraFrame_>30){float scale=std::max(1.f,LifeScale(body.mass));morphCameraJump_=std::max(morphCameraJump_,Length(step)/scale);morphCameraJerk_=std::max(morphCameraJerk_,Length(step-morphCameraStep_)/scale);}
+        morphCameraLast_=camera;morphCameraStep_=step;
+        if(morphCameraFrame_>=120*9){// 修正前は 1 フレームで 8 前後跳んでいた。テストは 20fps 前後で動くので、イージング中の 1 フレームの移動はそれなりに大きい
+            bool pass=morphCameraValid_&&morphCameraJump_<2.5f&&morphCameraJerk_<1.5f;
+            std::ofstream("tests/out/slime-life-morph-camera.txt")<<(pass?"PASS":"FAIL")<<" max_step="<<morphCameraJump_<<" max_jerk="<<morphCameraJerk_;
+            PostQuitMessage(pass?0:1);}
     }
     void UpdateCameraFacing(){
         using namespace Game;using namespace Game::Chrono;
@@ -544,7 +594,7 @@ class SlimeLifeValidationScene final:public Game::GameScene {
             PostQuitMessage(pass?0:2);
         }
     }
-    int alleyPhase_=-1,alleyFrame_=0,alleySwings_=0;bool alleyImages_[2]{},alleyOnlyHammer_=true;
+    int alleyPhase_=-1,alleyFrame_=0,alleySwings_=0,alleyAbsorbPhase_=0;bool alleyImages_[2]{},alleyOnlyHammer_=true,alleyAbsorbed_=false;
     // 一つ目の区画 (脱出路地) を、ハンマーだけで板塀・ブロック塀・金網を壊して抜けられるか。敵は出ない
     void UpdateAlley(){
         using namespace Game;using namespace Game::Chrono;
@@ -562,19 +612,24 @@ class SlimeLifeValidationScene final:public Game::GameScene {
                 body.at=wall.Center()+out*11+Vec{0,1.25f,0};body.forward=body.liquidForward=out*-1.f;GetComponents().get<Player>(player).velocity={};++life.revision;}
             input.yaw=std::atan2(-out.x,-out.z);
             // 変形するまでは数字キー、変形したら壁へ寄りながら押し続けて叩く
-            if(body.action!=LifeAction::Hammer){input.morphNow=alleyFrame_%20==1;}
+            if(body.action!=LifeAction::Hammer){input.morphNow=alleyFrame_%20==1&&alleyAbsorbPhase_!=1;}
+            // 最初の壁の前で一度だけ、ハンマーのまま吸収を 1 フレーム押し、戻るボタン無しでスライムに戻って吸収を始めるかを見る
+            else if(next==0&&alleyAbsorbPhase_==0&&body.weapon.ready){input.absorb=true;alleyAbsorbPhase_=1;alleyFrame_=0;
+                // 吸い込める小物を 1 つ正面に置く
+                for(auto& prop:life.props)if(prop.active&&LifeCanAbsorb(body.mass,prop.required)){prop.at=body.at+body.forward*(2.5f*LifeScale(body.mass))+Vec{0,-.05f,0};break;}}
             else{input.move={0,0,1};input.attack=true;}
         }
         int before=life.step;Game::GameScene::Update();++frames_;++alleyFrame_;
-        alleyOnlyHammer_&=body.action==LifeAction::Idle||body.action==LifeAction::Restore||body.action==LifeAction::Hammer;
+        if(alleyAbsorbPhase_==1){if(body.action==LifeAction::Engulf){alleyAbsorbed_=true;alleyAbsorbPhase_=2;}else if(alleyFrame_>90)alleyAbsorbPhase_=2;}
+        alleyOnlyHammer_&=body.action==LifeAction::Idle||body.action==LifeAction::Restore||body.action==LifeAction::Hammer||body.action==LifeAction::Engulf;
         if(body.weapon.active&&body.weapon.age<.02f)++alleySwings_;
         if(next==0&&body.action==LifeAction::Hammer&&body.weapon.active&&!alleyImages_[0]){Capture(L"tests/out/slime-life-alley-hammer.png");alleyImages_[0]=true;}
         if(life.step>before&&!alleyImages_[1]){Capture(L"tests/out/slime-life-alley-cleared.png");alleyImages_[1]=true;}
         if(frames_%60==0){trace_<<"alley step="<<life.step<<" wall="<<next<<" open="<<gates.wallsOpen<<" action="<<int(body.action)<<" swings="<<alleySwings_<<" at="<<body.at.x<<","<<body.at.z<<'\n';trace_.flush();}
         float real=std::chrono::duration<float>(std::chrono::steady_clock::now()-start_).count();
         bool cleared=life.step>=1&&gates.AlleyOpen()&&alleyImages_[1];
-        if(cleared||real>180){bool pass=cleared&&alleyOnlyHammer_&&alleyImages_[0]&&CityStepSpawns(0).empty();
-            std::ofstream("tests/out/slime-life-alley.txt")<<(pass?"PASS":"FAIL")<<" alley step="<<life.step<<" walls="<<gates.wallsOpen<<" only_hammer="<<alleyOnlyHammer_<<" swings="<<alleySwings_<<" seconds="<<life.age;
+        if(cleared||real>180){bool pass=cleared&&alleyOnlyHammer_&&alleyImages_[0]&&alleyAbsorbed_&&CityStepSpawns(0).empty();
+            std::ofstream("tests/out/slime-life-alley.txt")<<(pass?"PASS":"FAIL")<<" alley step="<<life.step<<" walls="<<gates.wallsOpen<<" only_hammer="<<alleyOnlyHammer_<<" absorb_return="<<alleyAbsorbed_<<" swings="<<alleySwings_<<" seconds="<<life.age;
             PostQuitMessage(pass?0:2);}
     }
     // City stage tour: teleports through the four areas with every enemy role on stage and saves one image per view.
@@ -631,6 +686,8 @@ public:
     }
     void Update()override {
         using namespace Game;using namespace Game::Chrono;
+        if(wcsstr(GetCommandLineW(),L"--slime-life-intro")){UpdateIntro();return;}
+        if(wcsstr(GetCommandLineW(),L"--slime-life-morph-camera")){UpdateMorphCamera();return;}
         if(wcsstr(GetCommandLineW(),L"--slime-life-crew")){UpdateCrew();return;}
         if(wcsstr(GetCommandLineW(),L"--slime-life-signal")){UpdateSignal();return;}
         if(wcsstr(GetCommandLineW(),L"--slime-life-alley")){UpdateAlley();return;}

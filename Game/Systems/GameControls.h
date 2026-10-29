@@ -13,6 +13,12 @@
 //   ジャンプ : Space         / A
 //   ロックオン: 中クリック   / 右スティック押し込み または LB
 //   ポーズ   : Esc           / メニュー
+// スライムの生活モード (人差し指で吸収と攻撃、親指はスティックから離さずに済む配置)
+//   吸収 / 水の防御 : 右クリック / LT (X でも可)
+//   変形攻撃        : 左クリック / RT
+//   スライムに戻る  : R          / B
+//   変形            : 1〜4       / 十字キー (↑ハンマー →タイヤ ↓消火栓 ←信号機)、LB / RB で前後の形へ
+//   カメラを後ろへ  :            / 右スティック押し込み
 namespace Game::Controls {
 // キーが押されているか (Windows の非同期キー状態) / ゲームパッドのボタンが押されているか
 inline bool Key(int vk) { return (GetAsyncKeyState(vk) & 0x8000) != 0; }
@@ -25,7 +31,7 @@ inline bool Fire() { return Key(VK_LBUTTON) || Pad(Engine::Input::kPadRT | XINPU
 inline bool Dodge() { return Key(VK_RBUTTON) || Pad(XINPUT_GAMEPAD_B | XINPUT_GAMEPAD_RIGHT_SHOULDER); }
 inline bool Jump() { return Key(VK_SPACE) || Pad(XINPUT_GAMEPAD_A); }
 inline bool LockOn() { return Key(VK_MBUTTON) || Pad(XINPUT_GAMEPAD_RIGHT_THUMB | XINPUT_GAMEPAD_LEFT_SHOULDER); }
-inline bool Absorb() { return Key(VK_RBUTTON) || Pad(XINPUT_GAMEPAD_X); }
+inline bool Absorb() { return Key(VK_RBUTTON) || Pad(Engine::Input::kPadLT | XINPUT_GAMEPAD_X); }
 inline bool MorphAttack() { return Key(VK_LBUTTON) || Pad(Engine::Input::kPadRT); }
 inline bool ReturnToSlime() { return Key('R') || Pad(XINPUT_GAMEPAD_B); }
 

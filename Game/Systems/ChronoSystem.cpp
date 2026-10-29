@@ -256,7 +256,7 @@ void ChronoSystem::Update(entt::registry& r,GameContext& ctx){
             Presentation(r,p,ctx);
         }
         finishAge_+=ctx.dt;Engine::WindowDX::SetCursorVisible(true);
-        // 結果画面: R / Enter でやり直し、TAB でセレクトへ
+        // 結果画面: R / Enter でやり直し、TAB でタイトルへ
         if(finishAge_>0.2f&&ctx.input){
             UI::Canvas ui(ctx.renderer,ctx.viewportSize.x,ctx.viewportSize.y);
             if(ctx.useOverrideMouse)ui.SetPointer(ctx.overrideMouseX,ctx.overrideMouseY);
@@ -265,7 +265,7 @@ void ChronoSystem::Update(entt::registry& r,GameContext& ctx){
                 Engine::SceneParameters params;params.stagePath=Data::MainStagePath();
                 Engine::SceneManager::GetInstance()->RequestChange("Game",params);
             }
-            if(UI::Pressed(DIK_TAB)||UI::PadPressed(XINPUT_GAMEPAD_Y)||ui.Click(UI::Select))Engine::SceneManager::GetInstance()->RequestChange("Select");
+            if(UI::Pressed(DIK_TAB)||UI::PadPressed(XINPUT_GAMEPAD_Y)||ui.Click(UI::Select))Engine::SceneManager::GetInstance()->RequestChange("Title");
         }
         return;
     }
