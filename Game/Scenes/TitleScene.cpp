@@ -7,6 +7,7 @@
 #endif
 #include "TitleScene.h"
 #include "../UI/GameUI.h"
+#include "../Data/GameConfig.h"
 #include "../../Engine/SceneManager.h"
 #include "../../Engine/Renderer.h"
 #include "../../Engine/Input.h"
@@ -139,10 +140,11 @@ void TitleScene::Update() {
             renderer_->SetCamera(camera_);
             return;
         }
-        // 開始: Enter / START / BEGIN EXPEDITION ボタンでセレクト画面へ
+        // 開始: Enter / START / BEGIN EXPEDITION ボタンで本編ステージへ直接移る
         bool start=UI::Pressed(DIK_RETURN)||UI::PadPressed(XINPUT_GAMEPAD_START)||UI::Canvas(renderer_).Click(UI::TitleStart);
         if(start){
-            Engine::SceneManager::GetInstance()->RequestChange("Select");
+            Engine::SceneParameters params;params.stagePath=Data::MainStagePath();
+            Engine::SceneManager::GetInstance()->RequestChange("Game",params);
             return;
         }
     }

@@ -257,7 +257,14 @@ void ChronoSystem::InkCamera(entt::registry& r,Player& p,GameContext& ctx){
     float aftershock=boss.impactAge<.45f?5.f*(1-boss.impactAge/.45f):0.f;
     // スライムの生活モードでは、体の大きさに合わせてカメラを引く
     LifeCameraSubject subject{};
-    if(slimeLife_)subject=GetLifeCameraSubject();
+    if(slimeLife_){subject=GetLifeCameraSubject();
+        // 液体と武器の形では映す範囲 (中心と半径) が大きく変わる。形が変わったら、今の構図から新しい構図へイージングでつなぐ
+        const auto& body=life_.bodies[0];int kind=LifeWeaponForm(body.action)?int(body.action):0;V offset=subject.center-pos;auto& blend=cameraBlend_;
+        if(blend.kind<0)blend={kind,1,offset,subject.radius,offset,subject.radius};
+        else if(kind!=blend.kind){blend.kind=kind;blend.age=0;blend.fromOffset=blend.offset;blend.fromRadius=blend.radius;}
+        blend.age=std::min(1.f,blend.age+std::min(ctx.dt,.05f)/LifeCameraBlendSeconds);float eased=ShotEase(blend.age,0,1);
+        blend.offset=Lerp(blend.fromOffset,offset,eased);blend.radius=blend.fromRadius+(subject.radius-blend.fromRadius)*eased;
+        subject.center=pos+blend.offset;subject.radius=blend.radius;}
     float growthPullback=slimeLife_?LifeCameraDistance(subject.radius,1.13f,ctx.viewportSize.x/std::max(1.f,ctx.viewportSize.y))-17.f:0.f;
     // 引く量の合計をなめらかに反映する
     float pullback=growthPullback+((charging||firing)?3*power:0.f)+domainView*14+std::max(arrival,aftershock);
@@ -266,24 +273,19 @@ void ChronoSystem::InkCamera(entt::registry& r,Player& p,GameContext& ctx){
     V focus=cameraFollow_+V{0,2.f,0};
     if(slimeLife_)focus=cameraFollow_+(subject.center-pos);
     // 消火栓の形か
-    bool hydrant=slimeLife_&&life_.bodies[0].action==LifeAction::Hydrant;
+    bool aimingHydrant=slimeLife_&&life_.bodies[0].action==LifeAction::Hydrant;
+    // 肩越しの構図へ入るときも戻るときも、同じ時間をかけてなめらかに移る
+    cameraHydrant_=std::clamp(cameraHydrant_+(aimingHydrant?1.f:-1.f)*std::min(ctx.dt,.05f)/LifeCameraBlendSeconds,0.f,1.f);
+    bool hydrant=slimeLife_&&cameraHydrant_>0;float hydrantBlend=ShotEase(cameraHydrant_,0,1);
     // 肩越しのずれ (スライムの生活モードでは使わない)
     float shoulder=slimeLife_?0.f:1.5f+shot*4.5f+heavy*8;
     // カメラを置きたい位置
     V wanted=focus-forward*(17.f+ink.cameraPullback+heavy*5)+right*shoulder+V{0,shot*1.2f+heavy*3+domainView*6,0};
-    // 消火栓のときは肩越しの照準の位置へ移る
-    if(hydrant){
-        // 高さは体に合わせ、ピッチとは別にする。上を見てもカメラが
-        // 路面へ下がらないようにし、視線はカメラの右に空ける
-        V flat{std::sin(yaw_),0,std::cos(yaw_)};
-        float blend=LifeSmooth(life_.bodies[0].actionAge/.35f);
-        V shoulderAt=pos+LifeHydrantCameraOffset(life_.bodies[0].mass,flat);
-        wanted=Lerp(wanted,shoulderAt,blend);
-        focus=Lerp(focus,pos+V{0,-1.25f+4.3f*LifeScale(life_.bodies[0].mass),0},blend);
-    }
     // 壁やインクの面でカメラが埋まらないよう手前に寄せる
     float f;V n;
-    if(slimeLife_&&!hydrant){
+    // スライムの生活モードでは、消火栓の間もいつもの構図を壁で守って計算し続け、肩越しの構図との間を補間する
+    // (片方だけを計算すると、切り替えた瞬間に壁際の持ち上げの分だけカメラが跳ぶ)
+    if(slimeLife_){
         // 注視点からの向きへ太い箱を掃引し、遮られずに届く割合を返す。注視点を含む箱は無視する
         auto reach=[&](V direction,float distance){float best=1;V delta=direction*distance;
             auto test=[&](Chrono::Bounds b){if(Chrono::Sweep(focus,delta,b,{.9f,.9f,.9f},f,n)&&f>0&&f<best)best=f;};
@@ -292,21 +294,38 @@ void ChronoSystem::InkCamera(entt::registry& r,Player& p,GameContext& ctx){
             for(size_t i=0;i<CityWalls().size();++i)if(!cityGates_.WallOpen(i)){const auto& w=CityWalls()[i].rect;test({V{w.x0,0,w.z0},V{w.x1,14,w.z1}});}
             if(!cityGates_.gateOpen)test({CityGateCenter()+V{-32,0,-1.5f},CityGateCenter()+V{32,58,1.5f}});
             return best;};
+        // 見上げたときに置きたい位置が路面の下へ潜ると、掃引が建物の箱の下をくぐって
+        // 後から高さを戻したときに建物の中へ入るので、先に路面の上へ戻しておく
+        wanted.y=std::max(wanted.y,.7f);
         float distance=std::max(Length(wanted-focus),.01f);V back=(wanted-focus)*(1/distance);
         // 後ろが塞がれていたら、届くまで上へ傾けた向きを試す (路地の壁際では体の上から見下ろす)
         auto lifted=[&](float k){return Unit(back+V{0,k,0});};
         const float lifts[]={0,.35f,.8f,1.5f,3};float goal=0,best=-1;
         for(float k:lifts){float open=reach(lifted(k),distance);if(open>best+.02f){best=open;goal=k;}if(open>=.97f)break;}
-        // 持ち上げは速く、戻すのはゆっくり。届く距離は縮めるときは即座に、伸ばすときはゆっくり
-        cameraLift_+=(goal-cameraLift_)*(1-std::exp(-(goal>cameraLift_?10.f:2.5f)*ctx.dt));
+        // 持ち上げは少し速く、戻すのはゆっくり (速すぎると変形で構図が広がった瞬間に跳ね上がる)。届く距離は縮めるときは即座に、伸ばすときはゆっくり
+        cameraLift_+=(goal-cameraLift_)*(1-std::exp(-(goal>cameraLift_?4.f:2.5f)*ctx.dt));
         V direction=lifted(cameraLift_);float open=reach(direction,distance);
         cameraReach_=open<cameraReach_?open:cameraReach_+(open-cameraReach_)*(1-std::exp(-3*ctx.dt));
         wanted=focus+direction*std::max(.5f,cameraReach_*distance-.3f);
+        // 消火栓のときは肩越しの照準の位置へ移る
+        if(hydrant){
+            // 高さは体に合わせ、ピッチとは別にする。上を見てもカメラが
+            // 路面へ下がらないようにし、視線はカメラの右に空ける
+            V flat{std::sin(yaw_),0,std::cos(yaw_)};
+            V shoulderFocus=pos+V{0,-1.25f+4.3f*LifeScale(life_.bodies[0].mass),0},shoulderAt=pos+LifeHydrantCameraOffset(life_.bodies[0].mass,flat);
+            for(const auto& box:solids_)if(Chrono::Sweep(shoulderFocus,shoulderAt-shoulderFocus,box,{.3f,.3f,.3f},f,n))shoulderAt=shoulderFocus+(shoulderAt-shoulderFocus)*std::max(.05f,f-.025f);
+            wanted=Lerp(wanted,shoulderAt,hydrantBlend);focus=Lerp(focus,shoulderFocus,hydrantBlend);
+        }
     }else{
     for(const auto& box:solids_)if(Chrono::Sweep(focus,wanted-focus,box,{.3f,.3f,.3f},f,n))wanted=focus+(wanted-focus)*std::max(.05f,f-.025f);
     }
     for(const auto& surface:inkSurfaces_){V hit;if(surface.Ray(focus,wanted-focus,f,hit))wanted=focus+(wanted-focus)*std::max(.05f,f-.06f);}
     wanted.y=std::max(wanted.y,.7f);
+    // それでも建物の箱の中に残ったら、外へ出るまで注視点の方へ寄せる
+    if(slimeLife_&&hydrantBlend<1){
+        auto inside=[&](V at){for(const auto& b:solids_)if(at.x>b.min.x-.2f&&at.x<b.max.x+.2f&&at.y>b.min.y-.2f&&at.y<b.max.y+.2f&&at.z>b.min.z-.2f&&at.z<b.max.z+.2f)return true;return false;};
+        for(int i=0;i<20&&inside(wanted);++i)wanted=Lerp(wanted,focus,.15f);
+    }
     // 撃っているときはビームの方向を見る
     V beamForward=firing?Forward(ink.beamYaw,ink.beamPitch):forward;
     ink.cameraBeamDirection=Unit(Lerp(ink.cameraBeamDirection,beamForward,1-std::exp(-14*ctx.dt)));
@@ -314,18 +333,18 @@ void ChronoSystem::InkCamera(entt::registry& r,Player& p,GameContext& ctx){
     V lookAt=focus+ink.cameraBeamDirection*(45-heavy*20)+V{0,domainView*20,0};
     V view=Unit(Lerp(forward,Unit(lookAt-wanted),std::max(shot,domainView*.8f)));
     // スライムの生活モードでは注視点を向く (消火栓のときは前方)
-    if(slimeLife_)view=hydrant?forward:Unit(focus-wanted);
-    if(hydrant)ctx.camera->StopShake();
+    if(slimeLife_)view=Unit(Lerp(Unit(focus-wanted),forward,hydrantBlend));
+    if(aimingHydrant)ctx.camera->StopShake();
     // カメラへ位置と回転を反映する
     ctx.camera->SetPosition(Write(wanted));
     ctx.camera->SetRotation(-std::asin(std::clamp(view.y,-1.f,1.f)),std::atan2(view.x,view.z),0);
     // 画角 (泳いでいるとき・溜め・輪で広げる)
     float goal=(ink.swimming?1.22f:1.13f)+heavy*.06f+domainView*.12f;fov_+=(goal-fov_)*(1-std::exp(-6*ctx.dt));
     // 7 度の素早い揺れを加え、0.4 秒以内に通常のカメラへ完全に戻す
-    ctx.camera->SetProjection(fov_+.12f*SlimePerfectPulse(ink.perfectAge),ctx.viewportSize.x/std::max(1.f,ctx.viewportSize.y),.1f,2000);
+    ctx.camera->SetProjection(fov_+.12f*SlimePerfectPulse(ink.perfectAge),ctx.viewportSize.x/std::max(1.f,ctx.viewportSize.y),slimeLife_?LifeCameraNear:.1f,2000);
     // 消火栓のときは揺れを止める
-    ctx.camera->SetHandheld(hydrant?0.f:.008f);
-    ctx.camera->SetShakeStrength(hydrant?0.f:shakeSetting_*.5f);
+    ctx.camera->SetHandheld(aimingHydrant?0.f:.008f);
+    ctx.camera->SetShakeStrength(aimingHydrant?0.f:shakeSetting_*.5f);
     // 近いほどプレイヤーを半透明にする
     p.cameraOpacity=std::clamp((Length(wanted-pos)-2.5f)/5.f,.2f,1.f);
     // 衝撃の時にボスがプレイヤーを突き抜けることがある。カメラとプレイヤーの間の部位だけを

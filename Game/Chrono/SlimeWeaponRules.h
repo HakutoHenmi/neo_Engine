@@ -114,6 +114,11 @@ inline float LifeTireSpinRate(const LifeBody& body,float dt){
 }
 // カメラが映す対象と、それが画面に収まるカメラの距離
 struct LifeCameraSubject {Vec center{};float radius=1;};
+// スライムの生活モードのカメラの手前の距離。0.1 では遠くの奥行きの精度が足りず、路面の塗装や建物の飾りがちらつく
+// (カメラは壁や体から 0.5 以上離れるので、0.3 でも手前が欠けない)
+inline constexpr float LifeCameraNear=.3f;
+// 液体と武器の形を行き来するときに、カメラの構図をつなぐ時間
+inline constexpr float LifeCameraBlendSeconds=.45f;
 inline float LifeCameraDistance(float radius,float fovY,float aspect){
     // 対象全体を、画面の短い方の 62% の中に収める
     // 画角と比率から、対象が収まる距離

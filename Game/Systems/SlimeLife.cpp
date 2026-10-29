@@ -6,6 +6,8 @@
 namespace Game {
 // このファイルの中だけで使う補助の関数
 namespace {
+// 調合室 (研究所) を使うか。コア部分ができるまでは無効にして、すぐ街から始める
+constexpr bool kSlimeLabEnabled=false;
 // スライムの色を描画用の色にする / 数値を小数 1 桁の文字列にする
 Engine::Vector4 LifeColor(const SlimeColor& color){auto rgb=color.ToRGB();return {rgb.x,rgb.y,rgb.z,1};}
 std::string LifeNumber(float value){char text[32];snprintf(text,sizeof(text),"%.1f",value);return text;}
@@ -128,8 +130,8 @@ void ChronoSystem::BuildSlimeLife(entt::registry& r){
     life_={};life_.revision=GetTickCount64();life_.recipe=lifeRecipes_[size_t(lifeRecipeSlot_)];lifeLastAction_.fill(-1);lifeLastCounts_={};
     // 消火栓の水の読み戻しを止める
     Engine::Renderer::GetInstance()->EnableHydrantWaterReadback(false);hydrantWaterSerial_=0;
-    // 通常は調合室から始める (自動テストではすぐ始める)
-    life_.lab=!slimePlayerDemo_ && !wcsstr(GetCommandLineW(),L"--slime-life-smoke");
+    // 調合室が有効なら調合室から始める (無効のときや自動テストではすぐ始める)
+    life_.lab=kSlimeLabEnabled && !slimePlayerDemo_ && !wcsstr(GetCommandLineW(),L"--slime-life-smoke");
     lifeWasLab_=life_.lab;lifeReseed_=true;lifePreviewEmitted_=false;
     // 調合室の見本のスライム (地上から離れた高い所に置く)
     life_.preview.at={0,1201.25f,0};life_.preview.mass=LifeStartMass;life_.preview.particles=Engine::Renderer::kPlayerFluidParticles;life_.preview.forward={0,0,-1};
@@ -151,8 +153,8 @@ void ChronoSystem::BuildSlimeLife(entt::registry& r){
     // 強化メニューを止め、群れのモードで戦う
     auto& ink=r.get<InkPlayer>(player_);ink.rogue.enabled=false;ink.rogue.menu=false;ink.battlePhase=BattlePhase::Horde;
     ink.hordeEnabled=true;ink.swarmKills=0;
-    // ムービーは使わない
-    openingPending_=cinematicActive_=false;
+    // 旧モードのムービーは使わず、ステージ開始のカメラ演出から始める
+    openingPending_=cinematicActive_=false;intro_={};intro_.active=!slimePlayerDemo_;lifeHitStop_=0;lifeAbsorbBuffer_=0;cameraBlend_={};cameraHydrant_=0;
     // 最初の段階の敵を出し、ボスは隠す
     swarm_.clear();swarmEffects_.clear();life_.signal={};life_.signalNotice=0;signalWalks_.clear();signalPulses_.clear();
     if(!slimePlayerDemo_)SpawnCityStep(0);ink.swarmSpawned=ink.swarmAlive=int(swarm_.size());
@@ -204,7 +206,7 @@ void ChronoSystem::DamageSlimeLife(entt::registry& r,Player& p,float amount,Game
     if(life_.recipe.Ratio(3)>0){V away=body.at-source;away.y=0;if(Length(away)>.01f)p.velocity=p.velocity+Unit(away)*(14*life_.recipe.Ratio(3));}
     // 体力の表示を更新し、画面を揺らす
     auto& health=r.get<HealthComponent>(player_);health.SetMaxHp(body.maxHealth);health.SetHp(body.health);health.SetDead(body.health<=0);
-    ctx.camera->StartImpactShake(.14f,.12f,{0,1,0},12);
+    {V push=body.at-source;push.y=0;push=Length(push)>.01f?Unit(push)*.6f+V{0,.8f,0}:V{0,1,0};LifeImpact(ctx,ImpactPlayerHurt,body.at,push,std::clamp(amount/10,.8f,1.6f));}
     // 体力が尽きたら負け
     if(body.health<=0)Finish(p,false);
 }
@@ -296,6 +298,15 @@ bool ChronoSystem::StartLifeAbsorb(int bodyIndex){
     ++life_.revision;return true;
 }
 // スライムの攻撃が敵に当たったとき (盾持ちと守護者の装甲は特定の武器でだけ崩せる)
+// 手応え: 本体の近くで起きたものほど強く揺らして振動させ、すぐ近くならヒットストップも掛ける
+void ChronoSystem::LifeImpact(GameContext& ctx,const LifeImpactSpec& spec,V at,V direction,float scale){
+    const auto& body=life_.bodies[0];float inner=6+2.5f*LifeScale(body.mass),outer=inner+80;
+    float k=std::clamp(1-(LifeDistance(at,body.at)-inner)/(outer-inner),0.f,1.f);if(k<=0)return;
+    // 止めるのは本体のすぐ近くだけ。重ねても長くなりすぎないよう、一番長いものに合わせる
+    if(spec.stop>0&&k>.75f)lifeHitStop_=std::min(.12f,std::max(lifeHitStop_,spec.stop));
+    if(spec.shake>0&&ctx.camera)ctx.camera->StartImpactShake(spec.shakeTime,spec.shake*k*scale,Write(direction),spec.frequency);
+    Rumble::Play(spec.low*k*scale,spec.high*k*scale,spec.rumble);
+}
 void ChronoSystem::LifeHit(entt::registry& r,Player& p,GameContext& ctx,uint32_t id,float damage,LifeAction source,V from){
     for(auto& enemy:swarm_)if(enemy.id==id&&SwarmAlive(enemy)){
         // 触れた敵は気付く
@@ -314,10 +325,12 @@ void ChronoSystem::LifeHit(entt::registry& r,Player& p,GameContext& ctx,uint32_t
         enemy.health-=damage;enemy.flash=.15f;
         // 倒したら落とし物を残し、エフェクトを出す
         if(enemy.health<=0){enemy.phase=SwarmPhase::Dead;++r.get<InkPlayer>(player_).swarmKills;
-            life_.props.push_back(CityEnemyDrop(enemy));if(swarmEffects_.size()<128)swarmEffects_.push_back({enemy.at,0,3*std::sqrt(enemy.scale),2});}
+            life_.props.push_back(CityEnemyDrop(enemy));if(swarmEffects_.size()<128)swarmEffects_.push_back({enemy.at,0,3*std::sqrt(enemy.scale),2});
+            // 倒した瞬間は少し止めて重く揺らす (大きい敵ほど強く)
+            LifeImpact(ctx,ImpactKill,enemy.at,{0,1,0},std::clamp(.7f+.15f*enemy.scale,.8f,1.4f));}
         // 倒れていなければ怯ませる (大砲と守護者は怯まない)
         else if(kind!=CityEnemy::Cannon&&kind!=CityEnemy::Guardian){ChangeSwarmPhase(enemy,SwarmPhase::Recover);}
-        (void)p;(void)ctx;return;
+        (void)p;return;
     }
 }
 // スライムの体 (本体と子) の形を GPU 流体の目標として渡す (液体・武器・触手)
@@ -504,8 +517,13 @@ void ChronoSystem::UpdateSlimeLife(entt::registry& r,Player& p,GameContext& ctx)
     if(slimePlayerDemo_)UpdateSlimePlayerDemo(r,p,ctx);
     // 変形の見せ場の間は、プレイヤー以外の時間を止めて見せ場だけを進める
     if(showcase_.active){UpdateMorphShowcase(r,p,ctx,dt);return;}
-    // TAB / BACK で調合室を開く
-    bool tab=!slimePlayerDemo_ && (control?control->lab:Controls::Key(VK_TAB)||Controls::Pad(XINPUT_GAMEPAD_BACK));
+    // ステージ開始のカメラ演出の間は、世界を止めてカメラだけを動かす
+    if(intro_.active){UpdateStageIntro(r,p,ctx,dt);if(intro_.active||intro_.fadeOut>0)return;}
+    intro_.fadeOut=std::max(0.f,intro_.fadeOut-dt);
+    // ヒットストップ: 敵・弾・体・流体を止め、カメラ (揺れ) だけを進める。押した入力は止まった後に受け付ける
+    if(lifeHitStop_>0){lifeHitStop_-=dt;ctx.renderer->SetRogueWorldFrozen(true);InkCamera(r,p,ctx);return;}
+    // TAB / BACK で調合室を開く (調合室が有効なときだけ)
+    bool tab=kSlimeLabEnabled && !slimePlayerDemo_ && (control?control->lab:Controls::Key(VK_TAB)||Controls::Pad(XINPUT_GAMEPAD_BACK));
     if(tab&&!life_.previousLab)SetSlimeLabOpen(!life_.lab);life_.previousLab=tab;
     life_.messageAge=std::max(0.f,life_.messageAge-dt);
     // 研究所で「出発」を押したら、レシピを保存して最初からやり直す
@@ -520,7 +538,9 @@ void ChronoSystem::UpdateSlimeLife(entt::registry& r,Player& p,GameContext& ctx)
     p.invincible=std::max(0.f,p.invincible-dt);p.damageAge+=dt;life_.stompCooldown=std::max(0.f,life_.stompCooldown-dt);life_.contactCooldown=std::max(0.f,life_.contactCooldown-dt);
     // カメラの向き
     if(control){yaw_=control->yaw;pitch_=control->pitch;}else if(ctx.input){float y,x;Controls::Look(dt,y,x);yaw_+=ctx.input->GetMouseDeltaX()*.0025f+y;pitch_=std::clamp(pitch_+ctx.input->GetMouseDeltaY()*.0025f+x,-.7f,.85f);}
-    // 入力: 取り込み・変形攻撃・スライムに戻る。変形の種類は 1〜5 キーか十字キーで選ぶ
+    // 右スティックの押し込みで、カメラを体の後ろへ向け直す
+    if(!control&&UI::PadPressed(XINPUT_GAMEPAD_RIGHT_THUMB)){V facing=body.forward;facing.y=0;if(Length(facing)>.01f)yaw_=std::atan2(facing.x,facing.z);}
+    // 入力: 取り込み・変形攻撃・スライムに戻る。変形は 1〜4 キー・十字キー・LB / RB で選ぶ
     bool absorb=control?control->absorb:Controls::Absorb();
     bool fire=control?control->attack:Controls::MorphAttack();
     bool returnToSlime=control?control->returnToSlime:Controls::ReturnToSlime();
@@ -530,17 +550,21 @@ void ChronoSystem::UpdateSlimeLife(entt::registry& r,Player& p,GameContext& ctx)
     // スライムに戻る
     if(returnToSlime&&!life_.previousReturn&&LifeWeaponForm(body.action)){
         LifeReturnToSlime(body);life_.tackleTime=0;++life_.revision;returned=true;say("スライムに戻る / 再び取り込み可能");}
-    // 武器の形では取り込めないことを知らせる
-    if(absorb&&!life_.previousAbsorb&&LifeWeaponForm(body.action)&&body.action!=LifeAction::Hydrant)say("R / B でスライムに戻って取り込み");
-    // 変形はハンマー (1)・タイヤ (2)・消火栓 (3)・信号機 (4)。十字キーで順に切り替える
+    // 武器の形で吸収を押したら、そのままスライムへ戻って吸収する (消火栓は同じボタンが水の防御なので除く)。
+    // 戻りきるまでの間は押した入力を覚えておき、離していても戻った瞬間に吸収を始める
+    if(absorb&&!life_.previousAbsorb&&LifeWeaponForm(body.action)&&body.action!=LifeAction::Hydrant){
+        LifeReturnToSlime(body);body.restoreDuration=.2f;life_.tackleTime=0;++life_.revision;returned=true;lifeAbsorbBuffer_=.8f;}
+    // 変形はハンマー (1 / 十字↑)・タイヤ (2 / →)・消火栓 (3 / ↓)・信号機 (4 / ←)
     const LifeAction forms[]={LifeAction::Hammer,LifeAction::Tire,LifeAction::Hydrant,LifeAction::Signal};
     int formIndex=life_.form==LifeAction::Tire?1:life_.form==LifeAction::Hydrant?2:life_.form==LifeAction::Signal?3:0;
-    if(!control&&UI::PadPressed(XINPUT_GAMEPAD_DPAD_RIGHT))life_.form=forms[(formIndex+1)%4];
-    if(!control&&UI::PadPressed(XINPUT_GAMEPAD_DPAD_LEFT))life_.form=forms[(formIndex+3)%4];
     if(control&&control->morphForm>=1&&control->morphForm<=4)life_.form=forms[control->morphForm-1];
-    // キーボードの数字キーは、押した瞬間にその形へ変形する (十字キーは選ぶだけで、攻撃ボタンで変形)
+    // 数字キーと十字キーは、押した瞬間にその形へ変形する
     int hotkey=0;
     if(!control&&ctx.input){if(ctx.input->Trigger(DIK_1))hotkey=1;else if(ctx.input->Trigger(DIK_2))hotkey=2;else if(ctx.input->Trigger(DIK_3))hotkey=3;else if(ctx.input->Trigger(DIK_4))hotkey=4;}
+    if(!control){if(UI::PadPressed(XINPUT_GAMEPAD_DPAD_UP))hotkey=1;else if(UI::PadPressed(XINPUT_GAMEPAD_DPAD_RIGHT))hotkey=2;else if(UI::PadPressed(XINPUT_GAMEPAD_DPAD_DOWN))hotkey=3;else if(UI::PadPressed(XINPUT_GAMEPAD_DPAD_LEFT))hotkey=4;}
+    // LB / RB: スティックから指を離さずに、解放済みの前後の形へ変形する (解放済みが無ければ隣を選ぶだけ)
+    if(!control&&hotkey==0){int step=UI::PadPressed(XINPUT_GAMEPAD_RIGHT_SHOULDER)?1:UI::PadPressed(XINPUT_GAMEPAD_LEFT_SHOULDER)?3:0;
+        if(step){int pick=(formIndex+step)%4;for(int i=0;i<4&&!LifeCanMorph(body,forms[pick]);++i)pick=(pick+step)%4;hotkey=pick+1;}}
     if(control&&control->morphNow&&control->morphForm>=1&&control->morphForm<=4)hotkey=control->morphForm;
     bool morphNow=hotkey>0;if(morphNow)life_.form=forms[hotkey-1];
     // 攻撃か数字キーを押したとき: 選んだ形が解放済みなら変形し、まだなら (攻撃なら) タックルする
@@ -551,7 +575,7 @@ void ChronoSystem::UpdateSlimeLife(entt::registry& r,Player& p,GameContext& ctx)
             if(life_.form==LifeAction::Hammer){life_.message="ゴミを吸い込んで本体"+std::to_string(int(LifeHammerMass))+"まで育つと、ハンマーに変形できる";life_.messageAge=2;}
             else say(life_.form==LifeAction::Tire?"大通りの金色に光るタイヤを吸収すると、タイヤ変形が解放される":life_.form==LifeAction::Hydrant?"火事場の金色に光る消火栓を吸収すると、放水攻撃と防御を解放":"交差点の金色に光る信号機を吸収すると、信号機変形を解放");
         }else if(LifeEnterWeapon(body,life_.form,LifeFacesCamera(life_.form)?Forward(yaw_,0):body.forward)){changedForm=true;life_.chargeLocked=true;++life_.revision;
-            say(body.action==LifeAction::Hammer?"ハンマー変形！ 左クリック・RTで叩きつけ (押し続けると連続) / R・Bで戻る":body.action==LifeAction::Hydrant?"消火栓変形！ 左クリック・RTで放水 / 右クリック・Xで水の防御 / R・Bで戻る":body.action==LifeAction::Signal?"信号機変形！ 左クリックで 赤 → 青 → 黄 の順に信号を出す / R・Bで戻る":"タイヤ変形！ 左長押しで回転を溜め、離して突進 / R・Bで戻る");}}
+            say(body.action==LifeAction::Hammer?"ハンマー変形！ 左クリック・RTで叩きつけ (押し続けると連続) / R・Bで戻る":body.action==LifeAction::Hydrant?"消火栓変形！ 左クリック・RTで放水 / 右クリック・LTで水の防御 / R・Bで戻る":body.action==LifeAction::Signal?"信号機変形！ 左クリック・RTで 赤 → 青 → 黄 の順に信号を出す / R・Bで戻る":"タイヤ変形！ 左クリック・RT長押しで回転を溜め、離して突進 / R・Bで戻る");}}
     // 信号機: 押すたびに次の色を出す。待ち時間と点検の間は出せない
     else if(firePressed&&!returned&&body.action==LifeAction::Signal&&body.weapon.ready){SignalColor fired;
         if(SignalFire(life_.signal,fired))FireSignal(r,p,ctx,fired);
@@ -568,7 +592,7 @@ void ChronoSystem::UpdateSlimeLife(entt::registry& r,Player& p,GameContext& ctx)
         if(!fire)life_.chargeLocked=false;
         if(LifeTickTireCharge(body,fire&&!life_.chargeLocked&&!changedForm,dt)){body.attackSerial=++life_.nextAttack;
             auto* audio=Engine::Audio::GetInstance();audio->Play(lifeSplitSounds_[1],false,(.25f+.25f*body.weapon.dashPower)*audio->GetMasterSEVolume(),.7f+.5f*body.weapon.dashPower);
-            ctx.camera->StartImpactShake(.1f,.05f+.1f*body.weapon.dashPower,{0,0,1},10);}
+            LifeImpact(ctx,ImpactTireLaunch,body.at,{0,0,1},.5f+body.weapon.dashPower);}
         if(body.weapon.charging){V aim=Forward(yaw_,0);aim.y=0;if(Length(wish)>.05f)aim=wish;body.forward=LifeWeaponFacing(body.forward,Unit(aim),dt);}
         body.tireSpin=LifeTireSpinRate(body,dt);
         // 溜めている間は足元に土ぼこりの輪、突進中は通った跡に輪を残す (0.07 秒ごと)
@@ -608,9 +632,9 @@ void ChronoSystem::UpdateSlimeLife(entt::registry& r,Player& p,GameContext& ctx)
         for(auto& enemy:swarm_)if(SwarmAlive(enemy)&&enemy.lifeHitRevision!=hitKey&&LifeSegmentDistance(enemy.at,old,body.at)<reach+enemy.scale){
             enemy.lifeHitRevision=hitKey;LifeHit(r,p,ctx,enemy.id,LifeTireDashDamage(body,power),LifeAction::Tire,old);++hits;
             if(swarmEffects_.size()<128)swarmEffects_.push_back({enemy.at,0,2+2*power,2});}
-        if(hits){ctx.camera->StartImpactShake(.1f,.08f+.08f*power,{0,1,0},16);auto* audio=Engine::Audio::GetInstance();audio->Play(hitSound_,false,.5f*audio->GetMasterSEVolume(),1.1f);}
+        if(hits){LifeImpact(ctx,ImpactTireHit,body.at,{0,1,0},.7f+.6f*power);auto* audio=Engine::Audio::GetInstance();audio->Play(hitSound_,false,.5f*audio->GetMasterSEVolume(),1.1f);}
         if(!slimePlayerDemo_)CityTireDashHits(r,ctx,body,hitKey);
-        if(p.velocity.x==0&&p.velocity.z==0){body.weapon.dash=0;ctx.camera->StartImpactShake(.12f,.1f,{0,1,0},14);}
+        if(p.velocity.x==0&&p.velocity.z==0){body.weapon.dash=0;LifeImpact(ctx,ImpactTireCrash,body.at,body.forward*-1.f+V{0,.5f,0});}
     }
     // 十分に大きければ、触れた物や敵をそのまま吸収する
     int touchCount=0;float touchGrowth=0;
@@ -628,14 +652,17 @@ void ChronoSystem::UpdateSlimeLife(entt::registry& r,Player& p,GameContext& ctx)
         auto* audio=Engine::Audio::GetInstance();audio->Play(lifeEngulfSound_,false,.35f*audio->GetMasterSEVolume(),1.2f);
         if(swarmEffects_.size()<128)swarmEffects_.push_back({body.at,0,2*LifeScale(body.mass),2});}
     // 取り込みを始める (対象が無ければ知らせる)
-    if(LifeWantsAbsorb(absorb,body)&&!StartLifeAbsorb(0)&&!life_.previousAbsorb)say("NO ABSORBABLE TARGET / WEAKEN OR GROW FIRST");
+    if(LifeWantsAbsorb(absorb||lifeAbsorbBuffer_>0,body)){
+        if(StartLifeAbsorb(0))lifeAbsorbBuffer_=0;
+        else if((absorb&&!life_.previousAbsorb)||(!absorb&&lifeAbsorbBuffer_>0)){lifeAbsorbBuffer_=0;say("NO ABSORBABLE TARGET / WEAKEN OR GROW FIRST");}}
+    lifeAbsorbBuffer_=std::max(0.f,lifeAbsorbBuffer_-dt);
     life_.previousAbsorb=absorb;
     // 空中から着地したら踏みつけ (範囲内の敵にダメージ)
     if(!grounded&&p.grounded&&life_.stomping){life_.stomping=false;life_.stompCooldown=.7f;++life_.stomps;
         float radius=life_.recipe.StompRadius()*LifeScale(body.mass),damage=life_.recipe.StompDamage()*LifeScale(body.mass);int hits=0;
         for(const auto& enemy:swarm_)if(SwarmAlive(enemy)&&LifeDistance(enemy.at,body.at)<radius+enemy.scale){LifeHit(r,p,ctx,enemy.id,damage,LifeAction::Idle,body.at);++hits;}
         swarmEffects_.push_back({body.at,0,radius,2});life_.message="踏みつけ "+LifeNumber(damage)+"ダメージ / "+std::to_string(hits)+"体に命中";life_.messageAge=2;
-        ctx.camera->StartImpactShake(.18f,.08f+.12f*life_.recipe.Ratio(1),{0,1,0},13);}
+        LifeImpact(ctx,hits?ImpactStomp:ImpactStompMiss,body.at,{0,1,0},.6f+.8f*life_.recipe.Ratio(1));}
     if(!grounded&&p.grounded&&body.reboundAvailable){body.reboundAvailable=false;p.velocity.y=life_.recipe.Rebound();if(p.velocity.y>0)p.grounded=false;}
     // プレイヤーの位置と大きさ、液体の見た目の値を反映する
     auto& transform=r.get<TransformComponent>(player_);transform.translate=Write(body.at);float size=LifeScale(body.mass);transform.scale={size,size,size};transform.rotate.y=std::atan2(body.forward.x,body.forward.z);
@@ -683,7 +710,7 @@ void ChronoSystem::UpdateSlimeLife(entt::registry& r,Player& p,GameContext& ctx)
                 for(auto& enemy:swarm_)if(SwarmAlive(enemy)&&enemy.lifeHitRevision!=hitKey&&LifeWeaponTouches(b,enemy.at,1.25f*enemy.scale,pulse)){
                     enemy.lifeHitRevision=hitKey;LifeHit(r,p,ctx,enemy.id,LifeWeaponDamage(b),b.action,b.at);++life_.hammerHits;hit=true;}
                 if(index==0&&!slimePlayerDemo_)CityWeaponHits(r,ctx,b,pulse,hitKey);
-                if(hit){ctx.camera->StartImpactShake(.1f,b.action==LifeAction::Hammer?.16f:.08f,{0,1,0},18);
+                if(hit){LifeImpact(ctx,b.action==LifeAction::Hammer?ImpactHammerHit:ImpactBladeHit,b.at+b.forward*(3*LifeScale(b.mass)),b.action==LifeAction::Hammer?V{0,1,0}:b.forward);
                     if(swarmEffects_.size()<128)swarmEffects_.push_back({b.at+b.forward*(3*LifeScale(b.mass)),0,3*LifeScale(b.mass),2});}
             }
         }
@@ -723,7 +750,7 @@ void ChronoSystem::UpdateSlimeLife(entt::registry& r,Player& p,GameContext& ctx)
     // 体力・新しい材料の解放・演出。全段階を終えたらクリア
     p.mass=body.mass;auto& health=r.get<HealthComponent>(player_);health.SetMaxHp(body.maxHealth);health.SetHp(body.health);health.SetDead(body.health<=0);
     // 5 回取り込んだら泡の材料を解放する
-    if(life_.absorbed>=5&&lifeMaterials_<4){lifeMaterials_=4;say("NEW MATERIAL / FOAM UNLOCKED IN SLIME LAB");SaveSlimeLab();}
+    if(life_.absorbed>=5&&lifeMaterials_<4){lifeMaterials_=4;if(kSlimeLabEnabled)say("NEW MATERIAL / FOAM UNLOCKED IN SLIME LAB");SaveSlimeLab();}
     // 旧モードの値を戻し、演出と体の形を反映する
     p.worldScale=p.aimScale=1;p.aiming=false;p.action=Action::Free;
     Presentation(r,p,ctx);SyncSlimeBodies(ctx);
@@ -858,6 +885,8 @@ void ChronoSystem::DrawSlimeLifeUI(entt::registry& r,GameContext& ctx){
     if(slimePlayerDemo_){DrawSlimePlayerDemoUI(ctx);return;}
     // 変形の見せ場の間は HUD を隠し、見せ場の画面だけを描く
     if(showcase_.active&&!life_.lab){DrawMorphShowcase(ctx);return;}
+    // ステージ開始のカメラ演出の間は HUD を隠し、演出の画面だけを描く
+    if(intro_.active){DrawStageIntro(ctx);return;}
     // 終わったら結果を表示する
     if(finished_){ui.Result(won_,won_?"CITY DEVOURED":"SLIME LOST COHESION","ABSORBED  "+std::to_string(life_.absorbed)+"   MAX GROUP MASS  "+std::to_string(int(life_.TotalMass())));return;}
     if(!life_.lab){
@@ -937,7 +966,12 @@ void ChronoSystem::DrawSlimeLifeUI(entt::registry& r,GameContext& ctx){
         if(i==3&&open)for(int c=0;c<3;++c){SignalColor color=c==0?SignalColor::Green:c==1?SignalColor::Yellow:SignalColor::Red;auto rgb=SignalColorRGB(color);
             bool lit=signal.next==color&&signal.wait<=0;ui.Dot(cx+(float(c)-1)*9.5f*unit,cy-8*unit,3.6f*unit,{rgb.x*(lit?1.f:.35f),rgb.y*(lit?1.f:.35f),rgb.z*(lit?1.f:.35f),1});}
         if(!open)ui.Line(inner.x+6,inner.y+inner.h-6,inner.x+inner.w-6,inner.y+6,5,{.84f,.2f,.16f,alpha});
-        float bx=outer.x+5,by=outer.y+3;ui.Dot(bx,by,14,UI::WithAlpha(black,alpha));ui.Dot(bx,by,12,UI::WithAlpha(hazard,alpha));ui.Center(std::to_string(i+1),bx,by-11,16,black,UI::JapaneseFont);}
+        float bx=outer.x+5,by=outer.y+3;ui.Dot(bx,by,14,UI::WithAlpha(black,alpha));ui.Dot(bx,by,12,UI::WithAlpha(hazard,alpha));
+        // パッドなら変形する十字キーの向き、キーボードなら数字キーを札に出す
+        if(UI::UsingPad()){static const char* dpad[]={"xbox_dpad_up","xbox_dpad_right","xbox_dpad_down","xbox_dpad_left"};ui.PadGlyph(dpad[i],bx-12,by-12,24);}
+        else ui.Center(std::to_string(i+1),bx,by-11,16,black,UI::JapaneseFont);}
+    // パッドなら LB / RB で前後の形へ変形できることを、ステッカーの左上に出す
+    if(UI::UsingPad()){ui.PadGlyph("xbox_lb",866,616,26);ui.PadGlyph("xbox_rb",894,616,26);}
     // ステッカーの上: 選んでいる形の名前と状態
     bool open=LifeCanMorph(body,forms[picked]),active=body.action==forms[picked];
     const char* nextName=signal.next==SignalColor::Red?"NEXT  RED":signal.next==SignalColor::Green?"NEXT  GREEN":"NEXT  YELLOW";
@@ -945,21 +979,30 @@ void ChronoSystem::DrawSlimeLifeUI(entt::registry& r,GameContext& ctx){
     char label[32];snprintf(label,sizeof(label),"FORM %02d",picked+1);
     spaced(std::string(label)+(state.empty()?"":"  /  "+state),1246,548,13,hazard,2,1);
     shadowed(names[picked],1246,566,30,open?white:UI::WithAlpha(white,.6f),UI::JapaneseFont,1);}
-    // 下中央: 今の形で使う操作だけを、白いキーの札と一緒に 1 行で
+    // 下中央: 今の形で使う操作だけを 1 行で。キーボードは白いキーの札、パッドはボタンの画像を出す
     {bool unlocked=LifeCanMorph(body,life_.form);std::string attack=unlocked?"変形":"タックル";
-    bool pad=UI::UsingPad();std::vector<std::pair<std::string,std::string>> keys;
-    if(body.action==LifeAction::Hammer)keys={{pad?"RT":"左","叩きつけ"},{pad?"RT 長押し":"左 長押し","連続で叩く"},{pad?"A":"SPACE","ジャンプ"},{pad?"B":"R","戻る"}};
-    else if(body.action==LifeAction::Hydrant)keys={{pad?"RT":"左","放水"},{pad?"X":"右","水の防御"},{pad?"B":"R","戻る"}};
-    else if(body.action==LifeAction::Tire)keys={{pad?"RT 長押し":"左 長押し","回転を溜める"},{"離す","突進"},{pad?"Lスティック":"WASD","曲がる"},{pad?"B":"R","戻る"}};
+    // パッドのボタン画像・キーボードのキー・押し方 (長押し・離す)・操作の名前
+    struct Hint {const char* glyph;std::string key,how,what;};
+    bool pad=UI::UsingPad();std::vector<Hint> keys;
+    const Hint absorbHint{"xbox_lt","右","","吸収"},back{"xbox_button_b","R","","戻る"},jump{"xbox_button_a","SPACE","","ジャンプ"};
+    if(body.action==LifeAction::Hammer)keys={{"xbox_rt","左","","叩きつけ"},{"xbox_rt","左","長押し","連続"},absorbHint,jump,back};
+    else if(body.action==LifeAction::Hydrant)keys={{"xbox_rt","左","","放水"},{"xbox_lt","右","","水の防御"},back};
+    else if(body.action==LifeAction::Tire)keys={{"xbox_rt","左","長押し","溜める"},{"xbox_rt","","離す","突進"},{"xbox_stick_l","WASD","","曲がる"},absorbHint,back};
     else if(body.action==LifeAction::Signal){const auto& signal=life_.signal;
         std::string next=SignalResting(signal)?"点検中":signal.next==SignalColor::Red?"赤：足止め":signal.next==SignalColor::Green?"青：横断歩道":"黄：マーカー";
-        keys={{pad?"RT":"左",next},{pad?"Lスティック":"WASD","移動"},{pad?"B":"R","戻る"}};}
-    else keys={{pad?"RT":"左",attack},{pad?"X 長押し":"右 長押し","吸収"},{pad?"A":"SPACE","ジャンプ"},{pad?"B":"R","戻る"}};
-    const float size=13;float total=0;
-    for(const auto& [key,what]:keys)total+=ui.Width(key,size,UI::JapaneseFont)+10+4+ui.Width(what,size,UI::JapaneseFont)+14;
+        keys={{"xbox_rt","左","",next},absorbHint,back};}
+    else keys={{"xbox_rt","左","",attack},{"xbox_lt","右","長押し","吸収"},{"xbox_dpad","1〜4","","変形"},jump};
+    const float size=13,glyph=24;
+    // 札の文字 (キーボードはキーと押し方をまとめて札に、パッドは押し方だけを画像の横に)
+    auto label=[&](const Hint& h){return pad?h.how:h.key+(h.key.empty()||h.how.empty()?"":" ")+h.how;};
+    auto width=[&](const Hint& h){std::string l=label(h);float w=pad?glyph+(l.empty()?0:2+ui.Width(l,size,UI::JapaneseFont)):ui.Width(l,size,UI::JapaneseFont)+10;
+        return w+4+ui.Width(h.what,size,UI::JapaneseFont)+14;};
+    float total=0;for(const auto& h:keys)total+=width(h);
     float x=640-(total-14)*.5f;
-    for(const auto& [key,what]:keys){float w=ui.Width(key,size,UI::JapaneseFont)+10;ui.Fill({x,668,w,19},white);ui.Text(key,x+5,668,size,black,UI::JapaneseFont);x+=w+4;
-        shadowed(what,x,668,size,white,UI::JapaneseFont);x+=ui.Width(what,size,UI::JapaneseFont)+14;}}
+    for(const auto& h:keys){std::string l=label(h);
+        if(pad){ui.PadGlyph(h.glyph,x,665,glyph);x+=glyph;if(!l.empty()){shadowed(l,x+2,668,size,hazard,UI::JapaneseFont);x+=2+ui.Width(l,size,UI::JapaneseFont);}x+=4;}
+        else{float w=ui.Width(l,size,UI::JapaneseFont)+10;ui.Fill({x,668,w,19},white);ui.Text(l,x+5,668,size,black,UI::JapaneseFont);x+=w+4;}
+        shadowed(h.what,x,668,size,white,UI::JapaneseFont);x+=ui.Width(h.what,size,UI::JapaneseFont)+14;}}
     // タイヤの溜め: 体の足元に、溜まった量のゲージを出す (溜めきると光る)
     if(body.action==LifeAction::Tire&&body.weapon.charging){
         DirectX::XMFLOAT4 clip;V foot=body.at-V{0,1.25f,0};DirectX::XMStoreFloat4(&clip,DirectX::XMVector4Transform(DirectX::XMVectorSet(foot.x,foot.y,foot.z,1),ctx.camera->View()*ctx.camera->Proj()));
@@ -968,9 +1011,9 @@ void ChronoSystem::DrawSlimeLifeUI(entt::registry& r,GameContext& ctx){
             if(full)ui.Halo(gx,gy+4,70,UI::WithAlpha(hazard,.35f+.2f*std::sin(life_.age*20)));
             spaced(full?"MAX":"CHARGE",gx,gy+12,12,full?hazard:white,3,.5f);}}
     // 解放のお知らせかメッセージ (見出しの下)
-    if(life_.hydrantNotice>0)shadowed(UI::UsingPad()?"消火栓変形 解放！ 十字キーで選択 → RTで変形 / Xで防御":"消火栓変形 解放！ 3で変形 → 左クリックで放水 / 右クリックで防御",640,190,18,hazard,UI::JapaneseFont,.5f);
-    else if(life_.signalNotice>0)shadowed(UI::UsingPad()?"信号機変形 解放！ RTで 赤 → 青 → 黄 の順に信号を出す":"信号機変形 解放！ 4で変形 → 左クリックで 赤 → 青 → 黄 の順に信号を出す",640,190,18,hazard,UI::JapaneseFont,.5f);
-    else if(life_.tireNotice>0)shadowed(UI::UsingPad()?"タイヤ変形 解放！ RT長押しで回転を溜め、離して突進":"タイヤ変形 解放！ 左長押しで回転を溜め、離して突進",640,190,18,hazard,UI::JapaneseFont,.5f);
+    if(life_.hydrantNotice>0)shadowed(UI::UsingPad()?"消火栓変形 解放！ 十字キー↓で変形 → RTで放水 / LTで防御":"消火栓変形 解放！ 3で変形 → 左クリックで放水 / 右クリックで防御",640,190,18,hazard,UI::JapaneseFont,.5f);
+    else if(life_.signalNotice>0)shadowed(UI::UsingPad()?"信号機変形 解放！ 十字キー←で変形 → RTで 赤 → 青 → 黄 の順に信号を出す":"信号機変形 解放！ 4で変形 → 左クリックで 赤 → 青 → 黄 の順に信号を出す",640,190,18,hazard,UI::JapaneseFont,.5f);
+    else if(life_.tireNotice>0)shadowed(UI::UsingPad()?"タイヤ変形 解放！ 十字キー→で変形 → RT長押しで回転を溜め、離して突進":"タイヤ変形 解放！ 左長押しで回転を溜め、離して突進",640,190,18,hazard,UI::JapaneseFont,.5f);
     else if(life_.messageAge>0)shadowed(life_.message,640,190,16,hazard,UI::JapaneseFont,.5f);
     DrawSignalUI(ctx);DrawLifeEnemyMarkers(ctx);DrawLifeChildMarkers(ctx);
     // 消火栓の照準: 届かない・遮られるときは金色にして着弾点に印を付ける
@@ -1005,7 +1048,9 @@ void ChronoSystem::DrawSlimeLifeUI(entt::registry& r,GameContext& ctx){
     // 正面に取り込める物があれば長押しを案内する
     if(!life_.lab&&body.action==LifeAction::Idle){bool ready=false;for(const auto& prop:life_.props)if(prop.active&&LifeCanAbsorb(body.mass,prop.required)&&LifeInMouth(body.at,body.forward,prop.at,body.mass,0,life_.recipe))ready=true;
         for(const auto& enemy:swarm_)if(SwarmAlive(enemy)&&LifeCanAbsorb(body.mass,CityEnemyRequired(enemy),enemy.health,enemy.maxHealth)&&LifeInMouth(body.at,body.forward,enemy.at,body.mass,0,life_.recipe))ready=true;
-        if(ready)ui.Center(std::string(UI::UsingPad()?"X 長押し":"右クリック長押し")+"で正面をまとめ取り / 移動中も回収",640,590,16,UI::Lime,UI::JapaneseFont);}
+        if(ready)ui.Center(std::string(UI::UsingPad()?"LT 長押し":"右クリック長押し")+"で正面をまとめ取り / 移動中も回収",640,590,16,UI::Lime,UI::JapaneseFont);}
+    // 演出をスキップした直後は暗転から戻す
+    if(intro_.fadeOut>0)ui.Fill({-400,-400,2080,1520},{0,0,0,intro_.fadeOut/.35f});
     // 研究所の UI はここから下
     return;
     }

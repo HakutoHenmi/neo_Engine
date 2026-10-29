@@ -21,7 +21,7 @@ void ChronoSystem::FireSignal(entt::registry& r,Player& p,GameContext& ctx,Signa
     if(color==SignalColor::Red){
         // 赤: 周りの敵の足を止める
         float radius=SignalStopRadius(body.mass);int stopped=SignalStopEnemies(swarm_,body.at,radius);
-        signalPulses_.push_back({body.at,0,radius,color});ctx.camera->StartImpactShake(.1f,.06f,{0,1,0},12);
+        signalPulses_.push_back({body.at,0,radius,color});LifeImpact(ctx,ImpactSignalPulse,body.at);
         life_.message="赤信号！ "+std::to_string(stopped)+"体の足を止めた / 次は青で並べる";life_.messageAge=2;
     }else if(color==SignalColor::Green){
         // 青: 止まっている敵を、横の並びの順を保って前に横一列に並べる (守護者は大きすぎて並ばない)

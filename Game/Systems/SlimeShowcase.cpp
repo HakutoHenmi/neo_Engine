@@ -61,7 +61,7 @@ void ChronoSystem::UpdateMorphShowcase(entt::registry& r,Player& p,GameContext& 
     CinematicPose game{Read(ctx.camera->Position()),Read(ctx.camera->Rotation()),2*std::atan(1/DirectX::XMVectorGetY(ctx.camera->Proj().r[1]))};
     CinematicPose pose=BlendShot(BlendShot(game,close,into),game,out);
     ctx.camera->SetPosition(Write(pose.at));ctx.camera->SetRotation(Write(pose.rotation));
-    ctx.camera->SetProjection(pose.fov,aspect,.1f,2000);
+    ctx.camera->SetProjection(pose.fov,aspect,LifeCameraNear,2000);
     // 周りを暗くする: 太陽を下げ、背景をぼかす
     float dark=ShotEase(show.age,0,ShowcaseDark)*(1-out);
     if(sun)sun->intensity=show.sun*(1+(ShowcaseSunScale-1)*dark);

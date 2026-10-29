@@ -35,6 +35,11 @@ public:
     const std::vector<Chrono::SwarmEnemy>& LifeEnemies()const {return swarm_;}
     // 変形アイテムを初めて取ったときの見せ場 (カメラが正面へ寄り、周りの時間が止まる) の最中か
     bool MorphShowcaseActive()const {return showcase_.active;}
+    // 手応えの設定 (ヒットストップ秒・揺れの秒・揺れの大きさ・揺れの速さ・振動の重い側・軽い側・振動の秒)
+    struct LifeImpactSpec {float stop=0,shakeTime=0,shake=0,frequency=14,low=0,high=0,rumble=0;};
+    // ステージ開始のカメラ演出の最中か
+    bool StageIntroActive()const {return intro_.active;}
+    float StageIntroAge()const {return intro_.age;}
     const Chrono::CityGates& CityGateState()const {return cityGates_;}
     const Chrono::HydrantAim& HydrantAimState()const {return hydrantAim_;}
     // 確認用: 区画の出口を手前から exits 個だけ壊したように開ける (1 路地の壁・2 バリケード・3 鉄の門)
@@ -75,6 +80,15 @@ private:
     // 変形の見せ場: 形・経過時間・形が完成した時刻・寄る構図の中心と半径・戻す太陽の強さと被写界深度
     struct MorphShowcase {bool active=false,morphed=false;Chrono::LifeAction form=Chrono::LifeAction::Tire;float age=0,readyAt=-1,radius=1,sun=1;
         Chrono::Vec center{},facing{0,0,1};float dofFocus=30,dofRange=30,dofStrength=0;} showcase_;
+    // ステージ開始のカメラ演出: 経過時間・スキップの長押しの時間・終わった後の暗転の残り
+    struct StageIntro {bool active=false;float age=0,hold=0,fadeOut=0;} intro_;
+    // ヒットストップの残り時間 (この間はスライムの世界を止め、カメラの揺れだけを進める)
+    float lifeHitStop_=0;
+    // 武器の形から吸収ボタンで戻ったとき、戻りきったら吸収を始めるための受付の残り時間
+    float lifeAbsorbBuffer_=0;
+    // 形が変わったときのカメラの構図のつなぎ (形の種類・進み・始めと今の体からの中心のずれと半径)、消火栓の肩越しの構図の割合
+    struct LifeCameraBlend {int kind=-1;float age=1;Chrono::Vec fromOffset{};float fromRadius=1;Chrono::Vec offset{};float radius=1;} cameraBlend_;
+    float cameraHydrant_=0;
     // スライムの生活 (SlimeLife.inl) の処理: 触手の描画・研究所・試練・作成・更新・描画・UI・吸収・被弾
     void DrawLifeTentacles(GameContext&,const Chrono::LifeBody&);
     void SetSlimeLabOpen(bool);
@@ -97,6 +111,11 @@ private:
     void StartMorphShowcase(entt::registry&,GameContext&,Chrono::LifeAction);
     void UpdateMorphShowcase(entt::registry&,Chrono::Player&,GameContext&,float);
     void DrawMorphShowcase(GameContext&);
+    // ステージ開始のカメラ演出 (SlimeIntro.cpp) の更新・描画
+    void UpdateStageIntro(entt::registry&,Chrono::Player&,GameContext&,float);
+    void DrawStageIntro(GameContext&);
+    // 手応え (ヒットストップ・カメラの揺れ・コントローラーの振動) を at で起こす。scale で揺れと振動の強さを変える
+    void LifeImpact(GameContext&,const LifeImpactSpec&,Chrono::Vec at,Chrono::Vec direction={0,1,0},float scale=1);
     void FireSignal(entt::registry&,Chrono::Player&,GameContext&,Chrono::SignalColor);
     void UpdateSignalEffects(entt::registry&,Chrono::Player&,GameContext&,float);
     void DrawSignal(GameContext&);

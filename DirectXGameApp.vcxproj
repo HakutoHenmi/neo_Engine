@@ -198,6 +198,7 @@ exit /b %ERRORLEVEL%</Command>
     <ClCompile Include="Game\Systems\SlimeAssault.cpp" />
     <ClCompile Include="Game\Systems\SlimeHydrant.cpp" />
     <ClCompile Include="Game\Systems\SlimeShowcase.cpp" />
+    <ClCompile Include="Game\Systems\SlimeIntro.cpp" />
     <ClCompile Include="Game\Systems\SlimeSignal.cpp" />
     <ClCompile Include="Game\Systems\SlimePlayerDemo.cpp" />
     <ClCompile Include="Game\Systems\SlimeLife.cpp" />
@@ -257,6 +258,7 @@ exit /b %ERRORLEVEL%</Command>
     <ClInclude Include="Game\Systems\CleanupSystem.h" />
     <ClInclude Include="Game\Systems\FluidSystem.h" />
     <ClInclude Include="Game\Systems\GameControls.h" />
+    <ClInclude Include="Game\Systems\GameRumble.h" />
     <ClInclude Include="Game\Systems\ISystem.h" />
     <ClInclude Include="Game\Systems\MotionSystem.h" />
     <ClInclude Include="Game\Systems\PhysicsSystem.h" />

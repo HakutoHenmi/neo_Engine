@@ -41,6 +41,8 @@
 #include <limits>
 #include <cstdio>
 
+#include "GameRumble.h"
+
 namespace Game {
 // Chrono のゲームの規則の型 (Vec など) をそのまま使う
 using namespace Chrono;
@@ -65,6 +67,27 @@ inline std::filesystem::path RecordPath(){
 }
 // 秒を「分:秒.百分の一秒」の文字列にする
 inline std::string TimeText(float seconds){char b[32];int s=static_cast<int>(seconds);std::snprintf(b,sizeof(b),"%02d:%02d.%02d",s/60,s%60,static_cast<int>(seconds*100)%100);return b;}
+// スライムの生活モードの手応え (ヒットストップ秒・揺れの秒・揺れの大きさ・揺れの速さ・振動の重い側・軽い側・振動の秒)。
+// 自分の攻撃が当たった・倒した・被弾した・壊したなど、プレイヤーが起こした重い瞬間ほど止めて強く揺らす。
+// 敵の攻撃や遠くの爆発は止めず、離れているほど弱める (ChronoSystem::LifeImpact)
+using LifeImpactSpec=ChronoSystem::LifeImpactSpec;
+inline constexpr LifeImpactSpec ImpactHammerHit{.075f,.14f,.18f,18,.6f,.45f,.16f};
+inline constexpr LifeImpactSpec ImpactBladeHit{.045f,.1f,.09f,20,.25f,.4f,.09f};
+inline constexpr LifeImpactSpec ImpactKill{.06f,.12f,.12f,16,.45f,.35f,.14f};
+inline constexpr LifeImpactSpec ImpactTireHit{.05f,.12f,.12f,16,.55f,.4f,.14f};
+inline constexpr LifeImpactSpec ImpactTireLaunch{0,.1f,.07f,10,.35f,.1f,.18f};
+inline constexpr LifeImpactSpec ImpactTireCrash{.04f,.12f,.1f,14,.5f,.3f,.14f};
+inline constexpr LifeImpactSpec ImpactStomp{.05f,.18f,.14f,13,.7f,.3f,.2f};
+inline constexpr LifeImpactSpec ImpactStompMiss{0,.14f,.08f,13,.4f,.12f,.12f};
+inline constexpr LifeImpactSpec ImpactPlayerHurt{.07f,.16f,.14f,12,.75f,.6f,.22f};
+inline constexpr LifeImpactSpec ImpactStructureHit{.06f,.12f,.16f,16,.6f,.5f,.16f};
+inline constexpr LifeImpactSpec ImpactStructureBreak{.1f,.28f,.26f,10,1,.7f,.4f};
+inline constexpr LifeImpactSpec ImpactShellBlast{0,.12f,.1f,14,.45f,.3f,.2f};
+inline constexpr LifeImpactSpec ImpactGuardianStomp{0,.3f,.22f,9,.85f,.4f,.35f};
+inline constexpr LifeImpactSpec ImpactCannonFire{0,.06f,.04f,18,.15f,.1f,.08f};
+inline constexpr LifeImpactSpec ImpactSignalPulse{0,.1f,.06f,12,.2f,.25f,.1f};
+inline constexpr LifeImpactSpec ImpactMarker{.03f,.08f,.06f,16,.3f,.25f,.1f};
+inline constexpr LifeImpactSpec ImpactMarkerBig{.05f,.1f,.12f,16,.6f,.4f,.16f};
 } // namespace ChronoDetail
 using namespace ChronoDetail;
 } // namespace Game

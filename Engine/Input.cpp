@@ -197,3 +197,17 @@ void Input::Shutdown() {
 }
 
 } // namespace Engine
+
+void Engine::Input::SetPadVibration(float low, float high) {
+	// 0〜1 を XInput のモーターの強さへ換算する
+	auto motor = [](float value) { return static_cast<WORD>((value < 0 ? 0 : value > 1 ? 1 : value) * 65535.0f); };
+	const WORD l = padIndex_ >= 0 ? motor(low) : 0, h = padIndex_ >= 0 ? motor(high) : 0;
+	// 同じ値を毎フレーム送らない (つなぎ直したパッドには送り直す)
+	if (l == vibrationLow_ && h == vibrationHigh_ && vibrationPad_ == padIndex_) return;
+	// つなぎ替えたら前のパッドを止める
+	if (vibrationPad_ >= 0 && vibrationPad_ != padIndex_) { XINPUT_VIBRATION stop{}; XInputSetState(static_cast<DWORD>(vibrationPad_), &stop); }
+	vibrationLow_ = l; vibrationHigh_ = h; vibrationPad_ = padIndex_;
+	if (padIndex_ < 0) return;
+	XINPUT_VIBRATION vibration{}; vibration.wLeftMotorSpeed = l; vibration.wRightMotorSpeed = h;
+	XInputSetState(static_cast<DWORD>(padIndex_), &vibration);
+}
