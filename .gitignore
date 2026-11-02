@@ -395,3 +395,12 @@ temp_play.json
 # Local tool settings and scratch files
 /.codex/
 /scratch/
+
+# 大きすぎて GitHub に置けない木のモデル (ゲームでは使っていない)
+Resources/Models/PolyHaven/jacaranda_tree_2k.fbx
+
+# 大きすぎて GitHub に置けない木のモデル (ゲームでは使っていない)
+Resources/Models/PolyHaven/tree_small_02_2k.fbx
+
+# 大きすぎて GitHub に置けない木のモデル (ゲームでは使っていない)
+Resources/Models/PolyHaven/island_tree_01_2k.fbx

@@ -140,12 +140,14 @@ public:
 
 	// 動的メッシュ初期化 (新規追加)
 	void InitializeDynamic(ID3D12Device* device, const std::vector<VertexData>& vertices, const std::vector<uint32_t>& indices);
-	bool InitializeStaticLOD(ID3D12Device* device,const Model& source,int grid,bool grassCards=false,bool authoredLeaves=false);
+	// cluster: far level built by vertex clustering (ClusterStaticMesh) instead of edge collapses
+	bool InitializeStaticLOD(ID3D12Device* device,const Model& source,int grid,bool grassCards=false,bool authoredLeaves=false,bool cluster=false);
     bool PromoteStaticGeometry(ID3D12Device* device,ID3D12GraphicsCommandList* commands);
     void ReleaseUploadBuffers(){uploads_.clear();}
 	
 	// 動的メッシュ頂点更新 (新規追加)
 	void UpdateVertices(const std::vector<VertexData>& vertices);
+	void UpdateBounds();
 
 	// SRV作成 (複数マテリアル対応)
 	void CreateSrvs(ID3D12Device* device, ID3D12DescriptorHeap* srvHeap, ID3D12DescriptorHeap* srvHeapMaster, UINT descriptorSize, const std::vector<uint32_t>& heapIndices);

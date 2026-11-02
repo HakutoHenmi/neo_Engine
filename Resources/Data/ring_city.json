@@ -1,0 +1,17 @@
+{
+  "_comment": "吸収モードの町 (Docs/AbsorbCity.md の「町の再構成とビルの吸収」)。中心の路地裏から外へ、住宅街・商店街・オフィス街・高層街の輪が広がる。約 6 単位で 1 メートル。outer は中心からの距離 (x と z の大きい方) で、その輪の外側の端。block は道路の格子の間隔、road は道路の幅、lots は 1 区画の建物の数 (横 x 縦)、floors は階数の範囲、floorHeight は 1 階の高さ。",
+  "zones": [
+    {"id": "Alley",  "name": "路地裏",     "outer": 150},
+    {"id": "House",  "name": "住宅街",     "outer": 520,  "block": 112, "road": 26, "lots": [2, 2], "floors": [2, 3],   "floorHeight": 17, "props": 300},
+    {"id": "Shop",   "name": "商店街",     "outer": 960,  "block": 150, "road": 36, "lots": [2, 1], "floors": [4, 6],   "floorHeight": 19, "props": 320},
+    {"id": "Office", "name": "オフィス街", "outer": 1500, "block": 216, "road": 48, "lots": [2, 1], "floors": [8, 12],  "floorHeight": 19, "props": 220},
+    {"id": "Tower",  "name": "高層街",     "outer": 2160, "block": 300, "road": 64, "lots": [1, 1], "floors": [18, 32], "floorHeight": 19, "props": 160}
+  ],
+  "start": [0, 0, -60],
+  "_itemsComment": "お助け変形アイテム。タイヤは路地裏を出てすぐの住宅街の入口、消火栓は商店街の火事の手前、信号機はオフィス街の入口に置く",
+  "tireItem": [0, 0, 190],
+  "hydrantItems": [[560, 0, 0], [-560, 0, 0]],
+  "signalItem": [0, 0, 1010],
+  "_firesComment": "商店街の火事 [x, z, 半径]。触れると体が剥がれ、消火栓の放水で消せる",
+  "fires": [[700, 120, 18], [700, -160, 16], [-700, 140, 18], [-700, -120, 16], [160, 720, 16], [-180, -720, 18]]
+}

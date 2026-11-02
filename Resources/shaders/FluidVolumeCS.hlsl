@@ -73,6 +73,23 @@ void BuildShapes(uint3 id : SV_DispatchThreadID) {
         shape.row0=float4(1/width,0,0,p.position.x);shape.row1=float4(0,1/height,0,p.position.y);shape.row2=float4(0,0,1/width,p.position.z);
         shape.info=float4(3.2f*p.color.a,width,0,1);shapes[i]=shape;return;
     }
+    if(p.type>=4.0f&&p.type<8.0f&&p.pad.y>0){
+        // Sized ballistic slime: a grown body coarsens the voxels, so a fixed
+        // sub-voxel droplet would vanish. Its kernel follows the body's scale.
+        // Drops thin out over the end of their life.
+        float life=max(.02f,(p.type-4)*10),fade=1-.6f*smoothstep(.5f,1.f,p.pad.x/life);
+        float radius=max(.6f*p.pad.y*fade,voxelSize*1.05f);
+        float3 axes=radius,along=float3(0,0,1),across=float3(1,0,0),up=float3(0,1,0);
+        if(p.pad.z>.5f)axes=float3(radius*1.7f,radius*.35f,radius*1.7f); // landed: a flat splat
+        else{float speed=length(p.velocity);
+            // Airborne drops stretch along their motion like real droplets.
+            if(speed>.5f){along=p.velocity/speed;across=normalize(cross(along,abs(along.y)<.9f?float3(0,1,0):float3(1,0,0)));up=cross(along,across);
+                axes=float3(radius*.9f,radius*.9f,radius*(1+clamp(speed*.035f,0,.8f)));}}
+        shape.row0=float4(across/axes.x,p.position.x);
+        shape.row1=float4(up/axes.y,p.position.y);
+        shape.row2=float4(along/axes.z,p.position.z);
+        shape.info=float4(saturate(p.color.a)*lerp(.65f,1.f,fade),max(axes.x,max(axes.y,axes.z)),0,1);shapes[i]=shape;return;
+    }
     bool water=VolumePhase(p.type)==2;
     bool morph=p.type<.5f&&p.pad.x>=1000&&p.pad.x<1016&&p.pad.y>0;
     if(morph){

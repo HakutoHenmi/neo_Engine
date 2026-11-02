@@ -183,6 +183,8 @@ public:
     uint32_t RtLitPixels()const{return rtLitPixels_;}
     bool SupportsDlss() const;
     bool DlssActive() const{return dlssActive_&&SupportsDlss();}
+    // Upscaling from a smaller image (QUALITY). Otherwise an active DLSS is DLAA
+    bool DlssUpscaling() const{return DlssActive()&&(sceneWidth_!=WindowDX::kW||sceneHeight_!=WindowDX::kH);}
     uint32_t DlssEvaluatedFrames()const{return dlssEvaluatedFrames_;}
     uint32_t DlssHistoryResets()const{return dlssHistoryResets_;}
     std::string DlssStatus()const;
@@ -411,6 +413,9 @@ public:
     static_assert(sizeof(FluidTendril)==32);
     std::vector<FluidTendril> fluidTendrils_;
     void SetFluidTendrils(std::vector<FluidTendril> tendrils){fluidTendrils_=std::move(tendrils);}
+    // Extra spheres (centre xyz, radius w) the morph volume domain must cover, e.g. thrown slime.
+    std::vector<Vector4> fluidVolumeExtras_;
+    void SetFluidVolumeExtras(std::vector<Vector4> spheres){fluidVolumeExtras_=std::move(spheres);}
     Microsoft::WRL::ComPtr<ID3D12PipelineState> psoVolumeTendrils_;
 	uint64_t fluidMorphRevision_=0,fluidMorphApplied_=~uint64_t(0);
 	Microsoft::WRL::ComPtr<ID3D12Resource> fluidMorphScratch_,fluidMorphDummy_;
@@ -508,7 +513,7 @@ public:
 	void PrepareGPUFluidFrame();
 	bool fluidFrameUpdated_=false;
 	void ResetGPUFluid();
-	void ClearGPUFluid() { gpuFluidActiveParticleCount_ = 0; gpuFluidPhaseMask_ = 0; volumeHistoryValid_ = false; isGPUFluidInitialized_ = false;fluidMorphTargets_.clear();fluidTendrils_.clear();fluidMorphApplied_=~uint64_t(0);fluidMorphRetargetMask_=kFluidMorphAllBodies;gpuFluidSplashSpheres_.clear();EnableHydrantWaterReadback(false); }
+	void ClearGPUFluid() { gpuFluidActiveParticleCount_ = 0; gpuFluidPhaseMask_ = 0; volumeHistoryValid_ = false; isGPUFluidInitialized_ = false;fluidMorphTargets_.clear();fluidTendrils_.clear();fluidVolumeExtras_.clear();fluidMorphApplied_=~uint64_t(0);fluidMorphRetargetMask_=kFluidMorphAllBodies;gpuFluidSplashSpheres_.clear();EnableHydrantWaterReadback(false); }
 	void EmitGPUFluid(const Vector3& pos, const Vector3& velocityDir, const Vector4& color, int count, float type = 0.0f, bool retainWater = false, float nozzleRadius = 0);
 	uint32_t ExtractGPUFluidFromPlayer(const Vector3& pos, const Vector3& velocityDir, int count);
 	void SyncLostGPUFluidGroup(uint32_t groupId, const Vector3& pos);
@@ -1151,6 +1156,7 @@ private:
 	void FinishDistanceLods_(std::vector<LodJob>& jobs);
 	bool distanceLodEnabled_=true;SceneryLodStats sceneryLodStats_{},lastSceneryLodStats_{};
 	uint32_t SelectDistanceLod(uint32_t mesh,const Matrix4x4& world);
+	bool TooSmallOnScreen(uint32_t mesh,const Matrix4x4& world)const;
     bool SceneryVisible(uint32_t mesh,const Matrix4x4& world,const Matrix4x4& viewProjection)const;
     bool sceneryOptimized_=true;
     uint32_t rtTlasBuilds_=0;

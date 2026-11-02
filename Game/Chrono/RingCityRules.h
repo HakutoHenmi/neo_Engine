@@ -1,0 +1,101 @@
+// RingCityRules.h
+// 吸収モードの町 (中心の路地裏から外へ、住宅街・商店街・オフィス街・高層街の輪が広がる) の規則。エンジンに依存しない。
+// 輪の大きさ・道路の間隔・階数・アイテムと炎の位置は Resources/Data/ring_city.json に置く。
+// 建物は道路の格子で区切った区画に並べ、区画は 1 つの輪の中に収まるものだけを使う (輪の境目は広い通りになる)。
+// 建物は大きさが足りるまで通れない壁で、飲み込むと通れるようになる
+#pragma once
+#include "CityStageRules.h"
+#include <string>
+#include <vector>
+namespace Game::Chrono {
+// 輪の種類 (路地裏・住宅街・商店街・オフィス街・高層街)
+enum class RingStyle : uint8_t {Alley,House,Shop,Office,Tower};
+inline constexpr int RingStyleCount=5;
+// 輪: 外側の端 (中心からの x と z の大きい方)・道路の格子の間隔と幅・1 区画の建物の数・階数の範囲・1 階の高さ・小物の数
+struct RingZone {RingStyle style=RingStyle::Alley;std::string name;float outer=0,block=0,road=0;int lotsX=1,lotsZ=1,floorsMin=1,floorsMax=1;float floorHeight=19;int props=0;};
+struct RingCityData {std::vector<RingZone> zones;Vec start{},tireItem{},signalItem{};std::vector<Vec> hydrants;std::vector<CityFireSpot> fires;};
+// ring_city.json を読み込む (最初に使われたときに 1 回だけ)
+inline const RingCityData& RingData(){
+    static const RingCityData data=[]{
+        const char* file="ring_city.json";const auto& json=Data::Load(file);RingCityData out;
+        auto vec=[&](const nlohmann::json& v){auto a=Data::ReadArray<float,3>(v,file);return Vec{a[0],a[1],a[2]};};
+        const char* ids[]={"Alley","House","Shop","Office","Tower"};
+        for(const auto& z:Data::Require(json,"zones",file)){RingZone zone;std::string id=z.at("id").get<std::string>();
+            int style=-1;for(int i=0;i<RingStyleCount;++i)if(id==ids[i])style=i;if(style<0)throw std::runtime_error(std::string(file)+": unknown zone "+id);
+            zone.style=RingStyle(style);zone.name=z.at("name").get<std::string>();zone.outer=z.at("outer").get<float>();
+            if(zone.style!=RingStyle::Alley){zone.block=z.at("block").get<float>();zone.road=z.at("road").get<float>();
+                auto lots=Data::ReadArray<int,2>(z.at("lots"),file);zone.lotsX=lots[0];zone.lotsZ=lots[1];
+                auto floors=Data::ReadArray<int,2>(z.at("floors"),file);zone.floorsMin=floors[0];zone.floorsMax=floors[1];
+                zone.floorHeight=z.at("floorHeight").get<float>();zone.props=z.at("props").get<int>();}
+            if(!out.zones.empty()&&zone.outer<=out.zones.back().outer)throw std::runtime_error(std::string(file)+": zones must grow outward");
+            out.zones.push_back(zone);}
+        if(out.zones.size()!=size_t(RingStyleCount))throw std::runtime_error(std::string(file)+": zones must be Alley, House, Shop, Office, Tower");
+        out.start=vec(json.at("start"));out.tireItem=vec(json.at("tireItem"));out.signalItem=vec(json.at("signalItem"));
+        for(const auto& h:json.at("hydrantItems"))out.hydrants.push_back(vec(h));
+        for(const auto& f:json.at("fires")){auto a=Data::ReadArray<float,3>(f,file);out.fires.push_back({{a[0],0,a[1]},a[2]});}
+        return out;}();
+    return data;
+}
+inline const std::vector<RingZone>& RingZones(){return RingData().zones;}
+// 中心からの距離 (x と z の大きい方。輪は正方形)
+inline float RingDistance(Vec p){return std::max(std::abs(p.x),std::abs(p.z));}
+// 位置の輪の番号 (町の外は一番外の輪)
+inline int RingZoneAt(Vec p){float d=RingDistance(p);const auto& zones=RingZones();
+    for(size_t i=0;i<zones.size();++i)if(d<zones[i].outer)return int(i);return int(zones.size())-1;}
+// 町の外の端 (これより外へは出られない)
+inline float RingCityHalf(){return RingZones().back().outer;}
+// 整数から 0〜1 の疑似乱数
+inline float RingNoise(int seed){float n=std::sin(float(seed)*12.9898f+78.233f)*43758.5453f;return n-std::floor(n);}
+// 建物の敷地: 敷地の矩形・輪の番号・階数・見た目の種類 (同じ輪の中で使い回す型の番号)・正面の向き (0〜3。+z から 90 度ずつ)
+struct RingLot {CityRect foot{};int zone=0,floors=1,variant=0,facing=0;};
+// 輪の型の数 (同じ輪の建物は、この数の型の見た目を使い回す)
+inline constexpr int RingVariants=6;
+// 矩形の中で中心に一番近い点・一番遠い点の距離 (x と z の大きい方)
+inline float RingNearest(const CityRect& r){float x=r.x0<=0&&r.x1>=0?0:std::min(std::abs(r.x0),std::abs(r.x1)),z=r.z0<=0&&r.z1>=0?0:std::min(std::abs(r.z0),std::abs(r.z1));return std::max(x,z);}
+inline float RingFarthest(const CityRect& r){return std::max(std::max(std::abs(r.x0),std::abs(r.x1)),std::max(std::abs(r.z0),std::abs(r.z1)));}
+// 道路の格子で区切った区画 (歩道の範囲) と輪の番号。輪に収まる区画だけ
+struct RingBlock {CityRect rect{};int zone=0;};
+inline std::vector<RingBlock> RingBlocks(){
+    std::vector<RingBlock> blocks;const auto& zones=RingZones();
+    for(size_t z=1;z<zones.size();++z){const auto& zone=zones[z];float inner=zones[z-1].outer,outer=zone.outer,b=zone.block,half=zone.road*.5f;
+        int n=int(std::ceil(outer/b));
+        for(int ix=-n;ix<n;++ix)for(int iz=-n;iz<n;++iz){CityRect block{float(ix)*b+half,float(iz)*b+half,float(ix+1)*b-half,float(iz+1)*b-half};
+            // 輪の境目にかかる区画は使わない (境目は広い通りになる)
+            if(RingNearest(block)<inner+half||RingFarthest(block)>outer-half)continue;
+            blocks.push_back({block,int(z)});}}
+    return blocks;
+}
+// 敷地を並べる: 輪ごとに道路の格子で区画を作り、輪に収まる区画を lotsX × lotsZ の敷地に分ける。
+// 型 (variant) は階数の範囲を型の数で分けたもので、同じ型は同じ形・同じ材質になる
+inline std::vector<RingLot> RingLots(){
+    std::vector<RingLot> lots;const auto& zones=RingZones();int seed=0;
+    for(const auto& [block,z]:RingBlocks()){const auto& zone=zones[size_t(z)];{
+            float w=(block.x1-block.x0)/float(zone.lotsX),d=(block.z1-block.z0)/float(zone.lotsZ),gap=std::min(6.f,w*.08f);
+            for(int lx=0;lx<zone.lotsX;++lx)for(int lz=0;lz<zone.lotsZ;++lz){
+                CityRect foot{block.x0+float(lx)*w+gap,block.z0+float(lz)*d+gap,block.x0+float(lx+1)*w-gap,block.z0+float(lz+1)*d-gap};
+                RingLot lot;lot.foot=foot;lot.zone=z;lot.variant=int(RingNoise(++seed)*RingVariants)%RingVariants;
+                lot.floors=zone.floorsMin+(zone.floorsMax-zone.floorsMin)*lot.variant/std::max(1,RingVariants-1);
+                // 正面は区画の外側 (道路側) を向ける
+                Vec c=foot.Center(),bc=block.Center();
+                lot.facing=zone.lotsX==1&&zone.lotsZ==1?int(RingNoise(++seed)*4)%4:std::abs(c.x-bc.x)>std::abs(c.z-bc.z)?(c.x>bc.x?1:3):(c.z>bc.z?0:2);
+                lots.push_back(lot);}}}
+    return lots;
+}
+// 建物の高さ (1 階は少し高い)
+inline float RingLotHeight(const RingLot& lot){const auto& zone=RingZones()[size_t(lot.zone)];return zone.floorHeight*(float(lot.floors)+.3f);}
+// 建物を吸収の対象にするときの半径 (幅と高さの大きい方の半分) と、壁までの余裕 (中心から壁までの距離の目安)
+inline float RingLotRadius(const RingLot& lot){return .5f*std::max({lot.foot.x1-lot.foot.x0,lot.foot.z1-lot.foot.z0,RingLotHeight(lot)});}
+inline float RingLotReach(const RingLot& lot){return .5f*std::min(lot.foot.x1-lot.foot.x0,lot.foot.z1-lot.foot.z0);}
+// 半径 margin の円が歩けるか: 町の中で、まだ飲み込んでいない建物 (blocking が true の敷地) に入らない
+template<class Blocking>
+inline bool RingWalkable(Vec p,float margin,const std::vector<RingLot>& lots,Blocking&& blocking){
+    float edge=RingCityHalf()-2;
+    if(std::abs(p.x)+margin>edge||std::abs(p.z)+margin>edge)return false;
+    for(size_t i=0;i<lots.size();++i){const auto& f=lots[i].foot;
+        if(p.x+margin<f.x0||p.x-margin>f.x1||p.z+margin<f.z0||p.z-margin>f.z1)continue;
+        // 円と矩形が重なるか (角は丸く)
+        float dx=std::max({f.x0-p.x,0.f,p.x-f.x1}),dz=std::max({f.z0-p.z,0.f,p.z-f.z1});
+        if(dx*dx+dz*dz<margin*margin&&blocking(i))return false;}
+    return true;
+}
+}

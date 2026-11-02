@@ -554,7 +554,7 @@ class SlimeLifeValidationScene final:public Game::GameScene {
         if(stressFrame_<160)return;
         std::sort(stressTimes_.begin(),stressTimes_.end());double total=0;for(auto t:stressTimes_)total+=t;
         bool finite=true;for(auto p:renderer->GetFluidBodySnapshot().offsets)finite&=std::isfinite(p.x)&&std::isfinite(p.y)&&std::isfinite(p.z)&&std::abs(p.x)<100&&std::abs(p.y)<100&&std::abs(p.z)<100;
-        stressReport_<<"phase="<<stressPhase_<<" mass="<<masses[stressPhase_]<<" samples="<<stressTimes_.size()<<" frame_mean="<<total/stressTimes_.size()<<" frame_p95="<<stressTimes_[stressTimes_.size()*95/100]<<" cell="<<renderer->volumePreviousVoxelSize_<<" finite="<<finite;
+        stressReport_<<"phase="<<stressPhase_<<" mass="<<masses[stressPhase_]<<" samples="<<stressTimes_.size()<<" frame_mean="<<total/stressTimes_.size()<<" frame_p95="<<stressTimes_[stressTimes_.size()*95/100]<<" cell="<<renderer->volumePreviousVoxelSize_<<" finite="<<finite<<" substeps="<<renderer->GetFluidProfileStats().substeps<<" selected_triangles="<<renderer->GetSceneryLodStats().selectedIndices/3<<" visible_triangles="<<renderer->GetSceneryLodStats().visibleIndices/3<<" shadow_triangles="<<renderer->GetSceneryLodStats().shadowIndices/3;
         for(size_t i=0;i<stressGpu_.size();++i)stressReport_<<" gpu"<<i<<"="<<stressGpu_[i]/stressTimes_.size();stressReport_<<'\n';stressReport_.flush();
         if(stressPhase_==3)Capture(L"tests/out/slime-life-max-size.png");
         if(!finite){stressReport_<<"FAIL nonfinite/escaped particles\n";stressReport_.flush();PostQuitMessage(2);return;}
@@ -673,6 +673,122 @@ class SlimeLifeValidationScene final:public Game::GameScene {
         if(tourFrame_==150){Capture(stop.image);tourFrame_=0;
             if(++tourStop_==count){std::ofstream("tests/out/slime-life-smoke.txt")<<"PASS city tour images="<<count;PostQuitMessage(0);}}
     }
+    // 吸収モード: 全身の飛びかかり・押し続けの連続・大きすぎて弾かれる・車と塀を丸のみ・段階で時間が増える・時間切れ
+    int devourPhase_=0,devourPounces_=0,devourMaxCombo_=0,devourTarget_=-1;float devourClock_=0,devourMass_=0,devourLeft_=0,devourLastAge_=0,devourBaseY_=0,devourLift_=0;int devourAbsorbed_=0;
+    int devourGrounded_=0,devourFrames_=0;Game::Chrono::DevourPick devourPrevPick_{},devourTracePick_{};bool devourTraced_=true;
+    bool devourValid_=true,devourBounced_=false,devourWasPouncing_=false,devourFresh_=true;std::array<bool,5> devourImages_{};std::string devourNotes_;
+    void UpdateDevour(){
+        using namespace Game;using namespace Game::Chrono;
+        // 進み具合 (遅すぎるときの調査用)
+        if(frames_%60==0){trace_<<"devour frame="<<frames_<<" phase="<<devourPhase_<<" real="<<std::chrono::duration<float>(std::chrono::steady_clock::now()-start_).count()<<'\n';trace_.flush();}
+        auto player=FindObjectByName("Player");auto& input=GetComponents().get<ControlFrame>(player);input={};input.pitch=.33f;
+        auto* chrono=GetChronoSystem();auto& life=const_cast<SlimeLife&>(chrono->LifeState());auto& body=life.bodies[0];auto& controller=GetComponents().get<Player>(player);
+        auto& clock=chrono->DevourClockState();
+        auto setMass=[&](float mass){body.mass=body.health=body.maxHealth=mass;body.action=LifeAction::Idle;body.actionAge=0;++life.revision;};
+        // 物の手前 distance に置き、そちらを向かせる
+        auto placeBefore=[&](Vec at,float distance){Vec from=at+Vec{0,0,-distance};from.y=at.y-1.2f+1.25f;body.at=from;body.forward=body.liquidForward={0,0,1};controller.velocity={};
+            auto& t=GetComponents().get<TransformComponent>(player);t.translate={from.x,from.y,from.z};};
+        // 近くの覆える (覆えない) 物で、moreThan より大きい物を探す
+        auto nearest=[&](float limit,bool fits,float moreThan=0){int best=-1;float d=limit;
+            for(size_t i=0;i<life.props.size();++i){const auto& prop=life.props[i];if(!prop.active||prop.visual==0xffffffffu||prop.reach>0||prop.radius<=moreThan||DevourCanCover(body.mass,prop.radius)!=fits)continue;
+                float distance=LifeDistance(prop.at,body.at);if(distance<d){d=distance;best=int(i);}}return best;};
+        bool pouncing=body.action==LifeAction::Engulf;
+        if(pouncing&&(!devourWasPouncing_||body.actionAge<devourLastAge_)){devourTracePick_=devourPrevPick_;devourTraced_=false;}
+        // 調査用: 飛びかかりごとに、選んだ目標と覆い終えたときの結果を記録する
+        if(pouncing&&!devourTraced_&&body.actionAge>DevourCoverEnd){devourTraced_=true;const auto& pick=devourTracePick_;
+            trace_<<"pounce phase="<<devourPhase_<<" mass="<<body.mass<<" target="<<pick.index<<" fits="<<pick.fits;
+            if(pick.index>=0){const auto& prop=life.props[size_t(pick.index)];trace_<<" radius="<<prop.radius<<" eaten="<<!prop.active<<" gap="<<LifeDistance(prop.at,body.at)<<" dy="<<prop.at.y-body.at.y;}
+            trace_<<'\n';}
+        devourPrevPick_=DevourChooseTarget(body.at,body.forward,body.mass,life.props);
+        if(pouncing&&(!devourWasPouncing_||body.actionAge<devourLastAge_))++devourPounces_;devourWasPouncing_=pouncing;devourLastAge_=body.actionAge;
+        devourMaxCombo_=std::max(devourMaxCombo_,clock.combo);
+        auto next=[&](){devourNotes_+=" |p"+std::to_string(devourPhase_)+":a"+std::to_string(life.absorbed)+"t"+std::to_string(clock.tier)+"l"+std::to_string(int(clock.left))+"f"+std::to_string(chrono->Finished())+"m"+std::to_string(int(body.mass));++devourPhase_;devourClock_=0;devourFresh_=true;};
+        float before=life.age;const int phaseAtStart=devourPhase_;
+        // 実際の遊び方: 開始位置から前へ進みながら吸収ボタンを連打して、ちゃんと飲み込めるか
+        if(devourPhase_==0&&frames_>30){if(frames_==31){devourClock_=0;devourAbsorbed_=life.absorbed;devourPounces_=0;devourGrounded_=devourFrames_=0;}
+            input.move={0,0,devourClock_<6?1.f:0.f};input.absorb=std::fmod(devourClock_,.45f)<.12f;
+            ++devourFrames_;if(controller.grounded)++devourGrounded_;
+            if(devourClock_>8){bool ok=life.absorbed>=devourAbsorbed_+4;devourValid_&=ok;
+                devourNotes_+=" play_pounces="+std::to_string(devourPounces_)+" play_eaten="+std::to_string(life.absorbed-devourAbsorbed_)+" grounded="+std::to_string(devourGrounded_*100/std::max(1,devourFrames_))+"%";next();devourPhase_=9;}}
+        else if(devourPhase_==9){devourValid_&=chrono->DevourMode()&&chrono->LifeEnemies().empty()&&clock.left>DevourTimeLimit-12;
+            devourTarget_=nearest(400,true);devourValid_&=devourTarget_>=0;
+            if(devourTarget_>=0){body.action=LifeAction::Idle;body.actionAge=0;placeBefore(life.props[size_t(devourTarget_)].at,8);devourMass_=body.mass;devourAbsorbed_=life.absorbed;}
+            devourNotes_+=" no_enemies="+std::to_string(chrono->LifeEnemies().empty());next();devourPhase_=1;}
+        // 1 回飛びかかる: 跳ぶ・覆う・満足の画像を撮り、飲み込んで大きくなったか
+        // (カメラを横へ回してから跳び、包み込みの形を横から撮る)
+        else if(devourPhase_==1){input.yaw=1.5708f;input.pitch=.12f;input.absorb=devourClock_>.8f&&devourClock_<.85f;
+            const wchar_t* images[]={L"tests/out/slime-life-devour-leap.png",L"tests/out/slime-life-devour-cover.png",L"tests/out/slime-life-devour-settle.png"};const float at[]={DevourWindup+.15f,DevourLandAt+.06f,DevourCoverEnd+.12f};
+            for(int i=0;i<3;++i)if(pouncing&&body.actionAge>=at[i]&&!devourImages_[size_t(i)]){Capture(images[i]);devourImages_[size_t(i)]=true;}
+            if(devourClock_>1.9f){bool ok=devourTarget_>=0&&life.absorbed>devourAbsorbed_&&body.mass>devourMass_&&!life.props[size_t(devourTarget_)].active;devourValid_&=ok;devourNotes_+=" single="+std::to_string(ok);next();}}
+        // 押し続けると、近くの物へ次々に飛びかかる
+        else if(devourPhase_==2){input.absorb=true;if(devourFresh_){devourAbsorbed_=life.absorbed;devourPounces_=0;}
+            int target=nearest(60,true);if(target>=0&&(body.action!=LifeAction::Engulf||body.actionAge>=DevourCoverEnd)){Vec d=life.props[size_t(target)].at-body.at;d.y=0;if(Length(d)>.1f)body.forward=body.liquidForward=Unit(d);}
+            if(devourClock_>5){bool ok=devourPounces_>=5&&life.absorbed>=devourAbsorbed_+3;devourValid_&=ok;
+                devourNotes_+=" held_pounces="+std::to_string(devourPounces_)+" held_eaten="+std::to_string(life.absorbed-devourAbsorbed_)+" max_combo="+std::to_string(devourMaxCombo_);next();devourPhase_=20;}}
+        // 連打しても空へ上っていかない (何も無い所へ何度も飛びかかり、高さが変わらないか)
+        else if(devourPhase_==20){if(devourFresh_){devourBaseY_=body.at.y;devourLift_=0;}
+            input.absorb=(frames_/4)%2==0;devourLift_=std::max(devourLift_,body.at.y-devourBaseY_);
+            if(devourClock_>3){bool ok=devourLift_<1.5f;devourValid_&=ok;devourNotes_+=" mash_lift="+std::to_string(devourLift_);next();devourPhase_=3;}}
+        // 大きすぎる車には弾かれる
+        else if(devourPhase_==3){if(devourFresh_){setMass(300);devourTarget_=nearest(3000,false,10);devourValid_&=devourTarget_>=0;if(devourTarget_<0){next();return;}
+                placeBefore(life.props[size_t(devourTarget_)].at,16);
+                // 手前の小物を選ばないよう、近くの他の物は片付けておく
+                for(size_t i=0;i<life.props.size();++i)if(int(i)!=devourTarget_&&LifeDistance(life.props[i].at,body.at)<40)life.props[i].active=false;}
+            input.absorb=devourClock_>.1f&&devourClock_<.3f;
+            if(devourClock_>.1f&&pouncing&&body.actionAge>DevourLandAt+.02f&&body.actionAge<DevourCoverEnd&&!devourImages_[3]){Capture(L"tests/out/slime-life-devour-bounce.png");devourImages_[3]=true;devourBounced_=Dot(Vec{controller.velocity.x,0,controller.velocity.z},body.forward)<0;}
+            if(devourClock_>1.2f){bool ok=devourBounced_&&life.props[size_t(devourTarget_)].active;devourValid_&=ok;devourNotes_+=" bounce="+std::to_string(ok);next();}}
+        // 大きくなれば車を丸のみにでき、体の中に見える
+        else if(devourPhase_==4){if(devourFresh_){setMass(8000);devourTarget_=nearest(3000,true,10);devourValid_&=devourTarget_>=0;if(devourTarget_<0){next();return;}placeBefore(life.props[size_t(devourTarget_)].at,40);}
+            input.absorb=devourClock_>.4f&&devourClock_<.6f;
+            if(devourClock_>.4f&&pouncing&&body.actionAge>DevourCoverEnd+.15f&&!devourImages_[4]){Capture(L"tests/out/slime-life-devour-car.png");devourImages_[4]=true;}
+            if(devourClock_>2){bool ok=!life.props[size_t(devourTarget_)].active;devourValid_&=ok;devourNotes_+=" car="+std::to_string(ok);next();}}
+        // 家 (建物) も大きさが足りれば丸のみにでき、跡を通れる
+        else if(devourPhase_==5){if(devourFresh_){devourTarget_=-1;float best=1e9f;
+                for(size_t i=0;i<life.props.size();++i){const auto& prop=life.props[i];if(!prop.active||prop.reach<10||prop.radius>40)continue;
+                    float d=LifeDistance(prop.at,body.at);if(d<best){best=d;devourTarget_=int(i);}}
+                devourValid_&=devourTarget_>=0;if(devourTarget_<0){next();return;}
+                const auto& house=life.props[size_t(devourTarget_)];setMass(DevourMassToCover(house.radius)*1.05f);
+                placeBefore(house.at,house.reach+3*LifeScale(body.mass)+4);}
+            input.absorb=devourClock_>.4f&&devourClock_<.6f;
+            if(devourClock_>1.6f){const auto& house=life.props[size_t(devourTarget_)];
+                // 飲み込めて、跡の真ん中を通れる
+                bool ok=!house.active&&chrono->MoveWithinCity(house.at,house.at+Vec{1,0,0},1).x>house.at.x+.5f;
+                devourValid_&=ok;devourNotes_+=" house="+std::to_string(ok);Capture(L"tests/out/slime-life-devour-house.png");next();devourPhase_=21;}}
+        // 建物を背にすると、カメラは手前へ寄らず、間の建物が透ける
+        else if(devourPhase_==21){input.yaw=0;
+            if(devourFresh_){setMass(150);devourTarget_=-1;float best=1e9f;
+                for(size_t i=0;i<life.props.size();++i){const auto& prop=life.props[i];if(!prop.active||prop.reach<10||prop.radius>40)continue;
+                    float d=LifeDistance(prop.at,body.at);if(d<best){best=d;devourTarget_=int(i);}}
+                devourValid_&=devourTarget_>=0;if(devourTarget_<0){next();devourPhase_=6;return;}
+                // 建物の北の壁のすぐ外に置き、南 (建物の側) から見る
+                const auto& house=life.props[size_t(devourTarget_)];Vec at=house.at+Vec{0,0,house.reach+8};at.y=1.25f;body.at=at;body.forward=body.liquidForward={0,0,1};controller.velocity={};
+                auto& t=GetComponents().get<TransformComponent>(player);t.translate={at.x,at.y,at.z};}
+            if(devourClock_>1.5f){auto camera=GetCamera().Position();float distance=LifeDistance({camera.x,camera.y,camera.z},body.at);
+                float faded=1;for(auto e:GetComponents().view<CameraOccluder>())faded=std::min(faded,GetComponents().get<CameraOccluder>(e).opacity);
+                bool ok=distance>12&&faded<.5f;devourValid_&=ok;
+                devourNotes_+=" see_through="+std::to_string(ok)+" cam_dist="+std::to_string(int(distance))+" faded="+std::to_string(faded);
+                Capture(L"tests/out/slime-life-devour-seethrough.png");next();devourPhase_=6;}}
+        // 大きくなっても遠くまで見え、動いても体が見える (撮った画面で確かめる)
+        else if(devourPhase_==22){input.yaw=.7f;
+            if(devourFresh_){setMass(1.2e6f);Vec at{0,1.25f,0};body.at=at;controller.velocity={};auto& t=GetComponents().get<TransformComponent>(player);t.translate={at.x,at.y,at.z};}
+            if(devourClock_>2&&devourClock_<6)input.move={0,0,1};
+            if(devourClock_>2.5f&&devourNotes_.find("big_still")==std::string::npos){Capture(L"tests/out/slime-life-devour-big-still.png");devourNotes_+=" big_still";}
+            if(devourClock_>5.5f){Capture(L"tests/out/slime-life-devour-big-moving.png");
+                auto camera=GetCamera().Position();devourNotes_+=" big_cam="+std::to_string(int(LifeDistance({camera.x,camera.y,camera.z},body.at)))+" big_at="+std::to_string(int(body.at.x))+","+std::to_string(int(body.at.z));
+                next();devourPhase_=7;}}
+        // 時間は減り、段階が上がると増える
+        else if(devourPhase_==6){if(devourFresh_)devourLeft_=clock.left;
+            if(devourClock_>1&&devourNotes_.find("ticking")==std::string::npos){bool ticking=clock.left<devourLeft_-.8f&&clock.left>devourLeft_-1.3f;int tier=clock.tier;devourLeft_=clock.left;
+                setMass(DevourTiers[size_t(std::min(DevourFinalTier-1,tier+1))].mass+1);devourNotes_+=" ticking="+std::to_string(ticking);devourValid_&=ticking;devourMass_=float(tier);}
+            if(devourClock_>1.4f){bool ok=clock.tier==int(devourMass_)+1&&clock.left>devourLeft_+DevourTierBonus-1;devourValid_&=ok;devourNotes_+=" tier_bonus="+std::to_string(ok);next();devourPhase_=22;}}
+        // 時間切れで終わり、結果を出す
+        else if(devourPhase_==7){if(devourFresh_)clock.left=.05f;
+            if(devourClock_>1.2f){bool ok=chrono->Finished();devourValid_&=ok;Capture(L"tests/out/slime-life-devour-timeup.png");devourNotes_+=" timeup="+std::to_string(ok);next();}}
+        else if(devourPhase_==8){std::ofstream report("tests/out/slime-life-devour.txt");
+            report<<(devourValid_?"PASS":"FAIL")<<devourNotes_<<" mass="<<body.mass<<" absorbed="<<life.absorbed<<" left="<<clock.left<<'\n';report.flush();PostQuitMessage(devourValid_?0:2);return;}
+        Game::GameScene::Update();++frames_;if(devourPhase_==phaseAtStart){devourFresh_=false;devourClock_+=std::max(life.age-before,1.f/120);}
+        if(frames_>20000){std::ofstream report("tests/out/slime-life-devour.txt");report<<"FAIL timeout phase="<<devourPhase_<<devourNotes_<<'\n';PostQuitMessage(2);}
+    }
     void Capture(const wchar_t* path){
         DirectX::ScratchImage image;auto result=DirectX::CaptureTexture(window_->Queue(),window_->GetCurrentBackBufferResource(),false,image,D3D12_RESOURCE_STATE_PRESENT,D3D12_RESOURCE_STATE_PRESENT);
         if(SUCCEEDED(result))result=DirectX::SaveToWICFile(*image.GetImage(0,0,0),DirectX::WIC_FLAGS_NONE,DirectX::GetWICCodec(DirectX::WIC_CODEC_PNG),path);
@@ -686,6 +802,7 @@ public:
     }
     void Update()override {
         using namespace Game;using namespace Game::Chrono;
+        if(wcsstr(GetCommandLineW(),L"--slime-life-devour")){UpdateDevour();return;}
         if(wcsstr(GetCommandLineW(),L"--slime-life-intro")){UpdateIntro();return;}
         if(wcsstr(GetCommandLineW(),L"--slime-life-morph-camera")){UpdateMorphCamera();return;}
         if(wcsstr(GetCommandLineW(),L"--slime-life-crew")){UpdateCrew();return;}

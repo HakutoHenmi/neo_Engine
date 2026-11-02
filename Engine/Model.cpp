@@ -29,6 +29,38 @@ namespace Engine {
 
 // ToWide function replaced by PathUtils::FromUTF8
 
+// モデルの色の画像を読む。隣に同じ名前の .dds (Release パッケージで BCn に圧縮した物) があればそちらを使う。
+// 16 ビットの PNG は 8 ビットにして、ほかの画像と同じく sRGB として扱う
+static bool LoadModelImage(const std::filesystem::path& path, ScratchImage& out) {
+	std::filesystem::path dds = path;
+	dds.replace_extension(L".dds");
+	if (std::filesystem::exists(dds))
+		return SUCCEEDED(LoadFromDDSFile(PathUtils::GetUnifiedPathW(dds.wstring()).c_str(), DDS_FLAGS_NONE, nullptr, out));
+	ScratchImage image;
+	if (FAILED(LoadFromWICFile(PathUtils::GetUnifiedPathW(path.wstring()).c_str(), WIC_FLAGS_FORCE_SRGB, nullptr, image)))
+		return false;
+	const Image& src = *image.GetImage(0, 0, 0);
+	if (src.format == DXGI_FORMAT_R16G16B16A16_UNORM) {
+		// 上位 8 ビットを取るだけ (Convert は Debug ビルドだと 1 枚に数秒かかる)
+		if (FAILED(out.Initialize2D(DXGI_FORMAT_R8G8B8A8_UNORM_SRGB, src.width, src.height, 1, 1)))
+			return false;
+		const Image& dst = *out.GetImage(0, 0, 0);
+		for (size_t y = 0; y < src.height; ++y) {
+			const uint16_t* in = reinterpret_cast<const uint16_t*>(src.pixels + y * src.rowPitch);
+			uint8_t* to = dst.pixels + y * dst.rowPitch;
+			for (size_t i = 0; i < src.width * 4; ++i) to[i] = uint8_t(in[i] >> 8);
+		}
+		return true;
+	}
+	if (!IsSRGB(src.format) && !IsCompressed(src.format)) {
+		if (FAILED(Convert(src, DXGI_FORMAT_R8G8B8A8_UNORM, TEX_FILTER_DEFAULT, TEX_THRESHOLD_DEFAULT, out)))
+			return false;
+		return SUCCEEDED(out.OverrideFormat(DXGI_FORMAT_R8G8B8A8_UNORM_SRGB));
+	}
+	out = std::move(image);
+	return true;
+}
+
 static void SplitPath(const std::string& full, std::string& dir, std::string& file) {
 	size_t p = full.find_last_of("/\\");
 	if (p == std::string::npos) {
@@ -362,11 +394,7 @@ bool Model::Load(ID3D12Device* device, ID3D12GraphicsCommandList* cmd, const std
 			} else {
 				std::filesystem::path fullPath(PathUtils::FromUTF8(objPath));
 				std::filesystem::path dir = fullPath.parent_path();
-				std::filesystem::path texPath = dir / str.C_Str();
-				std::wstring widePath = PathUtils::GetUnifiedPathW(texPath.wstring());
-				if (SUCCEEDED(LoadFromWICFile(widePath.c_str(), WIC_FLAGS_FORCE_SRGB, nullptr, mip))) {
-					textureReady = true;
-				}
+				textureReady = LoadModelImage(dir / str.C_Str(), mip);
 			}
 
 			if (textureReady) {
@@ -764,11 +792,7 @@ bool Model::LoadWithUFBX(ID3D12Device* device, ID3D12GraphicsCommandList* cmd, c
             } else {
                 std::filesystem::path fullPath(PathUtils::FromUTF8(objPath));
                 std::filesystem::path dir = fullPath.parent_path();
-                std::filesystem::path texPath = dir / str;
-                std::wstring widePath = PathUtils::GetUnifiedPathW(texPath.wstring());
-                if (SUCCEEDED(DirectX::LoadFromWICFile(widePath.c_str(), DirectX::WIC_FLAGS_FORCE_SRGB, nullptr, mip))) {
-                    textureReady = true;
-                }
+                textureReady = LoadModelImage(dir / str, mip);
             }
 
             if (textureReady) {
@@ -890,11 +914,11 @@ bool Model::LoadAdditionalAnimation(const std::string& animPath) {
     return true;
 }
 
-bool Model::InitializeStaticLOD(ID3D12Device* device,const Model& source,int grid,bool grassCards,bool authoredLeaves){
+bool Model::InitializeStaticLOD(ID3D12Device* device,const Model& source,int grid,bool grassCards,bool authoredLeaves,bool cluster){
     if(!source.data_.bones.empty())return false;
     std::vector<LodSubset> subsets;for(const auto& sub:source.data_.subsets)subsets.push_back({sub.indexStart,sub.indexCount,sub.materialIndex});
     auto mesh=authoredLeaves?ReduceLeafCards(source.data_.vertices,source.data_.indices,subsets,uint32_t(grid)):
-        ReduceStaticMesh(source.data_.vertices,source.data_.indices,subsets,grid,grassCards);
+        cluster?ClusterStaticMesh(source.data_.vertices,source.data_.indices,subsets,grid):ReduceStaticMesh(source.data_.vertices,source.data_.indices,subsets,grid,grassCards);
     if(mesh.indices.empty()||mesh.indices.size()>=source.data_.indices.size()*.95)return false;
     data_.vertices=std::move(mesh.vertices);data_.indices=std::move(mesh.indices);data_.materials=source.data_.materials;
     data_.min=source.data_.min;data_.max=source.data_.max;
@@ -923,6 +947,7 @@ void Model::InitializeDynamic(ID3D12Device* device, const std::vector<VertexData
     staticGpuGeometry_=false;
 	data_.vertices = vertices;
 	data_.indices = indices;
+	UpdateBounds();
 
 	vb_ = CreateBufferResource(device, sizeof(VertexData) * vertices.size());
 	skinnedVb_ = CreateUAVBufferResource(device, sizeof(VertexData) * vertices.size());
@@ -949,9 +974,21 @@ void Model::InitializeDynamic(ID3D12Device* device, const std::vector<VertexData
 	BuildBVH();
 }
 
+// Built meshes need bounds too: the renderer skips instances whose box is off screen
+void Model::UpdateBounds() {
+	if (data_.vertices.empty()) return;
+	data_.min = {FLT_MAX, FLT_MAX, FLT_MAX};
+	data_.max = {-FLT_MAX, -FLT_MAX, -FLT_MAX};
+	for (const auto& v : data_.vertices) {
+		data_.min = {(std::min)(data_.min.x, v.position.x), (std::min)(data_.min.y, v.position.y), (std::min)(data_.min.z, v.position.z)};
+		data_.max = {(std::max)(data_.max.x, v.position.x), (std::max)(data_.max.y, v.position.y), (std::max)(data_.max.z, v.position.z)};
+	}
+}
+
 void Model::UpdateVertices(const std::vector<VertexData>& vertices) {
 	if (vertices.size() != data_.vertices.size() || !vb_ || staticGpuGeometry_) return; // Static scenery is immutable.
 	data_.vertices = vertices;
+	UpdateBounds();
 	void* vmap = nullptr;
 	if (SUCCEEDED(vb_->Map(0, nullptr, &vmap))) {
 		std::memcpy(vmap, vertices.data(), sizeof(VertexData) * vertices.size());

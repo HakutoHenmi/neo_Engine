@@ -110,6 +110,9 @@ static Matrix4x4 XMToM4(const DirectX::XMMATRIX& xm) {
 	return out;
 }
 
+// Static instanced meshes whose model bounds hold the drawn shape: off-screen ones are skipped
+static bool CullableInstances(const std::string& shader){return shader=="EnvironmentSurface"||shader=="MeadowGrass"||shader=="CitySurface";}
+
 static XMMATRIX M4ToXM(const Matrix4x4& m) { return XMLoadFloat4x4(reinterpret_cast<const XMFLOAT4X4*>(&m)); }
 
 Renderer::~Renderer() { Shutdown(); }
@@ -118,8 +121,10 @@ bool Renderer::Initialize(WindowDX* window) {
 	instance_ = this;
     LoadGraphicsSettings();postHistoryValid_=dlssHistoryValid_=false;
     if(wcsstr(GetCommandLineW(),L"--dlss-smoke"))graphicsSettings_.dlssQuality=true;
-    if(wcsstr(GetCommandLineW(),L"--native-smoke"))graphicsSettings_.dlssQuality=false;
-    dlssActive_=graphicsSettings_.dlssQuality&&DlssRuntime::Get().QualitySize(WindowDX::kW,WindowDX::kH,sceneWidth_,sceneHeight_);
+    const bool native=wcsstr(GetCommandLineW(),L"--native-smoke")!=nullptr;
+    if(native)graphicsSettings_.dlssQuality=false;
+    // DLSS off still smooths jagged edges with DLAA (native resolution) when the GPU supports it
+    dlssActive_=(graphicsSettings_.dlssQuality||!native)&&DlssRuntime::Get().QualitySize(WindowDX::kW,WindowDX::kH,sceneWidth_,sceneHeight_,graphicsSettings_.dlssQuality);
 
 	window_ = window;
 	if (!window_)
@@ -751,7 +756,7 @@ void Renderer::FlushDrawCalls() {
 		for (auto& idc : calls) {
 			auto* model = GetModel(idc.mesh);
 			if (!model || idc.instances.empty()) continue;
-            if(sceneryOptimized_&&(idc.shaderName=="EnvironmentSurface"||idc.shaderName=="MeadowGrass")){
+            if(sceneryOptimized_&&CullableInstances(idc.shaderName)){
                 auto& instances=idc.instances;
                 instances.erase(std::remove_if(instances.begin(),instances.end(),[&](const InstanceData& data){
                     return !SceneryVisible(idc.mesh,data.world,cbFrame_.viewProj);}),instances.end());
@@ -849,7 +854,7 @@ void Renderer::FlushDrawCalls() {
 				}
 			}
 
-            if(idc.shaderName=="EnvironmentSurface"||idc.shaderName=="MeadowGrass"||idc.shaderName=="MeadowGround")
+            if(CullableInstances(idc.shaderName)||idc.shaderName=="MeadowGround")
                 sceneryLodStats_.visibleIndices+=uint64_t(model->GetIndexCount())*idc.instances.size();
 			model->DrawInstanced(list_, static_cast<uint32_t>(idc.instances.size()), 3, useModelTex);
 		}
@@ -1190,7 +1195,7 @@ void Renderer::EndFrame() {
 			if (!model || idc.instances.empty()) continue;
             std::vector<InstanceData> visible;
             const auto* shadowInstances=&idc.instances;
-            if(sceneryOptimized_&&(idc.shaderName=="EnvironmentSurface"||idc.shaderName=="MeadowGrass")){
+            if(sceneryOptimized_&&CullableInstances(idc.shaderName)){
                 for(const auto& instance:idc.instances)if(SceneryVisible(idc.mesh,instance.world,lightVP))visible.push_back(instance);
                 shadowInstances=&visible;if(visible.empty())continue;
             }
@@ -3053,6 +3058,7 @@ void Renderer::DrawMeshInstanced(MeshHandle mesh, TextureHandle texture, const M
     auto rtMesh=mesh; // Rays use a camera-independent shape.
     if(sceneryOptimized_&&scenery&&shaderName!="MeadowGround")rtMesh=GetDistanceLodMeshes(mesh)[1];
     if(scenery&&(graphicsSettings_.rtReflections||graphicsSettings_.rtIndirect))mesh=rtMesh;
+    else if(sceneryOptimized_&&shaderName=="CitySurface"&&TooSmallOnScreen(mesh,worldMatrix))return;
     else mesh=SelectDistanceLod(mesh,worldMatrix);
     if((graphicsSettings_.rtShadows||graphicsSettings_.rtReflections||graphicsSettings_.rtIndirect)&&psoRtShadow_&&(shaderName=="EnvironmentSurface"||shaderName=="MeadowGround"))
         rtInstances_.push_back({rtMesh,worldMatrix,texture,extraTex.empty()?neutralNormal_:extraTex[0],extraTex.size()>1?extraTex[1]:0,mulColor,shaderName=="MeadowGround"});
@@ -3208,8 +3214,10 @@ bool Renderer::BuildDistanceLods_(LodJob& job)const{
         hi.x=(std::max)(hi.x,v.position.x);hi.y=(std::max)(hi.y,v.position.y);hi.z=(std::max)(hi.z,v.position.z);}
     lod.center=(lo+hi)*.5f;Vector3 half=(hi-lo)*.5f;lod.radius=std::sqrt(half.x*half.x+half.y*half.y+half.z*half.z);
     for(int level=1;level<=2;++level){auto reduced=std::make_shared<Model>();
-        int reduction=job.authoredLeaves?(level==1?4:12):job.grassCards?(level==1?2:4):(level==1?32:20);
-        if(reduced->InitializeStaticLOD(dev_,*source,reduction,job.grassCards,job.authoredLeaves))job.reduced[size_t(level-1)]=reduced;}
+        // Solid far level: edge collapses keep every UV seam, so dense scanned props barely shrank. Cluster on a 16-cell grid instead
+        const bool cluster=level==2&&!job.grassCards&&!job.authoredLeaves;
+        int reduction=job.authoredLeaves?(level==1?4:12):job.grassCards?(level==1?2:4):(level==1?32:cluster?16:20);
+        if(reduced->InitializeStaticLOD(dev_,*source,reduction,job.grassCards,job.authoredLeaves,cluster))job.reduced[size_t(level-1)]=reduced;}
     return true;
 }
 // メインスレッド: 簡略化モデルを登録し、全メッシュの頂点を 1 回の GPU 待ちで DEFAULT ヒープへ移す
@@ -3245,8 +3253,16 @@ uint32_t Renderer::SelectDistanceLod(uint32_t mesh,const Matrix4x4& world){
     sceneryLodStats_.originalVertices+=models_[mesh]->GetVertexCount();sceneryLodStats_.selectedVertices+=models_[selected]->GetVertexCount();
     ++sceneryLodStats_.instances[level];return selected;
 }
+bool Renderer::TooSmallOnScreen(uint32_t mesh,const Matrix4x4& world)const{
+    auto it=sceneryLods_.find(mesh);if(it==sceneryLods_.end())return false;const auto& lod=it->second;const auto& c=lod.center;
+    Vector3 point{c.x*world.m[0][0]+c.y*world.m[1][0]+c.z*world.m[2][0]+world.m[3][0],c.x*world.m[0][1]+c.y*world.m[1][1]+c.z*world.m[2][1]+world.m[3][1],
+        c.x*world.m[0][2]+c.y*world.m[1][2]+c.z*world.m[2][2]+world.m[3][2]};
+    float scale=0;for(int a=0;a<3;++a)scale=(std::max)(scale,std::sqrt(world.m[a][0]*world.m[a][0]+world.m[a][1]*world.m[a][1]+world.m[a][2]*world.m[a][2]));
+    Vector3 d=point-cbFrame_.cameraPos;return TooSmallToDraw(std::sqrt(d.x*d.x+d.y*d.y+d.z*d.z),lod.radius*scale);
+}
 bool Renderer::SceneryVisible(uint32_t mesh,const Matrix4x4& world,const Matrix4x4& viewProjection)const{
     if(!mesh||mesh>=models_.size())return true;const auto& data=models_[mesh]->GetData();
+    if(data.min.x>data.max.x||(data.min.x==data.max.x&&data.min.y==data.max.y&&data.min.z==data.max.z))return true;// unknown bounds
     auto transform=M4ToXM(world)*M4ToXM(viewProjection);
     uint32_t outside=63;
     for(int i=0;i<8;++i){auto p=DirectX::XMVectorSet(i&1?data.max.x:data.min.x,i&2?data.max.y:data.min.y,i&4?data.max.z:data.min.z,1);

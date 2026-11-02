@@ -36,6 +36,8 @@ public:
 	void SetSceneRegistrar(SceneRegistrar f) { registrar_ = std::move(f); }
 	void SetStartupMusic(const std::string& scene, const std::string& path) { startupMusicScene_ = scene; startupMusicPath_ = path; }
 	void SetInitialSceneKey(const std::string& key) { initialSceneKey_ = key; }
+	// 起動直後に全画面 (ボーダレス) にする
+	void SetStartFullscreen(bool fullscreen) { startFullscreen_ = fullscreen; }
 	// エディタ UI の描画をゲーム側へ任せる (未設定なら各シーンの DrawEditor をそのまま呼ぶ)
 	using EditorPresenter = std::function<void(IScene& scene, const std::string& sceneName)>;
 	void SetEditorPresenter(EditorPresenter f) { editorPresenter_ = std::move(f); }
@@ -66,6 +68,7 @@ private:
 
 	SceneRegistrar registrar_{};
 	std::string initialSceneKey_{};
+	bool startFullscreen_ = false;
 	std::string startupMusicScene_, startupMusicPath_;
 
 	// ★修正: App自身がWorldを持つのはやめる (GameSceneが持つため)

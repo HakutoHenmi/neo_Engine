@@ -17,13 +17,58 @@ $manifest = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'SlimeResources.js
 $shaderFiles = @(Get-ChildItem -LiteralPath (Join-Path $sourceRoot 'shaders') -File -Recurse | Where-Object { $_.Extension -in '.hlsl','.hlsli' } | ForEach-Object { $_.FullName.Substring($sourceRoot.Length+1).Replace('\','/') })
 $manifest = @(($manifest + $shaderFiles) | Sort-Object -Unique)
 if ($manifest.Count -lt 20) { throw 'Resource manifest is unexpectedly empty.' }
-$keep = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
-$totalBytes = 0L
-foreach ($relative in $manifest) {
+
+# Model textures: Engine/Model.cpp reads only the colour image each FBX names, so the other maps
+# beside the models (normal, roughness, metal, AO, ...) are left out. Colour PNGs are packaged as
+# BCn DDS with mips (Model.cpp prefers a .dds next to the named image). Converted files are cached.
+$modelTextures = 'Models/PolyHaven/textures/'
+$toolSource = Join-Path $PSScriptRoot 'Compress-Textures.cpp'
+$toolRoot = [IO.Path]::GetFullPath((Join-Path $repoRoot '../Generated/Tools'))
+$tool = Join-Path $toolRoot 'Compress-Textures.exe'
+$cacheRoot = [IO.Path]::GetFullPath((Join-Path $repoRoot '../Generated/TextureCache'))
+if (!(Test-Path -LiteralPath $tool) -or (Get-Item -LiteralPath $tool).LastWriteTime -lt (Get-Item -LiteralPath $toolSource).LastWriteTime) {
+    $library = Join-Path $repoRoot 'externals/Generated/Outputs/Release/DirectXTex.lib'
+    if (!(Test-Path -LiteralPath $library)) { throw "DirectXTex Release library not found: $library" }
+    $vs = & "${env:ProgramFiles(x86)}/Microsoft Visual Studio/Installer/vswhere.exe" -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+    if (!$vs) { throw 'Visual Studio C++ tools not found.' }
+    [void][IO.Directory]::CreateDirectory($toolRoot)
+    $command = 'call "{0}" -arch=x64 -host_arch=x64 >nul && cl /nologo /std:c++17 /EHsc /O2 /MT /W3 "{1}" "{2}" /Fo"{3}\\" /Fe"{4}" /link "{5}" d3d11.lib dxgi.lib ole32.lib windowscodecs.lib >nul' -f (Join-Path $vs 'Common7/Tools/VsDevCmd.bat'),$toolSource,(Join-Path $repoRoot 'externals/ufbx/ufbx.c'),$toolRoot,$tool,$library
+    & $env:ComSpec /d /s /c $command
+    if ($LASTEXITCODE) { throw 'Texture tool build failed.' }
+}
+$models = @($manifest | Where-Object { $_ -like 'Models/PolyHaven/*.fbx' } | ForEach-Object { Join-Path $sourceRoot $_ })
+$referenced = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+if ($models.Count) {
+    $lines = & $tool refs @models
+    if ($LASTEXITCODE) { throw 'Reading model texture references failed.' }
+    $prefix = $sourceRoot.Replace('\','/') + '/'
+    foreach ($line in $lines) { if ($line.StartsWith($prefix,[StringComparison]::OrdinalIgnoreCase)) { [void]$referenced.Add($line.Substring($prefix.Length)) } }
+}
+# Each packaged file: where it comes from and where it goes
+$entries = foreach ($relative in $manifest) {
     $source = [IO.Path]::GetFullPath((Join-Path $sourceRoot $relative))
     if (!$source.StartsWith($sourceRoot+'\',[StringComparison]::OrdinalIgnoreCase) -or !(Test-Path -LiteralPath $source -PathType Leaf)) { throw "Missing or invalid resource: $relative" }
-    $totalBytes += (Get-Item -LiteralPath $source).Length
-    [void]$keep.Add([IO.Path]::GetFullPath((Join-Path $targetRoot $relative)))
+    if ($relative.StartsWith($modelTextures,[StringComparison]::OrdinalIgnoreCase)) {
+        if (!$referenced.Contains($relative)) { continue }
+        if ([IO.Path]::GetExtension($relative) -ieq '.png') {
+            $relative = [IO.Path]::ChangeExtension($relative,'.dds')
+            $cached = Join-Path $cacheRoot $relative
+            if (!(Test-Path -LiteralPath $cached) -or (Get-Item -LiteralPath $cached).LastWriteTime -lt (Get-Item -LiteralPath $source).LastWriteTime -or
+                (Get-Item -LiteralPath $cached).LastWriteTime -lt (Get-Item -LiteralPath $tool).LastWriteTime) {
+                & $tool dds $source $cached
+                if ($LASTEXITCODE) { throw "Texture compression failed: $relative" }
+            }
+            $source = $cached
+        }
+    }
+    [pscustomobject]@{ Source=$source; Relative=$relative }
+}
+
+$keep = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+$totalBytes = 0L
+foreach ($entry in $entries) {
+    $totalBytes += (Get-Item -LiteralPath $entry.Source).Length
+    [void]$keep.Add([IO.Path]::GetFullPath((Join-Path $targetRoot $entry.Relative)))
 }
 # Validate the absolute target and every entry before any removal; never traverse links.
 $parent = $targetRoot
@@ -41,10 +86,10 @@ if (Test-Path -LiteralPath $targetRoot) {
 $beforeBytes = ($existing | Where-Object {!$_.PSIsContainer} | Measure-Object Length -Sum).Sum
 $obsolete = @($existing | Where-Object {!$_.PSIsContainer -and !$keep.Contains($_.FullName)})
 if (!$CheckOnly) {
-    foreach ($relative in $manifest) {
-        $dest = [IO.Path]::GetFullPath((Join-Path $targetRoot $relative))
+    foreach ($entry in $entries) {
+        $dest = [IO.Path]::GetFullPath((Join-Path $targetRoot $entry.Relative))
         [void][IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($dest))
-        Copy-Item -LiteralPath (Join-Path $sourceRoot $relative) -Destination $dest -Force
+        Copy-Item -LiteralPath $entry.Source -Destination $dest -Force
     }
     foreach ($item in $obsolete) { Remove-Item -LiteralPath $item.FullName -Force }
     # Empty directories only. No recursive deletion is needed.
@@ -52,4 +97,4 @@ if (!$CheckOnly) {
         if (!(Get-ChildItem -LiteralPath $dir.FullName -Force | Select-Object -First 1)) { Remove-Item -LiteralPath $dir.FullName -Force }
     }
 }
-[pscustomobject]@{ Destination=$targetRoot; Files=$manifest.Count; RemovedFiles=$obsolete.Count; BeforeMB=[Math]::Round($beforeBytes/1MB,2); AfterMB=[Math]::Round($totalBytes/1MB,2); CheckOnly=[bool]$CheckOnly } | ConvertTo-Json
+[pscustomobject]@{ Destination=$targetRoot; Files=@($entries).Count; RemovedFiles=$obsolete.Count; BeforeMB=[Math]::Round($beforeBytes/1MB,2); AfterMB=[Math]::Round($totalBytes/1MB,2); CheckOnly=[bool]$CheckOnly } | ConvertTo-Json

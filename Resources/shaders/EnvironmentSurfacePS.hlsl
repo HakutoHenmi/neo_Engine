@@ -11,6 +11,7 @@ cbuffer CBFrame : register(b0) {
     row_major float4x4 gProj;
     row_major float4x4 gViewProj;
     float3 gCamPos; float gTime;
+    float4 gWindParams; float3 gPlayerPos; float gFramePad;
 };
 struct DirLight { float3 dir; float pad0; float3 color; float pad1; uint enabled; float3 pad2; };
 struct PointLight { float3 pos; float pad0; float3 color; float range; float3 atten; float pad1; uint enabled; float3 pad2; };
@@ -39,8 +40,10 @@ float CityNoise(float2 p){float2 i=floor(p),f=frac(p);f=f*f*(3-2*f);
     return lerp(lerp(CityHash(i),CityHash(i+float2(1,0)),f.x),lerp(CityHash(i+float2(0,1)),CityHash(i+float2(1,1)),f.x),f.y);}
 // Aerial perspective: distant blocks fade into the sky haze, which gives the city depth.
 float3 CityFog(float3 colour,float3 worldPos,float3 daylight){
-    float distance=length(worldPos-gCamPos);
-    float amount=(1-exp(-max(distance-110,0)*.0009))*lerp(1,.75,saturate(worldPos.y/600));
+    // The haze begins beyond the player and thins as the camera pulls back with a
+    // growing slime, so a giant still sees the city around it.
+    float distance=length(worldPos-gCamPos),follow=length(gPlayerPos-gCamPos);
+    float amount=(1-exp(-max(distance-110-follow,0)*.0009*220/(220+follow)))*lerp(1,.75,saturate(worldPos.y/(600+follow)));
     float3 haze=float3(.6,.65,.72)*saturate(length(daylight)*.6+.25);
     return lerp(colour,haze,saturate(amount)*.82);
 }
@@ -54,6 +57,9 @@ float4 main(float4 svpos:SV_POSITION,float3 worldPos:TEXCOORD0,float3 normal:TEX
     armorOpacity*=smoothstep(.8,2.8,distance(gCamPos,worldPos));clip(armorOpacity-.001);
     if(armorOpacity<.999){float dither=frac(52.9829189*frac(dot(floor(svpos.xy),float2(.06711056,.00583715))));clip(armorOpacity-dither);}
     color.a=1;
+#else
+    // Negative alpha: an object between the camera and the player is screen-door faded (shadows stay).
+    if(color.a<0){clip(-color.a-frac(52.9829189*frac(dot(floor(svpos.xy),float2(.06711056,.00583715)))));color.a=1;}
 #endif
     float4 texel=gTex.Sample(gSmp,uv);
 #ifdef VEGETATION_CUTOUT

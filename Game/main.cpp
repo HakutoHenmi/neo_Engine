@@ -177,8 +177,9 @@ int WINAPI WinMain(_In_ HINSTANCE hInst, _In_opt_ HINSTANCE, _In_ LPSTR commandL
 #endif
 #endif
 
-	// 通常は game.json の initialScene (タイトル) から始める
+	// 通常は game.json の initialScene (タイトル) から全画面で始める (F11 / Alt+Enter で窓に戻せる)
 	app.SetInitialSceneKey(Game::Data::Config().initialScene);
+	app.SetStartFullscreen(true);
 	// コマンドライン引数で起動シーンを差し替える (自動テスト用。対応は game.json の launchOptions)
 	int argumentCount = 0;
 	LPWSTR* arguments = CommandLineToArgvW(GetCommandLineW(), &argumentCount);
@@ -187,7 +188,7 @@ int WINAPI WinMain(_In_ HINSTANCE hInst, _In_opt_ HINSTANCE, _In_ LPSTR commandL
 		for (int i = 1; i < argumentCount; ++i) {
 			const std::string argument = Engine::PathUtils::ToUTF8(arguments[i]);
 #ifndef NDEBUG
-			if (argument == "--editor-loading-smoke") app.SetInitialSceneKey("EditorLoadingValidation");
+			if (argument == "--editor-loading-smoke") { app.SetInitialSceneKey("EditorLoadingValidation"); app.SetStartFullscreen(false); }
 #endif
 			for (const auto& option : Game::Data::Config().launchOptions) {
 				if (option.flag != argument) continue;
@@ -196,6 +197,8 @@ int WINAPI WinMain(_In_ HINSTANCE hInst, _In_opt_ HINSTANCE, _In_ LPSTR commandL
 				if (option.debugOnly) continue;
 #endif
 				app.SetInitialSceneKey(option.scene);
+				// 自動テストは画面を奪わないように窓のまま
+				app.SetStartFullscreen(false);
 				if (!option.log.empty()) LogFileMain(option.log.c_str());
 			}
 		}

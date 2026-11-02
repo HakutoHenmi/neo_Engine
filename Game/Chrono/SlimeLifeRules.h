@@ -222,7 +222,8 @@ inline bool LifeInMouth(Vec from,Vec forward,Vec target,float mass,float extra=0
 }
 // 調合室の試し / 取り込める物 (位置・必要な量・報酬・見た目・変形アイテム)
 enum class SlimeTrial {None,Move,Absorb,Hit};
-struct LifeCollectible {Vec at{};float required=20,reward=12;bool active=true;uint32_t visual=0xffffffffu;bool orb=false;LifeMorphItem morphItem=LifeMorphItem::None;};
+// radius は吸収モードで覆えるかを決める大きさ、reach は塀のように長い物を覆える距離の余裕
+struct LifeCollectible {Vec at{};float required=20,reward=12;bool active=true;uint32_t visual=0xffffffffu;bool orb=false;LifeMorphItem morphItem=LifeMorphItem::None;float radius=1,reach=0;};
 // 報酬の大きさ別の段階・球の半径・色
 inline int LifeOrbTier(float reward){return reward>=30?2:reward>=18?1:0;}
 inline float LifeOrbRadius(float reward){const float radii[]={.42f,.68f,.96f};return radii[LifeOrbTier(reward)];}
