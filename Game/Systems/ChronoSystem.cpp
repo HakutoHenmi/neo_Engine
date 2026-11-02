@@ -45,6 +45,8 @@ void ChronoSystem::Reset(entt::registry& r){
 #endif
     slimePlayerDemo_ = scene_->IsSlimePlayerDemo();
     if(slimePlayerDemo_) inkMode_ = slimeLife_ = true;
+    // 吸収モード: 通常のプレイ。従来の進行を確かめる自動テストでは使わない
+    devour_=slimeLife_&&!slimePlayerDemo_&&(!wcsstr(GetCommandLineW(),L"--slime-life-smoke")||wcsstr(GetCommandLineW(),L"--slime-devour"));
     // スライムの変形のターゲットを消す
     Engine::Renderer::GetInstance()->SetFluidMorphTargets({},0);
     if(inkMode_){creature_=true;arena_=false;inkShots_.clear();inkSurfaces_.clear();inkMeshes_.clear();inkDirty_=true;}

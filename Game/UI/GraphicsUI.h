@@ -140,9 +140,9 @@ inline void DrawGraphics(Canvas& ui,const Engine::Renderer& renderer){
     ui.Label(Str("graphics.dlssTitle"),dlss.x+22,dlss.y+20,13,Lime,2.6f);
     SegmentTrack(ui,DlssQualityButton,DlssOffButton);
     // ON / OFF の切り替えボタン (DLSS が使えなければ ON にならない)
-    Segment(ui,DlssQualityButton,Str("graphics.dlssOn"),s.dlssQuality&&renderer.SupportsDlss());Segment(ui,DlssOffButton,Str("graphics.off"),!s.dlssQuality);
+    Segment(ui,DlssQualityButton,Str("graphics.dlssOn"),s.dlssQuality&&renderer.SupportsDlss());Segment(ui,DlssOffButton,Str("graphics.dlssOff"),!s.dlssQuality);
     // 今適用されているかどうか
-    std::string availability=Str(renderer.DlssActive()?"graphics.dlssActive":"graphics.dlssInactive");
+    std::string availability=Str(renderer.DlssUpscaling()?"graphics.dlssActive":renderer.DlssActive()?"graphics.dlaaActive":"graphics.dlssInactive");
     // 使えないときは、状態の文字列から理由を選んで表示する
     if(!renderer.SupportsDlss()){
         const auto reason=renderer.DlssStatus();availability=Str("graphics.dlssFailed");

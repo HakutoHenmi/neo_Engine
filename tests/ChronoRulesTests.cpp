@@ -192,7 +192,8 @@ int main(){
         std::map<int,int> leafTriangles;for(size_t i=0;i<leafLod.indices.size();i+=3){const auto& v=leafLod.vertices[leafLod.indices[i]];int leaf=int(v.position.x/2);++leafTriangles[leaf];}
         assert(leafTriangles.size()==3);for(auto pair:leafTriangles)assert(pair.second==6);
         for(const auto& v:leafLod.vertices)assert(std::abs(v.texcoord.y-v.position.y/3)<1e-6f);
-        assert(Engine::DistanceLodLevel(30,2)==0&&Engine::DistanceLodLevel(70,2)==1&&Engine::DistanceLodLevel(200,2)==2);
+        assert(Engine::DistanceLodLevel(12,2)==0&&Engine::DistanceLodLevel(30,2)==1&&Engine::DistanceLodLevel(70,2)==2);
+        assert(!Engine::TooSmallToDraw(90,.5f)&&Engine::TooSmallToDraw(110,.5f));
         assert(Engine::DistanceLodLevel(70,40)==0&&Engine::DistanceLodLevel(150,40)==1&&Engine::DistanceLodLevel(250,40)==2);
         std::cout<<"PASS: static LOD reduction, closed oriented surface and handle preserved across normal splits, open borders unchanged, material boundaries, complete grass tufts\n";
     }

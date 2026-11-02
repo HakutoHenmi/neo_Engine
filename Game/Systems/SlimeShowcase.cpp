@@ -25,6 +25,8 @@ void ChronoSystem::StartMorphShowcase(entt::registry& r,GameContext& ctx,LifeAct
 void ChronoSystem::UpdateMorphShowcase(entt::registry& r,Player& p,GameContext& ctx,float dt){
     auto& show=showcase_;auto& body=life_.bodies[0];auto* control=r.try_get<ControlFrame>(player_);
     Engine::WindowDX::SetCursorVisible(false);
+    // 取り込みのヒットストップの直後に始まっても、体の流体は動かして変形させる
+    ctx.renderer->SetRogueWorldFrozen(false);lifeHitStop_=0;
     // 太陽: 始めに今の明るさを記録し、暗くした分だけ下げる
     DirectionalLightComponent* sun=nullptr;
     for(auto e:r.view<NameComponent,DirectionalLightComponent>())if(r.get<NameComponent>(e).name=="Sun"){sun=&r.get<DirectionalLightComponent>(e);break;}
@@ -37,13 +39,13 @@ void ChronoSystem::UpdateMorphShowcase(entt::registry& r,Player& p,GameContext& 
             auto* audio=Engine::Audio::GetInstance();audio->Play(lifeEngulfSound_,false,.5f*audio->GetMasterSEVolume(),.8f);}}
     // 変形を進める (攻撃は始めない)
     if(LifeWeaponForm(body.action)){body.actionAge+=dt;
-        bool formed=body.actionAge>=.3f&&ctx.renderer->FluidMorphReady(life_.revision,0,1.f*LifeScale(body.mass));
+        bool formed=body.actionAge>=.3f&&(body.actionAge>=.8f||ctx.renderer->FluidMorphReady(life_.revision,0,1.f*LifeScale(body.mass)));
         LifeTickWeapon(life_,body,dt,false,false,formed);}
-    // 形が完成したら音を鳴らし、その姿を少し見せてから戻る
+    // 形が完成したら音を鳴らし、その姿を少し見せてから戻る (諦める時間を過ぎてからの完成は待たずに戻る)
     bool ready=LifeWeaponForm(body.action)&&body.weapon.ready;
-    if(ready&&show.readyAt<0){show.readyAt=show.age;auto* audio=Engine::Audio::GetInstance();audio->Play(lifeSplitSounds_[0],false,.3f*audio->GetMasterSEVolume(),1.5f);}
+    if(ready&&show.readyAt<0&&show.age<ShowcaseGiveUp){show.readyAt=show.age;auto* audio=Engine::Audio::GetInstance();audio->Play(lifeSplitSounds_[0],false,.3f*audio->GetMasterSEVolume(),1.5f);}
+    // (形ができないときは ShowcaseGiveUp で固定する。毎フレーム今の時間にすると、戻り始めずに止まったままになる)
     float hold=show.readyAt>=0?std::max(show.readyAt+ShowcaseHold,ShowcaseIn+1.2f):show.morphed&&!LifeWeaponForm(body.action)?ShowcaseIn+1.2f:ShowcaseGiveUp;
-    if(show.readyAt<0&&show.age>=ShowcaseGiveUp)hold=show.age;
     float into=ShotEase(show.age,0,ShowcaseIn),out=ShotEase(show.age,hold,hold+ShowcaseOut);
     // 寄る構図: 体の中心と大きさをなめらかに追い、正面の少し横・少し上から見る (見せている間はゆっくり回り込む)
     auto subject=GetLifeCameraSubject();float follow=1-std::exp(-8*dt);

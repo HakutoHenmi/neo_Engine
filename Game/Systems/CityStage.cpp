@@ -3,79 +3,10 @@
 // 動かない建物は PBR の材質ごとに 1 つの動的メッシュとして作る。小物・
 // バリケード・シャッターの門・街の敵は、Resources/Credits/CityStage.md にある
 // CC0 の Poly Haven の素材を使う
-#include "ChronoSystemInternal.h"
+#include "CityBuilder.h"
 
 namespace Game {
-// このファイルの中だけで使う型と関数
-namespace {
-// 街の材質の種類 (道路・歩道・塗装・コンクリート・ガラス・金属など)
-enum CityMaterialId {CityRoad,CitySidewalk,CityAlleyFloor,CityPaint,CityPaintYellow,CityConcrete,CityCladding,CityFacadeTiles,CityDarkTiles,
-    CitySlab,CityGreyTiles,CityShutter,CityRustShutter,CityGlass,CityMetal,CityWhiteBrick,CityWood,CityStoneSkin,CityScorch,CityMaterialCount};
-// 材質ごとの頂点と添字
-struct CityGeometry {std::vector<Engine::VertexData> vertices;std::vector<uint32_t> indices;};
-// 街の形を材質ごとのメッシュとして組み立てる
-struct CityBuilder {
-    // 材質ごとの形と、テクスチャを繰り返す大きさ
-    std::array<CityGeometry,CityMaterialCount> geometry;
-    std::array<float,CityMaterialCount> tile{30,10,16,6,6,20,8,12,14,18,8,8,8,8,6,10,8,22,30};
-    // UV は面の平面に沿ってワールドの単位で付けるので、繰り返しの大きさが物理的にそろう
-    // 多角形を三角形に分けて追加する (法線から UV の向きを決める)
-    void Polygon(int material,std::initializer_list<Chrono::Vec> points,Chrono::Vec normal){
-        // 材質の形と、追加する頂点の最初の番号
-        using Chrono::Vec;auto& g=geometry[size_t(material)];uint32_t base=uint32_t(g.vertices.size());
-        Vec n=Chrono::Unit(normal);Vec u=std::abs(n.y)>.99f?Vec{1,0,0}:Chrono::Unit(Chrono::SwarmCross({0,1,0},n));Vec v=Chrono::SwarmCross(n,u);
-        float size=tile[size_t(material)];
-        // 各頂点の位置・UV (面の上のワールド座標を繰り返しの大きさで割る)・法線
-        for(Vec p:points){Engine::VertexData vertex{};vertex.position={p.x,p.y,p.z,1};vertex.texcoord={Chrono::Dot(p,u)/size,-Chrono::Dot(p,v)/size};
-            vertex.normal={n.x,n.y,n.z};g.vertices.push_back(vertex);}
-        const auto* p=points.begin();
-        // 地形で確かめた通り、表の面は cross(p1-p0,p2-p0) が法線の向きになる
-        bool forward=Chrono::Dot(Chrono::SwarmCross(p[1]-p[0],p[2]-p[0]),n)>0;
-        // 扇形に三角形を作る (表の向きに合わせて頂点の順を決める)
-        for(uint32_t i=1;i+1<uint32_t(points.size());++i){
-            if(forward)g.indices.insert(g.indices.end(),{base,base+i,base+i+1});else g.indices.insert(g.indices.end(),{base,base+i+1,base+i});}
-    }
-    // 箱を作る (bottom なら底面も作る)
-    void Box(int material,Chrono::Vec lo,Chrono::Vec hi,bool bottom=false){
-        using Chrono::Vec;
-        // 6 面を順に追加する (底は指定したときだけ)
-        Polygon(material,{{hi.x,lo.y,lo.z},{hi.x,lo.y,hi.z},{hi.x,hi.y,hi.z},{hi.x,hi.y,lo.z}},{1,0,0});
-        Polygon(material,{{lo.x,lo.y,hi.z},{lo.x,lo.y,lo.z},{lo.x,hi.y,lo.z},{lo.x,hi.y,hi.z}},{-1,0,0});
-        Polygon(material,{{hi.x,lo.y,hi.z},{lo.x,lo.y,hi.z},{lo.x,hi.y,hi.z},{hi.x,hi.y,hi.z}},{0,0,1});
-        Polygon(material,{{lo.x,lo.y,lo.z},{hi.x,lo.y,lo.z},{hi.x,hi.y,lo.z},{lo.x,hi.y,lo.z}},{0,0,-1});
-        Polygon(material,{{lo.x,hi.y,lo.z},{hi.x,hi.y,lo.z},{hi.x,hi.y,hi.z},{lo.x,hi.y,hi.z}},{0,1,0});
-        if(bottom)Polygon(material,{{lo.x,lo.y,lo.z},{lo.x,lo.y,hi.z},{hi.x,lo.y,hi.z},{hi.x,lo.y,lo.z}},{0,-1,0});
-    }
-    // 壁に付いた箱: along は壁に沿う向き、out は壁から出る向き。ずれは壁の平面からの距離
-    void FacadeBox(int material,Chrono::Vec center,Chrono::Vec along,Chrono::Vec out,float halfAlong,float halfY,float out0,float out1){
-        // パイプラインは両面を描くので、壁から始まる箱は裏の面が壁の平面に重なって
-        // Z ファイティングを起こす。そこで壁に付く箱は少し壁に埋める
-        // 外へ出る箱が壁から始まるなら、壁へ少し埋める
-        if(out0<=.01f&&out1>out0)out0=-.4f;
-        // 壁に沿う向きと外へ出る向きで箱の 2 つの角を求める
-        using Chrono::Vec;Vec a=center+along*halfAlong+out*out0,b=center-along*halfAlong+out*out1;
-        Box(material,{std::min(a.x,b.x),center.y-halfY,std::min(a.z,b.z)},{std::max(a.x,b.x),center.y+halfY,std::max(a.z,b.z)});
-    }
-    // 道路に塗った平らな帯 (a から b まで、指定の幅)
-    void Strip(int material,Chrono::Vec a,Chrono::Vec b,float width,float y=-.08f){
-        // 道の向きに垂直な幅の分だけ広げた四角形
-        using Chrono::Vec;Vec d=Chrono::Unit(b-a),n{-d.z,0,d.x};n=n*(width*.5f);a.y=b.y=y;
-        Polygon(material,{a-n,b-n,b+n,a+n},{0,1,0});
-    }
-};
-// 建物の種類 (路地・通り・高層ビル) と建物の情報
-enum CityStyle {CityStyleAlley,CityStyleStreet,CityStyleTower};
-struct CityBuilding {Chrono::CityRect foot;Chrono::Vec out;float height;int style,skin,trim;bool allSides;};
-// スキャンしたネズミと大砲: 敵の大きさあたりの長さと、向きに合わせるヨー
-constexpr float CityRatWidth=5.6f,CityRatYaw=0,CityCannonWidth=3.4f,CityCannonYaw=0;
-// 1 階と 2 階以上の高さ
-constexpr float CityGroundFloor=24,CityFloor=19;
-// 路面の塗装の高さ (路面は -0.2)。重なる塗装どうしを同じ高さに置くと奥行きの精度が足りずにちらつくので、
-// 重なり得る層ごとに高さを分ける: 車線と中央線 < タイヤ痕 < 横断歩道と停止線 < 斜めの横断歩道の片方 < 事故の焦げ跡
-constexpr float PaintLaneY=-.16f,PaintSkidY=-.13f,PaintCrossY=-.1f,PaintCrossTopY=-.07f,PaintStainY=-.04f;
-// 整数から 0〜1 の疑似乱数を作る
-float CityNoise(int seed){float n=std::sin(float(seed)*12.9898f+78.233f)*43758.5453f;return n-std::floor(n);}
-}
+using namespace CityParts;
 // 街のステージを作る: 影の範囲・シェーダー・材質・道路と横断歩道・建物・小物・バリケード・門・敵のモデル
 void ChronoSystem::BuildCityStage(entt::registry& r){
     Engine::LoadProfile::Scope profile("phase","ChronoSystem::BuildCityStage");
@@ -96,7 +27,8 @@ void ChronoSystem::BuildCityStage(entt::registry& r){
     render->CreateShaderPipelineTransparent("DomainGlow",L"Resources/shaders/InstancedObjVS.hlsl",L"Resources/shaders/DomainGlowPS.hlsl",true,true);
     render->CreateShaderPipelineTransparent("MorphItemHighlight",L"Resources/shaders/InstancedObjVS.hlsl",L"Resources/shaders/MorphItemHighlightPS.hlsl",true,true);
     // Poly Haven の材質 (色・法線・粗さ・AO) を読み込む
-    auto material=[&](const std::string& id){CityModel m;const std::string base="Resources/Textures/PolyHaven/"+id;
+    // "acg/" で始まる名前は ambientCG の材質 (Resources/Textures/AmbientCG)
+    auto material=[&](const std::string& id){CityModel m;const std::string base=id.rfind("acg/",0)==0?"Resources/Textures/AmbientCG/"+id.substr(4):"Resources/Textures/PolyHaven/"+id;
         // BCn の DDS があればそれを、無ければ JPEG を使う
         auto map=[&](const char* suffix,bool sRGB){for(const char* ext:{".dds",".jpg"}){std::string path=base+"_"+suffix+"_2k"+ext;
             if(std::filesystem::exists(path))return render->LoadTexture2D(path,sRGB);}
@@ -112,7 +44,9 @@ void ChronoSystem::BuildCityStage(entt::registry& r){
     // 材質ごとの Poly Haven の素材の名前
     const char* surfaceIds[CityMaterialCount]={"asphalt_02","large_grey_tiles","concrete_floor_worn_001","concrete_floor_worn_001","concrete_floor_worn_001",
         "concrete_wall_008","exterior_wall_cladding_02","rectangular_facade_tiles_02","concrete_tile_facade","concrete_slab_wall","grey_tiles",
-        "painted_metal_shutter","rusty_metal_shutter","concrete_floor_worn_001","concrete_floor_worn_001","white_bricks","medieval_wood","castle_wall_slates","asphalt_02"};
+        "painted_metal_shutter","rusty_metal_shutter","concrete_floor_worn_001","concrete_floor_worn_001","white_bricks","medieval_wood","castle_wall_slates","asphalt_02",
+        "brick_wall_02","plastered_wall_02","weathered_plank_siding","clay_roof_tiles","grey_roof_tiles","roof_slates_02","patterned_paving","square_brick_paving",
+        "acg/Facade001","acg/Facade003","acg/Facade005","acg/Facade006","acg/Facade012","acg/Facade014","acg/Facade018A","acg/Facade019A","acg/Facade020A"};
     // 材質を読み込む
     std::array<CityModel,CityMaterialCount> surfaces;for(int i=0;i<CityMaterialCount;++i)surfaces[size_t(i)]=material(surfaceIds[i]);
     Engine::LoadProfile::Record("mark","city: surfaces requested",0);
@@ -238,6 +172,8 @@ void ChronoSystem::BuildCityStage(entt::registry& r){
     // 光る看板の一覧と、ネオンの色
     cityGlows_.clear();
     const Engine::Vector4 neon[]={{1,.25f,.55f,1},{.2f,.85f,1,1},{1,.75f,.2f,1},{.55f,1,.35f,1},{.75f,.4f,1,1}};
+    // 吸収モードは輪の町 (RingCity.cpp) を作るので、この街の建物は作らない
+    if(devour_)buildings.clear();
     // 各建物: 本体の箱・屋上・正面 (高層ビルはガラスの外壁、それ以外は店と窓)・カメラ用の当たり判定
     for(const auto& b:buildings){
         const auto& f=b.foot;
@@ -334,6 +270,8 @@ void ChronoSystem::BuildCityStage(entt::registry& r){
         if(CityNoise(++seed)<.5f)for(int k=0;k<3;++k)cityGlows_.push_back({c+V{(CityNoise(++seed)-.5f)*12,b.height+4+float(k)*3,(CityNoise(++seed)-.5f)*12},{1,0,0},{0,1,0},{9-float(k)*2.5f,8,9-float(k)*2.5f},{1.6f,.45f,.08f,1},1,CityNoise(++seed)*6.283f});}
     // シャッターの門の上のまぐさで双子の塔をつなぐ
     {const V g=CityGateCenter();city.Box(CityDarkTiles,{g.x-32,58,g.z-8},{g.x+32,96,g.z+8});}
+    // 吸収モード: この街の道路と床を捨て、輪の町の地面と道路を作る
+    if(devour_){city=CityBuilder{};BuildRingGround(city);}
     Engine::LoadProfile::Record("mark","city: geometry built",0);
     // 材質ごとのメッシュをエンティティとして置く
     for(int i=0;i<CityMaterialCount;++i){auto& g=city.geometry[size_t(i)];if(g.indices.empty())continue;
@@ -356,9 +294,15 @@ void ChronoSystem::BuildCityStage(entt::registry& r){
     Engine::LoadProfile::Record("mark","city: surface entities",0);
     cityProps_.clear();cityVisuals_.clear();
     // スキャンした小物を置く (required が 0 より大きければ取り込める物になる)
-    auto place=[&](const std::string& id,V at,float width,float yaw,float required=0,float reward=0,LifeMorphItem item=LifeMorphItem::None){
+    // 平らな法線の画像 (自前の色の画像を使う、材質が複数のモデルに使う)
+    const uint32_t neutralNormal=render->LoadTexture2D("Resources/Textures/PBR/NeutralNormal.png",false);
+    auto place=[&](const std::string& id,V at,float width,float yaw,float required=0,float reward=0,LifeMorphItem item=LifeMorphItem::None)->entt::entity{
+        // モデルが無ければ置かない (取り込みに失敗したダウンロードなど)
+        if(!std::filesystem::exists("Resources/Models/PolyHaven/"+id+"_2k.fbx"))return entt::null;
         // 幅から拡大率を決め、一番低い頂点を地面に合わせて置く
-        const auto& m=model(id);V lo=m.lo,hi=m.hi;
+        CityModel m=model(id);V lo=m.lo,hi=m.hi;
+        // 材質が複数あるモデル (1 枚の色の画像が無い) は、モデル自身が部位ごとの色の画像を使う
+        if(!std::filesystem::exists("Resources/Textures/PolyHaven/"+id+"_diff_2k.jpg")){m.texture=0;m.extra={neutralNormal,white_,white_};}
         float scale=width/std::max({hi.x-lo.x,hi.z-lo.z,.001f});V mid=(lo+hi)*.5f;float cs=std::cos(yaw),sn=std::sin(yaw);
         // 小物のエンティティを作る
         auto e=r.create();r.emplace<NameComponent>(e,"Chrono City prop "+id);
@@ -370,17 +314,17 @@ void ChronoSystem::BuildCityStage(entt::registry& r){
         V center=V{at.x,at.y+(mid.y-lo.y)*scale,at.z};
         cityVisuals_[uint32_t(e)]={m.mesh,m.texture,m.extra,{scale,scale,scale},{0,yaw,0},center-Read(t.translate),(hi.y-lo.y)*scale,"CitySurface"};
         // 触手は背の高い小物を足元近くでつかむので、取り込みの高さの判定が路面と合う
-        if(required>0)cityProps_.push_back({e,V{at.x,at.y+std::min(1.2f,(mid.y-lo.y)*scale),at.z},required,reward,item});
+        if(required>0)cityProps_.push_back({e,V{at.x,at.y+std::min(1.2f,(mid.y-lo.y)*scale),at.z},required,reward,item,.5f*std::max(width,(hi.y-lo.y)*scale)});
         return e;};
     // 作った小物 (街灯・シャッターの門) はそれぞれ 1 つのメッシュを共有し、スキャンと同じように取り込める
     // 作ったメッシュの小物を置く (取り込める物にもできる)
-    auto placeMesh=[&](const char* name,uint32_t mesh,int skin,V at,float yaw,float height,float required,float reward,LifeMorphItem item=LifeMorphItem::None){
+    auto placeMesh=[&](const char* name,uint32_t mesh,int skin,V at,float yaw,float height,float required,float reward,LifeMorphItem item=LifeMorphItem::None,float fill=1){
         auto e=r.create();r.emplace<NameComponent>(e,std::string("Chrono City prop ")+name);
         auto& t=r.emplace<TransformComponent>(e);t.scale={1,1,1};t.rotate=Write(V{0,yaw,0});t.translate=Write(at);
         auto& mr=r.emplace<MeshRendererComponent>(e);mr.modelHandle=mesh;mr.textureHandle=surfaces[size_t(skin)].texture;mr.extraTextureHandles=surfaces[size_t(skin)].extra;
         mr.shaderName="CitySurface";mr.useCubemap=false;mr.color=tint(skin);
         cityVisuals_[uint32_t(e)]={mesh,surfaces[size_t(skin)].texture,surfaces[size_t(skin)].extra,{1,1,1},{0,yaw,0},{0,height*.5f,0},height,"CitySurface"};
-        if(required>0)cityProps_.push_back({e,at+V{0,1.2f,0},required,reward,item});
+        if(required>0)cityProps_.push_back({e,at+V{0,1.2f,0},required,reward,item,.5f*height,fill});
         return e;};
     // ローカルの形から金属のメッシュを作る
     auto localMesh=[&](auto&& build){CityBuilder local;build(local);auto& g=local.geometry[CityMetal];return render->CreateDynamicMesh(g.vertices,g.indices);};
@@ -388,7 +332,12 @@ void ChronoSystem::BuildCityStage(entt::registry& r){
     uint32_t lampMesh=localMesh([](CityBuilder& b){b.Box(CityMetal,{-1,0,-1},{1,2.4f,1});b.Box(CityMetal,{-.45f,0,-.45f},{.45f,42,.45f});
         b.Box(CityMetal,{0,40.4f,-.3f},{12,41.2f,.3f});b.Box(CityMetal,{9,39.2f,-1.4f},{14.5f,40.6f,1.4f});});
     // 街灯を置く
-    auto lamp=[&](V at,float yaw){placeMesh("street light",lampMesh,CityMetal,at,yaw,42,420,30);};
+    // 細い柱なので、吸収モードで増える量は大きさの割に少なくする
+    auto lamp=[&](V at,float yaw){placeMesh("street light",lampMesh,CityMetal,at,yaw,42,420,30,LifeMorphItem::None,.25f);};
+    // 吸収モードは輪の町の建物・小物・アイテムを置く (RingCity.cpp)
+    if(devour_){cityWalls_.clear();cityBarricade_.clear();cityGateEntity_=entt::null;
+        BuildRingCity(r,{place,[&](int i)->const CityModel& {return surfaces[size_t(i)];},tint});}
+    else{
     // 区画 1: 脱出路地。敵はおらず、散らかった物を吸い込んで大きくなり、ハンマーで塀を壊して進む
     // 小さな散らかった物の種類・幅・報酬
     const char* smallIds[]={"trashbag","cardboard_box_01","plastic_crate_01","plastic_crate_02","metal_jerrycan","trashbag","WetFloorSign_01","wooden_crate_01"};
@@ -530,6 +479,7 @@ void ChronoSystem::BuildCityStage(entt::registry& r){
     {V pedestal{plaza.x0+102,0,plaza.z0+30};CityBuilder local;local.Box(CityMetal,{-8,0,-8},{8,6,8});auto& g=local.geometry[CityMetal];
         placeMesh("statue pedestal",render->CreateDynamicMesh(g.vertices,g.indices),CityConcrete,pedestal,0,6,0,0);
         place("gothic_statue",pedestal+V{0,6,0},12,.6f,2200,260);}
+    }
     // 敵のモデル (ネズミと大砲)
     Engine::LoadProfile::Record("mark","city: props placed",0);
     cityRat_=model("street_rat");cityCannon_=model("cannon_01");
@@ -561,20 +511,21 @@ int ChronoSystem::CityStepAlive()const{
 void ChronoSystem::ResetCityHazards(){
     using namespace Chrono;
     for(size_t i=0;i<cityWalls_.size()&&i<CityWalls().size();++i){cityWalls_[i].health=CityWalls()[i].health;cityWalls_[i].shake=0;cityWalls_[i].hit=0;}
-    cityFires_.clear();for(const auto& spot:CityFires())cityFires_.push_back({spot.at,spot.radius,CityFireHealth(),0});
+    cityFires_.clear();for(const auto& spot:devour_?RingData().fires:CityFires())cityFires_.push_back({spot.at,spot.radius,CityFireHealth(),0});
     cityHammerAnnounced_=false;
 }
 // 路地の壁を壊す (部品を破片にして飛ばし、通れるようにする。すべて壊れたら大通りへ)
-void ChronoSystem::BreakCityWall(size_t index){
+void ChronoSystem::BreakCityWall(size_t index,bool absorbed){
     using namespace Chrono;
     if(index>=CityWalls().size()||cityGates_.WallOpen(index))return;
     cityGates_.wallsOpen|=1u<<index;
-    // 部品の一部をそのまま破片にして飛ばす (長い部品は短く切る)
-    if(index<cityWalls_.size()){int i=0;for(const auto& piece:cityWalls_[index].pieces){if(i++%2)continue;
+    // 部品の一部をそのまま破片にして飛ばす (長い部品は短く切る)。飲み込んだときは破片を出さない
+    if(index<cityWalls_.size()&&!absorbed){int i=0;for(const auto& piece:cityWalls_[index].pieces){if(i++%2)continue;
         float a=CityNoise(i*7+int(index)*13)*6.283f,u=CityNoise(i*13+int(index));V size=piece.size;size.x=std::min(size.x,6.f);
         cityDebris_.push_back({piece.at,V{std::cos(a)*6*(.4f+u),10+u*14,std::sin(a)*6*(.4f+u)},V{u*6,a,u*4},size,piece.rotate,0,piece.material});}}
     const auto& wall=CityWalls()[index];int left=0;for(size_t i=0;i<CityWalls().size();++i)if(!cityGates_.WallOpen(i))++left;
-    life_.message=left?wall.name+"を破壊！ 残り "+std::to_string(left)+" か所":wall.name+"を破壊！ 路地を抜けて大通りへ";life_.messageAge=3;
+    const char* how=absorbed?"を丸のみ！":"を破壊！";
+    life_.message=left?wall.name+how+" 残り "+std::to_string(left)+" か所":wall.name+how+" 路地を抜けて大通りへ";life_.messageAge=3;
     auto* audio=Engine::Audio::GetInstance();audio->Play(lifeSplitSounds_[2],false,.7f*audio->GetMasterSEVolume(),.55f);
 }
 // バリケードか門を壊す (破片を飛ばし、通れるようにしてメッセージを出す)
@@ -588,8 +539,8 @@ void ChronoSystem::BreakCityGate(entt::registry& r,bool barricade,bool absorbed)
                 V{1.2f+u*3,.5f+u*.6f,.5f+u*.4f},{},0,material});}
     };
     // バリケード: 開けて破片を飛ばす
-    if(barricade){cityGates_.barricadeOpen=true;burst(CityBarricadeCenter()+V{0,4,0},{44,14,1},0,26,10);
-        life_.message="バリケード突破！ 大火事現場へ";life_.messageAge=3;}
+    if(barricade){cityGates_.barricadeOpen=true;if(!absorbed)burst(CityBarricadeCenter()+V{0,4,0},{44,14,1},0,26,10);
+        life_.message=absorbed?"バリケードを丸のみ！ 大火事現場へ":"バリケード突破！ 大火事現場へ";life_.messageAge=3;}
     // 門: 開けて当たり判定と表示を消す (取り込んだときは破片なし)
     else{cityGates_.gateOpen=true;
         if(auto* collider=r.try_get<BoxColliderComponent>(cityGateEntity_))collider->enabled=false;
@@ -659,12 +610,15 @@ void ChronoSystem::UpdateCityStage(entt::registry& r,Chrono::Player& p,GameConte
     cityBarricadeShake_=std::max(0.f,cityBarricadeShake_-dt);cityGateShake_=std::max(0.f,cityGateShake_-dt);cityHintClock_=std::max(0.f,cityHintClock_-dt);
     for(auto& wall:cityWalls_)wall.shake=std::max(0.f,wall.shake-dt);
     // 本体がハンマーに変形できる大きさになったら、一度だけ知らせて形を選んでおく
-    if(!cityHammerAnnounced_&&LifeCanMorph(body,LifeAction::Hammer)){cityHammerAnnounced_=true;life_.form=LifeAction::Hammer;
+    // 吸収モードでは塀も飲み込めるので知らせない
+    if(!devour_&&!cityHammerAnnounced_&&LifeCanMorph(body,LifeAction::Hammer)){cityHammerAnnounced_=true;life_.form=LifeAction::Hammer;
         life_.message=UI::UsingPad()?"ハンマー変形 解放！ 十字キー↑で変形し、RTで叩きつけて塀を壊そう":"ハンマー変形 解放！ 1で変形し、左クリックで叩きつけて塀を壊そう";life_.messageAge=4;}
     // 新しいエリアに入ったら名前を表示する
     auto area=CityAreaAt(body.at);
     if(int(area)!=cityAnnounced_){cityAnnounced_=int(area);
         life_.message="AREA "+std::to_string(int(area)+1)+"  "+CityAreaName(area);life_.messageAge=3;}
+    // 吸収モード: 敵も段階の進行も無い。塀・バリケード・シャッターは飲み込んで開ける (SlimeDevour.cpp)
+    if(!devour_){
     // 今の段階で生きている敵の数
     int alive=CityStepAlive();
     // 火事場の兵士が倒れると、鉄の門が取り込める (または壊せる) 対象になる
@@ -692,6 +646,7 @@ void ChronoSystem::UpdateCityStage(entt::registry& r,Chrono::Player& p,GameConte
         life_.stepDelay=std::max(0.f,life_.stepDelay-dt);
         if(life_.stepDelay<=0){++life_.step;life_.stepDelay=2;SpawnCityStep(life_.step);
             life_.message="段階 "+std::to_string(life_.step+1)+" / "+std::to_string(CityStepCount)+"  "+CityStepInfo(life_.step).title;life_.messageAge=3.5f;}
+    }
     }
     // 火事場の炎: 触れると燃える (被弾の無敵時間ごとにダメージ)。消火栓の放水で小さくなり、消える
     for(auto& fire:cityFires_){fire.hiss=std::max(0.f,fire.hiss-dt);if(fire.health<=0)continue;

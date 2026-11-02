@@ -302,9 +302,11 @@ void ChronoSystem::InkCamera(entt::registry& r,Player& p,GameContext& ctx){
         auto lifted=[&](float k){return Unit(back+V{0,k,0});};
         const float lifts[]={0,.35f,.8f,1.5f,3};float goal=0,best=-1;
         for(float k:lifts){float open=reach(lifted(k),distance);if(open>best+.02f){best=open;goal=k;}if(open>=.97f)break;}
+        // 吸収モードの輪の町: 建物はカメラの手前へ寄せず、間に入った建物を透かす (下の CameraOccluder)
+        if(devour_){goal=0;best=1;}
         // 持ち上げは少し速く、戻すのはゆっくり (速すぎると変形で構図が広がった瞬間に跳ね上がる)。届く距離は縮めるときは即座に、伸ばすときはゆっくり
         cameraLift_+=(goal-cameraLift_)*(1-std::exp(-(goal>cameraLift_?4.f:2.5f)*ctx.dt));
-        V direction=lifted(cameraLift_);float open=reach(direction,distance);
+        V direction=lifted(cameraLift_);float open=devour_?1.f:reach(direction,distance);
         cameraReach_=open<cameraReach_?open:cameraReach_+(open-cameraReach_)*(1-std::exp(-3*ctx.dt));
         wanted=focus+direction*std::max(.5f,cameraReach_*distance-.3f);
         // 消火栓のときは肩越しの照準の位置へ移る
@@ -313,7 +315,7 @@ void ChronoSystem::InkCamera(entt::registry& r,Player& p,GameContext& ctx){
             // 路面へ下がらないようにし、視線はカメラの右に空ける
             V flat{std::sin(yaw_),0,std::cos(yaw_)};
             V shoulderFocus=pos+V{0,-1.25f+4.3f*LifeScale(life_.bodies[0].mass),0},shoulderAt=pos+LifeHydrantCameraOffset(life_.bodies[0].mass,flat);
-            for(const auto& box:solids_)if(Chrono::Sweep(shoulderFocus,shoulderAt-shoulderFocus,box,{.3f,.3f,.3f},f,n))shoulderAt=shoulderFocus+(shoulderAt-shoulderFocus)*std::max(.05f,f-.025f);
+            if(!devour_)for(const auto& box:solids_)if(Chrono::Sweep(shoulderFocus,shoulderAt-shoulderFocus,box,{.3f,.3f,.3f},f,n))shoulderAt=shoulderFocus+(shoulderAt-shoulderFocus)*std::max(.05f,f-.025f);
             wanted=Lerp(wanted,shoulderAt,hydrantBlend);focus=Lerp(focus,shoulderFocus,hydrantBlend);
         }
     }else{
@@ -322,7 +324,7 @@ void ChronoSystem::InkCamera(entt::registry& r,Player& p,GameContext& ctx){
     for(const auto& surface:inkSurfaces_){V hit;if(surface.Ray(focus,wanted-focus,f,hit))wanted=focus+(wanted-focus)*std::max(.05f,f-.06f);}
     wanted.y=std::max(wanted.y,.7f);
     // それでも建物の箱の中に残ったら、外へ出るまで注視点の方へ寄せる
-    if(slimeLife_&&hydrantBlend<1){
+    if(slimeLife_&&!devour_&&hydrantBlend<1){
         auto inside=[&](V at){for(const auto& b:solids_)if(at.x>b.min.x-.2f&&at.x<b.max.x+.2f&&at.y>b.min.y-.2f&&at.y<b.max.y+.2f&&at.z>b.min.z-.2f&&at.z<b.max.z+.2f)return true;return false;};
         for(int i=0;i<20&&inside(wanted);++i)wanted=Lerp(wanted,focus,.15f);
     }
@@ -341,9 +343,13 @@ void ChronoSystem::InkCamera(entt::registry& r,Player& p,GameContext& ctx){
     // 画角 (泳いでいるとき・溜め・輪で広げる)
     float goal=(ink.swimming?1.22f:1.13f)+heavy*.06f+domainView*.12f;fov_+=(goal-fov_)*(1-std::exp(-6*ctx.dt));
     // 7 度の素早い揺れを加え、0.4 秒以内に通常のカメラへ完全に戻す
-    ctx.camera->SetProjection(fov_+.12f*SlimePerfectPulse(ink.perfectAge),ctx.viewportSize.x/std::max(1.f,ctx.viewportSize.y),slimeLife_?LifeCameraNear:.1f,2000);
+    ctx.camera->SetProjection(fov_+.12f*SlimePerfectPulse(ink.perfectAge),ctx.viewportSize.x/std::max(1.f,ctx.viewportSize.y),
+        // 大きくなってカメラが引くほど、遠くまで描く (体が描く範囲の外へ出て消えないように)
+        slimeLife_?LifeCameraNear+ink.cameraPullback*.002f:.1f,slimeLife_?2000+4*ink.cameraPullback:2000.f);
     // 消火栓のときは揺れを止める
     ctx.camera->SetHandheld(aimingHydrant?0.f:.008f);
+    // 吸収モードで大きくなったら、影を落とす範囲も広げる
+    if(devour_)ctx.renderer->SetDirectionalShadowRange(460+1.5f*ink.cameraPullback,1800+3*ink.cameraPullback,.3f);
     ctx.camera->SetShakeStrength(aimingHydrant?0.f:shakeSetting_*.5f);
     // 近いほどプレイヤーを半透明にする
     p.cameraOpacity=std::clamp((Length(wanted-pos)-2.5f)/5.f,.2f,1.f);
@@ -356,6 +362,14 @@ void ChronoSystem::InkCamera(entt::registry& r,Player& p,GameContext& ctx){
         bool closeToCamera=Length(o.center-wanted)<Length(o.size)*.42f+2.f;
         o.opacity+=(((occludes||closeToCamera)?.03f:1.f)-o.opacity)*(1-std::exp(-20.f*ctx.dt));
     }
+    // 吸収モードの輪の町: カメラからプレイヤーの体までの間にある建物と、カメラが中に入った建物を透かす
+    // (体の上の方まで見通せるよう、線は体の中心と頭の 2 本を調べる)
+    if(devour_){V body=pos,head=focus;float bodyRadius=LifeRadii(life_.bodies[0],life_.recipe).x;
+        for(auto e:r.view<CameraOccluder>(entt::exclude<CreaturePart>)){auto& o=r.get<CameraOccluder>(e);
+            Chrono::Bounds box{o.center-o.size*.5f,o.center+o.size*.5f};float fraction;V normal;V pad{1,1,1};
+            bool inside=wanted.x>box.min.x-1&&wanted.x<box.max.x+1&&wanted.y>box.min.y-1&&wanted.y<box.max.y+1&&wanted.z>box.min.z-1&&wanted.z<box.max.z+1;
+            bool occludes=inside||(Chrono::Sweep(wanted,body-wanted,box,pad*(.3f+bodyRadius*.3f),fraction,normal)&&fraction<1)||(Chrono::Sweep(wanted,head-wanted,box,pad,fraction,normal)&&fraction<1);
+            o.opacity+=((occludes?.18f:1.f)-o.opacity)*(1-std::exp(-12.f*ctx.dt));}}
 }
 // ボス (鳥の形) の更新: 羽の弾・ダウン・集合・連射・扇状の羽・急降下・蛇への変形
 void ChronoSystem::UpdateInkBoss(entt::registry& r,Player& p,GameContext& context){

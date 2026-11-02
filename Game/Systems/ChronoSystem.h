@@ -12,12 +12,18 @@
 #include "../Chrono/SlimeHydrantRules.h"
 #include "../Chrono/SlimeSignalRules.h"
 #include "../Chrono/CityStageRules.h"
+#include "../Chrono/DevourRules.h"
+#include "../Chrono/RingCityRules.h"
+#include <functional>
 #include <map>
+#include <unordered_map>
 #include <vector>
 namespace Game {
+namespace CityParts {struct CityBuilder;}
 // シーン全体のまとめ役。キャラクターの残る状態はすべて ECS のコンポーネントにある
 class ChronoSystem final : public ISystem {
     friend class SlimeDevTools; // エディタ専用の開発ツール (Game/Editor/SlimeDevTools.cpp) から中を触れるようにする
+    friend class DevourAnimEditor; // 吸収アニメーションのエディタ (Game/Editor/DevourAnimEditor.cpp)
 public:
     // クリア後も更新を続けるシステムとして作る
     explicit ChronoSystem(GameScene* scene):ISystem(true),scene_(scene){}
@@ -32,7 +38,12 @@ public:
     bool SlimeLabOpen() const {return slimeLife_&&life_.lab&&!finished_;}
     // スライムの状態・敵・街の門・消火栓の狙いを外 (エディタやテスト) から読むための関数
     const Chrono::SlimeLife& LifeState()const {return life_;}
+    // 移動を街の通れる範囲に収めた位置 (テストで通れるかを確かめる)
+    Chrono::Vec MoveWithinCity(Chrono::Vec from,Chrono::Vec to,float radius)const {return ConstrainLifeMovement(from,to,radius);}
     const std::vector<Chrono::SwarmEnemy>& LifeEnemies()const {return swarm_;}
+    // 吸収モードか・制限時間と大きさの段階 (テストから読み書きする)
+    bool DevourMode()const {return devour_;}
+    Chrono::DevourClock& DevourClockState() {return devourClock_;}
     // 変形アイテムを初めて取ったときの見せ場 (カメラが正面へ寄り、周りの時間が止まる) の最中か
     bool MorphShowcaseActive()const {return showcase_.active;}
     // 手応えの設定 (ヒットストップ秒・揺れの秒・揺れの大きさ・揺れの速さ・振動の重い側・軽い側・振動の秒)
@@ -58,6 +69,33 @@ private:
     // インクのモード・スライムの生活モード・読み込み済みか
     bool inkMode_=true;
     bool slimeLife_=true,lifeLoaded_=false,slimePlayerDemo_=false;
+    // 吸収モード (DevourRules.h): 敵なしで、制限時間内に全身で飛びかかって物を飲み込み、街を飲み込む。
+    // 自動テスト (--slime-life-smoke) は従来の敵と戦う進行のまま。--slime-devour で吸収モードを強制する
+    bool devour_=false;
+    Chrono::DevourClock devourClock_{};
+    // 飛びかかり: 跳んだ位置・目標の小物 (無ければ -1)・覆えるか・覆う処理を済ませたか
+    struct DevourPounce {Chrono::Vec from{},to{};int target=-1;bool fits=true,covered=false,bounced=false;float seed=0;} devourPounce_;
+    // 体の中に見えたまま溶けていく物 (小物の見た目・体の中心からのずれ・経過時間・体に収める縮小)
+    struct DevourMeal {uint32_t visual=0xffffffffu;Chrono::Vec offset{},tint{};float age=0,fit=1,radius=1;bool orb=false;};
+    std::vector<DevourMeal> devourMeals_;
+    // 取り込むときに周りへ体の流体をばらまく (本体と同じ流体シミュレーションの粒子)。
+    // 飛んでいる範囲 (中心・半径・経過時間) は、流体を描く範囲に入れるために覚えておく
+    struct DevourSplashArea {Chrono::Vec at{};float radius=0,age=0;};
+    std::vector<DevourSplashArea> devourSplashes_;
+    // エディタでの確認: 0 以上なら、ゲームのスライムをその時間の飛びかかりの形にして見せる (動かない)。
+    // 距離は目標までの距離 (体の半径の何倍か)。エディタが毎フレーム hold を戻し、閉じれば止まる
+    float devourPreviewTime_=-1,devourPreviewDistance_=3;int devourPreviewHold_=0;bool devourWasPreview_=false;
+    void DevourSplash(Chrono::Vec at,float radius,int count,float strength);
+    // 路地の塀・バリケードを吸収の対象にした小物の番号 (塀は CityWalls の順)
+    std::vector<int> devourWallProps_;int devourBarricadeProp_=-1;
+    bool StartDevourPounce(Chrono::Player&,GameContext&);
+    void TickDevourPounce(entt::registry&,Chrono::Player&,GameContext&,float);
+    int DevourCapture(entt::registry&,Chrono::Vec landing,float& gained);
+    int DevourTouch(entt::registry&,Chrono::Vec from,float& gained);
+    float DevourEat(entt::registry&,size_t index);
+    void DevourShedBody(Chrono::Player&,GameContext&,float damage,Chrono::Vec source);
+    void DrawDevourMeals(GameContext&);
+    void DrawDevourUI(GameContext&);
     void BuildSlimePlayerDemo(entt::registry&);
     Chrono::Vec ConstrainLifeMovement(Chrono::Vec from,Chrono::Vec to,float radius)const;
     void UpdateSlimePlayerDemo(entt::registry&,Chrono::Player&,GameContext&);
@@ -129,13 +167,24 @@ private:
     // 街のステージ (CityStage.inl): 作った建物・CC0 の小物・門・役割ごとの敵
     // 街のモデル (メッシュ・テクスチャ・大きさ)
     struct CityModel {uint32_t mesh=0,texture=0;std::vector<uint32_t> extra;Chrono::Vec lo{},hi{};};
+    // 吸収モードの輪の町 (RingCity.cpp): 街のステージの道具 (小物を置く・材質・色の補正) を借りて作る
+    struct RingCityTools {
+        std::function<entt::entity(const std::string&,Chrono::Vec,float,float,float,float,Chrono::LifeMorphItem)> place;
+        std::function<const CityModel&(int)> surface;std::function<DirectX::XMFLOAT4(int)> tint;};
+    void BuildRingGround(CityParts::CityBuilder&);
+    void BuildRingCity(entt::registry&,const RingCityTools&);
+    // 建物の敷地と、敷地ごとの吸収の対象の番号 (life_.props の番号。建物は飲み込むまで通れない)
+    std::vector<Chrono::RingLot> ringLots_;std::vector<int> ringLotProps_;
+    // 建物の残りの部位と当たり判定 (飲み込んだら隠し、当たり判定は消す)。キーは life_.props の番号
+    std::unordered_map<size_t,std::vector<entt::entity>> devourBuildingParts_;
+    bool RingBlocked(size_t lot)const{int k=lot<ringLotProps_.size()?ringLotProps_[lot]:-1;return k<0||size_t(k)>=life_.props.size()||life_.props[size_t(k)].active;}
     // 街の小物の見た目
     struct CityPropVisual {uint32_t mesh=0,texture=0;std::vector<uint32_t> extra;Chrono::Vec scale{1,1,1},rotate{},center{};float height=1;std::string shader="EnvironmentSurface";};
     // 街の光る看板など (kind: 0 は光り続ける、1 は炎のように揺らぐ、2 は非常灯のように点滅する)
     struct CityGlow {Chrono::Vec center{},right{},up{},size{};Engine::Vector4 color{1,1,1,1};int kind=0;float phase=0;};
     std::vector<CityGlow> cityGlows_;
     // 街の小物 (触手で取り込める物)
-    struct CityPropSeed {entt::entity entity=entt::null;Chrono::Vec at{};float required=0,reward=0;Chrono::LifeMorphItem morphItem=Chrono::LifeMorphItem::None;};
+    struct CityPropSeed {entt::entity entity=entt::null;Chrono::Vec at{};float required=0,reward=0;Chrono::LifeMorphItem morphItem=Chrono::LifeMorphItem::None;float radius=1,fill=1,reach=0;};
     // バリケードや塀の部品 (材質: 0 木・1 鉄・2 ブロック・3 金属)・敵の弾・壊れた破片・踏みつけの衝撃
     struct CityPlank {Chrono::Vec at{},size{},rotate{};int material=0;};
     struct CityShot {Chrono::Vec at{},velocity{};float age=0;bool shell=false;Chrono::Vec target{};};
@@ -168,7 +217,7 @@ private:
     void SpawnCityStep(int);
     int CityStepAlive()const;
     void BreakCityGate(entt::registry&,bool barricade,bool absorbed);
-    void BreakCityWall(size_t);
+    void BreakCityWall(size_t,bool absorbed=false);
     void ResetCityHazards();
     void CityWeaponHits(entt::registry&,GameContext&,const Chrono::LifeBody&,int pulse,uint64_t hitKey);
     void UpdateCityStage(entt::registry&,Chrono::Player&,GameContext&,float);

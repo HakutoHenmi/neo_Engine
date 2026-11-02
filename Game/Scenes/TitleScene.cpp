@@ -140,6 +140,8 @@ void TitleScene::Update() {
             renderer_->SetCamera(camera_);
             return;
         }
+        // EXIT ボタン: ゲームを終了する
+        if(ui.Click(UI::TitleExit)){PostQuitMessage(0);return;}
         // 開始: Enter / START / BEGIN EXPEDITION ボタンで本編ステージへ直接移る
         bool start=UI::Pressed(DIK_RETURN)||UI::PadPressed(XINPUT_GAMEPAD_START)||UI::Canvas(renderer_).Click(UI::TitleStart);
         if(start){
@@ -184,6 +186,7 @@ void TitleScene::Draw() {
         // ボタンと操作の案内
         ui.Button(UI::TitleStart,UI::Str("title.start"),true);
         ui.Button(UI::CreditsButton,UI::Str("title.credits"));
+        ui.Button(UI::TitleExit,UI::Str("title.exit"));
         ui.Prompt("keyboard_enter",UI::Str("title.promptKey"),"xbox_button_a",UI::Str("title.promptPad"),338,594,28,17);
         // BGM のクレジット表記 (右下)
         const std::string& music=UI::Str("title.music");

@@ -189,6 +189,12 @@
     <ClCompile Include="Game\Systems\SlimeSignal.cpp">
       <Filter>3. Systems（システム）\スライム本編</Filter>
     </ClCompile>
+    <ClCompile Include="Game\Systems\SlimeDevour.cpp">
+      <Filter>3. Systems（システム）\スライム本編</Filter>
+    </ClCompile>
+    <ClCompile Include="Game\Systems\RingCity.cpp">
+      <Filter>3. Systems（システム）\スライム本編</Filter>
+    </ClCompile>
     <ClCompile Include="Game\Systems\SlimePlayerDemo.cpp">
       <Filter>3. Systems（システム）\スライム本編</Filter>
     </ClCompile>
@@ -280,6 +286,9 @@
       <Filter>8. Editor（エディタ）</Filter>
     </ClCompile>
     <ClCompile Include="Game\Editor\SlimeDevTools.cpp">
+      <Filter>8. Editor（エディタ）</Filter>
+    </ClCompile>
+    <ClCompile Include="Game\Editor\DevourAnimEditor.cpp">
       <Filter>8. Editor（エディタ）</Filter>
     </ClCompile>
   </ItemGroup>
@@ -459,6 +468,18 @@
       <Filter>4. Chrono（スライム本編のルール）</Filter>
     </ClInclude>
     <ClInclude Include="Game\Chrono\SlimeSignalRules.h">
+      <Filter>4. Chrono（スライム本編のルール）</Filter>
+    </ClInclude>
+    <ClInclude Include="Game\Chrono\DevourRules.h">
+      <Filter>4. Chrono（スライム本編のルール）</Filter>
+    </ClInclude>
+    <ClInclude Include="Game\Systems\CityBuilder.h">
+      <Filter>4. Chrono（スライム本編のルール）</Filter>
+    </ClInclude>
+    <ClInclude Include="Game\Chrono\RingCityRules.h">
+      <Filter>4. Chrono（スライム本編のルール）</Filter>
+    </ClInclude>
+    <ClInclude Include="Game\Chrono\DevourAnimation.h">
       <Filter>4. Chrono（スライム本編のルール）</Filter>
     </ClInclude>
     <ClInclude Include="Game\Chrono\SlimeLifeRules.h">

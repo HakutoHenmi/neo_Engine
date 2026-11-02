@@ -42,6 +42,8 @@ bool App::Initialize(HINSTANCE hInst, int cmdShow) {
 	sceneManager_.SetDX(&dx_);
 	if (!dx_.Initialize(hInst, cmdShow, hwnd_))
 		return false;
+	if (startFullscreen_ && !dx_.IsFullscreen())
+		dx_.ToggleFullscreen();
 
 	LogFile("Step 2: JobSystem::Initialize");
 	JobSystem::Initialize();

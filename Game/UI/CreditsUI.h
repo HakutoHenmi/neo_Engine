@@ -11,6 +11,8 @@
 namespace Game::UI {
 // ボタンの位置 (1280x720 の UI 座標)
 inline constexpr Rect CreditsButton{96,580,220,50};
+// タイトルの EXIT ボタン (CREDITS の下)
+inline constexpr Rect TitleExit{96,642,220,50};
 inline constexpr Rect CreditsBack{1012,600,200,50}, CreditsPrev{96,600,190,50}, CreditsNext{300,600,190,50};
 
 // クレジットの 1 ページ (見出しと、名前・詳細の行)

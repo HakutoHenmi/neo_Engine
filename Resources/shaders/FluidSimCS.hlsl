@@ -150,9 +150,14 @@ void Emit(uint3 DTid : SV_DispatchThreadID) {
                 float3 across=normalize(cross(along,abs(along.y)<.9f?float3(0,1,0):float3(1,0,0)));
                 float3 up=cross(along,across);
                 float axial=1-2*(localIndex+.5f)/emitCount,angle=localIndex*2.399963f;
-                float radius=sqrt(max(0,1-axial*axial))*.32f;
-                p.position=emitPos+along*(axial*.8f)+across*(cos(angle)*radius)+up*(sin(angle)*radius);
+                // pad6.y > 0 is the droplet size (a grown slime throws proportionally larger liquid).
+                float size=pad6.y>0?pad6.y:1;
+                float radius=sqrt(max(0,1-axial*axial))*.32f*size;
+                p.position=emitPos+along*(axial*.8f*size)+across*(cos(angle)*radius)+up*(sin(angle)*radius);
                 p.velocity=emitDir*5.0f;
+                // Sized droplets get a per-particle speed spread so a stream breaks
+                // up into separate drops instead of flying as one rigid capsule.
+                if(pad6.y>0)p.velocity+=float3(rx,ry*.6f,rz)*(length(emitDir)*5.0f*.24f);
             }
             p.type = emitType;
             
@@ -168,6 +173,8 @@ void Emit(uint3 DTid : SV_DispatchThreadID) {
             } else {
                 // 水飛沫の場合: タイマー初期化
                 p.pad = float3(pad6.x>0.5f ? -1.0f : 0.0f, 0, 0);
+                // Ballistic slime keeps its droplet size for reconstruction (0 = legacy fixed size).
+                if(emitType>=4.0f&&emitType<8.0f)p.pad.y=pad6.y;
                 // Airborne hydrant water stores its nozzle width until contact
                 // replaces this channel with the supporting surface height.
                 if(emitType>1.05f&&emitType<1.25f){
@@ -682,7 +689,13 @@ void CalcForce(uint3 DTid : SV_DispatchThreadID) {
         // Coherent independent ink volume, matching the authoritative ballistic path.
         pi.position+=pi.velocity*dt+float3(0,-9*dt*dt,0);
         pi.velocity.y-=18*dt;pi.pad.x+=dt;
-        if(pi.pad.x>=max(.02f,(pi.type-4)*10)){pi.color.a=0;pi.position.y=-1000;}
+        float life=max(.02f,(pi.type-4)*10);
+        // Sized slime droplets land: they stop on the morph ground, spread flat
+        // (pad.z marks the landed splat) and fade out shortly afterwards.
+        if(pi.pad.y>0&&pad8>.5f){float ground=MorphTargets[0].material.w+.12f*pi.pad.y;
+            if(pi.position.y<ground&&pi.velocity.y<0){pi.position.y=ground;pi.velocity=float3(pi.velocity.x*.15f,0,pi.velocity.z*.15f);
+                if(pi.pad.z<.5f){pi.pad.z=1;pi.pad.x=max(pi.pad.x,life-.18f);}}}
+        if(pi.pad.x>=life){pi.color.a=0;pi.position.y=-1000;}
         SolverOutput[i]=pi;return;
     }
     // The density pass already collected the same spiky gradients. Its sum

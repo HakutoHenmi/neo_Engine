@@ -19,7 +19,7 @@ void Renderer::InitFluidMorph(){
 }
 void Renderer::QueueMorphMeasure(){
     if(fluidMorphTargets_.size()!=kPlayerFluidParticles)return;
-    list_->SetPipelineState(psoMorphMeasure_.Get());list_->Dispatch(1,1,1);
+    list_->SetPipelineState(psoMorphMeasure_.Get());list_->Dispatch(UINT(kFluidMorphBodyCount),1,1);
     auto ready=CD3DX12_RESOURCE_BARRIER::UAV(fluidMorphScratch_.Get());list_->ResourceBarrier(1,&ready);
     auto copy=CD3DX12_RESOURCE_BARRIER::Transition(fluidMorphScratch_.Get(),D3D12_RESOURCE_STATE_UNORDERED_ACCESS,D3D12_RESOURCE_STATE_COPY_SOURCE);list_->ResourceBarrier(1,&copy);
     auto frame=window_->FrameIndex();list_->CopyBufferRegion(morphReadback_[frame].Get(),0,fluidMorphScratch_.Get(),16000*48,kFluidMorphBodyCount*48);

@@ -7,7 +7,9 @@ float MorphSpeedLimit(uint original,float type){
     float limit=type>=4.f?80.f:30.f;
     if(type>1.05f&&type<1.25f)limit=96.f;
     if(type<.5f&&pad8>.5f){MorphTarget t=MorphTargets[MorphData[8192+original].target];
-        if(t.shape.w<.5f&&t.reserved.w<-.5f)limit=max(limit,min(600.f,length(t.reserved.xyz)+60.f));}
+        if(t.shape.w<.5f&&t.reserved.w<-.5f)limit=max(limit,min(600.f,length(t.reserved.xyz)+60.f));
+        // A liquid body moving faster than the fixed limit (a grown slime) would be left behind.
+        if(t.shape.w>.5f)limit=max(limit,min(2000.f,length(t.motion.xyz)*1.4f+30.f*pow(275.f/max(t.density,1e-6f),1.f/3.f)));}
     return limit;
 }
 uint MorphSpread(uint n){n&=1023;n=(n|(n<<16))&0x030000ff;n=(n|(n<<8))&0x0300f00f;n=(n|(n<<4))&0x030c30c3;n=(n|(n<<2))&0x09249249;return n;}
@@ -51,12 +53,19 @@ void MorphAssign(uint3 id:SV_DispatchThreadID){uint i=id.x;if(i>=(uint)pad6.z)re
     if(pad6.x>.5f){MorphTarget t=MorphTargets[i];Particle p=Particles[e.source];p.position=MorphWorld(t.local,t);p.velocity=0;p.color=t.color;p.type=0;Particles[e.source]=p;e.start=t.local;e.previous=p.position;}
     MorphData[8192+e.source]=e;}
 // Must match Renderer::kFluidMorphBodyCount. Owner stays separate from the 30-bit spatial key.
-[numthreads(16,1,1)]
-void MorphMeasure(uint3 id:SV_DispatchThreadID){
-    uint owner=id.x;float sum=0,maximum=0,count=0;
-    for(uint i=0;i<(uint)pad6.z;++i){MorphEntry e=MorphData[8192+i];MorphTarget t=MorphTargets[e.target];if((uint)t.forward.y!=owner)continue;
+// One group per owner: 256 threads share the particles, then reduce in group memory
+groupshared float3 morphMeasureShared[256];
+[numthreads(256,1,1)]
+void MorphMeasure(uint3 group:SV_GroupID,uint index:SV_GroupIndex){
+    uint owner=group.x;float sum=0,maximum=0,count=0;
+    for(uint i=index;i<(uint)pad6.z;i+=256){MorphEntry e=MorphData[8192+i];MorphTarget t=MorphTargets[e.target];if((uint)t.forward.y!=owner)continue;
         float error=length(Particles[i].position-MorphWorld(t.local,t));sum+=error*error;maximum=max(maximum,error);count+=1;}
-    MorphEntry result=(MorphEntry)0;result.start=float3(count>0?sqrt(sum/count):1000,maximum,count);MorphData[16000+owner]=result;
+    morphMeasureShared[index]=float3(sum,maximum,count);GroupMemoryBarrierWithGroupSync();
+    for(uint width=128;width>0;width>>=1){
+        if(index<width){float3 a=morphMeasureShared[index],b=morphMeasureShared[index+width];morphMeasureShared[index]=float3(a.x+b.x,max(a.y,b.y),a.z+b.z);}
+        GroupMemoryBarrierWithGroupSync();}
+    if(index==0){float3 total=morphMeasureShared[0];MorphEntry result=(MorphEntry)0;
+        result.start=float3(total.z>0?sqrt(total.x/total.z):1000,total.y,total.z);MorphData[16000+owner]=result;}
 }
 float3 MorphIntegrate(uint original,float3 position,float3 velocity,float3 acceleration,float step){
     MorphEntry entry=MorphData[8192+original];MorphTarget t=MorphTargets[entry.target];

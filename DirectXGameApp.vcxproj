@@ -200,6 +200,8 @@ exit /b %ERRORLEVEL%</Command>
     <ClCompile Include="Game\Systems\SlimeShowcase.cpp" />
     <ClCompile Include="Game\Systems\SlimeIntro.cpp" />
     <ClCompile Include="Game\Systems\SlimeSignal.cpp" />
+    <ClCompile Include="Game\Systems\SlimeDevour.cpp" />
+    <ClCompile Include="Game\Systems\RingCity.cpp" />
     <ClCompile Include="Game\Systems\SlimePlayerDemo.cpp" />
     <ClCompile Include="Game\Systems\SlimeLife.cpp" />
     <ClCompile Include="Game\Systems\ChronoChainMode.cpp" />
@@ -231,6 +233,7 @@ exit /b %ERRORLEVEL%</Command>
     <ClCompile Include="Game\Editor\EditorViewport.cpp" />
     <ClCompile Include="Game\Editor\FluidSandbox.cpp" />
     <ClCompile Include="Game\Editor\SlimeDevTools.cpp" />
+    <ClCompile Include="Game\Editor\DevourAnimEditor.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Game\ObjectTypes.h" />
@@ -292,6 +295,10 @@ exit /b %ERRORLEVEL%</Command>
     <ClInclude Include="Game\Chrono\RogueliteRules.h" />
     <ClInclude Include="Game\Chrono\SlimeHydrantRules.h" />
     <ClInclude Include="Game\Chrono\SlimeSignalRules.h" />
+    <ClInclude Include="Game\Chrono\DevourRules.h" />
+    <ClInclude Include="Game\Systems\CityBuilder.h" />
+    <ClInclude Include="Game\Chrono\RingCityRules.h" />
+    <ClInclude Include="Game\Chrono\DevourAnimation.h" />
     <ClInclude Include="Game\Chrono\SlimeLifeRules.h" />
     <ClInclude Include="Game\Chrono\SlimeTentacleRules.h" />
     <ClInclude Include="Game\Chrono\SlimeWeaponRules.h" />

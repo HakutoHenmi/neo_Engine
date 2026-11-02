@@ -121,8 +121,8 @@ void SlimeDevTools::SetMass(GameScene* scene, float mass) {
 	auto* chrono = scene->GetChronoSystem();
 	auto& life = chrono->life_;
 	auto& body = life.bodies[0];
-	// 1 から最大までに収める
-	mass = std::clamp(mass, 1.0f, Chrono::LifeMaxMass);
+	// 1 から最大までに収める (吸収モードは上限が大きい)
+	mass = std::clamp(mass, 1.0f, chrono->devour_ ? Chrono::DevourMaxMass : Chrono::LifeMaxMass);
 	// 回帰テストと同じ手順: 質量・体力を揃え、成長量を記録してから形状の再構築を要求する
 	body.mass = body.health = body.maxHealth = mass;
 	life.absorbedMass = (std::max)(0.0f, mass - Chrono::LifeStartMass);
@@ -261,23 +261,25 @@ void SlimeDevTools::DrawSlime(GameScene* scene) {
 	auto* chrono = scene->GetChronoSystem();
 	auto& life = chrono->life_;
 	auto& body = life.bodies[0];
+	// 質量の上限 (吸収モードは大きい)
+	const float maxMass = chrono->devour_ ? Chrono::DevourMaxMass : Chrono::LifeMaxMass;
 	// 質量・形態・HP・子分・取り込み数の表示
-	ImGui::Text("質量 %.0f / %.0f (予約込み %.0f)   形態: %s", body.mass, Chrono::LifeMaxMass, life.ReservedMass(), ActionName(body.action));
+	ImGui::Text("質量 %.0f / %.0f (予約込み %.0f)   形態: %s", body.mass, maxMass, life.ReservedMass(), ActionName(body.action));
 	ImGui::Text("HP %.0f / %.0f   子分 %d / %d   取り込み数 %d", body.health, body.maxHealth, life.ChildCount(), life.ChildLimit(), life.absorbed);
 	// 成長の進み具合 (最大質量に対する割合)
-	const float progress = std::clamp(body.mass / Chrono::LifeMaxMass, 0.0f, 1.0f);
+	const float progress = std::clamp(body.mass / maxMass, 0.0f, 1.0f);
 	ImGui::ProgressBar(progress, ImVec2(-FLT_MIN, 0), "成長");
 
 	// 質量の入力と、設定ボタン
 	ImGui::SetNextItemWidth(200.0f);
-	ImGui::DragFloat("##Mass", &massInput_, 5.0f, 1.0f, Chrono::LifeMaxMass, "質量 %.0f");
+	ImGui::DragFloat("##Mass", &massInput_, 5.0f, 1.0f, maxMass, "質量 %.0f");
 	ImGui::SameLine();
 	if (ImGui::Button("質量を設定")) SetMass(scene, massInput_);
 	// 質量のプリセット (子分の上限が増える質量など)
 	// 表示名はゲームの規則の値から作る (名前と値がずれないように)
 	struct Preset { const char* name; float mass; };
 	const Preset presets[] = {{"開始", Chrono::LifeStartMass}, {"子分6", Chrono::LifeHammerMass}, {"中盤", Chrono::LifeSwordMass},
-		{"子分12", Chrono::LifePlaneMass}, {"門", Chrono::CityGateAbsorbMass()}, {"最大", Chrono::LifeMaxMass}};
+		{"子分12", Chrono::LifePlaneMass}, {"門", Chrono::CityGateAbsorbMass()}, {"最大", maxMass}};
 	// 3 個ずつ並べ、押したらその質量にする
 	for (size_t i = 0; i < std::size(presets); ++i) {
 		if (i % 3) ImGui::SameLine();

@@ -16,6 +16,7 @@
     "motto": "DRAW.   ENCIRCLE.   UNLEASH.",
     "start": "BEGIN EXPEDITION",
     "credits": "CREDITS",
+    "exit": "EXIT",
     "promptKey": "ENTER",
     "promptPad": "PRESS A",
     "music": "MUSIC  KEVIN MACLEOD (INCOMPETECH.COM)  CC BY 4.0"
@@ -77,7 +78,9 @@
     "dlssOn": "ON / QUALITY",
     "on": "ON",
     "off": "OFF",
+    "dlssOff": "OFF / DLAA",
     "dlssActive": "現在適用中：QUALITY",
+    "dlaaActive": "現在適用中：DLAA（ギザギザ軽減）",
     "dlssInactive": "現在適用中：OFF",
     "dlssFailed": "DLSS初期化失敗（ログを確認）",
     "dlssMissing": "DLSSライブラリが配置されていません",

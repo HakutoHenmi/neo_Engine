@@ -170,7 +170,10 @@ inline bool CityWalkable(Vec p,float margin,CityGates gates){
 }
 // 軸ごとに壁に沿って滑らせる。壁に触れたまま大きくなった体は今取れる
 // 最大の余裕を使うので、必ず滑って抜けられ、深く埋まることはない
-inline Vec CityConstrain(Vec from,Vec to,float margin,CityGates gates){
+// walkable(位置, 余裕) で歩けるかを決める。街の床以外 (吸収モードの輪の町) でも同じ滑り方を使う
+template<class Walkable>
+inline Vec CityConstrainWith(Vec from,Vec to,float margin,Walkable&& walkable){
+    auto CityWalkable=[&](Vec p,float m,int){return walkable(p,m);};const int gates=0;
     margin=std::clamp(margin,.5f,18.f);
     while(margin>.5f&&!CityWalkable(from,margin,gates))margin=std::max(.5f,margin*.85f);
     if(CityWalkable(to,margin,gates))return to;
@@ -197,6 +200,9 @@ inline Vec CityConstrain(Vec from,Vec to,float margin,CityGates gates){
         Vec away=from+n*length;away.y=to.y;
         if(best.x==from.x&&best.z==from.z&&Dot(n,step)>-.8f*length&&CityWalkable(away,margin,gates))return away;}
     return best;
+}
+inline Vec CityConstrain(Vec from,Vec to,float margin,CityGates gates){
+    return CityConstrainWith(from,to,margin,[&](Vec p,float m){return CityWalkable(p,m,gates);});
 }
 // 敵の能力 (city_stage.json の enemies)
 inline CityEnemyStats CityStats(CityEnemy kind){return CityData().stats[size_t(kind)];}
