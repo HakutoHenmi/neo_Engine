@@ -31,7 +31,9 @@ void ChronoSystem::BuildSlimePlayerDemo(entt::registry& r) {
 }
 ChronoSystem::V ChronoSystem::ConstrainLifeMovement(V from,V to,float radius)const {
     // 吸収モードの輪の町: 町の外と、まだ飲み込んでいない建物には入れない
-    if(devour_)return CityConstrainWith(from,to,radius,[&](V p,float margin){return RingWalkable(p,margin,ringLots_,[&](size_t i){return RingBlocked(i);});});
+    // 速く動いても閉じた輪の壁を飛び越えないよう、壁の所で止める
+    if(devour_)for(int z=1;z<RingStyleCount;++z)if(!ringOpen_[size_t(z)]){float wall=RingWallAt(z),a=RingDistance(from),b=RingDistance(to);if((a<wall)!=(b<wall))to=Lerp(from,to,(wall-a)/(b-a));}
+    if(devour_)return CityConstrainWith(from,to,radius,[&](V p,float margin){return !RingWallClosed(p,margin)&&RingWalkable(p,margin,ringLots_,[&](size_t i){return RingBlocked(i);});});
     if(!slimePlayerDemo_)return CityConstrain(from,to,radius,cityGates_);
     to.x=std::clamp(to.x,-69.f+radius,69.f-radius);
     to.z=std::clamp(to.z,-49.f+radius,109.f-radius);return to;

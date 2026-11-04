@@ -675,6 +675,7 @@ class SlimeLifeValidationScene final:public Game::GameScene {
     }
     // 吸収モード: 全身の飛びかかり・押し続けの連続・大きすぎて弾かれる・車と塀を丸のみ・段階で時間が増える・時間切れ
     int devourPhase_=0,devourPounces_=0,devourMaxCombo_=0,devourTarget_=-1;float devourClock_=0,devourMass_=0,devourLeft_=0,devourLastAge_=0,devourBaseY_=0,devourLift_=0;int devourAbsorbed_=0;
+    int devourLagStage_=-1;std::array<float,3> devourLag_{};float devourLagWorst_=0;
     int devourGrounded_=0,devourFrames_=0;Game::Chrono::DevourPick devourPrevPick_{},devourTracePick_{};bool devourTraced_=true;
     bool devourValid_=true,devourBounced_=false,devourWasPouncing_=false,devourFresh_=true;std::array<bool,5> devourImages_{};std::string devourNotes_;
     void UpdateDevour(){
@@ -717,7 +718,7 @@ class SlimeLifeValidationScene final:public Game::GameScene {
         // 1 回飛びかかる: 跳ぶ・覆う・満足の画像を撮り、飲み込んで大きくなったか
         // (カメラを横へ回してから跳び、包み込みの形を横から撮る)
         else if(devourPhase_==1){input.yaw=1.5708f;input.pitch=.12f;input.absorb=devourClock_>.8f&&devourClock_<.85f;
-            const wchar_t* images[]={L"tests/out/slime-life-devour-leap.png",L"tests/out/slime-life-devour-cover.png",L"tests/out/slime-life-devour-settle.png"};const float at[]={DevourWindup+.15f,DevourLandAt+.06f,DevourCoverEnd+.12f};
+            const wchar_t* images[]={L"tests/out/slime-life-devour-leap.png",L"tests/out/slime-life-devour-cover.png",L"tests/out/slime-life-devour-settle.png"};const float at[]={DevourWindup+DevourLeap*.6f,DevourLandAt+.03f,DevourCoverEnd+.12f};
             for(int i=0;i<3;++i)if(pouncing&&body.actionAge>=at[i]&&!devourImages_[size_t(i)]){Capture(images[i]);devourImages_[size_t(i)]=true;}
             if(devourClock_>1.9f){bool ok=devourTarget_>=0&&life.absorbed>devourAbsorbed_&&body.mass>devourMass_&&!life.props[size_t(devourTarget_)].active;devourValid_&=ok;devourNotes_+=" single="+std::to_string(ok);next();}}
         // 押し続けると、近くの物へ次々に飛びかかる
@@ -728,7 +729,17 @@ class SlimeLifeValidationScene final:public Game::GameScene {
         // 連打しても空へ上っていかない (何も無い所へ何度も飛びかかり、高さが変わらないか)
         else if(devourPhase_==20){if(devourFresh_){devourBaseY_=body.at.y;devourLift_=0;}
             input.absorb=(frames_/4)%2==0;devourLift_=std::max(devourLift_,body.at.y-devourBaseY_);
-            if(devourClock_>3){bool ok=devourLift_<1.5f;devourValid_&=ok;devourNotes_+=" mash_lift="+std::to_string(devourLift_);next();devourPhase_=3;}}
+            if(devourClock_>3){bool ok=devourLift_<1.5f;devourValid_&=ok;devourNotes_+=" mash_lift="+std::to_string(devourLift_);next();devourPhase_=26;}}
+        // 輪の壁は通れない。門をハンマーで砕くと壁が崩れて通れる
+        else if(devourPhase_==26){input.yaw=0;input.morphForm=1;const float wall=RingWallAt(1);
+            if(devourFresh_){setMass(300);devourTarget_=-1;float best=1e9f;for(size_t i=0;i<life.props.size();++i){const auto& prop=life.props[i];if(!prop.active||!prop.beacon||prop.sealed)continue;
+                    float d=std::abs(prop.at.x)+std::abs(prop.at.z-wall);if(d<best){best=d;devourTarget_=int(i);}}
+                devourValid_&=devourTarget_>=0;if(devourTarget_<0){next();devourPhase_=3;return;}
+                bool closed=chrono->MoveWithinCity({60,1,wall-20},{60,1,wall+20},1).z<wall;devourValid_&=closed;devourNotes_+=" wall_closed="+std::to_string(closed);
+                placeBefore(life.props[size_t(devourTarget_)].at,6*LifeScale(body.mass));}
+            input.morphNow=devourClock_<.05f;input.attack=devourClock_>.5f;
+            if(devourClock_>2.5f){bool ok=!life.props[size_t(devourTarget_)].active&&chrono->MoveWithinCity({60,1,wall-20},{60,1,wall+20},1).z>wall;devourValid_&=ok;devourNotes_+=" gate_open="+std::to_string(ok);
+                Capture(L"tests/out/slime-life-devour-gate.png");chrono->DevourOpenAllRings();next();devourPhase_=3;}}
         // 大きすぎる車には弾かれる
         else if(devourPhase_==3){if(devourFresh_){setMass(300);devourTarget_=nearest(3000,false,10);devourValid_&=devourTarget_>=0;if(devourTarget_<0){next();return;}
                 placeBefore(life.props[size_t(devourTarget_)].at,16);
@@ -767,7 +778,26 @@ class SlimeLifeValidationScene final:public Game::GameScene {
                 float faded=1;for(auto e:GetComponents().view<CameraOccluder>())faded=std::min(faded,GetComponents().get<CameraOccluder>(e).opacity);
                 bool ok=distance>12&&faded<.5f;devourValid_&=ok;
                 devourNotes_+=" see_through="+std::to_string(ok)+" cam_dist="+std::to_string(int(distance))+" faded="+std::to_string(faded);
-                Capture(L"tests/out/slime-life-devour-seethrough.png");next();devourPhase_=6;}}
+                Capture(L"tests/out/slime-life-devour-seethrough.png");next();devourPhase_=23;}}
+        // ハンマー: 大きすぎる建物を叩くと砕けて、飲める欠片が散らばる
+        else if(devourPhase_==23){input.yaw=0;input.morphForm=1;
+            if(devourFresh_){devourTarget_=-1;float best=1e9f;
+                for(size_t i=0;i<life.props.size();++i){const auto& prop=life.props[i];if(!prop.active||prop.reach<10||prop.radius>40)continue;
+                    float d=LifeDistance(prop.at,body.at);if(d<best){best=d;devourTarget_=int(i);}}
+                devourValid_&=devourTarget_>=0;if(devourTarget_<0){next();devourPhase_=24;return;}
+                const auto& house=life.props[size_t(devourTarget_)];setMass(DevourMassToShatter(house.radius)*1.1f);placeBefore(house.at,house.reach+2*LifeScale(body.mass));devourAbsorbed_=int(life.props.size());}
+            input.morphNow=devourClock_<.05f;input.attack=devourClock_>.5f;
+            if(devourClock_>2.5f){const auto& house=life.props[size_t(devourTarget_)];bool ok=!house.active&&int(life.props.size())==devourAbsorbed_+DevourShardCount&&DevourCanCover(body.mass,life.props.back().radius);
+                devourValid_&=ok;devourNotes_+=" hammer_shatter="+std::to_string(ok);Capture(L"tests/out/slime-life-devour-shatter.png");next();devourPhase_=24;}}
+        // タイヤ: 転がるだけで、普段は沈まない大きさの物を通り道で吸い込む
+        else if(devourPhase_==24){input.yaw=0;input.morphForm=2;
+            if(devourFresh_){setMass(3000);body.tireUnlocked=true;devourTarget_=-1;float best=1e9f,r=DevourBodyRadius(body.mass);
+                for(size_t i=0;i<life.props.size();++i){const auto& prop=life.props[i];if(!prop.active||prop.reach>0||prop.visual==0xffffffffu||DevourSinks(body.mass,prop.radius)||!DevourSinks(body.mass,prop.radius,DevourTireSinkRatio))continue;
+                    float d=LifeDistance(prop.at,body.at);if(d<best&&prop.radius<r){best=d;devourTarget_=int(i);}}
+                devourValid_&=devourTarget_>=0;if(devourTarget_<0){next();devourPhase_=6;return;}
+                placeBefore(life.props[size_t(devourTarget_)].at,4*LifeScale(body.mass));}
+            input.morphNow=devourClock_<.05f;input.move={0,0,devourClock_>.5f?1.f:0.f};
+            if(devourClock_>3){bool ok=!life.props[size_t(devourTarget_)].active;devourValid_&=ok;devourNotes_+=" tire_sink="+std::to_string(ok);next();devourPhase_=6;}}
         // 大きくなっても遠くまで見え、動いても体が見える (撮った画面で確かめる)
         else if(devourPhase_==22){input.yaw=.7f;
             if(devourFresh_){setMass(1.2e6f);Vec at{0,1.25f,0};body.at=at;controller.velocity={};auto& t=GetComponents().get<TransformComponent>(player);t.translate={at.x,at.y,at.z};}
@@ -775,15 +805,27 @@ class SlimeLifeValidationScene final:public Game::GameScene {
             if(devourClock_>2.5f&&devourNotes_.find("big_still")==std::string::npos){Capture(L"tests/out/slime-life-devour-big-still.png");devourNotes_+=" big_still";}
             if(devourClock_>5.5f){Capture(L"tests/out/slime-life-devour-big-moving.png");
                 auto camera=GetCamera().Position();devourNotes_+=" big_cam="+std::to_string(int(LifeDistance({camera.x,camera.y,camera.z},body.at)))+" big_at="+std::to_string(int(body.at.x))+","+std::to_string(int(body.at.z));
-                next();devourPhase_=7;}}
+                next();devourPhase_=25;}}
+        // 大きくなっても液体の体が中心から置いていかれない: 歩く・飛びかかる・タイヤの突進で、粒子の重心のずれを体の半径で測る
+        else if(devourPhase_==25){constexpr float masses[]={8000,120000,1.2e6f};input.yaw=.7f;
+            int stage=std::min(2,int(devourClock_/9));float t=devourClock_-float(stage)*9;
+            if(stage!=devourLagStage_){if(devourLagStage_>=0)devourNotes_+=" lag"+std::to_string(int(masses[devourLagStage_]))+"="+std::to_string(devourLag_[0])+"/"+std::to_string(devourLag_[1])+"/"+std::to_string(devourLag_[2]);
+                devourLagStage_=stage;devourLag_={};setMass(masses[stage]);body.tireUnlocked=true;Vec at{0,1.25f,0};body.at=at;controller.velocity={};auto& tr=GetComponents().get<TransformComponent>(player);tr.translate={at.x,at.y,at.z};}
+            input.move={0,0,1};input.morphForm=2;input.absorb=t>2.5f&&t<5.5f;input.morphNow=t>6&&t<6.05f;input.attack=t>6.8f&&t<7.8f;
+            const auto& snapshot=GetRenderer()->GetFluidBodySnapshot();
+            if(t>.6f&&!snapshot.offsets.empty()){Vec mean{};for(auto o:snapshot.offsets){mean.x+=o.x;mean.z+=o.z;}mean=mean*(1.f/float(snapshot.offsets.size()));
+                float lag=std::sqrt(mean.x*mean.x+mean.z*mean.z)/DevourBodyRadius(body.mass);auto& slot=devourLag_[t<2.5f?0:t<6?1:2];slot=std::max(slot,lag);devourLagWorst_=std::max(devourLagWorst_,lag);}
+            if(devourClock_>27){devourNotes_+=" lag"+std::to_string(int(masses[2]))+"="+std::to_string(devourLag_[0])+"/"+std::to_string(devourLag_[1])+"/"+std::to_string(devourLag_[2]);
+                devourValid_&=devourLagWorst_<1;setMass(masses[0]);next();devourPhase_=7;}}
         // 時間は減り、段階が上がると増える
         else if(devourPhase_==6){if(devourFresh_)devourLeft_=clock.left;
             if(devourClock_>1&&devourNotes_.find("ticking")==std::string::npos){bool ticking=clock.left<devourLeft_-.8f&&clock.left>devourLeft_-1.3f;int tier=clock.tier;devourLeft_=clock.left;
                 setMass(DevourTiers[size_t(std::min(DevourFinalTier-1,tier+1))].mass+1);devourNotes_+=" ticking="+std::to_string(ticking);devourValid_&=ticking;devourMass_=float(tier);}
             if(devourClock_>1.4f){bool ok=clock.tier==int(devourMass_)+1&&clock.left>devourLeft_+DevourTierBonus-1;devourValid_&=ok;devourNotes_+=" tier_bonus="+std::to_string(ok);next();devourPhase_=22;}}
-        // 時間切れで終わり、結果を出す
-        else if(devourPhase_==7){if(devourFresh_)clock.left=.05f;
-            if(devourClock_>1.2f){bool ok=chrono->Finished();devourValid_&=ok;Capture(L"tests/out/slime-life-devour-timeup.png");devourNotes_+=" timeup="+std::to_string(ok);next();}}
+        // 最後の段階に届いても終わらず、時間切れで終わって結果を出す
+        else if(devourPhase_==7){if(devourFresh_)setMass(DevourTiers[size_t(DevourFinalTier)].mass+1);
+            if(devourClock_>.3f&&devourNotes_.find("keeps_going")==std::string::npos){bool ok=clock.tier==DevourFinalTier&&!chrono->Finished();devourValid_&=ok;devourNotes_+=" keeps_going="+std::to_string(ok);clock.left=.05f;}
+            if(devourClock_>1.5f){bool ok=chrono->Finished();devourValid_&=ok;Capture(L"tests/out/slime-life-devour-timeup.png");devourNotes_+=" timeup="+std::to_string(ok);next();}}
         else if(devourPhase_==8){std::ofstream report("tests/out/slime-life-devour.txt");
             report<<(devourValid_?"PASS":"FAIL")<<devourNotes_<<" mass="<<body.mass<<" absorbed="<<life.absorbed<<" left="<<clock.left<<'\n';report.flush();PostQuitMessage(devourValid_?0:2);return;}
         Game::GameScene::Update();++frames_;if(devourPhase_==phaseAtStart){devourFresh_=false;devourClock_+=std::max(life.age-before,1.f/120);}

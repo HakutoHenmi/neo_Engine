@@ -534,6 +534,10 @@ public:
     }
     // 結果画面 (成功/失敗の見出し・クリアタイム・リトライとステージ選択のボタン)
     void Result(bool won,const std::string& time,const std::string& detail) {
+        Result(won,Str(won?"result.winHeading":"result.loseHeading"),Str(won?"result.winMessage":"result.loseMessage"),Str("result.clearTime"),time,detail);
+    }
+    // 見出し・ひとこと・記録の名前を指定する結果画面
+    void Result(bool won,const std::string& heading,const std::string& message,const std::string& label,const std::string& value,const std::string& detail) {
         Background(Str("result.section").c_str());
         // 成功はライム色、失敗は金色
         const auto accent=won?Lime:Gold;const float t=Seconds();
@@ -542,12 +546,12 @@ public:
         SlimeMark(1010,330,92+3*std::sin(t*2));
         // 見出し (筆の塗りの上)
         Brush({52,150,820,140},WithAlpha(accent,.92f),-.025f);
-        Text(Str(won?"result.winHeading":"result.loseHeading"),96,184,70,Ink);
+        Text(heading,96,184,70,Ink);
         // ひとこと
-        Text(Str(won?"result.winMessage":"result.loseMessage"),100,300,26,Paper,JapaneseFont);
-        // クリアタイムと詳細
-        Label(Str("result.clearTime"),102,358,13,WithAlpha(accent,.9f));
-        Text(time,98,374,58,Paper);
+        Text(message,100,300,26,Paper,JapaneseFont);
+        // 記録と詳細
+        Label(label,102,358,13,WithAlpha(accent,.9f));
+        Text(value,98,374,58,Paper);
         Text(detail,102,446,20,Muted);
         // ボタンと操作の案内
         const std::string& retry=Str("result.retry");const std::string& stageSelect=Str("result.stageSelect");

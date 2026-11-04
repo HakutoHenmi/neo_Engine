@@ -2,6 +2,7 @@
 #include "../Game/Chrono/SlimeHydrantRules.h"
 #include "../Game/Chrono/SlimeSignalRules.h"
 #include "../Game/Chrono/CityStageRules.h"
+#include "../Game/Chrono/RingCityRules.h"
 #include "../Game/Chrono/SlimeTentacleRules.h"
 #include "../Game/Chrono/DevourAnimation.h"
 #include "../Engine/FluidMorphShape.h"
@@ -354,10 +355,19 @@ void TestDevour(){
     CheckLife(DevourCanCover(LifeStartMass,1.7f)&&!DevourCanCover(LifeStartMass,13),"start body cover limit is wrong");
     CheckLife(DevourCanCover(DevourMassToCover(13)+1,13)&&!DevourCanCover(DevourMassToCover(13)*.9f,13),"mass needed to cover disagrees with the cover rule");
     // 沈む物は覆える物より小さい
-    for(float mass:{100.f,1000.f,50000.f})CheckLife(DevourSinks(mass,DevourBodyRadius(mass)*.29f)&&!DevourSinks(mass,DevourBodyRadius(mass)*.31f)&&DevourCanCover(mass,DevourBodyRadius(mass)*.31f),"sink size is not below the cover size");
+    for(float mass:{100.f,1000.f,50000.f})CheckLife(DevourSinks(mass,DevourBodyRadius(mass)*.19f)&&!DevourSinks(mass,DevourBodyRadius(mass)*.21f)&&DevourCanCover(mass,DevourBodyRadius(mass)*.21f),"sink size is not below the cover size");
     // 大きい物ほど増える。覆える一番大きな物でも、体が一度に倍にはならない
     CheckLife(DevourReward(13)>DevourReward(1.7f)*50,"growth does not scale with object size");
-    for(float mass:{100.f,4000.f,120000.f}){float largest=DevourBodyRadius(mass)*DevourCoverRatio;CheckLife(DevourReward(largest)<mass*.5f&&DevourReward(largest)>mass*.05f,"one bite grows too much or too little");}
+    for(float mass:{100.f,4000.f,120000.f}){float largest=DevourBodyRadius(mass)*DevourCoverRatio;CheckLife(DevourReward(largest)<mass*.08f&&DevourReward(largest)>mass*.02f,"one bite grows too much or too little");}
+    // 町: 門の大きさが輪の段階に合い、大通りと広場には建物が無く、輪の壁の内側に門がある
+    {const auto& zones=RingZones();const float gates[]={500,15000,120000,450000};
+        for(size_t z=1;z<zones.size();++z)CheckLife(std::abs(DevourMassToCover(zones[z].gateRadius)/gates[z-1]-1)<.02f,"ring gate size does not match its mass");
+        auto lots=RingLots();auto plazas=RingPlazas();int doors=0;
+        for(const auto& lot:lots){if(lot.gate){++doors;CheckLife(std::abs(RingLotRadius(lot)-zones[size_t(lot.gate)].gateRadius)<.01f,"gate radius is wrong");continue;}
+            CheckLife(lot.foot.x0>0||lot.foot.x1<0,"building on the north-south avenue");CheckLife(lot.foot.z0>0||lot.foot.z1<0,"building on the east-west avenue");
+            for(const auto& plaza:plazas)CheckLife(LifeDistance(lot.foot.Center(),plaza.at)>plaza.radius*.9f,"building in a plaza");}
+        CheckLife(doors==4*(RingStyleCount-1)&&plazas.size()==32,"ring gates or plazas are missing");
+        CheckLife(lots.size()<1000,"too many buildings");}
     // 段階は量の順。段階が上がるたびに時間が増え、同じ段階では増えない
     for(size_t i=1;i<DevourTiers.size();++i)CheckLife(DevourTiers[i].mass>DevourTiers[i-1].mass,"tiers are not ordered");
     DevourClock clock;clock.left=10;CheckLife(DevourAdvance(clock,LifeStartMass)==0&&clock.left==10,"start mass advanced a tier");
@@ -366,6 +376,25 @@ void TestDevour(){
     CheckLife(DevourTierAt(DevourMaxMass)==DevourFinalTier,"max mass does not reach the final tier");
     // 成長と剥がれは上限と開始の大きさを守る
     LifeBody body;body.mass=body.health=body.maxHealth=DevourMaxMass-10;CheckLife(DevourGrow(body,50)==10&&body.mass==DevourMaxMass,"growth exceeds the devour cap");
+    // 飲み込んだ量は少しずつ体へ移り、フレームの速さによらず同じ時間で全部移る
+    {float pending=0;CheckLife(DevourSwallow(DevourMaxMass-10,pending,6)==6&&DevourSwallow(DevourMaxMass-10,pending,6)==4&&pending==10,"swallowing ignores the devour cap");
+        for(int hz:{30,60,120}){LifeBody eater;eater.mass=eater.health=eater.maxHealth=1000;float left=0;DevourSwallow(eater.mass,left,160);
+            for(int frame=0;frame<hz/10;++frame)DevourDigest(eater,left,1.f/float(hz));
+            CheckLife(eater.mass>1000+160*.35f&&eater.mass<1000+160*.65f,"digesting is instant or depends on the frame rate");
+            for(int frame=0;frame<hz;++frame)DevourDigest(eater,left,1.f/float(hz));
+            CheckLife(left==0&&std::abs(eater.mass-1160)<.01f&&eater.health==eater.mass,"digesting loses mass or never ends");}}
+    // タイヤは普段より大きい物まで沈め、覆える物より大きい物は沈めない
+    for(float mass:{100.f,5000.f}){float r=DevourBodyRadius(mass);CheckLife(!DevourSinks(mass,r*.5f)&&DevourSinks(mass,r*.5f,DevourTireSinkRatio)&&!DevourSinks(mass,r*.6f,DevourTireSinkRatio)&&DevourSinks(mass,r*.65f,DevourTireDashSinkRatio)&&DevourTireDashSinkRatio<DevourCoverRatio,"tire sink size is wrong");}
+    // タイヤの速さは大きさの倍率に合わせて上がる
+    {SlimeRecipe recipe;LifeBody tire;tire.mass=5000;CheckLife(std::abs(LifeTireDashSpeed(tire,recipe,1,3)-3*LifeTireDashSpeed(tire,recipe,1))<.01f,"tire speed ignores the devour scale");}
+    // 砕けるのは覆えない物のうち 1.5 倍までで、必要な量で砕ける。欠片は覆える大きさで、量は元より少ない
+    for(float mass:{200.f,20000.f}){float r=DevourBodyRadius(mass)*DevourCoverRatio;CheckLife(!DevourCanShatter(mass,r*.9f)&&DevourCanShatter(mass,r*1.4f)&&!DevourCanShatter(mass,r*1.6f),"shatter size is wrong");
+        CheckLife(DevourCanShatter(DevourMassToShatter(r*1.4f)*1.01f,r*1.4f)&&!DevourCanShatter(DevourMassToShatter(r*1.4f)*.9f,r*1.4f),"mass to shatter is wrong");
+        CheckLife(DevourCanCover(mass,r*1.5f*.35f)&&DevourShardShare<1,"shards cannot be eaten or are worth too much");}
+    CheckLife(std::abs(DevourSizeMeters(LifeStartMass)-1)<.001f&&DevourSizeMeters(4*LifeStartMass)>DevourSizeMeters(LifeStartMass),"size in meters is wrong");
+    // 飲み込みの重さは数か増えた割合で上がり、つぶれは重いほど大きく、揺れて収まる
+    CheckLife(DevourGulpWeight(1,1,1000)==.2f&&DevourGulpWeight(5,1,1000)==1&&DevourGulpWeight(1,160,1000)==1,"gulp weight ignores the count or the share");
+    CheckLife(DevourSquash(.07f,1)>DevourSquash(.07f,.2f)&&DevourSquash(.07f,1)<.4f&&DevourSquash(0,1)==0&&DevourSquash(.3f,1)<0&&DevourSquash(.7f,1)==0,"squash does not hit, rebound and settle");
     CheckLife(DevourShed(LifeStartMass,20)==0&&DevourShed(1000,10)>10&&1000-DevourShed(1000,5000)==LifeStartMass,"shedding shrinks below the start size");
     // 目標: 正面の覆える物を選び、後ろは無視し、覆えない物しか無ければ弾かれる目標にする
     std::vector<LifeCollectible> props(3);
@@ -387,36 +416,64 @@ void TestDevour(){
         std::vector<Vec> rest;for(uint32_t i=1;rest.size()<600;++i){Vec p{(Engine::FluidShape::Halton(i,2)*2-1)*2.55f,Engine::FluidShape::Halton(i,3)*1.8f,(Engine::FluidShape::Halton(i,5)*2-1)*2.55f};
             if(p.x*p.x/6.5025f+p.y*p.y/3.24f+p.z*p.z/6.5025f<=1)rest.push_back(p);}
         auto rank=DevourRanks(rest);std::vector<Vec> pose;
-        for(float t:{0.f,DevourLandAt,DevourCoverEnd}){DevourPose(anim,t,rest,rank,pose);auto blobs=DevourSampleBlobs(anim,t);
+        // 全部の点がどれかの塊の中に入る (アメーバは仮足・波・傾きの分の箱の中)
+        // (後ろの粒子は少し前の時間の形へ寄るので、今と少し前の両方の塊で確かめる)
+        for(float t:{0.f,DevourWindup+DevourLeap*.5f,DevourLandAt,DevourCoverEnd}){DevourPose(anim,t,rest,rank,pose);auto blobs=DevourSampleBlobs(anim,t);
+            auto late=DevourSampleBlobs(anim,std::max(0.f,t-DevourFollowLag));
+            for(size_t i=0;i<late.size();++i)if(late[i].kind==DevourBlobKind::Gulp&&blobs[i].kind==DevourBlobKind::Gulp)blobs.push_back(late[i]);
             for(const auto& p:pose){bool inside=p.y<=.031f;
+                // 大口は今と少し前の箱を合わせた範囲 (2 つの間の位置もとる)
+                for(size_t i=0;i<late.size();++i)if(late[i].kind==DevourBlobKind::Gulp&&blobs[i].kind==DevourBlobKind::Gulp){
+                    auto box=[](const DevourBlob& b,Vec& lo,Vec& hi){float g=(1+DevourGulpFlare)*(1+b.wave)*(1+.8f*b.wave);
+                        lo={b.at.x-b.size.x*(g+b.twist),b.at.y-b.size.y*g,b.at.z-b.size.z};hi={b.at.x+b.size.x*(g+b.twist),b.at.y+b.size.y*g,b.at.z+b.size.z*1.35f};};
+                    Vec lo0,hi0,lo1,hi1;box(blobs[i],lo0,hi0);box(late[i],lo1,hi1);
+                    inside|=p.x>=std::min(lo0.x,lo1.x)-.01f&&p.x<=std::max(hi0.x,hi1.x)+.01f&&p.y>=std::min(lo0.y,lo1.y)-.01f&&p.y<=std::max(hi0.y,hi1.y)+.01f&&p.z>=std::min(lo0.z,lo1.z)-.01f&&p.z<=std::max(hi0.z,hi1.z)+.01f;}
                 for(const auto& b:blobs){Vec d=p-b.at;
                     if(b.kind==DevourBlobKind::Lump){d={d.x/b.size.x,d.y/b.size.y,d.z/b.size.z};inside|=Length(d)<=1.01f;}
-                    // しずく形は尾の揺れの分だけ横に広い箱の中
                     else if(b.kind==DevourBlobKind::Tail)inside|=std::abs(d.x)<=b.size.x+2*b.wave+.01f&&std::abs(d.y)<=b.size.y+.01f&&std::abs(d.z)<=b.size.z+.01f;
-                    // 口は縁の大きさ・触手・巻き込み・波の分の箱の中
+                    else if(b.kind==DevourBlobKind::Gulp)inside|=std::abs(d.x)<=b.size.x*((1+DevourGulpFlare)*(1+b.wave)*(1+.8f*b.wave)+b.twist)+.01f&&std::abs(d.y)<=b.size.y*(1+DevourGulpFlare)*(1+b.wave)*(1+.8f*b.wave)+.01f&&d.z>=-b.size.z-.01f&&d.z<=b.size.z*1.35f+.01f;
+                    else if(b.kind==DevourBlobKind::Amoeba){float r=(1+1.25f*b.reach)*(1+b.wave)+.01f;
+                        inside|=std::abs(d.x)<=b.size.x*r&&std::abs(d.y)<=b.size.y+.01f&&std::abs(d.z)<=b.size.z*(r+.5f*b.curl);}
                     else inside|=std::abs(d.x)<=b.size.x*(1+.5f*b.reach+b.wave*2)+.01f&&std::abs(d.y)<=b.size.y*(1+.5f*b.reach+b.wave*2)+.01f&&d.z>=-b.size.z-b.wave-.01f&&d.z<=b.size.z*1.25f+b.reach+b.wave+.01f;}
                 CheckLife(inside,"devour particle is outside every blob");}}
-        // 口: 飛びついた瞬間は口が開いて中が空いている。触手の先は縁より前へ伸び、覆い終えると縁が内側へ巻き込む
-        {auto blobs=DevourSampleBlobs(anim,DevourLandAt);auto start=DevourBlobStarts(blobs);const auto& m=blobs[1];
-            CheckLife(m.kind==DevourBlobKind::Mouth,"default animation has no mouth");
-            float hole=1e9f,tipZ=-1e9f;
-            for(size_t i=0;i<rest.size();++i){if(DevourBlobOf(rank[i],start)!=1)continue;Vec p=DevourBlobPoint(rest[i],rank[i],blobs,start,DevourLandAt)-m.at;
-                if(p.z>m.size.z*.6f)hole=std::min(hole,std::sqrt(p.x*p.x/(m.size.x*m.size.x)+p.y*p.y/(m.size.y*m.size.y)));tipZ=std::max(tipZ,p.z);}
-            CheckLife(hole>.3f,"mouth is not open at landing");
-            CheckLife(tipZ>m.size.z+m.reach*.5f,"tentacle lips do not reach forward");
-            auto rim=[&](float t){auto bs=DevourSampleBlobs(anim,t);auto st=DevourBlobStarts(bs);float sum=0;int n=0;
-                for(size_t i=0;i<rest.size();++i){if(DevourBlobOf(rank[i],st)!=1||rank[i]<st[1]+(1-st[1])*.85f)continue;Vec p=DevourBlobPoint(rest[i],rank[i],bs,st,t)-bs[1].at;
-                    sum+=std::sqrt(p.x*p.x/(bs[1].size.x*bs[1].size.x)+p.y*p.y/(bs[1].size.y*bs[1].size.y));++n;}
-                return n?sum/float(n):0.f;};
-            CheckLife(rim(DevourCoverEnd)<rim(DevourLandAt)*.75f,"mouth lips do not curl in to wrap");}
-        // 飛びついた瞬間の胴体は後ろへ細く伸びる (後ろに四角い塊が残らない): 後ろ 2 割の太さは前の半分より細い
-        {auto blobs=DevourSampleBlobs(anim,DevourLandAt);auto start=DevourBlobStarts(blobs);const auto& torso=blobs[0];float back=0,front=0;
-            CheckLife(torso.kind==DevourBlobKind::Tail,"default torso is not a teardrop");
-            for(size_t i=0;i<rest.size();++i){if(DevourBlobOf(rank[i],start)!=0)continue;Vec p=DevourBlobPoint(rest[i],rank[i],blobs,start,DevourLandAt)-torso.at;
-                float u=(p.z/torso.size.z+1)*.5f,w=std::abs(p.y);if(u<.2f)back=std::max(back,w);else if(u>.4f&&u<.8f)front=std::max(front,w);}
-            CheckLife(back<front*.6f,"torso leaves a blunt lump behind");
-            CheckLife(std::abs(DevourTail(0).volume-1)<.02f,"untapered teardrop is not an ellipsoid volume");}
-        // 最後は胴体ごと飲み込んで普段の体に戻る (全部の粒子が胴体の塊へ)
+        // 体はちぎれない: どの時間でも、各点のいちばん近い点までの距離が普段の体の 2.5 倍を超えない (離れた粒が無い)
+        {auto gap=[&](const std::vector<Vec>& points){float worst=0;
+                for(size_t i=0;i<points.size();++i){float nearest=1e9f;for(size_t j=0;j<points.size();++j)if(i!=j)nearest=std::min(nearest,Length(points[i]-points[j]));worst=std::max(worst,nearest);}
+                return worst;};
+            DevourPose(anim,0,rest,rank,pose);float base=gap(pose);
+            for(float t=0;t<=DevourPounceTime;t+=DevourPounceTime/12){DevourPose(anim,t,rest,rank,pose);CheckLife(gap(pose)<base*2.5f,"devour body tears apart");}}
+        // 口: 飛び込んだ時は体と同じくらい大きく開いて中が空き (前の方の点は軸から離れる)、後ろは尾のように細い。
+        // 包み終えると唇が巻き込んで口が小さくなる
+        {auto mouth=[&](float t,float& hole,float& rim,float& tail){DevourPose(anim,t,rest,rank,pose);auto blobs=DevourSampleBlobs(anim,t);const auto& b=blobs[0];
+                hole=1e9f;rim=0;tail=0;
+                for(const auto& p:pose){Vec d=p-b.at;float u=(d.z/b.size.z+1)*.5f,r=std::sqrt(d.x*d.x/(b.size.x*b.size.x)+d.y*d.y/(b.size.y*b.size.y));
+                    if(u>.85f&&p.y>.05f){hole=std::min(hole,r);rim=std::max(rim,r);}if(u<.15f)tail=std::max(tail,std::abs(d.x)/b.size.x);}};
+            float hole,rim,tail;mouth(DevourLandAt,hole,rim,tail);
+            CheckLife(anim.keys.size()>2&&DevourSampleBlobs(anim,DevourLandAt)[0].kind==DevourBlobKind::Gulp,"default animation has no gaping mouth");
+            CheckLife(hole>.35f,"mouth is not open at landing");CheckLife(rim>.9f&&tail<rim*.55f,"body does not flow back from a wide mouth");
+            float closedHole,closedRim,closedTail;mouth(DevourCoverEnd,closedHole,closedRim,closedTail);(void)closedHole;(void)closedTail;
+            CheckLife(closedRim<rim*.8f,"mouth lips do not curl in to close");
+            // 口の周りだけ形を保ち、胴体は普段の液体のように柔らかい。溜めと満足の終わりは全身が柔らかい
+            CheckLife(DevourStiffness(DevourLandAt,1)>3*DevourStiffness(DevourLandAt,0)&&DevourStiffness(DevourLandAt,0)<=DevourBodyStiffness+.01f,"devour mouth is not firmer than its liquid body");
+            {std::vector<float> wall;DevourPose(anim,DevourLandAt,rest,rank,pose,0,&wall);size_t firm=0,softTail=0,tailCount=0;
+                for(size_t i=0;i<rest.size();++i){firm+=wall[i]>.9f;if(rank[i]<.08f){++tailCount;softTail+=wall[i]<.2f;}}
+                CheckLife(firm>rest.size()/3&&softTail==tailCount,"open mouth walls are not firm while the tail stays liquid");
+                DevourPose(anim,0,rest,rank,pose,0,&wall);float most=0;for(float w:wall)most=std::max(most,w);
+                DevourPose(anim,DevourPounceTime,rest,rank,pose,0,&wall);for(float w:wall)most=std::max(most,w);
+                CheckLife(most<.01f,"devour body is stiff outside the gaping mouth");}
+            // 普段の液体から形へは、今の粒子の位置からゆっくり寄せる (飛びかかりの最初に形へはまらない)
+            CheckLife(DevourFormBlend(0)<1e-4f&&DevourFormBlend(DevourWindup)<.4f&&DevourFormBlend(DevourLandAt)>.999f,"devour pose snaps the liquid into shape");
+            // 口の周りの壁には、どの向きにも同じくらいの粒子がある (左右や上が薄くなって穴が開かない)
+            {DevourPose(anim,DevourLandAt,rest,rank,pose);auto blobs=DevourSampleBlobs(anim,DevourLandAt);const auto& b=blobs[0];std::array<int,6> sector{};
+                for(const auto& p:pose){Vec d=p-b.at;if(d.z<.75f*b.size.z||d.y<0)continue;
+                    float angle=std::atan2(d.y/b.size.y,d.x/b.size.x);++sector[size_t(std::clamp(int(angle/3.1415927f*6),0,5))];}
+                int least=*std::min_element(sector.begin(),sector.end()),most=*std::max_element(sector.begin(),sector.end());
+                CheckLife(least>0&&float(least)>.6f*float(most),"mouth wall particles bunch up and leave thin holes");}
+            // 口を開けている間も、後ろ側は底を地面に着けている (浮いた管にならない)
+            {DevourPose(anim,DevourLandAt,rest,rank,pose);float low=1e9f;for(size_t i=0;i<rest.size();++i)if(rank[i]<.3f)low=std::min(low,pose[i].y);
+                CheckLife(low<.12f,"rear of the gaping body floats above the ground");}
+            CheckLife(std::abs(DevourGulp(0,.5f,0).volume-1)<.02f,"closed mouth is not an ellipsoid volume");}
+        // 最後は普段の体に戻る (全部の粒子が最初の塊へ)
         {auto blobs=DevourSampleBlobs(anim,DevourPounceTime);auto start=DevourBlobStarts(blobs);size_t inBody=0;for(size_t i=0;i<rest.size();++i)inBody+=DevourBlobOf(rank[i],start)==0;
             CheckLife(inBody>=rest.size()-2,"body does not swallow everything at the end");}
         CheckLife(std::abs(DevourVolume(anim.keys.front().blobs)/DevourBodyVolume-1)<.05f&&std::abs(DevourVolume(anim.keys.back().blobs)/DevourBodyVolume-1)<.05f,"devour animation does not start and end at the body volume");
@@ -425,8 +482,8 @@ void TestDevour(){
         CheckLife(back>0&&front>0,"devour particles are not assigned back to front");
         // キーを足す・塊を足して消す
         auto edit=anim;int key=DevourEnsureKey(edit,.2f);CheckLife(edit.keys.size()==anim.keys.size()+1&&std::abs(edit.keys[size_t(key)].time-.2f)<1e-5f&&DevourEnsureKey(edit,.2f)==key,"adding a key failed");
-        DevourAddBlob(edit,"しっぽ",{});CheckLife(edit.names.size()==3&&edit.keys[0].blobs.size()==3,"adding a blob failed");
-        DevourRemoveBlob(edit,1);CheckLife(edit.names.size()==2&&edit.names[1]=="しっぽ"&&edit.keys.back().blobs.size()==2,"removing a blob failed");}
+        const size_t blobCount=edit.names.size();DevourAddBlob(edit,"しっぽ",{});CheckLife(edit.names.size()==blobCount+1&&edit.keys[0].blobs.size()==blobCount+1,"adding a blob failed");
+        DevourRemoveBlob(edit,0);CheckLife(edit.names.size()==blobCount&&edit.names.back()=="しっぽ"&&edit.keys.back().blobs.size()==blobCount,"removing a blob failed");}
     CheckLife(DevourLeapProgress(DevourWindup)==0&&DevourLeapProgress(DevourCoverEnd)>.999f&&DevourLeapProgress(DevourLandAt)>.8f&&DevourLeapProgress(DevourWindup+DevourLeap*.5f)>.45f,"leap does not burst out and stop on the target");
     CheckLife(DevourPounceTime<.85f,"pounce is too slow to chain");
     puts("PASS devour: cover/sink sizes, growth per bite, tiers and time bonus, caps, pounce targets, cover reach and shape phases");

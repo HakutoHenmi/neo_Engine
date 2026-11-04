@@ -267,7 +267,7 @@ void ChronoSystem::InkCamera(entt::registry& r,Player& p,GameContext& ctx){
         subject.center=pos+blend.offset;subject.radius=blend.radius;}
     float growthPullback=slimeLife_?LifeCameraDistance(subject.radius,1.13f,ctx.viewportSize.x/std::max(1.f,ctx.viewportSize.y))-17.f:0.f;
     // 引く量の合計をなめらかに反映する
-    float pullback=growthPullback+((charging||firing)?3*power:0.f)+domainView*14+std::max(arrival,aftershock);
+    float pullback=growthPullback+((charging||firing)?3*power:0.f)+domainView*14+std::max(arrival,aftershock)+(devour_?DevourCameraKick(devourGulp_.age,devourGulp_.weight)*subject.radius:0.f);
     ink.cameraPullback+=(pullback-ink.cameraPullback)*(1-std::exp(-10*ctx.dt));
     // 注視点 (スライムの生活モードは体の中心)
     V focus=cameraFollow_+V{0,2.f,0};

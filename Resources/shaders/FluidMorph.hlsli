@@ -7,9 +7,12 @@ float MorphSpeedLimit(uint original,float type){
     float limit=type>=4.f?80.f:30.f;
     if(type>1.05f&&type<1.25f)limit=96.f;
     if(type<.5f&&pad8>.5f){MorphTarget t=MorphTargets[MorphData[8192+original].target];
-        if(t.shape.w<.5f&&t.reserved.w<-.5f)limit=max(limit,min(600.f,length(t.reserved.xyz)+60.f));
+        // Speeds grow with the body, and so does the particle spacing: limits in
+        // world units left a grown body behind its own core during a pounce or dash.
+        float size=max(1.f,pow(275.f/max(t.density,1e-6f),1.f/3.f));
+        if(t.shape.w<.5f&&t.reserved.w<-.5f)limit=max(limit,min(600.f*size,length(t.reserved.xyz)+60.f*size));
         // A liquid body moving faster than the fixed limit (a grown slime) would be left behind.
-        if(t.shape.w>.5f)limit=max(limit,min(2000.f,length(t.motion.xyz)*1.4f+30.f*pow(275.f/max(t.density,1e-6f),1.f/3.f)));}
+        if(t.shape.w>.5f)limit=max(limit,min(2000.f*size,length(t.motion.xyz)*1.4f+30.f*size));}
     return limit;
 }
 uint MorphSpread(uint n){n&=1023;n=(n|(n<<16))&0x030000ff;n=(n|(n<<8))&0x0300f00f;n=(n|(n<<4))&0x030c30c3;n=(n|(n<<2))&0x09249249;return n;}
@@ -75,7 +78,10 @@ float3 MorphIntegrate(uint original,float3 position,float3 velocity,float3 accel
         float3 local=MorphLocal(position,t),field=MorphField(local,t);
         float3 radii=max(t.shape.xyz,.1f);float extent=length(field/radii);
         float3 normal=MorphFieldNormal(field,t);
-        float3 confinement=-normal*min(100.f,t.omega*max(extent-.86f,0));
+        // The boundary pull is an acceleration in world units: scale it with the
+        // body size, or a grown body (10-100x) falls behind its own core.
+        float size=max(1.f,pow(275.f/max(t.density,1e-6f),1.f/3.f));
+        float3 confinement=-normal*min(100.f*size,t.omega*size*max(extent-.86f,0));
         confinement.y+=lerp(18.f,20.f,t.motion.w);
         float3 core=t.origin+float3(t.reserved.z,t.shape.y*.43f,t.reserved.w);
         float3 coreDelta=position-core;
@@ -96,6 +102,10 @@ float3 MorphIntegrate(uint original,float3 position,float3 velocity,float3 accel
     float3 targetVelocity=t.reserved.w<-.5f?t.reserved.xyz:clamp((goal-entry.previous)/max(step,1e-5),-30,30);
     entry.previous=goal;MorphData[8192+original]=entry;
     if(t.reserved.w<-.5f)goal-=targetVelocity*max(emitColor.x,0);
+    // The devour pose (shape 0 with uploaded point velocity) uses soft springs so
+    // it moves like the ordinary liquid. Support its weight as the liquid body
+    // does; otherwise gravity sags the thin mouth walls open into holes.
+    if(abs(t.shape.w)<.5f&&t.reserved.w<-.5f)acceleration.y+=18.f;
     float w=t.omega,k=w*w,c=2*w;
     // Implicit spring, relative damping; integrate all external acceleration once.
     return (velocity+step*(acceleration+k*(goal-position)+c*targetVelocity))/(1+c*step+k*step*step);
