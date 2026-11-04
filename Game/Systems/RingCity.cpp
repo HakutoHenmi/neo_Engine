@@ -5,6 +5,7 @@
 // 建物も吸収の対象で、飲み込むと見た目と当たり判定が消え、通れるようになる。
 // 素材はすべて CC0 (Poly Haven・ambientCG。Resources/Credits/CityRing.md)
 #include "CityBuilder.h"
+#include "../Chrono/DevourRules.h"
 #include <filesystem>
 #include <tuple>
 
@@ -34,6 +35,12 @@ void RingFlatRoof(CityBuilder& b,int roof,int trim,float hw,float hd,float h){
     const float t=1.2f,p=3;
     b.Box(trim,{-hw,h,-hd},{hw,h+p,-hd+t});b.Box(trim,{-hw,h,hd-t},{hw,h+p,hd});
     b.Box(trim,{-hw,h,-hd},{-hw+t,h+p,hd});b.Box(trim,{hw-t,h,-hd},{hw,h+p,hd});
+}
+// 輪の門: シャッターの扉と、両側の太い柱と上の梁 (W は幅、D は厚み)
+void RingBuildGate(CityBuilder& b,float W,float D,float h){
+    float hw=W*.5f,hd=D*.5f,post=std::max(1.5f,W*.07f);
+    b.Box(CityRustShutter,{-hw,0,-hd*.6f},{hw,h*.85f,hd*.6f});
+    b.Box(CityDarkTiles,{-hw,0,-hd},{-hw+post,h,hd});b.Box(CityDarkTiles,{hw-post,0,-hd},{hw,h,hd});b.Box(CityDarkTiles,{-hw,h*.85f,-hd},{hw,h,hd});
 }
 // 型の形を作る。W と D は敷地の幅と奥行き (ローカルの x と z。正面は +z)、variant で材質と形を変える
 void RingBuildTemplate(CityBuilder& b,Chrono::RingStyle style,int variant,float W,float D,int floors,float fh){
@@ -108,6 +115,8 @@ void ChronoSystem::BuildRingGround(CityBuilder& city){
     const float half=RingCityHalf()+4000,alley=RingZones()[0].outer;
     city.Polygon(CityRoad,{{-half,-.2f,-half},{half,-.2f,-half},{half,-.2f,half},{-half,-.2f,half}},{0,1,0});
     city.Polygon(CityAlleyFloor,{{-alley,0,-alley},{alley,0,-alley},{alley,0,alley},{-alley,0,alley}},{0,1,0});
+    // 広場の舗装
+    for(const auto& plaza:RingPlazas()){float s=plaza.radius;V c=plaza.at;city.Polygon(CityPavingBrick,{{c.x-s,.1f,c.z-s},{c.x+s,.1f,c.z-s},{c.x+s,.1f,c.z+s},{c.x-s,.1f,c.z+s}},{0,1,0});}
     for(const auto& block:RingBlocks()){const auto& w=block.rect;auto style=RingZones()[size_t(block.zone)].style;
         int floor=style==RingStyle::House?CityPaving:style==RingStyle::Shop?CityPavingBrick:CitySidewalk;
         city.Polygon(floor,{{w.x0,.15f,w.z0},{w.x1,.15f,w.z0},{w.x1,.15f,w.z1},{w.x0,.15f,w.z1}},{0,1,0});
@@ -128,7 +137,7 @@ void ChronoSystem::BuildRingCity(entt::registry& r,const RingCityTools& tools){
     auto shape=[&](const RingLot& lot,bool turned)->const RingTemplate& {
         auto key=std::make_tuple(lot.zone,lot.variant,turned);auto found=templates.find(key);if(found!=templates.end())return found->second;
         const auto& zone=RingZones()[size_t(lot.zone)];float w=lot.foot.x1-lot.foot.x0,d=lot.foot.z1-lot.foot.z0;if(turned)std::swap(w,d);
-        CityBuilder b;RingBuildTemplate(b,zone.style,lot.variant,w,d,lot.floors,zone.floorHeight);
+        CityBuilder b;if(lot.gate)RingBuildGate(b,w,d,lot.height);else RingBuildTemplate(b,zone.style,lot.variant,w,d,lot.floors,zone.floorHeight);
         RingTemplate t;t.height=RingLotHeight(lot);
         for(int m=0;m<CityMaterialCount;++m){auto& g=b.geometry[size_t(m)];if(g.indices.empty())continue;t.pieces.push_back({m,render->CreateDynamicMesh(g.vertices,g.indices)});}
         // 一番広い部位 (壁) を最初にする (体の中に見せるときに使う)
@@ -155,8 +164,16 @@ void ChronoSystem::BuildRingCity(entt::registry& r,const RingCityTools& tools){
         r.emplace<BoxColliderComponent>(collider).size=Write(V{lot.foot.x1-lot.foot.x0,t.height,lot.foot.z1-lot.foot.z0});
         r.emplace<TagComponent>(collider).tag=TagType::Wall;r.emplace<Solid>(collider);parts.push_back(collider);
         // 吸収の対象: 半径は幅と高さの大きい方の半分、壁までの余裕は短い辺の半分
-        cityProps_.push_back({main,V{center.x,1.2f,center.z},1,0,LifeMorphItem::None,RingLotRadius(lot),RingFill(RingZones()[size_t(lot.zone)].style),RingLotReach(lot)});
+        // (門は開けるための物なので量は少なく、手前の輪から届く)
+        cityProps_.push_back({main,V{center.x,1.2f,center.z},1,0,LifeMorphItem::None,RingLotRadius(lot),lot.gate?.2f:RingFill(RingZones()[size_t(lot.zone)].style),RingLotReach(lot),lot.gate?lot.zone-1:lot.zone,lot.gate,lot.gate>0});
         ringLotProps_[i]=int(cityProps_.size()-1);devourBuildingParts_[cityProps_.size()-1]=std::move(parts);}
+    // 輪の壁: 門を飲み込むか砕くまで次の輪へ通さない。崩れたら隠す
+    for(int z=1;z<RingStyleCount;++z){float at=RingWallAt(z),h=RingWallHeight(z),t=2;CityBuilder b;ringWalls_[size_t(z)].clear();
+        for(float s:{-at,at}){b.Box(CityConcrete,{-at-t,0,s-t},{at+t,h,s+t});b.Box(CityConcrete,{s-t,0,-at-t},{s+t,h,at+t});
+            b.Box(CityDarkTiles,{-at-t,h,s-t-1},{at+t,h+2,s+t+1});b.Box(CityDarkTiles,{s-t-1,h,-at-t},{s+t+1,h+2,at+t});}
+        for(int m:{int(CityConcrete),int(CityDarkTiles)}){auto& g=b.geometry[size_t(m)];auto e=r.create();r.emplace<NameComponent>(e,"Chrono City ring wall");r.emplace<TransformComponent>(e).scale={1,1,1};
+            auto& mr=r.emplace<MeshRendererComponent>(e);const auto& skin=tools.surface(m);mr.modelHandle=render->CreateDynamicMesh(g.vertices,g.indices);mr.textureHandle=skin.texture;mr.extraTextureHandles=skin.extra;
+            mr.useCubemap=false;mr.shaderName="CitySurface";mr.color=tools.tint(m);ringWalls_[size_t(z)].push_back(e);}}
     // 小物: 輪ごとの種類 (モデル・幅・吸収の量の割合)。歩ける所にばらまく。
     // (木のモデルは葉が非常に細かく、読み込みと遠景の簡略化に数十秒かかるので使わない)
     struct Kind {const char* id;float width,fill;};
@@ -183,7 +200,7 @@ void ChronoSystem::BuildRingCity(entt::registry& r,const RingCityTools& tools){
         std::vector<Kind> usable;for(const auto& k:kinds[z])if(std::filesystem::exists(std::string("Resources/Models/PolyHaven/")+k.id+"_2k.fbx"))usable.push_back(k);
         if(usable.empty())continue;
         // 路地裏は最初の食べ物なので、狭い所に多く散らかす
-        int count=z==0?260:zone.props,placed=0;
+        int count=z==0?340:zone.props,placed=0;
         for(int attempt=0;placed<count&&attempt<count*30;++attempt){
             const auto& kind=usable[size_t(RingNoise(++seed)*float(usable.size()))%usable.size()];
             float width=kind.width*(.85f+.3f*RingNoise(++seed));
@@ -194,11 +211,30 @@ void ChronoSystem::BuildRingCity(entt::registry& r,const RingCityTools& tools){
             auto e=tools.place(kind.id,at,width,RingNoise(++seed)*6.283f,1,0,LifeMorphItem::None);
             if(e==entt::null)continue;++placed;
             // 細い物 (街灯・木など) は大きさの割に量を少なくする
-            if(!cityProps_.empty()&&cityProps_.back().entity==e)cityProps_.back().fill=kind.fill;}}
+            if(!cityProps_.empty()&&cityProps_.back().entity==e){cityProps_.back().fill=kind.fill;cityProps_.back().ring=int(z);}}}
+    // 輪の中で育つ体の半径 (門を飲める大きさから、次の門を飲める大きさまでの真ん中)。ごちそうの大きさはこれに合わせる
+    auto ringBody=[](size_t z){const auto& zones=RingZones();float in=z?zones[z].gateRadius/DevourCoverRatio:DevourStartRadius,out=z+1<zones.size()?zones[z+1].gateRadius/DevourCoverRatio:DevourBodyRadius(DevourTiers[size_t(DevourFinalTier)].mass);return std::sqrt(in*out);};
+    // ごちそうを 1 つ置く
+    auto food=[&](const std::string& id,V at,float width,float fill,int ring,bool beacon=false){auto e=tools.place(id,at,width,RingNoise(++seed)*6.283f,1,0,LifeMorphItem::None);
+        if(e==entt::null||cityProps_.empty()||cityProps_.back().entity!=e)return;auto& prop=cityProps_.back();prop.fill=fill;prop.ring=ring;prop.beacon=beacon;};
+    // 大通りのごみの列: 1 個ずつは小さいが、列全部で大きく育つ。タイヤで転がると一気に吸い込める
+    const char* trash[]={"trashbag","cardboard_box_01","plastic_crate_01","wooden_crate_01","metal_trash_can","Barrel_01"};
+    for(size_t z=0;z<RingZones().size();++z){const auto& zone=RingZones()[z];float inner=z?RingZones()[z-1].outer+zone.gateRadius:20,outer=zone.outer-12,body=ringBody(z),lane=z?zone.avenue*.28f:14;
+        for(int arm=0;arm<4;++arm)for(int k=0;k<zone.lineFood;++k){float along=inner+(outer-inner)*(float(k)+.5f)/float(zone.lineFood),side=lane*std::sin(float(k)*.7f+float(arm)*1.9f);
+            V at=arm==0?V{side,0,along}:arm==1?V{along,0,side}:arm==2?V{side,0,-along}:V{-along,0,side};
+            if(z==0&&LifeDistance(at,RingData().start)<14)continue;
+            food(trash[size_t(RingNoise(++seed)*6)%6],at,2*body*(.25f+.2f*RingNoise(++seed)),z?.4f:1.f,int(z));}}
+    // 広場: ごちそうの山と、真ん中の大物 (今の体より大きく、ハンマーで砕くか育ってから飲む)
+    const char* monuments[]={"bronze_whale_statue","horse_statue_01"};
+    for(const auto& plaza:RingPlazas()){size_t z=size_t(plaza.zone);float body=ringBody(z);const auto& usable=kinds[z];
+        food(monuments[size_t(RingNoise(++seed)*2)%2],plaza.at,2*body,1,plaza.zone,true);
+        for(int k=0;k<RingZones()[z].plazaFood;++k){float a=float(k)*2.399963f,d=plaza.radius*(.3f+.6f*std::sqrt((float(k)+.5f)/float(RingZones()[z].plazaFood)));
+            food(usable[size_t(RingNoise(++seed)*float(usable.size()))%usable.size()].id,plaza.at+V{std::cos(a)*d,0,std::sin(a)*d},2*body*(.4f+.32f*RingNoise(++seed)),z==1?1.f:.6f,plaza.zone);}}
     
     // お助け変形アイテム: タイヤ (住宅街の入口)・消火栓 (商店街の火事の手前)・信号機 (オフィス街の入口)
-    tools.place("old_tyre",RingData().tireItem,4.6f,.35f,15,12,LifeMorphItem::Tire);
-    for(V at:RingData().hydrants){auto e=tools.place("fire_hydrant",at,3.2f,0,15,24,LifeMorphItem::Hydrant);
+    auto item=[&](V at){if(!cityProps_.empty())cityProps_.back().ring=RingZoneAt(at);};
+    if(tools.place("old_tyre",RingData().tireItem,4.6f,.35f,15,12,LifeMorphItem::Tire)!=entt::null)item(RingData().tireItem);
+    for(V at:RingData().hydrants){auto e=tools.place("fire_hydrant",at,3.2f,0,15,24,LifeMorphItem::Hydrant);if(e!=entt::null)item(at);
         if(e!=entt::null&&r.all_of<MeshRendererComponent>(e))r.get<MeshRendererComponent>(e).color={1.4f,1.1f,1.1f,1};}
     signalItemAt_=RingData().signalItem;
     {CityBuilder local;const float k=SignalItemScale;local.Box(CityMetal,{-1.2f*k,0,-1.2f*k},{1.2f*k,.4f*k,1.2f*k});local.Box(CityMetal,{-.42f*k,.4f*k,-.42f*k},{.42f*k,5.2f*k,.42f*k});
@@ -209,6 +245,6 @@ void ChronoSystem::BuildRingCity(entt::registry& r,const RingCityTools& tools){
         auto& mr=r.emplace<MeshRendererComponent>(e);mr.modelHandle=mesh;mr.textureHandle=skin.texture;mr.extraTextureHandles=skin.extra;mr.shaderName="CitySurface";mr.useCubemap=false;
         mr.color={.32f,.34f,.36f,1};
         cityVisuals_[uint32_t(e)]={mesh,skin.texture,skin.extra,{1,1,1},{0,0,0},{0,height*.5f,0},height,"CitySurface"};
-        cityProps_.push_back({e,signalItemAt_+V{0,1.2f,0},15,24,LifeMorphItem::Signal,.5f*height});}
+        cityProps_.push_back({e,signalItemAt_+V{0,1.2f,0},15,24,LifeMorphItem::Signal,.5f*height});item(signalItemAt_);}
 }
 }

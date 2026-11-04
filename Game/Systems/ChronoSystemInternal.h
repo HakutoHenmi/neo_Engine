@@ -88,9 +88,9 @@ inline constexpr LifeImpactSpec ImpactCannonFire{0,.06f,.04f,18,.15f,.1f,.08f};
 inline constexpr LifeImpactSpec ImpactSignalPulse{0,.1f,.06f,12,.2f,.25f,.1f};
 inline constexpr LifeImpactSpec ImpactMarker{.03f,.08f,.06f,16,.3f,.25f,.1f};
 // 吸収モード: 全身で覆いかぶさった瞬間・弾かれたとき・大きさの段階が上がったとき
-// 覆いかぶさりは何度も続けて起きるので、止める時間と揺れは軽くする (重いとガクガクする)
-inline constexpr LifeImpactSpec ImpactDevour{.03f,.1f,.05f,12,.45f,.3f,.1f};
-inline constexpr LifeImpactSpec ImpactDevourBounce{.02f,.1f,.06f,12,.4f,.2f,.1f};
+// 覆いかぶさりは何度も続けて起きるので時間は止めない (手応えは体のつぶれと揺れで出す)。止めるのは段階が上がったときだけ
+inline constexpr LifeImpactSpec ImpactDevour{0,.14f,.07f,12,.45f,.3f,.12f};
+inline constexpr LifeImpactSpec ImpactDevourBounce{0,.12f,.07f,12,.4f,.2f,.1f};
 inline constexpr LifeImpactSpec ImpactDevourTier{.12f,.32f,.2f,9,.9f,.6f,.4f};
 inline constexpr LifeImpactSpec ImpactMarkerBig{.05f,.1f,.12f,16,.6f,.4f,.16f};
 } // namespace ChronoDetail

@@ -65,10 +65,10 @@ inline Vec LifeTirePose(Vec point,float angle){
     return {point.x,LifeTireRadius+y*c-point.z*s,y*s+point.z*c};
 }
 // タイヤの移動の速さ (速く、ゆっくり加速し、空中では曲がりにくい)
-inline Vec LifeTireMoveVelocity(const LifeBody& body,Vec velocity,Vec wish,const SlimeRecipe& recipe,bool grounded,float dt){
+inline Vec LifeTireMoveVelocity(const LifeBody& body,Vec velocity,Vec wish,const SlimeRecipe& recipe,bool grounded,float dt,float speedScale=1){
     // 入力の量と最高速
     float amount=std::min(1.f,Length(wish));
-    float top=recipe.Speed()*(2.1f+std::min(.5f,.08f*LifeScale(body.mass)));
+    float top=recipe.Speed()*(2.1f+std::min(.5f,.08f*LifeScale(body.mass)))*speedScale;
     // 加速の速さ (空中は弱い)
     float rate=amount>.05f?2.4f:1.7f;rate*=grounded?1.f:.35f;
     // 前方向の目標の速度へ近づける
@@ -79,8 +79,8 @@ inline Vec LifeTireMoveVelocity(const LifeBody& body,Vec velocity,Vec wish,const
 inline constexpr float LifeTireChargeTime=1.1f,LifeTireMinCharge=.15f,LifeTireSpinMax=42;
 // 突進の長さと速さ (溜めが強いほど長く速い)
 inline float LifeTireDashDuration(float power){return .4f+.6f*power;}
-inline float LifeTireDashSpeed(const LifeBody& body,const SlimeRecipe& recipe,float power){
-    return recipe.Speed()*(2.1f+std::min(.5f,.08f*LifeScale(body.mass)))*(1.7f+1.8f*power);
+inline float LifeTireDashSpeed(const LifeBody& body,const SlimeRecipe& recipe,float power,float speedScale=1){
+    return recipe.Speed()*(2.1f+std::min(.5f,.08f*LifeScale(body.mass)))*(1.7f+1.8f*power)*speedScale;
 }
 // 突進が敵に与えるダメージ / バリケードや門に与えるダメージ
 inline float LifeTireDashDamage(const LifeBody& body,float power){return (22+48*power)*LifeScale(body.mass);}
@@ -96,16 +96,17 @@ inline bool LifeTickTireCharge(LifeBody& body,bool held,float dt){
     return false;
 }
 // 溜めている間は止まり、突進中は前へ一気に進む (向きは少しだけ曲げられる)。それ以外は普通に転がる
-inline Vec LifeTireChargeVelocity(LifeBody& body,Vec velocity,Vec wish,const SlimeRecipe& recipe,bool grounded,float dt){
+// speedScale は吸収モードの大きさに合わせた速さの倍率
+inline Vec LifeTireChargeVelocity(LifeBody& body,Vec velocity,Vec wish,const SlimeRecipe& recipe,bool grounded,float dt,float speedScale=1){
     const auto& w=body.weapon;
     if(w.charging){float brake=1-std::exp(-9*dt);velocity.x-=velocity.x*brake;velocity.z-=velocity.z*brake;return velocity;}
     if(w.dash>0){
         if(Length(wish)>.05f){float yaw=std::atan2(body.forward.x,body.forward.z),delta=std::remainder(std::atan2(wish.x,wish.z)-yaw,6.2831853f);
             yaw+=std::clamp(delta,-1.6f*dt,1.6f*dt);body.forward={std::sin(yaw),0,std::cos(yaw)};}
-        float speed=LifeTireDashSpeed(body,recipe,w.dashPower)*std::min(1.f,.35f+w.dash/.25f);
+        float speed=LifeTireDashSpeed(body,recipe,w.dashPower,speedScale)*std::min(1.f,.35f+w.dash/.25f);
         return {body.forward.x*speed,velocity.y,body.forward.z*speed};
     }
-    return LifeTireMoveVelocity(body,velocity,wish,recipe,grounded,dt);
+    return LifeTireMoveVelocity(body,velocity,wish,recipe,grounded,dt,speedScale);
 }
 // その場の回転の速さ: 溜めている間は溜めに合わせて上がり、離すと落ちる
 inline float LifeTireSpinRate(const LifeBody& body,float dt){

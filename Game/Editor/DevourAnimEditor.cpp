@@ -97,7 +97,7 @@ const PreviewCloud& Cloud() {
 struct Phase { float begin, end; const char* name; ImU32 color; };
 const Phase kPhases[] = {
 	{0, Chrono::DevourWindup, "溜め", IM_COL32(90, 90, 140, 255)},
-	{Chrono::DevourWindup, Chrono::DevourLandAt, "跳ぶ", IM_COL32(70, 120, 90, 255)},
+	{Chrono::DevourWindup, Chrono::DevourLandAt, "飛び込む", IM_COL32(70, 120, 90, 255)},
 	{Chrono::DevourLandAt, Chrono::DevourCoverEnd, "覆う", IM_COL32(140, 90, 60, 255)},
 	{Chrono::DevourCoverEnd, Chrono::DevourPounceTime, "満足", IM_COL32(110, 110, 110, 255)}};
 } // namespace
@@ -436,7 +436,7 @@ void DevourAnimEditor::DrawBlobPanel() {
 	// 種類 (全部のキーで同じ)
 	int kind = int(blob.kind);
 	ImGui::SetNextItemWidth(300);
-	if (ImGui::Combo("種類", &kind, "楕円体 (中の詰まった塊)\0口 (開いた口と触手のような唇)\0しずく形 (後ろへ細く伸びる胴体)\0")) {
+	if (ImGui::Combo("種類", &kind, "楕円体 (中の詰まった塊)\0口 (開いた口と触手のような唇)\0しずく形 (後ろへ細く伸びる胴体)\0アメーバ (平たく広がり、縁から仮足が出る体)\0大口 (口を大きく開けて飛びかかる体)\0")) {
 		auto before = anim;
 		Chrono::DevourSetBlobKind(anim, size_t(selected_), Chrono::DevourBlobKind(kind));
 		Commit(before, "塊の種類");
@@ -467,6 +467,30 @@ void DevourAnimEditor::DrawBlobPanel() {
 		changed |= ImGui::SliderFloat("尾の左右の揺れ", &mouth[3], 0.0f, 0.5f, "%.2f");
 		if (ImGui::IsItemActivated()) fieldBefore = anim;
 		released |= ImGui::IsItemDeactivatedAfterEdit();
+	}
+	if (blob.kind == Chrono::DevourBlobKind::Gulp) {
+		ImGui::TextDisabled("大口: 体 1 つで口を開けます。粒子は形の量に合わせて配るので、口の壁がまばらになりません");
+		struct Field { int index; const char* label; float min, max; const char* format; };
+		const Field fields[] = {{1, "口の開き (0 で楕円体)", 0.0f, 1.0f, "%.2f"}, {0, "唇と壁の厚さ", 0.05f, 1.0f, "%.2f"},
+			{2, "唇が内側へ巻き込む強さ", 0.0f, 1.0f, "%.2f"}, {3, "口から尾へ流れる波", 0.0f, 0.3f, "%.2f"}, {5, "尾の左右の揺れ", 0.0f, 0.5f, "%.2f"}};
+		for (const auto& field : fields) {
+			ImGui::SetNextItemWidth(300);
+			changed |= ImGui::SliderFloat(field.label, &mouth[field.index], field.min, field.max, field.format);
+			if (ImGui::IsItemActivated()) fieldBefore = anim;
+			released |= ImGui::IsItemDeactivatedAfterEdit();
+		}
+	}
+	if (blob.kind == Chrono::DevourBlobKind::Amoeba) {
+		ImGui::TextDisabled("アメーバ: 体の各点をなめらかに動かすので、広げてもちぎれません");
+		struct Field { int index; const char* label; float min, max; const char* format; };
+		const Field fields[] = {{0, "平たさ (0 で楕円体、1 でパンケーキ)", 0.0f, 1.0f, "%.2f"}, {1, "縁から出る仮足の長さ", 0.0f, 1.0f, "%.2f"},
+			{4, "仮足の本数", 0.0f, 12.0f, "%.0f"}, {2, "上ほど前へ傾く強さ", 0.0f, 1.0f, "%.2f"}, {3, "縁を流れる波の大きさ", 0.0f, 0.3f, "%.2f"}};
+		for (const auto& field : fields) {
+			ImGui::SetNextItemWidth(300);
+			changed |= ImGui::SliderFloat(field.label, &mouth[field.index], field.min, field.max, field.format);
+			if (ImGui::IsItemActivated()) fieldBefore = anim;
+			released |= ImGui::IsItemDeactivatedAfterEdit();
+		}
 	}
 	if (changed) {
 		const int key = Chrono::DevourEnsureKey(anim, time_);
