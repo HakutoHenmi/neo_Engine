@@ -75,6 +75,9 @@ namespace Game {
 GameScene::~GameScene() {
     // 振動を止める
     Rumble::Stop();
+    // ポーズから抜けても音が止まったままにならないようにする
+    if(chronoSystem_)chronoSystem_->StopLoopSounds();
+    if(auto* audio=Engine::Audio::GetInstance())audio->SetSEPaused(false);
     // タグとスクリプトの追加・削除のコールバックを外す
     registry_.on_construct<TagComponent>().disconnect<&GameScene::OnTagAdded>(this);
     registry_.on_destroy<TagComponent>().disconnect<&GameScene::OnTagRemoved>(this);
@@ -548,7 +551,7 @@ bool GameScene::HandlePlayInput(float dt, bool stageClear) {
             }
             // 再開ボタン・Enter・パッドの B でポーズを解く (同じ押下を他で使わないよう止める)
             if (ui.Click(roguePause?UI::PaletteResume:UI::Resume) || input->Trigger(DIK_RETURN) || input->PadTrigger(XINPUT_GAMEPAD_B)) {
-                SetPaused(false);input->LatchPad();
+                UI::PlayUISound(UI::UISound::Confirm);SetPaused(false);input->LatchPad();
             }
         }
 		// Esc (0x01 = DIK_ESCAPE) / START でポーズを切り替える
@@ -952,7 +955,7 @@ void GameScene::SetPaused(bool paused) {
     for(auto e:registry_.view<Chrono::InkPlayer>())upgradeOpen|=registry_.get<Chrono::InkPlayer>(e).rogue.menu;
     upgradeOpen|=chronoSystem_&&chronoSystem_->SlimeLabOpen();
     // BGM の音量を下げる
-    if(auto* audio=Engine::Audio::GetInstance())audio->SetBGMDucked(paused||upgradeOpen);
+    if(auto* audio=Engine::Audio::GetInstance()){audio->SetBGMDucked(paused||upgradeOpen);audio->SetSEPaused(paused||upgradeOpen);}
     // カーソルを出す
     Engine::WindowDX::SetCursorVisible(paused||upgradeOpen);
     // 流体などの世界を止める

@@ -18,12 +18,11 @@ inline constexpr int RingStyleCount=5;
 struct RingZone {RingStyle style=RingStyle::Alley;std::string name;float outer=0,block=0,road=0;int lotsX=1,lotsZ=1,floorsMin=1,floorsMax=1;float floorHeight=19;int props=0;
     // 大通りの幅・門の半径 (この輪へ入る門)・広場の数・広場ごとのごちそうの数・大通り 1 本のごみの数
     float avenue=0,gateRadius=0;int plazas=0,plazaFood=0,lineFood=0;};
-struct RingCityData {std::vector<RingZone> zones;Vec start{},tireItem{},signalItem{};std::vector<Vec> hydrants;std::vector<CityFireSpot> fires;};
+struct RingCityData {std::vector<RingZone> zones;std::vector<CityFireSpot> fires;};
 // ring_city.json を読み込む (最初に使われたときに 1 回だけ)
 inline const RingCityData& RingData(){
     static const RingCityData data=[]{
         const char* file="ring_city.json";const auto& json=Data::Load(file);RingCityData out;
-        auto vec=[&](const nlohmann::json& v){auto a=Data::ReadArray<float,3>(v,file);return Vec{a[0],a[1],a[2]};};
         const char* ids[]={"Alley","House","Shop","Office","Tower"};
         for(const auto& z:Data::Require(json,"zones",file)){RingZone zone;std::string id=z.at("id").get<std::string>();
             int style=-1;for(int i=0;i<RingStyleCount;++i)if(id==ids[i])style=i;if(style<0)throw std::runtime_error(std::string(file)+": unknown zone "+id);
@@ -37,8 +36,6 @@ inline const RingCityData& RingData(){
             if(!out.zones.empty()&&zone.outer<=out.zones.back().outer)throw std::runtime_error(std::string(file)+": zones must grow outward");
             out.zones.push_back(zone);}
         if(out.zones.size()!=size_t(RingStyleCount))throw std::runtime_error(std::string(file)+": zones must be Alley, House, Shop, Office, Tower");
-        out.start=vec(json.at("start"));out.tireItem=vec(json.at("tireItem"));out.signalItem=vec(json.at("signalItem"));
-        for(const auto& h:json.at("hydrantItems"))out.hydrants.push_back(vec(h));
         for(const auto& f:json.at("fires")){auto a=Data::ReadArray<float,3>(f,file);out.fires.push_back({{a[0],0,a[1]},a[2]});}
         return out;}();
     return data;

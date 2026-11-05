@@ -1,0 +1,9 @@
+{
+  "_comment": "吸収モードのステージ。start は開始の大きさ (cm)、time は制限時間 (秒)、goals は目標の大きさ (cm。最初に届けばクリアで、最後が S ランク)、item は変形アイテム (tire / vacuum / spring)、itemTime は変形が続く秒数。gates は積み木の壁を飲める大きさ (cm)。smallFood は小さい物の価値を下げる基準 (覆える大きさに対する割合。0 で下げない)。map は room (部屋) か ring (輪の町)",
+  "stages": [
+    {"id": "Room", "name": "子ども部屋", "map": "room", "half": 260, "time": 180, "start": 5, "goals": [15, 20, 25, 30], "gates": [8, 13], "smallFood": 0.35,
+     "item": "vacuum", "itemTime": 15, "itemAt": [-115, 0, -125], "spawn": [-200, 0, -205]},
+    {"id": "Town", "name": "輪の町", "map": "ring", "time": 300, "start": 100, "goals": [5000, 7000, 9500, 12600],
+     "item": "tire", "itemTime": 20, "itemAt": [0, 0, 130], "spawn": [0, 0, -60]}
+  ]
+}

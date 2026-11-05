@@ -47,6 +47,7 @@ void ChronoSystem::Reset(entt::registry& r){
     if(slimePlayerDemo_) inkMode_ = slimeLife_ = true;
     // 吸収モード: 通常のプレイ。従来の進行を確かめる自動テストでは使わない
     devour_=slimeLife_&&!slimePlayerDemo_&&(!wcsstr(GetCommandLineW(),L"--slime-life-smoke")||wcsstr(GetCommandLineW(),L"--slime-devour"));
+    if(devour_)LoadDevourStage();
     // スライムの変形のターゲットを消す
     Engine::Renderer::GetInstance()->SetFluidMorphTargets({},0);
     if(inkMode_){creature_=true;arena_=false;inkShots_.clear();inkSurfaces_.clear();inkMeshes_.clear();inkDirty_=true;}
@@ -69,8 +70,8 @@ void ChronoSystem::Reset(entt::registry& r){
     openingPending_=true;cinematicActive_=false;cinematicBoss_=false;cinematicAge_=0;
     // プレイヤーがいなければここまで
     if(!initialized_)return;
-    // 戦闘の BGM を流す
-    Music::Play(Music::Battle);
+    // ステージの BGM を流す (街は専用の曲)
+    Music::Play(devour_&&CurrentDevourStage().map=="ring"?Music::City:Music::Battle);
     // ボスの生き物のコンポーネントを外し、元のモデルを表示する
     if(r.valid(boss_)){r.remove<CreatureBoss>(boss_);r.get<MeshRendererComponent>(boss_).enabled=true;}
     // プレイヤーの状態を作り直し、位置・体力・入力を初期化する
@@ -82,8 +83,8 @@ void ChronoSystem::Reset(entt::registry& r){
     // 白テクスチャ・球のメッシュ・音を読み込む
     auto* renderer=Engine::Renderer::GetInstance();white_=renderer->LoadTexture2D("Resources/Textures/white1x1.png");
     sphere_=renderer->LoadObjMesh(ball);
-    if(hitSound_==0xffffffff)hitSound_=Engine::Audio::GetInstance()->Load("Resources/Sound/suittikirikae.mp3");
-    if(coreSound_==0xffffffff)coreSound_=Engine::Audio::GetInstance()->Load("Resources/Sound/kettei.mp3");
+    if(hitSound_==0xffffffff)hitSound_=Engine::Audio::GetInstance()->Load("Resources/Sound/Devour/hit.wav");
+    if(coreSound_==0xffffffff)coreSound_=Engine::Audio::GetInstance()->Load("Resources/Sound/Devour/confirm.wav");
     // ポストエフェクトを既定に戻してから、ステージを作る
     renderer->SetPostEffect("Default");renderer->SetPostProcessParams({});
     Build(r);CacheSolids(r);
@@ -262,6 +263,8 @@ void ChronoSystem::Update(entt::registry& r,GameContext& ctx){
         if(finishAge_>0.2f&&ctx.input){
             UI::Canvas ui(ctx.renderer,ctx.viewportSize.x,ctx.viewportSize.y);
             if(ctx.useOverrideMouse)ui.SetPointer(ctx.overrideMouseX,ctx.overrideMouseY);
+            // 吸収モードでクリアしたら、N / A で次のステージへ
+            if(devour_&&won_&&devourStage_+1<int(Chrono::DevourStages().size())&&(UI::Pressed(DIK_N)||UI::PadPressed(XINPUT_GAMEPAD_A))){++devourStage_;SaveSlimeLab();Reset(r);return;}
             if(UI::Pressed(DIK_R)||UI::Pressed(DIK_RETURN)||UI::PadPressed(XINPUT_GAMEPAD_X)||ui.Click(UI::Retry)){
                 if(inkMode_||arena_||creature_){Reset(r);return;}
                 Engine::SceneParameters params;params.stagePath=Data::MainStagePath();

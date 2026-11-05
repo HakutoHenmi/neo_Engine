@@ -385,7 +385,7 @@ public:
             D3D12_RESOURCE_STATE_PRESENT,D3D12_RESOURCE_STATE_PRESENT);
         // ページごとの保存先
         const wchar_t* paths[]={L"tests/out/ui-title.png",L"tests/out/ui-select.png",L"tests/out/ui-defeat.png",L"tests/out/ui-clear.png",L"tests/out/ui-pause.png",
-            L"tests/out/credits-music.png",L"tests/out/credits-art.png",L"tests/out/credits-fonts.png",L"tests/out/credits-software.png"};
+            L"tests/out/credits-music.png",L"tests/out/credits-sound.png",L"tests/out/credits-art.png",L"tests/out/credits-fonts.png",L"tests/out/credits-software.png"};
         if(SUCCEEDED(hr))hr=DirectX::SaveToWICFile(*image.GetImage(0,0,0),DirectX::WIC_FLAGS_NONE,
             DirectX::GetWICCodec(DirectX::WIC_CODEC_PNG),paths[page_]);
         passed_&=SUCCEEDED(hr);
@@ -394,7 +394,7 @@ public:
             auto* audio=Engine::Audio::GetInstance();
             audio->StopAll();passed_&=!audio->IsBGMPlaying() && audio->CurrentBGM().empty();
             Game::Music::Play(Game::Music::Title);passed_&=audio->IsBGMPlaying();
-            std::ofstream("tests/out/ui-smoke.txt")<<(passed_?"PASS":"FAIL")<<" font, title fit, nine GPU captures including four credits pages, five BGM tracks, transitions and stop/restart";
+            std::ofstream("tests/out/ui-smoke.txt")<<(passed_?"PASS":"FAIL")<<" font, title fit, ten GPU captures including five credits pages, five BGM tracks, transitions and stop/restart";
             PostQuitMessage(passed_?0:2);return;
         }
         // 次のページへ

@@ -96,8 +96,8 @@ void ChronoSystem::DrawMorphShowcase(GameContext& ctx){
     // 形が完成したら、名前を横から滑り込ませる
     if(show.readyAt<0)return;
     float slide=ShotEase(show.age,show.readyAt,show.readyAt+.35f),fade=slide*(1-ShotEase(show.age,hold,hold+ShowcaseOut*.6f));
-    bool hydrant=show.form==LifeAction::Hydrant,signal=show.form==LifeAction::Signal;const Engine::Vector4 hazard{.95f,.76f,.19f,fade},white{.96f,.96f,.94f,fade};
-    const char* name=hydrant?"消火栓":signal?"信号機":"タイヤ";const char* line=hydrant?"放水で攻撃・水の幕で防御":signal?"赤で止め、青で渡らせ、黄で弾けさせる":"溜めて突進・体当たり";
+    bool hydrant=show.form==LifeAction::Hydrant,signal=show.form==LifeAction::Signal,vacuum=show.form==LifeAction::Vacuum,spring=show.form==LifeAction::Spring;const Engine::Vector4 hazard{.95f,.76f,.19f,fade},white{.96f,.96f,.94f,fade};
+    const char* name=vacuum?"掃除機":spring?"バネ":hydrant?"消火栓":signal?"信号機":"タイヤ";const char* line=vacuum?"広場の小物を一気に吸い込む":spring?"建物を飛び越え、着地で飲み込む":hydrant?"放水で攻撃・水の幕で防御":signal?"赤で止め、青で渡らせ、黄で弾けさせる":"溜めて突進・体当たり";
     float cx=640+(1-slide)*-120;
     ui.Fill({cx-260,598,520,4},UI::WithAlpha(hazard,.9f));
     ui.LabelCenter("NEW FORM",cx,574,16,hazard,6);

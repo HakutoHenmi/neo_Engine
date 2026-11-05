@@ -33,7 +33,7 @@ ChronoSystem::V ChronoSystem::ConstrainLifeMovement(V from,V to,float radius)con
     // 吸収モードの輪の町: 町の外と、まだ飲み込んでいない建物には入れない
     // 速く動いても閉じた輪の壁を飛び越えないよう、壁の所で止める
     if(devour_)for(int z=1;z<RingStyleCount;++z)if(!ringOpen_[size_t(z)]){float wall=RingWallAt(z),a=RingDistance(from),b=RingDistance(to);if((a<wall)!=(b<wall))to=Lerp(from,to,(wall-a)/(b-a));}
-    if(devour_)return CityConstrainWith(from,to,radius,[&](V p,float margin){return !RingWallClosed(p,margin)&&RingWalkable(p,margin,ringLots_,[&](size_t i){return RingBlocked(i);});});
+    if(devour_)return CityConstrainWith(from,to,radius,[&](V p,float margin){return DevourWalkable(p,margin);});
     if(!slimePlayerDemo_)return CityConstrain(from,to,radius,cityGates_);
     to.x=std::clamp(to.x,-69.f+radius,69.f-radius);
     to.z=std::clamp(to.z,-49.f+radius,109.f-radius);return to;
@@ -46,6 +46,9 @@ void ChronoSystem::UpdateSlimePlayerDemo(entt::registry& r,Player& player,GameCo
         player.invincible=0;
         DamageSlimeLife(r,player,std::min(20.f,std::max(0.f,body.health-1)),ctx,body.at+V{0,0,4});
     }
+    // 飲み込む球が無くなったら置き直す (掃除機とバネを何度も試せるように)
+    if(std::none_of(life_.props.begin(),life_.props.end(),[](const LifeCollectible& prop){return prop.active;}))
+        for(auto& prop:life_.props){prop.active=true;prop.sealed=false;}
     const int step=int(ctx.input->Trigger(DIK_EQUALS))-int(ctx.input->Trigger(DIK_MINUS));
     if(step) {
         body.mass=body.health=body.maxHealth=std::clamp(body.mass+float(step)*100.f,100.f,1600.f);
@@ -56,7 +59,7 @@ void ChronoSystem::UpdateSlimePlayerDemo(entt::registry& r,Player& player,GameCo
 void ChronoSystem::DrawSlimePlayerDemoUI(GameContext& ctx) {
     UI::Canvas ui(ctx.renderer,ctx.viewportSize.x,ctx.viewportSize.y);
     const auto& b=life_.bodies[0];
-    const char* selected=life_.form==LifeAction::Hammer?"HAMMER":life_.form==LifeAction::Tire?"TIRE":life_.form==LifeAction::Hydrant?"HYDRANT":"SIGNAL";
+    const char* names[]={"HAMMER","TIRE","HYDRANT","SIGNAL","VACUUM","SPRING","SWORD","PLANE"};const char* selected=names[LifeFormIndex()];
     ui.Rounded({22,20,510,152},{.025f,.045f,.055f,.88f},16);
     ui.Label("SLIME PLAYER / PRACTICE FIELD",40,35,20,UI::Lime);
     ui.Text("移動・ジャンプ・変形を自由に試せます",40,66,20,UI::Paper,UI::JapaneseFont);
@@ -64,8 +67,8 @@ void ChronoSystem::DrawSlimePlayerDemoUI(GameContext& ctx) {
     const char* status=!LifeWeaponForm(b.action)?"SLIME":!b.weapon.ready?"FORMING":b.weapon.active?"ATTACK":"READY";
     ui.Label(std::string("STATE: ")+status,40,132,15,UI::Paper);
     ui.Rounded({22,559,1236,139},{.025f,.045f,.055f,.88f},16);
-    ui.Text("WASD 移動 / マウス 視点 / Space ジャンプ / 右クリック 吸収・水の防御",40,575,19,UI::Paper,UI::JapaneseFont);
-    ui.Text("1 タイヤ / 2 消火栓 / 3 信号機 → 左クリックで変形・攻撃 / タイヤは長押しで溜め突進 / R 戻る",40,609,18,UI::Paper,UI::JapaneseFont);
+    ui.Text("WASD 移動 / マウス 視点 / Space ジャンプ / 右クリック 吸収 / 左クリック 攻撃 (タイヤ・バネは長押しで溜め、掃除機は長押しで吸い込む) / R 戻る",40,575,17,UI::Paper,UI::JapaneseFont);
+    ui.Text("1 ハンマー / 2 タイヤ / 3 消火栓 / 4 信号機 / 5 掃除機 / 6 バネ / 7 剣 / 8 飛行機",40,609,18,UI::Paper,UI::JapaneseFont);
     ui.Text("H 被弾分裂 / -・= 大きさ変更 / F5 試験場リセット / Esc ポーズ",40,647,18,UI::Lime,UI::JapaneseFont);
     if(life_.messageAge>0)ui.Center(life_.message,640,170,17,UI::Gold,UI::JapaneseFont);
     DrawLifeChildMarkers(ctx);

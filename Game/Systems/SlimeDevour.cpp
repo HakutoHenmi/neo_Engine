@@ -50,9 +50,11 @@ bool SaveDevourAnim(std::string& message){
 }
 bool ReloadDevourAnim(std::string& message){return ReadDevourAnim(DevourAnim(),message);}
 namespace {
-// 体の中に見えている時間 (この間に中心へ沈みながら溶けて小さくなる) と、同時に見せる数
-constexpr float kMealTime=2.4f;
-constexpr size_t kMealLimit=16;
+// 体の中に残して見せる数 (超えたら一番小さい物から溶かす) と、これより相対的に小さくなったら溶ける大きさ
+constexpr size_t kMealLimit=100;
+constexpr float kMealMelt=.04f;
+// 皮で包む物の数と、そのうち新しい順に包む数、飲み込むときに伸ばす腕の数
+constexpr size_t kMealSkinLimit=64,kMealSkinFresh=40,kBiteArmLimit=16;
 // ワールドの点を 1280x720 の画面の位置にする (後ろなら false)
 bool DevourScreen(const GameContext& ctx,Vec point,float& x,float& y){
     DirectX::XMFLOAT4 clip;DirectX::XMStoreFloat4(&clip,DirectX::XMVector4Transform(DirectX::XMVectorSet(point.x,point.y,point.z,1),ctx.camera->View()*ctx.camera->Proj()));
@@ -67,14 +69,23 @@ std::string DevourAmount(float value){return std::to_string(int(std::round(value
 float ChronoSystem::DevourEat(entt::registry& r,size_t index){
     if(index>=life_.props.size()||!life_.props[index].active)return 0;
     auto& prop=life_.props[index];auto& body=life_.bodies[0];DevourRemoveProp(r,index);
-    float gain=DevourSwallow(body.mass,devourDigest_,prop.reward);++life_.absorbed;LifeUnlockMorphItem(life_,0x80000000u|uint32_t(index));
-    // 体の中に見せる (モデルか光る球。塀のようにモデルの無い物は見せない)
+    float gain=DevourSwallow(body.mass,devourDigest_,prop.reward*DevourFoodValue(body.mass,prop.radius,CurrentDevourStage().smallFood));DevourLogEat(prop,gain);++life_.absorbed;LifeUnlockMorphItem(life_,0x80000000u|uint32_t(index));
+    // 体の中に残して見せる (モデルか光る球。塀のようにモデルの無い物は見せない)。大きすぎる物は体に収まる大きさにする
     if(prop.visual!=0xffffffffu||prop.orb){
-        if(devourMeals_.size()>=kMealLimit)devourMeals_.erase(devourMeals_.begin());
-        float bodyRadius=DevourBodyRadius(body.mass);V offset=prop.at-body.at;offset.y=0;
-        float length=Length(offset);if(length>bodyRadius*.45f)offset=offset*(bodyRadius*.45f/length);
-        DevourMeal meal;meal.visual=prop.visual;meal.orb=prop.orb;meal.offset=offset;meal.radius=prop.radius;meal.tint=LifeOrbColor(prop.reward);
-        meal.fit=std::min(1.f,bodyRadius*.55f/std::max(.1f,prop.radius));devourMeals_.push_back(meal);}
+        float bodyRadius=DevourBodyRadius(body.mass);auto uniform=[](float low,float high){return std::uniform_real_distribution<float>(low,high)(DevourRandom());};
+        if(devourMeals_.size()>=kMealLimit)devourMeals_.erase(std::min_element(devourMeals_.begin(),devourMeals_.end(),[](const DevourMeal& a,const DevourMeal& b){return a.radius*a.fit<b.radius*b.fit;}));
+        // 飲んだ方向にくっつく。重なって見えなくならないよう、その近くで他の物と一番離れた向きを選ぶ
+        V side=prop.at-body.at;side.y=0;side=Length(side)>.01f?Unit(side):body.forward;
+        V dir{};float widest=-1;for(int k=0;k<24;++k){V candidate=Unit(side+V{uniform(-1.1f,1.1f),uniform(.6f,2.4f),uniform(-1.1f,1.1f)});
+            float nearest=4;for(const auto& other:devourMeals_){V d=candidate-other.dir;nearest=std::min(nearest,Dot(d,d));}
+            if(nearest>widest){widest=nearest;dir=candidate;}}
+        DevourMeal meal;meal.visual=prop.visual;meal.orb=prop.orb;meal.dir=dir;meal.radius=prop.radius;meal.tint=LifeOrbColor(prop.reward);
+        meal.fit=std::min(1.f,bodyRadius*.55f/std::max(.1f,prop.radius));
+        // 塊のように積む: 前に飲んだ物に重ならない所まで外へ出す (新しい物がいつも一番外に見える)
+        float size=meal.radius*meal.fit;for(;meal.lift<2.4f;meal.lift+=.1f){V at=DevourMealAt(meal);bool hit=false;
+            for(const auto& other:devourMeals_){float gap=(other.radius*other.fit+size)*.8f;V d=at-DevourMealAt(other);hit|=Dot(d,d)<gap*gap;}
+            if(!hit)break;}
+        devourMeals_.push_back(meal);}
     return gain;
 }
 // 物を街から消す: 隠して、塀・バリケード・シャッターなら道を開ける
@@ -95,7 +106,7 @@ void ChronoSystem::DevourRemoveProp(entt::registry& r,size_t index){
 // 輪を開ける: 壁を消し、同じ壁の他の門も消して、向こうの物に手が届くようにする
 void ChronoSystem::DevourOpenRing(entt::registry& r,int ring){
     if(ring<1||ring>=RingStyleCount||ringOpen_[size_t(ring)])return;
-    ringOpen_[size_t(ring)]=true;devourRingOpened_=ring;
+    ringOpen_[size_t(ring)]=true;devourRingOpened_=ring;DevourLogEvent("ring_open_"+std::to_string(ring));
     for(auto e:ringWalls_[size_t(ring)])if(r.valid(e)&&r.all_of<MeshRendererComponent>(e))r.get<MeshRendererComponent>(e).enabled=false;
     for(auto& prop:life_.props)if(prop.ring==ring)prop.sealed=false;
     for(const auto& [index,gate]:devourGates_)if(gate==ring&&life_.props[index].active)DevourRemoveProp(r,index);
@@ -109,7 +120,7 @@ void ChronoSystem::DevourShatter(entt::registry& r,GameContext& ctx,size_t index
         LifeCollectible shard;shard.at=prop.at+V{std::cos(a)*d,0,std::sin(a)*d};shard.at.y=InkGround(shard.at)+1;shard.required=1;shard.reward=prop.reward*DevourShardShare/float(DevourShardCount);
         shard.orb=true;shard.radius=prop.radius*.35f;shard.shard=shard.radius*.6f;shard.shardFrom=top;shard.shardStart=life_.age;life_.props.push_back(shard);}
     if(swarmEffects_.size()<128)swarmEffects_.push_back({prop.at,0,prop.radius,2});
-    LifeImpact(ctx,ImpactHammerHit,prop.at);auto* audio=Engine::Audio::GetInstance();audio->Play(hitSound_,false,.6f*audio->GetMasterSEVolume(),.8f);
+    LifeImpact(ctx,ImpactHammerHit,prop.at);PlayDevourSound(devourSounds_.shatter,.75f);
     life_.message="ドカン！ 砕けた欠片を飲み込め";life_.messageAge=1.4f;
 }
 // ハンマーの当たり: 覆える物はそのまま飲み込み、大きすぎる物は砕く。もっと大きい物は必要な量を知らせる
@@ -120,47 +131,103 @@ void ChronoSystem::DevourHammerHits(entt::registry& r,GameContext& ctx,const Lif
     size_t count=life_.props.size();
     for(size_t i=0;i<count;++i){const auto& prop=life_.props[i];if(!prop.active||prop.sealed)continue;float radius=prop.radius*.5f+prop.reach;
         if(LifeDistance(prop.at,b.at)>range+radius||!LifeWeaponTouches(b,prop.at,radius,pulse))continue;
-        if(DevourCanCover(mass,prop.radius)){gained+=DevourEat(r,i);++eaten;}
+        if(DevourCanCover(mass,prop.radius)){devourEatBy_=4;gained+=DevourEat(r,i);++eaten;}
         else if(prop.morphItem==LifeMorphItem::None&&DevourCanShatter(mass,prop.radius))DevourShatter(r,ctx,i);
-        else if(life_.messageAge<=0){life_.message="硬い！ 本体 "+std::to_string(int(DevourMassToShatter(prop.radius)))+" で砕ける";life_.messageAge=1.4f;LifeImpact(ctx,ImpactDevourBounce,prop.at);}}
-    if(eaten){float weight=DevourGulpWeight(eaten,gained,mass);auto* audio=Engine::Audio::GetInstance();audio->Play(lifeEngulfSound_,false,(.6f+.3f*weight)*audio->GetMasterSEVolume(),1);
+        else if(life_.messageAge<=0){life_.message="硬い！ 本体 "+std::to_string(int(DevourMassToShatter(prop.radius)))+" で砕ける";life_.messageAge=1.4f;LifeImpact(ctx,ImpactDevourBounce,prop.at);PlayDevourSound(devourSounds_.hit,.5f);}}
+    if(eaten){float weight=DevourGulpWeight(eaten,gained,mass);PlayDevourGulp(weight,devourClock_.combo);
         LifeImpact(ctx,ImpactDevour,b.at,{0,1,0},.8f+.7f*weight);}
 }
 // タイヤの溜め突進: 砕ける大きさの物にぶつかると砕く
-void ChronoSystem::DevourTireSmash(entt::registry& r,GameContext& ctx,float reach){
-    const auto& body=life_.bodies[0];if(body.weapon.dashPower<DevourTireSmashPower)return;
+void ChronoSystem::DevourSmash(entt::registry& r,GameContext& ctx,float reach){
+    const auto& body=life_.bodies[0];
     size_t count=life_.props.size();
     for(size_t i=0;i<count;++i){const auto& prop=life_.props[i];if(!prop.active||prop.sealed||prop.morphItem!=LifeMorphItem::None||!DevourCanShatter(body.mass,prop.radius))continue;
         if(LifeDistance(prop.at,body.at)<=reach+prop.radius*.5f+prop.reach)DevourShatter(r,ctx,i);}
 }
-// 時間切れの大きさを記録して終わる。自己ベストか最後の段階なら勝ちの演出にする
+// 吸収モードの音を読む
+void ChronoSystem::LoadDevourSounds(){
+    StopLoopSounds();auto* audio=Engine::Audio::GetInstance();
+    if(devourSounds_.note!=DevourSounds::None)return;
+    auto load=[&](const std::string& name){return audio->Load("Resources/Sound/Devour/"+name+".wav");};
+    auto& s=devourSounds_;for(int i=0;i<4;++i)s.gulpSmall[i]=load("gulp-small-"+std::to_string(i));for(int i=0;i<2;++i)s.gulpMid[i]=load("gulp-mid-"+std::to_string(i));
+    s.gulpBig=load("gulp-big");s.note=load("note");s.splat=load("splat");s.pounce=load("pounce");s.bounce=load("bounce");s.hit=load("hit");s.shatter=load("shatter");
+    s.vacuumLoop=load("vacuum-loop");s.rankUp=load("rank-up");s.rankTop=load("rank-top");s.gateOpen=load("gate-open");s.tick=load("tick");s.hurry=load("hurry");s.timeUp=load("time-up");s.morph=load("morph");
+}
+void ChronoSystem::StopLoopSounds(){if(devourVacuumVoice_){Engine::Audio::GetInstance()->Stop(devourVacuumVoice_);devourVacuumVoice_=0;}}
+void ChronoSystem::PlayDevourSound(uint32_t sound,float volume,float pitch){auto* audio=Engine::Audio::GetInstance();audio->Play(sound,false,volume*audio->GetMasterSEVolume(),pitch);}
+// 同じ音が続かないよう順に使い、少しだけ高さを揺らす。音階は短い間に重ならないよう間を空ける (掃除機は続けて飲むため)
+void ChronoSystem::PlayDevourGulp(float weight,int combo){
+    uint32_t turn=devourGulpTurn_++;float sway=1+.03f*(float(turn%3)-1);const auto& s=devourSounds_;
+    if(weight>=.6f)PlayDevourSound(s.gulpBig,.8f+.2f*weight,sway);
+    else if(weight>=.3f)PlayDevourSound(s.gulpMid[turn%2],.6f+.4f*weight,sway);
+    else PlayDevourSound(s.gulpSmall[turn%4],.5f+.5f*weight,sway);
+    if(life_.age-devourNoteAt_<.06f)return;
+    devourNoteAt_=life_.age;PlayDevourSound(s.note,.2f+.12f*weight,DevourComboPitch(combo));
+}
+// 残り 30 秒で知らせて BGM を速くし、残り 10 秒から秒読みする
+void ChronoSystem::TickDevourTimeSounds(float before){
+    float left=devourClock_.left;
+    if(before>DevourHurryTime&&left<=DevourHurryTime){PlayDevourSound(devourSounds_.hurry,.7f);Engine::Audio::GetInstance()->SetBGMPitch(DevourHurryMusicPitch);}
+    if(left>0&&left<=DevourCountdownTime&&std::ceil(before)!=std::ceil(left))PlayDevourSound(devourSounds_.tick,.6f,1+.05f*(DevourCountdownTime-std::ceil(left)));
+    if(before>0&&left<=0)PlayDevourSound(devourSounds_.timeUp,.8f);
+}
+// 時間切れの大きさを記録して終わる。最初の目標に届いていればクリア
 void ChronoSystem::FinishDevour(Player& p){
+    StopLoopSounds();
     auto& body=life_.bodies[0];DevourGrow(body,devourDigest_);devourDigest_=0;
-    devourNewBest_=body.mass>devourBest_;if(devourNewBest_){devourBest_=body.mass;SaveSlimeLab();}
-    Finish(p,devourNewBest_||devourReachedFinal_);
+    const auto& stage=CurrentDevourStage();float& best=devourBests_[size_t(devourStage_)];bool clear=DevourRankAt(stage,body.mass)>0;
+    SaveDevourLog(devourClock_.left<=0?"time_up":"all_eaten");
+    devourNewBest_=body.mass>best;if(devourNewBest_)best=body.mass;if(clear)++lifeClears_;
+    if(devourNewBest_||clear)SaveSlimeLab();
+    Finish(p,clear);
+}
+// 保存したステージを読む (--devour-stage=番号 があれば、そのステージを使う)
+void ChronoSystem::LoadDevourStage(){
+    if(devourStageLoaded_)return;devourStageLoaded_=true;
+    if(const wchar_t* arg=wcsstr(GetCommandLineW(),L"--devour-stage="))devourStage_=_wtoi(arg+15);
+    else if(!wcsstr(GetCommandLineW(),L"--slime-life-smoke"))try{std::ifstream file(RecordPath().parent_path()/L"slime-lab-v1.json");nlohmann::json data;if(file){file>>data;devourStage_=data.value("devourStage",0);}}catch(...){}
+    devourStage_=std::clamp(devourStage_,0,int(DevourStages().size())-1);
 }
 // 広げた体の下にある、覆える大きさの物をまとめて飲み込む。飲み込んだ数を返す
 int ChronoSystem::DevourCapture(entt::registry& r,V landing,float& gained){
     // 途中で大きくなっても、覆った瞬間の大きさで判定する
-    float mass=life_.bodies[0].mass;int count=0;
+    float mass=life_.bodies[0].mass;int count=0;devourEatBy_=2;
     for(size_t i=0;i<life_.props.size();++i){const auto& prop=life_.props[i];
         if(!prop.active||prop.sealed||!DevourCanCover(mass,prop.radius)||!DevourUnderCover(landing,prop.at,mass,prop.radius,prop.reach))continue;
         gained+=DevourEat(r,i);++count;}
     return count;
 }
 // ずっと小さい物は、通り道で触れただけで沈み込む (前フレームの位置からの線分で調べ、速く動いても取りこぼさない)
-int ChronoSystem::DevourTouch(entt::registry& r,V from,float& gained){
-    auto& body=life_.bodies[0];if(body.mass<=0||body.down)return 0;
-    float mass=body.mass,scale=LifeScale(mass),reach=2.1f*life_.recipe.Spread()*scale;int count=0;
-    // タイヤで転がっている間は、もっと大きい物まで通り道で吸い込む
-    bool tire=body.action==LifeAction::Tire&&body.weapon.ready;float ratio=tire?(body.weapon.dash>0?DevourTireDashSinkRatio:DevourTireSinkRatio):DevourSinkRatio;
+void ChronoSystem::DevourTouch(entt::registry& r,V from){
+    auto& body=life_.bodies[0];if(body.mass<=0||body.down)return;
+    float mass=body.mass,scale=LifeScale(mass),reach=2.1f*life_.recipe.Spread()*scale;
+    // タイヤは幅が広いので、通り道の物をより広く吸い込む
+    bool tire=body.action==LifeAction::Tire&&body.weapon.ready;
     if(tire)reach=std::max(reach,(LifeTireRadius+1)*scale);
     V travel=body.at-from;travel.y=0;float squared=Dot(travel,travel);
-    for(size_t i=0;i<life_.props.size();++i){const auto& prop=life_.props[i];if(!prop.active||prop.sealed||!DevourSinks(mass,prop.radius,ratio))continue;
+    for(size_t i=0;i<life_.props.size();++i){const auto& prop=life_.props[i];if(!prop.active||prop.sealed||!DevourCanCover(mass,prop.radius))continue;
         V delta=prop.at-from;delta.y=0;float t=squared>.00001f?std::clamp(Dot(delta,travel)/squared,0.f,1.f):0;V nearest=Lerp(from,body.at,t);
-        if(LifeDistance(nearest,prop.at)>reach+prop.radius*.5f+(tire?prop.reach:0)||std::abs(nearest.y-prop.at.y)>2*scale+prop.radius)continue;
-        gained+=DevourEat(r,i);++count;}
-    return count;
+        if(std::abs(nearest.y-prop.at.y)>2*scale+prop.radius)continue;
+        float gap=LifeDistance(nearest,prop.at);
+        // 飲めるのは体に触れた物だけ。少し大きい物が前に近づくと、飲む前に口を開ける
+        if(gap>reach+prop.radius*.5f+(tire?prop.reach:0)){V side=prop.at-body.at;side.y=0;
+            if(gap<=reach*DevourMouthReach+prop.radius*.5f&&prop.radius>=DevourBodyRadius(mass)*DevourCoverRatio*DevourMouthAhead&&Length(side)>.01f&&Dot(Unit(side),body.forward)>.4f)DevourOpenMouth(prop,false);
+            continue;}
+        DevourPull(r,i,DevourBiteTime(mass,prop.radius),true);}
+}
+// 物を体か吸い口へ引き寄せ始める: 他から選ばれないようにして、元の場所の見た目は隠す
+void ChronoSystem::DevourPull(entt::registry& r,size_t index,float flight,bool toBody){
+    auto& prop=life_.props[index];prop.sealed=true;prop.ring=0;
+    if(prop.visual!=0xffffffffu){auto e=entt::entity(prop.visual);if(r.valid(e)&&r.all_of<MeshRendererComponent>(e))r.get<MeshRendererComponent>(e).enabled=false;}
+    devourSucks_.push_back({index,prop.at,0,flight,toBody});
+    if(toBody)DevourOpenMouth(prop,true);
+}
+// 口を開ける: 大きい物ほど大きく開ける。続けて飲むときは開いたまま次を飲む。turn なら物の方を向く
+void ChronoSystem::DevourOpenMouth(const LifeCollectible& prop,bool turn){
+    auto& body=life_.bodies[0];float ratio=prop.radius/(DevourBodyRadius(body.mass)*DevourCoverRatio);if(body.action!=LifeAction::Idle||ratio<DevourMouthSmallest)return;
+    float scale=DevourMouthScale(body.mass,prop.radius);V side=prop.at-body.at;side.y=0;if(turn&&Length(side)>.01f)body.forward=Unit(side);
+    if(devourBiteAge_<0){devourBiteAge_=DevourWindup+.04f;devourBiteScale_=scale;++life_.revision;}
+    else{devourBiteAge_=std::min(devourBiteAge_,DevourLandAt);devourBiteScale_=std::max(devourBiteScale_,scale);}
 }
 // 炎などで体の一部が剥がれる: 小さくなり、剥がれた分は周りに光る球で落ちる (拾い直せる)
 void ChronoSystem::DevourShedBody(Player& p,GameContext& ctx,float damage,V source){
@@ -178,7 +245,7 @@ void ChronoSystem::DevourShedBody(Player& p,GameContext& ctx,float damage,V sour
 }
 // 飛びかかりを始める: 正面の覆える物へ向かって跳ぶ。満足の間に押せば、次の飛びかかりへつなげる
 bool ChronoSystem::StartDevourPounce(Player& p,GameContext& ctx){
-    (void)ctx;auto& body=life_.bodies[0];if(body.mass<=0||body.down||finished_)return false;
+    (void)ctx;auto& body=life_.bodies[0];if(body.mass<=0||body.down||finished_||devourPounceWait_>0)return false;
     bool chain=body.action==LifeAction::Engulf&&body.actionAge>=DevourCoverEnd;
     if(body.action!=LifeAction::Idle&&!chain)return false;
     // 空中からは飛びかからない (連打で空へ上っていかないように、着地を待つ)
@@ -195,7 +262,7 @@ bool ChronoSystem::StartDevourPounce(Player& p,GameContext& ctx){
     // 液体から包み込みの形 (体の各点の行き先) へ移るので、最初の 1 回だけ粒子の割り当てを作り直す。
     // 続けて飛びかかるときは包み込みの形のままなので作り直さない
     body.forward=direction;body.action=LifeAction::Engulf;body.actionAge=0;body.grabs.clear();body.committed=false;body.restoreDuration=.12f;
-    life_.tackleTime=0;if(!chain)++life_.revision;return true;
+    life_.tackleTime=0;devourPounceWait_=DevourPounceCooldown;++devourLog_.pounces;if(!chain)++life_.revision;return true;
 }
 // 体と同じ流体の粒子を周りへばらまく (本体と同じ流体シミュレーションの、弾道で飛ぶ粒子。描き方も本体と同じ)。
 // 飛沫は毎回ばらばら: 向き・高さ・速さ・しずくの大きさ・粒の数・飛ぶ時間をすべて乱数で決める。
@@ -226,24 +293,32 @@ void ChronoSystem::DevourSplash(V at,float radius,int count,float strength){
 // 飛びかかりを進める: 溜め → 跳ぶ → 覆う (飲み込む・弾かれる) → 満足。体の中の物の時間も進める
 void ChronoSystem::TickDevourPounce(entt::registry& r,Player& p,GameContext& ctx,float dt){
     auto& body=life_.bodies[0];
-    DevourDigest(body,devourDigest_,dt);devourGulp_.age+=dt;
+    TickDevourLog(dt);DevourDigest(body,devourDigest_,dt);devourGulp_.age+=dt;devourPounceWait_=std::max(0.f,devourPounceWait_-dt);devourSizePulse_=std::max(0.f,devourSizePulse_-dt*4);
+    // 大口は形の時間を進め、閉じ終えたら液体の体へ戻る
+    if(devourBiteAge_>=0){devourBiteAge_+=dt;if(devourBiteAge_>=DevourPounceTime||body.action!=LifeAction::Idle){if(body.action==LifeAction::Idle){body.aspect=1;body.aspectVelocity=3;}devourBiteAge_=-1;}}
+    for(auto& pop:devourPops_)pop.age+=dt;
+    devourPops_.erase(std::remove_if(devourPops_.begin(),devourPops_.end(),[](const DevourPop& pop){return pop.age>.7f;}),devourPops_.end());
     if(devourOpenAll_){devourOpenAll_=false;for(int z=1;z<RingStyleCount;++z)DevourOpenRing(r,z);devourRingOpened_=0;}
     // 輪が開いたら大きく知らせる
     if(devourRingOpened_){life_.message=RingZones()[size_t(devourRingOpened_)].name+"が開いた！";life_.messageAge=3;devourRingOpened_=0;
-        LifeImpact(ctx,ImpactStructureBreak,body.at);auto* audio=Engine::Audio::GetInstance();audio->Play(hitSound_,false,.8f*audio->GetMasterSEVolume(),.6f);}
-    for(auto& meal:devourMeals_)meal.age+=dt;
-    devourMeals_.erase(std::remove_if(devourMeals_.begin(),devourMeals_.end(),[](const DevourMeal& m){return m.age>kMealTime;}),devourMeals_.end());
+        LifeImpact(ctx,ImpactStructureBreak,body.at);PlayDevourSound(devourSounds_.gateOpen,.85f);}
+    // 体の中の物: 新しい物は表面に付き、後から飲んだ物に埋もれて沈む (飲んだ順に層になる)。体が育って小さく見えるようになった物は溶ける
+    {float bodyRadius=DevourBodyRadius(body.mass),cover=0;devourChew_=std::max(0.f,devourChew_-dt);
+        for(auto meal=devourMeals_.rbegin();meal!=devourMeals_.rend();++meal){meal->age+=dt;meal->now+=(DevourMealDepth(cover)-meal->now)*(1-std::exp(-5*dt));
+            float size=meal->radius*meal->fit/bodyRadius;cover+=size*size;}
+        devourMeals_.erase(std::remove_if(devourMeals_.begin(),devourMeals_.end(),[&](const DevourMeal& m){return m.age>2&&m.radius*m.fit<bodyRadius*kMealMelt;}),devourMeals_.end());}
     // しずくが飛んでいる範囲は、しずくが消えるまで (0.6 秒) 覚えておく
     for(auto& splash:devourSplashes_)splash.age+=dt;
     devourSplashes_.erase(std::remove_if(devourSplashes_.begin(),devourSplashes_.end(),[](const DevourSplashArea& s){return s.age>.7f;}),devourSplashes_.end());
     devourClock_.comboClock=std::max(0.f,devourClock_.comboClock-dt);if(devourClock_.comboClock<=0)devourClock_.combo=0;
-    if(body.action!=LifeAction::Engulf)return;
+    // (試験場の取り込みは飛びかかりではないので、ここまでの体の中の物の時間だけを進める)
+    if(!devour_||body.action!=LifeAction::Engulf)return;
     float age=body.actionAge,next=age+dt,scale=LifeScale(body.mass);
     V leap=devourPounce_.to-devourPounce_.from;leap.y=0;float distance=Length(leap);V direction=distance>.01f?leap*(1/distance):body.forward;
     if(age<DevourLandAt)body.forward=direction;
     // 溜め: その場で踏ん張る
     if(age<DevourWindup){float brake=std::exp(-24*dt);p.velocity.x*=brake;p.velocity.z*=brake;
-        if(next>=DevourWindup){auto* audio=Engine::Audio::GetInstance();audio->Play(lifeSplitSounds_[1],false,.3f*audio->GetMasterSEVolume(),1.5f);}}
+        if(next>=DevourWindup)PlayDevourSound(devourSounds_.pounce,.4f);}
     // 口を開けて飛び込む (ズバーッ) から包む (ガバッ) まで: 勢いよく飛び出し、口で包みながら目標の上で止まる。上には跳ばない
     if(next>DevourWindup&&age<DevourCoverEnd&&dt>0&&!devourPounce_.bounced){float speed=distance*(DevourLeapProgress(next)-DevourLeapProgress(age))/dt;
         p.velocity.x=direction.x*speed;p.velocity.z=direction.z*speed;
@@ -255,20 +330,21 @@ void ChronoSystem::TickDevourPounce(entt::registry& r,Player& p,GameContext& ctx
         float gained=0;int count=DevourCapture(r,landing,gained);
         const auto* target=devourPounce_.target>=0&&size_t(devourPounce_.target)<life_.props.size()?&life_.props[size_t(devourPounce_.target)]:nullptr;
         bool bounced=target&&target->active&&!devourPounce_.fits;
-        auto* audio=Engine::Audio::GetInstance();float cover=DevourCoverRadius(body.mass);
+        float cover=DevourCoverRadius(body.mass);
         if(count){++devourClock_.combo;devourClock_.comboClock=1.4f;
             // ガバッ: 止めずに体をつぶして揺らす。飲み込む音はコンボで高くし、たくさん飲むほど大きく低くする
             float weight=DevourGulpWeight(count,gained,body.mass);devourGulp_={0,weight};
-            audio->Play(lifeEngulfSound_,false,(.6f+.3f*weight)*audio->GetMasterSEVolume(),std::clamp(.9f+.07f*float(devourClock_.combo)-.2f*weight,.7f,1.8f));
+            PlayDevourSound(devourSounds_.splat,.45f+.35f*weight,1.1f-.25f*weight);PlayDevourGulp(weight,devourClock_.combo);
             LifeImpact(ctx,ImpactDevour,body.at,{0,1,0},.8f+.7f*weight);
             life_.message=std::string(devourClock_.combo>1?"ガバッ！ "+std::to_string(devourClock_.combo)+"コンボ":"ガバッ！")+"  "+std::to_string(count)+"個 / 成長 +"+DevourAmount(gained);life_.messageAge=1.4f;}
+        else if(!bounced)PlayDevourSound(devourSounds_.splat,.3f,1.25f);
         // 体のしずくが周りへ飛び散る (飲み込んだ数が多いほど多く)
         DevourSplash(landing,cover*.8f,count?std::min(30,16+3*count):8,std::sqrt(scale));
         // 大きすぎた: ぼよんと弾かれて少しよろける
-        if(bounced){devourPounce_.bounced=true;p.velocity=direction*-(7+1.5f*scale)+V{0,5,0};p.grounded=false;body.aspectVelocity-=8;
+        if(bounced){++devourLog_.bounces;devourPounce_.bounced=true;p.velocity=direction*-(7+1.5f*scale)+V{0,5,0};p.grounded=false;body.aspectVelocity-=8;
             if(!count)devourGulp_={0,.5f};
             LifeImpact(ctx,ImpactDevourBounce,body.at,direction*-1.f+V{0,.5f,0});
-            audio->Play(lifeSplitSounds_[2],false,.35f*audio->GetMasterSEVolume(),1.6f);
+            PlayDevourSound(devourSounds_.bounce,.6f);
             if(!count){life_.message="ぼよん！ まだ大きい / 本体 "+std::to_string(int(DevourMassToCover(target->radius)))+" で飲み込める";life_.messageAge=1.8f;}}
     }
     // (包み込んでいる間に口の縁から液をこぼすと、唇がちぎれて破片が飛んでいるように見えるので出さない。
@@ -276,15 +352,129 @@ void ChronoSystem::TickDevourPounce(entt::registry& r,Player& p,GameContext& ctx
     // 満足: 空洞を閉じたドームから液体の体へ戻り、ばねでぷるんと弾む
     if(next>=DevourPounceTime){body.action=LifeAction::Idle;body.actionAge=0;body.aspect=1;body.aspectVelocity=4+2*(devourGulp_.age<.7f?devourGulp_.weight:0);}
 }
+// 掃除機の吸い口 (形の前の端の床の近く)
+ChronoSystem::V ChronoSystem::DevourVacuumMouth()const{const auto& body=life_.bodies[0];float scale=LifeScale(body.mass);V right{body.forward.z,0,-body.forward.x};return body.at+body.forward*(6.2f*scale)+right*(DevourVacuumMouthX*scale)+V{0,-1.25f+.6f*scale,0};}
+// 掃除機: 押している間、吸い口の前の小さい物を順に吸い寄せ、届いたら飲み込む
+void ChronoSystem::TickDevourVacuum(entt::registry& r,GameContext& ctx,float dt,bool held){
+    auto& body=life_.bodies[0];V mouth=DevourVacuumMouth();float gained=0;int eaten=0;
+    for(auto& suck:devourSucks_){suck.age+=dt;if(suck.age>=suck.flight){devourEatBy_=suck.toBody?0:1;gained+=DevourEat(r,suck.index);++eaten;}}
+    devourSucks_.erase(std::remove_if(devourSucks_.begin(),devourSucks_.end(),[](const DevourSuck& s){return s.age>=s.flight;}),devourSucks_.end());
+    if(eaten){devourClock_.combo+=eaten;devourClock_.comboClock=1.4f;float weight=DevourGulpWeight(eaten,gained,body.mass);
+        PlayDevourGulp(weight,devourClock_.combo);
+        Rumble::Play(.1f+.3f*weight,.2f,.06f+.08f*weight);
+        // ぱくっ: 体が上へ伸びて弾み、飲んだ所に文字が出る。大きい物は画面も揺れて輪が広がり、足が少し重くなる
+        if(body.aspect<1.3f)body.aspectVelocity=std::max(body.aspectVelocity,4+9*weight);
+        devourSizePulse_=1;V radii=LifeRadii(body,life_.recipe);float scale=LifeScale(body.mass),side=(float(devourPops_.size()%3)-1)*radii.x*.5f;
+        if(devourPops_.size()<(devourSucking_?2u:8u))devourPops_.push_back({body.at+V{side,radii.y+scale,0},weight>=.6f?"ガブッ！":weight>=.3f?"ごくん":"ぱくっ",0,weight});
+        // (掃除機は続けて飲むので、体が隠れないよう揺れと輪は出さない)
+        if(weight>=.3f&&!devourSucking_){LifeImpact(ctx,ImpactDevour,body.at,{0,1,0},.3f+.9f*weight);devourChew_=.25f*weight;if(weight>=.6f&&swarmEffects_.size()<128)swarmEffects_.push_back({body.at,0,radii.x*(1+weight),2});}
+        if(weight>.4f)DevourSplash(body.at,LifeRadii(body,life_.recipe).x*.7f,4+int(8*weight),std::sqrt(LifeScale(body.mass))*.7f);
+    }
+    devourSucking_=held&&body.action==LifeAction::Vacuum&&body.weapon.ready&&!finished_;devourSuckClock_-=dt;
+    // 吸っている間だけ連続音を鳴らす
+    if(devourSucking_!=(devourVacuumVoice_!=0)){auto* audio=Engine::Audio::GetInstance();
+        if(devourSucking_)devourVacuumVoice_=audio->Play(devourSounds_.vacuumLoop,true,.2f*audio->GetMasterSEVolume());
+        else{audio->Stop(devourVacuumVoice_);devourVacuumVoice_=0;}}
+    if(!devourSucking_||devourSuckClock_>0)return;
+    // 一番近い物から吸い寄せる
+    int best=-1;float nearest=1e9f;
+    for(size_t i=0;i<life_.props.size();++i){const auto& prop=life_.props[i];if(!prop.active||prop.sealed||!DevourVacuumReaches(mouth,body.forward,prop.at,body.mass,prop.radius))continue;
+        float d=LifeDistance(prop.at,mouth);if(d<nearest){nearest=d;best=int(i);}}
+    if(best<0)return;
+    DevourPull(r,size_t(best),DevourVacuumFlight,false);devourSuckClock_=DevourVacuumInterval;
+}
+// バネ: 押している間は縮んで溜め、離すと向いている方へ跳ぶ。着地できる所まで距離を詰める
+void ChronoSystem::TickDevourSpring(Player& p,float dt,bool held,V wish){
+    auto& body=life_.bodies[0];auto& w=body.weapon;devourHopCooldown_=std::max(0.f,devourHopCooldown_-dt);
+    bool spring=body.action==LifeAction::Spring;
+    float goal=!spring?1:w.charging?1-.5f*w.charge:!devourHop_.active?1:devourHop_.age<devourHop_.time*.5f?1.25f:.9f;
+    body.springStretch+=(goal-body.springStretch)*(1-std::exp(-14*dt));
+    if(!spring||devourHop_.active)return;
+    if(held&&w.ready&&p.grounded&&devourHopCooldown_<=0){w.charging=true;w.charge=std::min(1.f,w.charge+dt/DevourSpringChargeTime);return;}
+    if(!w.charging)return;
+    float power=std::max(DevourSpringMinPower,w.charge);w.charging=false;w.charge=0;
+    StartDevourHop(power,wish);
+}
+// 跳び始める: 向いている方へ、着地できる所まで距離を詰めて弧を決める
+void ChronoSystem::StartDevourHop(float power,V wish){
+    auto& body=life_.bodies[0];
+    V direction=Length(wish)>.05f?Unit(wish):body.forward;direction.y=0;body.forward=direction;
+    V radii=LifeRadii(body,life_.recipe);float margin=std::clamp(std::max(radii.x,radii.z)*.7f,.5f,18.f),range=DevourSpringRange(body.mass,power);
+    V to=body.at;
+    if(!devour_)to=ConstrainLifeMovement(body.at,body.at+direction*range,margin);
+    else for(float f=1;f>.05f;f-=.1f){V at=body.at+direction*(range*f);
+        // 閉じた輪の壁は越えられない
+        bool crossing=false;float a=RingDistance(body.at),b=RingDistance(at);for(int z=1;z<RingStyleCount;++z)crossing|=!ringOpen_[size_t(z)]&&(a<RingWallAt(z))!=(b<RingWallAt(z));
+        if(!crossing&&DevourWalkable(at,margin)){to=at;break;}}
+    to.y=InkGround(to)+1.25f;
+    devourHop_={true,false,body.at,to,0,DevourSpringTime(power),DevourSpringRise(body.mass,power)};++devourLog_.hops;
+    PlayDevourSound(devourSounds_.bounce,.4f+.25f*power,1.3f);
+}
+// 跳んでいる間の位置を進める
+ChronoSystem::V ChronoSystem::DevourHopStep(float dt){
+    auto& hop=devourHop_;hop.age=std::min(hop.time,hop.age+dt);float u=hop.age/hop.time;
+    V at=Lerp(hop.from,hop.to,u);at.y+=hop.height*4*u*(1-u);
+    if(u>=1){hop.active=false;hop.landed=true;}
+    return at;
+}
+// 着地: 周りの小さい物を衝撃で飲み込み、体が縮んで弾む
+void ChronoSystem::DevourSpringLand(entt::registry& r,GameContext& ctx){
+    auto& body=life_.bodies[0];devourHop_.landed=false;devourHopCooldown_=DevourSpringCooldown;body.springStretch=.5f;
+    float gained=0,shock=DevourSpringShock(body.mass),mass=body.mass;int count=0;devourEatBy_=3;
+    for(size_t i=0;i<life_.props.size();++i){const auto& prop=life_.props[i];if(!prop.active||prop.sealed||!DevourCanCover(mass,prop.radius)||LifeDistance(prop.at,body.at)>shock+prop.radius*.5f)continue;
+        gained+=DevourEat(r,i);++count;}
+    float weight=count?DevourGulpWeight(count,gained,mass):.2f;if(count){++devourClock_.combo;devourClock_.comboClock=1.4f;life_.message="ズドン！ "+std::to_string(count)+"個 / 成長 +"+DevourAmount(gained);life_.messageAge=1.4f;}
+    DevourSplash(body.at,shock*.8f,std::min(30,12+3*count),std::sqrt(LifeScale(mass)));
+    LifeImpact(ctx,ImpactStompMiss,body.at,{0,1,0},.8f+.7f*weight);PlayDevourSound(devourSounds_.splat,.5f+.3f*weight,.9f);if(count)PlayDevourGulp(weight,devourClock_.combo);
+}
+// 引き寄せている物の位置
+ChronoSystem::V ChronoSystem::DevourSuckAt(const DevourSuck& suck)const{
+    const auto& body=life_.bodies[0];V radii=LifeRadii(body,life_.recipe),core=body.at+body.fluidOffset+V{0,-1.25f+radii.y*.45f,0};
+    const auto& prop=life_.props[suck.index];float u=std::min(1.f,suck.age/suck.flight);
+    return Lerp(suck.from,suck.toBody?core:DevourVacuumMouth(),u*u)+V{0,suck.toBody?0:prop.radius*std::sin(3.1415927f*u),0};
+}
+// 体の中の物の位置 (体の揺れに合わせてゆらゆら動く)
+ChronoSystem::V ChronoSystem::DevourMealAt(const DevourMeal& meal)const{
+    const auto& body=life_.bodies[0];V radii=LifeRadii(body,life_.recipe),core=body.at+body.fluidOffset+V{0,-1.25f+radii.y*.45f,0};float a=meal.age*.9f+meal.dir.x*5;
+    // 新しい物は体の表面まで押し出す (皮が物を包むので、体の形が歪む)。低い体でも床には埋まらない
+    float size=meal.radius*meal.fit,wide=radii.x*meal.now,deep=radii.z*meal.now,high=(radii.y*.8f+size*.4f)*meal.now;
+    float lift=meal.lift*meal.now*DevourBodyRadius(body.mass);
+    V at=core+V{meal.dir.x*(wide+lift),meal.dir.y*(high+lift),meal.dir.z*(deep+lift)}+V{std::sin(a)*.12f,std::sin(a*1.3f)*.1f,std::cos(a)*.12f}*LifeScale(body.mass);
+    at.y=std::max(at.y,body.at.y-1.25f+size*.5f);return at;
+}
+// 大きい物の周りの液体の皮: 体の中心から物までを液体の管でつなぎ、物が内側から皮を押し広げて見えるようにする
+void ChronoSystem::DevourMealSkin(std::vector<Engine::Renderer::FluidTendril>& arms)const{
+    const auto& body=life_.bodies[0];if(body.mass<=0||LifeWeaponForm(body.action))return;
+    V radii=LifeRadii(body,life_.recipe),core=body.at+body.fluidOffset+V{0,-1.25f+radii.y*.45f,0};float bodyRadius=DevourBodyRadius(body.mass);
+    // 飲み込んでいる物へ、体から液体の腕を伸ばして包む (腕は太く、物より先まで伸びる)
+    size_t bites=0;for(const auto& suck:devourSucks_)if(suck.toBody&&bites<kBiteArmLimit){++bites;V at=DevourSuckAt(suck);float size=std::max(life_.props[suck.index].radius,bodyRadius*.22f);
+        arms.push_back({EV(Lerp(core,at,.1f)),size*.9f,EV(at),size*1.5f});}
+    // 新しい物を先に包み、残りは大きい順に包む (沈んだ物も体より背が高いと上へ突き出る)
+    std::vector<const DevourMeal*> big;for(const auto& meal:devourMeals_)big.push_back(&meal);std::reverse(big.begin(),big.end());
+    size_t fresh=std::min(big.size(),kMealSkinFresh);
+    std::sort(big.begin()+std::ptrdiff_t(fresh),big.end(),[](const DevourMeal* a,const DevourMeal* b){return a->radius*a->fit>b->radius*b->fit;});
+    if(big.size()>kMealSkinLimit)big.resize(kMealSkinLimit);
+        for(const auto* meal:big){float size=meal->radius*meal->fit;V at=DevourMealAt(*meal);// 物の形に皮を張る
+        auto visual=cityVisuals_.find(meal->visual);bool shaped=visual!=cityVisuals_.end()&&visual->second.half.x>0;float yaw=visual!=cityVisuals_.end()?visual->second.rotate.y:0;
+        V half=shaped?visual->second.half*meal->fit:V{size,size,size}*.7f;float skin=bodyRadius*.1f+(shaped?visual->second.round*meal->fit:0);
+        arms.push_back({EV(at),yaw,EV(half),-skin});}
+}
 // 体の中に見えたまま、中心へ沈みながら溶けていく物を描く
 void ChronoSystem::DrawDevourMeals(GameContext& ctx){
     const auto& body=life_.bodies[0];if(body.mass<=0)return;
-    V radii=LifeRadii(body,life_.recipe);V core=body.at+body.fluidOffset+V{0,-1.25f+radii.y*.45f,0};
-    for(const auto& meal:devourMeals_){float t=LifeSmooth(meal.age/kMealTime),shrink=meal.fit*(1-.85f*t);
-        // ゆっくり回りながら中心へ寄る
-        float a=meal.age*1.7f+meal.offset.x;V at=core+meal.offset*(1-.75f*t)+V{std::sin(a)*.2f,std::sin(a*1.3f)*.25f,std::cos(a)*.2f}*LifeScale(body.mass);
-        if(!meal.orb&&DrawCityPropInTentacle(ctx,meal.visual,at,shrink))continue;
-        float radius=std::max(LifeOrbRadius(1),meal.radius*.6f)*std::max(.3f,shrink)*1.6f;Engine::Transform t3;t3.translate=EV(at);t3.scale={radius,radius,radius};
+    // 吸い口へ飛んでくる物と、吸い込む風の筋
+    V mouth=DevourVacuumMouth();
+    for(const auto& suck:devourSucks_){const auto& prop=life_.props[suck.index];float u=std::min(1.f,suck.age/suck.flight),shrink=suck.toBody?1+.25f*std::sin(3.1415927f*u)-.3f*u:1-.75f*u;V at=DevourSuckAt(suck);
+        if(!prop.orb&&DrawCityPropInTentacle(ctx,prop.visual,at,shrink))continue;
+        float radius=std::max(prop.shard,LifeOrbRadius(prop.reward))*shrink;Engine::Transform t;t.translate=EV(at);t.scale={radius,radius,radius};auto tint=LifeOrbColor(prop.reward);ctx.renderer->DrawMeshInstanced(sphere_,white_,t,{tint.x,tint.y,tint.z,1});}
+    if(devourSucking_){float range=DevourVacuumRange(body.mass);V right{body.forward.z,0,-body.forward.x};
+        for(int i=0;i<14;++i){float lane=(RingNoise(i+1)*2-1)*.8f,u=std::fmod(life_.age*2.4f+RingNoise(i+40),1.f);V at=mouth+(body.forward+right*lane)*(range*(1-u))+V{0,range*.12f*RingNoise(i+80),0};
+            ctx.renderer->DrawLine3D(EV(at),EV(Lerp(at,mouth,.22f)),{.75f,1,.55f,.7f});}}
+    // 武器の形の間は体の形が違うので、体の中の物は見せない
+    if(LifeWeaponForm(body.action))return;
+    for(const auto& meal:devourMeals_){V at=DevourMealAt(meal);
+        if(!meal.orb&&DrawCityPropInTentacle(ctx,meal.visual,at,meal.fit))continue;
+        float radius=std::max(LifeOrbRadius(1),meal.radius*.6f)*meal.fit;Engine::Transform t3;t3.translate=EV(at);t3.scale={radius,radius,radius};
         ctx.renderer->DrawMeshInstanced(sphere_,white_,t3,{meal.tint.x,meal.tint.y,meal.tint.z,1});}
 }
 // 吸収モードの UI: 右上の制限時間・上の大きさの段階と次の段階までのゲージ・左下の大きさとコンボ・飛びかかる目標の印。終わったら結果
@@ -294,45 +484,57 @@ void ChronoSystem::DrawDevourUI(GameContext& ctx){
     const Engine::Vector4 hazard{.95f,.76f,.19f,1},slime{.61f,.89f,.23f,1},white{.96f,.96f,.94f,1},black{.08f,.08f,.08f,1},red{.9f,.22f,.16f,1};
     auto shadowed=[&](const std::string& text,float x,float y,float size,Engine::Vector4 color,float align=0){
         x-=ui.Width(text,size,UI::JapaneseFont)*align;ui.Text(text,x,y+size*.09f,size,{0,0,0,.85f*color.w},UI::JapaneseFont);ui.Text(text,x,y,size,color,UI::JapaneseFont);};
-    // 街の物を飲み込んだ割合 (塀や落とした球は数えない)
+    const auto& stage=CurrentDevourStage();const int goalCount=int(stage.goals.size());
+    // 飲み込んだ割合 (落とした球は数えない)
     int total=0,eaten=0;for(const auto& prop:life_.props)if(!prop.orb&&prop.visual!=0xffffffffu){++total;if(!prop.active)++eaten;}
-    char size[32];snprintf(size,sizeof(size),"%.1f m",DevourSizeMeters(body.mass));char best[32];snprintf(best,sizeof(best),"%.1f m",DevourSizeMeters(devourBest_));
+    float cm=DevourSizeCm(stage,body.mass),bestMass=devourBests_[size_t(devourStage_)];std::string size=DevourSizeText(cm),best=DevourSizeText(DevourSizeCm(stage,bestMass));
     if(finished_){
-        // 結果画面の文字は英字のフォントで描かれるので、英語で出す
-        ui.Result(won_,devourReachedFinal_?"CITY DEVOURED":devourNewBest_?"NEW RECORD":"TIME UP",std::string("称号: ")+DevourTiers[size_t(devourClock_.tier)].name,"FINAL SIZE",size,
-            std::string(devourNewBest_?"NEW BEST":"BEST ")+(devourNewBest_?"":best)+"   /   CITY "+std::to_string(total?eaten*100/total:0)+"%   /   "+std::to_string(life_.absorbed)+" ITEMS");
+        // 結果画面の見出しと詳細は英字のフォントで描かれるので、英語で出す
+        int rank=DevourRankAt(stage,body.mass);bool next=won_&&devourStage_+1<int(DevourStages().size());
+        ui.Result(won_,rank?"RANK "+DevourRankName(stage,rank):"TIME UP",stage.name+(won_?" クリア！":" 目標に届かなかった"),"FINAL SIZE",size,
+            std::string(devourNewBest_?"NEW BEST":"BEST "+best)+"   /   "+std::to_string(total?eaten*100/total:0)+"%   /   "+std::to_string(life_.absorbed)+" ITEMS"+(next?"   /   N  NEXT STAGE":""));
         return;}
-    // 右上: 残り時間 (残り 30 秒で赤く脈打つ)。段階が上がった直後は足した時間を出す
+    // 右上: 残り時間 (残り 30 秒で赤く脈打つ)
     {float left=devourClock_.left;bool hurry=left<=30;float pulse=hurry?.5f+.5f*std::sin(life_.age*10):0;
         ui.Dot(1196,66,48+4*pulse,{0,0,0,.4f});ui.Dot(1196,62,46+4*pulse,hurry?red:hazard);ui.Dot(1196,62,39,black);
         ui.Center(DevourClockText(left),1196,42,30,hurry?red:white,UI::JapaneseFont);
-        shadowed("のこり時間",1196,114,12,white,.5f);
-        if(devourClock_.tierFlash>0)shadowed("+"+std::to_string(int(DevourTierBonus))+"秒",1196,132,18,UI::WithAlpha(slime,std::min(1.f,devourClock_.tierFlash)),.5f);}
-    // 上中央: 今の大きさの段階と、次の段階までのゲージ
-    {int tier=devourClock_.tier;const auto& now=DevourTiers[size_t(tier)];
-        float flash=std::min(1.f,devourClock_.tierFlash);
-        shadowed(now.name,640,16,22+8*flash,UI::WithAlpha(flash>0?hazard:white,1),.5f);
-        if(tier<DevourFinalTier){const auto& next=DevourTiers[size_t(tier+1)];float progress=std::clamp((body.mass-now.mass)/(next.mass-now.mass),0.f,1.f);
+        shadowed("のこり時間",1196,114,12,white,.5f);}
+    // 上中央: ステージの名前・今のランク・次の目標までのゲージ
+    {float flash=std::min(1.f,devourClock_.flash);int rank=devourRank_;
+        shadowed(stage.name+(rank?"  ランク "+DevourRankName(stage,rank):""),640,16,22+8*flash,UI::WithAlpha(flash>0?hazard:white,1),.5f);
+        if(rank<goalCount){float from=rank?stage.goals[size_t(rank-1)]:stage.start,to=stage.goals[size_t(rank)],progress=std::clamp((cm-from)/(to-from),0.f,1.f);
             ui.Fill({438,54,404,12},black);ui.Fill({440,56,400*progress,8},slime);
-            shadowed(std::string("次: ")+next.name+" → "+next.food,640,72,13,hazard,.5f);}
+            shadowed((rank?"次のランク "+DevourRankName(stage,rank+1)+"  ":std::string("目標  "))+DevourSizeText(to),640,72,13,hazard,.5f);}
+        else shadowed("Sランク達成！ 時間切れまで大きくなれ",640,72,13,hazard,.5f);
+        // 部屋の次の積み木の案内
+        for(float gate:stage.gates)if(cm<gate){shadowed("積み木の壁: "+DevourSizeText(gate)+" で飲める",640,92,13,white,.5f);break;}
         // 次に開ける門の案内
         for(int z=1;z<RingStyleCount;++z)if(!ringOpen_[size_t(z)]){float radius=RingZones()[size_t(z)].gateRadius;
-            shadowed(RingZones()[size_t(z)].name+"の門: 本体 "+DevourAmount(DevourMassToCover(radius))+" で飲める / ハンマーなら "+DevourAmount(std::max(LifeHammerMass,DevourMassToShatter(radius)))+" で砕ける",640,92,13,white,.5f);break;}}
+            shadowed(RingZones()[size_t(z)].name+"の門: "+DevourSizeText(DevourSizeCm(stage,DevourMassToCover(radius)))+" で飲める",640,92,13,white,.5f);break;}}
     // 左下: 大きさ・飲み込んだ割合・コンボ
-    {shadowed(std::string("大きさ ")+size,28,596,24,white);
-        shadowed("街の "+std::to_string(total?eaten*100/total:0)+"% を吸収  /  "+std::to_string(life_.absorbed)+"個",28,630,14,hazard);
+    {shadowed(std::string("大きさ ")+size,28,596,24*(1+.3f*devourSizePulse_),devourSizePulse_>0?slime:white);
+        shadowed(std::to_string(total?eaten*100/total:0)+"% を吸収  /  "+std::to_string(life_.absorbed)+"個",28,630,14,hazard);
         // 自己ベストを超えたら色を変えて知らせる
-        if(devourBest_>0)shadowed(std::string(body.mass>devourBest_?"自己ベスト更新中！":"自己ベスト ")+(body.mass>devourBest_?"":best),28,650,14,body.mass>devourBest_?slime:white);
+        if(bestMass>0)shadowed(body.mass>bestMass?std::string("自己ベスト更新中！"):"自己ベスト "+best,28,650,14,body.mass>bestMass?slime:white);
         if(devourClock_.combo>1)shadowed(std::to_string(devourClock_.combo)+" コンボ！",28,556,26*(1+.2f*std::min(1.f,devourClock_.comboClock)),slime);}
+    // 右下: このステージの変形アイテム
+    if(!devourFreeForms_){LifeAction form=DevourItemForm(stage.item);bool active=body.action==form,taken=LifeCanMorph(body,form);
+        const char* icon=form==LifeAction::Tire?"form_tire":form==LifeAction::Spring?"form_spring":"form_vacuum";const char* name=form==LifeAction::Tire?"タイヤ":form==LifeAction::Spring?"バネ":"掃除機";
+        ui.Dot(1200,630,40,{0,0,0,.55f});ui.Image(std::string("Resources/Textures/UI/HUD/")+icon+".png",{1176,606,48,48},active||devourItemReady_?hazard:Engine::Vector4{.5f,.5f,.5f,1});
+        std::string state=active?"のこり "+std::to_string(int(std::ceil(devourMorphLeft_)))+" 秒":devourItemReady_?"左クリック / RTで変形":taken?"使用済み":"アイテムを探そう";
+        shadowed(name,1200,676,16,white,.5f);shadowed(state,1200,696,12,active||devourItemReady_?hazard:white,.5f);}
+    // 飲み込んだ所の文字: 弾んで上へ流れて消える
+    for(const auto& pop:devourPops_){float x,y;if(!DevourScreen(ctx,pop.at,x,y))continue;float u=pop.age/.7f;
+        shadowed(pop.text,x,y-46*u,(20+26*pop.weight)*(1+.5f*std::sin(std::min(1.f,u*4)*3.1415927f)),UI::WithAlpha(pop.weight>=.3f?hazard:white,1-u*u),.5f);}
     // 飛びかかる目標の印: 覆える物は「！」、大きすぎる物は「×」
     if(body.action==LifeAction::Idle&&!life_.lab){auto pick=DevourChooseTarget(body.at,body.forward,body.mass,life_.props);
         if(pick.index>=0){const auto& prop=life_.props[size_t(pick.index)];float x,y;
             if(DevourScreen(ctx,prop.at+V{0,prop.radius+2.5f*LifeScale(body.mass),0},x,y)&&x>20&&x<1260&&y>90&&y<560){
                 float bob=4*std::sin(life_.age*8);
                 if(pick.fits){ui.Dot(x,y+bob,15,black);ui.Dot(x,y+bob,13,hazard);ui.Center("!",x,y-14+bob,22,black,UI::JapaneseFont);}
-                else if(DevourCanShatter(body.mass,prop.radius)&&prop.morphItem==LifeMorphItem::None&&LifeCanMorph(body,LifeAction::Hammer)){ui.Dot(x,y+bob,15,black);ui.Dot(x,y+bob,13,red);ui.Center("砕",x,y-12+bob,18,white,UI::JapaneseFont);}
+                else if(DevourCanShatter(body.mass,prop.radius)&&prop.morphItem==LifeMorphItem::None&&life_.form==LifeAction::Hammer){ui.Dot(x,y+bob,15,black);ui.Dot(x,y+bob,13,red);ui.Center("砕",x,y-12+bob,18,white,UI::JapaneseFont);}
                 else{ui.Dot(x,y,13,UI::WithAlpha(black,.7f));ui.Center("×",x,y-12,18,red,UI::JapaneseFont);}}
-            if(!pick.fits&&DevourCanShatter(body.mass,prop.radius)&&prop.morphItem==LifeMorphItem::None&&LifeCanMorph(body,LifeAction::Hammer))ui.Center("ハンマーで叩くと砕ける！",640,590,16,UI::Lime,UI::JapaneseFont);
-            if(pick.fits)ui.Center(std::string(UI::UsingPad()?"LT":"右クリック")+"で飛びかかって丸のみ！ 押し続けると連続",640,590,16,UI::Lime,UI::JapaneseFont);}}
+            if(!pick.fits&&DevourCanShatter(body.mass,prop.radius)&&prop.morphItem==LifeMorphItem::None&&life_.form==LifeAction::Hammer)ui.Center("ハンマーで叩くと砕ける！",640,590,16,UI::Lime,UI::JapaneseFont);
+            if(pick.fits)ui.Center(std::string("触れるだけで飲み込む / ")+(UI::UsingPad()?"LT":"右クリック")+"でガバッと飛びかかる",640,590,16,UI::Lime,UI::JapaneseFont);}}
 }
 }

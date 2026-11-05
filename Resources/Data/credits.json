@@ -6,24 +6,49 @@
       "heading": "MUSIC / Kevin MacLeod (incompetech.com)",
       "rows": [
         {
-          "title": "TITLE  /  Call to Adventure",
+          "title": "SELECT  /  Daily Beetle",
           "detail": "Kevin MacLeod - CC BY 4.0"
         },
         {
-          "title": "SELECT & TRAINING  /  Carefree",
+          "title": "ROOM STAGE  /  Local Forecast",
           "detail": "Kevin MacLeod - CC BY 4.0"
         },
         {
-          "title": "BATTLE  /  Volatile Reaction",
+          "title": "TOWN STAGE  /  Samba Isobel",
           "detail": "Kevin MacLeod - CC BY 4.0"
         },
         {
-          "title": "VICTORY  /  Fanfare for Space",
+          "title": "RESULT  /  Cheery Monday",
           "detail": "Kevin MacLeod - CC BY 4.0"
         },
         {
-          "title": "DEFEAT  /  Evening Fall (Harp)",
+          "title": "TIME UP  /  Fluffing a Duck",
           "detail": "Kevin MacLeod - CC BY 4.0 / creativecommons.org/licenses/by/4.0/"
+        }
+      ]
+    },
+    {
+      "heading": "TITLE SONG & SOUND EFFECTS",
+      "rows": [
+        {
+          "title": "TITLE  /  Lamadio Tiado",
+          "detail": "SackJo22 (2011) - CC BY 3.0 / ccmixter.org/files/SackJo22/33440"
+        },
+        {
+          "title": "Samples in Lamadio Tiado",
+          "detail": "borja, AIR_LOMEG, SmoJos - CC BY 3.0 / see Resources/Sound/BGM/CREDITS.md"
+        },
+        {
+          "title": "Pop sounds, Squish Sounds Effects",
+          "detail": "EZduzziteh / opengameart.org / CC0"
+        },
+        {
+          "title": "25 CC0 mud sfx, 80 CC0 creature SFX #2",
+          "detail": "rubberduck / opengameart.org / CC0"
+        },
+        {
+          "title": "Music Jingles",
+          "detail": "Kenney / www.kenney.nl / CC0 1.0"
         }
       ]
     },
@@ -44,7 +69,7 @@
         },
         {
           "title": "Slime effects & procedural sound effects",
-          "detail": "Generated for this game / GenerateSlimeMeshes & GenerateSlimeAudio"
+          "detail": "Generated for this game / GenerateSlimeMeshes, GenerateSlimeAudio, BuildDevourAudio"
         },
         {
           "title": "Photogrammetry scenery / Poly Haven",

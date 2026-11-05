@@ -5,40 +5,16 @@
 #include "SlimeLifeRules.h"
 namespace Game::Chrono {
 // 吸収モードの最大の量・制限時間・段階が上がったときに足す時間
-inline constexpr float DevourMaxMass=6e6f,DevourTimeLimit=300,DevourTierBonus=15;
+inline constexpr float DevourMaxMass=6e6f;
 // 飛びかかりの時間の区切り: 溜め (ぐっ)・口を開けて飛び込む (ズバーッ)・包んで閉じる (ガバッ)・満足 (ぷるん)
 inline constexpr float DevourWindup=.08f,DevourLeap=.2f,DevourCover=.14f,DevourSettle=.34f;
 inline constexpr float DevourLandAt=DevourWindup+DevourLeap,DevourCoverEnd=DevourLandAt+DevourCover,DevourPounceTime=DevourCoverEnd+DevourSettle;
 // 覆える物の大きさ (体の半径に対する割合)・触れるだけで沈む物の大きさ・開始時の体の半径
 // (路地の段ボール・木箱・ゴミ袋は体と同じくらいの大きさなので、最初から覆えるように 0.8 にしている)
-inline constexpr float DevourCoverRatio=.8f,DevourSinkRatio=.2f,DevourStartRadius=3;
-// タイヤで転がっている間と突進中に沈む大きさ
-inline constexpr float DevourTireSinkRatio=.55f,DevourTireDashSinkRatio=.7f;
-// 大きさの段階 (必要な量・名前・食べられるようになる物)。時間切れの大きさで競い、段階の名前が称号になる。
-// 最後の段階に届いても終わらず、時間切れまで大きくなれる
-struct DevourTier {float mass;const char* name;const char* food;};
-// (輪の町の建物は、覆うのに必要な量が 家 約 0.6〜1.4 万・店 約 4.5〜6 万・オフィス 約 10〜24 万・高層ビル 約 53〜165 万。
-//  最後の段階は、町でいちばん高いビルを飲める大きさ)
-inline constexpr std::array<DevourTier,10> DevourTiers{{
-    {100,"ちびスライム","ゴミ袋・段ボール"},
-    {300,"こぶりスライム","木箱・植木鉢"},
-    {1000,"ひとかかえスライム","ベンチ・ゴミ箱・像"},
-    {3000,"くるまサイズ","車・小さな木"},
-    {8000,"いえサイズ","2〜3 階の家"},
-    {45000,"みせサイズ","4〜6 階の店"},
-    {120000,"オフィスサイズ","8〜12 階のオフィス"},
-    {400000,"高層ビルサイズ","18 階からの高層ビル"},
-    {900000,"超高層スライム","町いちばんの高層ビル"},
-    {1600000,"街を飲み込むスライム","高層街のビルを次々と"}}};
-inline constexpr int DevourFinalTier=int(DevourTiers.size())-1;
-// 量から今の段階を求める
-inline int DevourTierAt(float mass){int tier=0;while(tier<DevourFinalTier&&mass>=DevourTiers[size_t(tier+1)].mass)++tier;return tier;}
+inline constexpr float DevourCoverRatio=.8f,DevourStartRadius=3;
 // 体の半径と、覆える物・沈む物の大きさ
 inline float DevourBodyRadius(float mass){return DevourStartRadius*LifeScale(mass);}
 inline bool DevourCanCover(float mass,float radius){return radius<=DevourBodyRadius(mass)*DevourCoverRatio;}
-inline bool DevourSinks(float mass,float radius,float ratio=DevourSinkRatio){return radius<=DevourBodyRadius(mass)*ratio;}
-// 画面に出す体の大きさ (m)
-inline float DevourSizeMeters(float mass){return 2*DevourBodyRadius(mass)/6;}
 // 半径 radius の物を覆うのに必要な量 (案内の表示に使う)
 inline float DevourMassToCover(float radius){float scale=std::max(1.f,radius/(DevourStartRadius*DevourCoverRatio));return LifeStartMass*scale*scale;}
 // 砕ける大きさ (覆える大きさの 1.5 倍まで)・欠片の数・欠片全部の成長の量 (元の物に対する割合)・砕ける溜め突進の強さ。
@@ -54,6 +30,8 @@ inline constexpr float DevourGrowth=7;
 inline float DevourReward(float radius){float k=radius/DevourStartRadius;return DevourGrowth*k*k;}
 // 大きさに合わせた移動の速さの倍率 (体の大きさの 0.55 乗。大きいほど体に対してはゆっくりで、町を横切るのに時間がかかる)
 inline float DevourSpeedScale(float mass){return std::pow(std::max(1.f,LifeScale(mass)),.55f);}
+// 飛びかかり (ガバッ) の間隔。飛びかかりは連打する物ではなく、ここぞというときの大技
+inline constexpr float DevourPounceCooldown=1;
 // 飛びかかって覆う広さ (体より少し広げる) と、飛びかかれる距離 (体の半径の 2.5 倍)。
 // 飛びかかりは 1 個〜数個の物を狙う動きで、小物の群れはタイヤ、少し大きい物はハンマーの役目
 inline float DevourCoverRadius(float mass){return 1.1f*DevourBodyRadius(mass);}
@@ -98,12 +76,8 @@ inline float DevourStiffness(float age,float wall){
 inline float DevourFormBlend(float age){
     float u=std::clamp(age/(DevourWindup+DevourLeap*.7f),0.f,1.f);return u*u*(3-2*u);
 }
-// 制限時間と段階: 段階が上がるたびに時間を足す。足した段階の数を返す
-struct DevourClock {float left=DevourTimeLimit;int tier=0,combo=0;float comboClock=0,tierFlash=0;};
-inline int DevourAdvance(DevourClock& clock,float mass){
-    int tier=DevourTierAt(mass),gained=tier-clock.tier;if(gained<=0)return 0;
-    clock.tier=tier;clock.left+=DevourTierBonus*float(gained);clock.tierFlash=3;return gained;
-}
+// 残り時間とコンボ。flash は目標に届いた直後の演出の残り時間
+struct DevourClock {float left=0;int combo=0;float comboClock=0,flash=0;};
 // 量を足す (上限まで)。実際に増えた量を返す
 inline float DevourGrow(LifeBody& body,float amount){
     float gain=std::clamp(amount,0.f,std::max(0.f,DevourMaxMass-body.mass));body.mass+=gain;body.maxHealth+=gain;body.health+=gain;return gain;
@@ -121,7 +95,27 @@ inline void DevourDigest(LifeBody& body,float& pending,float dt){
     DevourGrow(body,step);pending-=step;
 }
 // 飲み込みの重さ (0.2〜1): 数と、体に対して増えた割合の大きい方。覆える一番大きい物 1 つか 5 個で最大
-inline float DevourGulpWeight(int count,float gained,float mass){return std::clamp(std::max(.2f*float(count),gained/std::max(1.f,mass)/.16f),.2f,1.f);}
+inline float DevourGulpWeight(int count,float gained,float mass){return std::clamp(std::max(.2f*float(count),gained/std::max(1.f,mass)/.045f),.2f,1.f);}
+// 飲むたびに鳴らす音の高さ (再生速度の倍率)。コンボが進むとドレミソラドと上がり、上の 3 音を回る
+inline float DevourComboPitch(int combo){
+    constexpr int scale[]={0,2,4,7,9,12};int step=std::max(0,combo-1);
+    return std::pow(2.f,float(scale[step<6?step:3+(step-3)%3])/12);
+}
+// 残り時間が少なくなってからの BGM の速さと、速くなり始める残り秒数・秒読みを始める残り秒数
+inline constexpr float DevourHurryMusicPitch=1.08f,DevourHurryTime=30,DevourCountdownTime=10;
+// 飲み込むのにかかる時間: 大きい物ほど時間をかけて引き込む
+inline float DevourBiteTime(float mass,float radius){return .2f+.35f*std::clamp(radius/(DevourBodyRadius(mass)*DevourCoverRatio),0.f,1.f);}
+// 触れて飲むときの大口の大きさ (飛びかかりの形に掛ける倍率): 大きい物ほど大きく開ける。とても小さい物は開けない
+inline constexpr float DevourMouthSmallest=.12f;
+// 物に近づくと飲む前に口を開ける大きさと距離 (飲める幅に対する倍率)
+inline constexpr float DevourMouthAhead=.3f,DevourMouthReach=1.9f;
+inline float DevourMouthScale(float mass,float radius){return .8f+.55f*std::clamp(radius/(DevourBodyRadius(mass)*DevourCoverRatio),0.f,1.f);}
+// 体に対して小さい物の価値 (0.1〜1)。knee は覆える大きさに対してこれ以上なら満額になる割合で、0 なら小さくしない
+inline float DevourFoodValue(float mass,float radius,float knee){
+    if(knee<=0)return 1;float u=radius/(DevourBodyRadius(mass)*DevourCoverRatio)/knee;return std::clamp(u*u,.1f,1.f);
+}
+// 体の中の物の深さ (1 で表面): 後から飲んだ物に埋もれるほど中心へ沈む。cover は後から飲んだ物の大きさの合計
+inline float DevourMealDepth(float cover){return std::clamp(.98f-1.2f*cover,.3f,.98f);}
 // 飲み込んだ後の体のつぶれ (正でつぶれ、負で伸びる): 一気につぶれ、揺れながら戻る
 inline float DevourSquash(float age,float weight){
     constexpr float down=.07f;if(age<0||age>=.7f)return 0;float peak=.12f+.22f*weight;

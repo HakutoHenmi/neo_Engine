@@ -35,7 +35,7 @@ inline Vec LifeWeaponFacing(Vec facing,Vec desired,float dt){
     return {std::sin(yaw),0,std::cos(yaw)};
 }
 // カメラの向きを向く形か / 体の向きを更新する (タイヤはゆっくり曲がる)
-inline bool LifeFacesCamera(LifeAction form){return form==LifeAction::Hammer||form==LifeAction::Plane||form==LifeAction::Hydrant||form==LifeAction::Signal;}
+inline bool LifeFacesCamera(LifeAction form){return form==LifeAction::Hammer||form==LifeAction::Plane||form==LifeAction::Hydrant||form==LifeAction::Signal||form==LifeAction::Vacuum;}
 // カメラを向く形ならカメラの向きへ
 inline void LifeUpdateFacing(LifeBody& body,Vec movement,Vec cameraForward,float dt){
     if(LifeFacesCamera(body.action))body.forward=LifeWeaponFacing(body.forward,cameraForward,dt);
@@ -136,7 +136,7 @@ inline float LifeWeaponDuration(LifeAction form){
 inline bool LifeTickWeapon(SlimeLife& life,LifeBody& body,float dt,bool pressed,bool held,bool formed){
     if(!LifeWeaponForm(body.action))return false;
     // タイヤと消火栓は攻撃の時間が無い (形ができたかだけ記録する)
-    if(body.action==LifeAction::Tire||body.action==LifeAction::Hydrant||body.action==LifeAction::Signal){body.weapon.ready|=formed;return false;}
+    if(body.action==LifeAction::Tire||body.action==LifeAction::Hydrant||body.action==LifeAction::Signal||body.action==LifeAction::Vacuum||body.action==LifeAction::Spring){body.weapon.ready|=formed;return false;}
     auto& attack=body.weapon;attack.ready|=formed;
     // 先行入力は 0.24 秒残る
     attack.buffer=pressed?.24f:std::max(0.f,attack.buffer-dt);
@@ -191,7 +191,7 @@ inline Vec LifeWeaponPoseAt(LifeAction form,Vec point,bool attacking,float age,f
     return point;
 }
 inline Vec LifeWeaponPose(LifeAction form,Vec point,bool attacking,float age){return LifeWeaponPoseAt(form,point,attacking,age,0);}
-inline Vec LifeWeaponPose(const LifeBody& body,Vec point,float age){return body.action==LifeAction::Tire?LifeTirePose(point,body.tireAngle):LifeWeaponPoseAt(body.action,point,body.weapon.active,age,body.age-(body.weapon.age-age));}
+inline Vec LifeWeaponPose(const LifeBody& body,Vec point,float age){if(body.action==LifeAction::Spring){float wide=1/std::sqrt(body.springStretch);point={point.x*wide,point.y*body.springStretch,point.z*wide};}return body.action==LifeAction::Tire?LifeTirePose(point,body.tireAngle):LifeWeaponPoseAt(body.action,point,body.weapon.active,age,body.age-(body.weapon.age-age));}
 // 武器の点の速度 (体の速度と、振りやタイヤの回転の分)
 inline Vec LifeWeaponVelocity(const LifeBody& body,Vec point,float dt){
     if(dt<=1e-5f)return body.velocity;

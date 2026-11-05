@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="Debug|x64">
@@ -202,6 +202,8 @@ exit /b %ERRORLEVEL%</Command>
     <ClCompile Include="Game\Systems\SlimeSignal.cpp" />
     <ClCompile Include="Game\Systems\SlimeDevour.cpp" />
     <ClCompile Include="Game\Systems\RingCity.cpp" />
+    <ClCompile Include="Game\Systems\RoomStage.cpp" />
+    <ClCompile Include="Game\Systems\DevourPlayLog.cpp" />
     <ClCompile Include="Game\Systems\SlimePlayerDemo.cpp" />
     <ClCompile Include="Game\Systems\SlimeLife.cpp" />
     <ClCompile Include="Game\Systems\ChronoChainMode.cpp" />
@@ -296,6 +298,9 @@ exit /b %ERRORLEVEL%</Command>
     <ClInclude Include="Game\Chrono\SlimeHydrantRules.h" />
     <ClInclude Include="Game\Chrono\SlimeSignalRules.h" />
     <ClInclude Include="Game\Chrono\DevourRules.h" />
+    <ClInclude Include="Game\Chrono\DevourMorphRules.h" />
+    <ClInclude Include="Game\Chrono\DevourStageRules.h" />
+    <ClInclude Include="Game\Chrono\RoomRules.h" />
     <ClInclude Include="Game\Systems\CityBuilder.h" />
     <ClInclude Include="Game\Chrono\RingCityRules.h" />
     <ClInclude Include="Game\Chrono\DevourAnimation.h" />
@@ -326,6 +331,7 @@ exit /b %ERRORLEVEL%</Command>
     <ClInclude Include="Game\UI\LoadingUI.h" />
     <ClInclude Include="Game\UI\RogueliteUI.h" />
     <ClInclude Include="Game\UI\SceneMusic.h" />
+    <ClInclude Include="Game\UI\UISound.h" />
     <ClInclude Include="Game\Editor\EditorInternal.h" />
     <ClInclude Include="Game\Editor\EditorUI.h" />
     <ClInclude Include="tests\ChronoValidationScene.h" />

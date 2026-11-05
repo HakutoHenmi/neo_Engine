@@ -3,9 +3,13 @@
 タイトル右下の CREDITS ボタンから、音楽・素材・フォント・ソフトウェアを閲覧できます。
 
 ## Music
-Kevin MacLeod (https://incompetech.com/), CC BY 4.0.
+Kevin MacLeod (https://incompetech.com/), CC BY 4.0、タイトル曲 "Lamadio Tiado" は SackJo22, CC BY 3.0。
 曲別の出典は Music.md および ../Sound/BGM/CREDITS.md、ライセンス原文は
-../Sound/BGM/CC-BY-4.0.txt に同梱しています。音源は未加工、ゲーム内で音量調整・ループ再生します。
+../Sound/BGM/CC-BY-4.0.txt に同梱しています。音源は未加工、ゲーム内で音量と速さの調整・ループ再生をします。
+
+## Sound effects
+吸収モードの効果音: EZduzziteh, rubberduck (OpenGameArt), Kenney (Music Jingles), すべて CC0。
+scripts/BuildDevourAudio.py で素材と合成音を組み合わせて作成。出典は ../Sound/Devour/CREDITS.md。
 
 ## Models / UI
 - Poly Haven: scenery, grass and PBR terrain — CC0. See MeadowRefresh.md,
@@ -42,7 +46,7 @@ All fonts below are distributed under SIL Open Font License 1.1.
 
 ## 出典確認が必要な既存素材
 今回の一覧は、リポジトリ内のライセンス原文・ソース・生成スクリプトで確認できた範囲です。
-既存の kettei.mp3 / suittikirikae.mp3 などの効果音、旧BGM1.mp3 / BGM2.mp3、
+旧効果音 kettei.mp3 / suittikirikae.mp3 / idou.mp3 などと旧BGM1.mp3 / BGM2.mp3、
 その他ライセンスファイルのない旧モデル・テクスチャについては、作者・入手元の記録が
-見つからないため推測でクレジットを付けていません。特に前記2つの効果音は現在の戦闘からも
-参照されています。元の配布ページや購入・制作記録が確認できたら、表示と本書を追記してください。
+見つからないため推測でクレジットを付けていません。kettei.mp3 / suittikirikae.mp3 は
+2026-11-06 にゲームから外し、Release にも同梱していません。元の配布ページや購入・制作記録が確認できたら、表示と本書を追記してください。

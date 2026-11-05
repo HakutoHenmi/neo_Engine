@@ -1,10 +1,11 @@
 {
-  "_comment": "シーンごとの BGM のファイルと音量 (0〜1)。",
+  "_comment": "シーンごとの BGM のファイルと音量 (0〜1)。音量は曲ごとの音圧の差をそろえた値。City は街のステージ。",
   "tracks": {
-    "Title": { "path": "Resources/Sound/BGM/Call to Adventure.mp3", "volume": 0.32 },
-    "Select": { "path": "Resources/Sound/BGM/Carefree.mp3", "volume": 0.28 },
-    "Battle": { "path": "Resources/Sound/BGM/Volatile Reaction.mp3", "volume": 0.30 },
-    "Victory": { "path": "Resources/Sound/BGM/Fanfare for Space.mp3", "volume": 0.34 },
-    "Defeat": { "path": "Resources/Sound/BGM/Evening Fall Harp.mp3", "volume": 0.34 }
+    "Title": { "path": "Resources/Sound/BGM/Lamadio Tiado.mp3", "volume": 0.28 },
+    "Select": { "path": "Resources/Sound/BGM/Daily Beetle.mp3", "volume": 0.40 },
+    "Battle": { "path": "Resources/Sound/BGM/Local Forecast.mp3", "volume": 0.17 },
+    "City": { "path": "Resources/Sound/BGM/Samba Isobel.mp3", "volume": 0.42 },
+    "Victory": { "path": "Resources/Sound/BGM/Cheery Monday.mp3", "volume": 0.28 },
+    "Defeat": { "path": "Resources/Sound/BGM/Fluffing a Duck.mp3", "volume": 0.45 }
   }
 }

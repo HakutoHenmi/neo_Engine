@@ -14,6 +14,8 @@
 #include "../Chrono/CityStageRules.h"
 #include "../Chrono/DevourRules.h"
 #include "../Chrono/RingCityRules.h"
+#include "../Chrono/DevourStageRules.h"
+#include <filesystem>
 #include <functional>
 #include <map>
 #include <unordered_map>
@@ -36,6 +38,8 @@ public:
     bool Finished() const {return finished_;}
     bool CinematicActive() const {return cinematicActive_;}
     bool SlimeLabOpen() const {return slimeLife_&&life_.lab&&!finished_;}
+    // 鳴り続ける音を止める (シーンを抜けるとき)
+    void StopLoopSounds();
     // スライムの状態・敵・街の門・消火栓の狙いを外 (エディタやテスト) から読むための関数
     const Chrono::SlimeLife& LifeState()const {return life_;}
     // 移動を街の通れる範囲に収めた位置 (テストで通れるかを確かめる)
@@ -45,6 +49,13 @@ public:
     bool DevourMode()const {return devour_;}
     // 自動テスト用: 輪の壁を全部開ける
     void DevourOpenAllRings(){devourOpenAll_=true;}
+    void DevourUseAllForms(){devourFreeForms_=true;}
+    const std::filesystem::path& DevourLogPath()const{return devourLog_.path;}
+    float DevourBiteAge()const{return devourBiteAge_;}
+    int DevourRank()const{return devourRank_;}
+    int DevourStageIndex()const{return devourStage_;}
+    bool DevourItemReady()const{return devourItemReady_;}
+    void DevourSetMorphLeft(float seconds){devourMorphLeft_=seconds;}
     Chrono::DevourClock& DevourClockState() {return devourClock_;}
     // 変形アイテムを初めて取ったときの見せ場 (カメラが正面へ寄り、周りの時間が止まる) の最中か
     bool MorphShowcaseActive()const {return showcase_.active;}
@@ -78,17 +89,76 @@ private:
     // 飛びかかり: 跳んだ位置・目標の小物 (無ければ -1)・覆えるか・覆う処理を済ませたか
     struct DevourPounce {Chrono::Vec from{},to{};int target=-1;bool fits=true,covered=false,bounced=false;float seed=0;} devourPounce_;
     // 体の中に見えたまま溶けていく物 (小物の見た目・体の中心からのずれ・経過時間・体に収める縮小)
-    struct DevourMeal {uint32_t visual=0xffffffffu;Chrono::Vec offset{},tint{};float age=0,fit=1,radius=1;bool orb=false;};
+    // dir は体の中心から見た向き (飲んだ方向)、now は今の深さ (1 で表面)、lift は前の物の外へ積む量 (体の半径が単位)。古い順に並ぶ
+    struct DevourMeal {uint32_t visual=0xffffffffu;Chrono::Vec dir{},tint{};float age=0,fit=1,radius=1,now=1,lift=0;bool orb=false;};
     std::vector<DevourMeal> devourMeals_;
     // 飲み込んで、まだ体へ移していない量
     float devourDigest_=0;
     // 最後の飲み込みからの時間とその重さ (体のつぶれとカメラの引きに使う)
     struct DevourGulp {float age=1,weight=0;} devourGulp_;
     // 自己ベストの量 (保存する)・今回で更新したか・最後の段階に届いたか
-    float devourBest_=0;bool devourNewBest_=false,devourReachedFinal_=false;
+    bool devourNewBest_=false;
     // 開いた輪・輪の壁のエンティティ・門の小物の番号と開ける輪・このフレームに開いた輪 (演出を出す)
     std::array<bool,Chrono::RingStyleCount> ringOpen_{true};std::array<std::vector<entt::entity>,Chrono::RingStyleCount> ringWalls_;std::map<size_t,int> devourGates_;int devourRingOpened_=0;bool devourOpenAll_=false;
     void DevourOpenRing(entt::registry&,int ring);
+    // 掃除機: 飛んでくる途中の物 (小物の番号・吸い始めた位置・経過時間)・次に吸い込むまでの時間・吸い込んでいるか
+    // (触れて飲み込む物は体の中心へ、掃除機で吸う物は吸い口へ飛ぶ)
+    struct DevourSuck {size_t index=0;Chrono::Vec from{};float age=0,flight=.3f;bool toBody=false;};
+    std::vector<DevourSuck> devourSucks_;float devourSuckClock_=0,devourPounceWait_=0;bool devourSucking_=false;
+    void DevourPull(entt::registry&,size_t index,float flight,bool toBody);
+    void DevourOpenMouth(const Chrono::LifeCollectible&,bool turn);
+    // 触れて飲むときの大口: 飛びかかりの形の時間 (負なら開けていない) と大きさの倍率
+    float devourBiteAge_=-1,devourBiteScale_=1;
+    Chrono::Vec DevourMealAt(const DevourMeal&)const;
+    Chrono::Vec DevourSuckAt(const DevourSuck&)const;
+    // 大きい物を飲み込んでいる間の、足が重くなる残り時間と、大きさの文字が弾む残り
+    float devourChew_=0,devourSizePulse_=0;
+    // 飲み込んだ所に出す文字 (ぱくっ など)
+    struct DevourPop {Chrono::Vec at{};const char* text="";float age=0,weight=0;};
+    std::vector<DevourPop> devourPops_;
+    void DevourMealSkin(std::vector<Engine::Renderer::FluidTendril>&)const;
+    Chrono::Vec DevourVacuumMouth()const;
+    void TickDevourVacuum(entt::registry&,GameContext&,float dt,bool held);
+    // バネ: 跳んでいる間の出発点・着地点・経過時間・全体の時間・高さと、次に跳べるまでの時間
+    struct DevourHop {bool active=false,landed=false;Chrono::Vec from{},to{};float age=0,time=1,height=0;} devourHop_;float devourHopCooldown_=0;
+    void TickDevourSpring(Chrono::Player&,float dt,bool held,Chrono::Vec wish);
+    void StartDevourHop(float power,Chrono::Vec wish);
+    // ステージの番号・読み込んだか・届いた目標の数・ステージごとの自己ベストの量
+    int devourStage_=0,devourRank_=0;bool devourStageLoaded_=false;std::array<float,8> devourBests_{};
+    // 変形アイテムを拾って使える状態か・変形の残り時間・テスト用に全部の形を使うか
+    bool devourItemReady_=false,devourFreeForms_=false;float devourMorphLeft_=0;
+    // 台座の上の変形アイテムの高さ
+    float devourItemY_=0;
+    const Chrono::DevourStage& CurrentDevourStage()const{return Chrono::DevourStages()[size_t(devourStage_)];}
+    void LoadDevourStage();
+    // プレイ記録 (DevourPlayLog.cpp)。飲み方は 0 触れる・1 掃除機・2 飛びかかり・3 バネ・4 ハンマー・5 タイヤ
+    struct DevourPlayLog {
+        struct Sample {float t,cm,mass;int eaten,area;float x,z,speed;int combo;float fps;};
+        struct Event {float t;std::string name;float cm;};
+        bool active=false;std::string stamp;std::filesystem::path path;
+        float elapsed=0,nextSample=0,nextSave=15,moved=0,sinceEat=0,longestIdle=0,frameSum=0,worstFrame=0,morphTime=0,itemTaken=-1,biggest=0,biggestAt=0,bestBefore=0;
+        int frames=0,eaten=0,total=0,pounces=0,bounces=0,hops=0,morphs=0,maxCombo=0;Chrono::Vec last{};
+        std::array<int,6> eatBy{};std::array<float,6> gainBy{};
+        std::array<int,8> areaEaten{},areaTotal{};std::array<float,8> areaGain{},areaMassTotal{},areaFirst{};
+        std::vector<float> goalTimes,gateSizeTimes,gateOpenTimes;std::vector<Sample> samples;std::vector<Event> events;
+    } devourLog_;
+    int devourEatBy_=0;
+    std::filesystem::path DevourLogFolder()const;
+    void StartDevourLog();
+    void TickDevourLog(float dt);
+    void DevourLogEvent(const std::string&);
+    void DevourLogEat(const Chrono::LifeCollectible&,float gain);
+    void SaveDevourLog(const char* result);
+    int DevourAreaAt(Chrono::Vec)const;
+    Chrono::Vec DevourHopStep(float dt);
+    void DevourSpringLand(entt::registry&,GameContext&);
+    // 変形の並び (1 からのキーの順): 吸収モードはステージのアイテムの形だけ・試験場 (全部の形)・戦闘モード
+    const std::vector<Chrono::LifeAction>& LifeForms()const{using A=Chrono::LifeAction;
+        static const std::vector<A> all{A::Hammer,A::Tire,A::Vacuum,A::Spring},tire{A::Tire},vacuum{A::Vacuum},spring{A::Spring},battle{A::Hammer,A::Tire,A::Hydrant,A::Signal},
+            demo{A::Hammer,A::Tire,A::Hydrant,A::Signal,A::Vacuum,A::Spring,A::Sword,A::Plane};
+        if(devour_&&!devourFreeForms_){A form=Chrono::DevourItemForm(CurrentDevourStage().item);return form==A::Tire?tire:form==A::Spring?spring:vacuum;}
+        return devour_?all:slimePlayerDemo_?demo:battle;}
+    int LifeFormIndex()const{const auto& forms=LifeForms();for(size_t i=0;i<forms.size();++i)if(forms[i]==life_.form)return int(i);return 0;}
     // 取り込むときに周りへ体の流体をばらまく (本体と同じ流体シミュレーションの粒子)。
     // 飛んでいる範囲 (中心・半径・経過時間) は、流体を描く範囲に入れるために覚えておく
     struct DevourSplashArea {Chrono::Vec at{};float radius=0,age=0;};
@@ -104,12 +174,12 @@ private:
     bool StartDevourPounce(Chrono::Player&,GameContext&);
     void TickDevourPounce(entt::registry&,Chrono::Player&,GameContext&,float);
     int DevourCapture(entt::registry&,Chrono::Vec landing,float& gained);
-    int DevourTouch(entt::registry&,Chrono::Vec from,float& gained);
+    void DevourTouch(entt::registry&,Chrono::Vec from);
     float DevourEat(entt::registry&,size_t index);
     void DevourRemoveProp(entt::registry&,size_t index);
     void DevourShatter(entt::registry&,GameContext&,size_t index);
     void DevourHammerHits(entt::registry&,GameContext&,const Chrono::LifeBody&,int pulse);
-    void DevourTireSmash(entt::registry&,GameContext&,float reach);
+    void DevourSmash(entt::registry&,GameContext&,float reach);
     void FinishDevour(Chrono::Player&);
     void DevourShedBody(Chrono::Player&,GameContext&,float damage,Chrono::Vec source);
     void DrawDevourMeals(GameContext&);
@@ -152,6 +222,20 @@ private:
       void StartSlimeTrial(Chrono::SlimeTrial);
     // 分裂と飲み込みの音
     uint32_t lifeSplitSounds_[3]{0xffffffffu,0xffffffffu,0xffffffffu},lifeEngulfSound_=0xffffffffu;
+    // 吸収モードの音 (Resources/Sound/Devour/)
+    struct DevourSounds {
+        static constexpr uint32_t None=0xffffffffu;
+        uint32_t gulpSmall[4]{None,None,None,None},gulpMid[2]{None,None},gulpBig=None,note=None,splat=None,pounce=None,bounce=None,hit=None,shatter=None,
+            vacuumLoop=None,rankUp=None,rankTop=None,gateOpen=None,tick=None,hurry=None,timeUp=None,morph=None;
+    } devourSounds_;
+    uint32_t devourGulpTurn_=0;size_t devourVacuumVoice_=0;float devourNoteAt_=-1;
+    void LoadDevourSounds();
+    // 効果音の音量を掛けて鳴らす
+    void PlayDevourSound(uint32_t sound,float volume,float pitch=1);
+    // 飲んだ音: 重さで音を選び、コンボの音階を重ねる
+    void PlayDevourGulp(float weight,int combo);
+    // 残り時間の知らせ (before は前のフレームの残り時間)
+    void TickDevourTimeSounds(float before);
     void BuildSlimeLife(entt::registry&);
     void UpdateSlimeLife(entt::registry&,Chrono::Player&,GameContext&);
     void DrawSlimeLife(entt::registry&,GameContext&);
@@ -191,15 +275,23 @@ private:
         std::function<const CityModel&(int)> surface;std::function<DirectX::XMFLOAT4(int)> tint;};
     void BuildRingGround(CityParts::CityBuilder&);
     void BuildRingCity(entt::registry&,const RingCityTools&);
+    void BuildRoomGround(CityParts::CityBuilder&);
+    void BuildRoomStage(entt::registry&,const RingCityTools&);
+    void BuildStageItem(entt::registry&,const RingCityTools&);
     // 建物の敷地と、敷地ごとの吸収の対象の番号 (life_.props の番号。建物は飲み込むまで通れない)
     std::vector<Chrono::RingLot> ringLots_;std::vector<int> ringLotProps_;
     // 建物の残りの部位と当たり判定 (飲み込んだら隠し、当たり判定は消す)。キーは life_.props の番号
     std::unordered_map<size_t,std::vector<entt::entity>> devourBuildingParts_;
     // まだ閉じている輪の壁に触れるか
     bool RingWallClosed(Chrono::Vec p,float margin)const{float d=Chrono::RingDistance(p);for(int z=1;z<Chrono::RingStyleCount;++z)if(!ringOpen_[size_t(z)]&&std::abs(d-Chrono::RingWallAt(z))<margin+3)return true;return false;}
+    // 吸収モードの地図の中で、半径 margin の体が歩けるか
+    bool DevourWalkable(Chrono::Vec p,float margin)const{float half=CurrentDevourStage().half;if(half>0&&(std::abs(p.x)+margin>half||std::abs(p.z)+margin>half))return false;
+        return !RingWallClosed(p,margin)&&Chrono::RingWalkable(p,margin,ringLots_,[&](size_t i){return RingBlocked(i);});}
     bool RingBlocked(size_t lot)const{int k=lot<ringLotProps_.size()?ringLotProps_[lot]:-1;return k<0||size_t(k)>=life_.props.size()||life_.props[size_t(k)].active;}
     // 街の小物の見た目
-    struct CityPropVisual {uint32_t mesh=0,texture=0;std::vector<uint32_t> extra;Chrono::Vec scale{1,1,1},rotate{},center{};float height=1;std::string shader="EnvironmentSurface";};
+    struct CityPropVisual {uint32_t mesh=0,texture=0;std::vector<uint32_t> extra;Chrono::Vec scale{1,1,1},rotate{},center{};float height=1;std::string shader="EnvironmentSurface";Engine::Vector4 color{1,1,1,1};
+        // 皮で包む形: 半分の大きさと角の丸み (0 なら飲み込む大きさの箱にする)
+        Chrono::Vec half{};float round=0;};
     // 街の光る看板など (kind: 0 は光り続ける、1 は炎のように揺らぐ、2 は非常灯のように点滅する)
     struct CityGlow {Chrono::Vec center{},right{},up{},size{};Engine::Vector4 color{1,1,1,1};int kind=0;float phase=0;};
     std::vector<CityGlow> cityGlows_;
