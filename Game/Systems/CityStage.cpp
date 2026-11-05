@@ -271,7 +271,7 @@ void ChronoSystem::BuildCityStage(entt::registry& r){
     // シャッターの門の上のまぐさで双子の塔をつなぐ
     {const V g=CityGateCenter();city.Box(CityDarkTiles,{g.x-32,58,g.z-8},{g.x+32,96,g.z+8});}
     // 吸収モード: この街の道路と床を捨て、輪の町の地面と道路を作る
-    if(devour_){city=CityBuilder{};BuildRingGround(city);}
+    if(devour_){city=CityBuilder{};if(CurrentDevourStage().map=="room")BuildRoomGround(city);else BuildRingGround(city);}
     Engine::LoadProfile::Record("mark","city: geometry built",0);
     // 材質ごとのメッシュをエンティティとして置く
     for(int i=0;i<CityMaterialCount;++i){auto& g=city.geometry[size_t(i)];if(g.indices.empty())continue;
@@ -336,7 +336,8 @@ void ChronoSystem::BuildCityStage(entt::registry& r){
     auto lamp=[&](V at,float yaw){placeMesh("street light",lampMesh,CityMetal,at,yaw,42,420,30,LifeMorphItem::None,.25f);};
     // 吸収モードは輪の町の建物・小物・アイテムを置く (RingCity.cpp)
     if(devour_){cityWalls_.clear();cityBarricade_.clear();cityGateEntity_=entt::null;
-        BuildRingCity(r,{place,[&](int i)->const CityModel& {return surfaces[size_t(i)];},tint});}
+        RingCityTools tools{place,[&](int i)->const CityModel& {return surfaces[size_t(i)];},tint};
+        if(CurrentDevourStage().map=="room")BuildRoomStage(r,tools);else BuildRingCity(r,tools);}
     else{
     // 区画 1: 脱出路地。敵はおらず、散らかった物を吸い込んで大きくなり、ハンマーで塀を壊して進む
     // 小さな散らかった物の種類・幅・報酬
@@ -615,7 +616,7 @@ void ChronoSystem::UpdateCityStage(entt::registry& r,Chrono::Player& p,GameConte
         life_.message=UI::UsingPad()?"ハンマー変形 解放！ 十字キー↑で変形し、RTで叩きつけて塀を壊そう":"ハンマー変形 解放！ 1で変形し、左クリックで叩きつけて塀を壊そう";life_.messageAge=4;}
     // 新しいエリアに入ったら名前を表示する
     auto area=CityAreaAt(body.at);
-    if(int(area)!=cityAnnounced_){cityAnnounced_=int(area);
+    if(!devour_&&int(area)!=cityAnnounced_){cityAnnounced_=int(area);
         life_.message="AREA "+std::to_string(int(area)+1)+"  "+CityAreaName(area);life_.messageAge=3;}
     // 吸収モード: 敵も段階の進行も無い。塀・バリケード・シャッターは飲み込んで開ける (SlimeDevour.cpp)
     if(!devour_){
@@ -892,6 +893,6 @@ bool ChronoSystem::DrawCityPropInTentacle(GameContext& ctx,uint32_t visual,Chron
     auto found=cityVisuals_.find(visual);if(found==cityVisuals_.end())return false;const auto& v=found->second;
     // 縮めながら触手の先の位置に描く
     Engine::Transform t;t.scale=EV(v.scale*shrink);t.rotate=EV(v.rotate);t.translate=EV(at-v.center*shrink);
-    ctx.renderer->DrawMeshInstanced(v.mesh,v.texture,t,{1,1,1,1},v.shader,v.extra);return true;
+    ctx.renderer->DrawMeshInstanced(v.mesh,v.texture,t,v.color,v.shader,v.extra);return true;
 }
 }

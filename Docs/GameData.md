@@ -15,7 +15,7 @@ JSON を書き換えて起動し直すだけで反映され、コードを直す
 | `ui_text.json` | タイトル・セレクト・結果・ポーズ・グラフィック設定・強化画面の文字 | [`Game/UI/GameUI.h`](../Game/UI/GameUI.h) の `UI::Str("区切り.項目")` |
 | `loading.json` | ロード画面のチュートリアル 6 ページ、読み込み中の文、起動画面の説明文 | [`Game/UI/LoadingUI.h`](../Game/UI/LoadingUI.h) |
 | `credits.json` | クレジット画面のページと行 | [`Game/UI/CreditsUI.h`](../Game/UI/CreditsUI.h) |
-| `music.json` | シーンごとの BGM のファイルと音量 | [`Game/UI/SceneMusic.h`](../Game/UI/SceneMusic.h) |
+| `music.json` | シーンごとの BGM のファイルと音量（`City` は街のステージ） | [`Game/UI/SceneMusic.h`](../Game/UI/SceneMusic.h) |
 | `graphics.json` | 映像効果の既定の強さ、LOW / BALANCED / HIGH のプリセット、露出の範囲 | [`Game/UI/GraphicsUI.h`](../Game/UI/GraphicsUI.h) |
 | `editor.json` | エディタのシーンランチャー、エディタで包むシーン、Slime Dev Tools のワープ先 | [`Game/Editor/EditorShell.cpp`](../Game/Editor/EditorShell.cpp), [`Game/Editor/SlimeDevTools.cpp`](../Game/Editor/SlimeDevTools.cpp) |
 | `loadout.json` | 旧アクションゲームの缶の初期装備と表示名 | [`Game/CanLoadout.h`](../Game/CanLoadout.h) |

@@ -11,6 +11,7 @@
 #include "../../Engine/Input.h"
 #include "../../Engine/WindowDX.h"
 #include "../Data/GameData.h"
+#include "UISound.h"
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -52,7 +53,7 @@ inline bool PadPressed(uint32_t button) {
     return input && input->PadTrigger(button);
 }
 // 戻る/キャンセル: キーボードは Esc (または指定のキー)、ゲームパッドは B
-inline bool BackPressed(BYTE key=DIK_ESCAPE) { return Pressed(key)||PadPressed(XINPUT_GAMEPAD_B); }
+inline bool BackPressed(BYTE key=DIK_ESCAPE) { bool back=Pressed(key)||PadPressed(XINPUT_GAMEPAD_B);if(back)PlayUISound(UISound::Back);return back; }
 
 // UI のフォント (英字用・日本語用) とゲームのタイトル
 inline constexpr const char* Font = "Resources/Fonts/Rajdhani/Rajdhani-SemiBold.ttf";
@@ -154,7 +155,7 @@ struct Navigator {
             if(score<best){best=score;next=&item;}
         }
         // 見つかれば移す
-        if(next)focus=next->rect;
+        if(next){focus=next->rect;PlayUISound(UISound::Move);}
     }
     // 入力の1フレームにつき1回、そのフレームで最初に Canvas を使う前に実行する
     void Begin() {
@@ -402,6 +403,7 @@ public:
             // フォーカス中に A ボタンが押されたら、同じ押下を他で使わないよう止める
             if(!Nav().activate||!Focused(b))return false;
             Engine::Input::GetInstance()->LatchPad();
+            PlayUISound(UISound::Confirm);
             return true;
         }
         // マウスが乗っていなければ押されていない
@@ -411,6 +413,7 @@ public:
 #ifdef USE_IMGUI
         if(ImGui::GetCurrentContext())clicked|=ImGui::IsMouseClicked(ImGuiMouseButton_Left);
 #endif
+        if(clicked)PlayUISound(UISound::Confirm);
         return clicked;
     }
     // Kenney の入力アイコンパックの Xbox Series のボタン画像

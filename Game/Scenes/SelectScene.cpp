@@ -65,6 +65,7 @@ void SelectScene::Update() {
     
     // 出撃: スライムの街ステージ (chrono.json) でゲームシーンを始める
     auto confirmSelection = [this]() {
+            UI::PlayUISound(UI::UISound::Confirm);
             // 本編のシーンファイルを指定してゲームへ移る
             Engine::SceneParameters params;
             params.stagePath = Data::MainStagePath();

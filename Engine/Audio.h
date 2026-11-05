@@ -58,6 +58,12 @@ public:
 	// ★追加: ボイスの音量変更
 	void SetVolume(size_t voiceHandle, float volume);
 
+	// 再生中のボイスの音程 (再生速度) を変える。0.5 ~ 2.0
+	void SetPitch(size_t voiceHandle, float pitch);
+
+	// BGM 以外の音を一時停止する (ポーズの間、掃除機などの連続音を止める)
+	void SetSEPaused(bool paused);
+
 	// ★追加: マスター音量管理
 	float GetMasterBGMVolume() const { return masterBGMVolume_; }
 	void SetMasterBGMVolume(float volume) { masterBGMVolume_ = (std::max)(0.0f, (std::min)(1.0f, volume)); }
@@ -74,6 +80,8 @@ public:
 	void StopBGM();
 	void UpdateBGM(float dt);
 	void SetBGMDucked(bool ducked) { bgmDuckTarget_ = ducked ? 0.3f : 1.0f; }
+	// BGM の速さ (1 が元の速さ)。なめらかに変わり、次の PlayBGM で元に戻る
+	void SetBGMPitch(float pitch) { bgmPitchTarget_ = pitch; }
 	bool IsBGMPlaying() const;
 	const std::string& CurrentBGM() const { return bgmPath_; }
 
@@ -103,6 +111,8 @@ private:
 	size_t bgmVoice_ = 0, retiringBgmVoice_ = 0;
 	float bgmGain_ = 0.35f, bgmFade_ = 0, retiringBgmGain_ = 0, retiringBgmFade_ = 0;
 	float bgmDuck_ = 1, bgmDuckTarget_ = 1;
+	float bgmPitch_ = 1, bgmPitchTarget_ = 1;
+	bool sePaused_ = false;
 
 	// ★追加: マスター音量
 	float masterBGMVolume_ = 1.0f;

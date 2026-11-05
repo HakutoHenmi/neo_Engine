@@ -7,8 +7,8 @@
 #include <string>
 
 namespace Game::Music {
-// 曲の種類 (タイトル・セレクト・戦闘・勝利・敗北)
-enum Track { Title, Select, Battle, Victory, Defeat, TrackCount };
+// 曲の種類 (タイトル・セレクト・戦闘・街のステージ・勝利・敗北)
+enum Track { Title, Select, Battle, City, Victory, Defeat, TrackCount };
 
 // 曲のファイルと音量
 struct TrackInfo { std::string path; float volume = 0; };
@@ -17,7 +17,7 @@ struct TrackInfo { std::string path; float volume = 0; };
 inline const std::array<TrackInfo, TrackCount>& Tracks() {
     static const std::array<TrackInfo, TrackCount> tracks = [] {
         const auto& json = Data::Require(Data::Load("music.json"), "tracks", "music.json");
-        const char* names[TrackCount] = {"Title", "Select", "Battle", "Victory", "Defeat"};
+        const char* names[TrackCount] = {"Title", "Select", "Battle", "City", "Victory", "Defeat"};
         std::array<TrackInfo, TrackCount> out;
         for (int i = 0; i < TrackCount; ++i) {
             const auto& track = Data::Require(json, names[i], "music.json tracks");

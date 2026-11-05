@@ -13,6 +13,7 @@ class SlimePlayerDemoValidationScene final : public Game::SlimePlayerDemoScene {
     bool cameraOnly_=false;std::string meshName_="Chrono Demo practice floor";
     bool camera_=true,resources_=true,movement_=false,jump_=false,reset_=false,split_=false;
     std::array<bool,2> forms_{},attacks_{}; // 1: タイヤ、2: 消火栓
+    int allForm_=0;bool allForms_=true,hopped_=false,sucked_=false;int absorbed_=0; // 全部の形を順に試す
     void Capture(const std::wstring& path){
         DirectX::ScratchImage image;
         if(SUCCEEDED(DirectX::CaptureTexture(window_->Queue(),window_->GetCurrentBackBufferResource(),false,image,
@@ -45,7 +46,7 @@ public:
         using namespace Game;using namespace Game::Chrono;
         ++frame_;
         if(farWaterOnly_){
-            auto player=FindObjectByName("Player");auto& input=GetComponents().get_or_emplace<ControlFrame>(player);input={};input.pitch=nearWaterOnly_?.65f:.25f;input.morphForm=5;
+            auto player=FindObjectByName("Player");auto& input=GetComponents().get_or_emplace<ControlFrame>(player);input={};input.pitch=nearWaterOnly_?.65f:.25f;input.morphForm=3;
             float dt=std::clamp(Engine::TimeManager::GetInstance().GetUnscaledDeltaTime(),0.f,.05f);farAge_+=dt;
             input.attack=(farAge_>.1f&&farAge_<.3f)||(farAge_>1.5f&&farAge_<7.5f);
             GameScene::Update();
@@ -99,11 +100,22 @@ public:
         float dt=std::clamp(Engine::TimeManager::GetInstance().GetUnscaledDeltaTime(),0.f,.05f);age_+=dt;
         if(form_==0){
             // Reset reconstructs the field and all unlocked forms, without leaving the scene.
-            const auto& state=GetChronoSystem()->LifeState();reset_ = state.bodies[0].mass==600&&state.ChildCount()==0&&state.bodies[0].tireUnlocked&&state.bodies[0].hydrantUnlocked;
-            bool pass=camera_&&resources_&&movement_&&jump_&&reset_&&split_;
+            const auto& state=GetChronoSystem()->LifeState();
+            if(allForm_==0){reset_ = state.bodies[0].mass==600&&state.ChildCount()==0&&state.bodies[0].tireUnlocked&&state.bodies[0].hydrantUnlocked&&state.bodies[0].vacuumUnlocked&&state.bodies[0].springUnlocked;
+                allForm_=1;age_=0;absorbed_=state.absorbed;}
+            // 全部の形へ順に変形し、掃除機は吸い込み、バネは跳ぶ
+            if(allForm_<=8){const LifeAction expected[]={LifeAction::Hammer,LifeAction::Tire,LifeAction::Hydrant,LifeAction::Signal,LifeAction::Vacuum,LifeAction::Spring,LifeAction::Sword,LifeAction::Plane};
+                const auto& body=state.bodies[0];LifeAction want=expected[allForm_-1];input.morphForm=allForm_;input.morphNow=age_<.05f;input.attack=age_>.9f&&age_<1.6f;
+                if(want==LifeAction::Spring)hopped_|=body.at.y>6;
+                if(want==LifeAction::Vacuum)sucked_|=state.absorbed>absorbed_;
+                GameScene::Update();
+                if(age_>.85f&&age_-dt<=.85f){allForms_&=body.action==want&&body.weapon.ready;Capture(L"tests/out/slime-demo-form-"+std::to_wstring(allForm_)+L".png");}
+                if(age_>2.8f){age_=0;++allForm_;}
+                return;}
+            bool pass=camera_&&resources_&&movement_&&jump_&&reset_&&split_&&allForms_&&hopped_&&sucked_;
             for(int i=0;i<2;++i)pass &= forms_[i]&&attacks_[i];
             std::ofstream report("tests/out/slime-player-demo-smoke.txt");
-            report<<(pass?"PASS":"FAIL")<<" camera="<<camera_<<" runtime_meshes="<<resources_<<" movement="<<movement_<<" jump="<<jump_<<" reset="<<reset_<<" split="<<split_;
+            report<<(pass?"PASS":"FAIL")<<" all_forms="<<allForms_<<" spring="<<hopped_<<" vacuum="<<sucked_<<" camera="<<camera_<<" runtime_meshes="<<resources_<<" movement="<<movement_<<" jump="<<jump_<<" reset="<<reset_<<" split="<<split_;
             for(int i=0;i<2;++i)report<<" form"<<i+1<<"="<<forms_[i]<<" attack"<<i+1<<"="<<attacks_[i];
             PostQuitMessage(pass?0:2);return;
         }

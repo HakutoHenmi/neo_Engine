@@ -563,6 +563,9 @@
     <ClInclude Include="Game\UI\SceneMusic.h">
       <Filter>7. UI（画面表示）</Filter>
     </ClInclude>
+    <ClInclude Include="Game\UI\UISound.h">
+      <Filter>7. UI（画面表示）</Filter>
+    </ClInclude>
     <ClInclude Include="Game\Editor\EditorInternal.h">
       <Filter>8. Editor（エディタ）</Filter>
     </ClInclude>

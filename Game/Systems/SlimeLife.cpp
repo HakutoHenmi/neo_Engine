@@ -46,6 +46,15 @@ const std::vector<Engine::FluidShape::Point>& LifeCloud(int shape,uint32_t count
             if(LifeInsideHydrant({p.x,p.y,p.z}))points.push_back(p);}
         std::stable_sort(points.begin(),points.end(),[](Point a,Point b){return Morton(a)<Morton(b);});return cache.emplace(key,std::move(points)).first->second;}
     // 6: 信号機の形の中に点を置く
+    // 7: 掃除機、8: バネの形の中に点を置く
+    if(shape==7){std::vector<Point> points;points.reserve(count);
+        for(uint32_t i=1;points.size()<count;++i){Point p{(Halton(i,2)*2-1)*DevourVacuumHalf,Halton(i,3)*DevourVacuumTop,DevourVacuumBack+Halton(i,5)*(DevourVacuumFront-DevourVacuumBack)};
+            if(DevourInsideVacuum({p.x,p.y,p.z})&&(!DevourVacuumBody({p.x,p.y,p.z})||Halton(i,7)<DevourVacuumBodyDensity))points.push_back(p);}
+        std::stable_sort(points.begin(),points.end(),[](Point a,Point b){return Morton(a)<Morton(b);});return cache.emplace(key,std::move(points)).first->second;}
+    if(shape==8){std::vector<Point> points;points.reserve(count);
+        for(uint32_t i=1;points.size()<count;++i){Point p{(Halton(i,2)*2-1)*DevourSpringPlateRadius,Halton(i,3)*DevourSpringHeight,(Halton(i,5)*2-1)*DevourSpringPlateRadius};
+            if(DevourInsideSpring({p.x,p.y,p.z}))points.push_back(p);}
+        std::stable_sort(points.begin(),points.end(),[](Point a,Point b){return Morton(a)<Morton(b);});return cache.emplace(key,std::move(points)).first->second;}
     if(shape==6){std::vector<Point> points;points.reserve(count);
         for(uint32_t i=1;points.size()<count;++i){Point p{(Halton(i,2)*2-1)*2.3f,Halton(i,3)*SignalHeight,(Halton(i,5)*2-1)*1.2f};
             if(LifeInsideSignal({p.x,p.y,p.z}))points.push_back(p);}
@@ -80,6 +89,8 @@ LifeCameraSubject ChronoSystem::GetLifeCameraSubject()const{
     if(body.action==LifeAction::Tire)return {body.at+V{0,-1.25f+LifeTireRadius*scale,0},(LifeTireRadius+.9f)*scale};
     if(body.action==LifeAction::Hydrant)return {body.at+V{0,-1.25f+2.5f*scale,0},4.2f*scale};
     if(body.action==LifeAction::Signal)return {body.at+V{0,-1.25f+3.4f*scale,0},4.8f*scale};
+    if(body.action==LifeAction::Vacuum)return {body.at+body.forward*scale+V{0,-1.25f+2.8f*scale,0},6.4f*scale};
+    if(body.action==LifeAction::Spring)return {body.at+V{0,-1.25f+4.9f*scale,0},6.2f*scale};
     // 元の頂点はシミュレーションの点群と同じ正規化を使う
     // ハンマー・剣・飛行機それぞれの攻撃の全フレームの頂点から、包む球を一度だけ求める
     static const auto envelopes=[](){std::array<LifeCameraSubject,3> result{};
@@ -101,7 +112,7 @@ bool ChronoSystem::SaveSlimeLab(){
     if(slimePlayerDemo_ || wcsstr(GetCommandLineW(),L"--slime-life-smoke"))return true;
     // 保存先 (記録と同じフォルダ) に、版・選んだスロット・材料・クリア数・レシピを書く
     try{auto path=RecordPath().parent_path()/L"slime-lab-v1.json";std::filesystem::create_directories(path.parent_path());
-        nlohmann::json data{{"version",2},{"slot",lifeRecipeSlot_},{"materials",lifeMaterials_},{"clears",lifeClears_},{"devourBest",devourBest_}};
+        nlohmann::json data{{"version",2},{"slot",lifeRecipeSlot_},{"materials",lifeMaterials_},{"clears",lifeClears_},{"devourBests",devourBests_},{"devourStage",devourStage_}};
         data["recipes"]=nlohmann::json::array();for(const auto& recipe:lifeRecipes_){auto rgb=recipe.color.ToRGB();data["recipes"].push_back({{"mix",recipe.mix},{"color",{rgb.x,rgb.y,rgb.z}},{"colorHSV",{recipe.color.h,recipe.color.s,recipe.color.v}}});}
         // 一時ファイルに書いてから置き換え、途中で壊れないようにする
         auto temp=path;temp+=L".tmp";{std::ofstream file(temp);if(!file)throw std::runtime_error("Recipe save failed");file<<data.dump(2);if(!file)throw std::runtime_error("Recipe save failed");}
@@ -118,7 +129,7 @@ void ChronoSystem::BuildSlimeLife(entt::registry& r){
         if(!slimePlayerDemo_ && !wcsstr(GetCommandLineW(),L"--slime-life-smoke"))try{
             std::ifstream file(RecordPath().parent_path()/L"slime-lab-v1.json");nlohmann::json data;if(file){file>>data;
                 // スロット・材料の数・クリア数を読み、範囲に収める
-                lifeRecipeSlot_=std::clamp(data.value("slot",0),0,2);lifeMaterials_=std::clamp(data.value("materials",3),3,4);lifeClears_=std::max(0,data.value("clears",0));devourBest_=std::max(0.f,data.value("devourBest",0.f));
+                lifeRecipeSlot_=std::clamp(data.value("slot",0),0,2);lifeMaterials_=std::clamp(data.value("materials",3),3,4);lifeClears_=std::max(0,data.value("clears",0));if(data.contains("devourBests")&&data["devourBests"].is_array())for(size_t i=0;i<devourBests_.size()&&i<data["devourBests"].size();++i)devourBests_[i]=std::max(0.f,data["devourBests"][i].get<float>());
                 // 各レシピの配合と色 (新しい HSV・古い RGB・さらに古い番号の形式に対応)
                 const auto& recipes=data.at("recipes");for(size_t i=0;i<lifeRecipes_.size()&&i<recipes.size();++i){auto& out=lifeRecipes_[i];out.mix=recipes[i].at("mix").get<std::array<int,4>>();
                     for(int& n:out.mix)n=std::clamp(n,0,100);if(lifeMaterials_<4)out.mix[3]=0;if(out.mix[0]+out.mix[1]+out.mix[2]+out.mix[3]==0)out.mix[0]=40;
@@ -139,15 +150,15 @@ void ChronoSystem::BuildSlimeLife(entt::registry& r){
     life_.preview.at={0,1201.25f,0};life_.preview.mass=LifeStartMass;life_.preview.particles=Engine::Renderer::kPlayerFluidParticles;life_.preview.forward={0,0,-1};
     // プレイヤーを街の開始位置に置く
     auto& p=r.get<Player>(player_);p.mass=LifeStartMass;p.grounded=true;p.velocity={};p.collisionScale=1;
-    auto& t=r.get<TransformComponent>(player_);t.translate=slimePlayerDemo_?DirectX::XMFLOAT3{0,1.25f,0}:DirectX::XMFLOAT3{(devour_?RingData().start:CityStart()).x,1.25f,(devour_?RingData().start:CityStart()).z};t.scale={1,1,1};
+    auto& t=r.get<TransformComponent>(player_);t.translate=slimePlayerDemo_?DirectX::XMFLOAT3{0,1.25f,0}:DirectX::XMFLOAT3{(devour_?CurrentDevourStage().spawn:CityStart()).x,1.25f,(devour_?CurrentDevourStage().spawn:CityStart()).z};t.scale={1,1,1};
     // 本体と子の体を初期化する
     LifeInitializeBodies(life_,Engine::Renderer::kPlayerFluidParticles);
     auto& body=life_.bodies[0];body.at=Read(t.translate);
     if(slimePlayerDemo_){
-        body.mass=body.health=body.maxHealth=600;body.tireUnlocked=body.hydrantUnlocked=body.signalUnlocked=true;
+        body.mass=body.health=body.maxHealth=600;body.tireUnlocked=body.hydrantUnlocked=body.signalUnlocked=body.vacuumUnlocked=body.springUnlocked=true;
         life_.absorbedMass=500;p.mass=600;life_.recipe.color={.23f,.8f,.9f};
         const float scale=LifeScale(body.mass);t.scale={scale,scale,scale};
-        for(int i=0;i<8;++i){LifeCollectible prop;prop.at={-18.f+float(i%4)*12,1.f,18.f+float(i/4)*18};
+        for(int i=0;i<24;++i){LifeCollectible prop;prop.at={-20.f+float(i%6)*8,1.f,18.f+float(i/6)*9};
             prop.required=1;prop.reward=25;prop.orb=true;life_.props.push_back(prop);}
     }
     // 体力を 100 にする
@@ -164,7 +175,7 @@ void ChronoSystem::BuildSlimeLife(entt::registry& r){
     // 取り込める物は街の景観から作る。鉄の門は騎士団が倒れた後に加わる
     // 街の小物を取り込める物として登録する
     // 吸収モードでは、増える量を物の大きさから決める
-    devourGates_.clear();ringOpen_={};ringOpen_[0]=true;devourRingOpened_=0;
+    devourGates_.clear();ringOpen_={};ringOpen_[0]=true;devourRingOpened_=0;if(devour_&&CurrentDevourStage().map!="ring")ringOpen_.fill(true);
     for(const auto& seed:cityProps_){LifeCollectible prop;prop.ring=seed.ring;prop.sealed=devour_&&seed.ring>0;prop.beacon=seed.beacon;if(seed.gate)devourGates_[life_.props.size()]=seed.gate;prop.at=seed.at;prop.required=seed.required;prop.reward=devour_?DevourReward(seed.radius)*seed.fill:seed.reward;
         prop.visual=uint32_t(seed.entity);prop.morphItem=seed.morphItem;prop.radius=seed.radius;prop.reach=seed.reach;life_.props.push_back(prop);}
     // 鉄の門 (騎士団を倒すまでは無効。吸収モードでは大きくなれば最初から飲み込める)
@@ -173,10 +184,11 @@ void ChronoSystem::BuildSlimeLife(entt::registry& r){
         cityGateProp_=int(life_.props.size());life_.props.push_back(gate);}
     // 吸収モード: 路地の塀とバリケードも、大きくなれば覆って飲み込める
     devourWallProps_.clear();devourBarricadeProp_=-1;
-    devourClock_={};devourPounce_={};devourMeals_.clear();devourSplashes_.clear();devourDigest_=0;devourGulp_={};devourNewBest_=devourReachedFinal_=false;
+    devourClock_={};devourPounce_={};devourMeals_.clear();devourSplashes_.clear();devourDigest_=0;devourGulp_={};devourPounceWait_=0;devourBiteAge_=-1;devourChew_=0;devourSizePulse_=0;devourPops_.clear();devourNewBest_=false;devourRank_=0;if(devour_)devourClock_.left=CurrentDevourStage().time;devourItemReady_=false;devourMorphLeft_=0;devourSucks_.clear();devourSuckClock_=0;devourSucking_=false;devourHop_={};devourHopCooldown_=0;
+    StartDevourLog();if(devour_)devourLog_.bestBefore=devourBests_[size_t(devourStage_)];
     // 門・バリケード・弾などの状態を初期化する
     cityGates_={};if(slimePlayerDemo_)cityGates_=CityGates::AllOpen();cityGateUnlocked_=false;cityBarricadeHealth_=CityBarricadeHealth();cityGateHealth_=CityGateHealth();cityAnnounced_=-1;cityHintClock_=0;
-    ResetCityHazards();life_.form=slimePlayerDemo_?LifeAction::Tire:LifeAction::Hammer;
+    ResetCityHazards();life_.form=slimePlayerDemo_?LifeAction::Tire:devour_?LifeForms()[0]:LifeAction::Hammer;
     if(r.valid(cityGateEntity_))if(auto* collider=r.try_get<BoxColliderComponent>(cityGateEntity_))collider->enabled=true;
     cityShots_.clear();cityDebris_.clear();cityStomps_.clear();
     // 前回取り込んで隠した小物を表示し直す
@@ -189,6 +201,7 @@ void ChronoSystem::BuildSlimeLife(entt::registry& r){
     if(lifeEngulfSound_==0xffffffffu){auto* audio=Engine::Audio::GetInstance();
         for(int i=0;i<3;++i)lifeSplitSounds_[i]=audio->Load("Resources/Sound/slime-life-split-"+std::to_string(i)+".wav");
         lifeEngulfSound_=audio->Load("Resources/Sound/slime-life-engulf.wav");}
+    LoadDevourSounds();
 }
 // スライムが被弾したとき: 体力を減らし、分裂した子を外へ飛ばす。武器の形なら攻撃を止める
 void ChronoSystem::DamageSlimeLife(entt::registry& r,Player& p,float amount,GameContext& ctx,V source){
@@ -367,14 +380,15 @@ void ChronoSystem::SyncSlimeBodies(GameContext& ctx){
     for(size_t i=0;i<(life_.lab?size_t(2):LifeBodyCount);++i){const auto& b=renderedBody(i);if(b.mass<=0)continue;
         uint32_t count=b.particles;
         // 形の番号 (1: ハンマー, 2: 剣, 3: 飛行機, 4: タイヤ, 5: 消火栓, 0: 液体)
-        int shape=b.action==LifeAction::Hammer?1:b.action==LifeAction::Sword?2:b.action==LifeAction::Plane?3:b.action==LifeAction::Tire?4:b.action==LifeAction::Hydrant?5:b.action==LifeAction::Signal?6:0;
+        int shape=b.action==LifeAction::Hammer?1:b.action==LifeAction::Sword?2:b.action==LifeAction::Plane?3:b.action==LifeAction::Tire?4:b.action==LifeAction::Hydrant?5:b.action==LifeAction::Signal?6:b.action==LifeAction::Vacuum?7:b.action==LifeAction::Spring?8:0;
         // 吸収モードの飛びかかり: 液体の体は楕円体の枠しか持てず、覆いかぶさる形を作れないので、
         // 飛びかかりの間だけ体の各点に行き先を渡して、エディタで作った形 (DevourAnimation) にする。
         // エディタで確認している間は、止まったままその時間の形を見せる
         bool preview=devour_&&i==0&&devourPreviewTime_>=0&&!life_.lab;
-        bool wrapping=devour_&&i==0&&!life_.lab&&!b.down&&(b.action==LifeAction::Engulf||preview);
+        bool biting=devour_&&i==0&&!life_.lab&&devourBiteAge_>=0&&b.action==LifeAction::Idle;
+        bool wrapping=devour_&&i==0&&!life_.lab&&!b.down&&(b.action==LifeAction::Engulf||preview||biting);
         bool liquid=!LifeWeaponForm(b.action)&&!wrapping,weapon=LifeWeaponForm(b.action);
-        const auto& cloud=LifeCloud(shape,count);float scale=LifeScale(b.mass),age=preview?devourPreviewTime_:b.actionAge;V radii=LifeRadii(b,life_.recipe);
+        const auto& cloud=LifeCloud(shape,count);float scale=LifeScale(b.mass),age=preview?devourPreviewTime_:biting?devourBiteAge_:b.actionAge;V radii=LifeRadii(b,life_.recipe);
         std::vector<V> pose;std::vector<float> wall;V bodyVelocity{};float unit=1,form=1,poseStep=0;
         if(wrapping){
             // 体の半径 (普段の形の大きさ) と、点ごとの前後の順位 (粒子の数ごとに 1 回だけ作る)
@@ -388,7 +402,8 @@ void ChronoSystem::SyncSlimeBodies(GameContext& ctx){
             else{bodyVelocity={b.velocity.x,0,b.velocity.z};
                 // 飲み込んだ瞬間に上からつぶれて横へ広がる (地面を基準に縦を縮め、量が変わらないよう横へ広げる)
                 float squash=DevourSquash(devourGulp_.age,devourGulp_.weight),wide=1/std::sqrt(1-squash);
-                for(auto& v:pose){v.x*=wide;v.y*=1-squash;v.z*=wide;}}
+                for(auto& v:pose){v.x*=wide;v.y*=1-squash;v.z*=wide;}
+                if(biting)for(auto& v:pose)v=v*devourBiteScale_;}
             // 点の速度は前のフレームの形との差から求める (少し後の形をもう 1 度作ると、飛びかかりの間の処理が倍になる)。
             // 前の形が無い・時間が戻った・止まっている (ヒットストップ・確認中) ときは形の速度を 0 にする
             // (飛びかかりの始めは形へまだ寄せていないので、最初のフレームに速度が無くても目立たない)
@@ -400,6 +415,9 @@ void ChronoSystem::SyncSlimeBodies(GameContext& ctx){
         Target common{};common.blend=liquid?b.motion:wrapping?form:LifeSmooth(age/.25f);
         common.origin={b.at.x+(liquid?b.fluidOffset.x:0),b.at.y-1.25f+(liquid?.8f*b.air:0),b.at.z+(liquid?b.fluidOffset.z:0)};
         common.density=LifeDensity(b.mass,count,Engine::Renderer::kPlayerFluidParticles);
+        // バネのコイルと掃除機のホースは細いので、粒子の広がりを大きくして線がつながるようにする
+        if(b.action==LifeAction::Spring)common.density*=.7f;
+        if(b.action==LifeAction::Vacuum)common.density*=.75f;
         auto heading=liquid?b.liquidForward:b.forward;
         common.forward={heading.x,float(i),heading.z};common.omega=liquid?life_.recipe.Cohesion():wrapping?DevourBodyStiffness:b.action==LifeAction::Engulf?36.f:b.weapon.active?80.f:32.f;
         common.material={life_.recipe.Damping(),life_.recipe.Viscosity(),life_.recipe.SurfaceTension(),life_.lab?1200.f:InkGround(b.at)};
@@ -443,6 +461,8 @@ void ChronoSystem::SyncSlimeBodies(GameContext& ctx){
             }
         }
     }
+    // 飲み込んだ大きい物の周りの皮
+    if(devour_||slimePlayerDemo_)DevourMealSkin(arms);
     // 触手・変形の目標・色をレンダラーへ渡す
     ctx.renderer->SetFluidTendrils(std::move(arms));
     // 飛び散った体のしずくも描く範囲に入れる
@@ -586,9 +606,9 @@ void ChronoSystem::UpdateSlimeLife(entt::registry& r,Player& p,GameContext& ctx)
     // 吸収モードの制限時間
     // エディタでの確認は、エディタが毎フレーム続けている間だけ
     if(devourPreviewHold_>0)--devourPreviewHold_;else devourPreviewTime_=-1;
-    if(devour_&&!finished_){devourClock_.left=std::max(0.f,devourClock_.left-dt);devourClock_.tierFlash=std::max(0.f,devourClock_.tierFlash-dt);}
+    if(devour_&&!finished_){float before=devourClock_.left;devourClock_.left=std::max(0.f,devourClock_.left-dt);TickDevourTimeSounds(before);devourClock_.flash=std::max(0.f,devourClock_.flash-dt);}
     // タイヤと消火栓をこのフレームで解放したか調べるために前の状態を記録する
-    bool hadTire=body.tireUnlocked,hadHydrant=body.hydrantUnlocked,hadSignal=body.signalUnlocked;life_.signalNotice=std::max(0.f,life_.signalNotice-dt);SignalTick(life_.signal,dt);life_.tireNotice=std::max(0.f,life_.tireNotice-dt);life_.hydrantNotice=std::max(0.f,life_.hydrantNotice-dt);
+    bool hadTire=body.tireUnlocked,hadHydrant=body.hydrantUnlocked,hadSignal=body.signalUnlocked,hadVacuum=body.vacuumUnlocked,hadSpring=body.springUnlocked;life_.signalNotice=std::max(0.f,life_.signalNotice-dt);SignalTick(life_.signal,dt);life_.tireNotice=std::max(0.f,life_.tireNotice-dt);life_.hydrantNotice=std::max(0.f,life_.hydrantNotice-dt);
     p.invincible=std::max(0.f,p.invincible-dt);p.damageAge+=dt;life_.stompCooldown=std::max(0.f,life_.stompCooldown-dt);life_.contactCooldown=std::max(0.f,life_.contactCooldown-dt);
     // カメラの向き
     if(control){yaw_=control->yaw;pitch_=control->pitch;}else if(ctx.input){float y,x;Controls::Look(dt,y,x);yaw_+=ctx.input->GetMouseDeltaX()*.0025f+y;pitch_=std::clamp(pitch_+ctx.input->GetMouseDeltaY()*.0025f+x,-.7f,.85f);}
@@ -609,27 +629,31 @@ void ChronoSystem::UpdateSlimeLife(entt::registry& r,Player& p,GameContext& ctx)
     if(absorb&&!life_.previousAbsorb&&LifeWeaponForm(body.action)&&body.action!=LifeAction::Hydrant){
         LifeReturnToSlime(body);body.restoreDuration=.2f;life_.tackleTime=0;++life_.revision;returned=true;lifeAbsorbBuffer_=.8f;}
     // 変形はハンマー (1 / 十字↑)・タイヤ (2 / →)・消火栓 (3 / ↓)・信号機 (4 / ←)
-    const LifeAction forms[]={LifeAction::Hammer,LifeAction::Tire,LifeAction::Hydrant,LifeAction::Signal};
-    int formIndex=life_.form==LifeAction::Tire?1:life_.form==LifeAction::Hydrant?2:life_.form==LifeAction::Signal?3:0;
-    if(control&&control->morphForm>=1&&control->morphForm<=4)life_.form=forms[control->morphForm-1];
+    const auto& forms=LifeForms();const int formCount=int(forms.size());
+    int formIndex=LifeFormIndex();
+    if(control&&control->morphForm>=1&&control->morphForm<=formCount)life_.form=forms[size_t(control->morphForm-1)];
     // 数字キーと十字キーは、押した瞬間にその形へ変形する
     int hotkey=0;
-    if(!control&&ctx.input){if(ctx.input->Trigger(DIK_1))hotkey=1;else if(ctx.input->Trigger(DIK_2))hotkey=2;else if(ctx.input->Trigger(DIK_3))hotkey=3;else if(ctx.input->Trigger(DIK_4))hotkey=4;}
+    if(!control&&ctx.input){if(ctx.input->Trigger(DIK_1))hotkey=1;else if(ctx.input->Trigger(DIK_2))hotkey=2;else if(ctx.input->Trigger(DIK_3))hotkey=3;else if(ctx.input->Trigger(DIK_4))hotkey=4;
+        else if(formCount>4){const uint8_t more[]={DIK_5,DIK_6,DIK_7,DIK_8};for(int i=0;i<4;++i)if(ctx.input->Trigger(more[i]))hotkey=5+i;}}
     if(!control){if(UI::PadPressed(XINPUT_GAMEPAD_DPAD_UP))hotkey=1;else if(UI::PadPressed(XINPUT_GAMEPAD_DPAD_RIGHT))hotkey=2;else if(UI::PadPressed(XINPUT_GAMEPAD_DPAD_DOWN))hotkey=3;else if(UI::PadPressed(XINPUT_GAMEPAD_DPAD_LEFT))hotkey=4;}
     // LB / RB: スティックから指を離さずに、解放済みの前後の形へ変形する (解放済みが無ければ隣を選ぶだけ)
     if(!control&&hotkey==0){int step=UI::PadPressed(XINPUT_GAMEPAD_RIGHT_SHOULDER)?1:UI::PadPressed(XINPUT_GAMEPAD_LEFT_SHOULDER)?3:0;
-        if(step){int pick=(formIndex+step)%4;for(int i=0;i<4&&!LifeCanMorph(body,forms[pick]);++i)pick=(pick+step)%4;hotkey=pick+1;}}
-    if(control&&control->morphNow&&control->morphForm>=1&&control->morphForm<=4)hotkey=control->morphForm;
-    bool morphNow=hotkey>0;if(morphNow)life_.form=forms[hotkey-1];
+        if(step==3)step=formCount-1;if(step){int pick=(formIndex+step)%formCount;for(int i=0;i<formCount&&!LifeCanMorph(body,forms[size_t(pick)]);++i)pick=(pick+step)%formCount;hotkey=pick+1;}}
+    if(control&&control->morphNow&&control->morphForm>=1&&control->morphForm<=formCount)hotkey=control->morphForm;
+    bool morphNow=hotkey>0;if(morphNow)life_.form=forms[size_t(hotkey-1)];
     // 攻撃か数字キーを押したとき: 選んだ形が解放済みなら変形し、まだなら (攻撃なら) タックルする
-    if(((firePressed&&!returned)||morphNow)&&body.cooldown<=0&&(body.action==LifeAction::Idle||(LifeWeaponForm(body.action)&&body.action!=life_.form))){
+    // 吸収モードの変形は、アイテムを拾って使える状態のときだけ
+    bool itemLocked=devour_&&!devourFreeForms_&&!devourItemReady_;
+    if(!itemLocked&&((firePressed&&!returned)||morphNow)&&body.cooldown<=0&&(body.action==LifeAction::Idle||(LifeWeaponForm(body.action)&&body.action!=life_.form))){
         bool unlocked=LifeCanMorph(body,life_.form);
         if(!unlocked){
             if(firePressed&&body.action==LifeAction::Idle){life_.tackleTime=.24f;body.cooldown=.45f;}
             if(life_.form==LifeAction::Hammer){life_.message="ゴミを吸い込んで本体"+std::to_string(int(LifeHammerMass))+"まで育つと、ハンマーに変形できる";life_.messageAge=2;}
-            else say(life_.form==LifeAction::Tire?"大通りの金色に光るタイヤを吸収すると、タイヤ変形が解放される":life_.form==LifeAction::Hydrant?"火事場の金色に光る消火栓を吸収すると、放水攻撃と防御を解放":"交差点の金色に光る信号機を吸収すると、信号機変形を解放");
-        }else if(LifeEnterWeapon(body,life_.form,LifeFacesCamera(life_.form)?Forward(yaw_,0):body.forward)){changedForm=true;life_.chargeLocked=true;++life_.revision;
-            say(body.action==LifeAction::Hammer?(devour_?"ハンマー変形！ 左クリック・RTで大きな物を砕く / 右クリック・LTで飛びかかりへ":"ハンマー変形！ 左クリック・RTで叩きつけ (押し続けると連続) / R・Bで戻る"):body.action==LifeAction::Hydrant?"消火栓変形！ 左クリック・RTで放水 / 右クリック・LTで水の防御 / R・Bで戻る":body.action==LifeAction::Signal?"信号機変形！ 左クリック・RTで 赤 → 青 → 黄 の順に信号を出す / R・Bで戻る":devour_?"タイヤ変形！ 転がるだけで通り道を吸い込む / 溜め突進で大きな物を砕く":"タイヤ変形！ 左クリック・RT長押しで回転を溜め、離して突進 / R・Bで戻る");}}
+            else if(life_.form==LifeAction::Sword||life_.form==LifeAction::Plane){life_.message="本体"+std::to_string(int(LifeRequiredMass(life_.form)))+"まで育つと変形できる";life_.messageAge=2;}
+            else say(life_.form==LifeAction::Vacuum?"住宅街の大通りの金色に光る掃除機を吸収すると、掃除機変形が解放される":life_.form==LifeAction::Spring?"商店街の大通りの金色に光るバネを吸収すると、バネ変形が解放される":life_.form==LifeAction::Tire?"大通りの金色に光るタイヤを吸収すると、タイヤ変形が解放される":life_.form==LifeAction::Hydrant?"火事場の金色に光る消火栓を吸収すると、放水攻撃と防御を解放":"交差点の金色に光る信号機を吸収すると、信号機変形を解放");
+        }else if(LifeEnterWeapon(body,life_.form,LifeFacesCamera(life_.form)?Forward(yaw_,0):body.forward)){changedForm=true;life_.chargeLocked=true;++life_.revision;if(devour_)PlayDevourSound(devourSounds_.morph,.55f);if(devour_&&!devourFreeForms_){devourItemReady_=false;devourMorphLeft_=CurrentDevourStage().itemTime;++devourLog_.morphs;DevourLogEvent("morph_start");}
+            say(body.action==LifeAction::Sword?"剣変形！ 左クリック・RTで横なぎ / R・Bで戻る":body.action==LifeAction::Plane?"飛行機変形！ 左クリック・RTで突撃 / R・Bで戻る":body.action==LifeAction::Vacuum?"掃除機変形！ 左クリック・RT長押しで前の小物を吸い込む":body.action==LifeAction::Spring?"バネ変形！ 左クリック・RT長押しで溜めて、離すと建物を飛び越える":body.action==LifeAction::Hammer?(devour_?"ハンマー変形！ 左クリック・RTで大きな物を砕く / 右クリック・LTで飛びかかりへ":"ハンマー変形！ 左クリック・RTで叩きつけ (押し続けると連続) / R・Bで戻る"):body.action==LifeAction::Hydrant?"消火栓変形！ 左クリック・RTで放水 / 右クリック・LTで水の防御 / R・Bで戻る":body.action==LifeAction::Signal?"信号機変形！ 左クリック・RTで 赤 → 青 → 黄 の順に信号を出す / R・Bで戻る":devour_?"タイヤ変形！ 転がるだけで通り道を吸い込む / 溜め突進で大きな物を砕く":"タイヤ変形！ 左クリック・RT長押しで回転を溜め、離して突進 / R・Bで戻る");}}
     // 信号機: 押すたびに次の色を出す。待ち時間と点検の間は出せない
     else if(firePressed&&!returned&&body.action==LifeAction::Signal&&body.weapon.ready){SignalColor fired;
         if(SignalFire(life_.signal,fired))FireSignal(r,p,ctx,fired);
@@ -656,15 +680,26 @@ void ChronoSystem::UpdateSlimeLife(entt::registry& r,Player& p,GameContext& ctx)
         if(puff&&body.weapon.dash>0)swarmEffects_.push_back({foot,0,(1+1.5f*body.weapon.dashPower)*scale,2});
     }else body.tireSpin=0;
     // ジャンプ (空中で押すと踏みつけ)
-    bool jump=control?control->jump:Controls::Jump(),jumped=jump&&!prevSpace_&&p.grounded;
+    // 吸収モードにジャンプは無い (高い所へは坂で登る)
+    bool jump=!devour_&&(control?control->jump:Controls::Jump()),jumped=jump&&!prevSpace_&&p.grounded;
     if(jumped){p.velocity.y=life_.recipe.Bounce();body.reboundAvailable=true;}else if(jump&&!prevSpace_&&!p.grounded&&life_.stompCooldown<=0){life_.stomping=true;p.velocity.y=-32;}
     prevSpace_=jump;
     // 吸収モードの飛びかかり: 溜め・跳ぶ・覆うの間は入力で動かさず、飛びかかりの速度に任せる
-    if(devour_)TickDevourPounce(r,p,ctx,dt);
+    if(devour_||slimePlayerDemo_){TickDevourPounce(r,p,ctx,dt);
+        // 掃除機とバネは、変形した押しっぱなしを離してから使える
+        if((body.action==LifeAction::Vacuum||body.action==LifeAction::Spring)&&!fire)life_.chargeLocked=false;
+        bool held=fire&&!life_.chargeLocked&&!changedForm;
+        TickDevourVacuum(r,ctx,dt,held);TickDevourSpring(p,dt,held,wish);
+        // 吸収モードの変形は時間が来たらスライムへ戻る (跳んでいる間は着地を待つ)
+        if(devour_&&!devourFreeForms_&&LifeWeaponForm(body.action)&&!devourHop_.active){devourMorphLeft_-=dt;
+            if(devourMorphLeft_<=0){DevourLogEvent("morph_end");LifeReturnToSlime(body);body.restoreDuration=.2f;life_.tackleTime=0;++life_.revision;}}}
     bool pouncing=devour_&&body.action==LifeAction::Engulf&&body.actionAge<DevourCoverEnd;
     // 移動の速さ (配合と行動で変わる)
     // 吸収モードでは、大きくなるほど速く動く (体の大きさに対して同じくらいの速さに感じるように)
     float speed=life_.recipe.Speed()*LifeTravelScale(body)*(devour_?DevourSpeedScale(body.mass):1.f);
+    if(devourSucking_)speed*=DevourVacuumSlow;
+    if(devourChew_>0)speed*=.65f;
+    if(body.action==LifeAction::Spring&&body.weapon.charging)speed*=.2f;
     // タックル中は前へ速く進む
     if(life_.tackleTime>0){life_.tackleTime=std::max(0.f,life_.tackleTime-dt);wish=body.forward;speed=25;}
     // タイヤは専用の速度、それ以外は配合の速度
@@ -674,15 +709,26 @@ void ChronoSystem::UpdateSlimeLife(entt::registry& r,Player& p,GameContext& ctx)
     p.velocity.y-=life_.recipe.Gravity()*dt;
     // 次の位置を街の通れる範囲に収め、接地を判定する
     V old=body.at,next=old+p.velocity*dt;
-    {V radii=LifeRadii(body,life_.recipe);next=ConstrainLifeMovement(old,next,std::max(radii.x,radii.z)*.7f);
+    // バネで跳んでいる間は建物の上を越えるので、決まった弧をたどる
+    bool hopping=devourHop_.active;
+    if(hopping){next=DevourHopStep(dt);p.velocity=dt>0?(next-old)*(1/dt):V{};}
+    else{V radii=LifeRadii(body,life_.recipe);next=ConstrainLifeMovement(old,next,std::max(radii.x,radii.z)*.7f);
         if(next.x==old.x)p.velocity.x=0;if(next.z==old.z)p.velocity.z=0;}
     // 段差が高すぎれば水平に動かない
-    float floor=InkGround(old),nextFloor=InkGround(next);if(nextFloor>old.y+.1f){next.x=old.x;next.z=old.z;nextFloor=floor;}
+    float floor=InkGround(old),nextFloor=InkGround(next);
+    // 吸収モードでは、体の大きさに合う段差は乗り越えられる。体の前の端で調べて、家具にめり込まないようにする
+    float climb=devour_?LifeScale(body.mass):0;bool stepped=false;
+    if(devour_&&!hopping){V move=next-old;move.y=0;if(Length(move)>.001f){float edge=InkGround(next+Unit(move)*(LifeRadii(body,life_.recipe).x*.6f));if(edge>old.y+.1f+climb){next.x=old.x;next.z=old.z;nextFloor=floor;}}}
+    if(!hopping&&nextFloor>old.y+.1f+climb){next.x=old.x;next.z=old.z;nextFloor=floor;}
+    else if(!hopping&&p.grounded&&nextFloor>floor+.15f+LifeDistance(old,next)*.65f)stepped=true;
     // 接地を判定し、地面へ合わせる
-    bool grounded=p.grounded;p.grounded=SlimeGrounded(old.y,next.y,p.velocity.y,p.grounded,jumped,floor,nextFloor,LifeDistance(old,next));
+    bool grounded=p.grounded;p.grounded=!hopping&&SlimeGrounded(old.y,next.y,p.velocity.y,p.grounded,jumped,floor,nextFloor,LifeDistance(old,next));
+    // 吸収モードは面より下へ沈まない (坂で浮いた直後に足元が上がると、面の中へ抜けて落ち続ける)
+    if(stepped||(devour_&&!hopping&&next.y<=nextFloor+1.25f))p.grounded=true;
     if(p.grounded){next.y=nextFloor+1.25f;p.velocity.y=0;p.recoveryPoint=next;}
     // 体の位置と動きを更新する (タイヤは転がった分だけ回す)
     body.at=next;LifeTickMotion(body,life_.recipe,p.velocity,p.grounded,!grounded&&p.grounded,dt,body.forward);
+    if(devourHop_.landed)DevourSpringLand(r,ctx);
     if(body.action==LifeAction::Tire)body.tireAngle=std::remainder(body.tireAngle+Dot(body.at-old,body.forward)/(LifeTireRadius*LifeScale(body.mass))+body.tireSpin*dt,6.2831853f);
     // タイヤの突進: 通り道の敵に 1 回ずつ当て、バリケードや門も壊す。壁で止まったら突進を終える
     if(body.action==LifeAction::Tire&&body.weapon.dash>0){
@@ -692,13 +738,13 @@ void ChronoSystem::UpdateSlimeLife(entt::registry& r,Player& p,GameContext& ctx)
             if(swarmEffects_.size()<128)swarmEffects_.push_back({enemy.at,0,2+2*power,2});}
         if(hits){LifeImpact(ctx,ImpactTireHit,body.at,{0,1,0},.7f+.6f*power);auto* audio=Engine::Audio::GetInstance();audio->Play(hitSound_,false,.5f*audio->GetMasterSEVolume(),1.1f);}
         if(!slimePlayerDemo_)CityTireDashHits(r,ctx,body,hitKey);
-        if(devour_)DevourTireSmash(r,ctx,reach);
+        if(devour_&&power>=DevourTireSmashPower)DevourSmash(r,ctx,reach);
         if(p.velocity.x==0&&p.velocity.z==0){body.weapon.dash=0;LifeImpact(ctx,ImpactTireCrash,body.at,body.forward*-1.f+V{0,.5f,0});}
     }
     // 十分に大きければ、触れた物や敵をそのまま吸収する
     int touchCount=0;float touchGrowth=0;
-    // 吸収モードでは、ずっと小さい物は触れるだけで体に沈み込む
-    if(devour_)touchCount=DevourTouch(r,old,touchGrowth);
+    // 吸収モードでは、覆える物は触れるだけで体の中へ引き込む
+    if(devour_)DevourTouch(r,old);
     else for(size_t i=0;i<life_.props.size();++i){auto& prop=life_.props[i];if(!prop.active)continue;
         if(LifeCollectTouch(life_,0x80000000u|uint32_t(i),prop.at,prop.required,0,1,prop.reward,old)){
             prop.active=false;++touchCount;touchGrowth+=prop.reward;
@@ -709,14 +755,9 @@ void ChronoSystem::UpdateSlimeLife(entt::registry& r,Player& p,GameContext& ctx)
             enemy.health=0;enemy.phase=SwarmPhase::Dead;++ink.swarmKills;++touchCount;touchGrowth+=drop.reward;
         }}
     // 吸収したらメッセージ・音・エフェクトを出す
-    if(touchCount){if(!devour_||life_.messageAge<=0){life_.message=(devour_?"ちゅるん！ ":"接触吸収 ")+std::to_string(touchCount)+"個 / 成長 +"+LifeNumber(touchGrowth);life_.messageAge=devour_?.8f:1.5f;}
-        // 吸収モードでは、沈んだ量に合わせて体を軽くつぶし、音を大きくする
-        float weight=devour_?DevourGulpWeight(touchCount,touchGrowth,body.mass):0;if(devour_&&body.aspect>.85f)body.aspectVelocity=std::min(body.aspectVelocity,-1-2*weight);
-        // タイヤで吸い込むとコンボになり、音が上がっていく
-        bool tireEat=devour_&&body.action==LifeAction::Tire;if(tireEat){devourClock_.combo+=touchCount;devourClock_.comboClock=1.4f;}
-        auto* audio=Engine::Audio::GetInstance();audio->Play(lifeEngulfSound_,false,(devour_?.3f+.25f*weight:.35f)*audio->GetMasterSEVolume(),tireEat?std::min(1.9f,1.2f+.04f*float(devourClock_.combo)):devour_?1.5f:1.2f);
-        if(devour_)DevourSplash(body.at,LifeRadii(body,life_.recipe).x*.7f,4+2*std::min(touchCount,4),std::sqrt(LifeScale(body.mass))*.7f);
-        else if(swarmEffects_.size()<128)swarmEffects_.push_back({body.at,0,2*LifeScale(body.mass),2});}
+    if(touchCount){life_.message="接触吸収 "+std::to_string(touchCount)+"個 / 成長 +"+LifeNumber(touchGrowth);life_.messageAge=1.5f;
+        auto* audio=Engine::Audio::GetInstance();audio->Play(lifeEngulfSound_,false,.35f*audio->GetMasterSEVolume(),1.2f);
+        if(swarmEffects_.size()<128)swarmEffects_.push_back({body.at,0,2*LifeScale(body.mass),2});}
     // 吸収モード: 吸収ボタンで全身ごと飛びかかる (押し続けると、覆い終えるたびに次へ飛びかかる)
     if(devour_){if((absorb||lifeAbsorbBuffer_>0)&&StartDevourPounce(p,ctx))lifeAbsorbBuffer_=0;}
     // 取り込みを始める (対象が無ければ知らせる)
@@ -808,9 +849,11 @@ void ChronoSystem::UpdateSlimeLife(entt::registry& r,Player& p,GameContext& ctx)
     // 街のステージを更新する
     if(!slimePlayerDemo_)UpdateCityStage(r,p,ctx,dt);
     // タイヤや消火栓を初めて解放したら、その形を選んだ状態にして知らせる
-    if(!hadTire&&body.tireUnlocked){life_.form=LifeAction::Tire;life_.tireNotice=6;StartMorphShowcase(r,ctx,LifeAction::Tire);}
+    if(!devour_&&!hadTire&&body.tireUnlocked){life_.form=LifeAction::Tire;life_.tireNotice=6;StartMorphShowcase(r,ctx,LifeAction::Tire);}
     if(!hadHydrant&&body.hydrantUnlocked){life_.form=LifeAction::Hydrant;life_.hydrantNotice=6;StartMorphShowcase(r,ctx,LifeAction::Hydrant);}
     if(!hadSignal&&body.signalUnlocked){life_.form=LifeAction::Signal;life_.signalNotice=6;StartMorphShowcase(r,ctx,LifeAction::Signal);}
+    // 吸収モードの変形アイテムは、拾ったら好きなときに 1 回使える
+    if(devour_&&((!hadTire&&body.tireUnlocked)||(!hadVacuum&&body.vacuumUnlocked)||(!hadSpring&&body.springUnlocked))){devourItemReady_=true;devourLog_.itemTaken=devourLog_.elapsed;DevourLogEvent("item_taken");PlayDevourSound(devourSounds_.morph,.7f,1.25f);life_.message="変形アイテムを手に入れた！ 左クリック / RTで変形";life_.messageAge=3;}
     // 街の敵を更新する
     ink.swarmSpawned=int(swarm_.size());
     if(!slimePlayerDemo_&&!devour_)UpdateCityEnemies(r,p,ctx,dt);
@@ -827,13 +870,12 @@ void ChronoSystem::UpdateSlimeLife(entt::registry& r,Player& p,GameContext& ctx)
     Presentation(r,p,ctx);SyncSlimeBodies(ctx);
     // 体力が尽きたら負け、最後の段階の敵を全滅させたら勝ち
     if(devour_){
-        // 吸収モード: 大きさの段階が上がったら時間を足して大きく知らせる。時間切れ (か街を食べ尽くす) までの大きさで競う
-        if(!finished_&&DevourAdvance(devourClock_,body.mass)>0){const auto& tier=DevourTiers[size_t(devourClock_.tier)];
-            life_.message=std::string("サイズアップ！ ")+tier.name+" / "+tier.food+"が食べられる  +"+std::to_string(int(DevourTierBonus))+"秒";life_.messageAge=3;
-            LifeImpact(ctx,ImpactDevourTier,body.at,{0,1,0});auto* audio=Engine::Audio::GetInstance();audio->Play(lifeEngulfSound_,false,.8f*audio->GetMasterSEVolume(),.7f);}
-        if(!finished_&&!devourReachedFinal_&&devourClock_.tier>=DevourFinalTier){devourReachedFinal_=true;++lifeClears_;SaveSlimeLab();
-            life_.message="街を飲み込むスライムに到達！ 残り時間でどこまでも大きくなれ";life_.messageAge=4;}
-        bool cleared=devourReachedFinal_&&std::none_of(life_.props.begin(),life_.props.end(),[](const LifeCollectible& prop){return prop.active;});
+        // 吸収モード: 目標に届いたら大きく知らせる。時間切れ (か全部食べ尽くす) で結果を出す
+        const auto& stage=CurrentDevourStage();int rank=DevourRankAt(stage,body.mass);
+        if(!finished_&&rank>devourRank_){devourRank_=rank;devourClock_.flash=3;bool top=rank==int(stage.goals.size());
+            life_.message=top?std::string("Sランク達成！"):(rank==1?std::string("クリア！ "):"ランク "+DevourRankName(stage,rank)+"！ ")+"次は "+DevourSizeText(stage.goals[size_t(rank)]);life_.messageAge=3;
+            LifeImpact(ctx,ImpactDevourTier,body.at,{0,1,0});PlayDevourSound(top?devourSounds_.rankTop:devourSounds_.rankUp,.8f);}
+        bool cleared=std::none_of(life_.props.begin(),life_.props.end(),[](const LifeCollectible& prop){return prop.active;});
         if(!finished_&&(devourClock_.left<=0||cleared))FinishDevour(p);
     }
     else if(body.health<=0)Finish(p,false);
@@ -876,7 +918,13 @@ void ChronoSystem::DrawSlimeLife(entt::registry& r,GameContext& ctx){
             // スキャンの中心 (取り込んだときの原点も含む) を基準に広げる
             V center=V{t.translate.x,t.translate.y,t.translate.z}+v.center;t.scale=EV(v.scale*1.035f);t.translate=EV(center-v.center*1.035f);
             ctx.renderer->DrawMeshInstanced(v.mesh,white_,t,{1,.63f,.08f,.8f},"MorphItemHighlight");
+            // 吸収モード: 台座の上で回って弾む
+            if(devour_){auto& spin=r.get<TransformComponent>(entity);spin.rotate.y=life_.age*1.6f;spin.translate.y=devourItemY_+.5f*std::sin(life_.age*3);}
         }
+        // 吸収モード: 足元で広がる輪 (光の柱は台座と一緒に作ってある)
+        if(devour_){float ground=InkGround(prop.at);
+                        for(int k=0;k<3;++k){float u=std::fmod(life_.age*.7f+float(k)/3,1.f);Engine::Transform wave;wave.translate={prop.at.x,ground+.2f,prop.at.z};wave.scale={8+26*u,1,8+26*u};ctx.renderer->DrawMeshInstanced(swarmQuad_,white_,wave,{1,.65f,.08f,.4f*(1-u)},"HordeEffect");}
+            continue;}
         Engine::Transform ring;ring.translate={prop.at.x,InkGround(prop.at)+.18f,prop.at.z};ring.scale={3.2f,1,3.2f};
         ctx.renderer->DrawMeshInstanced(swarmQuad_,white_,ring,{1,.65f,.08f,.25f},"HordeEffect");
         float bounce=.4f*std::sin(life_.age*3);
@@ -890,7 +938,7 @@ void ChronoSystem::DrawSlimeLife(entt::registry& r,GameContext& ctx){
         for(V wing:{side,V{-side.x,side.y,0},back,V{0,back.y,-back.z}})ctx.renderer->DrawLine3D(EV(tip+wing),EV(tip),{1,.72f,.15f,1});
         ctx.renderer->DrawLine3D(EV(tip+V{0,size*3,0}),EV(tip),{1,.72f,.15f,1});}
     // 触手を描く (吸収モードでは、体の中で溶けていく物を描く)
-    if(devour_)DrawDevourMeals(ctx);
+    if(devour_||slimePlayerDemo_)DrawDevourMeals(ctx);
     else for(const auto& body:life_.bodies)DrawLifeTentacles(ctx,body);
     // 子分を縁取る。壁の向こうでも深度を見ない薄い縁が残るので、どこにいても分かる
     if(!life_.lab)for(size_t i=1;i<life_.bodies.size();++i){const auto& c=life_.bodies[i];if(c.mass<=0)continue;
@@ -900,7 +948,7 @@ void ChronoSystem::DrawSlimeLife(entt::registry& r,GameContext& ctx){
         tint.w=c.down?.25f:.75f;ctx.renderer->DrawMeshInstanced(sphere_,white_,t,tint,"SlimeChildGlow");
         tint.w=c.down?.12f:.5f;ctx.renderer->DrawMeshInstanced(sphere_,white_,t,tint,"SlimeChildXRay");}
     // モデルの無い取り込める物: 光る球 (報酬の段階の輪付き) か、鎧の破片
-    for(const auto& prop:life_.props)if(prop.active&&prop.visual==0xffffffffu){Engine::Transform t;
+    for(const auto& prop:life_.props)if(prop.active&&!(prop.sealed&&prop.ring==0)&&prop.visual==0xffffffffu){Engine::Transform t;
         if(prop.orb){float radius=prop.shard>0?prop.shard:LifeOrbRadius(prop.reward);auto tint=LifeOrbColor(prop.reward);Engine::Vector4 color{tint.x,tint.y,tint.z,1};
             // 砕けた欠片は元の物から弧を描いて飛んでくる
             V orbAt=prop.at;if(prop.shard>0){float u=std::clamp((life_.age-prop.shardStart)/.45f,0.f,1.f);orbAt=Lerp(prop.shardFrom,prop.at,u)+V{0,prop.shard*4*std::sin(3.1415927f*u),0};}
@@ -1043,10 +1091,10 @@ void ChronoSystem::DrawSlimeLifeUI(entt::registry& r,GameContext& ctx){
         ui.Image("Resources/Textures/UI/HUD/blob.png",{cx-1,679,22,22},color);}
     shadowed("×"+std::to_string(life_.ChildCount()),30+12*28,678,18,slime,UI::JapaneseFont);}
     // 右下: 変形のステッカー。選んでいる形は大きく、未解放は斜線
-    {const LifeAction forms[]={LifeAction::Hammer,LifeAction::Tire,LifeAction::Hydrant,LifeAction::Signal};
-    const char* icons[]={"form_hammer","form_tire","form_hydrant","form_signal"};
-    const char* names[]={"ハンマー","タイヤ","消火栓","信号機"};const float tilt[]={5,-6,4,-3};
-    int picked=life_.form==LifeAction::Tire?1:life_.form==LifeAction::Hydrant?2:life_.form==LifeAction::Signal?3:0;
+    if(!devour_||devourFreeForms_){const auto& forms=LifeForms();
+    const char* icons[]={"form_hammer","form_tire",devour_?"form_vacuum":"form_hydrant",devour_?"form_spring":"form_signal"};
+    const char* names[]={"ハンマー","タイヤ",devour_?"掃除機":"消火栓",devour_?"バネ":"信号機"};const float tilt[]={5,-6,4,-3};
+    int picked=LifeFormIndex();
     const auto& signal=life_.signal;
     for(int i=0;i<4;++i){bool open=LifeCanMorph(body,forms[i]),sel=i==picked,active=body.action==forms[i];
         float size=sel?87.f:74.f,unit=size/74,cx=984+float(i)*80,cy=663-(sel?8.f:0.f),rotation=(sel?0:tilt[i])*.0174533f,alpha=open?1:.55f;
@@ -1057,7 +1105,7 @@ void ChronoSystem::DrawSlimeLifeUI(entt::registry& r,GameContext& ctx){
         if(active&&body.weapon.ready)ui.Halo(cx,cy,size*.8f,UI::WithAlpha(slime,.35f+.15f*std::sin(life_.age*6)));
         float icon=40*unit;ui.ImageRot(std::string("Resources/Textures/UI/HUD/")+icons[i]+".png",{cx-icon*.5f,cy-icon*.5f,icon,icon},rotation,sel?black:open?hazard:Engine::Vector4{.53f,.53f,.53f,alpha});
         // 信号機のステッカーには、次に出す色を点けた 3 つの灯を重ねる
-        if(i==3&&open)for(int c=0;c<3;++c){SignalColor color=c==0?SignalColor::Green:c==1?SignalColor::Yellow:SignalColor::Red;auto rgb=SignalColorRGB(color);
+        if(i==3&&open&&!devour_)for(int c=0;c<3;++c){SignalColor color=c==0?SignalColor::Green:c==1?SignalColor::Yellow:SignalColor::Red;auto rgb=SignalColorRGB(color);
             bool lit=signal.next==color&&signal.wait<=0;ui.Dot(cx+(float(c)-1)*9.5f*unit,cy-8*unit,3.6f*unit,{rgb.x*(lit?1.f:.35f),rgb.y*(lit?1.f:.35f),rgb.z*(lit?1.f:.35f),1});}
         if(!open)ui.Line(inner.x+6,inner.y+inner.h-6,inner.x+inner.w-6,inner.y+6,5,{.84f,.2f,.16f,alpha});
         float bx=outer.x+5,by=outer.y+3;ui.Dot(bx,by,14,UI::WithAlpha(black,alpha));ui.Dot(bx,by,12,UI::WithAlpha(hazard,alpha));
@@ -1081,11 +1129,14 @@ void ChronoSystem::DrawSlimeLifeUI(entt::registry& r,GameContext& ctx){
     const Hint absorbHint{"xbox_lt","右","","吸収"},back{"xbox_button_b","R","","戻る"},jump{"xbox_button_a","SPACE","","ジャンプ"};
     if(body.action==LifeAction::Hammer)keys={{"xbox_rt","左","","叩きつけ"},{"xbox_rt","左","長押し","連続"},absorbHint,jump,back};
     else if(body.action==LifeAction::Hydrant)keys={{"xbox_rt","左","","放水"},{"xbox_lt","右","","水の防御"},back};
+    else if(body.action==LifeAction::Vacuum)keys={{"xbox_rt","左","長押し","吸い込む"},{"xbox_stick_l","WASD","","移動"},absorbHint,back};
+    else if(body.action==LifeAction::Spring)keys={{"xbox_rt","左","長押し","溜める"},{"xbox_rt","","離す","跳ぶ"},{"xbox_stick_l","WASD","","向き"},absorbHint,back};
     else if(body.action==LifeAction::Tire)keys={{"xbox_rt","左","長押し","溜める"},{"xbox_rt","","離す","突進"},{"xbox_stick_l","WASD","","曲がる"},absorbHint,back};
     else if(body.action==LifeAction::Signal){const auto& signal=life_.signal;
         std::string next=SignalResting(signal)?"点検中":signal.next==SignalColor::Red?"赤：足止め":signal.next==SignalColor::Green?"青：横断歩道":"黄：マーカー";
         keys={{"xbox_rt","左","",next},absorbHint,back};}
-    else keys={{"xbox_rt","左","",attack},devour_?Hint{"xbox_lt","右","","飛びかかって丸のみ"}:Hint{"xbox_lt","右","長押し","吸収"},{"xbox_dpad","1〜4","","変形"},jump};
+    else if(devour_&&!devourFreeForms_){keys={{"xbox_lt","右","","ガバッ"}};if(devourItemReady_)keys.insert(keys.begin(),Hint{"xbox_rt","左","","変形"});}
+    else keys={{"xbox_rt","左","",attack},devour_?Hint{"xbox_lt","右","","ガバッ"}:Hint{"xbox_lt","右","長押し","吸収"},{"xbox_dpad","1〜4","","変形"},jump};
     const float size=13,glyph=24;
     // 札の文字 (キーボードはキーと押し方をまとめて札に、パッドは押し方だけを画像の横に)
     auto label=[&](const Hint& h){return pad?h.how:h.key+(h.key.empty()||h.how.empty()?"":" ")+h.how;};
@@ -1098,7 +1149,7 @@ void ChronoSystem::DrawSlimeLifeUI(entt::registry& r,GameContext& ctx){
         else{float w=ui.Width(l,size,UI::JapaneseFont)+10;ui.Fill({x,668,w,19},white);ui.Text(l,x+5,668,size,black,UI::JapaneseFont);x+=w+4;}
         shadowed(h.what,x,668,size,white,UI::JapaneseFont);x+=ui.Width(h.what,size,UI::JapaneseFont)+14;}}
     // タイヤの溜め: 体の足元に、溜まった量のゲージを出す (溜めきると光る)
-    if(body.action==LifeAction::Tire&&body.weapon.charging){
+    if((body.action==LifeAction::Tire||body.action==LifeAction::Spring)&&body.weapon.charging){
         DirectX::XMFLOAT4 clip;V foot=body.at-V{0,1.25f,0};DirectX::XMStoreFloat4(&clip,DirectX::XMVector4Transform(DirectX::XMVectorSet(foot.x,foot.y,foot.z,1),ctx.camera->View()*ctx.camera->Proj()));
         if(clip.w>.1f){float gx=std::clamp((clip.x/clip.w*.5f+.5f)*1280,90.f,1190.f),gy=std::clamp((.5f-clip.y/clip.w*.5f)*720+18,120.f,560.f),charge=body.weapon.charge;bool full=charge>=1;
             ui.Fill({gx-62,gy-2,124,12},black);ui.Fill({gx-60,gy,120,8},UI::WithAlpha(white,.25f));ui.Fill({gx-60,gy,120*charge,8},full?hazard:slime);
@@ -1130,13 +1181,13 @@ void ChronoSystem::DrawSlimeLifeUI(entt::registry& r,GameContext& ctx){
     // 近くの変形アイテムの上に説明の札を出す
     const LifeCollectible* catalyst=nullptr;float nearest=70;
     for(const auto& prop:life_.props)if(prop.active&&prop.morphItem!=LifeMorphItem::None){float distance=LifeDistance(body.at,prop.at);if(distance<nearest){nearest=distance;catalyst=&prop;}}
-    if(catalyst){DirectX::XMFLOAT4 clip;auto point=catalyst->at+V{0,6,0};
+    if(catalyst&&!devour_){DirectX::XMFLOAT4 clip;auto point=catalyst->at+V{0,6,0};
         DirectX::XMStoreFloat4(&clip,DirectX::XMVector4Transform(DirectX::XMVectorSet(point.x,point.y,point.z,1),ctx.camera->View()*ctx.camera->Proj()));
         if(clip.w>.1f){float x=(clip.x/clip.w*.5f+.5f)*1280,y=(.5f-clip.y/clip.w*.5f)*720;
             if(x>465&&x<1145&&y>120&&y<500){ui.Rounded({x-115,y-4,230,48},{.06f,.045f,.01f,.88f},12);
-                auto item=catalyst->morphItem;bool unlocked=item==LifeMorphItem::Hydrant?body.hydrantUnlocked:item==LifeMorphItem::Signal?body.signalUnlocked:body.tireUnlocked;
-                ui.Center(item==LifeMorphItem::Hydrant?"消火栓 / 変形アイテム":item==LifeMorphItem::Signal?"信号機 / 変形アイテム":"タイヤ / 変形アイテム",x,y+1,16,UI::Gold,UI::JapaneseFont);
-                ui.Center(unlocked?"吸収してさらに成長":item==LifeMorphItem::Hydrant?"吸収すると放水攻撃・防御を解放":item==LifeMorphItem::Signal?"吸収すると赤・青・黄の信号で戦える":"吸収すると高速移動形態を解放",x,y+25,12,UI::Paper,UI::JapaneseFont);}}
+                auto item=catalyst->morphItem;bool unlocked=item==LifeMorphItem::Vacuum?body.vacuumUnlocked:item==LifeMorphItem::Spring?body.springUnlocked:item==LifeMorphItem::Hydrant?body.hydrantUnlocked:item==LifeMorphItem::Signal?body.signalUnlocked:body.tireUnlocked;
+                ui.Center(item==LifeMorphItem::Vacuum?"掃除機 / 変形アイテム":item==LifeMorphItem::Spring?"バネ / 変形アイテム":item==LifeMorphItem::Hydrant?"消火栓 / 変形アイテム":item==LifeMorphItem::Signal?"信号機 / 変形アイテム":"タイヤ / 変形アイテム",x,y+1,16,UI::Gold,UI::JapaneseFont);
+                ui.Center(unlocked?"吸収してさらに成長":item==LifeMorphItem::Vacuum?"吸収すると広場の小物を吸い込める":item==LifeMorphItem::Spring?"吸収すると建物を飛び越えられる":item==LifeMorphItem::Hydrant?"吸収すると放水攻撃・防御を解放":item==LifeMorphItem::Signal?"吸収すると赤・青・黄の信号で戦える":"吸収すると高速移動形態を解放",x,y+25,12,UI::Paper,UI::JapaneseFont);}}
     }
     // 正面の取り込み範囲に何かあれば、長押しのまとめ取りを説明する
     // 正面に取り込める物があれば長押しを案内する

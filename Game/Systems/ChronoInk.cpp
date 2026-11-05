@@ -1,6 +1,7 @@
 // ChronoInk.cpp
 // 新しいゲームのシミュレーションの流れ全体。
 #include "ChronoSystemInternal.h"
+#include "../Chrono/RoomRules.h"
 
 namespace Game {
 // インクのステージを作る: プレイヤーの状態・古いエンティティの削除・当たり判定・塗れる面・地形と景観・シェーダー・音・群れ
@@ -215,6 +216,8 @@ void ChronoSystem::UploadInk(){
 }
 // インクの地面の高さ (真下へのレイで一番高い面)。surface に面の番号を返す
 float ChronoSystem::InkGround(V at,int* surface)const{
+    // 吸収モードの部屋は家具の高さがある
+    if(devour_&&CurrentDevourStage().map=="room"){if(surface)*surface=0;return Chrono::RoomGround(at);}
     // 街のステージは y=0 で平らで、草原の塗れる面より広い
     if(slimeLife_&&!inkSurfaces_.empty()){if(surface)*surface=0;(void)at;return 0;}
     // 真下へのレイを各面に飛ばし、一番高い当たりを地面にする
@@ -229,6 +232,8 @@ void ChronoSystem::InkCamera(entt::registry& r,Player& p,GameContext& ctx){
     V pos=Read(r.get<TransformComponent>(player_).translate);
     if(!cameraReady_){cameraFollow_=pos;cameraReady_=true;}
     cameraFollow_=Follow(cameraFollow_,pos,ctx.dt,1.2f);
+    // バネで跳ぶ間は高さも速く変わるので、体を見失わないように追いつく
+    if(devourHop_.active)cameraFollow_=Lerp(cameraFollow_,pos,1-std::exp(-20*ctx.dt));
     // カメラの前方向と右方向
     V forward=Forward(yaw_,pitch_),right{std::cos(yaw_),0,-std::sin(yaw_)};
     auto& ink=r.get<InkPlayer>(player_);
@@ -267,7 +272,9 @@ void ChronoSystem::InkCamera(entt::registry& r,Player& p,GameContext& ctx){
         subject.center=pos+blend.offset;subject.radius=blend.radius;}
     float growthPullback=slimeLife_?LifeCameraDistance(subject.radius,1.13f,ctx.viewportSize.x/std::max(1.f,ctx.viewportSize.y))-17.f:0.f;
     // 引く量の合計をなめらかに反映する
-    float pullback=growthPullback+((charging||firing)?3*power:0.f)+domainView*14+std::max(arrival,aftershock)+(devour_?DevourCameraKick(devourGulp_.age,devourGulp_.weight)*subject.radius:0.f);
+    float pullback=growthPullback+((charging||firing)?3*power:0.f)+domainView*14+std::max(arrival,aftershock)+(devour_?DevourCameraKick(devourGulp_.age,devourGulp_.weight)*subject.radius:0.f)
+        // バネで跳ぶ間は引いて、町を見渡す
+        +(devourHop_.active?.9f*subject.radius*std::sin(3.1415927f*devourHop_.age/devourHop_.time):0.f);
     ink.cameraPullback+=(pullback-ink.cameraPullback)*(1-std::exp(-10*ctx.dt));
     // 注視点 (スライムの生活モードは体の中心)
     V focus=cameraFollow_+V{0,2.f,0};
@@ -369,7 +376,10 @@ void ChronoSystem::InkCamera(entt::registry& r,Player& p,GameContext& ctx){
             Chrono::Bounds box{o.center-o.size*.5f,o.center+o.size*.5f};float fraction;V normal;V pad{1,1,1};
             bool inside=wanted.x>box.min.x-1&&wanted.x<box.max.x+1&&wanted.y>box.min.y-1&&wanted.y<box.max.y+1&&wanted.z>box.min.z-1&&wanted.z<box.max.z+1;
             bool occludes=inside||(Chrono::Sweep(wanted,body-wanted,box,pad*(.3f+bodyRadius*.3f),fraction,normal)&&fraction<1)||(Chrono::Sweep(wanted,head-wanted,box,pad,fraction,normal)&&fraction<1);
-            o.opacity+=((occludes?.18f:1.f)-o.opacity)*(1-std::exp(-12.f*ctx.dt));}}
+            // 乗っている家具は消さない。真上にある物 (ベッドの板) は消す
+            if(body.y>o.center.y+o.size.y*.5f-2)occludes=inside;
+            if(CurrentDevourStage().map=="room"&&body.x>box.min.x&&body.x<box.max.x&&body.z>box.min.z&&body.z<box.max.z&&body.y<box.min.y)occludes=true;
+            o.opacity+=((occludes?(CurrentDevourStage().map=="room"?0.f:.18f):1.f)-o.opacity)*(1-std::exp(-12.f*ctx.dt));}}
 }
 // ボス (鳥の形) の更新: 羽の弾・ダウン・集合・連射・扇状の羽・急降下・蛇への変形
 void ChronoSystem::UpdateInkBoss(entt::registry& r,Player& p,GameContext& context){

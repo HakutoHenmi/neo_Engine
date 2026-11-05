@@ -1,4 +1,4 @@
-﻿// GameSceneDraw.cpp
+// GameSceneDraw.cpp
 // GameScene の描画: 流体 (スライム・水) の設定、メッシュの描画、ポーズ画面、各システムの描画。
 // Draw は手順ごとの関数 (GatherPlayerDrawState・UploadFluidColliders・UpdatePlayerSlimeFluid・DrawSceneMeshes など) を順に呼ぶ。
 #include <cfloat>
@@ -635,12 +635,15 @@ void GameScene::DrawSceneMeshes() {
 
 		// メッシュで描いたか
 		bool hasMeshRenderer = false;
-		if(chronoMode_&&isPlaying_)if(auto* occluder=registry_.try_get<Chrono::CameraOccluder>(entity))
+		// ほぼ透明になった物は描かない (網目が画面全体にかからないように)
+		bool occludedAway=false;
+		if(chronoMode_&&isPlaying_)if(auto* occluder=registry_.try_get<Chrono::CameraOccluder>(entity)){
 			if(occluder->opacity<.995f)color.w=-occluder->opacity; // カメラを遮る物は網目状に透かす (影と当たり判定はそのまま)
+			if(occluder->opacity<.03f)hasMeshRenderer=occludedAway=true;}
 		if (registry_.all_of<MeshRendererComponent>(entity)) {
 			// 見た目を持ち、有効でモデルがあるものを描く
 			const auto& mr = registry_.get<MeshRendererComponent>(entity);
-			if (mr.enabled && mr.modelHandle != 0) {
+			if (mr.enabled && mr.modelHandle != 0 && !occludedAway) {
 				hasMeshRenderer = true;
 				// アニメーションしているかと、骨の行列
 				bool hasAnim = false;

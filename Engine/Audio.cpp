@@ -151,7 +151,25 @@ void Audio::SetVolume(size_t voiceHandle, float volume) {
 	}
 }
 
+void Audio::SetPitch(size_t voiceHandle, float pitch) {
+	auto it = activeVoices_.find(voiceHandle);
+	if (it != activeVoices_.end() && it->second.source) {
+		it->second.source->SetFrequencyRatio(std::clamp(pitch, 0.5f, 2.0f));
+	}
+}
+
+void Audio::SetSEPaused(bool paused) {
+	if (paused == sePaused_) return;
+	sePaused_ = paused;
+	for (auto& pair : activeVoices_) {
+		if (pair.first == bgmVoice_ || pair.first == retiringBgmVoice_ || !pair.second.source) continue;
+		if (paused) pair.second.source->Stop();
+		else pair.second.source->Start();
+	}
+}
+
 void Audio::StopAll() {
+	sePaused_ = false;
 	bgmVoice_ = retiringBgmVoice_ = 0;
 	bgmPath_.clear();
 	for(auto& pair : activeVoices_) {
@@ -173,6 +191,7 @@ bool Audio::PreloadBGM(const std::string& path) {
 }
 
 bool Audio::PlayBGM(const std::string& path, float volume) {
+	bgmPitchTarget_ = 1;
 	if (path == bgmPath_ && IsBGMPlaying()) return true;
 	uint32_t sound = PreloadBGM(path) ? bgmSounds_.at(path) : 0xFFFFFFFF;
 	if (sound == 0xFFFFFFFF) {
@@ -185,6 +204,7 @@ bool Audio::PlayBGM(const std::string& path, float volume) {
 	StopBGM();
 	bgmVoice_ = voice;
 	bgmPath_ = path;
+	bgmPitch_ = 1;
 	bgmGain_ = std::clamp(volume, 0.0f, 1.0f);
 	bgmFade_ = 0;
 	bgmDuckTarget_ = 1;
@@ -213,6 +233,11 @@ void Audio::UpdateBGM(float dt) {
 	bgmDuck_ += (bgmDuckTarget_ - bgmDuck_) * std::min(1.0f, dt * 8.0f);
 	bgmFade_ = std::min(1.0f, bgmFade_ + dt / 0.65f);
 	SetVolume(bgmVoice_, bgmGain_ * bgmFade_ * masterBGMVolume_ * bgmDuck_);
+	if (bgmPitch_ != bgmPitchTarget_) {
+		bgmPitch_ += (bgmPitchTarget_ - bgmPitch_) * std::min(1.0f, dt * 3.0f);
+		if (std::abs(bgmPitch_ - bgmPitchTarget_) < 0.001f) bgmPitch_ = bgmPitchTarget_;
+		SetPitch(bgmVoice_, bgmPitch_);
+	}
 	if (retiringBgmVoice_) {
 		retiringBgmFade_ = std::max(0.0f, retiringBgmFade_ - dt / 0.65f);
 		SetVolume(retiringBgmVoice_, retiringBgmGain_ * retiringBgmFade_ * masterBGMVolume_ * bgmDuck_);

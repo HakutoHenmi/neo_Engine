@@ -22,6 +22,21 @@ StructuredBuffer<FluidTendril> tendrils : register(t0);
 void SplatTendrils(uint3 id : SV_DispatchThreadID) {
     if(id.x>=particleCount)return;
     FluidTendril arm=tendrils[id.x];
+    // A negative end radius marks a box skin: start is the centre, end the half
+    // size, radius the yaw and -endRadius the skin thickness. Swallowed objects
+    // push the body surface out in their own shape.
+    if(arm.endRadius<0){
+        float pad=max(-arm.endRadius*1.5f,voxelSize*1.65f),reach=length(arm.end)+pad,c=cos(arm.radius),s=sin(arm.radius);
+        int3 low=max(int3(0,0,0),(int3)floor((arm.start-reach-volumeOrigin)/voxelSize-.5f));
+        int3 high=min((int3)volumeSize-1,(int3)ceil((arm.start+reach-volumeOrigin)/voxelSize-.5f));
+        [loop]for(int bz=low.z;bz<=high.z;++bz)[loop]for(int by=low.y;by<=high.y;++by)[loop]for(int bx=low.x;bx<=high.x;++bx){
+            uint3 cell=uint3(bx,by,bz);float3 d=volumeOrigin+(cell+.5f)*voxelSize-arm.start;
+            float3 q=max(abs(float3(d.x*c-d.z*s,d.y,d.x*s+d.z*c))-arm.end,0);
+            float w=saturate(1-dot(q,q)/(pad*pad));
+            InterlockedMax(densityAccum[VolumeIndex(cell)].x,(uint)round(1.4f*w*w*4096.f));
+        }
+        return;
+    }
     float support=max(max(arm.radius,arm.endRadius)*1.5f,voxelSize*1.65f);
     int3 lo=max(int3(0,0,0),(int3)floor((min(arm.start,arm.end)-support-volumeOrigin)/voxelSize-.5f));
     int3 hi=min((int3)volumeSize-1,(int3)ceil((max(arm.start,arm.end)+support-volumeOrigin)/voxelSize-.5f));

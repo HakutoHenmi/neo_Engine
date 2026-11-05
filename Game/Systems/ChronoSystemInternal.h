@@ -18,6 +18,7 @@
 //   CityStage.cpp         スライムの街のステージ
 #pragma once
 #include "../../Engine/FluidMorphShape.h"
+#include "../Chrono/DevourMorphRules.h"
 #include "../../Engine/LoadProfile.h"
 #include "../Chrono/SlimeTentacleRules.h"
 #include <map>

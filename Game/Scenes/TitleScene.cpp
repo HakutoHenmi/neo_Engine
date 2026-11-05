@@ -145,6 +145,7 @@ void TitleScene::Update() {
         // 開始: Enter / START / BEGIN EXPEDITION ボタンで本編ステージへ直接移る
         bool start=UI::Pressed(DIK_RETURN)||UI::PadPressed(XINPUT_GAMEPAD_START)||UI::Canvas(renderer_).Click(UI::TitleStart);
         if(start){
+            UI::PlayUISound(UI::UISound::Confirm);
             Engine::SceneParameters params;params.stagePath=Data::MainStagePath();
             Engine::SceneManager::GetInstance()->RequestChange("Game",params);
             return;

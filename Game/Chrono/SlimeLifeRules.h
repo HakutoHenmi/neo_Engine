@@ -16,11 +16,11 @@ inline constexpr size_t LifeBodyCount=13;
 // 子分の行動範囲: 本体から離れて狩れる距離・索敵の距離・本体へ戻り始める距離・見失って呼び戻す距離・撤退する体力の割合
 inline constexpr float LifeChildHuntRange=48,LifeChildSight=36,LifeChildLeash=62,LifeChildLostRange=120,LifeChildRetreatHealth=.35f;
 // 体の行動 (待機・取り込み・各武器・回復) と、変形を解放するアイテム
-enum class LifeAction {Idle,Engulf,Hammer,Sword,Plane,Tire,Hydrant,Restore,Signal};
-enum class LifeMorphItem {None,Tire,Hydrant,Signal};
+enum class LifeAction {Idle,Engulf,Hammer,Sword,Plane,Tire,Hydrant,Restore,Signal,Vacuum,Spring};
+enum class LifeMorphItem {None,Tire,Hydrant,Signal,Vacuum,Spring};
 // 変形に必要な量 / 量が足りるか
 inline float LifeRequiredMass(LifeAction action){
-    return action==LifeAction::Hammer?LifeHammerMass:action==LifeAction::Sword?LifeSwordMass:action==LifeAction::Plane?LifePlaneMass:(action==LifeAction::Tire||action==LifeAction::Hydrant||action==LifeAction::Signal)?1.f:0;
+    return action==LifeAction::Hammer?LifeHammerMass:action==LifeAction::Sword?LifeSwordMass:action==LifeAction::Plane?LifePlaneMass:(action==LifeAction::Tire||action==LifeAction::Hydrant||action==LifeAction::Signal||action==LifeAction::Vacuum||action==LifeAction::Spring)?1.f:0;
 }
 inline bool LifeCanMorph(float mass,LifeAction action){
     return LifeRequiredMass(action)>0&&mass>=LifeRequiredMass(action);
@@ -132,6 +132,9 @@ struct LifeBody {
     bool tireUnlocked=false;
     bool hydrantUnlocked=false;
     bool signalUnlocked=false;
+    bool vacuumUnlocked=false,springUnlocked=false;
+    // バネの縦の伸び (1 が普段。溜めると縮み、跳ぶと伸びる)
+    float springStretch=1;
     float tireAngle=0;
     float tireSpin=0; // その場で溜めているタイヤの回転の速さ (ラジアン/秒)
     // 子分の自律行動: 狙っている敵・巡回の目標と残り時間・撤退中か
@@ -142,7 +145,7 @@ struct LifeBody {
 };
 // 体が変形できるか (タイヤ・消火栓・信号機は解放が必要)
 inline bool LifeCanMorph(const LifeBody& body,LifeAction action){
-    return LifeCanMorph(body.mass,action)&&(action!=LifeAction::Tire||body.tireUnlocked)&&(action!=LifeAction::Hydrant||body.hydrantUnlocked)&&(action!=LifeAction::Signal||body.signalUnlocked);
+    return LifeCanMorph(body.mass,action)&&(action!=LifeAction::Tire||body.tireUnlocked)&&(action!=LifeAction::Hydrant||body.hydrantUnlocked)&&(action!=LifeAction::Signal||body.signalUnlocked)&&(action!=LifeAction::Vacuum||body.vacuumUnlocked)&&(action!=LifeAction::Spring||body.springUnlocked);
 }
 // 開始の大きさより上では強く成長する。小さな破片は小さな体積のまま
 inline float LifeScale(float mass){float ratio=std::max(1.f,mass)/LifeStartMass;return ratio>1?std::sqrt(ratio):std::cbrt(ratio);}
@@ -304,6 +307,8 @@ inline void LifeUnlockMorphItem(SlimeLife& life,uint32_t target){
     if(index<life.props.size()&&life.props[index].morphItem==LifeMorphItem::Tire)life.bodies[0].tireUnlocked=true;
     if(index<life.props.size()&&life.props[index].morphItem==LifeMorphItem::Hydrant)life.bodies[0].hydrantUnlocked=true;
     if(index<life.props.size()&&life.props[index].morphItem==LifeMorphItem::Signal)life.bodies[0].signalUnlocked=true;
+    if(index<life.props.size()&&life.props[index].morphItem==LifeMorphItem::Vacuum)life.bodies[0].vacuumUnlocked=true;
+    if(index<life.props.size()&&life.props[index].morphItem==LifeMorphItem::Spring)life.bodies[0].springUnlocked=true;
 }
 // 対象が既に触手でつかまれているか
 inline bool LifeTargetReserved(const SlimeLife& life,uint32_t target){

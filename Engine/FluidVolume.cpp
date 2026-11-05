@@ -250,7 +250,10 @@ void Renderer::PrepareFluidVolume() {
             }else {include(t.origin+Vector3{t.forward.z*t.local.x+t.forward.x*t.local.z,t.local.y,-t.forward.x*t.local.x+t.forward.z*t.local.z});}}
         for(const auto& p:fluidBodySnapshot_.offsets){auto world=p+fluidBodySnapshot_.core;if(std::isfinite(world.x)&&std::isfinite(world.y)&&std::isfinite(world.z)&&std::abs(world.x-center.x)<100&&std::abs(world.y-center.y)<100&&std::abs(world.z-center.z)<100)include(world);}
         for(const auto& s:fluidVolumeExtras_){Vector3 c{s.x,s.y,s.z},r{s.w,s.w,s.w};include(c-r);include(c+r);}
-        for(const auto& arm:fluidTendrils_){float r=(std::max)(arm.radius,arm.endRadius)*2;Vector3 extent{r,r,r};
+        for(const auto& arm:fluidTendrils_){
+            // A box skin stores its half size in end (see SplatTendrils).
+            if(arm.endRadius<0){float r=(std::max)({arm.end.x,arm.end.y,arm.end.z})*1.5f-arm.endRadius*2;Vector3 extent{r,r,r};include(arm.start-extent);include(arm.start+extent);continue;}
+            float r=(std::max)(arm.radius,arm.endRadius)*2;Vector3 extent{r,r,r};
             include(arm.start-extent);include(arm.start+extent);include(arm.end-extent);include(arm.end+extent);}
         const float shadowMargin=1.2f*fluidSamplingScale_;
         volumeShadowLow_=lo-Vector3{shadowMargin,shadowMargin,shadowMargin};volumeShadowHigh_=hi+Vector3{shadowMargin,shadowMargin,shadowMargin};

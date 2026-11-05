@@ -7,11 +7,6 @@
     {"id": "Office", "name": "オフィス街", "outer": 2250, "block": 260, "road": 48, "lots": [2, 1], "floors": [8, 12],  "floorHeight": 19, "props": 110, "avenue": 140, "gateRadius": 83,   "plazas": 8, "plazaFood": 10, "lineFood": 20},
     {"id": "Tower",  "name": "高層街",     "outer": 3240, "block": 380, "road": 64, "lots": [1, 1], "floors": [18, 32], "floorHeight": 19, "props": 80,  "avenue": 200, "gateRadius": 161,  "plazas": 8, "plazaFood": 8, "lineFood": 20}
   ],
-  "start": [0, 0, -60],
-  "_itemsComment": "お助け変形アイテム。タイヤは路地裏を出てすぐの住宅街の入口、消火栓は商店街の火事の手前、信号機はオフィス街の入口に置く",
-  "tireItem": [0, 0, 130],
-  "hydrantItems": [[860, 0, 0], [-860, 0, 0]],
-  "signalItem": [0, 0, 1520],
-  "_firesComment": "商店街の火事 [x, z, 半径]。触れると体が剥がれ、消火栓の放水で消せる",
-  "fires": [[1100, 30, 18], [1250, -30, 16], [-1100, -30, 18], [-1250, 30, 16], [30, 1100, 16], [-30, -1100, 18]]
+  "_firesComment": "炎 [x, z, 半径]。今は置かない (消す手段の消火栓を外したため)",
+  "fires": []
 }

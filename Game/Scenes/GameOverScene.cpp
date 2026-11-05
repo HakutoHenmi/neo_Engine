@@ -27,10 +27,12 @@ void GameOverScene::Update() {
     // ボタンのクリック判定に使う
     UI::Canvas ui(Engine::Renderer::GetInstance());
     if(input->Trigger(DIK_R)||input->Trigger(DIK_RETURN)||input->PadTrigger(XINPUT_GAMEPAD_X)||ui.Click(UI::Retry)){
+        UI::PlayUISound(UI::UISound::Confirm);
         // 本編のシーンファイルを指定してゲームをやり直す
         Engine::SceneParameters params;params.stagePath=Data::MainStagePath();
         Engine::SceneManager::GetInstance()->RequestChange("Game",params);
     } else if(input->Trigger(DIK_TAB)||input->PadTrigger(XINPUT_GAMEPAD_Y)||ui.Click(UI::Select)) {
+        UI::PlayUISound(UI::UISound::Back);
         Engine::SceneManager::GetInstance()->RequestChange("Title");
     }
 }

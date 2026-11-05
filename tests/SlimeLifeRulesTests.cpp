@@ -3,6 +3,9 @@
 #include "../Game/Chrono/SlimeSignalRules.h"
 #include "../Game/Chrono/CityStageRules.h"
 #include "../Game/Chrono/RingCityRules.h"
+#include "../Game/Chrono/DevourMorphRules.h"
+#include "../Game/Chrono/DevourStageRules.h"
+#include "../Game/Chrono/RoomRules.h"
 #include "../Game/Chrono/SlimeTentacleRules.h"
 #include "../Game/Chrono/DevourAnimation.h"
 #include "../Engine/FluidMorphShape.h"
@@ -351,11 +354,12 @@ void TestSignal(){
 }
 // 吸収モード: 覆える大きさ・成長・段階と時間・飛びかかりの目標と形
 void TestDevour(){
+    CheckLife(DevourComboPitch(0)==1&&DevourComboPitch(1)==1&&DevourComboPitch(2)>1,"combo notes do not start at the base note and rise");
+    for(int combo=1;combo<200;++combo)CheckLife(DevourComboPitch(combo)>=1&&DevourComboPitch(combo)<=2.0001f,"combo note left the range the audio engine can play");
+    for(int combo=1;combo<6;++combo)CheckLife(DevourComboPitch(combo+1)>DevourComboPitch(combo),"first combo notes do not climb the scale");
     // 開始の体はゴミ袋を覆えるが、車は覆えない。車は成長すれば覆える
     CheckLife(DevourCanCover(LifeStartMass,1.7f)&&!DevourCanCover(LifeStartMass,13),"start body cover limit is wrong");
     CheckLife(DevourCanCover(DevourMassToCover(13)+1,13)&&!DevourCanCover(DevourMassToCover(13)*.9f,13),"mass needed to cover disagrees with the cover rule");
-    // 沈む物は覆える物より小さい
-    for(float mass:{100.f,1000.f,50000.f})CheckLife(DevourSinks(mass,DevourBodyRadius(mass)*.19f)&&!DevourSinks(mass,DevourBodyRadius(mass)*.21f)&&DevourCanCover(mass,DevourBodyRadius(mass)*.21f),"sink size is not below the cover size");
     // 大きい物ほど増える。覆える一番大きな物でも、体が一度に倍にはならない
     CheckLife(DevourReward(13)>DevourReward(1.7f)*50,"growth does not scale with object size");
     for(float mass:{100.f,4000.f,120000.f}){float largest=DevourBodyRadius(mass)*DevourCoverRatio;CheckLife(DevourReward(largest)<mass*.08f&&DevourReward(largest)>mass*.02f,"one bite grows too much or too little");}
@@ -368,12 +372,11 @@ void TestDevour(){
             for(const auto& plaza:plazas)CheckLife(LifeDistance(lot.foot.Center(),plaza.at)>plaza.radius*.9f,"building in a plaza");}
         CheckLife(doors==4*(RingStyleCount-1)&&plazas.size()==32,"ring gates or plazas are missing");
         CheckLife(lots.size()<1000,"too many buildings");}
-    // 段階は量の順。段階が上がるたびに時間が増え、同じ段階では増えない
-    for(size_t i=1;i<DevourTiers.size();++i)CheckLife(DevourTiers[i].mass>DevourTiers[i-1].mass,"tiers are not ordered");
-    DevourClock clock;clock.left=10;CheckLife(DevourAdvance(clock,LifeStartMass)==0&&clock.left==10,"start mass advanced a tier");
-    CheckLife(DevourAdvance(clock,DevourTiers[2].mass)==2&&clock.tier==2&&clock.left==10+2*DevourTierBonus,"skipped tiers do not each add time");
-    CheckLife(DevourAdvance(clock,DevourTiers[2].mass+1)==0&&clock.left==10+2*DevourTierBonus,"same tier added time again");
-    CheckLife(DevourTierAt(DevourMaxMass)==DevourFinalTier,"max mass does not reach the final tier");
+    // ステージ: 開始の量で開始の大きさ、目標は大きくなる順、最初の目標でクリア、最後の目標で S ランク
+    for(const auto& stage:DevourStages()){CheckLife(std::abs(DevourSizeCm(stage,LifeStartMass)-stage.start)<.001f&&DevourRankAt(stage,LifeStartMass)==0&&DevourRankName(stage,0)=="D","stage start is wrong");
+        int count=int(stage.goals.size());CheckLife(DevourRankAt(stage,DevourGoalMass(stage,stage.goals[0]))==1&&DevourRankAt(stage,DevourGoalMass(stage,stage.goals.back()))==count&&DevourRankName(stage,count)=="S"&&DevourRankName(stage,count-1)=="A","stage ranks are wrong");
+        CheckLife(stage.time>0&&stage.itemTime>0,"stage times are wrong");}
+    CheckLife(DevourStages()[0].time==180&&DevourStages()[0].start==5&&DevourStages()[0].goals[0]==15&&DevourStages()[0].goals[1]==20&&DevourStages()[0].gates[0]==8&&DevourSizeText(15)=="15.0 cm"&&DevourSizeText(12600)=="126.00 m","first stage rules are wrong");
     // 成長と剥がれは上限と開始の大きさを守る
     LifeBody body;body.mass=body.health=body.maxHealth=DevourMaxMass-10;CheckLife(DevourGrow(body,50)==10&&body.mass==DevourMaxMass,"growth exceeds the devour cap");
     // 飲み込んだ量は少しずつ体へ移り、フレームの速さによらず同じ時間で全部移る
@@ -383,15 +386,30 @@ void TestDevour(){
             CheckLife(eater.mass>1000+160*.35f&&eater.mass<1000+160*.65f,"digesting is instant or depends on the frame rate");
             for(int frame=0;frame<hz;++frame)DevourDigest(eater,left,1.f/float(hz));
             CheckLife(left==0&&std::abs(eater.mass-1160)<.01f&&eater.health==eater.mass,"digesting loses mass or never ends");}}
-    // タイヤは普段より大きい物まで沈め、覆える物より大きい物は沈めない
-    for(float mass:{100.f,5000.f}){float r=DevourBodyRadius(mass);CheckLife(!DevourSinks(mass,r*.5f)&&DevourSinks(mass,r*.5f,DevourTireSinkRatio)&&!DevourSinks(mass,r*.6f,DevourTireSinkRatio)&&DevourSinks(mass,r*.65f,DevourTireDashSinkRatio)&&DevourTireDashSinkRatio<DevourCoverRatio,"tire sink size is wrong");}
     // タイヤの速さは大きさの倍率に合わせて上がる
     {SlimeRecipe recipe;LifeBody tire;tire.mass=5000;CheckLife(std::abs(LifeTireDashSpeed(tire,recipe,1,3)-3*LifeTireDashSpeed(tire,recipe,1))<.01f,"tire speed ignores the devour scale");}
     // 砕けるのは覆えない物のうち 1.5 倍までで、必要な量で砕ける。欠片は覆える大きさで、量は元より少ない
     for(float mass:{200.f,20000.f}){float r=DevourBodyRadius(mass)*DevourCoverRatio;CheckLife(!DevourCanShatter(mass,r*.9f)&&DevourCanShatter(mass,r*1.4f)&&!DevourCanShatter(mass,r*1.6f),"shatter size is wrong");
         CheckLife(DevourCanShatter(DevourMassToShatter(r*1.4f)*1.01f,r*1.4f)&&!DevourCanShatter(DevourMassToShatter(r*1.4f)*.9f,r*1.4f),"mass to shatter is wrong");
         CheckLife(DevourCanCover(mass,r*1.5f*.35f)&&DevourShardShare<1,"shards cannot be eaten or are worth too much");}
-    CheckLife(std::abs(DevourSizeMeters(LifeStartMass)-1)<.001f&&DevourSizeMeters(4*LifeStartMass)>DevourSizeMeters(LifeStartMass),"size in meters is wrong");
+    // 掃除機: 本体・ホース・柄・吸い口がつながった形で、上の弧の下は空いている
+    CheckLife(DevourInsideVacuum({DevourVacuumBodyX,1.9f,-2})&&DevourInsideVacuum({DevourVacuumBodyX+2.2f,1.1f,-2.4f})&&DevourInsideVacuum({DevourVacuumMouthX+2.5f,.5f,6})&&!DevourInsideVacuum({0,1,2.5f})&&!DevourInsideVacuum({DevourVacuumMouthX+2.5f,3,6}),"vacuum shape is wrong");
+    // バネ: 上下の板の間に隙間の広いコイルがある (真ん中は空洞)
+    {int solid=0;for(int i=0;i<200;++i)solid+=DevourInsideSpring({DevourSpringCoil,DevourSpringPlate+.01f+(DevourSpringHeight-2*DevourSpringPlate)*float(i)/200,0});
+        CheckLife(DevourInsideSpring({0,.15f,0})&&DevourInsideSpring({0,DevourSpringHeight-.15f,0})&&!DevourInsideSpring({0,DevourSpringHeight*.5f,0})&&solid>40&&solid<130&&DevourSpringPitch>2*DevourSpringTube+1,"spring coil is not readable");}
+    // 掃除機は前の小さい物だけ届き、後ろと大きい物は届かない
+    CheckLife(DevourVacuumReaches({},{0,0,1},{0,0,20},1000,3)&&!DevourVacuumReaches({},{0,0,1},{0,0,-20},1000,3)&&!DevourVacuumReaches({},{0,0,1},{0,0,20},1000,9)&&!DevourVacuumReaches({},{0,0,1},{0,0,60},1000,3),"vacuum reach is wrong");
+    // バネは溜めるほど遠く高く、どの大きさでも体より高く跳ぶ
+    for(float mass:{500.f,450000.f})CheckLife(DevourSpringRange(mass,1)>DevourSpringRange(mass,.5f)&&DevourSpringRise(mass,DevourSpringMinPower)>DevourBodyRadius(mass)*5&&DevourLeapRange(mass)<DevourSpringRange(mass,DevourSpringMinPower),"spring reach is wrong");
+    // 部屋の高さ: 坂はつながっていて登れる傾きで、床は 0
+    CheckLife(RoomGround({0,0,-200})==0&&RoomGround({100,0,0})==26&&RoomGround({-10,0,0})>0&&RoomGround({-10,0,0})<26&&RoomGround({200,0,100})==64,"room heights are wrong");
+    for(const auto& s:RoomSurfaces)if(s.h0!=s.h1){float length=s.alongZ?s.foot.z1-s.foot.z0:s.foot.x1-s.foot.x0;CheckLife(std::abs(s.h1-s.h0)/length<.6f,"room ramp is too steep");}
+    // 体に対して小さい物は価値が下がり、大きい物は満額。基準が 0 なら下げない
+    CheckLife(DevourFoodValue(1000,7,.35f)==1&&DevourFoodValue(1000,1,.35f)<.3f&&DevourFoodValue(1000,.01f,.35f)==.1f&&DevourFoodValue(1000,.01f,0)==1,"food value is wrong");
+    // 大きい物ほど大きく口を開ける
+    CheckLife(DevourMouthScale(1000,7)>DevourMouthScale(1000,2)&&DevourMouthScale(1000,7)<1.4f,"mouth scale is wrong");
+    // 大きい物ほど時間をかけて飲み込み、後から飲んだ物に埋もれるほど中心へ沈む
+    CheckLife(DevourBiteTime(1000,1)<DevourBiteTime(1000,7)&&DevourBiteTime(1000,7)<.6f&&DevourMealDepth(0)>.9f&&DevourMealDepth(.3f)<DevourMealDepth(.1f)&&DevourMealDepth(5)>=.3f,"bite time or meal depth is wrong");
     // 飲み込みの重さは数か増えた割合で上がり、つぶれは重いほど大きく、揺れて収まる
     CheckLife(DevourGulpWeight(1,1,1000)==.2f&&DevourGulpWeight(5,1,1000)==1&&DevourGulpWeight(1,160,1000)==1,"gulp weight ignores the count or the share");
     CheckLife(DevourSquash(.07f,1)>DevourSquash(.07f,.2f)&&DevourSquash(.07f,1)<.4f&&DevourSquash(0,1)==0&&DevourSquash(.3f,1)<0&&DevourSquash(.7f,1)==0,"squash does not hit, rebound and settle");

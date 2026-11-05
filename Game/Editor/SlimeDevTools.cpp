@@ -72,6 +72,8 @@ const char* ActionName(Chrono::LifeAction action) {
 	case Chrono::LifeAction::Hydrant: return "消火栓";
 	case Chrono::LifeAction::Restore: return "復元中";
 	case Chrono::LifeAction::Signal: return "信号機";
+	case Chrono::LifeAction::Vacuum: return "掃除機";
+	case Chrono::LifeAction::Spring: return "バネ";
 	}
 	return "?";
 }
