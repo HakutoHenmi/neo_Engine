@@ -213,7 +213,12 @@ void GameScene::Draw() {
         // UI の描画先 (エディタの Game ビューならマウス座標を上書きする)
         UI::Canvas ui(renderer_,ctx_.viewportSize.x,ctx_.viewportSize.y);if(ctx_.useOverrideMouse)ui.SetPointer(ctx_.overrideMouseX,ctx_.overrideMouseY);
         // グラフィック設定画面 (保存に失敗したら注意を出す)
-        if(graphicsOpen_){UI::DrawGraphics(ui,*renderer_);if(graphicsSaveFailed_)ui.Text(UI::Str("pause.saveFailed"),110,689,17,UI::Gold,UI::JapaneseFont);return;}
+        if(graphicsOpen_){UI::DrawGraphics(ui,*renderer_);if(graphicsSaveFailed_)ui.Text(UI::Str("pause.saveFailed"),380,510,18,UI::Scale::Red,UI::Scale::Jp);return;}
+        // 吸収モードのポーズ: 止まったゲームの上に物差しのメニューを出す
+        if(chronoSystem_&&chronoSystem_->DevourMode()){
+            const auto view=UI::Scale::MakePauseView(chronoSystem_->DevourStageInfo(),chronoSystem_->LifeState().bodies[0].mass,chronoSystem_->DevourClockState().left);
+            UI::Scale::Pause(ui,view,pauseMenu_,UI::Seconds()-pauseOpenedAt_);return;
+        }
         // スライム本編は強化パレット、旧アクションゲームはポーズメニュー
         if(chronoMode_&&!registry_.view<Chrono::InkPlayer>().empty()){auto view=registry_.view<Chrono::InkPlayer>();UI::RoguePalette(ui,view.get<Chrono::InkPlayer>(*view.begin()).rogue);}else ui.Pause();
         // 右上のグラフィック設定ボタン
@@ -477,7 +482,7 @@ void GameScene::UpdatePlayerSlimeFluid(PlayerDrawState& player) {
 				// スライム本編: 地面の傾き・顔の向き・体の形 (伸び・空中・動き)・質量を流体へ渡す
 				if (chronoMode_) {
 					// 地面の傾き・高さを渡す
-					if(auto* ink=registry_.try_get<Chrono::InkPlayer>(playerEntity)){renderer_->SetSlimeGround({ink->groundSlope.x,ink->groundHeight,ink->groundSlope.z},registry_.get<Chrono::Player>(playerEntity).grounded);renderer_->SetSlimeFaceCamera(ink->rogue.MenuEase());scaleVec={ink->fluidAspect,ink->airBlend,ink->fluidMotion};forward={ink->fluidDirection.x,0,ink->fluidDirection.z};}
+					if(auto* ink=registry_.try_get<Chrono::InkPlayer>(playerEntity)){renderer_->SetSlimeGround({ink->groundSlope.x,ink->groundHeight,ink->groundSlope.z},registry_.get<Chrono::Player>(playerEntity).grounded);renderer_->SetSlimeFaceCamera(std::max(ink->rogue.MenuEase(),chronoSystem_?chronoSystem_->DevourResultFace():0.f));scaleVec={ink->fluidAspect,ink->airBlend,ink->fluidMotion};forward={ink->fluidDirection.x,0,ink->fluidDirection.z};}
 					// 質量 (体力)。変形の見本があれば最大にする
 					float mass = registry_.get<HealthComponent>(playerEntity).Hp();
                     if(!renderer_->fluidMorphTargets_.empty())mass=Chrono::SlimeMaximumMass;
@@ -496,7 +501,7 @@ void GameScene::UpdatePlayerSlimeFluid(PlayerDrawState& player) {
 						// 不安定さが 75 を超えたらゆっくり明滅する
 						if(action->instability>75)flash=std::max(flash,.35f*(.5f+.5f*std::sin(action->stats.seconds*10)));
 						// カメラ用の透明度・点滅・止めるか (ポーズ中かヒットストップ中) を渡す
-						renderer_->SetChronoFluidPresentation(action->cameraOpacity,flash,isPaused_||(action->hitStop>0&&!upgradeOpenForFluid));
+						renderer_->SetChronoFluidPresentation(action->cameraOpacity,flash,isPaused_||(action->hitStop>0&&!upgradeOpenForFluid)||(chronoSystem_&&chronoSystem_->DevourResultFrozen()));
 						// 触手を伸ばしている・引き寄せている間は手まで糸を張る
 						bool tether = action->action == Chrono::Action::Extending || action->action == Chrono::Action::Pulling || action->action == Chrono::Action::Retracting;
 						renderer_->SetGPUFluidTether({action->hand.x, action->hand.y, action->hand.z}, tether);

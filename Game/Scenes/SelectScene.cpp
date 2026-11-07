@@ -8,31 +8,39 @@
 #include "../../Engine/Input.h"
 #include "../../Engine/SceneManager.h"
 #include <Windows.h>
-#include <array>
 #include <cmath>
-#include <utility>
 
 // ゲーム側のコードはすべて Game 名前空間に置く
 namespace Game {
-
+namespace {
+namespace S=UI::Scale;
+// 物が立つ高さ・ステージの帯の高さ・操作の案内の当たり判定・出発の長さ
+constexpr float kBarTop=564,kBarHeight=43,kLeaveTime=.45f;
+constexpr UI::Rect kDeploy{822,40,122,36},kBack{1112,40,128,36};
+// ステージごとに並べる物
+struct StageProp{const S::Sprite* sprite;float cx,height;};
+const std::vector<StageProp>& PropsOf(int stage){
+    static const std::vector<StageProp> room={{&S::Block,40,50},{&S::Ball,97,46},{&S::Box,157,37}};
+    static const std::vector<StageProp> town={{&S::Car,547,86},{&S::Barrel,667,93},{&S::Horse,853,227},{&S::Barrier,1067,102}};
+    return stage==0?room:town;
+}
+// ステージの帯の場所
+UI::Rect BarOf(const S::StageView& stage){const float x=S::TapeX(stage.startCm);return {x,kBarTop,S::TapeX(stage.lastCm)-x,kBarHeight};}
+// スライムが座る大きさ (記録が無ければ開始の大きさ)
+float SlimeCm(const S::StageView& stage){return stage.played?stage.bestCm:stage.startCm;}
+}
 
 // 破棄: 特に後片付けは無い
 SelectScene::~SelectScene() {
 }
 
-// 初期化: BGM・白テクスチャ・ポストエフェクトの設定
+// 初期化: BGM・ポストエフェクト・保存した記録
 void SelectScene::Initialize(Engine::WindowDX* dx, const Engine::SceneParameters& params) {
-    // パラメータは使わない
     (void)params;
-    // ウィンドウを覚え、セレクトの BGM を流す
     dx_ = dx;
     Music::Play(Music::Select);
-    // 描画の窓口
     renderer_ = Engine::Renderer::GetInstance();
     if (renderer_) {
-        // 単色の塗りつぶしに使う白い 1x1 テクスチャ
-        whiteTexture_ = renderer_->LoadTexture2D("Resources/Textures/white1x1.png");
-
         // 前のシーンで使ったポストエフェクトの効果を全部切る
         auto pp = renderer_->GetPostProcessParams();
         pp.noiseStrength = 0.0f;
@@ -44,44 +52,67 @@ void SelectScene::Initialize(Engine::WindowDX* dx, const Engine::SceneParameters
         renderer_->SetPostProcessParams(pp);
         renderer_->SetPostEffect("Default");
     }
-    
+    // 前回のステージから始める。未解放のステージは選ばない
+    stages_ = S::LoadStages(&selected_);
+    if (!stages_[size_t(selected_)].unlocked) selected_ = 0;
+    slimeX_ = (std::max)(36.f, S::TapeX(SlimeCm(stages_[size_t(selected_)])));
+    slimeWidth_ = selected_ ? 260.f : 140.f;
+    S::PreloadSlime(renderer_);
+    age_ = S::SkipIntro() ? 9.f : 0.f;
+    lastTime_ = std::chrono::steady_clock::now();
     // マウスで操作するのでカーソルを表示する
     Engine::WindowDX::SetCursorVisible(true);
 }
 
-// 更新: 出撃・タイトルへ戻る・デモへの移動の入力を処理する
+// 選んでいるステージへ出発する。本編は保存したステージ番号を読んで始まる
+void SelectScene::Confirm() {
+    if (!stages_[size_t(selected_)].unlocked) { shake_ = .4f; UI::PlayUISound(UI::UISound::Back); return; }
+    UI::PlayUISound(UI::UISound::Confirm);
+    S::SaveStage(selected_);
+    leaving_ = 0;
+}
+
+// 更新: ステージの選択・出発・タイトルへ戻る
 void SelectScene::Update() {
-    // ゲームから戻ってきたときもカーソルを出す
     Engine::WindowDX::SetCursorVisible(true);
+    const auto now = std::chrono::steady_clock::now();
+    const float dt = (std::min)(.1f, std::chrono::duration<float>(now - lastTime_).count());
+    lastTime_ = now;
+    age_ += dt;
+    shake_ = (std::max)(0.f, shake_ - dt);
+    // スライムは選んだステージの記録の位置へ滑っていく
+    const float follow = 1 - std::exp(-dt * 9);
+    slimeX_ += ((std::max)(36.f, S::TapeX(SlimeCm(stages_[size_t(selected_)]))) - slimeX_) * follow;
+    slimeWidth_ += ((selected_ ? 260.f : 140.f) - slimeWidth_) * follow;
+    if (leaving_ >= 0) {
+        leaving_ += dt;
+        if (leaving_ >= kLeaveTime) {
+            Engine::SceneParameters params;
+            params.stagePath = Data::MainStagePath();
+            Engine::SceneManager::GetInstance()->RequestChange("Game", params);
+        }
+        return;
+    }
 #ifndef NDEBUG
-    // 入力
-    auto* input = Engine::Input::GetInstance();
     // F1 で評価課題のデモ (Assignment) へ移動する (ステージを増やさずにデモを残すため)
-    if (input->Trigger(0x3B)) { // F1
+    if (Engine::Input::GetInstance()->Trigger(0x3B)) {
         Engine::SceneManager::GetInstance()->RequestChange("Assignment");
         return;
     }
 #endif
-    
-    // 出撃: スライムの街ステージ (chrono.json) でゲームシーンを始める
-    auto confirmSelection = [this]() {
-            UI::PlayUISound(UI::UISound::Confirm);
-            // 本編のシーンファイルを指定してゲームへ移る
-            Engine::SceneParameters params;
-            params.stagePath = Data::MainStagePath();
-            Engine::SceneManager::GetInstance()->RequestChange("Game", params);
-    };
-
-    // 出撃ボタンのクリック、Esc / B でタイトルへ
     UI::Canvas ui(renderer_);
-    if (ui.Click(UI::Stage)) { confirmSelection(); return; }
-    if (UI::BackPressed()) {
-        Engine::SceneManager::GetInstance()->RequestChange("Title"); return;
+    if (UI::BackPressed() || ui.Click(kBack)) { Engine::SceneManager::GetInstance()->RequestInstantChange("Title"); return; }
+    // 左右でステージを選ぶ
+    const int count = int(stages_.size());
+    int step = (UI::Pressed(DIK_RIGHT) || UI::Pressed(DIK_D) || UI::PadPressed(XINPUT_GAMEPAD_DPAD_RIGHT | Engine::Input::kPadLsRight) ? 1 : 0)
+        - (UI::Pressed(DIK_LEFT) || UI::Pressed(DIK_A) || UI::PadPressed(XINPUT_GAMEPAD_DPAD_LEFT | Engine::Input::kPadLsLeft) ? 1 : 0);
+    if (step) { selected_ = (selected_ + step + count) % count; UI::PlayUISound(UI::UISound::Move); }
+    // 帯のクリック: 選んでいない帯は選ぶだけ、選んでいる帯は出発
+    if (!UI::UsingPad()) for (int i = 0; i < count; ++i) if (ui.Click(BarOf(stages_[size_t(i)]))) {
+        if (i == selected_) Confirm(); else selected_ = i;
+        return;
     }
-    // この画面に表示している操作だけを受け付ける
-    if (UI::Pressed(DIK_RETURN) || UI::PadPressed(XINPUT_GAMEPAD_START)) { // Enter (0x1C) / START で出撃
-        confirmSelection();
-    }
+    if (UI::Pressed(DIK_RETURN) || UI::PadPressed(XINPUT_GAMEPAD_START | XINPUT_GAMEPAD_A) || (!UI::UsingPad() && ui.Click(kDeploy))) Confirm();
 }
 
 // 描画: メニュー画面を描く
@@ -93,65 +124,59 @@ void SelectScene::Draw() {
 void SelectScene::DrawUI() {
 }
 
-// メニュー画面の描画 (ステージ名・説明・目印のチップ・紹介カード・ボタン)
+// メニュー画面の描画 (ステージ名と記録・巻尺の上の範囲と物・スライム)
 void SelectScene::DrawMenu() {
-    // 描画の窓口が無ければ何もしない
-    if (!renderer_) return;
+    if (!renderer_ || stages_.empty()) return;
     UI::Canvas ui(renderer_);
-    // 背景と上部のロゴ
-    ui.Background(UI::Str("select.section").c_str());
-    // アニメーション用の経過秒数
-    const float t=UI::Seconds();
-    // ステージ名の後ろに大きく薄い番号を置く
-    ui.Text(UI::Str("select.number"),52,70,260,{.1f,.16f,.125f,1});
-    // ステージ名と説明
-    ui.Label(UI::Str("select.label"),98,174,14,UI::Lime,3);
-    ui.Text(UI::Str("select.stageName"),90,192,96,UI::Paper);
-    ui.Text(UI::Str("select.description"),98,308,24,UI::Paper,UI::JapaneseFont);
-    // 特徴を表す3つのチップを横に並べる
-    float chipX=98;
-    for(auto [label,color]:{std::pair<const char*,Engine::Vector4>{UI::Str("select.chip1").c_str(),UI::Lime},{UI::Str("select.chip2").c_str(),UI::Gold},{UI::Str("select.chip3").c_str(),UI::Teal}}){
-        // チップの幅 (文字の幅 + 余白)
-        const float w=ui.SpacedWidth(label,13,2)+30;
-        // 色付きの丸い台と縁
-        ui.Rounded({chipX,364,w,32},UI::WithAlpha(color,.12f),16);ui.RoundedRing({chipX,364,w,32},UI::WithAlpha(color,.55f),16);
-        // 文字を書き、次のチップの位置へ進める
-        ui.Label(label,chipX+15,372,13,color,2);chipX+=w+10;
+    S::Backdrop(ui);
+    const auto& stage = stages_[size_t(selected_)];
+    const float shift = shake_ > 0 ? std::sin(shake_ * 60) * 8 * shake_ / .4f : 0;
+    const float enter = S::EaseOut(age_ / .35f), out = leaving_ >= 0 ? 1 - S::EaseIn(leaving_ / kLeaveTime) : 1;
+    // ステージ名と記録
+    const auto ink = UI::WithAlpha(S::Black, enter);
+    ui.Text(UI::Str("select.stage") + " " + std::to_string(selected_ + 1), 48, 22, 30, ink, S::Num);
+    ui.Big(stage.name, 48 + shift, 62, 86, ink, S::JpBig, S::JpBigBase);
+    const std::string values[4] = {S::TickText(stage.goalCm), stage.played ? S::SizeText(stage.bestCm) : "-", stage.played ? stage.rank : "-", S::Clock(stage.time)};
+    const char* labels[4] = {"select.goal", "select.best", "select.rank", "select.time"};
+    float x = 48;
+    for (int i = 0; i < 4; ++i) {
+        ui.Text(UI::Str(labels[i]), x, 172, 18, ink, S::Jp);
+        ui.Text(values[i], x, 192, 46, i == 1 ? UI::WithAlpha(S::Red, enter) : ink, S::Num);
+        x += (std::max)(ui.Width(values[i], 46, S::Num), ui.Width(UI::Str(labels[i]), 18, S::Jp)) + 34;
     }
-    // 現地調査カード: 戦いの様子 (敵の群れ・スライム・囲む輪) を動きで見せる
-    // カードの位置と大きさ
-    const UI::Rect map{760,128,440,392};
-    // 後ろの暗いぼかしと、カードの台・縁
-    ui.Halo(map.x+map.w*.5f,map.y+map.h*.5f,330,UI::WithAlpha(UI::Night,.6f));
-    ui.Rounded(map,{.07f,.115f,.09f,.97f},24);
-    ui.RoundedRing(map,UI::WithAlpha(UI::Paper,.1f),24);
-    // 右上の筆の塗りと小見出し
-    ui.Brush({940,108,190,44},UI::WithAlpha(UI::Paper,.22f),.09f);
-    ui.Label(UI::Str("select.survey"),map.x+24,map.y+22,12,UI::WithAlpha(UI::Lime,.85f),3);
-    // カード内の背景線と、渦を巻くように動く敵の群れ (点)
-    const float mx=map.x+map.w*.5f,my=map.y+190;
-    // うっすらとした横線
-    for(int i=0;i<4;++i)ui.Line(map.x+20,my-90+float(i)*58+std::sin(float(i)*1.7f)*14,map.x+map.w-20,my-70+float(i)*58,1,UI::WithAlpha(UI::Muted,.12f));
-    for(int i=0;i<34;++i){
-        // 黄金角でばらし、少しずつ回す (点ごとに速さと半径を変える)
-        const float a=float(i)*2.399963f+t*(.18f+.05f*UI::Noise(float(i))),r=60+120*UI::Noise(float(i)*3.3f);
-        ui.Dot(mx+std::cos(a)*r,my+std::sin(a)*r*.62f,3.5f+2*UI::Noise(float(i)*5.1f),UI::WithAlpha({.45f,.72f,.9f,1},.85f));
+    // 操作の案内
+    S::Hint(ui, "keyboard_enter", "xbox_button_a", UI::Str("select.deploy"), 822, 40);
+    S::Hint(ui, "keyboard_arrows_horizontal", "xbox_dpad", UI::Str("select.choose"), 958, 40);
+    S::Hint(ui, "keyboard_escape", "xbox_button_b", UI::Str("select.back"), 1112, 40);
+    // ステージごとの物: 選んでいれば本物、未解放なら形だけ、それ以外は薄く
+    for (int i = 0; i < int(stages_.size()); ++i) {
+        const bool chosen = i == selected_, open = stages_[size_t(i)].unlocked;
+        for (const auto& prop : PropsOf(i)) {
+            const float land = S::EaseOut((age_ - .1f - prop.cx * .0002f) / .3f), base = kBarTop - (1 - land) * -40;
+            if (open) S::Prop(ui, *prop.sprite, prop.cx, base, prop.height, (chosen ? 1 : .55f) * land);
+            else S::PropShape(ui, *prop.sprite, prop.cx, base, prop.height, UI::WithAlpha(S::Silhouette, land));
+        }
     }
-    // スライムが群れを囲む輪を描いていく様子 (毎秒少しずつ伸び、1周で最初に戻る)
-    const float draw=std::fmod(t*.28f,1.f);
-    for(int i=0;i<60;++i){const float s0=float(i)/60,s1=float(i+1)/60;if(s0>draw)break;
-        // 楕円の上の位置
-        auto at=[&](float s){const float a=s*6.283185f;return std::array<float,2>{mx+40+std::cos(a)*95,my+10+std::sin(a)*64};};
-        auto p0=at(s0),p1=at((std::min)(s1,draw));ui.Line(p0[0],p0[1],p1[0],p1[1],5,UI::Lime);}
-    // 輪の先端にいる小さなスライム
-    ui.SlimeMark(mx+40+std::cos(draw*6.283185f)*95,my+10+std::sin(draw*6.283185f)*64,11);
-    // 下の説明文
-    ui.Text(UI::Str("select.surveyNote"),map.x+24,map.y+map.h-56,17,UI::Muted,UI::JapaneseFont);
-    // 出撃ボタンと操作の案内
-    ui.Button(UI::Stage,UI::Str("select.deploy"),true);
-    ui.Prompt("mouse_left",UI::Str("select.promptClick"),"xbox_button_a",UI::Str("select.promptDeploy"),100,592,26,17);
-    ui.Prompt("keyboard_enter",UI::Str("select.promptDeploy"),"xbox_button_menu",UI::Str("select.promptDeploy"),220,592,26,17);
-    ui.Prompt("keyboard_escape",UI::Str("select.promptTitle"),"xbox_button_b",UI::Str("select.promptTitle"),1098,640,26,17);
+    // スライム: 記録の目盛りの上に座る
+    S::Slime(ui, slimeX_, kBarTop - (leaving_ >= 0 ? std::sin(S::Clamp01(leaving_ / kLeaveTime) * 3.14159f) * 90 : 0), slimeWidth_, leaving_ >= 0);
+    // ステージの帯: 左から伸びる
+    for (int i = 0; i < int(stages_.size()); ++i) {
+        const auto& item = stages_[size_t(i)];
+        const bool chosen = i == selected_;
+        UI::Rect bar = BarOf(item);
+        bar.w *= S::EaseOut((age_ - .1f) / .4f);
+        if (chosen) bar.x += shift;
+        ui.Fill(bar, chosen ? S::Black : UI::WithAlpha(S::Black, .14f));
+        std::string label = std::to_string(i + 1) + " " + item.name;
+        if (!item.unlocked) label += "  " + stages_[size_t(i - 1)].name + UI::Str("select.unlockMiddle") + S::TickText(stages_[size_t(i - 1)].goalCm) + UI::Str("select.unlockTail");
+        if (age_ > .4f) ui.Text(label, bar.x + 12, bar.y + 6, 22, chosen ? S::Yellow : S::Black, S::Jp);
+    }
+    // 巻尺: 選んだステージの目標を赤くする。未解放を決定すると解放の目標が点滅する
+    const float locked = selected_ > 0 && !stage.unlocked ? stages_[size_t(selected_ - 1)].goalCm : stage.goalCm;
+    const bool flash = shake_ <= 0 || std::fmod(shake_, .12f) > .06f;
+    S::Tape(ui, {{5}, {locked, flash}, {30}, {100}, {500}, {5000}, {12600}}, S::TapeTop, out);
+    // タイトルでスライムが画面を埋めた続きから、緑が引いて始まる
+    if (age_ < .25f) ui.Clear(UI::WithAlpha(S::SlimeFill, 1 - age_ / .25f));
 }
 // エディタ用 (この画面では追加の項目なし)
 void SelectScene::DrawEditor() {

@@ -353,11 +353,10 @@ class UIValidationScene final : public Engine::IScene {
         // 0: タイトル / 1: セレクト / 2: ゲームオーバー / それ以外: シーンなし
         if(page_==0)scene_=std::make_unique<Game::TitleScene>();
         else if(page_==1)scene_=std::make_unique<Game::SelectScene>();
-        else if(page_==2)scene_=std::make_unique<Game::GameOverScene>();
         else scene_.reset();
         // シーンがあれば初期化し、無ければ勝利か戦闘の BGM を流す
         if(scene_)scene_->Initialize(window_,{});
-        else Game::Music::Play(page_==3?Game::Music::Victory:Game::Music::Battle);
+        else Game::Music::Play(page_==2?Game::Music::Defeat:page_==3?Game::Music::Victory:Game::Music::Battle);
         // 流れている BGM が期待どおりか
         auto* audio=Engine::Audio::GetInstance();
         const Game::Music::Track tracks[]={Game::Music::Title,Game::Music::Select,Game::Music::Defeat,Game::Music::Victory,Game::Music::Battle};
@@ -407,7 +406,9 @@ public:
         // クレジットのページ
         if(page_>=5){Game::UI::DrawCredits(ui,page_-5);return;}
         // 勝利の結果画面か、ポーズ画面
-        if(page_==3)ui.Result(true,"TIME  02:34.56","CORES  3 / 3     |     HITS TAKEN  12");
-        else ui.Pause();
+        namespace S=Game::UI::Scale;
+        if(page_==2){S::ResultView view;view.stage="子ども部屋";view.cm=11.8f;view.goalCm=15;view.items=38;view.percent=12;S::Result(ui,view,9);}
+        else if(page_==3){S::ResultView view;view.stage="輪の町";view.cm=12631;view.goalCm=5000;view.timeLeft=45;view.rank="S";view.won=true;view.newBest=true;view.hasNext=true;view.items=722;view.percent=30;S::Result(ui,view,9);}
+        else{ui.Clear({.28f,.2f,.2f,1});S::PauseView view;view.stage="子ども部屋";view.cm=11.8f;view.timeLeft=135;view.goals={{"C",15.f},{"B",20.f},{"A",25.f},{"S",30.f}};S::Pause(ui,view,0,9);}
     }
 };

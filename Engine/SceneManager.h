@@ -49,6 +49,11 @@ public:
 
 	bool Change(const std::string& name, const SceneParameters& params = {});
 	void RequestChange(const std::string& name, const SceneParameters& params = {});
+	// 暗転もロード画面も挟まずに切り替える (読み込みの軽いシーンどうしの演出をつなぐとき)
+	void RequestInstantChange(const std::string& name, const SceneParameters& params = {});
+	// 黄色の面で覆ったまま、ロード画面も抜ける演出も挟まずに切り替える (次のシーンが同じ面から登場を始めるとき)
+	void RequestCoveredChange(const std::string& name, const SceneParameters& params = {});
+	bool ArrivedCovered() const { return arrivedCovered_; }
 
 	void ProcessPendingChange(); // ★追加: BeginFrame前にシーン切り替えを処理する
 	void Update();
@@ -74,6 +79,8 @@ private:
 	std::string currentName_;
 	SceneParameters currentParams_;
 	std::string pendingNext_;
+	bool instantChange_ = false;
+	bool coveredChange_ = false, arrivedCovered_ = false;
 	SceneParameters pendingParams_;
 	WindowDX* dx_ = nullptr;
 

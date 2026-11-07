@@ -551,6 +551,9 @@
     <ClInclude Include="Game\UI\GameUI.h">
       <Filter>7. UI（画面表示）</Filter>
     </ClInclude>
+    <ClInclude Include="Game\UI\ScaleUI.h">
+      <Filter>7. UI（画面表示）</Filter>
+    </ClInclude>
     <ClInclude Include="Game\UI\GraphicsUI.h">
       <Filter>7. UI（画面表示）</Filter>
     </ClInclude>

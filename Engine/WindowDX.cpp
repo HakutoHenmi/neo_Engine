@@ -274,12 +274,29 @@ void WindowDX::ToggleFullscreen() {
 				SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
 		}
 	} else {
-		// 元のスタイルと座標に復元
+		// 元のスタイルと座標に復元する。作業領域 (タスクバーを除いた範囲) に入らない大きさなら、
+		// 画面の下が隠れないよう、16:9 のまま縮めて中央に置く
 		SetWindowLong(hwnd_, GWL_STYLE, windowedStyle_);
+		RECT target = windowedRect_;
+		MONITORINFO monitor{sizeof(monitor)};
+		if (GetMonitorInfo(MonitorFromWindow(hwnd_, MONITOR_DEFAULTTOPRIMARY), &monitor)) {
+			const RECT area = monitor.rcWork;
+			const int areaW = area.right - area.left, areaH = area.bottom - area.top;
+			if (target.right - target.left > areaW || target.bottom - target.top > areaH) {
+				RECT frame = {0, 0, (LONG)kW, (LONG)kH};
+				AdjustWindowRect(&frame, WS_OVERLAPPEDWINDOW, FALSE);
+				const int extraW = frame.right - frame.left - (int)kW, extraH = frame.bottom - frame.top - (int)kH;
+				const float scale = (std::min)((std::min)(float(areaW - extraW) / kW, float(areaH - extraH) / kH), 1.0f);
+				const int width = int(kW * scale) + extraW, height = int(kH * scale) + extraH;
+				target = {area.left + (areaW - width) / 2, area.top + (areaH - height) / 2, 0, 0};
+				target.right = target.left + width;
+				target.bottom = target.top + height;
+			}
+		}
 		SetWindowPos(hwnd_, NULL,
-			windowedRect_.left, windowedRect_.top,
-			windowedRect_.right - windowedRect_.left,
-			windowedRect_.bottom - windowedRect_.top,
+			target.left, target.top,
+			target.right - target.left,
+			target.bottom - target.top,
 			SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
 	}
 }
@@ -370,7 +387,7 @@ bool WindowDX::InitWindow_(HINSTANCE hInst, int cmdShow, HWND& outHwnd) {
 	RECT rc = {0, 0, (LONG)kW, (LONG)kH};
 	AdjustWindowRect(&rc, WS_OVERLAPPEDWINDOW, FALSE);
 
-	hwnd_ = CreateWindow(wc_.lpszClassName, L"スライム、跡で本気出す。", WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, rc.right - rc.left, rc.bottom - rc.top, nullptr, nullptr, hInst, nullptr);
+	hwnd_ = CreateWindow(wc_.lpszClassName, L"チリツモ", WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, rc.right - rc.left, rc.bottom - rc.top, nullptr, nullptr, hInst, nullptr);
 
 	if (!hwnd_)
 		return false;

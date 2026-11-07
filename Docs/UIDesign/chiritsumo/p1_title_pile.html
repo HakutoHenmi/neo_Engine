@@ -1,0 +1,23 @@
+<!doctype html><meta charset="utf-8">
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/","cannon-es":"https://cdn.jsdelivr.net/npm/cannon-es@0.20.0/dist/cannon-es.js"}}</script>
+<link href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@700;900&family=Anton&display=block" rel="stylesheet">
+<style>html,body{margin:0;width:1920px;height:1080px;overflow:hidden;font-family:"Zen Kaku Gothic New";font-weight:900}canvas{position:absolute;left:0;top:0;width:1920px;height:1080px}
+#e{position:absolute;left:20px;top:20px;color:#fff;background:#000;font:18px monospace;z-index:9;white-space:pre-wrap}
+.abs{position:absolute}.num{font-family:Anton,"Zen Kaku Gothic New";font-weight:400;letter-spacing:.01em}
+.keys{display:inline-flex;gap:4px;align-items:center;background:#111;padding:5px 8px;border-radius:6px}.keys img{height:40px;display:block}
+.bar{position:absolute;display:flex;gap:40px;align-items:center;font-size:27px}.bar span{display:flex;gap:10px;align-items:center}
+body{background:#d8452e;color:#fff}
+.menu{left:72px;top:610px;display:grid;gap:4px}.m{font-size:44px;display:flex;align-items:center;gap:16px}.m.on{font-size:84px}.m.on:before{content:"";width:40px;height:16px;background:#fff}</style><body>
+<canvas id="c"></canvas><div class="abs menu"><div class="m on">はじめる</div><div class="m">クレジット</div><div class="m">やめる</div></div>
+<div class="bar" style="left:72px;bottom:36px"><span><i class="keys"><img src="../scenes/assets/keyboard_enter.png"><img src="../scenes/assets/xbox_button_a.png"></i>けってい</span></div><div class="abs" style="left:560px;bottom:44px;font-size:19px;font-weight:700">音楽 Kevin MacLeod (incompetech.com) CC BY 4.0</div>
+<div id="e"></div>
+<script type="module">
+const E=document.getElementById('e');addEventListener('error',e=>E.textContent+=e.message+'\n');addEventListener('unhandledrejection',e=>E.textContent+=String(e.reason&&e.reason.stack||e.reason)+'\n');
+import {THREE,W,H,stage,ground,drop,model,place,slime,eyesAt,slab,toy,rng,gradBg,flatCam,logoSVG,ready} from './scene3d.js';
+const BG=0xd8452e,s=stage(document.getElementById('c'),{bg:BG,fov:24,sun:2.8,sunPos:[-8,16,10],env:.75,exposure:1.05,shadowArea:24});ground(s.sc,BG);
+const X=[-9.8,-3.3,3.2,9.7];[['チ',-.03],['リ',.02],['ツ',-.02],['モ',.05]].forEach(([c,z],i)=>slab(s.sc,c,{size:6.3,pos:[X[i],9.4,-1],rot:[0,0,z],depth:1.2,side:0xa82c1a}));
+const peak=await drop(s.sc,[['covered_car',4.2,3],['concrete_road_barrier',2.8,4],['horse_statue_01',2.8,1],['Barrel_01',1.3,12],['wooden_crate_01',1.5,10],['trashbag',1.2,20],['cardboard_box_01',1.05,20],['old_tyre',1.1,12],['fire_hydrant',.95,6],['concrete_cat_statue',1.1,3],['plastic_crate_01',.8,16],['metal_jerrycan',.7,14],['metal_trash_can',1,8]].map(([n,a,c])=>[n,a,Math.ceil(c*1.7)]),{radius:2.2,tube:3.5,base:[7,0,3],seed:11,every:3});
+s.cam.position.set(0,6,36);s.cam.lookAt(0,6,0);
+const R=1.75,sl=slime(R,{seed:6,squash:.84,lump:.06});sl.position.set(6.2,7.7,3);s.sc.add(sl);eyesAt(s,sl,R);await s.draw();
+ready();
+</script>

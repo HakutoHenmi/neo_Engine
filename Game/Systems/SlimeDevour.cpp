@@ -171,6 +171,25 @@ void ChronoSystem::TickDevourTimeSounds(float before){
     if(left>0&&left<=DevourCountdownTime&&std::ceil(before)!=std::ceil(left))PlayDevourSound(devourSounds_.tick,.6f,1+.05f*(DevourCountdownTime-std::ceil(left)));
     if(before>0&&left<=0)PlayDevourSound(devourSounds_.timeUp,.8f);
 }
+// 結果で測る本物の体の外形を求める: GPU 流体の粒子と、飲んだ物を包む皮の両方を、カメラの横方向と高さで調べる
+void ChronoSystem::MeasureDevourBody(GameContext& ctx){
+    const auto& body=life_.bodies[0];const V side{std::cos(yaw_),0,-std::sin(yaw_)};
+    const float reach=DevourBodyRadius(body.mass);float lo=-reach,hi=reach,nearest=-reach,farthest=reach,top=body.at.y+reach*.6f;const V flat{std::sin(yaw_),0,std::cos(yaw_)};
+    const auto& fluid=ctx.renderer->GetFluidBodySnapshot();
+    if(fluid.offsets.size()>64){std::vector<float> across,depth,height;const size_t step=std::max<size_t>(1,fluid.offsets.size()/2048);
+        for(size_t i=0;i<fluid.offsets.size();i+=step){const auto& o=fluid.offsets[i];V at{fluid.core.x+o.x,fluid.core.y+o.y,fluid.core.z+o.z};across.push_back(Dot(at-body.at,side));depth.push_back(Dot(at-body.at,flat));height.push_back(at.y);}
+        // はみ出した滴を除く
+        std::sort(across.begin(),across.end());std::sort(depth.begin(),depth.end());std::sort(height.begin(),height.end());const size_t trim=across.size()/50;
+        lo=across[trim];hi=across[across.size()-1-trim];nearest=depth[trim];farthest=depth[depth.size()-1-trim];top=height[height.size()-1-trim];}
+    for(const auto& arm:ctx.renderer->GetFluidTendrils())for(int end=0;end<2;++end){const auto& p=end?arm.end:arm.start;const float radius=end?arm.endRadius:arm.radius;
+        const V offset=V{p.x,p.y,p.z}-body.at;
+        // 体から遠い節 (使っていない枠など) は外形に入れない
+        if(Length(offset)>reach*2.5f)continue;
+        const float across=Dot(offset,side),along=Dot(offset,flat);lo=std::min(lo,across-radius);hi=std::max(hi,across+radius);nearest=std::min(nearest,along-radius);farthest=std::max(farthest,along+radius);top=std::max(top,p.y+radius);}
+    // 粒子の揺れで線が震えないよう、なめらかに追う
+    const float follow=resultMeasured_?.12f:1.f;resultMeasured_=true;resultOrigin_=body.at;
+    resultLo_+=(lo-resultLo_)*follow;resultHi_+=(hi-resultHi_)*follow;resultNear_+=(nearest-resultNear_)*follow;resultFar_+=(farthest-resultFar_)*follow;resultTopY_+=(top-resultTopY_)*follow;
+}
 // 時間切れの大きさを記録して終わる。最初の目標に届いていればクリア
 void ChronoSystem::FinishDevour(Player& p){
     StopLoopSounds();
@@ -489,52 +508,61 @@ void ChronoSystem::DrawDevourUI(GameContext& ctx){
     int total=0,eaten=0;for(const auto& prop:life_.props)if(!prop.orb&&prop.visual!=0xffffffffu){++total;if(!prop.active)++eaten;}
     float cm=DevourSizeCm(stage,body.mass),bestMass=devourBests_[size_t(devourStage_)];std::string size=DevourSizeText(cm),best=DevourSizeText(DevourSizeCm(stage,bestMass));
     if(finished_){
-        // 結果画面の見出しと詳細は英字のフォントで描かれるので、英語で出す
-        int rank=DevourRankAt(stage,body.mass);bool next=won_&&devourStage_+1<int(DevourStages().size());
-        ui.Result(won_,rank?"RANK "+DevourRankName(stage,rank):"TIME UP",stage.name+(won_?" クリア！":" 目標に届かなかった"),"FINAL SIZE",size,
-            std::string(devourNewBest_?"NEW BEST":"BEST "+best)+"   /   "+std::to_string(total?eaten*100/total:0)+"%   /   "+std::to_string(life_.absorbed)+" ITEMS"+(next?"   /   N  NEXT STAGE":""));
-        return;}
-    // 右上: 残り時間 (残り 30 秒で赤く脈打つ)
-    {float left=devourClock_.left;bool hurry=left<=30;float pulse=hurry?.5f+.5f*std::sin(life_.age*10):0;
-        ui.Dot(1196,66,48+4*pulse,{0,0,0,.4f});ui.Dot(1196,62,46+4*pulse,hurry?red:hazard);ui.Dot(1196,62,39,black);
-        ui.Center(DevourClockText(left),1196,42,30,hurry?red:white,UI::JapaneseFont);
-        shadowed("のこり時間",1196,114,12,white,.5f);}
-    // 上中央: ステージの名前・今のランク・次の目標までのゲージ
-    {float flash=std::min(1.f,devourClock_.flash);int rank=devourRank_;
-        shadowed(stage.name+(rank?"  ランク "+DevourRankName(stage,rank):""),640,16,22+8*flash,UI::WithAlpha(flash>0?hazard:white,1),.5f);
-        if(rank<goalCount){float from=rank?stage.goals[size_t(rank-1)]:stage.start,to=stage.goals[size_t(rank)],progress=std::clamp((cm-from)/(to-from),0.f,1.f);
-            ui.Fill({438,54,404,12},black);ui.Fill({440,56,400*progress,8},slime);
-            shadowed((rank?"次のランク "+DevourRankName(stage,rank+1)+"  ":std::string("目標  "))+DevourSizeText(to),640,72,13,hazard,.5f);}
-        else shadowed("Sランク達成！ 時間切れまで大きくなれ",640,72,13,hazard,.5f);
-        // 部屋の次の積み木の案内
-        for(float gate:stage.gates)if(cm<gate){shadowed("積み木の壁: "+DevourSizeText(gate)+" で飲める",640,92,13,white,.5f);break;}
-        // 次に開ける門の案内
-        for(int z=1;z<RingStyleCount;++z)if(!ringOpen_[size_t(z)]){float radius=RingZones()[size_t(z)].gateRadius;
-            shadowed(RingZones()[size_t(z)].name+"の門: "+DevourSizeText(DevourSizeCm(stage,DevourMassToCover(radius)))+" で飲める",640,92,13,white,.5f);break;}}
-    // 左下: 大きさ・飲み込んだ割合・コンボ
-    {shadowed(std::string("大きさ ")+size,28,596,24*(1+.3f*devourSizePulse_),devourSizePulse_>0?slime:white);
-        shadowed(std::to_string(total?eaten*100/total:0)+"% を吸収  /  "+std::to_string(life_.absorbed)+"個",28,630,14,hazard);
-        // 自己ベストを超えたら色を変えて知らせる
-        if(bestMass>0)shadowed(body.mass>bestMass?std::string("自己ベスト更新中！"):"自己ベスト "+best,28,650,14,body.mass>bestMass?slime:white);
-        if(devourClock_.combo>1)shadowed(std::to_string(devourClock_.combo)+" コンボ！",28,556,26*(1+.2f*std::min(1.f,devourClock_.comboClock)),slime);}
-    // 右下: このステージの変形アイテム
-    if(!devourFreeForms_){LifeAction form=DevourItemForm(stage.item);bool active=body.action==form,taken=LifeCanMorph(body,form);
-        const char* icon=form==LifeAction::Tire?"form_tire":form==LifeAction::Spring?"form_spring":"form_vacuum";const char* name=form==LifeAction::Tire?"タイヤ":form==LifeAction::Spring?"バネ":"掃除機";
-        ui.Dot(1200,630,40,{0,0,0,.55f});ui.Image(std::string("Resources/Textures/UI/HUD/")+icon+".png",{1176,606,48,48},active||devourItemReady_?hazard:Engine::Vector4{.5f,.5f,.5f,1});
-        std::string state=active?"のこり "+std::to_string(int(std::ceil(devourMorphLeft_)))+" 秒":devourItemReady_?"左クリック / RTで変形":taken?"使用済み":"アイテムを探そう";
-        shadowed(name,1200,676,16,white,.5f);shadowed(state,1200,696,12,active||devourItemReady_?hazard:white,.5f);}
+        // 結果画面: 大きさを巻尺で見せる。届かなかったら次の目標までの差を出す
+        int rank=DevourRankAt(stage,body.mass);UI::Scale::ResultView view;view.stage=stage.name;view.cm=cm;view.won=won_;view.newBest=devourNewBest_;
+        view.rank=rank?DevourRankName(stage,rank):"";view.goalCm=stage.goals.front();view.timeLeft=(std::max)(0.f,devourClock_.left);view.items=life_.absorbed;view.percent=total?eaten*100/total:0;
+        view.hasNext=won_&&devourStage_+1<int(DevourStages().size());view.live=true;
+        // 体そのものを画面へ投影して端を取る (手前の面は奥より大きく映るので、中心の深さで測ると線がずれる)
+        // 体とカメラが止まったら線も動かさない
+        if(!resultScreenSet_||resultCameraAge_<kResultSettledAge){using namespace DirectX;const XMMATRIX viewProj=ctx.camera->View()*ctx.camera->Proj();std::vector<float> xs,ys;
+            auto project=[&](V at){XMVECTOR p=XMVector3TransformCoord(XMVectorSet(at.x,at.y,at.z,1),viewProj);xs.push_back((XMVectorGetX(p)+1)*640);ys.push_back((1-XMVectorGetY(p))*360);};
+            const V bodyAt=life_.bodies[0].at;const auto& fluid=ctx.renderer->GetFluidBodySnapshot();const V side{std::cos(yaw_),0,-std::sin(yaw_)};const float reach=DevourBodyRadius(life_.bodies[0].mass);
+            const size_t step=std::max<size_t>(1,fluid.offsets.size()/2048);
+            for(size_t i=0;i<fluid.offsets.size();i+=step){const auto& o=fluid.offsets[i];project({fluid.core.x+o.x,fluid.core.y+o.y,fluid.core.z+o.z});}
+            size_t trim=xs.size()/200;
+            std::sort(xs.begin(),xs.end());std::sort(ys.begin(),ys.end());
+            if(xs.size()>2*trim){xs.erase(xs.end()-trim,xs.end());xs.erase(xs.begin(),xs.begin()+trim);ys.erase(ys.begin(),ys.begin()+trim);}
+            for(const auto& arm:ctx.renderer->GetFluidTendrils())for(int end=0;end<2;++end){const auto& p=end?arm.end:arm.start;const float radius=end?arm.endRadius:arm.radius;const V at{p.x,p.y,p.z};
+                if(Length(at-bodyAt)>reach*2.5f)continue;project(at-side*radius);project(at+side*radius);project(at+V{0,radius,0});}
+            if(!xs.empty()){float left=*std::min_element(xs.begin(),xs.end()),right=*std::max_element(xs.begin(),xs.end());const float top=*std::min_element(ys.begin(),ys.end()),skin=(right-left)*.03f;left-=skin;right+=skin; // 粒子の中心より皮の分だけ外が見える
+                // 粒子の揺れで線が震えないよう、なめらかに追う
+                const float follow=resultScreenSet_?.2f:1.f;resultScreenSet_=true;
+                resultLeft_+=(left-resultLeft_)*follow;resultRight_+=(right-resultRight_)*follow;resultTop_+=(top-resultTop_)*follow;}}
+        view.bodyLeft=std::max(resultLeft_,490.f);view.bodyRight=std::min(resultRight_,1270.f);view.bodyTop=resultTop_;
+        UI::Scale::Result(ui,view,finishAge_);
+        // 終わった直後は、今までの表示を薄くしながら残す
+        if(finishAge_>=.35f)return;
+        ui.MultiplyAlpha(1-finishAge_/.35f);}
+    // 物差しの表示へ渡す内容をまとめる
+    {if(devourHudCm_<=0||cm<devourHudCm_*.5f)devourHudCm_=cm;devourHudCm_+=(cm-devourHudCm_)*(1-std::exp(-8*std::min(ctx.dt,.05f)));
+        UI::Scale::HudView hud;const int rank=devourRank_;hud.stage=stage.name;hud.rank=rank?DevourRankName(stage,rank):"";hud.cm=cm;hud.shownCm=devourHudCm_;hud.time=devourClock_.left;hud.pulse=devourSizePulse_;
+        hud.flash=std::min(1.f,devourClock_.flash);hud.age=life_.age;hud.combo=devourClock_.combo;hud.comboKick=devourClock_.comboClock;hud.items=life_.absorbed;hud.percent=total?eaten*100/total:0;hud.bestBroken=bestMass>0&&body.mass>bestMass;
+        // 目標の旗: まだ届いていないランクを全部立てる
+        for(int i=rank;i<goalCount;++i)hud.flags.push_back({stage.goals[size_t(i)],DevourRankName(stage,i+1)+" "+DevourSizeText(stage.goals[size_t(i)]),true});
+        if(rank<goalCount){const float to=stage.goals[size_t(rank)];hud.next=(rank?"つぎ ランク"+DevourRankName(stage,rank+1):std::string("目標"))+" あと "+DevourSizeText(std::max(0.f,to-cm));}
+        else hud.next="Sランク達成！ もっと大きく";
+        // 次に飲める壁と門
+        for(float gate:stage.gates)if(cm<gate){hud.gate="積み木の壁 "+DevourSizeText(gate)+" で飲める";hud.flags.insert(hud.flags.begin(),{gate,"壁 "+DevourSizeText(gate),false});break;}
+        for(int z=1;z<RingStyleCount;++z)if(!ringOpen_[size_t(z)]){const float gate=DevourSizeCm(stage,DevourMassToCover(RingZones()[size_t(z)].gateRadius));hud.gate=RingZones()[size_t(z)].name+"の門 "+DevourSizeText(gate)+" で飲める";break;}
+        if(bestMass>0&&body.mass<=bestMass){const float mark=DevourSizeCm(stage,bestMass);hud.flags.insert(hud.flags.begin(),{mark,"BEST "+best,false});}
+        // このステージの変形アイテム
+        if(!devourFreeForms_){const LifeAction form=DevourItemForm(stage.item);const bool active=body.action==form,taken=LifeCanMorph(body,form);hud.item=true;hud.itemLit=active||devourItemReady_;
+            hud.itemIcon=form==LifeAction::Tire?"form_tire":form==LifeAction::Spring?"form_spring":"form_vacuum";hud.itemName=form==LifeAction::Tire?"タイヤ":form==LifeAction::Spring?"バネ":"掃除機";
+            hud.itemState=active?"のこり "+std::to_string(int(std::ceil(devourMorphLeft_)))+" 秒":devourItemReady_?(UI::UsingPad()?"RT で変形":"左クリックで変形"):taken?"使用済み":"アイテムを探そう";}
+        UI::Scale::Hud(ui,hud);}
     // 飲み込んだ所の文字: 弾んで上へ流れて消える
     for(const auto& pop:devourPops_){float x,y;if(!DevourScreen(ctx,pop.at,x,y))continue;float u=pop.age/.7f;
-        shadowed(pop.text,x,y-46*u,(20+26*pop.weight)*(1+.5f*std::sin(std::min(1.f,u*4)*3.1415927f)),UI::WithAlpha(pop.weight>=.3f?hazard:white,1-u*u),.5f);}
+        shadowed(pop.text,x,y-60*u,(30+34*pop.weight)*(1+.5f*std::sin(std::min(1.f,u*4)*3.1415927f)),UI::WithAlpha(pop.weight>=.3f?hazard:white,1-u*u),.5f);}
     // 飛びかかる目標の印: 覆える物は「！」、大きすぎる物は「×」
     if(body.action==LifeAction::Idle&&!life_.lab){auto pick=DevourChooseTarget(body.at,body.forward,body.mass,life_.props);
         if(pick.index>=0){const auto& prop=life_.props[size_t(pick.index)];float x,y;
-            if(DevourScreen(ctx,prop.at+V{0,prop.radius+2.5f*LifeScale(body.mass),0},x,y)&&x>20&&x<1260&&y>90&&y<560){
+            if(DevourScreen(ctx,prop.at+V{0,prop.radius+2.5f*LifeScale(body.mass),0},x,y)&&x>20&&x<1260&&y>140&&y<540){
                 float bob=4*std::sin(life_.age*8);
-                if(pick.fits){ui.Dot(x,y+bob,15,black);ui.Dot(x,y+bob,13,hazard);ui.Center("!",x,y-14+bob,22,black,UI::JapaneseFont);}
-                else if(DevourCanShatter(body.mass,prop.radius)&&prop.morphItem==LifeMorphItem::None&&life_.form==LifeAction::Hammer){ui.Dot(x,y+bob,15,black);ui.Dot(x,y+bob,13,red);ui.Center("砕",x,y-12+bob,18,white,UI::JapaneseFont);}
-                else{ui.Dot(x,y,13,UI::WithAlpha(black,.7f));ui.Center("×",x,y-12,18,red,UI::JapaneseFont);}}
-            if(!pick.fits&&DevourCanShatter(body.mass,prop.radius)&&prop.morphItem==LifeMorphItem::None&&life_.form==LifeAction::Hammer)ui.Center("ハンマーで叩くと砕ける！",640,590,16,UI::Lime,UI::JapaneseFont);
-            if(pick.fits)ui.Center(std::string("触れるだけで飲み込む / ")+(UI::UsingPad()?"LT":"右クリック")+"でガバッと飛びかかる",640,590,16,UI::Lime,UI::JapaneseFont);}}
+                if(pick.fits){ui.Dot(x,y+bob,23,black);ui.Dot(x,y+bob,20,hazard);ui.Center("!",x,y-22+bob,34,black,UI::JapaneseFont);}
+                else if(DevourCanShatter(body.mass,prop.radius)&&prop.morphItem==LifeMorphItem::None&&life_.form==LifeAction::Hammer){ui.Dot(x,y+bob,23,black);ui.Dot(x,y+bob,20,red);ui.Center("砕",x,y-17+bob,26,white,UI::JapaneseFont);}
+                else{ui.Dot(x,y,20,UI::WithAlpha(black,.8f));ui.Center("×",x,y-18,28,red,UI::JapaneseFont);}}
+            if(!pick.fits&&DevourCanShatter(body.mass,prop.radius)&&prop.morphItem==LifeMorphItem::None&&life_.form==LifeAction::Hammer)UI::Scale::Notice(ui,"ハンマーで叩くと砕ける！",664,522);
+            // 最初のうちだけ、操作の説明を出す
+            if(pick.fits&&life_.age<20)UI::Scale::Notice(ui,std::string("触れるだけで飲み込む / ")+(UI::UsingPad()?"LT":"右クリック")+"でガバッ",664,522);}}
 }
 }

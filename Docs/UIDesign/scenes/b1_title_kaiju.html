@@ -1,0 +1,73 @@
+<!doctype html><meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Dela+Gothic+One&family=Shippori+Mincho+B1:wght@800&family=Kaisei+Tokumin:wght@800&family=Reggae+One&display=block" rel="stylesheet">
+<style>
+html,body{margin:0;width:1920px;height:1080px;overflow:hidden;background:#e9dcbc}
+canvas{position:absolute;left:0;top:0}
+.tag{position:absolute;right:50px;top:40px;writing-mode:vertical-rl;font:800 48px/1.3 "Shippori Mincho B1";color:#fff4d9;letter-spacing:.06em;height:760px;white-space:nowrap;text-shadow:3px 3px 0 #141318}
+.tag b{color:#ffd23b;font-weight:800}
+.menu{position:absolute;left:66px;bottom:124px;display:flex;gap:18px;align-items:flex-end}
+.tk{position:relative;background:#f3e7c7;color:#141318;height:92px;padding:0 44px;display:flex;align-items:center;font:800 38px "Shippori Mincho B1";box-shadow:4px 6px 0 rgba(20,19,24,.85);
+ -webkit-mask:radial-gradient(circle 11px at 0 50%,transparent 98%,#000) left/51% 100% no-repeat,radial-gradient(circle 11px at 100% 50%,transparent 98%,#000) right/51% 100% no-repeat}
+.tk.on{background:#c8281e;color:#fff4d9;height:122px;font-size:56px;padding:0 60px}
+.keys{position:absolute;left:92px;bottom:58px;display:flex;align-items:center;gap:8px;font:800 26px "Shippori Mincho B1";color:#f3e7c7}
+.keys img{height:44px}
+.bill{position:absolute;left:0;right:0;bottom:0;height:50px;background:#141318;color:#eaddbd;font:800 22px/50px "Shippori Mincho B1";text-align:center;letter-spacing:.14em}
+</style>
+<body>
+<canvas id="c" width="1920" height="1080"></canvas>
+<div class="tag">そいつは、<b>あとで</b>本気を出す。</div>
+<div class="menu"><div class="tk on">はじめる</div><div class="tk">スタッフ</div><div class="tk">帰る</div></div>
+<div class="bill">製作 neo_Engine　　主演 スライム　　音楽 Kevin MacLeod (incompetech.com) CC BY 4.0</div>
+<script src="gel.js"></script>
+<script>
+(async()=>{
+const F1='400 200px "Dela Gothic One"';
+await fontReady([[F1,'スライム、跡で本気出す。']]);
+const [town,paper]=await Promise.all([loadImg('assets/town_big.jpg'),loadImg('assets/paper.jpg')]);
+const x=document.getElementById('c').getContext('2d',{willReadFrequently:true});
+// 紙
+x.fillStyle='#e7d7b2';x.fillRect(0,0,W,H);
+x.globalCompositeOperation='multiply';x.globalAlpha=.55;x.drawImage(paper,0,0,1920,1920);x.globalAlpha=1;
+// 赤の面 (空)。版ずれさせる
+x.fillStyle='#d9392a';x.beginPath();x.moveTo(0,0);x.lineTo(1920,0);x.lineTo(1920,560);x.lineTo(0,700);x.closePath();x.fill();
+x.fillStyle='#efb52b';x.beginPath();x.moveTo(0,700);x.lineTo(1920,560);x.lineTo(1920,700);x.lineTo(0,840);x.closePath();x.fill();
+x.globalCompositeOperation='source-over';
+// 放射の線
+x.save();x.globalCompositeOperation='multiply';x.translate(1120,470);for(let i=0;i<36;i++){x.rotate(6.283/36);x.fillStyle='rgba(120,10,6,.33)';x.beginPath();x.moveTo(0,0);x.lineTo(1800,-70);x.lineTo(1800,70);x.closePath();x.fill()}x.restore();
+// 町の写真を網点で刷る
+const lay=mk(),l=lay.getContext('2d',{willReadFrequently:true});
+halftone(l,town,300,330,1320,640,0,420,1920,931,{cell:8,angle:.42,contrast:1.5,lift:.06,ink:[20,19,26]});
+{ // 上側を消して、町の空を赤の面につなげる
+ l.globalCompositeOperation='destination-out';const g=l.createLinearGradient(0,470,0,700);g.addColorStop(0,'#000');g.addColorStop(1,'rgba(0,0,0,0)');l.fillStyle=g;l.fillRect(0,0,W,700);l.globalCompositeOperation='source-over'}
+x.globalCompositeOperation='multiply';x.drawImage(lay,0,0);x.globalCompositeOperation='source-over';
+// 巨大なスライム: 町の向こうからのしかかる
+const s=mk(),c=s.getContext('2d');
+blob(c,1290,730,470,330);blob(c,930,850,190,120);blob(c,1660,860,200,130);blob(c,1290,930,560,120);blob(c,1560,480,110,120);blob(c,1040,490,120,120);
+stroke(c,[[820,900,40],[800,960,20],[796,1010,12],[794,1030,18]],100);stroke(c,[[1760,900,36],[1776,960,18],[1780,1000,12]],100);
+const blobLay=mk(),b=blobLay.getContext('2d',{willReadFrequently:true});b.fillStyle='#74c62a';b.fillRect(0,0,W,H);
+gel(b,s,{smooth:8,height:230,big:90,edge:10,shadow:0,refract:.1,sigma:[2,.3,3],base:[.45,.92,.1],specks:false});
+// 形で切り抜く
+const flat=mk(),mc=flat.getContext('2d',{willReadFrequently:true});mc.filter='blur(10px)';mc.drawImage(s,0,0);mc.filter='none';
+{const d=mc.getImageData(0,0,W,H),q=d.data;for(let i=0;i<W*H;i++){const a=q[i*4+3]/255;q[i*4+3]=Math.min(1,Math.max(0,(a-.46)/.08))*255}mc.putImageData(d,0,0)}
+mc.globalCompositeOperation='source-in';mc.drawImage(blobLay,0,0);mc.globalCompositeOperation='source-over';
+// 版ずれ: 先に黒の輪郭を少しずらして置く
+{const o=mk(),oc=o.getContext('2d');oc.drawImage(flat,0,0);oc.globalCompositeOperation='source-in';oc.fillStyle='#141318';oc.fillRect(0,0,W,H);x.drawImage(o,-9,8)}
+x.drawImage(flat,0,0);
+// 影だけ網点で刷り重ねる
+{const op=mk(),oc=op.getContext('2d',{willReadFrequently:true});const lit=mk(),lc=lit.getContext('2d');lc.fillStyle='#fff';lc.fillRect(0,0,W,H);lc.drawImage(flat,0,0);halftone(oc,lit,0,0,W,H,0,0,W,H,{cell:9,angle:1.1,contrast:1.7,lift:.22,ink:[14,50,20]});oc.globalCompositeOperation='destination-in';oc.drawImage(flat,0,0);x.globalCompositeOperation='multiply';x.drawImage(op,0,0);x.globalCompositeOperation='source-over'}
+// 目: 町を見下ろす (だるそうなまぶた)
+x.strokeStyle='#141318';x.lineWidth=11;
+for(const [ex,ey] of [[1170,690],[1450,690]]){x.fillStyle='#fff6df';x.beginPath();x.ellipse(ex,ey,74,52,0,0,7);x.fill();x.stroke();x.fillStyle='#141318';x.beginPath();x.ellipse(ex-8,ey+14,26,28,0,0,7);x.fill();
+ x.fillStyle='#3f9a22';x.beginPath();x.ellipse(ex,ey-10,80,50,0,3.14,6.29);x.fill();x.beginPath();x.moveTo(ex-80,ey-10);x.lineTo(ex+80,ey-10);x.stroke()}
+// タイトル: 手前へ走る遠近の文字
+function poster(t,X,Y,size,skew,scaleY,fill,side,depth,rot=0){x.save();x.translate(X,Y);x.rotate(rot);x.transform(1,0,skew,1,0,0);x.scale(1,scaleY);x.font=`400 ${size}px "Dela Gothic One"`;x.textBaseline='alphabetic';
+ for(let i=depth;i>0;i--){x.fillStyle=side;x.fillText(t,i*1.0,i*.85)}
+ x.lineJoin='round';x.lineWidth=size*.055;x.strokeStyle='#141318';x.strokeText(t,0,0);x.fillStyle=fill;x.fillText(t,0,0);x.restore()}
+poster('スライム、',66,250,170,-.16,1.05,'#fff4d9','#141318',18,-.03);
+poster('跡で本気出す。',54,560,232,-.16,1.32,'#ffd23b','#141318',26,-.03);
+// 紙の傷と折り目
+x.save();x.globalCompositeOperation='multiply';const n=noiseCanvas(300,6,5);x.globalAlpha=.25;x.drawImage(n,0,0);x.globalAlpha=1;x.restore();
+x.fillStyle='rgba(255,250,230,.12)';x.fillRect(958,0,4,H);x.fillRect(0,538,W,3);
+done();
+})();
+</script>

@@ -1,0 +1,27 @@
+<!doctype html><meta charset="utf-8">
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/","cannon-es":"https://cdn.jsdelivr.net/npm/cannon-es@0.20.0/dist/cannon-es.js"}}</script>
+<link href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@700;900&family=Anton&display=block" rel="stylesheet">
+<style>html,body{margin:0;width:1920px;height:1080px;overflow:hidden;font-family:"Zen Kaku Gothic New";font-weight:900}canvas{position:absolute;left:0;top:0;width:1920px;height:1080px}
+#e{position:absolute;left:20px;top:20px;color:#fff;background:#000;font:18px monospace;z-index:9;white-space:pre-wrap}
+.abs{position:absolute}.num{font-family:Anton,"Zen Kaku Gothic New";font-weight:400;letter-spacing:.01em}
+.keys{display:inline-flex;gap:4px;align-items:center;background:#111;padding:5px 8px;border-radius:6px}.keys img{height:40px;display:block}
+.bar{position:absolute;display:flex;gap:40px;align-items:center;font-size:27px}.bar span{display:flex;gap:10px;align-items:center}
+body{background:#f5c400;color:#111}.menu{left:72px;top:64px;display:grid;gap:2px}.m{font-size:42px}.m.on{font-size:84px;display:flex;gap:14px;align-items:center}.m.on:before{content:"";width:0;height:0;border-left:34px solid #c7241e;border-top:22px solid transparent;border-bottom:22px solid transparent}
+.lg{position:absolute;bottom:560px;color:#111}</style><body>
+<canvas id="c"></canvas><canvas id="t"></canvas><div class="abs menu"><div class="m on">はじめる</div><div class="m">クレジット</div><div class="m">やめる</div></div>
+<div id="logo"></div>
+<div class="bar" style="left:72px;top:330px"><span><i class="keys"><img src="../scenes/assets/keyboard_enter.png"><img src="../scenes/assets/xbox_button_a.png"></i>けってい</span></div><div class="abs" style="right:48px;top:30px;font-size:19px;font-weight:700">音楽 Kevin MacLeod (incompetech.com) CC BY 4.0</div>
+<div id="e"></div>
+<script type="module">
+const E=document.getElementById('e');addEventListener('error',e=>E.textContent+=e.message+'\n');addEventListener('unhandledrejection',e=>E.textContent+=String(e.reason&&e.reason.stack||e.reason)+'\n');
+import {THREE,W,H,stage,ground,drop,model,place,slime,eyesAt,slab,toy,rng,gradBg,flatCam,logoSVG,ready} from './scene3d.js';
+function tape(id,ticks,y,h){const c=document.getElementById(id),x=c.getContext('2d');c.width=W;c.height=H;x.fillStyle='#f5c400';x.fillRect(0,y,W,H-y);x.fillStyle='#111';x.fillRect(0,y,W,3);const r=ticks;for(let i=0;i<=W;i+=12){const big=i%120===0,mid=i%60===0;x.fillRect(i,y,big?4:2,big?h:mid?h*.7:h*.42)}x.font='400 40px Anton';x.textBaseline='top';for(const [px,t,red] of r){x.fillStyle=red?'#c7241e':'#111';x.fillText(t,px+8,y+h*.72)}}
+await document.fonts.load('400 40px Anton','0');
+let lx=640;[['チ',120],['リ',190],['ツ',290],['モ',440]].forEach(([c,z])=>{const d=document.createElement('div');d.className='lg';d.style.cssText=`left:${lx}px;width:${z}px;height:${z}px`;d.innerHTML=logoSVG(c,20,'#111');document.getElementById('logo').append(d);lx+=z*1.04});
+const s=stage(document.getElementById('c'),{bg:0xf5c400,sun:2.6,sunPos:[-5,9,12],env:.9,exposure:1.05,shadowArea:14});flatCam(s);
+const line=[['street_rat',.5,1.1],['metal_jerrycan',.75,1.8],['old_tyre',1.1,2.7],['Barrel_01',1.5,4.2],['fire_hydrant',1.5,5.8],['cardboard_box_01',1.5,7.4],['concrete_cat_statue',2.2,9.4],['covered_car',4.6,13],['horse_statue_01',4.4,17]];
+for(const [n,z,x] of line){const t=await model(n);const m=place(t,z,[x,0,0],[0,.5,0]);const h=t.userData.size.y*z;m.position.y=1.5+h*.5;s.sc.add(m)}
+const R=.34,sl=slime(R,{seed:4,squash:.8,lump:.05,flat:.5});sl.position.set(.45,1.5+R*.42,0);s.sc.add(sl);eyesAt(s,sl,R);await s.draw();
+tape('t',[[0,'5cm',1],[384,'30cm',0],[643,'1m',0],[988,'5m',0],[1482,'50m',0],[1680,'126m',1]],930,120);
+ready();
+</script>

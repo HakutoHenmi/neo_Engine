@@ -327,6 +327,7 @@ exit /b %ERRORLEVEL%</Command>
     <ClInclude Include="Game\Scripts\WarningEffectScript.h" />
     <ClInclude Include="Game\UI\CreditsUI.h" />
     <ClInclude Include="Game\UI\GameUI.h" />
+    <ClInclude Include="Game\UI\ScaleUI.h" />
     <ClInclude Include="Game\UI\GraphicsUI.h" />
     <ClInclude Include="Game\UI\LoadingUI.h" />
     <ClInclude Include="Game\UI\RogueliteUI.h" />

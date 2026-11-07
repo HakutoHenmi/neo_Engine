@@ -1,0 +1,68 @@
+<!doctype html><meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@700;900&family=Dela+Gothic+One&display=block" rel="stylesheet">
+<style>
+html,body{margin:0;width:1920px;height:1080px;overflow:hidden;background:#222;font-family:"Zen Kaku Gothic New"}
+canvas{position:absolute;left:0;top:0}
+.board{position:absolute;left:300px;top:44px;width:1020px;height:886px;background:#fbfaf2;box-sizing:border-box;border:16px solid #151515;box-shadow:0 0 0 12px #f4c21b,0 24px 40px rgba(0,0,0,.55);color:#111}
+.top{height:206px;background:#f4c21b;border-bottom:12px solid #151515;display:grid;grid-template-columns:230px 1fr;align-items:center}
+.top h1{margin:0;font:400 72px/1.14 "Dela Gothic One";letter-spacing:.01em}
+table{border-collapse:collapse;width:100%}
+td{border-bottom:5px solid #151515;padding:0 26px;height:100px;font-weight:900}
+td:first-child{width:208px;font-size:37px;border-right:5px solid #151515;text-align:center;background:#eeecdf}
+td:last-child{font-size:48px}
+td small{font-size:34px}
+.val{font:400 66px "Dela Gothic One"}
+.sub{position:absolute;left:0;right:0;bottom:0;height:80px;background:#151515;color:#fff;font-weight:900;font-size:34px;display:grid;place-items:center}
+.rank{position:absolute;left:1370px;top:84px;width:440px;height:440px;border-radius:50%;background:#fff;box-sizing:border-box;border:52px solid #d3241d;display:grid;place-items:center;font:400 230px/1 "Dela Gothic One";color:#111;box-shadow:0 14px 22px rgba(0,0,0,.5);}
+.rk{position:absolute;left:1370px;top:534px;width:440px;text-align:center;font-weight:900;color:#fff;font-size:42px;text-shadow:0 3px 0 #000,0 0 12px #000}
+.best{position:absolute;left:1414px;top:598px;width:352px;background:#111;color:#f4c21b;text-align:center;font:400 44px/1.5 "Dela Gothic One";transform:rotate(-3deg);box-shadow:6px 6px 0 #d3241d}
+.btn{position:absolute;left:1368px;width:444px;height:96px;display:grid;grid-template-columns:auto 1fr;align-items:center;gap:6px;padding:0 20px;box-sizing:border-box;font-weight:900;font-size:40px;}
+.btn img{height:50px}.keys{display:flex;gap:6px;background:#141414;padding:7px 10px;border-radius:8px;margin-right:14px}
+.b1{top:716px;background:#f4c21b;color:#111;box-shadow:0 8px 0 #8f6f06,0 12px 16px rgba(0,0,0,.45)}
+.b2{top:832px;background:#fbfaf2;color:#111;box-shadow:0 8px 0 #8b897c,0 12px 16px rgba(0,0,0,.45)}
+.b3{top:948px;background:#111;color:#fff;height:80px;font-size:34px}.b3 img{height:44px}
+.foot{position:absolute;left:300px;top:946px;width:1020px;height:92px;background:repeating-linear-gradient(-45deg,#f4c21b 0 50px,#14141a 50px 100px);box-shadow:0 8px 12px rgba(0,0,0,.5)}
+.leg{position:absolute;width:30px;height:60px;background:#55585e;top:924px}
+</style>
+<body>
+<canvas id="bg" width="1920" height="1080"></canvas>
+<div class="leg" style="left:420px"></div><div class="leg" style="left:1170px"></div>
+<div class="board">
+  <div class="top"><canvas id="bow" width="230" height="194" style="position:static"></canvas><h1>ご迷惑を<br>おかけしました</h1></div>
+  <table>
+    <tr><td>工事名</td><td>輪の町 まるのみ工事</td></tr>
+    <tr><td>大きさ</td><td><span class="val">126.31</span> <small>m</small> <small>（最高記録）</small></td></tr>
+    <tr><td>飲んだ物</td><td><span class="val">722</span> <small>個</small></td></tr>
+    <tr><td>町の吸収</td><td><span class="val">30</span> <small>%</small></td></tr>
+    <tr><td>工　期</td><td><span class="val">4:15</span> <small>のこり 0:45</small></td></tr>
+  </table>
+  <div class="sub">施工　スライム ／ 明日もやります</div>
+</div>
+<div class="foot"></div>
+<div class="rank">S</div>
+<div class="rk">ランク</div>
+<div class="best">最高記録 更新</div>
+<div class="btn b1"><div class="keys"><img src="assets/keyboard_n.png"><img src="assets/xbox_button_a.png"></div><span>つぎの現場へ</span></div>
+<div class="btn b2"><div class="keys"><img src="assets/keyboard_r.png"><img src="assets/xbox_button_x.png"></div><span>もう一度</span></div>
+<div class="btn b3"><div class="keys"><img src="assets/keyboard_tab.png"><img src="assets/xbox_button_y.png"></div><span>タイトル</span></div>
+<script src="gel.js"></script>
+<script>
+(async()=>{
+await fontReady([['900 100px "Zen Kaku Gothic New"','輪の町'],['400 90px "Dela Gothic One"','ご迷惑を']]);
+const img=await loadImg('assets/town_big.jpg');
+const x=document.getElementById('bg').getContext('2d',{willReadFrequently:true});
+// 実機の町の画面を暗く沈める (HUD の無い中央を拡大)
+x.filter='blur(3px) saturate(.9)';x.drawImage(img,330,190,1180,664,0,0,1920,1080);x.filter='none';
+x.fillStyle='rgba(14,18,16,.42)';x.fillRect(0,0,W,H);
+// 頭を下げるスライム (ヘルメットのピクトグラム)
+const b=document.getElementById('bow').getContext('2d');
+b.translate(10,8);b.lineWidth=7;b.strokeStyle='#151515';b.fillStyle='#8fdc2e';
+b.beginPath();b.ellipse(92,132,84,46,-.2,0,7);b.fill();b.stroke();
+b.beginPath();b.ellipse(148,114,44,34,-.5,0,7);b.fill();b.stroke();
+b.fillStyle='#8fdc2e';b.beginPath();b.ellipse(118,122,40,34,-.3,0,7);b.fill();
+b.lineWidth=6;b.beginPath();b.moveTo(146,128);b.quadraticCurveTo(160,136,172,124);b.stroke();
+b.fillStyle='#fff';b.beginPath();b.arc(166,84,42,Math.PI*1.0,Math.PI*2.1);b.closePath();b.fill();b.stroke();
+b.fillStyle='#151515';b.save();b.translate(166,86);b.rotate(.34);b.fillRect(-60,-3,116,9);b.restore();
+done();
+})();
+</script>

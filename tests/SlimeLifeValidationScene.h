@@ -895,6 +895,58 @@ class SlimeLifeValidationScene final:public Game::GameScene {
         Game::GameScene::Update();++frames_;if(devourPhase_==phaseAtStart){devourFresh_=false;devourClock_+=std::max(life.age-before,1.f/120);}
         if(frames_>20000){std::ofstream report("tests/out/slime-life-devour.txt");report<<"FAIL timeout phase="<<devourPhase_<<devourNotes_<<'\n';PostQuitMessage(2);}
     }
+    // 物差しの UI のスライムの撮影: 本物の GPU 流体を、同じ瞬間に黄と青の背景で 2 回撮る。
+    // 差から透明度を取り出す (Docs/UIDesign/chiritsumo/matte_slime.py)。idle は待機、roll は右へ転がる
+    int spriteFrame_=0,spritePose_=0,spriteStep_=0;bool spriteHidden_=false;uint32_t spriteCube_=0,spriteWhite_=0;Engine::Vector4 spriteBack_{.96f,.77f,0,1};
+    static constexpr int SpriteIdle=12,SpriteRoll=10;
+    void UpdateSpriteCapture(){
+        using namespace Game;using namespace Game::Chrono;
+        auto* render=Engine::Renderer::GetInstance();
+        auto player=FindObjectByName("Player");auto& input=GetComponents().get<ControlFrame>(player);input={};input.pitch=.08f;
+        auto* chrono=GetChronoSystem();auto& life=const_cast<SlimeLife&>(chrono->LifeState());auto& body=life.bodies[0];
+        chrono->DevourClockState().left=170;GetComponents().get<Player>(player).invincible=60;
+        if(!spriteHidden_){spriteHidden_=true;spriteCube_=render->LoadObjMesh("Resources/Models/cube/cube.obj");spriteWhite_=render->LoadTexture2D("Resources/Textures/white1x1.png");
+            std::filesystem::create_directories("tests/out/sprite");}
+        if(++spriteFrame_%30==1)for(auto [e,mr]:const_cast<entt::registry&>(GetRegistry()).view<MeshRendererComponent>().each())mr.enabled=false;
+        // 周りの物に反応して口を開かないよう、飲める物を無くす
+        for(auto& prop:life.props)prop.sealed=true;
+        const bool rolling=spritePose_>=SpriteIdle;
+        if(spritePose_>=SpriteIdle+SpriteRoll){std::ofstream("tests/out/sprite/done.txt")<<"PASS";PostQuitMessage(0);return;}
+        // 待機の間は顔をカメラへ向ける。転がる間は右へ動かす
+        if(!rolling)body.forward=body.liquidForward={0,0,-1};else input.move={1,0,0};
+        const int warm=spritePose_==0?150:spritePose_==SpriteIdle?60:rolling?4:6;
+        if(spriteStep_<warm){render->SetRogueWorldFrozen(false);spriteBack_={.96f,.77f,0,1};Game::GameScene::Update();++spriteStep_;
+            return;}
+        render->SetRogueWorldFrozen(true);const int local=spriteStep_-warm;++spriteStep_;
+        wchar_t path[96];const wchar_t* kind=rolling?L"roll":L"idle";const int index=rolling?spritePose_-SpriteIdle:spritePose_;
+        if(local==5){swprintf_s(path,L"tests/out/sprite/%s_%02d_a.png",kind,index);Capture(path);spriteBack_={.02f,.2f,.92f,1};}
+        if(local==11){swprintf_s(path,L"tests/out/sprite/%s_%02d_b.png",kind,index);Capture(path);++spritePose_;spriteStep_=0;}
+    }
+    // 終了の演出の撮影: 物を実際に飲ませて育ててから時間切れにして、巻尺で測るまでを連続で撮る
+    float resultPlay_=0;bool hudShot_=false;int resultShot_=0;std::chrono::steady_clock::time_point resultFinished_{};
+    void UpdateResultCapture(){
+        using namespace Game;using namespace Game::Chrono;
+        auto player=FindObjectByName("Player");auto& input=GetComponents().get<ControlFrame>(player);input={};input.pitch=.3f;
+        auto* chrono=GetChronoSystem();auto& life=const_cast<SlimeLife&>(chrono->LifeState());auto& body=life.bodies[0];auto& clock=chrono->DevourClockState();
+        GetComponents().get<Player>(player).invincible=60;
+        if(!chrono->Finished()){
+            const auto& stage=chrono->DevourStageInfo();
+            if(frames_==60){const wchar_t* goal=wcsstr(GetCommandLineW(),L"--result-goal=");const int index=goal?_wtoi(goal+14):0;const float size=goal?stage.goals[std::min<size_t>(size_t(std::max(index,0)),stage.goals.size()-1)]*1.02f:stage.goals.front()*.9f;
+                if(index>=0){body.mass=body.health=body.maxHealth=DevourGoalMass(stage,size);++life.revision;}}
+            if(frames_>60){input.move={0,0,1};input.yaw=resultPlay_*.5f;resultPlay_+=1.f/60;}
+            if(resultPlay_>6&&!hudShot_){hudShot_=true;Capture(L"tests/out/hud-play.png");}
+            if(resultPlay_>9)clock.left=.01f;
+            if(frames_>40000){PostQuitMessage(2);return;}
+            resultFinished_=std::chrono::steady_clock::now();Game::GameScene::Update();++frames_;return;
+        }
+        Game::GameScene::Update();++frames_;
+        const float age=std::chrono::duration<float>(std::chrono::steady_clock::now()-resultFinished_).count();
+        const float at[]={.12f,.4f,.75f,1.1f,1.5f,2.f,3.f,4.5f};
+        if(resultShot_<8&&age>=at[resultShot_]){wchar_t path[64];swprintf_s(path,L"tests/out/result-seq-%d.png",resultShot_++);Capture(path);}
+        if(resultShot_>=8){std::ofstream("tests/out/result-seq.txt")<<"PASS absorbed="<<life.absorbed<<" mass="<<body.mass;
+            // 結果からタイトルへの切り替えも見るときは、外から画面を撮るので終わらない
+            if(wcsstr(GetCommandLineW(),L"--slime-result-to-title"))Engine::SceneManager::GetInstance()->RequestCoveredChange("Title");else PostQuitMessage(0);}
+    }
     void Capture(const wchar_t* path){
         DirectX::ScratchImage image;auto result=DirectX::CaptureTexture(window_->Queue(),window_->GetCurrentBackBufferResource(),false,image,D3D12_RESOURCE_STATE_PRESENT,D3D12_RESOURCE_STATE_PRESENT);
         if(SUCCEEDED(result))result=DirectX::SaveToWICFile(*image.GetImage(0,0,0),DirectX::WIC_FLAGS_NONE,DirectX::GetWICCodec(DirectX::WIC_CODEC_PNG),path);
@@ -908,6 +960,8 @@ public:
     }
     void Update()override {
         using namespace Game;using namespace Game::Chrono;
+        if(wcsstr(GetCommandLineW(),L"--slime-sprite-capture")){UpdateSpriteCapture();return;}
+        if(wcsstr(GetCommandLineW(),L"--slime-result-capture")){UpdateResultCapture();return;}
         if(wcsstr(GetCommandLineW(),L"--slime-life-room")){UpdateRoom();return;}
         if(wcsstr(GetCommandLineW(),L"--slime-life-devour")){UpdateDevour();return;}
         if(wcsstr(GetCommandLineW(),L"--slime-life-intro")){UpdateIntro();return;}
@@ -1055,6 +1109,10 @@ public:
         }
     }
     void Draw()override {
+        // スライムの撮影: 背景の壁と床 (世界の物は隠してある)
+        if(spriteCube_){auto* render=Engine::Renderer::GetInstance();auto& body=GetChronoSystem()->LifeState().bodies[0];GetCamera().SetProjection(.34f,1266.f/729.f,.1f,2000);
+            Engine::Transform wall;wall.translate={body.at.x,100,body.at.z+60};wall.scale={600,300,1};render->DrawMesh(spriteCube_,spriteWhite_,wall,spriteBack_);
+            Engine::Transform floor;floor.translate={body.at.x,-20,body.at.z};floor.scale={600,20.02f,600};render->DrawMesh(spriteCube_,spriteWhite_,floor,spriteBack_);}
 #ifdef USE_IMGUI
         bool turnOnly=wcsstr(GetCommandLineW(),L"--slime-life-turn-only")!=nullptr;
         bool mixtureOnly=wcsstr(GetCommandLineW(),L"--slime-life-mixture-only")!=nullptr;

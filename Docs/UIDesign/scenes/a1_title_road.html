@@ -1,0 +1,67 @@
+<!doctype html><meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@900&family=Dela+Gothic+One&display=block" rel="stylesheet">
+<style>
+html,body{margin:0;width:1920px;height:1080px;overflow:hidden;background:#222}
+canvas{position:absolute;left:0;top:0}
+.hint{position:absolute;right:120px;bottom:46px;display:flex;gap:14px;align-items:center;font:900 26px "Zen Kaku Gothic New";color:#fff;text-shadow:0 2px 0 #000}
+.hint img{height:50px}
+.credit{position:absolute;left:58px;bottom:28px;font:900 19px "Zen Kaku Gothic New";color:#d9d6c9;opacity:.82;text-shadow:0 1px 2px #000}
+</style>
+<body>
+<canvas id="c" width="1920" height="1080"></canvas>
+<div class="credit">音楽 Kevin MacLeod (incompetech.com) CC BY 4.0</div>
+<div class="hint"><img src="assets/keyboard_enter.png"><img src="assets/xbox_button_a.png">けってい</div>
+<script src="gel.js"></script>
+<script>
+(async()=>{
+const F='900 200px "Zen Kaku Gothic New"';
+await fontReady([[F,'スライム、跡で本気出す。はじめるクレジットやめる']]);
+const asphalt=await loadImg('assets/asphalt.jpg');
+const cv=document.getElementById('c'),x=cv.getContext('2d',{willReadFrequently:true});
+// 路面: 真上から見た道路
+x.drawImage(asphalt,0,0,2048,2048,0,-300,1920,1920);
+x.globalCompositeOperation='multiply';x.fillStyle='#6f7075';x.fillRect(0,0,W,H);x.globalCompositeOperation='source-over';
+// 大きなひび割れと補修の跡
+{const r=rng(9);x.strokeStyle='rgba(8,8,10,.75)';x.lineCap='round';for(let k=0;k<7;k++){let px=r()*W,py=r()*H,a=r()*6.28;x.lineWidth=1.5+r()*2.5;x.beginPath();x.moveTo(px,py);for(let i=0;i<34;i++){a+=(r()-.5)*.9;px+=Math.cos(a)*24;py+=Math.sin(a)*24;x.lineTo(px,py)}x.stroke()}
+ x.fillStyle='rgba(10,10,12,.28)';x.fillRect(1290,-20,250,1120)}
+x.save();x.globalCompositeOperation='multiply';x.fillStyle='#8d8f9c';x.beginPath();x.moveTo(0,0);x.lineTo(780,0);x.lineTo(0,700);x.closePath();x.fill();x.restore();
+// ペイント層
+const paint=mk(),p=paint.getContext('2d',{willReadFrequently:true});
+function road(text,cx,y,size,sy,fill,sx=1){p.save();p.translate(cx,y);p.scale(sx,sy);p.font=`900 ${size}px "Zen Kaku Gothic New"`;p.textAlign='center';p.textBaseline='alphabetic';p.fillStyle=fill;p.fillText(text,0,0);p.restore()}
+const WHITE='#f1eee2',YEL='#f2b81f';
+// 車線の線
+p.fillStyle=WHITE;for(const lx of [36,1262])for(let y=-40;y<1100;y+=190)p.fillRect(lx,y,20,120);
+p.fillStyle=YEL;p.fillRect(1876,0,18,1080);p.fillRect(1846,0,18,1080);
+// タイトル: 路面標示のように縦に伸ばした文字
+road('スライム、',650,296,234,1.14,WHITE,1);
+road('跡で',650,640,270,1.26,YEL,1.42);
+road('本気出す',560,985,234,1.34,WHITE,1);
+// メニューの矢印 (車線の案内)
+function arrow(cx,cy,s,col,turn){p.save();p.translate(cx,cy);p.fillStyle=col;p.beginPath();
+ if(turn===0){p.moveTo(0,-1.5*s);p.lineTo(.52*s,-.6*s);p.lineTo(.17*s,-.6*s);p.lineTo(.17*s,1.5*s);p.lineTo(-.17*s,1.5*s);p.lineTo(-.17*s,-.6*s);p.lineTo(-.52*s,-.6*s)}
+ else{p.moveTo(1.3*s,-.55*s);p.lineTo(.5*s,-1.1*s);p.lineTo(.5*s,-.75*s);p.lineTo(-.17*s,-.75*s);p.lineTo(-.17*s,1.5*s);p.lineTo(.17*s,1.5*s);p.lineTo(.17*s,-.38*s);p.lineTo(.5*s,-.38*s);p.lineTo(.5*s,0)}
+ p.closePath();p.fill();p.restore()}
+arrow(1400,230,92,YEL,0);road('はじめる',1650,262,92,1.5,YEL,.9);
+arrow(1400,560,68,WHITE,1);road('クレジット',1650,578,72,1.5,WHITE,.82);
+arrow(1400,800,68,WHITE,1);road('やめる',1650,818,72,1.5,WHITE,.9);
+wear(p,noiseCanvas(210,4,6),.27,.36);
+{const n=noiseCanvas(3,8,2);wear(p,n,.29,.37)}
+x.drawImage(paint,0,0);
+// スライムの跡: 文字の上を横切る
+// 跡: 平たい膜として残る
+const s0=mk(),c0=s0.getContext('2d');
+stroke(c0,[[-90,322,12],[110,346,20],[300,326,13],[480,342,24],[660,324,12],[860,344,21],[1040,326,15],[1150,380,26],[1196,500,17],[1172,620,25],[1196,720,40],[1190,800,100]],1100);
+{const r=rng(3);for(let i=0;i<70;i++){const u=r();blob(c0,u*1180+(r()-.5)*30,334+(r()-.5)*70,2+r()*r()*11)}
+ for(let i=0;i<30;i++){blob(c0,1130+r()*130,420+r()*340,2+r()*r()*10)}
+ for(let i=0;i<30;i++){const a=r()*6.28,d=r();blob(c0,1185+Math.cos(a)*(190+d*150),890+Math.sin(a)*(130+d*60),3+r()*r()*12)}}
+gel(x,s0,{height:26,big:22,edge:6,refract:1.1,shadow:.3,shadowOff:[4,6],shadowBlur:7,density:.42,specks:false,gain:1.05});
+// 本体: 文の句点の位置に座る
+const s=mk(),c=s.getContext('2d');
+blob(c,1185,880,158,136);blob(c,1078,940,60,46);blob(c,1296,944,66,48);blob(c,1185,962,152,66);
+gel(x,s,{smooth:7,height:150,big:56,edge:8,refract:.5,shadow:.7,shadowOff:[12,22]});
+// 顔 (だらけた半目)
+x.lineCap='round';x.strokeStyle='#07170a';x.lineWidth=12;
+for(const ex of [1130,1240]){x.beginPath();x.moveTo(ex-26,868);x.quadraticCurveTo(ex,878,ex+26,868);x.stroke();x.fillStyle='#07170a';x.beginPath();x.ellipse(ex,884,15,13,0,0,3.15);x.fill()}
+done();
+})();
+</script>

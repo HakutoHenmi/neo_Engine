@@ -1,0 +1,31 @@
+<!doctype html><meta charset="utf-8">
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/","cannon-es":"https://cdn.jsdelivr.net/npm/cannon-es@0.20.0/dist/cannon-es.js"}}</script>
+<link href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@700;900&family=Anton&display=block" rel="stylesheet">
+<style>html,body{margin:0;width:1920px;height:1080px;overflow:hidden;font-family:"Zen Kaku Gothic New";font-weight:900}canvas{position:absolute;left:0;top:0;width:1920px;height:1080px}
+#e{position:absolute;left:20px;top:20px;color:#fff;background:#000;font:18px monospace;z-index:9;white-space:pre-wrap}
+.abs{position:absolute}.num{font-family:Anton,"Zen Kaku Gothic New";font-weight:400;letter-spacing:.01em}
+.keys{display:inline-flex;gap:4px;align-items:center;background:#111;padding:5px 8px;border-radius:6px}.keys img{height:40px;display:block}
+.bar{position:absolute;display:flex;gap:40px;align-items:center;font-size:27px}.bar span{display:flex;gap:10px;align-items:center}
+body{background:#f5c400;color:#111}.big{font-size:128px;line-height:1.05}.k{font-size:26px}.v{font-size:68px;line-height:1.1}
+.rng{position:absolute;height:64px;display:flex;align-items:center;padding:0 18px;font-size:32px;box-sizing:border-box}</style><body>
+<canvas id="c"></canvas><canvas id="t"></canvas>
+<div class="abs" style="left:72px;top:50px"><div class="num" style="font-size:44px">STAGE 1</div><div class="big">子ども部屋</div>
+<div style="display:flex;gap:44px;margin-top:8px"><div><div class="k">目標</div><div class="v num">15cm</div></div><div><div class="k">最高記録</div><div class="v num" style="color:#c7241e">28.4cm</div></div><div><div class="k">ランク</div><div class="v num">A</div></div><div><div class="k">時間</div><div class="v num">3:00</div></div></div></div>
+<div class="rng" style="left:0;top:846px;width:384px;background:#111;color:#f5c400">1 子ども部屋</div>
+<div class="rng" style="left:643px;top:846px;width:1037px;background:rgba(17,17,17,.14);color:#111">2 輪の町　子ども部屋を 15cm でクリア</div>
+<div class="bar" style="left:72px;bottom:18px;display:none"></div>
+<div class="bar" style="right:60px;top:60px"><span><i class="keys"><img src="../scenes/assets/keyboard_enter.png"><img src="../scenes/assets/xbox_button_a.png"></i>出発</span><span><i class="keys"><img src="../scenes/assets/keyboard_arrows_horizontal.png"><img src="../scenes/assets/xbox_dpad.png"></i>えらぶ</span><span><i class="keys"><img src="../scenes/assets/keyboard_escape.png"><img src="../scenes/assets/xbox_button_b.png"></i>もどる</span></div>
+<div id="e"></div>
+<script type="module">
+const E=document.getElementById('e');addEventListener('error',e=>E.textContent+=e.message+'\n');addEventListener('unhandledrejection',e=>E.textContent+=String(e.reason&&e.reason.stack||e.reason)+'\n');
+import {THREE,W,H,stage,ground,drop,model,place,slime,eyesAt,slab,toy,rng,gradBg,flatCam,logoSVG,ready} from './scene3d.js';
+function tape(id,ticks,y,h){const c=document.getElementById(id),x=c.getContext('2d');c.width=W;c.height=H;x.fillStyle='#f5c400';x.fillRect(0,y,W,H-y);x.fillStyle='#111';x.fillRect(0,y,W,3);const r=ticks;for(let i=0;i<=W;i+=12){const big=i%120===0,mid=i%60===0;x.fillRect(i,y,big?4:2,big?h:mid?h*.7:h*.42)}x.font='400 40px Anton';x.textBaseline='top';for(const [px,t,red] of r){x.fillStyle=red?'#c7241e':'#111';x.fillText(t,px+8,y+h*.72)}}
+await document.fonts.load('400 40px Anton','0');
+const s=stage(document.getElementById('c'),{bg:0xf5c400,sun:2.6,sunPos:[-5,9,12],env:.9,exposure:1.05,shadowArea:14});flatCam(s);
+const put=async(n,z,x,ry=.5,c)=>{const t=typeof n==='string'?await model(n):n;const m=place(t,z,[x,0,0],[0,ry,0]);m.position.y=2.34+(t.userData.size.y*z)*.5;s.sc.add(m);return m};
+await put(toy('box',0xd9423a),.8,.6);await put(toy('ball',0x2fa58a),.7,1.45);await put('cardboard_box_01',.9,2.35);
+const dk=new THREE.MeshBasicMaterial({color:0xb88f00});const g=[await put('covered_car',3,8.2),await put('Barrel_01',1.4,10),await put('horse_statue_01',3.4,12.8),await put('concrete_road_barrier',3,16)];g.forEach(m=>m.traverse(o=>{if(o.isMesh)o.material=dk}));
+const R=.62,sl=slime(R,{seed:4,squash:.8,lump:.05,flat:.5});sl.position.set(3.73,2.34+R*.42,0);s.sc.add(sl);eyesAt(s,sl,R);await s.draw();
+tape('t',[[0,'5cm',0],[236,'15cm',1],[384,'30cm',0],[643,'1m',0],[988,'5m',0],[1482,'50m',1],[1680,'126m',0]],930,120);
+ready();
+</script>

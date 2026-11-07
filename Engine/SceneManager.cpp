@@ -67,7 +67,12 @@ bool SceneManager::Change(const std::string& name, const SceneParameters& params
 	auto* renderer = Renderer::GetInstance();
 	// The first world scene also finishes the renderer's deferred 3D setup.
 	const bool needs3D = next && (next->RequiresFullRenderer() || fullRendererScenes_.count(name) != 0) && renderer && !renderer->Ready3D();
-	const bool showLoading = !startup || needs3D;
+	const bool instant = instantChange_;
+	instantChange_ = false;
+	const bool covered = coveredChange_;
+	coveredChange_ = false;
+	arrivedCovered_ = covered;
+	const bool showLoading = (!startup && !instant && !covered) || needs3D;
 	if (showLoading) LoadingScreen::Begin(needs3D ? name + "+Engine" : name, startup);
 	if (needs3D) renderer->InitializeDeferred();
 	current_ = std::move(next);
@@ -80,7 +85,8 @@ bool SceneManager::Change(const std::string& name, const SceneParameters& params
 	}
 	if (showLoading) LoadingScreen::End();
 	// The startup splash already covers initialization; show the first scene immediately.
-	if (transitionDrawer_ && !startup) BeginReveal(from, LoadingScreen::Active() || LoadingScreen::Last().elapsed > 0.35f);
+	if (covered) transitionActive_ = false;
+	else if (transitionDrawer_ && !startup && !instant) BeginReveal(from, LoadingScreen::Active() || LoadingScreen::Last().elapsed > 0.35f);
 
 	pendingNext_.clear();
 	pendingParams_ = {};
@@ -90,6 +96,7 @@ bool SceneManager::Change(const std::string& name, const SceneParameters& params
 void SceneManager::RequestChange(const std::string& name, const SceneParameters& params) {
 	pendingNext_ = name;
 	pendingParams_ = params;
+	coveredChange_ = false;
 	if (!transitionDrawer_) return;
 	// A request during the cover only retargets it; one during the reveal re-covers from here.
 	if (transitionActive_ && transition_.phase == Transition::Phase::Cover) {
@@ -105,6 +112,18 @@ void SceneManager::RequestChange(const std::string& name, const SceneParameters&
 	transition_.to = name;
 	transitionActive_ = true;
 	transitionClock_ = std::chrono::steady_clock::now();
+}
+
+void SceneManager::RequestCoveredChange(const std::string& name, const SceneParameters& params) {
+	RequestChange(name, params);
+	coveredChange_ = transitionDrawer_ != nullptr;
+}
+
+void SceneManager::RequestInstantChange(const std::string& name, const SceneParameters& params) {
+	pendingNext_ = name;
+	pendingParams_ = params;
+	instantChange_ = true;
+	transitionActive_ = false;
 }
 
 void SceneManager::BeginReveal(const std::string& from, bool loadingShown) {

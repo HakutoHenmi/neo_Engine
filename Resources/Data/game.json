@@ -19,6 +19,7 @@
     { "flag": "--slime-life-smoke", "scene": "SlimeLifeValidation" },
     { "flag": "--ui-result", "scene": "UIResultValidation", "debugOnly": true },
     { "flag": "--ui-smoke", "scene": "UIValidation", "debugOnly": true },
+    { "flag": "--windowed-title", "scene": "Title", "debugOnly": true },
     { "flag": "--ui-gallery", "scene": "UIGallery", "debugOnly": true },
     { "flag": "--component-smoke", "scene": "ComponentValidation", "debugOnly": true },
     { "flag": "--component-editor", "scene": "ComponentEditor", "debugOnly": true },
