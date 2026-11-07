@@ -413,6 +413,7 @@ public:
     static_assert(sizeof(FluidTendril)==32);
     std::vector<FluidTendril> fluidTendrils_;
     void SetFluidTendrils(std::vector<FluidTendril> tendrils){fluidTendrils_=std::move(tendrils);}
+    const std::vector<FluidTendril>& GetFluidTendrils()const{return fluidTendrils_;}
     // Extra spheres (centre xyz, radius w) the morph volume domain must cover, e.g. thrown slime.
     std::vector<Vector4> fluidVolumeExtras_;
     void SetFluidVolumeExtras(std::vector<Vector4> spheres){fluidVolumeExtras_=std::move(spheres);}

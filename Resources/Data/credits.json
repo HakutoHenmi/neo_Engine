@@ -1,9 +1,9 @@
 {
   "_comment": "クレジット画面のページ (見出しと、名前・詳細の行。1 ページ 5 行まで)。",
-  "title": "CREDITS / SPECIAL THANKS",
+  "title": "クレジット",
   "pages": [
     {
-      "heading": "MUSIC / Kevin MacLeod (incompetech.com)",
+      "heading": "音楽",
       "rows": [
         {
           "title": "SELECT  /  Daily Beetle",
@@ -25,10 +25,12 @@
           "title": "TIME UP  /  Fluffing a Duck",
           "detail": "Kevin MacLeod - CC BY 4.0 / creativecommons.org/licenses/by/4.0/"
         }
-      ]
+      ],
+      "tab": "音楽",
+      "note": "Kevin MacLeod (incompetech.com)"
     },
     {
-      "heading": "TITLE SONG & SOUND EFFECTS",
+      "heading": "主題歌と効果音",
       "rows": [
         {
           "title": "TITLE  /  Lamadio Tiado",
@@ -50,10 +52,12 @@
           "title": "Music Jingles",
           "detail": "Kenney / www.kenney.nl / CC0 1.0"
         }
-      ]
+      ],
+      "tab": "主題歌と効果音",
+      "note": ""
     },
     {
-      "heading": "ART & USER INTERFACE",
+      "heading": "絵とUI",
       "rows": [
         {
           "title": "UI Pack (2.0)",
@@ -75,18 +79,24 @@
           "title": "Photogrammetry scenery / Poly Haven",
           "detail": "CC0 / polyhaven.com / sources: Resources/Credits/MeadowRefresh.md"
         }
-      ]
+      ],
+      "tab": "絵とUI",
+      "note": ""
     },
     {
-      "heading": "FONTS / SIL OPEN FONT LICENSE 1.1",
+      "heading": "フォント",
       "rows": [
         {
-          "title": "Rajdhani",
-          "detail": "Copyright (c) 2014 Indian Type Foundry"
+          "title": "Anton",
+          "detail": "The Anton Project Authors - SIL OFL 1.1"
         },
         {
-          "title": "M PLUS Rounded 1c",
-          "detail": "Copyright 2016 The Rounded M+ Project Authors"
+          "title": "Zen Kaku Gothic New",
+          "detail": "The Zen Kaku Gothic Project Authors - SIL OFL 1.1"
+        },
+        {
+          "title": "Rajdhani  /  M PLUS Rounded 1c",
+          "detail": "Indian Type Foundry  /  The Rounded M+ Project Authors"
         },
         {
           "title": "SIL Open Font License 1.1",
@@ -96,10 +106,12 @@
           "title": "Font licenses",
           "detail": "OFL.txt is included with each font in Resources/Fonts."
         }
-      ]
+      ],
+      "tab": "フォント",
+      "note": "SIL Open Font License 1.1"
     },
     {
-      "heading": "SOFTWARE / OPEN SOURCE",
+      "heading": "ソフトウェア",
       "rows": [
         {
           "title": "Dear ImGui / Omar Cornut",
@@ -121,7 +133,9 @@
           "title": "EnTT  /  ufbx  /  cpp-httplib",
           "detail": "Thanks to the projects and their contributors. See Resources/Credits."
         }
-      ]
+      ],
+      "tab": "ソフトウェア",
+      "note": ""
     }
   ]
 }

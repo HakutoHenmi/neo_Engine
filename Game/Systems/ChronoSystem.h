@@ -36,6 +36,9 @@ public:
     void DrawUI(entt::registry&,GameContext&) override;
     // ゲームが終わったか / ムービー中か / スライムの研究所を開いているか
     bool Finished() const {return finished_;}
+    // 吸収モードの結果: カメラが寄る間に顔を向け、測り始めたら体を止める
+    float DevourResultFace() const {return devour_&&finished_?std::min(1.f,resultCameraAge_/.8f):0.f;}
+    bool DevourResultFrozen() const {return devour_&&finished_&&resultCameraAge_>=kResultFreezeAge;}
     bool CinematicActive() const {return cinematicActive_;}
     bool SlimeLabOpen() const {return slimeLife_&&life_.lab&&!finished_;}
     // 鳴り続ける音を止める (シーンを抜けるとき)
@@ -54,6 +57,7 @@ public:
     float DevourBiteAge()const{return devourBiteAge_;}
     int DevourRank()const{return devourRank_;}
     int DevourStageIndex()const{return devourStage_;}
+    const Chrono::DevourStage& DevourStageInfo()const{return CurrentDevourStage();}
     bool DevourItemReady()const{return devourItemReady_;}
     void DevourSetMorphLeft(float seconds){devourMorphLeft_=seconds;}
     Chrono::DevourClock& DevourClockState() {return devourClock_;}
@@ -241,6 +245,7 @@ private:
     void DrawSlimeLife(entt::registry&,GameContext&);
     void DrawSlimeLifeUI(entt::registry&,GameContext&);
     void SyncSlimeBodies(GameContext&);
+    void MeasureDevourBody(GameContext&);
     void DamageSlimeLife(entt::registry&,Chrono::Player&,float,GameContext&,Chrono::Vec);
     void LifeHit(entt::registry&,Chrono::Player&,GameContext&,uint32_t,float,Chrono::LifeAction source=Chrono::LifeAction::Idle,Chrono::Vec from={});
     bool StartLifeAbsorb(int);
@@ -448,7 +453,7 @@ private:
     bool newTime_=false,newChain_=false;
     bool diagnostic_=false;
     // カメラ (向き・距離・肩越し・視野角・補助・揺れの設定)
-    float yaw_=0,pitch_=0.16f,zoom_=17,finishAge_=0;
+    float yaw_=0,pitch_=0.16f,zoom_=17,finishAge_=0;float devourHudCm_=0,resultCameraAge_=0,resultLo_=0,resultHi_=0,resultNear_=0,resultFar_=0,resultTopY_=0;static constexpr float kResultFreezeAge=.95f,kResultSettledAge=1.3f;float resultLeft_=0,resultRight_=0,resultTop_=0;bool resultScreenSet_=false;bool resultMeasured_=false;Chrono::Vec resultOrigin_{};std::vector<entt::entity> resultHidden_;
     float shoulder_=1.8f,chainCameraHold_=0,fov_=1.0472f;
     float manualCameraHold_=0,zoomVelocity_=0,cameraBoom_=-1;
     float cameraAssist_=0;int shakeSetting_=2;bool prevShake_=false;

@@ -33,6 +33,9 @@ entt::entity ChronoSystem::Mesh(entt::registry& r,const std::string& name,const 
 
 // PLAY 開始時の初期化: モードを決め、前回のエンティティを消し、プレイヤー・音・ステージ・記録を用意する
 void ChronoSystem::Reset(entt::registry& r){
+    // 結果の間に隠した物を戻す
+    for(auto e:resultHidden_)if(r.valid(e)&&r.all_of<MeshRendererComponent>(e))r.get<MeshRendererComponent>(e).enabled=true;
+    resultHidden_.clear();
     Engine::LoadProfile::Scope profile("phase","ChronoSystem::Reset");
     // 旧来の確認用のテストも動かせるようにする。通常のプレイは常に新しいシューターを使う
     // コマンドラインの引数で、インクのモードとスライムの生活モードを決める
@@ -226,7 +229,7 @@ void ChronoSystem::Finish(Player& p,bool win){
     if(finished_)return;
     // 勝ち負けの曲を流し、プレイヤーの状態を止める
     Music::Play(win ? Music::Victory : Music::Defeat);
-    finished_=true;won_=win;finishAge_=0;p.target=entt::null;p.preview=entt::null;
+    finished_=true;won_=win;finishAge_=0;resultCameraAge_=0;resultMeasured_=false;resultScreenSet_=false;p.target=entt::null;p.preview=entt::null;
     p.action=Action::Free;p.velocity={};p.flow.remaining=0;p.flow.scale=1;p.aimScale=1;p.worldScale=1;p.aiming=false;
     p.hitStop=0;p.damageAge=1;
     // 通常のプレイで勝ったときだけ記録を更新して保存する
@@ -257,20 +260,31 @@ void ChronoSystem::Update(entt::registry& r,GameContext& ctx){
                 InkCamera(r,p,ctx);
             }
             Presentation(r,p,ctx);
+            // 吸収モードの結果では本物の体を映し続ける
+            if(devour_)SyncSlimeBodies(ctx);
         }
         finishAge_+=ctx.dt;Engine::WindowDX::SetCursorVisible(true);
         // 結果画面: R / Enter でやり直し、TAB でタイトルへ
         if(finishAge_>0.2f&&ctx.input){
             UI::Canvas ui(ctx.renderer,ctx.viewportSize.x,ctx.viewportSize.y);
             if(ctx.useOverrideMouse)ui.SetPointer(ctx.overrideMouseX,ctx.overrideMouseY);
-            // 吸収モードでクリアしたら、N / A で次のステージへ
-            if(devour_&&won_&&devourStage_+1<int(Chrono::DevourStages().size())&&(UI::Pressed(DIK_N)||UI::PadPressed(XINPUT_GAMEPAD_A))){++devourStage_;SaveSlimeLab();Reset(r);return;}
+            // 吸収モードの結果: 演出の途中は操作で最後まで飛ばす。クリアなら N / Enter / A で次のステージへ
+            if(devour_){
+                using namespace UI::Scale;
+                const bool next=won_&&devourStage_+1<int(Chrono::DevourStages().size());
+                const bool confirm=UI::Pressed(DIK_RETURN)||UI::PadPressed(XINPUT_GAMEPAD_A);
+                if(finishAge_<2.2f){if(confirm||ctx.input->IsMouseTrigger(0))finishAge_=2.2f;return;}
+                if(next&&(UI::Pressed(DIK_N)||UI::Pressed(DIK_RETURN)||ui.Click(ResultNext))){++devourStage_;SaveSlimeLab();Reset(r);return;}
+                if(UI::Pressed(DIK_R)||(!next&&UI::Pressed(DIK_RETURN))||UI::PadPressed(XINPUT_GAMEPAD_X)||ui.Click(next?ResultRetry:ResultRetryOnly)){Reset(r);return;}
+                if(UI::Pressed(DIK_TAB)||UI::PadPressed(XINPUT_GAMEPAD_Y)||ui.Click(next?ResultTitle:ResultTitleOnly))Engine::SceneManager::GetInstance()->RequestCoveredChange("Title");
+                return;
+            }
             if(UI::Pressed(DIK_R)||UI::Pressed(DIK_RETURN)||UI::PadPressed(XINPUT_GAMEPAD_X)||ui.Click(UI::Retry)){
                 if(inkMode_||arena_||creature_){Reset(r);return;}
                 Engine::SceneParameters params;params.stagePath=Data::MainStagePath();
                 Engine::SceneManager::GetInstance()->RequestChange("Game",params);
             }
-            if(UI::Pressed(DIK_TAB)||UI::PadPressed(XINPUT_GAMEPAD_Y)||ui.Click(UI::Select))Engine::SceneManager::GetInstance()->RequestChange("Title");
+            if(UI::Pressed(DIK_TAB)||UI::PadPressed(XINPUT_GAMEPAD_Y)||ui.Click(UI::Select))Engine::SceneManager::GetInstance()->RequestCoveredChange("Title");
         }
         return;
     }

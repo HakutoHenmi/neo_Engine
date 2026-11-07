@@ -537,7 +537,18 @@ bool GameScene::HandlePlayInput(float dt, bool stageClear) {
             return true;
         }
 		// ポーズメニューのボタン入力 (グラフィック設定 / タイトルへ / 再開)
-        if (!stageClear && isPaused_) {
+        if (!stageClear && isPaused_ && chronoSystem_ && chronoSystem_->DevourMode()) {
+            // 吸収モードのポーズ: 上下で選び、Enter / クリック / A で決定する
+            UI::Canvas ui(renderer_,ctx_.viewportSize.x,ctx_.viewportSize.y);if(ctx_.useOverrideMouse)ui.SetPointer(ctx_.overrideMouseX,ctx_.overrideMouseY);
+            auto* input=Engine::Input::GetInstance();
+            int chosen=UI::Scale::UpdatePause(ui,pauseMenu_);
+            if(UI::Pressed(DIK_G)||UI::PadPressed(XINPUT_GAMEPAD_BACK))chosen=1;
+            if(input->Trigger(DIK_TAB))chosen=2;
+            if(input->PadTrigger(XINPUT_GAMEPAD_B))chosen=0;
+            if(chosen==1){graphicsOpen_=true;return true;}
+            if(chosen==2){Engine::SceneManager::GetInstance()->RequestCoveredChange("Title");return true;}
+            if(chosen==0){UI::PlayUISound(UI::UISound::Confirm);SetPaused(false);input->LatchPad();return true;}
+        } else if (!stageClear && isPaused_) {
             // UI の描画先 (エディタの Game ビューならマウス座標を上書きする)
             UI::Canvas ui(renderer_,ctx_.viewportSize.x,ctx_.viewportSize.y);if(ctx_.useOverrideMouse)ui.SetPointer(ctx_.overrideMouseX,ctx_.overrideMouseY);
             // グラフィック設定ボタン・G・パッドの BACK で設定画面を開く
@@ -547,7 +558,7 @@ bool GameScene::HandlePlayInput(float dt, bool stageClear) {
             bool roguePause=chronoMode_&&!registry_.view<Chrono::InkPlayer>().empty();
             // タイトルへ戻るボタンか Tab でタイトルへ
             if (ui.Click(roguePause?UI::PaletteTitle:UI::Title) || input->Trigger(DIK_TAB)) {
-                Engine::SceneManager::GetInstance()->RequestChange("Title");return true;
+                Engine::SceneManager::GetInstance()->RequestCoveredChange("Title");return true;
             }
             // 再開ボタン・Enter・パッドの B でポーズを解く (同じ押下を他で使わないよう止める)
             if (ui.Click(roguePause?UI::PaletteResume:UI::Resume) || input->Trigger(DIK_RETURN) || input->PadTrigger(XINPUT_GAMEPAD_B)) {
@@ -951,6 +962,7 @@ void GameScene::UpdateParticleEmitters(float dt) {
 // ゲーム内のポーズの切り替え。BGM を小さくし、カーソルを出し、流体などを止めてメニューを出す
 void GameScene::SetPaused(bool paused) {
     // 強化の選択画面・スライムの調合画面が開いているか
+    if(paused&&!isPaused_){pauseOpenedAt_=UI::Seconds();pauseMenu_=0;}
     isPaused_=paused;bool upgradeOpen=false;
     for(auto e:registry_.view<Chrono::InkPlayer>())upgradeOpen|=registry_.get<Chrono::InkPlayer>(e).rogue.menu;
     upgradeOpen|=chronoSystem_&&chronoSystem_->SlimeLabOpen();

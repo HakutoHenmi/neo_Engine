@@ -13,6 +13,7 @@
 #include "../Data/GameData.h"
 #include "UISound.h"
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <string>
@@ -26,7 +27,7 @@
 // UI は Draw() の中で登録する (Renderer::EndFrame でスプライトと文字がまとめて描かれる前に)
 namespace Game::UI {
 // キーが押された瞬間か (DirectInput と ImGui の両方を見る。エディタの Game ビュー上でも反応させるため)
-inline bool Pressed(BYTE key) {
+inline bool PressedRaw(BYTE key) {
     // 入力 (DirectInput) で押された瞬間なら true
     auto* input=Engine::Input::GetInstance();
     if(input && input->Trigger(key))return true;
@@ -34,12 +35,25 @@ inline bool Pressed(BYTE key) {
     // ImGui があれば、対応するキーを ImGui のキーに置き換えて調べる
     if(ImGui::GetCurrentContext()) {
         ImGuiKey mapped=key==DIK_TAB?ImGuiKey_Tab:key==DIK_R?ImGuiKey_R:
-            key==DIK_RETURN?ImGuiKey_Enter:key==DIK_ESCAPE?ImGuiKey_Escape:ImGuiKey_None;
+            key==DIK_RETURN?ImGuiKey_Enter:key==DIK_ESCAPE?ImGuiKey_Escape:key==DIK_N?ImGuiKey_N:
+            key==DIK_UP?ImGuiKey_UpArrow:key==DIK_DOWN?ImGuiKey_DownArrow:key==DIK_LEFT?ImGuiKey_LeftArrow:key==DIK_RIGHT?ImGuiKey_RightArrow:
+            key==DIK_W?ImGuiKey_W:key==DIK_S?ImGuiKey_S:key==DIK_A?ImGuiKey_A:key==DIK_D?ImGuiKey_D:ImGuiKey_None;
         // 対応するキーがあれば ImGui の判定を返す
         if(mapped!=ImGuiKey_None)return ImGui::IsKeyPressed(mapped,false);
     }
 #endif
     return false;
+}
+// キーが押された瞬間か。DirectInput と ImGui は同じ 1 回の押下を別のフレームで知らせることがあるので、
+// 直後の別のフレームの知らせは捨てる (同じフレームなら何度調べても同じ答えを返す)
+inline bool Pressed(BYTE key) {
+    if(!PressedRaw(key))return false;
+    static std::array<uint64_t,256> frames{};static std::array<std::chrono::steady_clock::time_point,256> times{};
+    auto* input=Engine::Input::GetInstance();const uint64_t frame=input?input->FrameIndex():0;const auto now=std::chrono::steady_clock::now();
+    if(frames[key]==frame)return true;
+    const bool repeat=now-times[key]<std::chrono::milliseconds(120);
+    if(repeat)return false;
+    frames[key]=frame;times[key]=now;return true;
 }
 // ゲームパッド
 inline bool UsingPad() {
@@ -213,13 +227,13 @@ class Canvas {
     bool pointerOverride_=false;
     float pointerX_=0,pointerY_=0;
     // 画像を1枚描く (UV と回転を指定できる)
-    void Sprite(const char* path,Rect b,Engine::Vector4 color,Engine::Vector4 uv={1,1,0,0},float rotation=0) {
+    void Sprite(const char* path,Rect b,Engine::Vector4 color,Engine::Vector4 uv={1,1,0,0},float rotation=0,bool exact=false) {
         // 設計座標から画面の座標へ変換する
         Engine::Renderer::SpriteDesc d; d.x=ox_+b.x*s_;d.y=oy_+b.y*s_;d.w=b.w*s_;d.h=b.h*s_;
         // 色 (全体の不透明度を掛ける)・UV・回転
         d.color=Tint(color);d.uvScaleOffset=uv;d.rotationRad=rotation;
         // テクスチャを読み込んで (読み込み済みならそのまま) 描く
-        r_->DrawSprite(r_->LoadTexture2D(path),d);
+        r_->DrawSprite(r_->LoadTexture2D(path,!exact),d);
     }
     // 3x3 分割: テクスチャの決まった角を、画面上の任意の角の丸さに割り当てて描く
     void Sliced(const char* path,Rect b,Engine::Vector4 color,float radius) {
@@ -260,7 +274,11 @@ public:
     // 画像・回転した画像・塗りつぶし・線
     void Image(const std::string& path, Rect b, Engine::Vector4 color={1,1,1,1}) { Sprite(path.c_str(),b,color); }
     void ImageRot(const std::string& path,Rect b,float rotation,Engine::Vector4 color={1,1,1,1}) { Sprite(path.c_str(),b,color,{1,1,0,0},rotation); }
+    // 写真のように色をそのまま見せたい画像 (sRGB の変換で暗くならない)
+    void Photo(const std::string& path,Rect b,Engine::Vector4 color={1,1,1,1},float rotation=0) { Sprite(path.c_str(),b,color,{1,1,0,0},rotation,true); }
     void Fill(Rect b, Engine::Vector4 color) { Sprite(Art::White,b,color); }
+    // 画面の余白まで含めて全体を塗る
+    void Clear(Engine::Vector4 color) { Fill({-ox_/s_,-oy_/s_,1280+2*ox_/s_,720+2*oy_/s_},color); }
     void Line(float x,float y,float tx,float ty,float width,Engine::Vector4 color){
         // 線の長さ (ほぼ 0 なら描かない)
         float dx=tx-x,dy=ty-y,length=std::sqrt(dx*dx+dy*dy);if(length<.01f)return;
@@ -330,22 +348,40 @@ public:
     }
 
     // 文字
+    // 画面での実際の大きさ以上で一番近い解像度の字を選ぶ。小さい字を拡大すると滲み、大きい字を強く縮めるとギザギザになる
+    float FontTier(float size) const {
+        for(float tier:{32.f,48.f,64.f,96.f,128.f,192.f})if(size*s_<=tier)return tier;
+        return 256;
+    }
+    // "パス#解像度" の鍵を作る (64 は解像度を書かない鍵が既定)
+    static std::string FontKey(const char* font,float tier) {
+        std::string key(font);key.erase((std::min)(key.find('#'),key.size()));
+        return tier==64?key:key+"#"+std::to_string(int(tier));
+    }
     // 文字列を描く (左揃え / 中央揃え)
     void Text(const std::string& label,float x,float y,float size=24,Engine::Vector4 color=Paper,const char* font=Font) {
-        // 描画側の文字の描画へ (64 ピクセルを基準の大きさにする)
-        r_->DrawString(label,ox_+x*s_,oy_+y*s_,size/64*s_,Tint(color),font);
+        const float tier=FontTier(size);
+        r_->DrawString(label,ox_+x*s_,oy_+y*s_,size/tier*s_,Tint(color),FontKey(font,tier));
     }
     void Center(const std::string& label,float x,float y,float size=24,Engine::Vector4 color=Paper,const char* font=Font) {
         // 幅の半分だけ左へずらして書く
-        Text(label,x-r_->MeasureTextWidth(label,size/64,font)*.5f,y,size,color,font);
+        Text(label,x-Width(label,size,font)*.5f,y,size,color,font);
     }
     // ゲーム画面の上で読みやすいよう、少しずらした影を付けた文字
     void Bold(const std::string& label,float x,float y,float size,Engine::Vector4 color=Paper,const char* font=Font) {
         Text(label,x+size*.04f,y+size*.06f,size,{0,0,0,.55f*color.w},font);Text(label,x,y,size,color,font);
     }
+    // 大きな文字: 解像度は Text と同じく大きさから選ぶ
+    void Big(const std::string& label,float x,float y,float size,Engine::Vector4 color,const char* font,float /*base*/) {
+        Text(label,x,y,size,color,font);
+    }
+    float BigWidth(const std::string& label,float size,const char* font,float /*base*/) const {
+        return Width(label,size,font);
+    }
     // 文字列の幅
     float Width(const std::string& label,float size=24,const char* font=Font) const {
-        return r_->MeasureTextWidth(label,size/64,font);
+        const float tier=FontTier(size);
+        return r_->MeasureTextWidth(label,size/tier,FontKey(font,tier));
     }
     // 字間を空けた小さな大文字: 各画面の「ラベル」の書体
     float SpacedWidth(const std::string& text,float size,float spacing) const {

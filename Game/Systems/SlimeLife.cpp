@@ -184,7 +184,12 @@ void ChronoSystem::BuildSlimeLife(entt::registry& r){
         cityGateProp_=int(life_.props.size());life_.props.push_back(gate);}
     // 吸収モード: 路地の塀とバリケードも、大きくなれば覆って飲み込める
     devourWallProps_.clear();devourBarricadeProp_=-1;
-    devourClock_={};devourPounce_={};devourMeals_.clear();devourSplashes_.clear();devourDigest_=0;devourGulp_={};devourPounceWait_=0;devourBiteAge_=-1;devourChew_=0;devourSizePulse_=0;devourPops_.clear();devourNewBest_=false;devourRank_=0;if(devour_)devourClock_.left=CurrentDevourStage().time;devourItemReady_=false;devourMorphLeft_=0;devourSucks_.clear();devourSuckClock_=0;devourSucking_=false;devourHop_={};devourHopCooldown_=0;
+    devourClock_={};devourPounce_={};devourMeals_.clear();devourSplashes_.clear();devourDigest_=0;devourGulp_={};devourPounceWait_=0;devourBiteAge_=-1;devourChew_=0;devourSizePulse_=0;devourPops_.clear();devourNewBest_=false;devourRank_=0;if(devour_)devourClock_.left=CurrentDevourStage().time;
+#ifndef NDEBUG
+    // 確認用: --devour-time=秒 で制限時間を差し替える
+    if(const wchar_t* arg=wcsstr(GetCommandLineW(),L"--devour-time="))devourClock_.left=float(_wtof(arg+14));
+#endif
+    devourItemReady_=false;devourMorphLeft_=0;devourSucks_.clear();devourSuckClock_=0;devourSucking_=false;devourHop_={};devourHopCooldown_=0;
     StartDevourLog();if(devour_)devourLog_.bestBefore=devourBests_[size_t(devourStage_)];
     // 門・バリケード・弾などの状態を初期化する
     cityGates_={};if(slimePlayerDemo_)cityGates_=CityGates::AllOpen();cityGateUnlocked_=false;cityBarricadeHealth_=CityBarricadeHealth();cityGateHealth_=CityGateHealth();cityAnnounced_=-1;cityHintClock_=0;
@@ -360,7 +365,7 @@ void ChronoSystem::LifeHit(entt::registry& r,Player& p,GameContext& ctx,uint32_t
 // スライムの体 (本体と子) の形を GPU 流体の目標として渡す (液体・武器・触手)
 void ChronoSystem::SyncSlimeBodies(GameContext& ctx){
     // 研究所では顔をカメラに向ける
-    ctx.renderer->SetSlimeFaceCamera(life_.lab?1.f:0.f);
+    ctx.renderer->SetSlimeFaceCamera(life_.lab||(devour_&&finished_)?1.f:0.f);
     // 体ごとの GPU 流体の目標の一覧
     using Target=Engine::Renderer::FluidMorphTarget;std::vector<Target> targets;targets.reserve(Engine::Renderer::kPlayerFluidParticles);
     // 研究所の開閉が変わったら流体を作り直す
@@ -1097,7 +1102,7 @@ void ChronoSystem::DrawSlimeLifeUI(entt::registry& r,GameContext& ctx){
     int picked=LifeFormIndex();
     const auto& signal=life_.signal;
     for(int i=0;i<4;++i){bool open=LifeCanMorph(body,forms[i]),sel=i==picked,active=body.action==forms[i];
-        float size=sel?87.f:74.f,unit=size/74,cx=984+float(i)*80,cy=663-(sel?8.f:0.f),rotation=(sel?0:tilt[i])*.0174533f,alpha=open?1:.55f;
+        float size=sel?87.f:74.f,unit=size/74,cx=984+float(i)*80,cy=(devour_?580.f:663.f)-(sel?8.f:0.f),rotation=(sel?0:tilt[i])*.0174533f,alpha=open?1:.55f;
         UI::Rect outer{cx-size*.5f,cy-size*.5f,size,size},inner{outer.x+4*unit,outer.y+4*unit,size-8*unit,size-8*unit};
         ui.ImageRot("Resources/Textures/UI/HUD/sticker.png",{outer.x+2,outer.y+6,outer.w,outer.h},rotation,{0,0,0,.45f*alpha});
         ui.ImageRot("Resources/Textures/UI/HUD/sticker.png",outer,rotation,UI::WithAlpha(white,alpha));
@@ -1119,8 +1124,8 @@ void ChronoSystem::DrawSlimeLifeUI(entt::registry& r,GameContext& ctx){
     const char* nextName=signal.next==SignalColor::Red?"NEXT  RED":signal.next==SignalColor::Green?"NEXT  GREEN":"NEXT  YELLOW";
     std::string state=active&&!body.weapon.ready?"FORMING":forms[picked]==LifeAction::Signal&&open?(SignalResting(signal)?"REST":nextName):active?(body.weapon.dash>0?"DASH":body.weapon.charging?"CHARGE":"READY"):open?"":forms[picked]==LifeAction::Hammer?"LOCK  MASS "+std::to_string(int(LifeHammerMass)):"LOCK  ITEM";
     char label[32];snprintf(label,sizeof(label),"FORM %02d",picked+1);
-    spaced(std::string(label)+(state.empty()?"":"  /  "+state),1246,548,13,hazard,2,1);
-    shadowed(names[picked],1246,566,30,open?white:UI::WithAlpha(white,.6f),UI::JapaneseFont,1);}
+    spaced(std::string(label)+(state.empty()?"":"  /  "+state),1246,devour_?465.f:548.f,13,hazard,2,1);
+    shadowed(names[picked],1246,devour_?483.f:566.f,30,open?white:UI::WithAlpha(white,.6f),UI::JapaneseFont,1);}
     // 下中央: 今の形で使う操作だけを 1 行で。キーボードは白いキーの札、パッドはボタンの画像を出す
     {bool unlocked=LifeCanMorph(body,life_.form);std::string attack=unlocked?"変形":"タックル";
     // パッドのボタン画像・キーボードのキー・押し方 (長押し・離す)・操作の名前
@@ -1137,17 +1142,19 @@ void ChronoSystem::DrawSlimeLifeUI(entt::registry& r,GameContext& ctx){
         keys={{"xbox_rt","左","",next},absorbHint,back};}
     else if(devour_&&!devourFreeForms_){keys={{"xbox_lt","右","","ガバッ"}};if(devourItemReady_)keys.insert(keys.begin(),Hint{"xbox_rt","左","","変形"});}
     else keys={{"xbox_rt","左","",attack},devour_?Hint{"xbox_lt","右","","ガバッ"}:Hint{"xbox_lt","右","長押し","吸収"},{"xbox_dpad","1〜4","","変形"},jump};
-    const float size=13,glyph=24;
+    // 吸収モードは巻尺の上に黒い札で大きく出す
+    const float size=devour_?22.f:13.f,glyph=devour_?34.f:24.f,hintY=devour_?578.f:668.f,hintX=devour_?664.f:640.f;
     // 札の文字 (キーボードはキーと押し方をまとめて札に、パッドは押し方だけを画像の横に)
     auto label=[&](const Hint& h){return pad?h.how:h.key+(h.key.empty()||h.how.empty()?"":" ")+h.how;};
     auto width=[&](const Hint& h){std::string l=label(h);float w=pad?glyph+(l.empty()?0:2+ui.Width(l,size,UI::JapaneseFont)):ui.Width(l,size,UI::JapaneseFont)+10;
         return w+4+ui.Width(h.what,size,UI::JapaneseFont)+14;};
     float total=0;for(const auto& h:keys)total+=width(h);
-    float x=640-(total-14)*.5f;
+    float x=hintX-(total-14)*.5f;
+    if(devour_)ui.Fill({x-14,hintY-8,total+14,44},{.07f,.07f,.07f,.92f});
     for(const auto& h:keys){std::string l=label(h);
-        if(pad){ui.PadGlyph(h.glyph,x,665,glyph);x+=glyph;if(!l.empty()){shadowed(l,x+2,668,size,hazard,UI::JapaneseFont);x+=2+ui.Width(l,size,UI::JapaneseFont);}x+=4;}
-        else{float w=ui.Width(l,size,UI::JapaneseFont)+10;ui.Fill({x,668,w,19},white);ui.Text(l,x+5,668,size,black,UI::JapaneseFont);x+=w+4;}
-        shadowed(h.what,x,668,size,white,UI::JapaneseFont);x+=ui.Width(h.what,size,UI::JapaneseFont)+14;}}
+        if(pad){ui.PadGlyph(h.glyph,x,hintY-(glyph-size)*.5f,glyph);x+=glyph;if(!l.empty()){shadowed(l,x+2,hintY,size,hazard,UI::JapaneseFont);x+=2+ui.Width(l,size,UI::JapaneseFont);}x+=4;}
+        else{float w=ui.Width(l,size,UI::JapaneseFont)+10;ui.Fill({x,hintY,w,size*1.45f},white);ui.Text(l,x+5,hintY,size,black,UI::JapaneseFont);x+=w+4;}
+        shadowed(h.what,x,hintY,size,white,UI::JapaneseFont);x+=ui.Width(h.what,size,UI::JapaneseFont)+14;}}
     // タイヤの溜め: 体の足元に、溜まった量のゲージを出す (溜めきると光る)
     if((body.action==LifeAction::Tire||body.action==LifeAction::Spring)&&body.weapon.charging){
         DirectX::XMFLOAT4 clip;V foot=body.at-V{0,1.25f,0};DirectX::XMStoreFloat4(&clip,DirectX::XMVector4Transform(DirectX::XMVectorSet(foot.x,foot.y,foot.z,1),ctx.camera->View()*ctx.camera->Proj()));
@@ -1159,6 +1166,7 @@ void ChronoSystem::DrawSlimeLifeUI(entt::registry& r,GameContext& ctx){
     if(life_.hydrantNotice>0)shadowed(UI::UsingPad()?"消火栓変形 解放！ 十字キー↓で変形 → RTで放水 / LTで防御":"消火栓変形 解放！ 3で変形 → 左クリックで放水 / 右クリックで防御",640,190,18,hazard,UI::JapaneseFont,.5f);
     else if(life_.signalNotice>0)shadowed(UI::UsingPad()?"信号機変形 解放！ 十字キー←で変形 → RTで 赤 → 青 → 黄 の順に信号を出す":"信号機変形 解放！ 4で変形 → 左クリックで 赤 → 青 → 黄 の順に信号を出す",640,190,18,hazard,UI::JapaneseFont,.5f);
     else if(life_.tireNotice>0)shadowed(UI::UsingPad()?"タイヤ変形 解放！ 十字キー→で変形 → RT長押しで回転を溜め、離して突進":"タイヤ変形 解放！ 左長押しで回転を溜め、離して突進",640,190,18,hazard,UI::JapaneseFont,.5f);
+    else if(life_.messageAge>0&&devour_)UI::Scale::Notice(ui,life_.message,640,130);
     else if(life_.messageAge>0)shadowed(life_.message,640,190,16,hazard,UI::JapaneseFont,.5f);
     DrawSignalUI(ctx);DrawLifeEnemyMarkers(ctx);DrawLifeChildMarkers(ctx);
     // 消火栓の照準: 届かない・遮られるときは金色にして着弾点に印を付ける

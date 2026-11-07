@@ -344,13 +344,43 @@ void ChronoSystem::InkCamera(entt::registry& r,Player& p,GameContext& ctx){
     // スライムの生活モードでは注視点を向く (消火栓のときは前方)
     if(slimeLife_)view=Unit(Lerp(Unit(focus-wanted),forward,hydrantBlend));
     if(aimingHydrant)ctx.camera->StopShake();
+    // 吸収モードの結果: 本物の体を測れるよう、横から全身を見る構図へゆっくり移る。体は画面の右、地面は巻尺の高さに置く
+    float resultBlend=0;constexpr float resultFov=.62f;
+    if(devour_&&finished_){
+        resultCameraAge_+=std::min(ctx.dt,.05f);resultBlend=ShotEase(std::min(1.f,resultCameraAge_/1.25f),0,1);
+        const float aspect=ctx.viewportSize.x/std::max(1.f,ctx.viewportSize.y),half=std::tan(resultFov*.5f);
+        if(resultCameraAge_<kResultSettledAge)MeasureDevourBody(ctx);
+        // 体を囲む箱の 8 隅が、記録の面の右で巻尺の上の枠に入る一番近い位置を探す。手前の隅ほど大きく低く映るので、奥行きも入れて調べる
+        constexpr float pitch=.13f,frameLeft=-.2f,frameRight=.92f,frameBottom=-.72f,frameTop=.7f;
+        const float ground=InkGround(resultOrigin_),tanX=half*aspect,tanY=half;
+        const V look=Forward(yaw_,pitch),side{std::cos(yaw_),0,-std::sin(yaw_)},flat{std::sin(yaw_),0,std::cos(yaw_)},up{std::sin(yaw_)*std::sin(pitch),std::cos(pitch),std::cos(yaw_)*std::sin(pitch)};
+        float slideX=0,slideY=0;
+        auto fits=[&](float away){float xLow=-1e9f,xHigh=1e9f,yLow=-1e9f,yHigh=1e9f;
+            for(int corner=0;corner<8;++corner){const V at=side*(corner&1?resultHi_:resultLo_)+flat*(corner&2?resultFar_:resultNear_)+V{0,(corner&4?resultTopY_:ground)-resultOrigin_.y,0};
+                const float x=Dot(at,side),y=Dot(at,up),z=Dot(at,look)+away;if(z<.1f)return false;
+                xLow=std::max(xLow,x-frameRight*z*tanX);xHigh=std::min(xHigh,x-frameLeft*z*tanX);yLow=std::max(yLow,y-frameTop*z*tanY);yHigh=std::min(yHigh,y-frameBottom*z*tanY);}
+            if(xLow>xHigh||yLow>yHigh)return false;
+            // 横は枠の中央、縦は一番低い隅を巻尺の上に置く
+            slideX=(xLow+xHigh)*.5f;slideY=yHigh;return true;};
+        float tooClose=0,distance=4;for(int i=0;i<24&&!fits(distance);++i){tooClose=distance;distance*=1.5f;}
+        for(int i=0;i<18;++i){const float middle=(tooClose+distance)*.5f;if(fits(middle))distance=middle;else tooClose=middle;}
+        fits(distance);
+        ctx.camera->StopShake();ctx.camera->SetHandheld(0);
+        wanted=Lerp(wanted,resultOrigin_+side*slideX+up*slideY-look*distance,resultBlend);view=Unit(Lerp(view,look,resultBlend));wanted.y=std::max(wanted.y,.7f);
+        // カメラと体の間にある物は隠す (やり直しで元に戻す)
+        V toBody=resultOrigin_-wanted;toBody.y=0;const float span=Length(toBody);
+        if(span>.01f){toBody=toBody*(1/span);V across{toBody.z,0,-toBody.x};const float lane=(resultHi_-resultLo_)*.6f;
+            for(const auto& prop:life_.props){if(!prop.active||prop.visual==0xffffffffu)continue;V d=prop.at-wanted;d.y=0;const float along=Dot(d,toBody);
+                if(along<=0||along>=span||std::abs(Dot(d,across))>lane+prop.radius)continue;
+                auto entity=entt::entity(prop.visual);if(r.valid(entity)&&r.all_of<MeshRendererComponent>(entity)&&r.get<MeshRendererComponent>(entity).enabled){r.get<MeshRendererComponent>(entity).enabled=false;resultHidden_.push_back(entity);}}}
+    }
     // カメラへ位置と回転を反映する
     ctx.camera->SetPosition(Write(wanted));
     ctx.camera->SetRotation(-std::asin(std::clamp(view.y,-1.f,1.f)),std::atan2(view.x,view.z),0);
     // 画角 (泳いでいるとき・溜め・輪で広げる)
     float goal=(ink.swimming?1.22f:1.13f)+heavy*.06f+domainView*.12f;fov_+=(goal-fov_)*(1-std::exp(-6*ctx.dt));
     // 7 度の素早い揺れを加え、0.4 秒以内に通常のカメラへ完全に戻す
-    ctx.camera->SetProjection(fov_+.12f*SlimePerfectPulse(ink.perfectAge),ctx.viewportSize.x/std::max(1.f,ctx.viewportSize.y),
+    ctx.camera->SetProjection(fov_+.12f*SlimePerfectPulse(ink.perfectAge)+(resultFov-fov_)*resultBlend,ctx.viewportSize.x/std::max(1.f,ctx.viewportSize.y),
         // 大きくなってカメラが引くほど、遠くまで描く (体が描く範囲の外へ出て消えないように)
         slimeLife_?LifeCameraNear+ink.cameraPullback*.002f:.1f,slimeLife_?2000+4*ink.cameraPullback:2000.f);
     // 消火栓のときは揺れを止める

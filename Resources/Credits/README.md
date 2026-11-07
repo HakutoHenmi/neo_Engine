@@ -26,6 +26,8 @@ scripts/BuildDevourAudio.py で素材と合成音を組み合わせて作成。�
 
 ## Fonts
 All fonts below are distributed under SIL Open Font License 1.1.
+- Anton: Copyright 2020 The Anton Project Authors. ../Fonts/Anton/OFL.txt.
+- Zen Kaku Gothic New: Copyright 2022 The Zen Kaku Gothic Project Authors. ../Fonts/ZenKakuGothicNew/OFL.txt.
 - Rajdhani: Copyright (c) 2014 Indian Type Foundry. ../Fonts/Rajdhani/OFL.txt.
 - M PLUS Rounded 1c: Copyright 2016 The Rounded M+ Project Authors.
   ../Fonts/MPLUSRounded1c/OFL.txt.

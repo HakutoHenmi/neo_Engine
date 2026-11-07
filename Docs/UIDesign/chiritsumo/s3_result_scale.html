@@ -1,0 +1,27 @@
+<!doctype html><meta charset="utf-8">
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/","cannon-es":"https://cdn.jsdelivr.net/npm/cannon-es@0.20.0/dist/cannon-es.js"}}</script>
+<link href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@700;900&family=Anton&display=block" rel="stylesheet">
+<style>html,body{margin:0;width:1920px;height:1080px;overflow:hidden;font-family:"Zen Kaku Gothic New";font-weight:900}canvas{position:absolute;left:0;top:0;width:1920px;height:1080px}
+#e{position:absolute;left:20px;top:20px;color:#fff;background:#000;font:18px monospace;z-index:9;white-space:pre-wrap}
+.abs{position:absolute}.num{font-family:Anton,"Zen Kaku Gothic New";font-weight:400;letter-spacing:.01em}
+.keys{display:inline-flex;gap:4px;align-items:center;background:#111;padding:5px 8px;border-radius:6px}.keys img{height:40px;display:block}
+.bar{position:absolute;display:flex;gap:40px;align-items:center;font-size:27px}.bar span{display:flex;gap:10px;align-items:center}
+body{background:#f5c400;color:#111}.n{font-size:250px;line-height:1}.rank{left:640px;top:360px;width:220px;height:220px;border-radius:50%;background:#c7241e;color:#fff;display:grid;place-items:center;font-size:150px;line-height:1}
+.st{font-size:40px;line-height:1.3}.btn{display:flex;align-items:center;gap:16px;font-size:36px;background:#111;color:#fff;padding:9px 24px 9px 10px}.btn.on{background:#c7241e}</style><body>
+<canvas id="c"></canvas><canvas id="t"></canvas>
+<div class="abs" style="left:72px;top:40px"><div style="font-size:30px">輪の町</div><div class="num n">126.31<span style="font-size:110px">m</span></div></div>
+<div class="abs st" style="left:72px;top:356px"><div>車 <span class="num" style="font-size:84px">28</span> 台ぶん</div><div>飲んだ物 <span class="num" style="font-size:64px">722</span> 個</div><div>町の <span class="num" style="font-size:64px">30</span> %</div><div>のこり <span class="num" style="font-size:64px">0:45</span></div></div>
+<div class="abs rank num">S</div><div class="abs" style="left:610px;top:596px;background:#111;color:#f5c400;font-size:30px;padding:2px 14px">最高記録 更新</div><div class="abs" style="left:560px;top:880px;font-size:28px;background:#111;color:#f5c400;padding:0 12px">車 1台</div><i class="abs" style="left:666px;top:918px;width:4px;height:22px;background:#111;transform:rotate(-20deg)"></i>
+<div class="abs" style="left:72px;bottom:30px;display:flex;gap:14px"><div class="btn on"><i class="keys"><img src="../scenes/assets/keyboard_n.png"><img src="../scenes/assets/xbox_button_a.png"></i>次のステージ</div><div class="btn"><i class="keys"><img src="../scenes/assets/keyboard_r.png"><img src="../scenes/assets/xbox_button_x.png"></i>もう一度</div><div class="btn"><i class="keys"><img src="../scenes/assets/keyboard_tab.png"><img src="../scenes/assets/xbox_button_y.png"></i>タイトル</div></div>
+<div id="e"></div>
+<script type="module">
+const E=document.getElementById('e');addEventListener('error',e=>E.textContent+=e.message+'\n');addEventListener('unhandledrejection',e=>E.textContent+=String(e.reason&&e.reason.stack||e.reason)+'\n');
+import {THREE,W,H,stage,ground,drop,model,place,slime,eyesAt,slab,toy,rng,gradBg,flatCam,logoSVG,ready} from './scene3d.js';
+await document.fonts.load('400 40px Anton','0');
+const s=stage(document.getElementById('c'),{bg:0xf5c400,sun:2.6,sunPos:[-5,9,12],env:.9,exposure:1.05,shadowArea:14});flatCam(s);
+// 足元に同じ縮尺の車を 1 台置く。体の高さは車 28 台ぶん
+const R=4.5,sl=slime(R,{seed:7,squash:1.02,lump:.045,flat:.92});sl.scale.x=R*1.12;sl.scale.y=R*1.06;sl.position.set(12.6,1.3+R*.98,0);s.sc.add(sl);eyesAt(s,sl,R,{gap:.3,up:.2,size:.06});
+const car=await model('covered_car');const m=place(car,.34,[6.75,0,1],[0,.25,0]);m.position.y=1.3+car.userData.size.y*.17;s.sc.add(m);await s.draw();
+const c=document.getElementById('t'),x=c.getContext('2d');c.width=W;c.height=H;x.fillStyle='#f5c400';x.fillRect(0,950,W,130);x.fillStyle='#111';x.fillRect(0,950,W,3);for(let i=0;i<W;i+=12){x.fillRect(i,950,i%120?2:4,i%120?34:70)}x.fillStyle='#c7241e';x.fillRect(1830,52,8,898);x.fillRect(1800,52,68,8);x.fillRect(1800,942,68,8);
+ready();
+</script>

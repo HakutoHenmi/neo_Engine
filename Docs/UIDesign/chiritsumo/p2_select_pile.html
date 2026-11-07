@@ -1,0 +1,27 @@
+<!doctype html><meta charset="utf-8">
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/","cannon-es":"https://cdn.jsdelivr.net/npm/cannon-es@0.20.0/dist/cannon-es.js"}}</script>
+<link href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@700;900&family=Anton&display=block" rel="stylesheet">
+<style>html,body{margin:0;width:1920px;height:1080px;overflow:hidden;font-family:"Zen Kaku Gothic New";font-weight:900}canvas{position:absolute;left:0;top:0;width:1920px;height:1080px}
+#e{position:absolute;left:20px;top:20px;color:#fff;background:#000;font:18px monospace;z-index:9;white-space:pre-wrap}
+.abs{position:absolute}.num{font-family:Anton,"Zen Kaku Gothic New";font-weight:400;letter-spacing:.01em}
+.keys{display:inline-flex;gap:4px;align-items:center;background:#111;padding:5px 8px;border-radius:6px}.keys img{height:40px;display:block}
+.bar{position:absolute;display:flex;gap:40px;align-items:center;font-size:27px}.bar span{display:flex;gap:10px;align-items:center}
+body{background:#222;color:#111}#a{clip-path:polygon(0 0,1330px 0,1130px 100%,0 100%)}#b{clip-path:polygon(1330px 0,100% 0,100% 100%,1130px 100%)}
+.big{font-size:128px;line-height:1.05}.row{display:flex;gap:44px;margin-top:10px}.k{font-size:26px}.v{font-size:66px;line-height:1.1}</style><body>
+<canvas id="a"></canvas><canvas id="b"></canvas>
+<div class="abs" style="left:72px;top:54px"><div class="num" style="font-size:44px">STAGE 1</div><div class="big">子ども部屋</div>
+<div class="row"><div><div class="k">目標</div><div class="v num">15cm</div></div><div><div class="k">最高記録</div><div class="v num">28.4cm</div></div><div><div class="k">ランク</div><div class="v num">A</div></div><div><div class="k">時間</div><div class="v num">3:00</div></div></div></div>
+<div class="abs" style="left:1400px;top:54px;color:#fff"><div class="num" style="font-size:36px">STAGE 2</div><div style="font-size:84px;line-height:1.1">輪の町</div><div style="font-size:30px;margin-top:6px">子ども部屋を<br>15cm でクリア</div></div>
+<div class="bar" style="left:72px;bottom:30px"><span><i class="keys"><img src="../scenes/assets/keyboard_enter.png"><img src="../scenes/assets/xbox_button_a.png"></i>出発</span><span><i class="keys"><img src="../scenes/assets/keyboard_arrows_horizontal.png"><img src="../scenes/assets/xbox_dpad.png"></i>えらぶ</span></div><div class="bar" style="right:60px;bottom:30px;color:#fff"><span><i class="keys"><img src="../scenes/assets/keyboard_escape.png"><img src="../scenes/assets/xbox_button_b.png"></i>もどる</span></div>
+<div id="e"></div>
+<script type="module">
+const E=document.getElementById('e');addEventListener('error',e=>E.textContent+=e.message+'\n');addEventListener('unhandledrejection',e=>E.textContent+=String(e.reason&&e.reason.stack||e.reason)+'\n');
+import {THREE,W,H,stage,ground,drop,model,place,slime,eyesAt,slab,toy,rng,gradBg,flatCam,logoSVG,ready} from './scene3d.js';
+const a=stage(document.getElementById('a'),{bg:0xf1ae1d,fov:24,sun:2.8,sunPos:[-8,16,10],env:.8,exposure:1.05,shadowArea:20});ground(a.sc,0);
+const pk=await drop(a.sc,[[toy('box',0xd9423a),1.1,14],[toy('box',0x2a79bf),1.1,14],[toy('box',0xe9b022),1.1,14],[toy('ball',0x2fa58a),.9,14],[toy('ball',0xd94e87),.8,12],['cardboard_box_01',1.2,5],['plastic_crate_02',1,5]],{radius:1.3,tube:2.3,base:[0,0,0],seed:4,every:4});a.cam.position.set(.8,5.6,27);a.cam.lookAt(.8,5.4,0);
+const R=1.3,sl=slime(R,{seed:2,squash:.84,lump:.05});sl.position.set(0,pk+.8,.3);a.sc.add(sl);eyesAt(a,sl,R);await a.draw();
+const b=stage(document.getElementById('b'),{bg:0x2447c9,fov:24,sun:1.2,sunPos:[-6,16,10],env:.1,exposure:.7,shadowArea:20});ground(b.sc,0);
+const dark=new THREE.MeshBasicMaterial({color:0x0d1c5e});await drop(b.sc,[['covered_car',4.2,3],['concrete_road_barrier',2.8,4],['horse_statue_01',2.8,1],['Barrel_01',1.3,12],['wooden_crate_01',1.5,10],['trashbag',1.2,20],['cardboard_box_01',1.05,20],['old_tyre',1.1,12],['fire_hydrant',.95,6],['concrete_cat_statue',1.1,3],['plastic_crate_01',.8,16],['metal_jerrycan',.7,14],['metal_trash_can',1,8]],{radius:1.4,tube:2.8,base:[0,0,0],seed:5,every:4});b.sc.traverse(o=>{if(o.isMesh&&o.material.type!=='ShadowMaterial')o.material=dark});
+b.cam.position.set(-10,5.5,31);b.cam.lookAt(-10,5.5,0);await b.draw();
+ready();
+</script>

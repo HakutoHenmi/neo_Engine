@@ -7,6 +7,7 @@
 #include "../../Engine/Renderer.h"
 #include "../ObjectTypes.h"
 #include <memory>
+#include <array>
 #include <chrono>
 
 namespace Game {
@@ -16,9 +17,9 @@ class UISystem;
 
 // ========================================================
 // TitleScene: タイトル画面
-//   - 2D の UI (タイトルロゴ・スライムのマーク・ボタン) を描く
-//   - BEGIN EXPEDITION / Enter / START でセレクト画面へ
-//   - CREDITS でクレジット画面を開く
+//   - 物差しの UI (巻尺・大きさ順の物・大きくなるロゴ) を描く
+//   - はじめるでスライムが物と文字を飲みながら転がり、セレクト画面へ
+//   - クレジットでクレジット画面を開く
 // ========================================================
 class TitleScene : public Engine::IScene {
 public:
@@ -38,20 +39,14 @@ private:
     // クレジット画面を開いているかと、表示中のページ
     bool creditsOpen_ = false;
     int creditsPage_ = 0;
-    // === 遷移フェーズ ===
-    enum class Phase {
-        Idle,        // タイトル表示中（入力待ち）
-        FadeOut,     // UIフェードアウト (0.0~0.2s)
-        CameraMove,  // カメラ移動 + FOV変更 (0.2~2.2s)
-        InkSplash,   // 墨トランジション (1.5~2.0s)
-        GameStart    // ゲームシーンへ遷移
-    };
-
-    Phase phase_ = Phase::Idle;
-    float phaseTimer_ = 0.0f;
-    float totalTime_ = 0.0f;   // 経過時間（サイン波等に使用）
-    float uiAlpha_ = 1.0f;     // UI全体の透明度
-    float inkAlpha_ = 0.0f;    // 墨トランジションの不透明度
+    // 経過時間・登場の経過時間・出発の経過時間 (負なら出発前)
+    float totalTime_ = 0.0f, intro_ = 0.0f, leaving_ = -1.0f;
+    // 選んでいる項目 (0: はじめる / 1: クレジット / 2: やめる) と、前フレームのマウスの位置
+    int menu_ = 0;
+    float pointerX_ = 0.0f, pointerY_ = 0.0f;
+    bool pointerReady_ = false;
+    // 出発のときに物と文字が飲まれた時刻 (負ならまだ飲まれていない)
+    std::array<float, 24> eatenAt_{};
     float dt_ = 1.0f / 60.0f;
 
     // === カメラ ===
@@ -61,38 +56,12 @@ private:
     DirectX::XMFLOAT3 camStartPos_ = { -1.5f, 0.8f, -1.0f };
     DirectX::XMFLOAT3 camStartTarget_ = { 0.0f, 1.0f, 45.0f };
     float camStartFov_ = DirectX::XMConvertToRadians(38.0f);
-    // 遷移先
-    DirectX::XMFLOAT3 camEndPos_ = { 0.0f, 1.5f, -2.0f };
-    DirectX::XMFLOAT3 camEndTarget_ = { 0.0f, 1.0f, 10.0f };
-    float camEndFov_ = DirectX::XMConvertToRadians(60.0f);
     // 現在の画角
     float currentFov_;
 
     // === レンダリングリソース ===
     Engine::WindowDX* dx_ = nullptr;
     Engine::Renderer* renderer_ = nullptr;
-
-    // モデルハンドル
-    // 以前の 3D タイトルで使っていたモデル/テクスチャのハンドル
-    uint32_t groundMesh_ = 0;
-    uint32_t groundTex_ = 0;
-    uint32_t cubeMesh_ = 0;
-    uint32_t cubeTex_ = 0;
-    uint32_t titleMesh_ = 0;
-    uint32_t titleTex_ = 0;
-    uint32_t titleFutiMesh_ = 0;
-    uint32_t titleFutiTex_ = 0;
-
-    // === ヘルパー ===
-    void DrawMeshAt(uint32_t mesh, uint32_t tex,
-                    const DirectX::XMFLOAT3& pos,
-                    const DirectX::XMFLOAT3& rot,
-                    const DirectX::XMFLOAT3& scale,
-                    const Engine::Vector4& color,
-                    const std::string& shader = "Default");
-
-    // イージング (EaseInOutCubic): 0〜1 をゆっくり始まりゆっくり終わる曲線に変換
-    static float EaseInOut(float t);
 
     // 時間管理
     // 前フレームの時刻 (dt の計算用)

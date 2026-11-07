@@ -1,0 +1,62 @@
+<!doctype html><meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Dela+Gothic+One&family=Shippori+Mincho+B1:wght@800&family=Kaisei+Tokumin:wght@800&display=block" rel="stylesheet">
+<style>
+html,body{margin:0;width:1920px;height:1080px;overflow:hidden;background:#17161a}
+#bg{position:absolute;left:0;top:0}
+.paper{position:absolute;left:96px;top:24px;width:1440px;height:1020px;transform:rotate(-1.1deg);background:#e9dfc8;box-shadow:0 26px 44px rgba(0,0,0,.65);overflow:hidden;color:#17161a}
+.paper canvas{position:absolute;left:0;top:0}
+.mast{position:absolute;right:34px;top:32px;writing-mode:vertical-rl;width:176px;height:430px;background:#17161a;color:#e9dfc8;display:grid;place-items:center;font:400 118px/1 "Dela Gothic One";letter-spacing:.14em}
+.date{position:absolute;right:42px;top:476px;writing-mode:vertical-rl;font:800 27px/1.5 "Shippori Mincho B1";height:320px}
+.head{position:absolute;right:226px;top:22px;writing-mode:vertical-rl;font:400 118px/1.2 "Dela Gothic One";height:980px;letter-spacing:0;white-space:nowrap}
+.head b{font-weight:400;color:#b3201a}
+.sub{position:absolute;right:384px;top:30px;writing-mode:vertical-rl;font:800 46px/1.2 "Shippori Mincho B1";height:960px;white-space:nowrap}
+.photo{position:absolute;left:32px;top:30px;width:930px;height:516px;background:#ddd}
+.cap{position:absolute;left:32px;top:552px;width:930px;font:800 24px/1.4 "Shippori Mincho B1"}
+.body{position:absolute;left:32px;top:636px;width:930px;height:366px;writing-mode:vertical-rl;font:800 25px/1.66 "Shippori Mincho B1";overflow:hidden;text-align:justify;border-top:4px solid #17161a;padding-top:12px;box-sizing:border-box}
+.side{position:absolute;left:1566px;top:60px;width:310px;color:#f3ead3}
+.lab{font:800 30px "Shippori Mincho B1";color:#bdb29a}
+.num{font:400 70px/1.1 "Dela Gothic One";margin-bottom:20px}
+.num small{font-size:34px}
+.btn{position:absolute;left:1566px;width:318px;height:88px;background:#f3ead3;color:#17161a;font:800 33px "Shippori Mincho B1";display:grid;grid-template-columns:auto 1fr;align-items:center;gap:10px;padding:0 10px;box-sizing:border-box}
+.btn.on{background:#c8281e;color:#fff4d9}
+.keys{display:flex;gap:3px;background:#17161a;padding:5px 7px;border-radius:6px}.keys img{height:38px}
+</style>
+<body>
+<canvas id="bg" width="1920" height="1080"></canvas>
+<div class="paper">
+ <canvas id="tx" width="1440" height="1020"></canvas>
+ <div class="mast">号外</div>
+ <div class="date">令和八年十一月六日<br>輪の町新聞社</div>
+ <div class="head">輪の町、<b>飲まれる</b></div>
+ <div class="sub">全長126m　722個を丸呑み</div>
+ <div class="photo"><canvas id="ph" width="930" height="516"></canvas></div>
+ <div class="cap">写真　町の中央で「ぱくぱく」と鳴きながら育つスライム。本人は「まだ本気ではない」と話す。</div>
+ <div class="body">六日午後、輪の町の中心部に現れたスライムが、住宅と高層ビルを次々と飲み込んだ。残り時間四十五秒を残して全長は百二十六メートルに達し、町の三割が体の中に消えた。避難はすでに済んでおり、けが人はいない。目撃者によると、スライムは満足げに弾んだあと、「あとでもう一回やる」と言い残して昼寝に入ったという。町の担当者は「気持ちよさそうだったので見守った」と話している。</div>
+ <canvas id="seal" width="340" height="340" style="left:20px;top:654px"></canvas>
+</div>
+<div class="side"><div class="lab">大きさ</div><div class="num">126.31<small>m</small></div><div class="lab">飲んだ物</div><div class="num">722<small>個</small></div><div class="lab">町の吸収</div><div class="num">30<small>%</small></div><div class="lab">のこり時間</div><div class="num">0:45</div></div>
+<div class="btn on" style="top:700px"><div class="keys"><img src="assets/keyboard_n.png"><img src="assets/xbox_button_a.png"></div>次のステージ</div>
+<div class="btn" style="top:804px"><div class="keys"><img src="assets/keyboard_r.png"><img src="assets/xbox_button_x.png"></div>もう一度</div>
+<div class="btn" style="top:908px"><div class="keys"><img src="assets/keyboard_tab.png"><img src="assets/xbox_button_y.png"></div>タイトル</div>
+<script src="gel.js"></script>
+<script>
+(async()=>{
+await fontReady([['400 100px "Dela Gothic One"','号外輪の町飲まれる'],['800 40px "Shippori Mincho B1"','全長丸呑み写真'],['800 200px "Kaisei Tokumin"','S']]);
+const [town,paper]=await Promise.all([loadImg('assets/town_big.jpg'),loadImg('assets/paper.jpg')]);
+const d=document.getElementById('bg').getContext('2d');
+d.fillStyle='#17161a';d.fillRect(0,0,W,H);
+// 紙の質感
+const t=document.getElementById('tx').getContext('2d');t.fillStyle='#e9dfc8';t.fillRect(0,0,1440,1020);t.globalCompositeOperation='multiply';t.globalAlpha=.6;t.drawImage(paper,0,0,1440,1440);t.globalAlpha=1;
+t.fillStyle='rgba(120,100,70,.08)';t.fillRect(716,0,8,1020);t.fillRect(0,506,1440,6);t.globalCompositeOperation='source-over';
+// 写真: 実機の画面を新聞の網点に
+const p=document.getElementById('ph').getContext('2d',{willReadFrequently:true});p.fillStyle='#e9dfc8';p.fillRect(0,0,930,516);
+halftone(p,town,520,270,920,510,0,0,930,516,{cell:5,angle:.78,contrast:1.45,lift:.06,ink:[18,17,20]});
+// 朱印: ランク
+const s=document.getElementById('seal').getContext('2d',{willReadFrequently:true});
+s.translate(170,170);s.rotate(-.16);s.strokeStyle='#c8281e';s.fillStyle='#c8281e';s.lineWidth=15;s.beginPath();s.arc(0,0,150,0,7);s.stroke();s.lineWidth=5;s.beginPath();s.arc(0,0,127,0,7);s.stroke();
+s.font='800 220px "Kaisei Tokumin"';s.textAlign='center';s.textBaseline='middle';s.fillText('S',0,6);
+s.setTransform(1,0,0,1,0,0);
+{const nn=noiseCanvas(16,5,3,340,340);s.globalCompositeOperation='destination-out';const id=s.getImageData(0,0,340,340),n=nn.getContext('2d').getImageData(0,0,340,340).data;for(let i=0;i<340*340;i++){if(n[i*4]<104)id.data[i*4+3]*=.2}s.globalCompositeOperation='source-over';s.putImageData(id,0,0)}
+done();
+})();
+</script>

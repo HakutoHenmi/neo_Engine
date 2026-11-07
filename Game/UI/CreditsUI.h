@@ -3,21 +3,19 @@
 // ページの見出しと各行の文章は Resources/Data/credits.json に置く。
 #pragma once
 // 共通の UI 描画 (Canvas・色・ボタン)
-#include "GameUI.h"
+#include "ScaleUI.h"
 #include "../Data/GameData.h"
 #include <vector>
 
 // UI 関連はすべて Game::UI 名前空間に置く
 namespace Game::UI {
-// ボタンの位置 (1280x720 の UI 座標)
-inline constexpr Rect CreditsButton{96,580,220,50};
-// タイトルの EXIT ボタン (CREDITS の下)
-inline constexpr Rect TitleExit{96,642,220,50};
-inline constexpr Rect CreditsBack{1012,600,200,50}, CreditsPrev{96,600,190,50}, CreditsNext{300,600,190,50};
+// 操作の案内の当たり判定と、巻尺の上の章の帯
+inline constexpr Rect CreditsBack{1066,36,160,42};
+inline Rect CreditsTab(int page){return {20+float(page)*250,564,234,43};}
 
 // クレジットの 1 ページ (見出しと、名前・詳細の行)
 struct CreditsPage {
-    std::string heading;
+    std::string heading,note,tab;
     std::vector<std::pair<std::string,std::string>> rows;
 };
 // credits.json の中身 (画面の題名とページ)
@@ -30,7 +28,7 @@ inline const CreditsData& Credits() {
         CreditsData out;
         out.title=Data::Require(json,"title","credits.json").get<std::string>();
         for(const auto& page:Data::Require(json,"pages","credits.json")){
-            CreditsPage p;p.heading=page.at("heading").get<std::string>();
+            CreditsPage p;p.heading=page.at("heading").get<std::string>();p.note=page.value("note",std::string{});p.tab=page.at("tab").get<std::string>();
             for(const auto& row:page.at("rows"))p.rows.push_back({row.at("title").get<std::string>(),row.at("detail").get<std::string>()});
             out.pages.push_back(std::move(p));
         }
@@ -42,38 +40,40 @@ inline const CreditsData& Credits() {
 // ページ数
 inline int CreditsPageCount(){return int(Credits().pages.size());}
 
+// 操作: 左右 / LB RB / 章の帯のクリックでめくる。閉じるなら true を返す
+inline bool UpdateCredits(Canvas& ui,int& page){
+    if(BackPressed()||ui.Click(CreditsBack))return true;
+    const int count=CreditsPageCount();
+    const int step=(Pressed(DIK_RIGHT)||Pressed(DIK_D)||PadPressed(XINPUT_GAMEPAD_RIGHT_SHOULDER|XINPUT_GAMEPAD_DPAD_RIGHT)?1:0)-(Pressed(DIK_LEFT)||Pressed(DIK_A)||PadPressed(XINPUT_GAMEPAD_LEFT_SHOULDER|XINPUT_GAMEPAD_DPAD_LEFT)?1:0);
+    const int before=page;page=std::clamp(page+step,0,count-1);
+    if(!UsingPad())for(int i=0;i<count;++i)if(ui.Click(CreditsTab(i)))page=i;
+    if(page!=before)PlayUISound(UISound::Move);
+    return false;
+}
 // タイトル画面と GPU のレイアウト検証で共有する。座標はすべて Canvas の座標系
 inline void DrawCredits(Canvas& ui, int page) {
+    namespace S=Scale;
     const auto& credits=Credits();
     page=std::clamp(page,0,CreditsPageCount()-1);
-    // 背景と、画面の上に出る見出し
-    ui.Background(credits.title.c_str());
-    // ページ番号を大きく薄い数字で置き、見出しは筆の塗りの上に描く
-    ui.Text("0"+std::to_string(page+1),1040,92,200,{.1f,.16f,.125f,1});
-    // 見出し: 筆の塗りの上に文字を置く
-    const std::string& heading=credits.pages[size_t(page)].heading;
-    // 見出しの文字幅
-    const float w=ui.Width(heading,34);
-    // 文字幅より少し広い筆の塗り (少し傾ける)
-    ui.Brush({66,114,w+100,82},WithAlpha(Lime,.92f),-.02f);
-    // 塗りの上に濃い色で見出しを書く
-    ui.Text(heading,96,136,34,Ink);
-    // 各行 (名前と詳細)
-    const auto& rows=credits.pages[size_t(page)].rows;
-    for(size_t index=0;index<rows.size();++index){
-        // 行の上端 (1 行 68 ピクセル)
-        const float y=226.f+float(index)*68.f;
-        // 行頭の点 (行ごとに色を変える)
-        ui.Dot(104,y+14,5,index%2?Teal:Lime);
-        // 名前と、その下に薄い色の詳細
-        ui.Text(rows[index].first,124,y,25);ui.Text(rows[index].second,126,y+30,18,Muted);
-    }
-    // 前後のページボタン・ページの点・戻るボタン
-    if(page>0)ui.Button(CreditsPrev,Str("common.previous"),false,"xbox_lb");
-    if(page+1<CreditsPageCount())ui.Button(CreditsNext,Str("common.next"),false,"xbox_rb");
-    // 今のページの点は大きく明るく、それ以外は小さく薄く
-    for(int i=0;i<CreditsPageCount();++i)ui.Dot(540+float(i)*22,625,i==page?6.f:4.f,i==page?Lime:WithAlpha(Muted,.4f));
-    // 戻るボタン (ゲームパッドのときはキーの表記を省く)
-    ui.Button(CreditsBack,Str(UsingPad()?"common.back":"common.backEsc"),false,"xbox_button_b");
+    const auto& current=credits.pages[size_t(page)];
+    S::Backdrop(ui);
+    // 見出しと表記
+    ui.Text(credits.title,48,22,26,S::Black,S::Jp);
+    ui.Big(current.heading,46,50,92,S::Black,S::JpBig,S::JpBigBase);
+    ui.Text(current.note,50,166,22,S::Black,S::Jp);
+    // 各行: 名前と詳細
+    for(size_t i=0;i<current.rows.size();++i){const float y=202+float(i)*58;
+        ui.Text(current.rows[i].first,50,y,26,S::Black,S::Jp);ui.Text(current.rows[i].second,52,y+31,17,S::Black,S::Jp);}
+    S::Hint(ui,"keyboard_arrows_horizontal","xbox_dpad",Str("scale.creditsPage"),822,40);
+    S::Hint(ui,"keyboard_escape","xbox_button_b",Str("scale.creditsBack"),1070,40);
+    // 章ごとに飾りの物を変える
+    static const S::Sprite* decor[]={&S::Barrel,&S::Hydrant,&S::Cat,&S::Box,&S::Horse};const S::Sprite* sprite=decor[page%5];
+    S::Prop(ui,*sprite,1110,564,sprite->aspect>1?120.f:190.f);
+    // 章の帯: スライムが今の章へ滑っていく
+    static float slimeX=0;const float target=CreditsTab(page).x+70;slimeX=slimeX<=0?target:slimeX+(target-slimeX)*.18f;
+    S::Slime(ui,slimeX,564,150);
+    for(int i=0;i<CreditsPageCount();++i){const Rect b=CreditsTab(i);const bool on=i==page;ui.Fill(b,on?S::Black:WithAlpha(S::Black,.14f));
+        ui.Text(std::to_string(i+1)+" "+credits.pages[size_t(i)].tab,b.x+12,b.y+8,22,on?S::Yellow:S::Black,S::Jp);}
+    S::Tape(ui,{{5},{30},{100},{500},{5000},{12600}});
 }
 }

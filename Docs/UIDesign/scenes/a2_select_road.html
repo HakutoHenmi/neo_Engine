@@ -1,0 +1,79 @@
+<!doctype html><meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@700;900&family=Dela+Gothic+One&display=block" rel="stylesheet">
+<style>
+html,body{margin:0;width:1920px;height:1080px;overflow:hidden;background:#222;font-family:"Zen Kaku Gothic New"}
+canvas{position:absolute;left:0;top:0}
+.sign{position:absolute;left:150px;top:96px;width:1620px;height:690px;box-sizing:border-box;background:#1a4fa3;border-radius:26px;box-shadow:0 0 0 7px #e9eef4 inset,0 0 0 15px #1a4fa3 inset,0 16px 0 #0e2f63,0 40px 50px rgba(0,0,0,.5);color:#fff}
+.row{position:absolute;left:44px;right:44px;height:296px;display:grid;grid-template-columns:150px 1fr 340px;align-items:center;column-gap:28px}
+.r1{top:42px}.r2{top:352px}
+.line{position:absolute;left:46px;right:46px;top:342px;height:6px;background:#e9eef4;border-radius:3px}
+.shield{width:132px;height:150px;background:#fff;color:#1a4fa3;font:400 92px/132px "Dela Gothic One";text-align:center;clip-path:polygon(0 0,100% 0,100% 62%,50% 100%,0 62%)}
+.name{font-weight:900;font-size:128px;letter-spacing:.02em;line-height:1.05}
+.en{font-weight:700;font-size:37px;margin-top:6px;color:#dbe6f6}
+.goal{position:relative;text-align:right}
+.big{font:400 76px/1 "Dela Gothic One"}
+.lab{font-weight:900;font-size:27px;color:#dbe6f6;margin-bottom:6px}
+.sel{position:absolute;left:18px;right:18px;top:26px;height:310px;border-radius:14px;background:#f5c21c;}
+.sel~.row.r1{color:#10141c}.sel~.row.r1 .en,.sel~.row.r1 .lab{color:#2b2a1f}.sel~.row.r1 .shield{background:#10141c;color:#f5c21c}
+.closed{position:absolute;left:640px;top:440px;width:760px;height:120px;transform:rotate(-3deg);background:repeating-linear-gradient(-45deg,#f5c21c 0 44px,#14141a 44px 88px);box-shadow:0 8px 14px rgba(0,0,0,.45);display:grid;place-items:center}
+.closed b{background:#fff;color:#c7241e;padding:2px 34px 6px;font-weight:900;font-size:58px}
+.pole{position:absolute;top:0;width:44px;height:1080px;background:linear-gradient(90deg,#6b7078,#c7ccd3 40%,#70757d 75%,#494d55)}
+.time{position:absolute;width:160px;height:160px;border-radius:50%;background:#fff;box-sizing:border-box;border:18px solid #d3241d;color:#111;display:grid;place-items:center;font:400 32px "Dela Gothic One";box-shadow:0 8px 12px rgba(0,0,0,.45)}
+.bolt{position:absolute;width:15px;height:15px;border-radius:50%;background:#dfe5ec;box-shadow:inset -2px -2px 0 #8c97a8}
+.foot{position:absolute;left:150px;right:150px;bottom:34px;display:flex;gap:44px;align-items:center;color:#fff;font-weight:900;font-size:30px;text-shadow:0 2px 0 #000,0 0 10px #000}
+.foot span{display:flex;align-items:center;gap:8px}.foot img{height:54px}.foot .sp{flex:1}
+.brief{position:absolute;left:150px;right:390px;top:828px;background:#101217;color:#fff;font-weight:900;font-size:36px;padding:22px 32px;box-shadow:10px 10px 0 #f5c21c}
+.brief em{font-style:normal;color:#f5c21c}
+</style>
+<body>
+<canvas id="bg" width="1920" height="1080"></canvas>
+<div class="pole" style="left:236px"></div><div class="pole" style="left:1640px"></div>
+<div class="sign">
+  <div class="sel"></div>
+  <div class="row r1">
+    <div class="shield">1</div>
+    <div><div class="name">子ども部屋</div><div class="en">ベッドの下から　5cm　→　目標 15cm</div></div>
+    <div class="goal"><div class="lab">最高記録</div><div class="big">28.4cm</div><div class="lab" style="margin-top:12px">ランク A</div></div>
+  </div>
+  <div class="line"></div><i class="bolt" style="left:30px;top:30px"></i><i class="bolt" style="right:30px;top:30px"></i><i class="bolt" style="left:30px;bottom:30px"></i><i class="bolt" style="right:30px;bottom:30px"></i>
+  <div class="row r2">
+    <div class="shield">2</div>
+    <div><div class="name">輪の町</div><div class="en">1m　→　目標 50m</div></div>
+    <div class="goal"><div class="lab">最高記録</div><div class="big">—</div></div>
+  </div>
+  <div class="closed"><b>まだ通れません</b></div>
+</div>
+<div class="time" style="left:1660px;top:790px">3:00</div>
+<div class="brief">積み木の壁は <em>8cm</em> で飲める。部屋のどこかの掃除機をさがせ。</div>
+<canvas id="fx" width="1920" height="1080"></canvas>
+<div class="foot"><span><img src="assets/keyboard_enter.png"><img src="assets/xbox_button_a.png">出発</span><span><img src="assets/keyboard_arrows_horizontal.png"><img src="assets/xbox_dpad.png">えらぶ</span><span class="sp"></span><span><img src="assets/keyboard_escape.png"><img src="assets/xbox_button_b.png">もどる</span></div>
+<script src="gel.js"></script>
+<script>
+(async()=>{
+await fontReady([['900 100px "Zen Kaku Gothic New"','子ども部屋輪の町'],['400 90px "Dela Gothic One"','123']]);
+const img=await loadImg('assets/avenue.jpg');
+const x=document.getElementById('bg').getContext('2d',{willReadFrequently:true});
+x.filter='blur(5px) saturate(.8)';x.drawImage(img,-60,-40,2040,1148);x.filter='none';
+x.fillStyle='rgba(16,20,30,.34)';x.fillRect(0,0,W,H);
+// 看板の上から垂れるスライム (透明の層に描く)
+const f=document.getElementById('fx').getContext('2d',{willReadFrequently:true});
+// 看板の絵を背景としてゲルに屈折させたいので、簡単な代用: 青い看板の色面を敷いて計算し、形の外は消す
+const t=mk(),tc=t.getContext('2d',{willReadFrequently:true});tc.fillStyle='#f5c21c';tc.fillRect(0,0,W,H);tc.fillStyle='#1a4fa3';tc.fillRect(0,0,W,110);
+const s=mk(),c=s.getContext('2d');
+c.fillStyle='#fff';c.fillRect(1010,70,350,40);
+stroke(c,[[1050,70,40],[1072,120,34],[1090,170,14],[1094,230,10],[1096,268,15]],200);
+stroke(c,[[1180,80,44],[1188,130,28],[1196,170,11],[1198,196,15]],200);
+stroke(c,[[1290,80,44],[1300,140,30],[1306,210,12],[1308,300,10],[1309,340,17]],200);
+blob(c,1120,96,104,58);blob(c,1270,100,88,44);blob(c,1020,102,48,28);blob(c,1350,104,44,24);
+gel(tc,s,{height:60,big:30,edge:6,shadow:0,refract:.3,specks:true});
+// 形の部分だけ切り抜く
+const cut=mk(),cc=cut.getContext('2d');cc.filter='blur(5px)';cc.drawImage(s,0,0);cc.filter='none';
+{const d=cc.getImageData(0,0,W,H);for(let i=0;i<W*H;i++){const a=d.data[i*4+3]/255;d.data[i*4+3]=Math.min(1,Math.max(0,(a-.46)/.08))*255}cc.putImageData(d,0,0)}
+cc.globalCompositeOperation='source-in';cc.drawImage(t,0,0);
+f.filter='blur(10px)';f.globalAlpha=.4;f.drawImage(s,6,12);f.globalCompositeOperation='source-in';f.fillStyle='#02060a';f.fillRect(0,0,W,H);f.globalCompositeOperation='source-over';f.filter='none';f.globalAlpha=1;
+f.drawImage(cut,0,0);
+// 看板の上に乗っているスライムの目
+f.fillStyle='#07170a';for(const ex of [1098,1150]){f.beginPath();f.ellipse(ex,84,9,12,0,0,7);f.fill()}
+done();
+})();
+</script>

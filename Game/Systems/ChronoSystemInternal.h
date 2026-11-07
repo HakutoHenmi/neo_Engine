@@ -28,6 +28,7 @@
 #include <set>
 #include <unordered_map>
 #include "../UI/GameUI.h"
+#include "../UI/ScaleUI.h"
 #include "../UI/RogueliteUI.h"
 #include "../Chrono/CreatureMotion.h"
 #include "../Chrono/MeadowTerrain.h"

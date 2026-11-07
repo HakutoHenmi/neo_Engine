@@ -3695,8 +3695,14 @@ bool Renderer::InitTextSystem(const std::string& fontPath, float pixelHeight) {
 	// 既にこのフォントがロード済みなら何もしない
 	if (glyphCaches_.count(fontPath)) return true;
 
+	// "フォントのパス#256" は同じフォントを大きな文字用の解像度で読む
+	std::string file = fontPath;
+	if (const size_t mark = fontPath.rfind('#'); mark != std::string::npos) {
+		file = fontPath.substr(0, mark);
+		pixelHeight = std::stof(fontPath.substr(mark + 1));
+	}
 	auto cache = std::make_unique<DynamicGlyphCache>();
-	if (!cache->Initialize(this, fontPath, pixelHeight)) {
+	if (!cache->Initialize(this, file, pixelHeight)) {
 		return false;
 	}
 	glyphCaches_[fontPath] = std::move(cache);

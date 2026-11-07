@@ -182,6 +182,9 @@ private:
 	bool slimePlayerDemo_ = false;
 	void FrameStoppedGameCamera();
     bool isPaused_ = false;
+    // ポーズメニューで選んでいる項目と、開いた時刻
+    int pauseMenu_ = 0;
+    float pauseOpenedAt_ = 0;
     bool graphicsOpen_=false;
     bool graphicsSaveFailed_=false;
     // 生成・破棄の予約 (更新の途中で消すと反復処理が壊れるため、フレームの区切りでまとめて行う)

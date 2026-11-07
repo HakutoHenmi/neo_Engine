@@ -1,0 +1,85 @@
+<!doctype html><meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Yusei+Magic&family=Klee+One:wght@600&family=Darumadrop+One&display=block" rel="stylesheet">
+<style>
+html,body{margin:0;width:1920px;height:1080px;overflow:hidden;background:#6b4426;font-family:"Yusei Magic"}
+#bg{position:absolute;left:0;top:0}
+.book{position:absolute;left:112px;top:40px;width:1696px;height:940px;display:grid;grid-template-columns:1fr 1fr;box-shadow:0 20px 36px rgba(30,14,4,.6)}
+.page{position:relative;background:#f7f0dd;padding:30px 42px 0;box-sizing:border-box;color:#2c2a33}
+.page.l{border-radius:10px 0 0 10px;box-shadow:inset -44px 0 44px -32px rgba(90,60,30,.42)}
+.page.r{border-radius:0 10px 10px 0;box-shadow:inset 44px 0 44px -32px rgba(90,60,30,.42)}
+.head{display:flex;gap:26px;align-items:baseline;font-size:31px;border-bottom:4px solid #7da2c8;padding-bottom:6px;color:#2c2a33}
+.head b{font-weight:400;font-size:62px;font-family:"Darumadrop One";color:#d0301f}
+.pic{position:relative;margin-top:14px;width:100%;height:440px;border:5px solid #2c2a33;box-sizing:border-box;overflow:hidden;background:#fff}
+.pic canvas{position:absolute;left:0;top:0}
+.grid{margin-top:18px;display:grid;grid-template-columns:repeat(12,1fr);border-left:3px solid #7da2c8;border-top:3px solid #7da2c8;font-size:46px;line-height:1}
+.grid span{aspect-ratio:1;border-right:3px solid #7da2c8;border-bottom:3px solid #7da2c8;display:grid;place-items:center;font-family:"Klee One";font-weight:600;font-size:46px}
+.grid span.red{color:#d0301f}
+.head b.on{background:radial-gradient(closest-side,transparent 84%,#d0301f 86%,#d0301f 96%,transparent 98%);padding:0 24px}
+.page.r{filter:brightness(.92) saturate(.75)}
+.keep{position:absolute;left:44px;top:846px;transform:rotate(-2deg);background:#fff;border:6px solid #d0301f;color:#d0301f;padding:7px 18px;font-size:40px;border-radius:12px;font-family:"Klee One";font-weight:600}
+.lock{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%) rotate(-3deg);font-family:"Darumadrop One";font-size:82px;color:#8b8579;white-space:nowrap}
+.foot{position:absolute;left:112px;right:112px;bottom:14px;height:70px;display:flex;align-items:center;gap:40px;font-size:30px;color:#fff;text-shadow:0 2px 3px #000}
+.foot span{display:flex;gap:6px;align-items:center}.foot img{height:48px}.foot .sp{flex:1}
+.clip{position:absolute;left:50%;top:-40px;margin-left:-120px;width:240px;height:124px}
+.tab{position:absolute;right:-10px;top:60px;background:#f5c21c;padding:16px 14px;writing-mode:vertical-rl;font-size:34px;box-shadow:3px 3px 0 rgba(0,0,0,.2)}
+</style>
+<body>
+<canvas id="bg" width="1920" height="1080"></canvas>
+<div class="book">
+ <div class="page l">
+  <div class="head"><b class="on">1</b>子ども部屋<span style="margin-left:auto">てんき はれ</span></div>
+  <div class="pic"><canvas id="p1" width="754" height="430"></canvas></div>
+  <div class="grid" id="g1"></div>
+  <div class="keep">さいこう 28.4cm</div>
+ </div>
+ <div class="page r">
+  <div class="head"><b>2</b>輪の町<span style="margin-left:auto">てんき ？</span></div>
+  <div class="pic" style="background:#f2ecdd"><canvas id="p2" width="754" height="430"></canvas><div class="lock" style="color:#2c2a33;background:#f7f0dd;padding:0 22px">あとで かく</div></div>
+  <div class="grid" id="g2"></div>
+ </div>
+</div>
+<div class="foot"><span><img src="assets/keyboard_enter.png"><img src="assets/xbox_button_a.png">でかける</span><span><img src="assets/keyboard_arrows_horizontal.png"><img src="assets/xbox_dpad.png">ページをめくる</span><span class="sp"></span><span><img src="assets/keyboard_escape.png"><img src="assets/xbox_button_b.png">もどる</span></div>
+<script src="gel.js"></script>
+<script>
+const fill=(id,t,red)=>{const g=document.getElementById(id);let n=0;[...t].slice(0,48).forEach((ch,i)=>{const s=document.createElement('span');s.textContent=ch==='　'?'':ch;if(red&&red.includes(i))s.className='red';g.append(s);n++});for(;n<48;n++)g.append(document.createElement('span'))};
+{const t1='ベッドの下から５ｃｍで出発。じかんは３分。目標は１５ｃｍ。おそうじきもあるよ。';const r=[];for(const w of ['５ｃｍ','３分','１５ｃｍ']){const i=t1.indexOf(w);for(let k=0;k<w.length;k++)r.push(i+k)}fill('g1',t1,r)}
+fill('g2','ここは まだ 行っていない。子ども部屋で１５ｃｍまで大きくなったら、行ける。');
+(async()=>{
+await fontReady([['400 60px "Darumadrop One"','12あとでかく'],['600 40px "Klee One"','ベッドの下から出発']]);
+const [woodB,room,town]=await Promise.all([loadImg('assets/wood_b.jpg'),loadImg('assets/room_meals.jpg'),loadImg('assets/town_big.jpg')]);
+const x=document.getElementById('bg').getContext('2d');x.filter='saturate(1.2) brightness(1.3) sepia(.3)';for(let i=0;i<2;i++)for(let j=0;j<2;j++)x.drawImage(woodB,i*1024,j*1024-200);x.filter='none';
+// クレヨンの絵
+function pad(id){const c=document.getElementById(id),p=c.getContext('2d',{willReadFrequently:true}),r=rng(id==='p1'?11:23);
+ const scr=(fn,col,dens=5,ang=-.85,wd=7)=>{p.save();p.beginPath();fn(p);p.clip();p.strokeStyle=col;p.lineCap='round';for(let i=-900;i<1700;i+=dens){p.lineWidth=wd*(.7+r()*.6);p.beginPath();const o=(r()-.5)*7;p.moveTo(i+o,-30);p.quadraticCurveTo(i+300+o*4,200+(r()-.5)*40,i+Math.cos(ang)*-900+o,900);p.stroke()}p.restore()};
+ const line=(pts,col,w=6)=>{p.strokeStyle=col;p.lineWidth=w;p.lineCap='round';p.lineJoin='round';for(let k=0;k<2;k++){p.beginPath();pts.forEach(([X,Y],i)=>{const a=X+(r()-.5)*5,b=Y+(r()-.5)*5;i?p.lineTo(a,b):p.moveTo(a,b)});p.stroke()}};
+ const rect=(X,Y,w,h)=>q=>{q.rect(X,Y,w,h)},ell=(X,Y,a,b)=>q=>{q.ellipse(X,Y,a,b,0,0,7)};return {c,p,r,scr,line,rect,ell}}
+{const {c,p,scr,line,rect,ell}=pad('p1');p.fillStyle='#fffdf6';p.fillRect(0,0,754,430);
+ scr(rect(0,0,754,300),'rgba(245,214,120,.75)',9);scr(rect(0,296,754,140),'rgba(150,92,44,.95)',6,-.5);
+ // 太陽
+ scr(ell(676,56,44,44),'#ef8a1e',5);for(let a=0;a<6.3;a+=.7)line([[676+Math.cos(a)*56,56+Math.sin(a)*56],[676+Math.cos(a)*84,56+Math.sin(a)*84]],'#ef8a1e',6);
+ // ベッド
+ scr(rect(36,150,340,100),'#d94a3a',5);line([[36,150],[376,150],[376,250],[36,250],[36,150]],'#2c2a33');scr(rect(30,118,110,50),'#fff',5);line([[30,118],[140,118],[140,168],[30,168],[30,118]],'#2c2a33');
+ line([[36,250],[36,350]],'#2c2a33',12);line([[376,250],[376,350]],'#2c2a33',12);
+ scr(rect(42,254,328,92),'rgba(40,30,40,.9)',5);
+ // ベッドの下のスライム
+ scr(ell(206,318,84,50),'#6ad22e',4);line(Array.from({length:40},(_,i)=>{const a=i/39*6.3;return[206+Math.cos(a)*84,318+Math.sin(a)*50]}),'#1d6b1d',5);p.fillStyle='#14141a';for(const ex of [180,232]){p.beginPath();p.ellipse(ex,312,9,12,0,0,7);p.fill()}
+ // 積み木
+ for(const [X,Y,col] of [[470,250,'#d94a3a'],[560,250,'#2a79bf'],[515,172,'#e8a21a']]){scr(rect(X,Y,84,80),col,5);line([[X,Y],[X+84,Y],[X+84,Y+80],[X,Y+80],[X,Y]],'#2c2a33')}
+ // 矢印
+  {const n=noiseCanvas(2.4,5,2,754,430);const d=p.getImageData(0,0,754,430),q=n.getContext('2d').getImageData(0,0,754,430).data;for(let i=0;i<754*430;i++){if(q[i*4]<112){d.data[i*4]=d.data[i*4]*.5+126;d.data[i*4+1]=d.data[i*4+1]*.5+125;d.data[i*4+2]=d.data[i*4+2]*.5+120}}p.putImageData(d,0,0)}
+ p.fillStyle='#fffdf6';p.fillRect(300,356,200,62);p.fillStyle='#d0301f';p.font='400 50px "Darumadrop One"';p.fillText('ここから',312,404);line([[304,366],[272,346]],'#d0301f',7);line([[272,346],[292,344]],'#d0301f',7);line([[272,346],[278,366]],'#d0301f',7);}
+{const {p,line}=pad('p2');p.fillStyle='#f7f0dd';p.fillRect(0,0,754,430);const g='rgba(60,56,64,.55)';
+ // 下書きだけの町
+ for(const [X,w,h] of [[40,80,150],[130,60,100],[200,90,190],[300,70,120],[520,90,170],[620,90,120]]){line([[X,360],[X,360-h],[X+w,360-h],[X+w,360]],g,3);for(let k=0;k<3;k++)line([[X+14,360-h+24+k*30],[X+w-14,360-h+24+k*30]],g,2)}
+ line([[0,360],[754,360]],g,3);
+ line(Array.from({length:50},(_,i)=>{const a=3.14+i/49*3.14;return[400+Math.cos(a)*180,360+Math.sin(a)*170]}),g,4);}
+// 開いたページの角に座るスライム
+const fx=document.createElement('canvas');fx.width=W;fx.height=H;fx.style.cssText='position:absolute;left:0;top:0';document.body.insertBefore(fx,document.querySelector('.foot'));
+{const f=fx.getContext('2d',{willReadFrequently:true}),t=mk(),tc=t.getContext('2d',{willReadFrequently:true});tc.fillStyle='#f7f0dd';tc.fillRect(0,0,W,H);const s=mk(),c2=s.getContext('2d');blob(c2,760,884,76,62);blob(c2,760,922,90,32);
+ gel(tc,s,{smooth:6,height:80,big:34,edge:6,shadow:.35,shadowOff:[6,12],shadowBlur:12,refract:.3});
+ const cut=mk(),cc=cut.getContext('2d');cc.filter='blur(14px)';cc.drawImage(s,6,10);cc.filter='none';{const d=cc.getImageData(0,0,W,H);for(let i=0;i<W*H;i++){const a=d.data[i*4+3]/255;d.data[i*4+3]=Math.min(1,a*1.7)*255}cc.putImageData(d,0,0)}
+ cc.globalCompositeOperation='source-in';cc.drawImage(t,0,0);f.drawImage(cut,0,0);
+ f.fillStyle='#0b2410';for(const ex of [736,788]){f.beginPath();f.ellipse(ex,878,8,11,0,0,7);f.fill()}f.strokeStyle='#0b2410';f.lineWidth=6;f.lineCap='round';f.beginPath();f.arc(762,894,10,.3,2.84);f.stroke()}
+done();
+})();
+</script>
