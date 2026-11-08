@@ -101,7 +101,7 @@ void ChronoSystem::DrawStageIntro(GameContext& ctx){
     float ratio=std::clamp(intro.hold/IntroSkipHold,0.f,1.f),show=bars*(.65f+.35f*(ratio>0?1.f:0.f));
     const bool pad=UI::UsingPad();const float cx=1180,cy=688;
     ui.Ring(cx,cy,19,ratio,UI::WithAlpha(UI::Lime,show),4);
-    ui.Image(pad?"Resources/Textures/UI/kenney_input-prompts_1.5/Xbox Series/Default/xbox_button_a.png":"Resources/Textures/UI/kenney_input-prompts_1.5/Keyboard & Mouse/Default/keyboard_space.png",{cx-15,cy-15,30,30},{1,1,1,show});
+    UI::Scale::KeyChip(ui,UI::Scale::KeyJump,cx-15,cy-15,30,pad,show);
     const char* skip="長押しでスキップ";
     ui.Text(skip,cx-28-ui.Width(skip,16,UI::JapaneseFont),cy-10,16,UI::WithAlpha(UI::Paper,.8f*show),UI::JapaneseFont);
 }

@@ -111,7 +111,7 @@ static Matrix4x4 XMToM4(const DirectX::XMMATRIX& xm) {
 }
 
 // Static instanced meshes whose model bounds hold the drawn shape: off-screen ones are skipped
-static bool CullableInstances(const std::string& shader){return shader=="EnvironmentSurface"||shader=="MeadowGrass"||shader=="CitySurface";}
+static bool CullableInstances(const std::string& shader){return shader=="EnvironmentSurface"||shader=="MeadowGrass"||shader=="CitySurface"||shader=="LowpolySurface";}
 
 static XMMATRIX M4ToXM(const Matrix4x4& m) { return XMLoadFloat4x4(reinterpret_cast<const XMFLOAT4X4*>(&m)); }
 
@@ -3058,7 +3058,7 @@ void Renderer::DrawMeshInstanced(MeshHandle mesh, TextureHandle texture, const M
     auto rtMesh=mesh; // Rays use a camera-independent shape.
     if(sceneryOptimized_&&scenery&&shaderName!="MeadowGround")rtMesh=GetDistanceLodMeshes(mesh)[1];
     if(scenery&&(graphicsSettings_.rtReflections||graphicsSettings_.rtIndirect))mesh=rtMesh;
-    else if(sceneryOptimized_&&shaderName=="CitySurface"&&TooSmallOnScreen(mesh,worldMatrix))return;
+    else if(sceneryOptimized_&&(shaderName=="CitySurface"||shaderName=="LowpolySurface")&&TooSmallOnScreen(mesh,worldMatrix))return;
     else mesh=SelectDistanceLod(mesh,worldMatrix);
     if((graphicsSettings_.rtShadows||graphicsSettings_.rtReflections||graphicsSettings_.rtIndirect)&&psoRtShadow_&&(shaderName=="EnvironmentSurface"||shaderName=="MeadowGround"))
         rtInstances_.push_back({rtMesh,worldMatrix,texture,extraTex.empty()?neutralNormal_:extraTex[0],extraTex.size()>1?extraTex[1]:0,mulColor,shaderName=="MeadowGround"});

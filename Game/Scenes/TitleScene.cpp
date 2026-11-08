@@ -89,6 +89,8 @@ constexpr UI::Rect kMenu[3]={{48,38,330,66},{48,110,260,38},{48,152,260,38}};
 // 出発のときのスライム: 右へ転がりながら大きくなり、最後は画面全体を覆う
 float LeaveWidth(float t){return 60+4600*std::pow(S::Clamp01(t/kLeaveTime),3.f);}
 float LeaveX(float t){return 30+700*S::Clamp01(t/kLeaveTime);}
+// 出発のときの巻尺の 1cm の長さ: 家を飲み込むと縮み始める (最初は今の巻尺と同じ 8 ピクセル)。u は 0〜1
+float LeaveZoom(float u){return 8*std::exp(-6*std::pow(S::Clamp01(u),1.4f));}
 // 巻き込まれる物の番号: 物・ロゴ・メニュー・案内・音楽の表記の順
 constexpr int kLogoItem=kPropCount,kMenuItem=kLogoItem+4,kHintItem=kMenuItem+3,kMusicItem=kHintItem+1,kItemCount=kMusicItem+1;
 // 物の元の位置 (中央)
@@ -182,9 +184,7 @@ void TitleScene::Draw() {
     S::Backdrop(ui);
     const auto eaten = [&](int index) { return leaving_ >= 0 && eatenAt_[size_t(index)] >= 0; };
     const auto swallow = [&](int index) { return Swallow(index, eatenAt_[size_t(index)], leaving_); };
-    // 巻尺: 出発のときはスライムが上を通るので先に描く
-    const std::vector<S::Mark> marks = {{5, true}, {30}, {100}, {500}, {5000}, {12600, true}};
-    if (leaving_ >= 0) S::Tape(ui, marks);
+    const std::vector<S::Mark> marks = {{5, true}, {30}, {100}, {500}, {2200, true}};
     // ロゴ: 左から右へ大きくなる。物の着地に合わせて下から押し出される
     for (int i = 0; i < 4; ++i) {
         const float size = S::LogoSizes[i], x = S::LogoX(i), landed = LandAt(1 + i * 2) + .25f;
@@ -235,6 +235,10 @@ void TitleScene::Draw() {
     else ui.Text(music, 1250 - ui.Width(music, 13, S::Jp), 12, 13, UI::WithAlpha(S::Black, menuAlpha), S::Jp);
     // スライム: 左端に座る。出発すると転がりながら全部を体の中へ入れる
     if (leaving_ >= 0) {
+        // 巻尺は物の影の上、スライムの下に描く。一番大きい家を飲み込むまでは動かさない
+        const float house = eatenAt_[size_t(kPropCount - 1)];
+        if (house >= 0) S::ZoomTape(ui, LeaveZoom((leaving_ - house) / (std::max)(.1f, kLeaveTime - house)), 1 - S::Clamp01((leaving_ / kLeaveTime - .86f) / .08f));
+        else S::Tape(ui, marks);
         S::Slime(ui, LeaveX(leaving_), S::TapeTop, LeaveWidth(leaving_), true);
         // 最後は緑に溶けて、セレクトの始まりの色につなげる
         ui.Clear(UI::WithAlpha(S::SlimeFill, S::Clamp01((leaving_ / kLeaveTime - .86f) / .14f)));

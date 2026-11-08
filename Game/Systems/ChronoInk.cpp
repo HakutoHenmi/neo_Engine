@@ -264,7 +264,8 @@ void ChronoSystem::InkCamera(entt::registry& r,Player& p,GameContext& ctx){
     LifeCameraSubject subject{};
     if(slimeLife_){subject=GetLifeCameraSubject();
         // 液体と武器の形では映す範囲 (中心と半径) が大きく変わる。形が変わったら、今の構図から新しい構図へイージングでつなぐ
-        const auto& body=life_.bodies[0];int kind=LifeWeaponForm(body.action)?int(body.action):0;V offset=subject.center-pos;auto& blend=cameraBlend_;
+        // 部屋のギミック (だるま落とし) の間は、体とだるまの両方が入る広い構図
+        const auto& body=life_.bodies[0];int kind=LifeWeaponForm(body.action)?int(body.action):0;if(devour_&&GimmickCameraSubject(subject))kind=1000;V offset=subject.center-pos;auto& blend=cameraBlend_;
         if(blend.kind<0)blend={kind,1,offset,subject.radius,offset,subject.radius};
         else if(kind!=blend.kind){blend.kind=kind;blend.age=0;blend.fromOffset=blend.offset;blend.fromRadius=blend.radius;}
         blend.age=std::min(1.f,blend.age+std::min(ctx.dt,.05f)/LifeCameraBlendSeconds);float eased=ShotEase(blend.age,0,1);
@@ -330,6 +331,8 @@ void ChronoSystem::InkCamera(entt::registry& r,Player& p,GameContext& ctx){
     }
     for(const auto& surface:inkSurfaces_){V hit;if(surface.Ray(focus,wanted-focus,f,hit))wanted=focus+(wanted-focus)*std::max(.05f,f-.06f);}
     wanted.y=std::max(wanted.y,.7f);
+    // 吸収モードの部屋: カメラは壁と天井の内側に収める (外から見ると壁が消えて空が見える)
+    if(devour_&&CurrentDevourStage().map=="room"){float h=CurrentDevourStage().half-5;wanted.x=std::clamp(wanted.x,-h,h);wanted.z=std::clamp(wanted.z,-h,h);wanted.y=std::min(wanted.y,290.f);}
     // それでも建物の箱の中に残ったら、外へ出るまで注視点の方へ寄せる
     if(slimeLife_&&!devour_&&hydrantBlend<1){
         auto inside=[&](V at){for(const auto& b:solids_)if(at.x>b.min.x-.2f&&at.x<b.max.x+.2f&&at.y>b.min.y-.2f&&at.y<b.max.y+.2f&&at.z>b.min.z-.2f&&at.z<b.max.z+.2f)return true;return false;};
@@ -408,8 +411,9 @@ void ChronoSystem::InkCamera(entt::registry& r,Player& p,GameContext& ctx){
             bool occludes=inside||(Chrono::Sweep(wanted,body-wanted,box,pad*(.3f+bodyRadius*.3f),fraction,normal)&&fraction<1)||(Chrono::Sweep(wanted,head-wanted,box,pad,fraction,normal)&&fraction<1);
             // 乗っている家具は消さない。真上にある物 (ベッドの板) は消す
             if(body.y>o.center.y+o.size.y*.5f-2)occludes=inside;
-            if(CurrentDevourStage().map=="room"&&body.x>box.min.x&&body.x<box.max.x&&body.z>box.min.z&&body.z<box.max.z&&body.y<box.min.y)occludes=true;
-            o.opacity+=((occludes?(CurrentDevourStage().map=="room"?0.f:.18f):1.f)-o.opacity)*(1-std::exp(-12.f*ctx.dt));}}
+            // 体がその物の範囲の中にいるとき (階段やレールや布団を登っているとき) は薄くしない
+            if(body.x>box.min.x&&body.x<box.max.x&&body.y>box.min.y&&body.y<box.max.y&&body.z>box.min.z&&body.z<box.max.z)occludes=false;
+            o.opacity+=((occludes?.18f:1.f)-o.opacity)*(1-std::exp(-12.f*ctx.dt));}}
 }
 // ボス (鳥の形) の更新: 羽の弾・ダウン・集合・連射・扇状の羽・急降下・蛇への変形
 void ChronoSystem::UpdateInkBoss(entt::registry& r,Player& p,GameContext& context){

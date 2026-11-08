@@ -17,7 +17,7 @@ namespace Loading {
 namespace S=Scale;
 inline float Smooth(float a,float b,float x) { float t=std::clamp((x-a)/(b-a),0.f,1.f); return t*t*(3-2*t); }
 // 巻尺の目盛りの文字
-inline const std::vector<S::Mark>& Marks(){static const std::vector<S::Mark> marks={{5},{30},{100},{500},{5000},{12600}};return marks;}
+inline const std::vector<S::Mark>& Marks(){static const std::vector<S::Mark> marks={{5},{30},{100},{500},{2200}};return marks;}
 
 // 遊び方の 1 ページ (見出しと本文)
 struct Page { std::string title; std::vector<std::string> lines; };

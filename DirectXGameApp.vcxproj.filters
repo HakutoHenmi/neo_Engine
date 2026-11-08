@@ -192,6 +192,18 @@
     <ClCompile Include="Game\Systems\SlimeDevour.cpp">
       <Filter>3. Systems（システム）\スライム本編</Filter>
     </ClCompile>
+    <ClCompile Include="Game\Systems\DevourGimmick.cpp">
+      <Filter>3. Systems（システム）\スライム本編</Filter>
+    </ClCompile>
+    <ClCompile Include="Game\Systems\DevourTutorial.cpp">
+      <Filter>3. Systems（システム）\スライム本編</Filter>
+    </ClCompile>
+    <ClCompile Include="Game\Systems\DevourHeli.cpp">
+      <Filter>3. Systems（システム）\スライム本編</Filter>
+    </ClCompile>
+    <ClCompile Include="Game\Systems\DevourSpill.cpp">
+      <Filter>3. Systems（システム）\スライム本編</Filter>
+    </ClCompile>
     <ClCompile Include="Game\Systems\RingCity.cpp">
       <Filter>3. Systems（システム）\スライム本編</Filter>
     </ClCompile>
@@ -1238,6 +1250,12 @@
       <Filter>Resources（素材）\shaders</Filter>
     </None>
     <None Include="Resources\shaders\MorphItemHighlightPS.hlsl">
+      <Filter>Resources（素材）\shaders</Filter>
+    </None>
+    <None Include="Resources\shaders\GimmickCurtainPS.hlsl">
+      <Filter>Resources（素材）\shaders</Filter>
+    </None>
+    <None Include="Resources\shaders\SpillLiquidPS.hlsl">
       <Filter>Resources（素材）\shaders</Filter>
     </None>
     <None Include="Resources\shaders\SlimeChildHighlightPS.hlsl">

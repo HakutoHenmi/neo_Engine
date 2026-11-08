@@ -273,6 +273,8 @@ public:
     void MultiplyAlpha(float alpha) { alpha_*=std::clamp(alpha,0.f,1.f); }
     // 画像・回転した画像・塗りつぶし・線
     void Image(const std::string& path, Rect b, Engine::Vector4 color={1,1,1,1}) { Sprite(path.c_str(),b,color); }
+    // 1 枚の画像の一部を描く (uv は 大きさ x, y と 左上 x, y)
+    void ImagePart(const std::string& path,Rect b,Engine::Vector4 uv,float rotation=0,Engine::Vector4 color={1,1,1,1}) { Sprite(path.c_str(),b,color,uv,rotation,true); }
     void ImageRot(const std::string& path,Rect b,float rotation,Engine::Vector4 color={1,1,1,1}) { Sprite(path.c_str(),b,color,{1,1,0,0},rotation); }
     // 写真のように色をそのまま見せたい画像 (sRGB の変換で暗くならない)
     void Photo(const std::string& path,Rect b,Engine::Vector4 color={1,1,1,1},float rotation=0) { Sprite(path.c_str(),b,color,{1,1,0,0},rotation,true); }

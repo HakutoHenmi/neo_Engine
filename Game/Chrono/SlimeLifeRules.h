@@ -230,7 +230,9 @@ struct LifeCollectible {Vec at{};float required=20,reward=12;bool active=true;ui
     // 砕けて飛んだ欠片: 描く半径 (0 なら普通の球)・飛び始めた位置と時刻
     float shard=0,shardStart=0;Vec shardFrom{};
     // 吸収モードの輪の番号と、輪の壁の向こうで手が届かないか・目印を立てる物か
-    int ring=0;bool sealed=false,beacon=false;};
+    int ring=0;bool sealed=false,beacon=false;
+    // 吸収モードで飲めないときに体を止める足元の半径 (0 なら止めない) と高さ
+    float foot=0,height=0;};
 // 報酬の大きさ別の段階・球の半径・色
 inline int LifeOrbTier(float reward){return reward>=30?2:reward>=18?1:0;}
 inline float LifeOrbRadius(float reward){const float radii[]={.42f,.68f,.96f};return radii[LifeOrbTier(reward)];}

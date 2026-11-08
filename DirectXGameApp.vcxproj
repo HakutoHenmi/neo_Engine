@@ -201,6 +201,10 @@ exit /b %ERRORLEVEL%</Command>
     <ClCompile Include="Game\Systems\SlimeIntro.cpp" />
     <ClCompile Include="Game\Systems\SlimeSignal.cpp" />
     <ClCompile Include="Game\Systems\SlimeDevour.cpp" />
+    <ClCompile Include="Game\Systems\DevourGimmick.cpp" />
+    <ClCompile Include="Game\Systems\DevourTutorial.cpp" />
+    <ClCompile Include="Game\Systems\DevourHeli.cpp" />
+    <ClCompile Include="Game\Systems\DevourSpill.cpp" />
     <ClCompile Include="Game\Systems\RingCity.cpp" />
     <ClCompile Include="Game\Systems\RoomStage.cpp" />
     <ClCompile Include="Game\Systems\DevourPlayLog.cpp" />
@@ -299,6 +303,8 @@ exit /b %ERRORLEVEL%</Command>
     <ClInclude Include="Game\Chrono\SlimeSignalRules.h" />
     <ClInclude Include="Game\Chrono\DevourRules.h" />
     <ClInclude Include="Game\Chrono\DevourMorphRules.h" />
+    <ClInclude Include="Game\Chrono\DevourGimmickRules.h" />
+    <ClInclude Include="Game\Chrono\DevourSpillRules.h" />
     <ClInclude Include="Game\Chrono\DevourStageRules.h" />
     <ClInclude Include="Game\Chrono\RoomRules.h" />
     <ClInclude Include="Game\Systems\CityBuilder.h" />
@@ -558,6 +564,8 @@ exit /b %ERRORLEVEL%</Command>
     <None Include="Resources\shaders\MeadowGroundPS.hlsl" />
     <None Include="Resources\shaders\MetaballPS.hlsl" />
     <None Include="Resources\shaders\MorphItemHighlightPS.hlsl" />
+    <None Include="Resources\shaders\GimmickCurtainPS.hlsl" />
+    <None Include="Resources\shaders\SpillLiquidPS.hlsl" />
     <None Include="Resources\shaders\SlimeChildHighlightPS.hlsl" />
     <None Include="Resources\shaders\Obj.hlsli" />
     <None Include="Resources\shaders\Object3d.PS.hlsl" />

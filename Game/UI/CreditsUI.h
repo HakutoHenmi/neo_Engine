@@ -67,13 +67,13 @@ inline void DrawCredits(Canvas& ui, int page) {
     S::Hint(ui,"keyboard_arrows_horizontal","xbox_dpad",Str("scale.creditsPage"),822,40);
     S::Hint(ui,"keyboard_escape","xbox_button_b",Str("scale.creditsBack"),1070,40);
     // 章ごとに飾りの物を変える
-    static const S::Sprite* decor[]={&S::Barrel,&S::Hydrant,&S::Cat,&S::Box,&S::Horse};const S::Sprite* sprite=decor[page%5];
+    static const S::Sprite* decor[]={&S::Kago,&S::Jihanki,&S::Neko,&S::Danboru,&S::Inugoya};const S::Sprite* sprite=decor[page%5];
     S::Prop(ui,*sprite,1110,564,sprite->aspect>1?120.f:190.f);
     // 章の帯: スライムが今の章へ滑っていく
     static float slimeX=0;const float target=CreditsTab(page).x+70;slimeX=slimeX<=0?target:slimeX+(target-slimeX)*.18f;
     S::Slime(ui,slimeX,564,150);
     for(int i=0;i<CreditsPageCount();++i){const Rect b=CreditsTab(i);const bool on=i==page;ui.Fill(b,on?S::Black:WithAlpha(S::Black,.14f));
         ui.Text(std::to_string(i+1)+" "+credits.pages[size_t(i)].tab,b.x+12,b.y+8,22,on?S::Yellow:S::Black,S::Jp);}
-    S::Tape(ui,{{5},{30},{100},{500},{5000},{12600}});
+    S::Tape(ui,{{5},{30},{100},{500},{2200}});
 }
 }
