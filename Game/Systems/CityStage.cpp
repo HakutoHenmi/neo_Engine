@@ -22,10 +22,14 @@ void ChronoSystem::BuildCityStage(entt::registry& r){
     // 通りの谷間のために空の光を足した環境の陰影。動的メッシュは範囲を持たないので、
     // 「EnvironmentSurface」で行う景観の個別カリングに入れてはいけない
     render->CreateShaderPipeline("CitySurface",L"Resources/shaders/InstancedObjVS.hlsl",L"Resources/shaders/CitySurfacePS.hlsl");
+    render->CreateShaderPipeline("LowpolySurface",L"Resources/shaders/InstancedObjVS.hlsl",L"Resources/shaders/LowpolySurfacePS.hlsl");
+    render->CreateShaderPipeline("LowpolyNoShadow",L"Resources/shaders/InstancedObjVS.hlsl",L"Resources/shaders/LowpolySurfacePS.hlsl");
     render->CreateShaderPipeline("CityGlass",L"Resources/shaders/InstancedObjVS.hlsl",L"Resources/shaders/CityGlassPS.hlsl");
     render->CreateShaderPipeline("CityArmor",L"Resources/shaders/InstancedObjVS.hlsl",L"Resources/shaders/CityArmorPS.hlsl");
     render->CreateShaderPipelineTransparent("DomainGlow",L"Resources/shaders/InstancedObjVS.hlsl",L"Resources/shaders/DomainGlowPS.hlsl",true,true);
     render->CreateShaderPipelineTransparent("MorphItemHighlight",L"Resources/shaders/InstancedObjVS.hlsl",L"Resources/shaders/MorphItemHighlightPS.hlsl",true,true);
+    render->CreateShaderPipelineTransparent("SpillLiquid",L"Resources/shaders/InstancedObjVS.hlsl",L"Resources/shaders/SpillLiquidPS.hlsl",false,true);
+    render->CreateShaderPipelineTransparent("GimmickCurtain",L"Resources/shaders/InstancedObjVS.hlsl",L"Resources/shaders/GimmickCurtainPS.hlsl",false,true);
     // Poly Haven の材質 (色・法線・粗さ・AO) を読み込む
     // "acg/" で始まる名前は ambientCG の材質 (Resources/Textures/AmbientCG)
     auto material=[&](const std::string& id){CityModel m;const std::string base=id.rfind("acg/",0)==0?"Resources/Textures/AmbientCG/"+id.substr(4):"Resources/Textures/PolyHaven/"+id;
@@ -278,7 +282,9 @@ void ChronoSystem::BuildCityStage(entt::registry& r){
         auto e=r.create();r.emplace<NameComponent>(e,std::string("Chrono City surface ")+surfaceIds[i]);
         auto& t=r.emplace<TransformComponent>(e);t.translate={0,0,0};t.scale={1,1,1};t.rotate={0,0,0};
         auto& mr=r.emplace<MeshRendererComponent>(e);mr.modelHandle=render->CreateDynamicMesh(g.vertices,g.indices);mr.useCubemap=false;
-        mr.textureHandle=surfaces[size_t(i)].texture;mr.extraTextureHandles=surfaces[size_t(i)].extra;mr.shaderName=i==CityGlass?"CityGlass":"CitySurface";mr.color=tint(i);}
+        mr.textureHandle=surfaces[size_t(i)].texture;mr.extraTextureHandles=surfaces[size_t(i)].extra;mr.shaderName=i==CityGlass?"CityGlass":"CitySurface";mr.color=tint(i);
+        // 吸収モードは地面も単色にして、ローポリの小物と見た目をそろえる
+        if(devour_){auto flat=FlatCityColor(i);mr.textureHandle=white_;mr.extraTextureHandles={render->LoadTexture2D("Resources/Textures/PBR/NeutralNormal.png",false),white_,white_};mr.shaderName="LowpolySurface";mr.color={flat.x,flat.y,flat.z,1};}}
     // 小物はスキャンの比率を保つ。目標の幅で等倍の拡大率を決め、一番低い頂点を路面に置く
     // 読み込んだ小物のモデルのキャッシュ
     std::map<std::string,CityModel> models;

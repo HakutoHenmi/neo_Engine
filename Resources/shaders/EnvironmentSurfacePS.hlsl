@@ -71,7 +71,7 @@ float4 main(float4 svpos:SV_POSITION,float3 worldPos:TEXCOORD0,float3 normal:TEX
     albedo*=float3(.95f,1.f,.9f);
 #endif
     float3 n=normalize(normal);
-#if defined(CITY_SURFACE)&&!defined(CITY_GLASS)&&!defined(CITY_ARMOR)
+#if defined(CITY_SURFACE)&&!defined(CITY_GLASS)&&!defined(CITY_ARMOR)&&!defined(LOWPOLY_SURFACE)
     // Weathering: broad tint/brightness drift between blocks, darker grime near street
     // level and faint rain streaks on walls. Driven by world position so merged meshes vary.
     albedo*=lerp(.84,1.12,CityNoise(worldPos.xz*.011))*lerp(float3(1.05,1,.95),float3(.95,1,1.06),CityNoise(worldPos.xz*.006+17));
@@ -163,6 +163,12 @@ float4 main(float4 svpos:SV_POSITION,float3 worldPos:TEXCOORD0,float3 normal:TEX
     float3 armorColour=ambient+direct+armorRim;
     armorColour=lerp(armorColour,float3(1,.32,.055),saturate(armorLight/16)*.45);
     return float4(CityFog(armorColour,worldPos,daylight),1);
+#endif
+#ifdef LOWPOLY_SURFACE
+    // Room lamps. The room is lit from inside, so the soft falloff matters more than the sun.
+    [unroll] for(int lamp=0;lamp<4;++lamp)if(gPoint[lamp].enabled){
+        float3 toLamp=gPoint[lamp].pos-worldPos;float d=length(toLamp),fall=saturate(1-d/gPoint[lamp].range);
+        direct+=albedo*gPoint[lamp].color*(saturate(dot(n,toLamp/max(d,.001)))*.8+.2)*fall*fall;}
 #endif
 #ifdef CITY_SURFACE
     return float4(CityFog(ambient+direct,worldPos,daylight),abs(color.a));

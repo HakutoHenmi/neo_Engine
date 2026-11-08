@@ -12,6 +12,13 @@ enum CityMaterialId {CityRoad,CitySidewalk,CityAlleyFloor,CityPaint,CityPaintYel
     // オフィスのガラスの外壁 4 種・高層ビルの外壁 5 種 (ambientCG)
     CityBrick,CityPlaster,CitySiding,CityRoofClay,CityRoofGrey,CityRoofSlate,CityPaving,CityPavingBrick,
     CityOffice1,CityOffice2,CityOffice3,CityOffice4,CityTower1,CityTower2,CityTower3,CityTower4,CityTower5,CityMaterialCount};
+// 吸収モードの材質の色 (写真の材質の代わりに単色で塗り、ローポリの小物と見た目をそろえる)
+inline Engine::Vector4 FlatCityColor(int material){
+    switch(material){case CityRoad:return {.3f,.31f,.35f,1};case CitySidewalk:case CityPaving:return {.74f,.73f,.68f,1};case CityPavingBrick:return {.82f,.6f,.44f,1};case CityAlleyFloor:return {.46f,.45f,.46f,1};
+        case CityPaint:return {.95f,.95f,.9f,1};case CityPaintYellow:return {1,.8f,.24f,1};case CityConcrete:return {.68f,.68f,.66f,1};case CityDarkTiles:return {.34f,.34f,.38f,1};case CityGlass:return {.3f,.52f,.72f,1};case CityMetal:return {.6f,.62f,.66f,1};
+        case CityWhiteBrick:return {.9f,.88f,.82f,1};case CityWood:return {.6f,.38f,.22f,1};case CityBrick:return {.82f,.46f,.34f,1};case CityPlaster:return {.96f,.9f,.74f,1};case CitySiding:return {.58f,.78f,.82f,1};
+        case CityRoofClay:return {.82f,.28f,.22f,1};case CityRoofGrey:return {.32f,.4f,.58f,1};case CityRoofSlate:return {.28f,.56f,.42f,1};case CityShutter:return {.7f,.72f,.76f,1};case CityRustShutter:return {.78f,.42f,.24f,1};default:return {.7f,.7f,.7f,1};}
+}
 // 材質ごとの頂点と添字
 struct CityGeometry {std::vector<Engine::VertexData> vertices;std::vector<uint32_t> indices;};
 // 街の形を材質ごとのメッシュとして組み立てる

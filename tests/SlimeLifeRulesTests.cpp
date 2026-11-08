@@ -6,6 +6,8 @@
 #include "../Game/Chrono/DevourMorphRules.h"
 #include "../Game/Chrono/DevourStageRules.h"
 #include "../Game/Chrono/RoomRules.h"
+#include "../Game/Chrono/DevourSpillRules.h"
+#include "../Game/Chrono/DevourGimmickRules.h"
 #include "../Game/Chrono/SlimeTentacleRules.h"
 #include "../Game/Chrono/DevourAnimation.h"
 #include "../Engine/FluidMorphShape.h"
@@ -364,13 +366,13 @@ void TestDevour(){
     CheckLife(DevourReward(13)>DevourReward(1.7f)*50,"growth does not scale with object size");
     for(float mass:{100.f,4000.f,120000.f}){float largest=DevourBodyRadius(mass)*DevourCoverRatio;CheckLife(DevourReward(largest)<mass*.08f&&DevourReward(largest)>mass*.02f,"one bite grows too much or too little");}
     // 町: 門の大きさが輪の段階に合い、大通りと広場には建物が無く、輪の壁の内側に門がある
-    {const auto& zones=RingZones();const float gates[]={500,15000,120000,450000};
+    {const auto& zones=RingZones();const float gates[]={500};
         for(size_t z=1;z<zones.size();++z)CheckLife(std::abs(DevourMassToCover(zones[z].gateRadius)/gates[z-1]-1)<.02f,"ring gate size does not match its mass");
         auto lots=RingLots();auto plazas=RingPlazas();int doors=0;
         for(const auto& lot:lots){if(lot.gate){++doors;CheckLife(std::abs(RingLotRadius(lot)-zones[size_t(lot.gate)].gateRadius)<.01f,"gate radius is wrong");continue;}
             CheckLife(lot.foot.x0>0||lot.foot.x1<0,"building on the north-south avenue");CheckLife(lot.foot.z0>0||lot.foot.z1<0,"building on the east-west avenue");
             for(const auto& plaza:plazas)CheckLife(LifeDistance(lot.foot.Center(),plaza.at)>plaza.radius*.9f,"building in a plaza");}
-        CheckLife(doors==4*(RingStyleCount-1)&&plazas.size()==32,"ring gates or plazas are missing");
+        CheckLife(doors==4*(RingStyleCount-1)&&plazas.size()==8,"ring gates or plazas are missing");
         CheckLife(lots.size()<1000,"too many buildings");}
     // ステージ: 開始の量で開始の大きさ、目標は大きくなる順、最初の目標でクリア、最後の目標で S ランク
     for(const auto& stage:DevourStages()){CheckLife(std::abs(DevourSizeCm(stage,LifeStartMass)-stage.start)<.001f&&DevourRankAt(stage,LifeStartMass)==0&&DevourRankName(stage,0)=="D","stage start is wrong");
@@ -402,10 +404,18 @@ void TestDevour(){
     // バネは溜めるほど遠く高く、どの大きさでも体より高く跳ぶ
     for(float mass:{500.f,450000.f})CheckLife(DevourSpringRange(mass,1)>DevourSpringRange(mass,.5f)&&DevourSpringRise(mass,DevourSpringMinPower)>DevourBodyRadius(mass)*5&&DevourLeapRange(mass)<DevourSpringRange(mass,DevourSpringMinPower),"spring reach is wrong");
     // 部屋の高さ: 坂はつながっていて登れる傾きで、床は 0
-    CheckLife(RoomGround({0,0,-200})==0&&RoomGround({100,0,0})==26&&RoomGround({-10,0,0})>0&&RoomGround({-10,0,0})<26&&RoomGround({200,0,100})==64,"room heights are wrong");
-    for(const auto& s:RoomSurfaces)if(s.h0!=s.h1){float length=s.alongZ?s.foot.z1-s.foot.z0:s.foot.x1-s.foot.x0;CheckLife(std::abs(s.h1-s.h0)/length<.6f,"room ramp is too steep");}
+    // 部屋: ベッドと机は下を通れて上にも乗れる。こたつの布団と座布団はなだらかで、そのまま登れる
+    CheckLife(RoomGround({0,0,-100})==0&&RoomGround({-180,1,-240})==0&&RoomGround({-180,50,-240})==56&&RoomGround({235,1,-264})==0&&RoomGround({235,80,-264})>86,"room heights are wrong");
+    CheckLife(RoomGround({-120,0,176})==42&&RoomGround({-238,0,100})==0&&RoomGround({-200,0,100})>0&&RoomGround({-200,0,100})<42&&RoomTop({-180,0,-240})==56,"kotatsu quilt is not a hill");
+    for(const auto& s:RoomSurfaces){if(s.hill>0&&s.base==0)CheckLife(s.h0/s.hill<.6f,"room hill is too steep");else if(s.h0!=s.h1)CheckLife(std::abs(s.h1-s.h0)/(s.foot.x1-s.foot.x0)<.6f,"room ramp is too steep");}
+    // ベッドの下の収納ケースは開始の大きさでは跳べず、ケースの目標の大きさで跳べる。階段はその大きさで 1 段ずつ登れる
+    {const auto& room=DevourStages()[0];CheckLife(DevourStepHeight(LifeStartMass)<RoomCaseHeight&&DevourStepHeight(DevourGoalMass(room,room.gates[0]))>RoomCaseHeight&&RoomStairRise<RoomCaseHeight,"step hop does not gate the bed");
+        CheckLife(RoomGround({-200,0,-186})==RoomCaseHeight&&RoomTop({-180,0,-170})==RoomBedTop,"bed stairs or cases are wrong");}
     // 体に対して小さい物は価値が下がり、大きい物は満額。基準が 0 なら下げない
-    CheckLife(DevourFoodValue(1000,7,.35f)==1&&DevourFoodValue(1000,1,.35f)<.3f&&DevourFoodValue(1000,.01f,.35f)==.1f&&DevourFoodValue(1000,.01f,0)==1,"food value is wrong");
+    CheckLife(DevourFoodValue(1000,5,.35f)==1&&DevourFoodValue(1000,7,.35f)>1.5f&&DevourFoodValue(1000,1,.35f)<.3f&&DevourFoodValue(1000,.01f,.35f)==.1f&&DevourFoodValue(1000,.01f,0)==1,"food value is wrong");
+    // 限界ギリギリの物は大きく育つが重く、飲めない物へ速くぶつかると縮む。ゆっくりなら何も失わない
+    CheckLife(DevourHeavyTime(1000,3)==0&&DevourHeavyTime(1000,7.5f)>1&&DevourBumpImpact(1,10)==0&&DevourBumpImpact(10,10)==1,"heavy or bump rule is wrong");
+    CheckLife(DevourBumpLoss(LifeStartMass,1)==0&&std::abs(DevourBumpLoss(1000,1)-100)<.01f&&DevourBumpPops(1)==5&&DevourBumpStun(1)>DevourBumpStun(0),"bump loss is wrong");
     // 大きい物ほど大きく口を開ける
     CheckLife(DevourMouthScale(1000,7)>DevourMouthScale(1000,2)&&DevourMouthScale(1000,7)<1.4f,"mouth scale is wrong");
     // 大きい物ほど時間をかけて飲み込み、後から飲んだ物に埋もれるほど中心へ沈む
@@ -506,7 +516,49 @@ void TestDevour(){
     CheckLife(DevourPounceTime<.85f,"pounce is too slow to chain");
     puts("PASS devour: cover/sink sizes, growth per bite, tiers and time bonus, caps, pounce targets, cover reach and shape phases");
 }
+// 部屋のギミック: 形の体積・だるま落としの狙い・ボウリングのピン・道のたどり方・家具の上の面
+void TestGimmick(){
+    // チュートリアルの場所: 開始の位置はベッドの下、収納ケースの上・外の床・ベッドの上は外
+    CheckLife(RoomUnderBed({-200,1,-245})&&!RoomUnderBed({-200,9.6f,-186})&&!RoomUnderBed({-66,9.6f,-240})&&!RoomUnderBed({-200,1,-150})&&!RoomUnderBed({-200,58,-245}),"tutorial area is the floor under the bed");
+    // 体の中の物を集める芯は、散らした先も形の中にある (物が形からはみ出して形を崩さない)
+    for(int shape=GimmickBallShape;shape<=GimmickHeliShape;++shape){const auto core=GimmickShapeCore(shape);const float d=core.thin*GimmickMealSpread;
+        for(Vec dir:{Vec{1,0,0},Vec{-1,0,0},Vec{0,1,0},Vec{0,-1,0},Vec{0,0,1},Vec{0,0,-1}})CheckLife(GimmickInside(shape,core.center+dir*d),"gimmick meal core stays inside the shape");}
+    // 形は普段の体と同じくらいの体積 (粒子の数は決まっているので、大きすぎると表面が途切れ、小さすぎると詰まる)
+    const float body=4.18879f*2.55f*1.8f*2.55f;
+    for(int shape=GimmickBallShape;shape<=GimmickHeliShape;++shape){const auto box=GimmickShapeBounds(shape);int inside=0;const int n=40;
+        for(int i=0;i<n;++i)for(int j=0;j<n;++j)for(int k=0;k<n;++k){Vec p{(-1+2*(i+.5f)/n)*box.x,(j+.5f)/n*box.y,(-1+2*(k+.5f)/n)*box.z};if(GimmickInside(shape,p))++inside;}
+        const float volume=float(inside)/float(n*n*n)*8*box.x*box.y*box.z*.5f;
+        CheckLife(volume>body*.45f&&volume<body*1.4f,"gimmick shape volume is far from the body volume");}
+    // ヘリコプター: 回転翼の先は軸の周りを回り (高さは変わらない)、胴は回らない。高い所から落ち始めたときだけなる
+    {GimmickPose pose;pose.spin=1.5708f;Vec tip=GimmickPosePoint(GimmickHeliShape,{0,GimmickRotorY,GimmickRotorReach*.9f},pose),hull=GimmickPosePoint(GimmickHeliShape,{0,2,1},pose);
+        CheckLife(std::abs(tip.y-GimmickRotorY)<1e-3f&&std::abs(tip.x)>GimmickRotorReach*.85f&&Length(hull-Vec{0,2,1})<1e-3f,"helicopter rotor does not spin about its mast");
+        // こぼれた液体: 蜂蜜とのりは机の高さをゆっくり (数秒) 落ち、ジュースは 1 秒もかからない。粘性は前後の粒の速さへ寄せる
+        CheckLife(SpillFallTime(SpillParamsOf(SpillKind::Honey),86.4f)>7&&SpillFallTime(SpillParamsOf(SpillKind::Glue),86.4f)>SpillFallTime(SpillParamsOf(SpillKind::Honey),86.4f)&&SpillFallTime(SpillParamsOf(SpillKind::Juice),86.4f)<1.6f,"spill viscosity does not change the fall");
+        CheckLife(std::abs(SpillViscous(SpillParamsOf(SpillKind::Honey),0,5,1)-5)<.01f&&SpillViscous(SpillParamsOf(SpillKind::Juice),0,5,.1f)<.3f,"spill viscosity does not pull drops together");
+        CheckLife(GimmickHeliStarts(30,1,-5,false)&&!GimmickHeliStarts(5,1,-5,false)&&!GimmickHeliStarts(30,1,-5,true)&&!GimmickHeliStarts(30,1,2,false),"helicopter starts at the wrong time");}
+    // 形の姿勢: 転がっても大きさは変わらず、ドミノは前へ倒れる
+    CheckLife(std::abs(Length(GimmickPosePoint(GimmickBallShape,{0,2*GimmickBallRadius,0},{3.1415927f})-Vec{0,GimmickBallRadius,0})-GimmickBallRadius)<.01f,"rolling ball changes size");
+    {GimmickPose pose;pose.tip=1.5708f;Vec top=GimmickPosePoint(GimmickDominoShape,{0,GimmickDominoHeight,0},pose);CheckLife(top.z>GimmickDominoHeight*.9f&&top.y<2,"domino does not fall forward");}
+    // 狙いは上下に往復し、一番下は胴の最初の輪、一番上は頭
+    CheckLife(GimmickAim(0)==0&&std::abs(GimmickAim(GimmickAimPeriod*.5f)-1)<1e-4f&&GimmickAim(GimmickAimPeriod*.25f)>.45f,"aim does not sweep up and down");
+    CheckLife(GimmickAimTarget(0,5)==0&&GimmickAimTarget(1,5)==5&&GimmickAimTarget(1,1)==1&&GimmickAimTarget(.2f,0)==0,"aim targets the wrong piece");
+    // ボウリング: 真ん中を通せばストライク、端を通すと少ししか倒れない
+    {std::vector<Vec> pins;const float spacing=9.6f,pinR=3.1f,ball=5;for(int row=0;row<4;++row)for(int k=0;k<=row;++k)pins.push_back({float(row)*spacing,0,(float(k)-float(row)*.5f)*7.68f});
+        auto count=[&](float lateral){int n=0;for(bool d:GimmickPinsDown(pins,lateral,ball,pinR,spacing))n+=d?1:0;return n;};
+        CheckLife(count(0)==10,"center hit is not a strike");CheckLife(count(13)<5,"edge hit knocks too many pins");CheckLife(count(30)==0,"a miss knocks pins");}
+    // 道: 真上へ登る区間でも、水平の向きは前後の区間から取る
+    {std::vector<Vec> path{{0,0,0},{0,0,10},{0,20,10},{0,20,20}};CheckLife(std::abs(GimmickPathLength(path)-40)<1e-4f,"path length");
+        Vec d;Vec mid=GimmickPathPoint(path,20,&d);CheckLife(std::abs(mid.y-10)<1e-4f&&d.y>.99f,"path point on the wall");
+        Vec h=GimmickPathHeading(path,20);CheckLife(std::abs(h.z-1)<1e-4f&&std::abs(h.y)<1e-4f,"heading on the wall is not horizontal");
+        CheckLife(std::abs(GimmickPathPoint(path,99).y-20)<1e-4f,"path end");}
+    // 本棚とおもちゃ箱の上に乗れる (下にいる間は床)
+    CheckLife(std::abs(RoomGround({282,RoomShelfTop+1,-60})-RoomShelfTop)<.01f&&RoomGround({282,1,-60})<.01f,"bookshelf top");
+    CheckLife(std::abs(RoomGround({-232,RoomToyboxTop+1,-20})-RoomToyboxTop)<.01f&&RoomGround({-232,1,-20})<.01f,"toybox top");
+    CheckLife(GimmickSameColor(.92f,.28f,.24f,.92f,.28f,.24f)&&!GimmickSameColor(.92f,.28f,.24f,.3f,.55f,.92f),"paint color match");
+    puts("PASS gimmick: shape volumes, poses, daruma aim, bowling pins, paths over furniture, furniture tops, paint colors");
+}
 int main(){try{
+    TestGimmick();
     TestDevour();
     TestSignal();
     TestTireCharge();

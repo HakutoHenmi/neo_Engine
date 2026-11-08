@@ -15,12 +15,16 @@
 #include "../Chrono/DevourRules.h"
 #include "../Chrono/RingCityRules.h"
 #include "../Chrono/DevourStageRules.h"
+#include "../Chrono/DevourGimmickRules.h"
+#include "../Chrono/DevourSpillRules.h"
 #include <filesystem>
 #include <functional>
+#include <array>
 #include <map>
 #include <unordered_map>
 #include <vector>
 namespace Game {
+namespace UI {class Canvas;namespace Scale {struct Prompt;}}
 namespace CityParts {struct CityBuilder;}
 // シーン全体のまとめ役。キャラクターの残る状態はすべて ECS のコンポーネントにある
 class ChronoSystem final : public ISystem {
@@ -95,6 +99,11 @@ private:
     // 体の中に見えたまま溶けていく物 (小物の見た目・体の中心からのずれ・経過時間・体に収める縮小)
     // dir は体の中心から見た向き (飲んだ方向)、now は今の深さ (1 で表面)、lift は前の物の外へ積む量 (体の半径が単位)。古い順に並ぶ
     struct DevourMeal {uint32_t visual=0xffffffffu;Chrono::Vec dir{},tint{};float age=0,fit=1,radius=1,now=1,lift=0;bool orb=false;};
+    // ギミックの形になっている割合 (0 普段の体〜1 形)。体の中の物の皮を消し、物を小さく形の芯へ集める
+    float devourMealMorph_=0;
+    bool DevourMealsMorphed()const{return DevourToolShape()>0;}
+    // 形の中の物の位置と縮める倍率 (extent は倍率 1 のときの物の半分の幅)
+    Chrono::Vec GimmickMealAt(const DevourMeal&)const;float GimmickMealFit(const DevourMeal&,float extent)const;
     std::vector<DevourMeal> devourMeals_;
     // 飲み込んで、まだ体へ移していない量
     float devourDigest_=0;
@@ -117,14 +126,83 @@ private:
     Chrono::Vec DevourSuckAt(const DevourSuck&)const;
     // 大きい物を飲み込んでいる間の、足が重くなる残り時間と、大きさの文字が弾む残り
     float devourChew_=0,devourSizePulse_=0;
-    // 飲み込んだ所に出す文字 (ぱくっ など)
-    struct DevourPop {Chrono::Vec at{};const char* text="";float age=0,weight=0;};
+    // 弾かれて動けない残り時間・次に弾かれるまでの時間・大物を飲んで遅い残り時間
+    float devourStun_=0,devourBumpCool_=0,devourHeavy_=0,devourBumpMemory_=0;
+    // 動く物: 道をたどる物 (points が 2 点以上) と、その場で踊る物。index は life_.props の番号 (最初の更新で探す)
+    struct DevourMover {uint32_t visual=0;int index=-1;std::vector<Chrono::Vec> points;float speed=0,phase=0,age=0,sway=0,hop=0,baseY=0,baseYaw=0;};
+    std::vector<DevourMover> devourMovers_;
+    void AddRoute(entt::entity e,std::vector<Chrono::Vec> points,float speed,float phase);
+    void AddDance(entt::registry& r,entt::entity e,float speed,float sway,float hop);
+    void TickDevourMovers(entt::registry&,float dt);
+    // 漫画の描き文字: 飲み込んだ所や、ぶつかった所に出して飛び散らせる。kind は 0 飲む音・1 ぶつかる音・2 小さくなった印 (青い下矢印と暗い影)
+    struct DevourPop {Chrono::Vec at{};std::string text;float age=0,weight=0;int kind=0;float seed=0;};
+    // 体から飛び出して、弧を描いて落ちる物 (着地すると拾い直せる)
+    struct DevourFly {size_t index=0;Chrono::Vec from{},to{},last{},rotate{};float age=0,time=.7f,height=0,spin=0;};
+    std::vector<DevourFly> devourFlies_;Chrono::Vec devourEatAt_{};
     std::vector<DevourPop> devourPops_;
     void DevourMealSkin(std::vector<Engine::Renderer::FluidTendril>&)const;
+    // ---- 部屋のギミック (DevourGimmick.cpp): 床の輪の中で変形キーを押すと、体が道具の形になって決まった動きをする ----
+    // parts は動かす見た目 (だるまの輪・ドミノ・ピン)、partProps はその物の番号、partRadius は止めている間の本当の大きさ。
+    // rewards は成功したときにばらまく物 (最初は隠しておく)。link は液体の道の反対側の端
+    struct DevourGimmick {Chrono::GimmickKind kind=Chrono::GimmickKind::Paint;Chrono::Vec at{};float radius=16,minCm=6;Chrono::Vec face{0,0,1};std::string name;
+        std::vector<Chrono::Vec> path;std::vector<uint32_t> parts;std::vector<int> partProps;std::vector<float> partRadius,partAge;std::vector<Chrono::Vec> partBase,partRotate;
+        std::vector<uint32_t> rewards;std::vector<int> rewardProps;Chrono::Vec burstAt{};uint32_t extra=0xffffffffu;Chrono::Vec extraBase{},extraRotate{};
+        std::vector<Engine::Vector4> colors;std::vector<Chrono::Vec> spots;int link=-1,state=0,hits=0,pending=-1;float clock=0,wobble=0,scale=1;bool done=false,reversed=false;
+        uint32_t ring=0xffffffffu,sign=0xffffffffu;};
+    std::vector<DevourGimmick> gimmicks_;
+    // 乗っている間の状態: どのギミックか・体の形・時間・道の上の距離・横のずれ・形の姿勢 (今と前のフレーム)
+    struct GimmickRide {int index=-1,shape=0;float age=0,s=0,length=0,lateral=0,release=-1;Chrono::Vec anchor{},heading{0,0,1},from{};Chrono::GimmickPose pose{},previous{};bool fired=false;};
+    GimmickRide gimmickRide_;int gimmickNear_=-1;
+    // 作動範囲の縁から立つ光の膜 (半径 1・高さ 1 の円筒の側面)
+    uint32_t gimmickCurtain_=0;
+    void DrawGimmickCurtains(GameContext&);
+    bool GimmickCameraSubject(Chrono::LifeCameraSubject&)const;
+    // ---- 最初のチュートリアル (DevourTutorial.cpp): ベッドの下で課題を 1 つずつ出す。step が 0 以上の間は制限時間を止める ----
+    // step 0 動かし方と視点・1 巻尺の見方 (ゲームを止める)・2 段差の大きさまで育つ・3 段差の上り方・4 スタートの知らせ
+    struct DevourTutorial {int step=-1,page=0;float age=0,moved=0,looked=0,clear=-1,yaw=0,pitch=0;Chrono::Vec last{};bool started=false,previousAdvance=true;};
+    DevourTutorial devourTutorial_;
+    bool DevourTutorialHolding()const{return devourTutorial_.step>=0&&devourTutorial_.step<4;}
+    void StartDevourTutorial();void TickDevourTutorial(float dt);bool TickDevourTutorialPause(float dt);void DrawDevourTutorial(GameContext&);float DevourTutorialGoal()const;
+    void ClearGimmickAreas(entt::registry&);
+    int GimmickAreaAt(Chrono::Vec at,float margin)const;
+    // 水鉄砲の水: 銃口から当たる所まで伸びる液体の管
+    struct GimmickJet {Chrono::Vec from{},to{};float age=0;};
+    std::vector<GimmickJet> gimmickJets_;
+    // 絵の具で塗った体の色 (w が 0 なら塗っていない) と、塗った瞬間の光
+    Engine::Vector4 devourPaint_{0,0,0,0};float devourPaintFlash_=0,gimmickMatchCool_=0;
+    int AddGimmick(entt::registry&,Chrono::GimmickKind kind,const std::string& name,Chrono::Vec at,float radius,float minCm,float signYaw,Chrono::Vec signAt);
+    void ResetDevourGimmicks(entt::registry&);
+    void HoldGimmickProp(DevourGimmick&,size_t part,bool hold);
+    void BurstGimmick(entt::registry&,GameContext&,DevourGimmick&,Chrono::Vec from,float spread);
+    bool TickGimmickInput(entt::registry&,Chrono::Player&,GameContext&,bool pressed,bool cancel);
+    Chrono::Vec GimmickStep(entt::registry&,Chrono::Player&,GameContext&,float dt,Chrono::Vec wish);
+    void TickDevourGimmicks(entt::registry&,GameContext&,float dt);
+    void EndGimmickRide(bool burst);
+    bool GimmickRiding()const{return gimmickRide_.index>=0;}
+    // 高い所から落ちたときのヘリコプター (DevourHeli.cpp): 回転翼を回してゆっくり降りる
+    struct DevourHeli {bool active=false;float age=0;Chrono::GimmickPose pose{},previous{};};
+    DevourHeli devourHeli_;
+    // 部屋のこぼれた液体の粒子 (DevourSpill.cpp)。visible は近くて動かし・描いているか
+    struct DevourSpillFlow {struct Drop {Chrono::Vec at{},velocity{};float radius=1,age=0,speed=0,lane=0;int phase=0;uint32_t serial=0;};
+        Chrono::SpillKind kind=Chrono::SpillKind::Honey;Engine::Vector4 color{1,1,1,1};Chrono::Vec source{},edge{},foot{},pool{},out{},side{},low{},high{};
+        float emit=0;uint32_t serial=0,seed=1;bool visible=false,warmed=false;std::vector<Drop> drops;};
+    std::vector<DevourSpillFlow> devourSpills_;
+    void AddDevourSpill(Chrono::SpillKind,Engine::Vector4 color,Chrono::Vec source,Chrono::Vec edge,Chrono::Vec foot,Chrono::Vec pool);
+    void TickDevourSpills(GameContext&,float dt);void DrawDevourSpills(GameContext&);
+    void TickDevourHeli(Chrono::Player&,float dt,Chrono::Vec wish,bool blocked);
+    // 体が道具の形になっている (ギミックに乗っている・ヘリコプター)。形の番号 (無ければ 0)・形になってからの時間・姿勢
+    int DevourToolShape()const{return devour_&&GimmickRiding()&&gimmickRide_.shape>0?gimmickRide_.shape:devour_&&devourHeli_.active?Chrono::GimmickHeliShape:0;}
+    float DevourToolAge()const{return GimmickRiding()?gimmickRide_.age:devourHeli_.age;}
+    const Chrono::GimmickPose& DevourToolPose(bool previous=false)const{return GimmickRiding()?(previous?gimmickRide_.previous:gimmickRide_.pose):(previous?devourHeli_.previous:devourHeli_.pose);}
+    void GimmickJets(std::vector<Engine::Renderer::FluidTendril>&)const;
+    void DrawGimmickMarks(UI::Canvas&,GameContext&);
+    // 乗っている間の操作 (下の操作の札) と、作動範囲の中で押せる操作 (体の上の吹き出し。無ければ false)
+    void GimmickRidePrompts(std::vector<UI::Scale::Prompt>&)const;bool GimmickNearPrompt(UI::Scale::Prompt&)const;
+    float GimmickFoodBonus(const Chrono::LifeCollectible&)const;
     Chrono::Vec DevourVacuumMouth()const;
     void TickDevourVacuum(entt::registry&,GameContext&,float dt,bool held);
     // バネ: 跳んでいる間の出発点・着地点・経過時間・全体の時間・高さと、次に跳べるまでの時間
-    struct DevourHop {bool active=false,landed=false;Chrono::Vec from{},to{};float age=0,time=1,height=0;} devourHop_;float devourHopCooldown_=0;
+    struct DevourHop {bool active=false,landed=false;Chrono::Vec from{},to{};float age=0,time=1,height=0;bool step=false;} devourHop_;float devourHopCooldown_=0,devourStepPush_=0;
     void TickDevourSpring(Chrono::Player&,float dt,bool held,Chrono::Vec wish);
     void StartDevourHop(float power,Chrono::Vec wish);
     // ステージの番号・読み込んだか・届いた目標の数・ステージごとの自己ベストの量
@@ -179,6 +257,10 @@ private:
     void TickDevourPounce(entt::registry&,Chrono::Player&,GameContext&,float);
     int DevourCapture(entt::registry&,Chrono::Vec landing,float& gained);
     void DevourTouch(entt::registry&,Chrono::Vec from);
+    void TickDevourFlies(entt::registry&,float dt);
+    // 飲めない物へぶつかる: 弾かれて体が縮み、飲んだ物が飛び出す
+    void DevourBump(entt::registry&,Chrono::Player&,GameContext&,Chrono::Vec source,float impact);
+    Chrono::Vec DevourPropBlock(entt::registry&,Chrono::Player&,GameContext&,Chrono::Vec old,Chrono::Vec next,float topSpeed);
     float DevourEat(entt::registry&,size_t index);
     void DevourRemoveProp(entt::registry&,size_t index);
     void DevourShatter(entt::registry&,GameContext&,size_t index);
@@ -282,6 +364,16 @@ private:
     void BuildRingCity(entt::registry&,const RingCityTools&);
     void BuildRoomGround(CityParts::CityBuilder&);
     void BuildRoomStage(entt::registry&,const RingCityTools&);
+    void BuildRoomSets(entt::registry&);
+    void BuildRoomGimmicks(entt::registry&);
+    bool GimmickClear(Chrono::Vec at,float margin)const;
+    // ローポリのモデル (scripts/lowpoly/build_lowpoly.py): メッシュと大きさの範囲。部屋と町で同じ置き方を使う
+    struct LowModel {uint32_t mesh=0;Chrono::Vec lo{},hi{};};
+    std::map<std::string,LowModel> lowModels_;uint32_t lowPalette_=0;std::vector<uint32_t> lowMaps_;float lowOcclude_=12;
+    const LowModel& LowModelOf(const std::string& id);
+    float LowScaleFor(const std::string& id,float width);
+    void BeginLowProps(float occludeHeight);
+    entt::entity LowProp(entt::registry& r,const std::string& id,Chrono::Vec at,float scale,float yaw,float fill,Engine::Vector4 tint={1,1,1,1},float tilt=0);
     void BuildStageItem(entt::registry&,const RingCityTools&);
     // 建物の敷地と、敷地ごとの吸収の対象の番号 (life_.props の番号。建物は飲み込むまで通れない)
     std::vector<Chrono::RingLot> ringLots_;std::vector<int> ringLotProps_;
@@ -291,7 +383,8 @@ private:
     bool RingWallClosed(Chrono::Vec p,float margin)const{float d=Chrono::RingDistance(p);for(int z=1;z<Chrono::RingStyleCount;++z)if(!ringOpen_[size_t(z)]&&std::abs(d-Chrono::RingWallAt(z))<margin+3)return true;return false;}
     // 吸収モードの地図の中で、半径 margin の体が歩けるか
     bool DevourWalkable(Chrono::Vec p,float margin)const{float half=CurrentDevourStage().half;if(half>0&&(std::abs(p.x)+margin>half||std::abs(p.z)+margin>half))return false;
-        return !RingWallClosed(p,margin)&&Chrono::RingWalkable(p,margin,ringLots_,[&](size_t i){return RingBlocked(i);});}
+        // (部屋の本棚やおもちゃ箱のように上に乗れる家具は、その上の面より上にいれば止めない)
+        return !RingWallClosed(p,margin)&&Chrono::RingWalkable(p,margin,ringLots_,[&](size_t i){return RingBlocked(i)&&!(ringLots_[i].top>0&&p.y>=ringLots_[i].top);});}
     bool RingBlocked(size_t lot)const{int k=lot<ringLotProps_.size()?ringLotProps_[lot]:-1;return k<0||size_t(k)>=life_.props.size()||life_.props[size_t(k)].active;}
     // 街の小物の見た目
     struct CityPropVisual {uint32_t mesh=0,texture=0;std::vector<uint32_t> extra;Chrono::Vec scale{1,1,1},rotate{},center{};float height=1;std::string shader="EnvironmentSurface";Engine::Vector4 color{1,1,1,1};
@@ -301,7 +394,7 @@ private:
     struct CityGlow {Chrono::Vec center{},right{},up{},size{};Engine::Vector4 color{1,1,1,1};int kind=0;float phase=0;};
     std::vector<CityGlow> cityGlows_;
     // 街の小物 (触手で取り込める物)
-    struct CityPropSeed {entt::entity entity=entt::null;Chrono::Vec at{};float required=0,reward=0;Chrono::LifeMorphItem morphItem=Chrono::LifeMorphItem::None;float radius=1,fill=1,reach=0;int ring=0,gate=0;bool beacon=false;};
+    struct CityPropSeed {entt::entity entity=entt::null;Chrono::Vec at{};float required=0,reward=0;Chrono::LifeMorphItem morphItem=Chrono::LifeMorphItem::None;float radius=1,fill=1,reach=0;int ring=0,gate=0;bool beacon=false;float foot=0,height=0;};
     // バリケードや塀の部品 (材質: 0 木・1 鉄・2 ブロック・3 金属)・敵の弾・壊れた破片・踏みつけの衝撃
     struct CityPlank {Chrono::Vec at{},size{},rotate{};int material=0;};
     struct CityShot {Chrono::Vec at{},velocity{};float age=0;bool shell=false;Chrono::Vec target{};};

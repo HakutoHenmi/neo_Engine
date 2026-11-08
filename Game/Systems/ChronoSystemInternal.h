@@ -97,4 +97,8 @@ inline constexpr LifeImpactSpec ImpactDevourTier{.12f,.32f,.2f,9,.9f,.6f,.4f};
 inline constexpr LifeImpactSpec ImpactMarkerBig{.05f,.1f,.12f,16,.6f,.4f,.16f};
 } // namespace ChronoDetail
 using namespace ChronoDetail;
+// 吸収モードの描き文字の言葉・乱数・ワールドの点の画面の位置 (SlimeDevour.cpp)
+const std::string& GimmickWord(const char* set);
+float GimmickSeed();
+bool GimmickScreen(const GameContext& ctx,Chrono::Vec point,float& x,float& y);
 } // namespace Game

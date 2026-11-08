@@ -30,6 +30,9 @@ inline constexpr float DevourGrowth=7;
 inline float DevourReward(float radius){float k=radius/DevourStartRadius;return DevourGrowth*k*k;}
 // 大きさに合わせた移動の速さの倍率 (体の大きさの 0.55 乗。大きいほど体に対してはゆっくりで、町を横切るのに時間がかかる)
 inline float DevourSpeedScale(float mass){return std::pow(std::max(1.f,LifeScale(mass)),.55f);}
+// 段差ジャンプ: 段差へ押し続ける時間と、跳び越えられる高さ (体の半径の 2 倍)・跳ぶ時間
+inline constexpr float DevourStepHold=.2f,DevourStepTime=.3f;
+inline float DevourStepHeight(float mass){return 2*DevourBodyRadius(mass);}
 // 飛びかかり (ガバッ) の間隔。飛びかかりは連打する物ではなく、ここぞというときの大技
 inline constexpr float DevourPounceCooldown=1;
 // 飛びかかって覆う広さ (体より少し広げる) と、飛びかかれる距離 (体の半径の 2.5 倍)。
@@ -110,10 +113,25 @@ inline constexpr float DevourMouthSmallest=.12f;
 // 物に近づくと飲む前に口を開ける大きさと距離 (飲める幅に対する倍率)
 inline constexpr float DevourMouthAhead=.3f,DevourMouthReach=1.9f;
 inline float DevourMouthScale(float mass,float radius){return .8f+.55f*std::clamp(radius/(DevourBodyRadius(mass)*DevourCoverRatio),0.f,1.f);}
-// 体に対して小さい物の価値 (0.1〜1)。knee は覆える大きさに対してこれ以上なら満額になる割合で、0 なら小さくしない
+// 体に対する物の価値。小さい物は 0.1 まで下がり、限界ギリギリの物は DevourBigBonus 倍まで上がる。
+// knee は覆える大きさに対してこれ以上なら満額になる割合で、0 なら変えない
+inline constexpr float DevourBigFrom=.7f,DevourBigBonus=2.2f;
 inline float DevourFoodValue(float mass,float radius,float knee){
-    if(knee<=0)return 1;float u=radius/(DevourBodyRadius(mass)*DevourCoverRatio)/knee;return std::clamp(u*u,.1f,1.f);
+    if(knee<=0)return 1;float size=radius/(DevourBodyRadius(mass)*DevourCoverRatio),u=size/knee;
+    if(size>DevourBigFrom)return 1+(DevourBigBonus-1)*std::min(1.f,(size-DevourBigFrom)/(1-DevourBigFrom));
+    return std::clamp(u*u,.1f,1.f);
 }
+// 限界に近い物を飲んだ後は重くて遅くなる: 遅くなる時間 (0 なら普通)・そのときの速さの倍率
+inline constexpr float DevourHeavySlow=.35f;
+inline float DevourHeavyTime(float mass,float radius){float size=radius/(DevourBodyRadius(mass)*DevourCoverRatio);return size<=DevourBigFrom?0:.5f+1.f*std::min(1.f,(size-DevourBigFrom)/(1-DevourBigFrom));}
+// 飲めない物へぶつかる: 全速のこの割合より速いと弾かれる。impact は 0〜1 の強さ。
+// 1 回目は止まるだけで、DevourBumpMemory 秒の間にもう一度ぶつかると小さくなる
+inline constexpr float DevourBumpSpeed=.7f,DevourBumpCooldown=1,DevourBumpMemory=3.5f;
+inline float DevourBumpImpact(float speed,float topSpeed){return std::clamp((speed/std::max(topSpeed,.01f)-DevourBumpSpeed)/(1-DevourBumpSpeed),0.f,1.f);}
+// 弾かれて失う量・動けない時間・体から飛び出す物の数
+inline float DevourBumpLoss(float mass,float impact){return std::clamp(mass*(.04f+.06f*impact),0.f,std::max(0.f,mass-LifeStartMass));}
+inline float DevourBumpStun(float impact){return .35f+.45f*impact;}
+inline int DevourBumpPops(float impact){return 1+int(impact*4);}
 // 体の中の物の深さ (1 で表面): 後から飲んだ物に埋もれるほど中心へ沈む。cover は後から飲んだ物の大きさの合計
 inline float DevourMealDepth(float cover){return std::clamp(.98f-1.2f*cover,.3f,.98f);}
 // 飲み込んだ後の体のつぶれ (正でつぶれ、負で伸びる): 一気につぶれ、揺れながら戻る

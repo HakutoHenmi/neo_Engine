@@ -1,5 +1,5 @@
 // RingCityRules.h
-// 吸収モードの町 (中心の路地裏から外へ、住宅街・商店街・オフィス街・高層街の輪が広がる) の規則。エンジンに依存しない。
+// 吸収モードの町 (中心の路地裏から外へ、住宅街の輪が広がる) の規則。エンジンに依存しない。
 // 輪の大きさ・道路の間隔・階数・アイテムと炎の位置は Resources/Data/ring_city.json に置く。
 // 建物は道路の格子で区切った区画に並べ、区画は 1 つの輪の中に収まるものだけを使う (輪の境目は広い通りになる)。
 // 建物は大きさが足りるまで通れない壁で、飲み込むと通れるようになる
@@ -11,9 +11,9 @@
 #include <string>
 #include <vector>
 namespace Game::Chrono {
-// 輪の種類 (路地裏・住宅街・商店街・オフィス街・高層街)
-enum class RingStyle : uint8_t {Alley,House,Shop,Office,Tower};
-inline constexpr int RingStyleCount=5;
+// 輪の種類 (路地裏・住宅街)
+enum class RingStyle : uint8_t {Alley,House};
+inline constexpr int RingStyleCount=2;
 // 輪: 外側の端 (中心からの x と z の大きい方)・道路の格子の間隔と幅・1 区画の建物の数・階数の範囲・1 階の高さ・小物の数
 struct RingZone {RingStyle style=RingStyle::Alley;std::string name;float outer=0,block=0,road=0;int lotsX=1,lotsZ=1,floorsMin=1,floorsMax=1;float floorHeight=19;int props=0;
     // 大通りの幅・門の半径 (この輪へ入る門)・広場の数・広場ごとのごちそうの数・大通り 1 本のごみの数
@@ -23,7 +23,7 @@ struct RingCityData {std::vector<RingZone> zones;std::vector<CityFireSpot> fires
 inline const RingCityData& RingData(){
     static const RingCityData data=[]{
         const char* file="ring_city.json";const auto& json=Data::Load(file);RingCityData out;
-        const char* ids[]={"Alley","House","Shop","Office","Tower"};
+        const char* ids[]={"Alley","House"};
         for(const auto& z:Data::Require(json,"zones",file)){RingZone zone;std::string id=z.at("id").get<std::string>();
             int style=-1;for(int i=0;i<RingStyleCount;++i)if(id==ids[i])style=i;if(style<0)throw std::runtime_error(std::string(file)+": unknown zone "+id);
             zone.style=RingStyle(style);zone.name=z.at("name").get<std::string>();zone.outer=z.at("outer").get<float>();
@@ -35,7 +35,7 @@ inline const RingCityData& RingData(){
             zone.lineFood=z.at("lineFood").get<int>();
             if(!out.zones.empty()&&zone.outer<=out.zones.back().outer)throw std::runtime_error(std::string(file)+": zones must grow outward");
             out.zones.push_back(zone);}
-        if(out.zones.size()!=size_t(RingStyleCount))throw std::runtime_error(std::string(file)+": zones must be Alley, House, Shop, Office, Tower");
+        if(out.zones.size()!=size_t(RingStyleCount))throw std::runtime_error(std::string(file)+": zones must be Alley, House");
         for(const auto& f:json.at("fires")){auto a=Data::ReadArray<float,3>(f,file);out.fires.push_back({{a[0],0,a[1]},a[2]});}
         return out;}();
     return data;
@@ -52,7 +52,7 @@ inline float RingCityHalf(){return RingZones().back().outer;}
 inline float RingNoise(int seed){float n=std::sin(float(seed)*12.9898f+78.233f)*43758.5453f;return n-std::floor(n);}
 // 建物の敷地: 敷地の矩形・輪の番号・階数・見た目の種類 (同じ輪の中で使い回す型の番号)・正面の向き (0〜3。+z から 90 度ずつ)
 // gate は門なら開ける輪の番号 (0 は普通の建物)、height は門の高さ
-struct RingLot {CityRect foot{};int zone=0,floors=1,variant=0,facing=0,gate=0;float height=0;};
+struct RingLot {CityRect foot{};int zone=0,floors=1,variant=0,facing=0,gate=0;float height=0;float top=0;};
 // 輪の型の数 (同じ輪の建物は、この数の型の見た目を使い回す)
 inline constexpr int RingVariants=6;
 // 矩形の中で中心に一番近い点・一番遠い点の距離 (x と z の大きい方)

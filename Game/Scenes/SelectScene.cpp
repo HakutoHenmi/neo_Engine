@@ -18,16 +18,16 @@ namespace S=UI::Scale;
 constexpr float kBarTop=564,kBarHeight=43,kLeaveTime=.45f;
 constexpr UI::Rect kDeploy{822,40,122,36},kBack{1112,40,128,36};
 // ステージごとに並べる物
-struct StageProp{const S::Sprite* sprite;float cx,height;};
-const std::vector<StageProp>& PropsOf(int stage){
-    static const std::vector<StageProp> room={{&S::Block,40,50},{&S::Ball,97,46},{&S::Box,157,37}};
-    static const std::vector<StageProp> town={{&S::Car,547,86},{&S::Barrel,667,93},{&S::Horse,853,227},{&S::Barrier,1067,102}};
+// (実際にそのステージにある物を、巻尺の実寸の位置に置く。後ろの物から描く)
+const std::vector<S::LineupProp>& PropsOf(int stage){
+    static const std::vector<S::LineupProp> room={S::Place(S::Tsumiki),S::Place(S::Mikan),S::Place(S::Nuigurumi),S::Place(S::Kago)};
+    static const std::vector<S::LineupProp> town={S::Place(S::MyHouse),S::Place(S::KeiCar),S::Place(S::Jitensha)};
     return stage==0?room:town;
 }
 // ステージの帯の場所
 UI::Rect BarOf(const S::StageView& stage){const float x=S::TapeX(stage.startCm);return {x,kBarTop,S::TapeX(stage.lastCm)-x,kBarHeight};}
-// スライムが座る大きさ (記録が無ければ開始の大きさ)
-float SlimeCm(const S::StageView& stage){return stage.played?stage.bestCm:stage.startCm;}
+// スライムが座る大きさ (記録が無ければ開始の大きさ)。ステージの帯の中に収めるので、選んだステージへ必ず移動する
+float SlimeCm(const S::StageView& stage){return std::clamp(stage.played?stage.bestCm:stage.startCm,stage.startCm,stage.lastCm);}
 }
 
 // 破棄: 特に後片付けは無い
@@ -174,7 +174,7 @@ void SelectScene::DrawMenu() {
     // 巻尺: 選んだステージの目標を赤くする。未解放を決定すると解放の目標が点滅する
     const float locked = selected_ > 0 && !stage.unlocked ? stages_[size_t(selected_ - 1)].goalCm : stage.goalCm;
     const bool flash = shake_ <= 0 || std::fmod(shake_, .12f) > .06f;
-    S::Tape(ui, {{5}, {locked, flash}, {30}, {100}, {500}, {5000}, {12600}}, S::TapeTop, out);
+    S::Tape(ui, {{5}, {locked, flash}, {30}, {100}, {500}, {2200}}, S::TapeTop, out);
     // タイトルでスライムが画面を埋めた続きから、緑が引いて始まる
     if (age_ < .25f) ui.Clear(UI::WithAlpha(S::SlimeFill, 1 - age_ / .25f));
 }

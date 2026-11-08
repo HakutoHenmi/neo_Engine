@@ -149,6 +149,6 @@ inline void DrawGraphics(Canvas& ui,const Engine::Renderer& renderer){
     S::Slime(ui,active>=0?bars[active].x+105:80,564,150);
     if(active<0){const Rect custom{12,564,136,43};ui.Fill(custom,S::Black);ui.Text(Str("graphics.presetCustom"),custom.x+14,custom.y+8,24,S::Yellow,S::Jp);}
     for(int i=0;i<3;++i){const bool on=i==active;S::Focus(ui,bars[i]);ui.Fill(bars[i],on?S::Black:WithAlpha(S::Black,ui.Hover(bars[i])?.26f:.14f));ui.Text(Str(labels[i]),bars[i].x+14,bars[i].y+8,24,on?S::Yellow:S::Black,S::Jp);}
-    S::Tape(ui,{{5},{30},{100},{500},{5000},{12600}});
+    S::Tape(ui,{{5},{30},{100},{500},{2200}});
 }
 }
