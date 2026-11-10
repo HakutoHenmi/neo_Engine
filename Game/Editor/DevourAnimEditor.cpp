@@ -48,7 +48,7 @@ private:
 
 	static bool Ready(GameScene* scene) {
 		auto* chrono = scene ? scene->GetChronoSystem() : nullptr;
-		return chrono && scene->GetIsPlaying() && chrono->initialized_ && chrono->slimeLife_ && chrono->devour_ && chrono->player_ != entt::null;
+		return chrono && scene->GetIsPlaying() && chrono->initialized_ && chrono->devour_ && chrono->player_ != entt::null;
 	}
 	// 変更を取り消しの履歴に積む (before は変更前のアニメーション)
 	static void Commit(const Chrono::DevourAnimation& before, const char* label);

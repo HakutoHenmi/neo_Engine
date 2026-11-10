@@ -406,6 +406,7 @@ void TestDevour(){
     // 部屋の高さ: 坂はつながっていて登れる傾きで、床は 0
     // 部屋: ベッドと机は下を通れて上にも乗れる。こたつの布団と座布団はなだらかで、そのまま登れる
     CheckLife(RoomGround({0,0,-100})==0&&RoomGround({-180,1,-240})==0&&RoomGround({-180,50,-240})==56&&RoomGround({235,1,-264})==0&&RoomGround({235,80,-264})>86,"room heights are wrong");
+    CheckLife(RoomTop({100,0,-264})==0&&RoomGround({148,1,-264})==0&&RoomGround({186,87,-264})==86.4f,"removed desk rail leaves invisible ground or honey endpoints miss the floor/desk");
     CheckLife(RoomGround({-120,0,176})==42&&RoomGround({-238,0,100})==0&&RoomGround({-200,0,100})>0&&RoomGround({-200,0,100})<42&&RoomTop({-180,0,-240})==56,"kotatsu quilt is not a hill");
     for(const auto& s:RoomSurfaces){if(s.hill>0&&s.base==0)CheckLife(s.h0/s.hill<.6f,"room hill is too steep");else if(s.h0!=s.h1)CheckLife(std::abs(s.h1-s.h0)/(s.foot.x1-s.foot.x0)<.6f,"room ramp is too steep");}
     // ベッドの下の収納ケースは開始の大きさでは跳べず、ケースの目標の大きさで跳べる。階段はその大きさで 1 段ずつ登れる

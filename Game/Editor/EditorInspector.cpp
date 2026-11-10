@@ -159,7 +159,6 @@ void AddGpuMeshCollider(SceneComponents& r, entt::entity e) {
 	}
 }
 
-// Legacy は旧アクションゲーム (缶・ボス戦) 用。現行のスライム (Chrono) モードでは処理されない
 const ComponentEntry kComponentEntries[] = {
 	// 描画: メッシュ・アニメーター・モーション
 	{"Rendering", "Mesh Renderer", &HasComponent<MeshRendererComponent>, &AddComponent<MeshRendererComponent>},
@@ -190,13 +189,6 @@ const ComponentEntry kComponentEntries[] = {
 	{"Scripting", "Variables", &HasComponent<VariableComponent>, &AddComponent<VariableComponent>},
 	{"Scripting", "Tag", &HasComponent<TagComponent>, &AddComponent<TagComponent>},
 	{"Scripting", "Health", &HasComponent<HealthComponent>, &AddComponent<HealthComponent>},
-	// 旧アクションゲーム用
-	{"Legacy (old action game)", "Player Input", &HasComponent<PlayerInputComponent>, &AddComponent<PlayerInputComponent>},
-	{"Legacy (old action game)", "Character Movement", &HasComponent<CharacterMovementComponent>, &AddComponent<CharacterMovementComponent>},
-	{"Legacy (old action game)", "Camera Target", &HasComponent<CameraTargetComponent>, &AddComponent<CameraTargetComponent>},
-	{"Legacy (old action game)", "Hitbox", &HasComponent<HitboxComponent>, &AddComponent<HitboxComponent>},
-	{"Legacy (old action game)", "Hurtbox", &HasComponent<HurtboxComponent>, &AddComponent<HurtboxComponent>},
-	{"Legacy (old action game)", "World Space UI", &HasComponent<WorldSpaceUIComponent>, &AddComponent<WorldSpaceUIComponent>},
 };
 } // namespace
 
@@ -841,27 +833,6 @@ void EditorUI::ShowInspector(GameScene* scene) {
 					if (StructureButton("Remove##FEC")) registry.remove<FluidEmitterComponent>(entity);
 				}
 			}
-			// 旧アクションゲーム用: 入力・移動
-			if (auto* pi = registry.try_get<PlayerInputComponent>(entity)) {
-				ImGuiIdScope componentId("PlayerInputComponent");
-				if (ImGui::CollapsingHeader("PlayerInput", ImGuiTreeNodeFlags_DefaultOpen)) {
-					// 有効か・入力の向き (表示だけ)
-					ImGui::Checkbox("Enabled##PI", &pi->enabled);
-					ImGui::Text("MoveDir: (%.2f, %.2f)", pi->moveDir.x, pi->moveDir.y);
-					if (StructureButton("Remove##PI")) registry.remove<PlayerInputComponent>(entity);
-				}
-			}
-			if (auto* cm = registry.try_get<CharacterMovementComponent>(entity)) {
-				ImGuiIdScope componentId("CharacterMovementComponent");
-				if (ImGui::CollapsingHeader("CharacterMovement", ImGuiTreeNodeFlags_DefaultOpen)) {
-					// 有効か・速さ・ジャンプ力・重力
-					ImGui::Checkbox("Enabled##CM", &cm->enabled);
-					ImGui::DragFloat("Speed", &cm->speed, 0.1f);
-					ImGui::DragFloat("Jump Power", &cm->jumpPower, 0.1f);
-					ImGui::DragFloat("Gravity", &cm->gravity, 0.1f);
-					if (StructureButton("Remove##CM")) registry.remove<CharacterMovementComponent>(entity);
-				}
-			}
 			// スポットライト
 			if (auto* sl = registry.try_get<SpotLightComponent>(entity)) {
 				ImGuiIdScope componentId("SpotLightComponent");
@@ -1022,77 +993,6 @@ void EditorUI::ShowInspector(GameScene* scene) {
 				}
 			}
 			// 旧アクションゲーム用: カメラ追従・攻撃判定・食らい判定・頭上の HP バー
-			if (auto* ct = registry.try_get<CameraTargetComponent>(entity)) {
-				ImGuiIdScope componentId("CameraTargetComponent");
-				if (ImGui::CollapsingHeader("CameraTarget", ImGuiTreeNodeFlags_DefaultOpen)) {
-					// 有効か・距離・高さ・なめらかさ
-					ImGui::Checkbox("Enabled##CT", &ct->enabled);
-					ImGui::DragFloat("Dist", &ct->distance, 0.1f);
-					ImGui::DragFloat("Height", &ct->height, 0.1f);
-					ImGui::DragFloat("Smooth", &ct->smoothSpeed, 0.1f);
-					if (StructureButton("Remove##CT")) registry.remove<CameraTargetComponent>(entity);
-				}
-			}
-			if (auto* hb = registry.try_get<HitboxComponent>(entity)) {
-				ImGuiIdScope componentId("HitboxComponent");
-				if (ImGui::CollapsingHeader("Hitbox", ImGuiTreeNodeFlags_DefaultOpen)) {
-					// 有効か・中心・大きさ・ダメージ
-					ImGui::Checkbox("Enabled##HB", &hb->enabled);
-					ImGui::DragFloat3("Ofs##HB", &hb->center.x, 0.1f);
-					ImGui::DragFloat3("Size##HB", &hb->size.x, 0.1f);
-					ImGui::DragFloat("DMG##HB", &hb->damage, 1.0f);
-					
-					// タグの選択
-					const char* currentTagName = TagToString(hb->tag);
-					if (ImGui::BeginCombo("Tag##HBTagCombo", currentTagName)) {
-						for (int i = 0; i <= (int)TagType::VFX; ++i) {
-							TagType t = (TagType)i;
-							bool isSelected = (hb->tag == t);
-							if (ImGui::Selectable(TagToString(t), isSelected)) hb->tag = t;
-							if (isSelected) ImGui::SetItemDefaultFocus();
-						}
-						ImGui::EndCombo();
-					}
-
-					// 有効か (攻撃中か)
-					ImGui::Checkbox("Active##HB", &hb->isActive);
-					if (StructureButton("Remove##HB")) registry.remove<HitboxComponent>(entity);
-				}
-			}
-			if (auto* hb = registry.try_get<HurtboxComponent>(entity)) {
-				ImGuiIdScope componentId("HurtboxComponent");
-				if (ImGui::CollapsingHeader("Hurtbox", ImGuiTreeNodeFlags_DefaultOpen)) {
-					// 有効か・中心・大きさ・ダメージ倍率
-					ImGui::Checkbox("Enabled##HurtB", &hb->enabled);
-					ImGui::DragFloat3("Ofs##HurtB", &hb->center.x, 0.1f);
-					ImGui::DragFloat3("Size##HurtB", &hb->size.x, 0.1f);
-					ImGui::DragFloat("Mult##HurtB", &hb->damageMultiplier, 0.1f);
-
-					// タグの選択
-					const char* currentTagName = TagToString(hb->tag);
-					if (ImGui::BeginCombo("Tag##HurtBTagCombo", currentTagName)) {
-						for (int i = 0; i <= (int)TagType::VFX; ++i) {
-							TagType t = (TagType)i;
-							bool isSelected = (hb->tag == t);
-							if (ImGui::Selectable(TagToString(t), isSelected)) hb->tag = t;
-							if (isSelected) ImGui::SetItemDefaultFocus();
-						}
-						ImGui::EndCombo();
-					}
-
-					if (StructureButton("Remove##HurtB")) registry.remove<HurtboxComponent>(entity);
-				}
-			}
-			if (auto* ws = registry.try_get<WorldSpaceUIComponent>(entity)) {
-				ImGuiIdScope componentId("WorldSpaceUIComponent");
-				if (ImGui::CollapsingHeader("WorldSpaceUI", ImGuiTreeNodeFlags_DefaultOpen)) {
-					// 有効か・HP バーを出すか・頭上のずれ
-					ImGui::Checkbox("Enabled##WS", &ws->enabled);
-					ImGui::Checkbox("HP Bar##WS", &ws->showHealthBar);
-					ImGui::DragFloat3("Ofs##WS", &ws->offset.x, 0.1f);
-					if (StructureButton("Remove##WS")) registry.remove<WorldSpaceUIComponent>(entity);
-				}
-			}
 			// 音を聞く位置
 			if (auto* al = registry.try_get<AudioListenerComponent>(entity)) {
 				ImGuiIdScope componentId("AudioListenerComponent");

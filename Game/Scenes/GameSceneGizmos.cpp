@@ -15,8 +15,6 @@
 // 流体の放出と時間の管理 (エンジン側)
 #include "../../Engine/FluidEmission.h"
 #include "../../Engine/Time/TimeManager.h"
-// 缶の装備 (旧アクションゲーム)
-#include "../CanLoadout.h"
 #include "../ObjectTypes.h"
 // 音・パス・シーン管理 (エンジン側)
 #include "../../Engine/Audio.h"
@@ -28,29 +26,16 @@
 #include "../Scripts/ScriptLifecycle.h"
 // ゲームの処理を分担するシステム群
 #include "../Systems/AudioSystem.h"
-#include "../Systems/CameraFollowSystem.h"
-#include "../Systems/CharacterMovementSystem.h"
 #include "../Systems/CleanupSystem.h"
 #include "../Systems/FluidSystem.h"
-#include "../Systems/WeaponSystem.h" // 武器の管理
 #include "../../Engine/Input.h"      // キーボード・マウス入力
 
-#include "../Systems/HealthSystem.h"
 #include "../Systems/MotionSystem.h" // キーフレームのモーション
 #include "../Systems/PhysicsSystem.h"
-#include "../Systems/PlayerInputSystem.h"
 #include "../Systems/ChronoSystem.h"
-#include "../Systems/PlayerActionSystem.h" // プレイヤーアクション
-#include "../Systems/CombatSystem.h"       // 戦闘の当たり判定
-#include "../Systems/CanAbilitySystem.h"
-#include "../Systems/EnemyAISystem.h"      // 敵の AI
-#include "../Systems/BossActionSystem.h"    // ボスの AI
-#include "../Systems/WaveSystem.h"         // ウェーブ管理
-#include "../Scripts/BossTestScript.h"      // ボスの生成に使う
 
 #include "../Systems/ScriptSystem.h"
 #include "../Systems/UISystem.h"
-#include "../Systems/PostProcessSystem.h" // ポストエフェクト
 // Web プロファイラ (外部ツールから値を見たり変えたりする)
 #include "../../Engine/NetworkProfiler.h"
 // JSON の読み書き
@@ -171,62 +156,6 @@ void GameScene::DrawSelectionHighlight() {
 				}
 				for (auto& eg : edges)
 					renderer_->DrawLine3D(cv[eg[0]], cv[eg[1]], gColor, true);
-			}
-		}
-
-		// 攻撃判定 (赤。有効なときは濃く)
-		if (registry_.all_of<HitboxComponent>(entity)) {
-			const auto& hb = registry_.get<HitboxComponent>(entity);
-			if (hb.enabled) {
-				// 箱の半分の大きさと中心
-				float hx = hb.size.x * 0.5f, hy = hb.size.y * 0.5f, hz = hb.size.z * 0.5f;
-				Engine::Vector3 cp = {hb.center.x, hb.center.y, hb.center.z};
-				Engine::Vector4 hbColor = hb.isActive ? Engine::Vector4{1.0f, 0.2f, 0.2f, 1.0f} : Engine::Vector4{1.0f, 0.2f, 0.2f, 0.3f};
-				Engine::Vector3 hv[8] = {
-				    {cp.x - hx, cp.y - hy, cp.z - hz},
-                    {cp.x + hx, cp.y - hy, cp.z - hz},
-                    {cp.x + hx, cp.y + hy, cp.z - hz},
-                    {cp.x - hx, cp.y + hy, cp.z - hz},
-				    {cp.x - hx, cp.y - hy, cp.z + hz},
-                    {cp.x + hx, cp.y - hy, cp.z + hz},
-                    {cp.x + hx, cp.y + hy, cp.z + hz},
-                    {cp.x - hx, cp.y + hy, cp.z + hz},
-				};
-				// 8 つの角をワールド座標へ変換して辺を描く
-				for (int i = 0; i < 8; ++i) {
-					DirectX::XMVECTOR p = DirectX::XMVector3TransformCoord(DirectX::XMVectorSet(hv[i].x, hv[i].y, hv[i].z, 1.0f), worldMat);
-					DirectX::XMStoreFloat3(reinterpret_cast<DirectX::XMFLOAT3*>(&hv[i]), p);
-				}
-				for (auto& eg : edges)
-					renderer_->DrawLine3D(hv[eg[0]], hv[eg[1]], hbColor, true);
-			}
-		}
-
-		// 食らい判定 (緑)
-		if (registry_.all_of<HurtboxComponent>(entity)) {
-			const auto& hb = registry_.get<HurtboxComponent>(entity);
-			if (hb.enabled) {
-				// 箱の半分の大きさと中心
-				float hx = hb.size.x * 0.5f, hy = hb.size.y * 0.5f, hz = hb.size.z * 0.5f;
-				Engine::Vector3 cp = {hb.center.x, hb.center.y, hb.center.z};
-				Engine::Vector4 hbColor = {0.2f, 1.0f, 0.5f, 0.6f};
-				Engine::Vector3 hv[8] = {
-				    {cp.x - hx, cp.y - hy, cp.z - hz},
-                    {cp.x + hx, cp.y - hy, cp.z - hz},
-                    {cp.x + hx, cp.y + hy, cp.z - hz},
-                    {cp.x - hx, cp.y + hy, cp.z - hz},
-				    {cp.x - hx, cp.y - hy, cp.z + hz},
-                    {cp.x + hx, cp.y - hy, cp.z + hz},
-                    {cp.x + hx, cp.y + hy, cp.z + hz},
-                    {cp.x - hx, cp.y + hy, cp.z + hz},
-				};
-				// 8 つの角をワールド座標へ変換して辺を描く
-				for (int i = 0; i < 8; ++i) {
-					DirectX::XMVECTOR p = DirectX::XMVector3TransformCoord(DirectX::XMVectorSet(hv[i].x, hv[i].y, hv[i].z, 1.0f), worldMat);
-					DirectX::XMStoreFloat3(reinterpret_cast<DirectX::XMFLOAT3*>(&hv[i]), p);
-				}
-				for (auto& eg : edges)
-					renderer_->DrawLine3D(hv[eg[0]], hv[eg[1]], hbColor, true);
 			}
 		}
 

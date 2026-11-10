@@ -43,8 +43,6 @@ public:
     // 吸収モードの結果: カメラが寄る間に顔を向け、測り始めたら体を止める
     float DevourResultFace() const {return devour_&&finished_?std::min(1.f,resultCameraAge_/.8f):0.f;}
     bool DevourResultFrozen() const {return devour_&&finished_&&resultCameraAge_>=kResultFreezeAge;}
-    bool CinematicActive() const {return cinematicActive_;}
-    bool SlimeLabOpen() const {return slimeLife_&&life_.lab&&!finished_;}
     // 鳴り続ける音を止める (シーンを抜けるとき)
     void StopLoopSounds();
     // スライムの状態・敵・街の門・消火栓の狙いを外 (エディタやテスト) から読むための関数
@@ -70,8 +68,6 @@ public:
     // 手応えの設定 (ヒットストップ秒・揺れの秒・揺れの大きさ・揺れの速さ・振動の重い側・軽い側・振動の秒)
     struct LifeImpactSpec {float stop=0,shakeTime=0,shake=0,frequency=14,low=0,high=0,rumble=0;};
     // ステージ開始のカメラ演出の最中か
-    bool StageIntroActive()const {return intro_.active;}
-    float StageIntroAge()const {return intro_.age;}
     const Chrono::CityGates& CityGateState()const {return cityGates_;}
     const Chrono::HydrantAim& HydrantAimState()const {return hydrantAim_;}
     // 確認用: 区画の出口を手前から exits 個だけ壊したように開ける (1 路地の壁・2 バリケード・3 鉄の門)
@@ -80,18 +76,16 @@ public:
         if(exits>=2&&!cityGates_.barricadeOpen)BreakCityGate(r,true,false);
         if(exits>=3&&!cityGates_.gateOpen){cityGateUnlocked_=true;BreakCityGate(r,false,false);}}
     // スライムの研究所の画面を描く
-    void DrawSlimeLab(entt::registry&,GameContext&);
     // 次の Update で作り直す (シーンを空にしたときも同じ)
     void Invalidate() {initialized_=false;}
     void Clear(entt::registry&) override { Invalidate(); }
 private:
     // スライムのカメラの対象 (体の中心や大きさ)
     Chrono::LifeCameraSubject GetLifeCameraSubject()const;
-    // インクのモード・スライムの生活モード・読み込み済みか
-    bool inkMode_=true;
-    bool slimeLife_=true,lifeLoaded_=false,slimePlayerDemo_=false;
+    // 保存を読み込み済みか・デモのシーンか
+    bool lifeLoaded_=false,slimePlayerDemo_=false;
     // 吸収モード (DevourRules.h): 敵なしで、制限時間内に全身で飛びかかって物を飲み込み、街を飲み込む。
-    // 自動テスト (--slime-life-smoke) は従来の敵と戦う進行のまま。--slime-devour で吸収モードを強制する
+    // デモ (スライム試験場) 以外は常にこのモード
     bool devour_=false;
     Chrono::DevourClock devourClock_{};
     // 飛びかかり: 跳んだ位置・目標の小物 (無ければ -1)・覆えるか・覆う処理を済ませたか
@@ -293,7 +287,6 @@ private:
     struct MorphShowcase {bool active=false,morphed=false;Chrono::LifeAction form=Chrono::LifeAction::Tire;float age=0,readyAt=-1,radius=1,sun=1;
         Chrono::Vec center{},facing{0,0,1};float dofFocus=30,dofRange=30,dofStrength=0;} showcase_;
     // ステージ開始のカメラ演出: 経過時間・スキップの長押しの時間・終わった後の暗転の残り
-    struct StageIntro {bool active=false;float age=0,hold=0,fadeOut=0;} intro_;
     // ヒットストップの残り時間 (この間はスライムの世界を止め、カメラの揺れだけを進める)
     float lifeHitStop_=0;
     // 武器の形から吸収ボタンで戻ったとき、戻りきったら吸収を始めるための受付の残り時間
@@ -303,9 +296,6 @@ private:
     float cameraHydrant_=0;
     // スライムの生活 (SlimeLife.inl) の処理: 触手の描画・研究所・試練・作成・更新・描画・UI・吸収・被弾
     void DrawLifeTentacles(GameContext&,const Chrono::LifeBody&);
-    void SetSlimeLabOpen(bool);
-    void UpdateSlimeLab(GameContext&);
-      void StartSlimeTrial(Chrono::SlimeTrial);
     // 分裂と飲み込みの音
     uint32_t lifeSplitSounds_[3]{0xffffffffu,0xffffffffu,0xffffffffu},lifeEngulfSound_=0xffffffffu;
     // 吸収モードの音 (Resources/Sound/Devour/)
@@ -339,8 +329,6 @@ private:
     void UpdateMorphShowcase(entt::registry&,Chrono::Player&,GameContext&,float);
     void DrawMorphShowcase(GameContext&);
     // ステージ開始のカメラ演出 (SlimeIntro.cpp) の更新・描画
-    void UpdateStageIntro(entt::registry&,Chrono::Player&,GameContext&,float);
-    void DrawStageIntro(GameContext&);
     // 手応え (ヒットストップ・カメラの揺れ・コントローラーの振動) を at で起こす。scale で揺れと振動の強さを変える
     void LifeImpact(GameContext&,const LifeImpactSpec&,Chrono::Vec at,Chrono::Vec direction={0,1,0},float scale=1);
     void FireSignal(entt::registry&,Chrono::Player&,GameContext&,Chrono::SignalColor);
@@ -358,7 +346,6 @@ private:
     struct CityModel {uint32_t mesh=0,texture=0;std::vector<uint32_t> extra;Chrono::Vec lo{},hi{};};
     // 吸収モードの輪の町 (RingCity.cpp): 街のステージの道具 (小物を置く・材質・色の補正) を借りて作る
     struct RingCityTools {
-        std::function<entt::entity(const std::string&,Chrono::Vec,float,float,float,float,Chrono::LifeMorphItem)> place;
         std::function<const CityModel&(int)> surface;std::function<DirectX::XMFLOAT4(int)> tint;};
     void BuildRingGround(CityParts::CityBuilder&);
     void BuildRingCity(entt::registry&,const RingCityTools&);
@@ -424,27 +411,13 @@ private:
     int cityGateProp_=-1,cityAnnounced_=-1;bool cityGateUnlocked_=false,cityHammerAnnounced_=false;
     // 街のステージの作成・敵の出現・門の破壊・武器の当たり・更新・描画
     void BuildCityStage(entt::registry&);
-    void SpawnCityStep(int);
-    int CityStepAlive()const;
     void BreakCityGate(entt::registry&,bool barricade,bool absorbed);
     void BreakCityWall(size_t,bool absorbed=false);
     void ResetCityHazards();
     void CityWeaponHits(entt::registry&,GameContext&,const Chrono::LifeBody&,int pulse,uint64_t hitKey);
     void UpdateCityStage(entt::registry&,Chrono::Player&,GameContext&,float);
-    void UpdateCityEnemies(entt::registry&,Chrono::Player&,GameContext&,float);
     void DrawCityStage(GameContext&);
     bool DrawCityPropInTentacle(GameContext&,uint32_t visual,Chrono::Vec at,float shrink);
-    // インクの弾
-    struct InkShot {Chrono::Vec at,velocity;float age=0;};
-    std::vector<InkShot> inkShots_;
-    // スライムが残した跡
-    struct SlimeTrail {Chrono::Vec at;int surface;float mass,radius;std::array<float,32> footprint{};float originalMass=0;bool bonus=false;};
-    std::vector<SlimeTrail> slimeTrails_;
-    // 誘導の領域 (HomingDomains.inl): 描いた輪と、そこから出るミサイル
-    struct HomingDomain {Chrono::DomainLoop loop;Chrono::LiquidTrail liquid;std::vector<std::array<Chrono::Vec,3>> highlight;float age=0,clock=0,afterglow=0,bulletPower=1,lifetime=1.2f;int remaining=0,launched=0,total=0;bool enclosesBoss=false,meteor=false;Chrono::DomainReachArea reach{};};
-    struct DomainMissile {Chrono::Vec at{},velocity{};std::array<Chrono::Vec,8> tail{};float age=0,seed=0,tailClock=0,power=1;int tailCount=0,lane=1;entt::entity projectile=entt::null;uint32_t target=Chrono::SwarmNoTarget;bool enclosed=false,meteor=false;Chrono::DomainShape shape=Chrono::DomainShape::Loop;Chrono::Vec origin{};float reach=1e9f;};
-    std::vector<HomingDomain> homingDomains_;
-    std::vector<DomainMissile> domainMissiles_;
     // 群れの敵 (HordeCombat.inl / SwarmStates.inl) とその演出・メッシュ・出現の時間
     std::vector<Chrono::SwarmEnemy> swarm_;
     struct SwarmEffect {Chrono::Vec at{};float age=0,size=1;int kind=1;};
@@ -454,139 +427,50 @@ private:
     uint32_t swarmQuad_=0,swarmNextId_=1;float swarmSpawnClock_=0,swarmSoundClock_=0,swarmAttackClock_=0;int swarmAttackBurst_=0;
     size_t swarmAttackCursor_=0;bool swarmRestPending_=false;
     Chrono::Vec swarmEmergenceAt_{};
-    // 使い魔
-    struct Familiar { Chrono::Vec at{};float age=0,clock=0,lifetime=12; };
-    std::vector<Familiar> familiars_;
-    // ローグライト (RogueliteCombat.inl): ダメージの時間・カメラ・被写界深度・流体の見た目
-    float rogueDamageClock_=0;
-    Chrono::Vec rogueCameraPosition_{},rogueCameraRotation_{};
-    float rogueCameraFov_=1.13f,rogueDofFocus_=0,rogueDofRange_=0,rogueDofStrength_=0;
-    float rogueFluidAspect_=1,rogueFluidMotion_=0;
-    // ローグライトのメニュー・スキル・発動・完璧な輪
-    bool UpdateRogueMenu(entt::registry&,Chrono::Player&,GameContext&);
-    void UpdateRogueSkills(entt::registry&,Chrono::Player&,GameContext&);
-    void ActivateRogue(entt::registry&,Chrono::Player&,GameContext&,HomingDomain&);
-    void PerfectRogueLoop(entt::registry&,Chrono::Player&,GameContext&);
-    // 群れの作成・更新・描画・ボスの表示・被弾
+    // 群れの作成・描画
     void BuildSwarm(entt::registry&);
-    void UpdateSwarm(entt::registry&,Chrono::Player&,GameContext&);
     void DrawSwarm(entt::registry&,GameContext&);
-    void SetSwarmBossVisible(entt::registry&,bool,float=0);
-    void HitSwarm(entt::registry&,Chrono::Player&,GameContext&,uint32_t,float,bool=true);
     // reach が 1e8 未満なら、origin (発射した輪) から水平距離 reach 以内の敵だけを選ぶ
     uint32_t ChooseSwarmTarget(entt::registry&,Chrono::Vec,bool,Chrono::Vec origin={},float reach=1e9f);
-    // 捕獲: 発射した輪の中の敵はすぐに溶ける
-    int candidateCapture_=0,captureShown_=0;float captureScanClock_=0,captureAge_=10;
-    // 描いている輪の液体・候補の液体と強調表示
-    Chrono::LiquidTrail trailLiquid_,candidateLiquid_;
-    std::vector<Chrono::Vec> highlightedCandidate_;
-    std::vector<std::array<Chrono::Vec,3>> candidateHighlight_;
-    // 領域の塗りのメッシュと、領域・ミサイルの更新
-    uint32_t domainFillMesh_=0;
-    void UpdateDomains(entt::registry&,Chrono::Player&,GameContext&);
-    void HitDomainMissile(entt::registry&,Chrono::Player&,GameContext&,Chrono::Vec,bool,float);
-    // インク (ChronoInk.inl): 面・メッシュ・テクスチャと作成・更新・描画・カメラ
-    bool inkNeedsRebuild_=false;
-    // スライムのビームと輪のメッシュ・音
-    uint32_t slimeBeamMesh_=0,slimeRingMesh_=0;
-    uint32_t slimePressureSound_=0xffffffff,slimeRecallSound_=0xffffffff,slimeAcidSound_=0xffffffff;
-    void DrawSlimeBeam(entt::registry&,GameContext&);
+    // インク (ChronoInk.cpp): カメラが潜らないための地面の面・作成・カメラ
+    // こぼれた液体の管のメッシュ
+    uint32_t slimeBeamMesh_=0;
     std::vector<Chrono::InkSurface> inkSurfaces_;
-    std::vector<uint32_t> inkMeshes_;
-    uint32_t inkTexture_=0;bool inkDirty_=true;float inkUploadClock_=0;
     void BuildInk(entt::registry&);
-    void UpdateInk(entt::registry&,Chrono::Player&,GameContext&);
-    void UpdateInkBoss(entt::registry&,Chrono::Player&,GameContext&);
-    void DrawInk(entt::registry&,GameContext&);
-    void DrawInkUI(entt::registry&,GameContext&);
     void InkCamera(entt::registry&,Chrono::Player&,GameContext&);
-    // ボスの被弾の反応と倒れる演出 (BossDefeat.inl)
-    struct BossDebris {entt::entity part=entt::null;Chrono::Vec rest{},velocity{},spin{};DirectX::XMFLOAT4 color{};float clearance=.5f;};
-    std::vector<BossDebris> bossDebris_;
-    // ボスの光・倒れる演出の時間と状態
-    float bossFlash_=0,defeatAge_=0,defeatPulse_=0;bool bossDefeat_=false,defeatBurst_=false;
-    Chrono::Bounds defeatBounds_{};Chrono::Vec defeatOutward_{};Chrono::CinematicPose defeatReturn_{};
-    void FlashBoss(entt::registry&);
-    void StartBossDefeat(entt::registry&,Chrono::Player&,GameContext&);
-    void UpdateBossDefeat(entt::registry&,Chrono::Player&,GameContext&);
-    void DrawBossDefeat(GameContext&);
-    // ムービー (ChronoCinematic.inl) の更新・描画・状態・被写界深度
-    bool UpdateCinematic(entt::registry&,Chrono::Player&,GameContext&);
-    void DrawCinematic(GameContext&);
-    bool openingPending_=true,cinematicActive_=false,cinematicBoss_=false;
-    float cinematicAge_=0;
-    float cinematicDofFocus_=0,cinematicDofRange_=0,cinematicDofStrength_=0;
-    Chrono::CinematicPose cinematicReturn_{};
-    Chrono::Bounds cinematicBossBounds_{};
-    // インクの地面の高さ / インクのテクスチャをアップロードする
+    // インクの地面の高さ
     float InkGround(Chrono::Vec,int* =nullptr)const;
-    void UploadInk();
     using V=Chrono::Vec;
-    // シーン・プレイヤー・ボス・弱点
+    // シーン・プレイヤー
     GameScene* scene_;
-    entt::entity player_=entt::null,boss_=entt::null,weakpoint_=entt::null;
-    // 当たり判定に使う箱 (地形と生き物)
+    entt::entity player_=entt::null;
+    // 当たり判定に使う箱 (地形)
     std::vector<Chrono::Bounds> solids_;
-    std::vector<Chrono::Bounds> creatureSolids_;
-    // 火花と水滴の演出
-    struct Spark {V from,to; float age=0;};
-    std::vector<Spark> sparks_;
-    struct Droplet {V position,velocity;float age=0;bool dust=false;};
-    std::vector<Droplet> droplets_;
     // カメラの追従・構図・ポスト効果の強さ・音・テクスチャ
-    V cameraFollow_{},composition_{};
+    V cameraFollow_{};
     bool cameraReady_=false;
     // 街のカメラ: 後ろが塞がれたときに持ち上げる量と、届く距離の割合 (なめらかに戻す)
     float cameraLift_=0,cameraReach_=1;
-    float viewPitch_=0.12f,postStrength_=0;
+    float postStrength_=0;
     uint32_t hitSound_=0xffffffff,coreSound_=0xffffffff;
     uint32_t white_=0,sphere_=0;
     // 状態 (初期化済み・終了・勝利・前フレームの入力)
-    bool initialized_=false,finished_=false,won_=false,prevL_=false,prevM_=false,prevSpace_=false,prevShift_=false;
-    bool newTime_=false,newChain_=false;
+    bool initialized_=false,finished_=false,won_=false,prevSpace_=false;
     bool diagnostic_=false;
     // カメラ (向き・距離・肩越し・視野角・補助・揺れの設定)
-    float yaw_=0,pitch_=0.16f,zoom_=17,finishAge_=0;float devourHudCm_=0,resultCameraAge_=0,resultLo_=0,resultHi_=0,resultNear_=0,resultFar_=0,resultTopY_=0;static constexpr float kResultFreezeAge=.95f,kResultSettledAge=1.3f;float resultLeft_=0,resultRight_=0,resultTop_=0;bool resultScreenSet_=false;bool resultMeasured_=false;Chrono::Vec resultOrigin_{};std::vector<entt::entity> resultHidden_;
-    float shoulder_=1.8f,chainCameraHold_=0,fov_=1.0472f;
-    float manualCameraHold_=0,zoomVelocity_=0,cameraBoom_=-1;
-    float cameraAssist_=0;int shakeSetting_=2;bool prevShake_=false;
-    // アリーナ・生き物・蛇だけのモード
-    bool arena_=false,prevArena_=false;
-    bool creature_=false,prevCreature_=false,snakeOnly_=false,prevSnake_=false;
-    // 最高記録 (時間とチェイン)
-    float bestTime_=0; int bestChain_=0;
-    // ステージの作成 (通常・アリーナ・生き物)
-    void Build(entt::registry&);
-    void BuildArena(entt::registry&);
-    void BuildCreature(entt::registry&);
-    // 生き物のボスの更新・姿勢・衝撃
-    void UpdateCreature(entt::registry&,Chrono::Player&,GameContext&);
-    void PoseCreature(entt::registry&);
-    void BossImpact(entt::registry&,GameContext&,V,V,float);
-    void DrawBossImpact(GameContext&,const Chrono::CreatureBoss&);
+    float yaw_=0,pitch_=0.16f,finishAge_=0;float devourHudCm_=0,resultCameraAge_=0,resultLo_=0,resultHi_=0,resultNear_=0,resultFar_=0,resultTopY_=0;static constexpr float kResultFreezeAge=.95f,kResultSettledAge=1.3f;float resultLeft_=0,resultRight_=0,resultTop_=0;bool resultScreenSet_=false;bool resultMeasured_=false;Chrono::Vec resultOrigin_{};std::vector<entt::entity> resultHidden_;
+    float fov_=1.0472f;int shakeSetting_=2;bool prevShake_=false;
     // 対象へ届くか / メッシュや箱の作成 / 当たり判定の箱の記録
-    bool Reachable(entt::registry&,const Chrono::Player&,entt::entity,V,V* =nullptr) const;
     entt::entity Mesh(entt::registry&,const std::string&,const std::string&,V,V);
-    void Block(entt::registry&,const std::string&,V,V);
     void CacheSolids(entt::registry&);
     // 当たり判定 (移動の掃引・空いているか・壁に沿った移動・中心)
     bool Sweep(V,V,V,float&,V&) const;
     bool Clear(V,V,float=0) const;
     V Move(V,V,V,bool&,V* =nullptr) const;
-    V Center(entt::registry&,entt::entity) const;
     // 攻撃の対象選び・射撃・命中・被弾・反応
-    entt::entity Choose(entt::registry&,Chrono::Player&,GameContext&,bool);
-    void Shoot(entt::registry&,Chrono::Player&,GameContext&);
-    void Impact(entt::registry&,Chrono::Player&,entt::entity,GameContext&,bool);
     void Damage(entt::registry&,Chrono::Player&,float,GameContext&,V,float perfectWindow=.12f);
-    void Feedback(Chrono::Player&,V,bool);
     // チェインの失敗・演出・プレイヤー・ワールド・ボス・カメラの更新と終了
-    Chrono::ChainFailure Failure(entt::registry&,Chrono::Player&,GameContext&);
     void Presentation(entt::registry&,Chrono::Player&,GameContext&);
-    void UpdatePlayer(entt::registry&,Chrono::Player&,GameContext&);
-    void UpdateWorld(entt::registry&,Chrono::Player&,GameContext&);
-    void UpdateBoss(entt::registry&,Chrono::Player&,GameContext&);
-    void Camera(entt::registry&,Chrono::Player&,GameContext&,float);
     void Finish(Chrono::Player&,bool);
 };
 }

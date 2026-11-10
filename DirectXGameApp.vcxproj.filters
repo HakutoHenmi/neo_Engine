@@ -150,12 +150,6 @@
     <ClCompile Include="Game\Scenes\TitleScene.cpp">
       <Filter>2. Scenes（シーン）</Filter>
     </ClCompile>
-    <ClCompile Include="Game\Systems\BossDefeat.cpp">
-      <Filter>3. Systems（システム）\スライム本編</Filter>
-    </ClCompile>
-    <ClCompile Include="Game\Systems\ChronoCinematic.cpp">
-      <Filter>3. Systems（システム）\スライム本編</Filter>
-    </ClCompile>
     <ClCompile Include="Game\Systems\ChronoInk.cpp">
       <Filter>3. Systems（システム）\スライム本編</Filter>
     </ClCompile>
@@ -165,25 +159,13 @@
     <ClCompile Include="Game\Systems\CityStage.cpp">
       <Filter>3. Systems（システム）\スライム本編</Filter>
     </ClCompile>
-    <ClCompile Include="Game\Systems\HomingDomains.cpp">
-      <Filter>3. Systems（システム）\スライム本編</Filter>
-    </ClCompile>
     <ClCompile Include="Game\Systems\HordeCombat.cpp">
-      <Filter>3. Systems（システム）\スライム本編</Filter>
-    </ClCompile>
-    <ClCompile Include="Game\Systems\RogueliteCombat.cpp">
-      <Filter>3. Systems（システム）\スライム本編</Filter>
-    </ClCompile>
-    <ClCompile Include="Game\Systems\SlimeAssault.cpp">
       <Filter>3. Systems（システム）\スライム本編</Filter>
     </ClCompile>
     <ClCompile Include="Game\Systems\SlimeHydrant.cpp">
       <Filter>3. Systems（システム）\スライム本編</Filter>
     </ClCompile>
     <ClCompile Include="Game\Systems\SlimeShowcase.cpp">
-      <Filter>3. Systems（システム）\スライム本編</Filter>
-    </ClCompile>
-    <ClCompile Include="Game\Systems\SlimeIntro.cpp">
       <Filter>3. Systems（システム）\スライム本編</Filter>
     </ClCompile>
     <ClCompile Include="Game\Systems\SlimeSignal.cpp">
@@ -213,12 +195,6 @@
     <ClCompile Include="Game\Systems\SlimeLife.cpp">
       <Filter>3. Systems（システム）\スライム本編</Filter>
     </ClCompile>
-    <ClCompile Include="Game\Systems\ChronoChainMode.cpp">
-      <Filter>3. Systems（システム）\共通</Filter>
-    </ClCompile>
-    <ClCompile Include="Game\Systems\ChronoCreature.cpp">
-      <Filter>3. Systems（システム）\共通</Filter>
-    </ClCompile>
     <ClCompile Include="Game\Systems\FluidSystem.cpp">
       <Filter>3. Systems（システム）\共通</Filter>
     </ClCompile>
@@ -231,46 +207,13 @@
     <ClCompile Include="Game\Systems\UISystem.cpp">
       <Filter>3. Systems（システム）\共通</Filter>
     </ClCompile>
-    <ClCompile Include="Game\Systems\CanAbilitySystem.cpp">
-      <Filter>3. Systems（システム）\旧アクションゲーム</Filter>
-    </ClCompile>
-    <ClCompile Include="Game\Systems\CombatSystem.cpp">
-      <Filter>3. Systems（システム）\旧アクションゲーム</Filter>
-    </ClCompile>
-    <ClCompile Include="Game\Systems\HealthSystem.cpp">
-      <Filter>3. Systems（システム）\旧アクションゲーム</Filter>
-    </ClCompile>
-    <ClCompile Include="Game\Systems\PlayerActionSystem.cpp">
-      <Filter>3. Systems（システム）\旧アクションゲーム</Filter>
-    </ClCompile>
-    <ClCompile Include="Game\Systems\WaveSystem.cpp">
-      <Filter>3. Systems（システム）\旧アクションゲーム</Filter>
-    </ClCompile>
     <ClCompile Include="Game\Scripts\BaseScript.cpp">
-      <Filter>6. Scripts（スクリプト）</Filter>
-    </ClCompile>
-    <ClCompile Include="Game\Scripts\BossTestScript.cpp">
-      <Filter>6. Scripts（スクリプト）</Filter>
-    </ClCompile>
-    <ClCompile Include="Game\Scripts\CylinderEffectScript.cpp">
-      <Filter>6. Scripts（スクリプト）</Filter>
-    </ClCompile>
-    <ClCompile Include="Game\Scripts\GameManagerScript.cpp">
-      <Filter>6. Scripts（スクリプト）</Filter>
-    </ClCompile>
-    <ClCompile Include="Game\Scripts\HitEffectScript.cpp">
       <Filter>6. Scripts（スクリプト）</Filter>
     </ClCompile>
     <ClCompile Include="Game\Scripts\IScript.cpp">
       <Filter>6. Scripts（スクリプト）</Filter>
     </ClCompile>
-    <ClCompile Include="Game\Scripts\RingEffectScript.cpp">
-      <Filter>6. Scripts（スクリプト）</Filter>
-    </ClCompile>
     <ClCompile Include="Game\Scripts\ScriptEngine.cpp">
-      <Filter>6. Scripts（スクリプト）</Filter>
-    </ClCompile>
-    <ClCompile Include="Game\Scripts\WarningEffectScript.cpp">
       <Filter>6. Scripts（スクリプト）</Filter>
     </ClCompile>
     <ClCompile Include="Game\Editor\EditorCommands.cpp">
@@ -320,9 +263,6 @@
     <ClInclude Include="Game\Components\CoreComponents.h">
       <Filter>1. Main（入口・共通定義）\Components（コンポーネント）</Filter>
     </ClInclude>
-    <ClInclude Include="Game\Components\LegacyActionComponents.h">
-      <Filter>1. Main（入口・共通定義）\Components（コンポーネント）</Filter>
-    </ClInclude>
     <ClInclude Include="Game\Components\PhysicsComponents.h">
       <Filter>1. Main（入口・共通定義）\Components（コンポーネント）</Filter>
     </ClInclude>
@@ -368,9 +308,6 @@
     <ClInclude Include="Game\Systems\AudioSystem.h">
       <Filter>3. Systems（システム）\共通</Filter>
     </ClInclude>
-    <ClInclude Include="Game\Systems\CameraFollowSystem.h">
-      <Filter>3. Systems（システム）\共通</Filter>
-    </ClInclude>
     <ClInclude Include="Game\Systems\CleanupSystem.h">
       <Filter>3. Systems（システム）\共通</Filter>
     </ClInclude>
@@ -392,9 +329,6 @@
     <ClInclude Include="Game\Systems\PhysicsSystem.h">
       <Filter>3. Systems（システム）\共通</Filter>
     </ClInclude>
-    <ClInclude Include="Game\Systems\PostProcessSystem.h">
-      <Filter>3. Systems（システム）\共通</Filter>
-    </ClInclude>
     <ClInclude Include="Game\Systems\RiverSystem.h">
       <Filter>3. Systems（システム）\共通</Filter>
     </ClInclude>
@@ -403,42 +337,6 @@
     </ClInclude>
     <ClInclude Include="Game\Systems\UISystem.h">
       <Filter>3. Systems（システム）\共通</Filter>
-    </ClInclude>
-    <ClInclude Include="Game\CanHitEffects.h">
-      <Filter>3. Systems（システム）\旧アクションゲーム</Filter>
-    </ClInclude>
-    <ClInclude Include="Game\CanLoadout.h">
-      <Filter>3. Systems（システム）\旧アクションゲーム</Filter>
-    </ClInclude>
-    <ClInclude Include="Game\Systems\BossActionSystem.h">
-      <Filter>3. Systems（システム）\旧アクションゲーム</Filter>
-    </ClInclude>
-    <ClInclude Include="Game\Systems\CanAbilitySystem.h">
-      <Filter>3. Systems（システム）\旧アクションゲーム</Filter>
-    </ClInclude>
-    <ClInclude Include="Game\Systems\CharacterMovementSystem.h">
-      <Filter>3. Systems（システム）\旧アクションゲーム</Filter>
-    </ClInclude>
-    <ClInclude Include="Game\Systems\CombatSystem.h">
-      <Filter>3. Systems（システム）\旧アクションゲーム</Filter>
-    </ClInclude>
-    <ClInclude Include="Game\Systems\EnemyAISystem.h">
-      <Filter>3. Systems（システム）\旧アクションゲーム</Filter>
-    </ClInclude>
-    <ClInclude Include="Game\Systems\HealthSystem.h">
-      <Filter>3. Systems（システム）\旧アクションゲーム</Filter>
-    </ClInclude>
-    <ClInclude Include="Game\Systems\PlayerActionSystem.h">
-      <Filter>3. Systems（システム）\旧アクションゲーム</Filter>
-    </ClInclude>
-    <ClInclude Include="Game\Systems\PlayerInputSystem.h">
-      <Filter>3. Systems（システム）\旧アクションゲーム</Filter>
-    </ClInclude>
-    <ClInclude Include="Game\Systems\WaveSystem.h">
-      <Filter>3. Systems（システム）\旧アクションゲーム</Filter>
-    </ClInclude>
-    <ClInclude Include="Game\Systems\WeaponSystem.h">
-      <Filter>3. Systems（システム）\旧アクションゲーム</Filter>
     </ClInclude>
     <ClInclude Include="Game\Chrono\ChronoComponents.h">
       <Filter>4. Chrono（スライム本編のルール）</Filter>
@@ -452,12 +350,6 @@
     <ClInclude Include="Game\Chrono\CityStageRules.h">
       <Filter>4. Chrono（スライム本編のルール）</Filter>
     </ClInclude>
-    <ClInclude Include="Game\Chrono\CreatureCombat.h">
-      <Filter>4. Chrono（スライム本編のルール）</Filter>
-    </ClInclude>
-    <ClInclude Include="Game\Chrono\CreatureMotion.h">
-      <Filter>4. Chrono（スライム本編のルール）</Filter>
-    </ClInclude>
     <ClInclude Include="Game\Chrono\DomainHighlight.h">
       <Filter>4. Chrono（スライム本編のルール）</Filter>
     </ClInclude>
@@ -468,9 +360,6 @@
       <Filter>4. Chrono（スライム本編のルール）</Filter>
     </ClInclude>
     <ClInclude Include="Game\Chrono\LiquidTrail.h">
-      <Filter>4. Chrono（スライム本編のルール）</Filter>
-    </ClInclude>
-    <ClInclude Include="Game\Chrono\MeadowTerrain.h">
       <Filter>4. Chrono（スライム本編のルール）</Filter>
     </ClInclude>
     <ClInclude Include="Game\Chrono\RogueliteRules.h">
@@ -509,37 +398,10 @@
     <ClInclude Include="Game\Chrono\SwarmStates.inl">
       <Filter>4. Chrono（スライム本編のルール）</Filter>
     </ClInclude>
-    <ClInclude Include="Game\States\BossActionStates.inl">
-      <Filter>5. States（状態パターン）</Filter>
-    </ClInclude>
-    <ClInclude Include="Game\States\EnemyAIStates.inl">
-      <Filter>5. States（状態パターン）</Filter>
-    </ClInclude>
-    <ClInclude Include="Game\States\EntityStateContext.h">
-      <Filter>5. States（状態パターン）</Filter>
-    </ClInclude>
-    <ClInclude Include="Game\States\PlayerActionStates.inl">
-      <Filter>5. States（状態パターン）</Filter>
-    </ClInclude>
     <ClInclude Include="Game\Scripts\BaseScript.h">
       <Filter>6. Scripts（スクリプト）</Filter>
     </ClInclude>
-    <ClInclude Include="Game\Scripts\BossTestScript.h">
-      <Filter>6. Scripts（スクリプト）</Filter>
-    </ClInclude>
-    <ClInclude Include="Game\Scripts\CylinderEffectScript.h">
-      <Filter>6. Scripts（スクリプト）</Filter>
-    </ClInclude>
-    <ClInclude Include="Game\Scripts\GameManagerScript.h">
-      <Filter>6. Scripts（スクリプト）</Filter>
-    </ClInclude>
-    <ClInclude Include="Game\Scripts\HitEffectScript.h">
-      <Filter>6. Scripts（スクリプト）</Filter>
-    </ClInclude>
     <ClInclude Include="Game\Scripts\IScript.h">
-      <Filter>6. Scripts（スクリプト）</Filter>
-    </ClInclude>
-    <ClInclude Include="Game\Scripts\RingEffectScript.h">
       <Filter>6. Scripts（スクリプト）</Filter>
     </ClInclude>
     <ClInclude Include="Game\Scripts\ScriptEdits.h">
@@ -552,9 +414,6 @@
       <Filter>6. Scripts（スクリプト）</Filter>
     </ClInclude>
     <ClInclude Include="Game\Scripts\ScriptUtils.h">
-      <Filter>6. Scripts（スクリプト）</Filter>
-    </ClInclude>
-    <ClInclude Include="Game\Scripts\WarningEffectScript.h">
       <Filter>6. Scripts（スクリプト）</Filter>
     </ClInclude>
     <ClInclude Include="Game\UI\CreditsUI.h">
@@ -587,9 +446,6 @@
     <ClInclude Include="Game\Editor\EditorUI.h">
       <Filter>8. Editor（エディタ）</Filter>
     </ClInclude>
-    <ClInclude Include="tests\ChronoValidationScene.h">
-      <Filter>9. Tests（自動テスト）</Filter>
-    </ClInclude>
     <ClInclude Include="tests\ComponentValidationScene.h">
       <Filter>9. Tests（自動テスト）</Filter>
     </ClInclude>
@@ -611,19 +467,10 @@
     <ClInclude Include="tests\RigidbodyValidationScene.h">
       <Filter>9. Tests（自動テスト）</Filter>
     </ClInclude>
-    <ClInclude Include="tests\RogueliteValidation.inl">
-      <Filter>9. Tests（自動テスト）</Filter>
-    </ClInclude>
     <ClInclude Include="tests\RtLightingValidationScene.h">
       <Filter>9. Tests（自動テスト）</Filter>
     </ClInclude>
-    <ClInclude Include="tests\SceneryBenchmarkScene.h">
-      <Filter>9. Tests（自動テスト）</Filter>
-    </ClInclude>
     <ClInclude Include="tests\SlimeLifeValidationScene.h">
-      <Filter>9. Tests（自動テスト）</Filter>
-    </ClInclude>
-    <ClInclude Include="tests\SlimeValidation.inl">
       <Filter>9. Tests（自動テスト）</Filter>
     </ClInclude>
     <ClInclude Include="tests\UIGalleryScene.h">

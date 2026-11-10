@@ -9,4 +9,3 @@
 #include "Components/PhysicsComponents.h"       // 当たり判定・剛体
 #include "Components/AudioComponents.h"         // 音の発信源と、音を聞く位置
 #include "Components/UIComponents.h"            // UI の配置・画像・文字・ボタン・頭上の HP バー
-#include "Components/LegacyActionComponents.h"  // 旧アクションゲーム (缶・ボス戦)

@@ -198,7 +198,7 @@ void ChronoSystem::BuildStageItem(entt::registry& r,const RingCityTools& tools){
     // 台座: 金色の段の上にアイテムが載っていて、飲むと台座も消える
     auto pedestal=[&]{if(cityProps_.empty())return;constexpr float high=5;auto& item=cityProps_.back();ringOf();CityBuilder b;b.Box(CityMetal,{-6,0,-6},{6,1.6f,6});b.Box(CityMetal,{-4.5f,1.6f,-4.5f},{4.5f,3.4f,4.5f});b.Box(CityMetal,{-3.2f,3.4f,-3.2f},{3.2f,high,3.2f});b.Box(CityMetal,{-1.1f,20,-1.1f},{1.1f,900,1.1f});
         auto& g=b.geometry[CityMetal];const auto& skin=tools.surface(CityMetal);auto e=r.create();r.emplace<NameComponent>(e,"Chrono City prop pedestal");r.emplace<TransformComponent>(e).translate=Write(V{at.x,at.y,at.z});r.get<TransformComponent>(e).scale={1,1,1};
-        auto& mr=r.emplace<MeshRendererComponent>(e);mr.modelHandle=render->CreateDynamicMesh(g.vertices,g.indices);mr.textureHandle=white_;mr.extraTextureHandles=skin.extra;mr.shaderName="CitySurface";mr.useCubemap=false;mr.color={1,.72f,.15f,1};
+        auto& mr=r.emplace<MeshRendererComponent>(e);mr.modelHandle=render->CreateDynamicMesh(g.vertices,g.indices);mr.textureHandle=white_;mr.extraTextureHandles=skin.extra;mr.shaderName="LowpolySurface";mr.useCubemap=false;mr.color={1,.72f,.15f,1};
         devourBuildingParts_[cityProps_.size()-1]={e};auto& t=r.get<TransformComponent>(item.entity);t.translate.y+=high+.6f;devourItemY_=t.translate.y;
         // 遠くからでも形が分かるよう、大きく見せる
         t.scale={t.scale.x*2.2f,t.scale.y*2.2f,t.scale.z*2.2f};cityVisuals_[uint32_t(item.entity)].scale=cityVisuals_[uint32_t(item.entity)].scale*2.2f;};
@@ -209,8 +209,10 @@ void ChronoSystem::BuildStageItem(entt::registry& r,const RingCityTools& tools){
         b.Box(CityMetal,{-.2f,0,-.2f},{.2f,3.8f,.2f});}
     auto& g=b.geometry[CityMetal];uint32_t mesh=render->CreateDynamicMesh(g.vertices,g.indices);const auto& skin=tools.surface(CityMetal);
     auto e=r.create();r.emplace<NameComponent>(e,"Chrono City prop stage item");auto& t=r.emplace<TransformComponent>(e);t.translate=Write(at);t.scale={1,1,1};
-    auto& mr=r.emplace<MeshRendererComponent>(e);mr.modelHandle=mesh;mr.textureHandle=skin.texture;mr.extraTextureHandles=skin.extra;mr.shaderName="CitySurface";mr.useCubemap=false;mr.color={.9f,.9f,1,1};
-    cityVisuals_[uint32_t(e)]={mesh,skin.texture,skin.extra,{1,1,1},{0,0,0},{0,height*.5f,0},height,"CitySurface"};
+    // (単色のローポリ。他の小物と同じ見た目)
+    const auto metal=FlatCityColor(CityMetal);
+    auto& mr=r.emplace<MeshRendererComponent>(e);mr.modelHandle=mesh;mr.textureHandle=white_;mr.extraTextureHandles=skin.extra;mr.shaderName="LowpolySurface";mr.useCubemap=false;mr.color={metal.x,metal.y,metal.z,1};
+    {CityPropVisual visual{mesh,white_,skin.extra,{1,1,1},{0,0,0},{0,height*.5f,0},height,"LowpolySurface"};visual.color={metal.x,metal.y,metal.z,1};cityVisuals_[uint32_t(e)]=visual;}
     cityProps_.push_back({e,at+V{0,1.2f,0},15,24,stage.item,.5f*height});pedestal();
 }
 }

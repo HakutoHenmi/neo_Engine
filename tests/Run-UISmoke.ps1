@@ -1,4 +1,4 @@
-param([string]$Executable = '', [switch]$Boss, [switch]$Dodge, [switch]$BeamCamera, [switch]$Graphics, [switch]$Shadows, [switch]$Oblique, [switch]$EditorLoading, [switch]$Startup, [switch]$StartupTransitions)
+param([string]$Executable = '', [switch]$Graphics, [switch]$Shadows, [switch]$Oblique, [switch]$EditorLoading, [switch]$Startup, [switch]$StartupTransitions)
 $ErrorActionPreference = 'Stop'
 if ($StartupTransitions) { $Startup = $true }
 $repoPath = Split-Path $PSScriptRoot -Parent
@@ -19,7 +19,7 @@ $reportName = if ($StartupTransitions) { "startup-transitions.txt" } elseif ($St
 $process = $null
 try {
     'RUNNING' | Set-Content (Join-Path $outputPath $reportName)
-    $argument = if ($Startup) { "--startup-smoke" } elseif ($EditorLoading) { '--editor-loading-smoke' } elseif ($Shadows) { '--shadow-band-smoke --dlss-smoke --rt-smoke --graphics-validation' } elseif ($Graphics) { '--graphics-ui-smoke' } elseif ($BeamCamera) { '--beam-camera-smoke' } elseif ($Dodge) { '--dodge-smoke' } elseif ($Boss) { '--boss-smoke' } else { '--ui-smoke' }
+    $argument = if ($Startup) { "--startup-smoke" } elseif ($EditorLoading) { '--editor-loading-smoke' } elseif ($Shadows) { '--shadow-band-smoke --dlss-smoke --rt-smoke --graphics-validation' } elseif ($Graphics) { '--graphics-ui-smoke' } else { '--ui-smoke' }
     if ($StartupTransitions) { $argument += ' --startup-transition-smoke' }
     if($Oblique){$argument+=' --shadow-oblique'}
     $process = Start-Process $Executable -ArgumentList $argument -WorkingDirectory $repoPath -WindowStyle Hidden -PassThru

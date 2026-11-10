@@ -51,18 +51,14 @@ struct ContactInfo {
 // (列挙に無い実行時専用のコンポーネントは 999 を入れて区別している)
 enum class ComponentType { 
 	MeshRenderer, BoxCollider, Tag, Animator, Rigidbody, ParticleEmitter, 
-	GpuMeshCollider, PlayerInput, CharacterMovement, CameraTarget,
+	GpuMeshCollider,
 	DirectionalLight, PointLight, SpotLight,
-	AudioSource, AudioListener, Hitbox, Hurtbox, Health, // 音響・攻撃判定・ステータス
+	AudioSource, AudioListener, Health, // 音響・ステータス
 	Script, // スクリプト
 	RectTransform, UIImage, UIText, UIButton, // UI
 	River, // 川 (スプラインに沿った水面)
 	Variable, // 汎用の変数置き場
-	WorldSpaceUI, // ワールド空間 UI (頭上の HP バーなど)
 	Motion, // モーションエディタ用キーフレーム
-	PlayerAction, // プレイヤーアクション (攻撃・パリィ・回避)
-	BossAction,   // ボスの行動ステートマシン
-	BodyPart,     // ボスの部位破壊
 	FluidEmitter  // 流体エミッター (水など)
 };
 

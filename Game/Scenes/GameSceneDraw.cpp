@@ -16,8 +16,6 @@
 // 流体の放出と時間の管理 (エンジン側)
 #include "../../Engine/FluidEmission.h"
 #include "../../Engine/Time/TimeManager.h"
-// 缶の装備 (旧アクションゲーム)
-#include "../CanLoadout.h"
 #include "../ObjectTypes.h"
 // 音・パス・シーン管理 (エンジン側)
 #include "../../Engine/Audio.h"
@@ -29,29 +27,16 @@
 #include "../Scripts/ScriptLifecycle.h"
 // ゲームの処理を分担するシステム群
 #include "../Systems/AudioSystem.h"
-#include "../Systems/CameraFollowSystem.h"
-#include "../Systems/CharacterMovementSystem.h"
 #include "../Systems/CleanupSystem.h"
 #include "../Systems/FluidSystem.h"
-#include "../Systems/WeaponSystem.h" // 武器の管理
 #include "../../Engine/Input.h"      // キーボード・マウス入力
 
-#include "../Systems/HealthSystem.h"
 #include "../Systems/MotionSystem.h" // キーフレームのモーション
 #include "../Systems/PhysicsSystem.h"
-#include "../Systems/PlayerInputSystem.h"
 #include "../Systems/ChronoSystem.h"
-#include "../Systems/PlayerActionSystem.h" // プレイヤーアクション
-#include "../Systems/CombatSystem.h"       // 戦闘の当たり判定
-#include "../Systems/CanAbilitySystem.h"
-#include "../Systems/EnemyAISystem.h"      // 敵の AI
-#include "../Systems/BossActionSystem.h"    // ボスの AI
-#include "../Systems/WaveSystem.h"         // ウェーブ管理
-#include "../Scripts/BossTestScript.h"      // ボスの生成に使う
 
 #include "../Systems/ScriptSystem.h"
 #include "../Systems/UISystem.h"
-#include "../Systems/PostProcessSystem.h" // ポストエフェクト
 // Web プロファイラ (外部ツールから値を見たり変えたりする)
 #include "../../Engine/NetworkProfiler.h"
 // JSON の読み書き
@@ -63,18 +48,6 @@
 #include <filesystem> // 空のテクスチャ検索などのファイル操作
 
 namespace Game {
-
-// このファイルの中だけで使う関数
-namespace {
-	// スライムのぷよぷよした揺れを CPU で計算するための簡易 3D ノイズ (Simplex ノイズの代わり)
-	float Noise3D(float x, float y, float z) {
-		// sin・cos を組み合わせた滑らかな値
-		float n = std::sin(x) * std::cos(y) * std::sin(z);
-		n += std::sin(x * 2.1f + y * 1.3f) * 0.5f;
-		n += std::cos(y * 1.7f + z * 2.5f) * 0.5f;
-		return n * 0.5f;
-	}
-}
 
 namespace {
 // Scene ビュー表示中は、描画の間だけ camera_ にエディタカメラを入れる。
@@ -109,16 +82,9 @@ void GameScene::Draw() {
 		return;
 	// Scene ビューなら描画の間だけエディタのカメラにする
 	ViewCameraScope viewCamera(camera_, editorCamera_, editorView_ == EditorView::Scene);
-    // スライムの調合室を開いているときは、調合室の画面だけを描く
-    if(isPlaying_&&!isPaused_&&chronoSystem_&&chronoSystem_->SlimeLabOpen()){
-        chronoSystem_->DrawSlimeLab(registry_,ctx_);return;
-    }
 
-	// プレイヤーの位置・大きさ・液状化の状態 (流体の描画に使う)
+	// プレイヤーの位置・大きさ・死亡の状態 (流体の描画に使う)
 	PlayerDrawState player = GatherPlayerDrawState();
-	auto& isLiquidated = player.isLiquidated;
-	auto& hasPlayerSlime = player.hasPlayerSlime;
-	auto& playerEntity = player.playerEntity;
 
 	// 流体がぶつかる箱 (壁と既定のタグ) を渡す
 	UploadFluidColliders();
@@ -129,39 +95,8 @@ void GameScene::Draw() {
 	// 流体エミッターから粒子を出す
 	UpdateFluidEmitters(player);
 
-	// プレイヤーのスライム (GPU 流体・分身・弾のメッシュ)
+	// プレイヤーのスライム (GPU 流体)
 	UpdatePlayerSlimeFluid(player);
-
-	// 液状化の開始・終了時の流体リセット (現在は使っていない)
-	if (hasPlayerSlime) {
-		if (isLiquidated && !wasLiquidated_) {
-			// Game::FluidSystem::GetInstance()->RequestParticleReset(Game::FluidResetShape::Puddle, blobRadii);
-		} else if (!isLiquidated && wasLiquidated_) {
-			// Game::FluidSystem::GetInstance()->RequestParticleReset(Game::FluidResetShape::Blob, blobRadii);
-		}
-	}
-	// 今の液状化の状態を覚える
-	wasLiquidated_ = isLiquidated;
-
-	// 弾の当たり判定を持つエンティティに星形メッシュとスライム用シェーダーを使う
-	auto projView = registry_.view<MeshRendererComponent>();
-	for (auto entity : projView) {
-		// 攻撃判定を持つもののうち
-		if (registry_.all_of<HitboxComponent>(entity)) {
-			auto& hb = registry_.get<HitboxComponent>(entity);
-			// 弾で、星形メッシュが準備できているもの
-			if (hb.isProjectile && projectileCpuLogic_.initialized) {
-				auto& pmr = registry_.get<MeshRendererComponent>(entity);
-				pmr.modelHandle = projectileCpuLogic_.dynamicMeshHandle;
-				// プレイヤーの弾は深度ありで描き、それ以外は深度なしで描く (手前に見せる)
-				if (registry_.all_of<NameComponent>(entity) && registry_.get<NameComponent>(entity).name == "PlayerProjectile") {
-					pmr.shaderName = "SlimeNoFace";
-				} else {
-					pmr.shaderName = "SlimeNoFaceNoDepth";
-				}
-			}
-		}
-	}
 
 	// 描画に使うカメラを渡す
 	renderer_->SetCamera(camera_);
@@ -175,7 +110,7 @@ void GameScene::Draw() {
 	// プレイヤーの位置をレンダラーへ渡す (タグのキャッシュで素早く探す)
 	const auto& players = GetEntitiesByTag(TagType::Player);
 	if (!players.empty()) {
-		playerEntity = players[0];
+		const entt::entity playerEntity = players[0];
 		if (registry_.valid(playerEntity) && registry_.all_of<TransformComponent>(playerEntity)) {
 			auto& tc = registry_.get<TransformComponent>(playerEntity);
 			renderer_->SetPlayerPos(Engine::Vector3{tc.translate.x, tc.translate.y, tc.translate.z});
@@ -241,32 +176,26 @@ void GameScene::DrawUI() {
 	// Scene ビューではゲームの HUD を描かない (Draw と同じ扱い)
 	if (!isPlaying_ || editorView_ == EditorView::Scene)
 		return;
-	// 旧アクションゲームのときだけ、各システムの UI を描く
+	// 本編以外 (エディタで開いたシーン) では、各システムの UI を描く
 	for (auto& sys : systems_) {
 		if (!chronoMode_) sys->DrawUI(registry_, ctx_);
 	}
 }
 
-// ステージクリアしたか (本編は ChronoSystem、旧モードは WaveSystem で判定する)
+// ステージクリアしたか (本編は ChronoSystem の終了判定)
 bool GameScene::IsStageClear() const {
-	// 本編は ChronoSystem の終了判定
-	if (chronoSystem_) return chronoSystem_->Finished();
-	// 旧モードはウェーブがクリアの状態か
-	return waveSystem_ && waveSystem_->state == WaveSystem::State::Clear;
+	return chronoSystem_ && chronoSystem_->Finished();
 }
 
-// プレイヤーを探し、流体の描画に使う位置・大きさ・液状化・死亡の状態をまとめて返す
+// プレイヤーを探し、流体の描画に使う位置・大きさ・死亡の状態をまとめて返す
 GameScene::PlayerDrawState GameScene::GatherPlayerDrawState() {
-	// プレイヤーの位置・大きさ・液状化の状態 (流体の描画に使う)
+	// プレイヤーの位置・大きさ (流体の描画に使う)
 	DirectX::XMFLOAT3 corePos = { 0.0f, 1.0f, 0.0f };
 	DirectX::XMFLOAT3 blobRadii = { 1.2f, 0.85f, 1.2f };
-	bool isLiquidated = false;
-	float liquefyInitialFlowSpeed = 0.0f;
-	Engine::Vector3 liquefyFlowForward = {0.0f, 0.0f, 1.0f};
 	bool hasPlayerSlime = false;
 	bool isPlayerDead = false;
 
-	// プレイヤーを探し、位置・液状化・死亡の状態を読む
+	// プレイヤーを探し、位置・死亡の状態を読む
 	const auto& playersForCore = GetEntitiesByTag(TagType::Player);
 	// プレイヤーのエンティティ
 	entt::entity playerEntity = entt::null;
@@ -278,20 +207,13 @@ GameScene::PlayerDrawState GameScene::GatherPlayerDrawState() {
 			corePos = { tc.translate.x, tc.translate.y, tc.translate.z };
 			blobRadii = { tc.scale.x, tc.scale.y, tc.scale.z };
 		}
-		// 液状化中か・流れの速さと向き
-		if (registry_.all_of<PlayerActionComponent>(playerEntity)) {
-			const auto& pa = registry_.get<PlayerActionComponent>(playerEntity);
-			isLiquidated = pa.state == PlayerActionState::Liquefy;
-			liquefyInitialFlowSpeed = pa.CurrentLiquefyFlowSpeed();
-			liquefyFlowForward = {pa.liquefyFlowDir.x, pa.liquefyFlowDir.y, pa.liquefyFlowDir.z};
-		}
 		// 死んでいるか
 		if (registry_.all_of<HealthComponent>(playerEntity)) {
 			const auto& hc = registry_.get<HealthComponent>(playerEntity);
 			isPlayerDead = hc.IsDead() || hc.Hp() <= 0.0f;
 		}
 	}
-	return {corePos, blobRadii, isLiquidated, liquefyInitialFlowSpeed, liquefyFlowForward, hasPlayerSlime, isPlayerDead, playerEntity};
+	return {corePos, blobRadii, hasPlayerSlime, isPlayerDead, playerEntity};
 }
 
 // 流体がぶつかる箱をレンダラーへ渡す
@@ -400,13 +322,10 @@ void GameScene::UpdateFluidEmitters(const PlayerDrawState& player) {
 	}
 }
 
-// プレイヤーのスライム: 見た目を GPU 流体で描くための設定、分身の流体、弾の星形メッシュ
+// プレイヤーのスライム: 見た目を GPU 流体で描くための設定
 void GameScene::UpdatePlayerSlimeFluid(PlayerDrawState& player) {
 	auto& corePos = player.corePos;
 	auto& blobRadii = player.blobRadii;
-	auto& isLiquidated = player.isLiquidated;
-	auto& liquefyInitialFlowSpeed = player.liquefyInitialFlowSpeed;
-	auto& liquefyFlowForward = player.liquefyFlowForward;
 	auto& hasPlayerSlime = player.hasPlayerSlime;
 	auto& isPlayerDead = player.isPlayerDead;
 	auto& playerEntity = player.playerEntity;
@@ -415,40 +334,11 @@ void GameScene::UpdatePlayerSlimeFluid(PlayerDrawState& player) {
 		// プレイヤーの見た目
 		auto& mr = registry_.get<MeshRendererComponent>(playerEntity);
 			
-			// CPU 側のスライムメッシュの準備
-			// 初回だけ、元の球メッシュから変形用の動的メッシュとパーティクルを作る
-			if (!slimeCpuLogic_.initialized) {
-				// 元のモデル
-				auto* model = renderer_->GetModel(mr.modelHandle);
-				if (model) {
-					// 元の頂点と添え字を覚える
-					slimeCpuLogic_.baseVertices = model->GetData().vertices;
-					// 法線の初期状態を保存する
-					slimeCpuLogic_.baseNormals = slimeCpuLogic_.baseVertices; 
-					slimeCpuLogic_.indices = model->GetData().indices;
-					// 変形後の頂点 (最初は元と同じ)
-					slimeCpuLogic_.dynamicVerts = slimeCpuLogic_.baseVertices;
-					
-					// 変形用の動的メッシュを作る
-					slimeCpuLogic_.dynamicMeshHandle = renderer_->CreateDynamicMesh(slimeCpuLogic_.baseVertices, slimeCpuLogic_.indices);
-					
-					// 体の中に漂うパーティクル (50個) の初期化
-					slimeCpuLogic_.particles.resize(50);
-					for (auto& p : slimeCpuLogic_.particles) {
-						// ランダムな向きに、ランダムな距離 (最大 1.5) だけ離した位置
-						Engine::Vector3 randPos = { (rand()%100/50.0f)-1.0f, (rand()%100/50.0f)-1.0f, (rand()%100/50.0f)-1.0f };
-						p.basePos = Engine::Normalize(randPos);
-						p.basePos.x *= ((rand()%100)/100.0f) * 1.5f;
-						p.basePos.y *= ((rand()%100)/100.0f) * 1.5f;
-						p.basePos.z *= ((rand()%100)/100.0f) * 1.5f;
-						p.color = {0.4f, 0.8f, 0.1f, 1.0f}; // 濃い黄緑
-					}
-					slimeCpuLogic_.initialized = true;
-				}
-			}
+			// 元のモデルが読めたら、GPU 流体のスライムで描く準備ができたとみなす
+			if (!playerSlimeReady_) playerSlimeReady_ = renderer_->GetModel(mr.modelHandle) != nullptr;
 
-			if (slimeCpuLogic_.initialized && registry_.all_of<TransformComponent>(playerEntity)) {
-				// CPU で変形させたメッシュは描かず、GPU 流体のスライムで描く
+			if (playerSlimeReady_ && registry_.all_of<TransformComponent>(playerEntity)) {
+				// 元のメッシュは描かず、GPU 流体のスライムで描く
 				mr.enabled = false;
 				
 				if (!gpuSlimeEmitted_) {
@@ -461,24 +351,17 @@ void GameScene::UpdatePlayerSlimeFluid(PlayerDrawState& player) {
 					gpuSlimeEmitted_ = true;
 				}
 				
-				// 状態で引き寄せる力を変える (死亡中は 0、液状化中は弱く、通常は強く)
-				float attraction = isPlayerDead ? 0.0f : (isLiquidated ? 1.0f : 32.0f);
+				// 状態で引き寄せる力を変える (死亡中は 0、通常は強く)
+				float attraction = isPlayerDead ? 0.0f : 32.0f;
 				
 				// 流体の中心 (圧力の源) を体の少し上に置く
 				Engine::Vector3 targetCore = {corePos.x, corePos.y + 0.18f, corePos.z};
-				// 向き (回転行列の Z 軸。液状化中は流れの向き)
+				// 向き (回転行列の Z 軸)
 				auto& playerTc = registry_.get<TransformComponent>(playerEntity);
 				Engine::Matrix4x4 mat = playerTc.GetTransform().ToMatrix();
 				Engine::Vector3 forward = {mat.m[2][0], mat.m[2][1], mat.m[2][2]};
-				if (isLiquidated) {
-					forward = liquefyFlowForward;
-				}
-				// 大きさと、液状化の流れの速さ
+				// 大きさ
 				Engine::Vector3 scaleVec = {blobRadii.x, blobRadii.y, blobRadii.z};
-				float liquidFlowSpeed = 0.0f;
-				if (isLiquidated) {
-					liquidFlowSpeed = liquefyInitialFlowSpeed;
-				}
 				// スライム本編: 地面の傾き・顔の向き・体の形 (伸び・空中・動き)・質量を流体へ渡す
 				if (chronoMode_) {
 					// 地面の傾き・高さを渡す
@@ -506,120 +389,19 @@ void GameScene::UpdatePlayerSlimeFluid(PlayerDrawState& player) {
 						bool tether = action->action == Chrono::Action::Extending || action->action == Chrono::Action::Pulling || action->action == Chrono::Action::Retracting;
 						renderer_->SetGPUFluidTether({action->hand.x, action->hand.y, action->hand.z}, tether);
 					}
-				// 旧アクションゲーム: 液状化の流れの速さを渡す
+				// 本編以外のシーン: 糸と点滅は無し
 				} else {
-					// 糸と点滅は無し
 					renderer_->SetGPUFluidTether({}, false);
 					renderer_->SetChronoFluidPresentation(1,0,false);
-					// 中心・引き寄せ・大きさ・向き・液状化の状態と流れの速さを渡す
-					renderer_->SetGPUFluidCore(targetCore, attraction, scaleVec, forward, isLiquidated ? 1.0f : 0.0f, liquidFlowSpeed);
+					renderer_->SetGPUFluidCore(targetCore, attraction, scaleVec, forward, 0.0f, 0.0f);
 				}
 
-				// 分身 (デコイ) の流体の設定
-				bool decoyFound = false;
-				// タグ・位置・名前を持つエンティティから分身を探す
-				auto decoyView = registry_.view<TagComponent, TransformComponent, NameComponent>();
-				decoyView.each([&](entt::entity e, TagComponent& tagComp, TransformComponent& dtc, NameComponent& nc) {
-					// 見つかったら残りは飛ばす
-					if (decoyFound) return;
-					// プレイヤーのタグで、名前が Decoy のもの
-					if (tagComp.tag == TagType::Player && nc.name == "Decoy") {
-						
-						// 分身の呼吸のような伸び縮み
-						float timeLived = 5.0f;
-						if (registry_.all_of<AutoDestroyComponent>(e)) {
-							timeLived = 5.0f - registry_.get<AutoDestroyComponent>(e).timer;
-						}
-						float breathe = std::sin(timeLived * 3.0f);
-						
-						// 幅は自機より少し小さく、厚みは自機と同じにしてぺたんこにならないようにする
-						dtc.scale.x = 0.9f + breathe * 0.05f;
-						dtc.scale.y = 0.8f - breathe * 0.05f; // 自機 (0.8) と同じ高さ
-						dtc.scale.z = 0.9f + breathe * 0.05f;
-
-						// 中心を持ち上げて地面に潰されないようにする
-						Engine::Vector3 targetDecoyCore = {dtc.translate.x, dtc.translate.y + 0.8f, dtc.translate.z};
-						// 向きと大きさ
-						Engine::Matrix4x4 dMat = dtc.GetTransform().ToMatrix();
-						Engine::Vector3 dForward = {dMat.m[2][0], dMat.m[2][1], dMat.m[2][2]};
-						Engine::Vector3 dScale = {dtc.scale.x, dtc.scale.y, dtc.scale.z};
-						// 分身はプレイヤーの状態 (液状化など) に関係なく常に形を保つ
-						float decoyAttraction = 80.0f;
-						// 分身の流体の設定を渡す
-						renderer_->SetGPUFluidDecoy(targetDecoyCore, decoyAttraction, dScale, dForward);
-						decoyFound = true;
-					}
-				});
-				if (!decoyFound) {
-					// 分身がいなければ引き寄せる力を 0 にしておく
-					renderer_->SetGPUFluidDecoy({0,-1000,0}, 0.0f, {1,1,1}, {0,0,1});
-				}
+				// 分身の流体は使わない (引き寄せる力を 0 にしておく)
+				renderer_->SetGPUFluidDecoy({0,-1000,0}, 0.0f, {1,1,1}, {0,0,1});
 
 }
 			// ----------------------------------------
 			
-			// 星形の弾のメッシュの準備
-			if (!projectileCpuLogic_.initialized && slimeCpuLogic_.initialized && !slimeCpuLogic_.baseVertices.empty()) {
-				// プレイヤーの元の球の頂点を複製して、弾の元のメッシュにする
-				projectileCpuLogic_.baseVertices = slimeCpuLogic_.baseVertices;
-				projectileCpuLogic_.baseNormals = slimeCpuLogic_.baseNormals; 
-				projectileCpuLogic_.indices = slimeCpuLogic_.indices;
-				projectileCpuLogic_.dynamicVerts = projectileCpuLogic_.baseVertices;
-				projectileCpuLogic_.dynamicMeshHandle = renderer_->CreateDynamicMesh(projectileCpuLogic_.baseVertices, projectileCpuLogic_.indices);
-				projectileCpuLogic_.initialized = true;
-			}
-
-			// 弾のメッシュをノイズで毎フレーム変形させ、トゲのある星形にする
-			if (projectileCpuLogic_.initialized) {
-				// 時間を進める
-				projectileCpuLogic_.time += ctx_.dt;
-				const float pNoiseScale = 4.0f;  // 細かくうねらせる
-				const float pNoiseSpeed = 8.0f;  // 速くうねらせる
-				
-				// 頂点ごとに変形する
-				for (size_t i = 0; i < projectileCpuLogic_.baseVertices.size(); ++i) {
-					// 元の頂点と法線、書き込む頂点
-					const auto& baseV = projectileCpuLogic_.baseVertices[i];
-					const auto& baseN = projectileCpuLogic_.baseNormals[i];
-					auto& dynV = projectileCpuLogic_.dynamicVerts[i];
-
-					// 元の位置
-					float bx = baseV.position.x;
-					float by = baseV.position.y;
-					float bz = baseV.position.z;
-
-					// 球を少し大きくしてから変形する
-					float scaleUp = 1.8f;
-					float sx = bx * scaleUp;
-					float sy = by * scaleUp;
-					float sz = bz * scaleUp;
-
-					// 時間で流れる 3D ノイズ
-					float noise = Noise3D(
-						sx * pNoiseScale + projectileCpuLogic_.time * pNoiseSpeed,
-						sy * pNoiseScale + projectileCpuLogic_.time * pNoiseSpeed,
-						sz * pNoiseScale + projectileCpuLogic_.time * pNoiseSpeed
-					);
-					
-					// ノイズの絶対値を強めて、星形のトゲを作る
-					float spike = std::abs(noise) * 1.5f;
-
-					// 法線の向きへトゲの分だけ押し出す
-					Engine::Vector3 v = {
-						sx + baseN.normal.x * spike,
-						sy + baseN.normal.y * spike,
-						sz + baseN.normal.z * spike
-					};
-
-					// 変形後の位置と法線
-					dynV.position = { v.x, v.y, v.z, 1.0f };
-					dynV.normal = baseN.normal; 
-				}
-				// GPU のメッシュを更新する
-				renderer_->UpdateDynamicMesh(projectileCpuLogic_.dynamicMeshHandle, projectileCpuLogic_.dynamicVerts);
-			}
-			// ----------------------------------------
-
 			// プレイヤーがスライムのシェーダーで描かれているか
 			hasPlayerSlime = mr.shaderName == "Slime";
 		}

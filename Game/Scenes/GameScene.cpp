@@ -21,8 +21,6 @@
 // 流体の放出と時間の管理 (エンジン側)
 #include "../../Engine/FluidEmission.h"
 #include "../../Engine/Time/TimeManager.h"
-// 缶の装備 (旧アクションゲーム)
-#include "../CanLoadout.h"
 #include "../ObjectTypes.h"
 // 音・パス・シーン管理 (エンジン側)
 #include "../../Engine/Audio.h"
@@ -35,29 +33,16 @@
 #include "../Scripts/ScriptLifecycle.h"
 // ゲームの処理を分担するシステム群
 #include "../Systems/AudioSystem.h"
-#include "../Systems/CameraFollowSystem.h"
-#include "../Systems/CharacterMovementSystem.h"
 #include "../Systems/CleanupSystem.h"
 #include "../Systems/FluidSystem.h"
-#include "../Systems/WeaponSystem.h" // 武器の管理
 #include "../../Engine/Input.h"      // キーボード・マウス入力
 
-#include "../Systems/HealthSystem.h"
 #include "../Systems/MotionSystem.h" // キーフレームのモーション
 #include "../Systems/PhysicsSystem.h"
-#include "../Systems/PlayerInputSystem.h"
 #include "../Systems/ChronoSystem.h"
-#include "../Systems/PlayerActionSystem.h" // プレイヤーアクション
-#include "../Systems/CombatSystem.h"       // 戦闘の当たり判定
-#include "../Systems/CanAbilitySystem.h"
-#include "../Systems/EnemyAISystem.h"      // 敵の AI
-#include "../Systems/BossActionSystem.h"    // ボスの AI
-#include "../Systems/WaveSystem.h"         // ウェーブ管理
-#include "../Scripts/BossTestScript.h"      // ボスの生成に使う
 
 #include "../Systems/ScriptSystem.h"
 #include "../Systems/UISystem.h"
-#include "../Systems/PostProcessSystem.h" // ポストエフェクト
 // Web プロファイラ (外部ツールから値を見たり変えたりする)
 #include "../../Engine/NetworkProfiler.h"
 #include "../../Engine/LoadProfile.h"
@@ -90,7 +75,6 @@ GameScene::~GameScene() {
     // システムの一覧と、その中の特別なシステムへのポインタを消す
     systems_.clear();
     chronoSystem_ = nullptr;
-    waveSystem_ = nullptr;
 
     // プロファイラに登録したコールバックを外す (破棄後に呼ばれないように)
     Engine::NetworkProfiler::GetInstance().SetParameterUpdateCallback(nullptr);
@@ -211,7 +195,6 @@ void GameScene::Initialize(Engine::WindowDX* dx, const Engine::SceneParameters& 
 	// 前のシステムをすべて消す
 	systems_.clear();
 	chronoSystem_ = nullptr;
-	waveSystem_ = nullptr;
 	// スライム本編: ChronoSystem と物理だけで動く
 	if (chronoMode_) {
 		// スライム本編のシステム
@@ -220,33 +203,15 @@ void GameScene::Initialize(Engine::WindowDX* dx, const Engine::SceneParameters& 
 		systems_.push_back(std::move(chrono));
 		// エディタで追加した Rigidbody も本編シーンで物理演算する
 		systems_.push_back(std::make_unique<PhysicsSystem>());
-	// 旧アクションゲーム: 入力 → 行動 → 移動 → 物理 → 敵 → 戦闘 → カメラ → 体力 → ウェーブ の順に処理する
+	// エディタで開いた本編以外のシーン: 物理・スクリプト・音・UI・モーション・後片付けだけを動かす
 	} else {
-	systems_.push_back(std::make_unique<PlayerInputSystem>());
-	systems_.push_back(std::make_unique<PlayerActionSystem>());  // 攻撃・パリィ・回避
-	systems_.push_back(std::make_unique<WeaponSystem>());        // 武器の管理とアニメーション
-	systems_.push_back(std::make_unique<CharacterMovementSystem>());
 	systems_.push_back(std::make_unique<PhysicsSystem>());
-	systems_.push_back(std::make_unique<CanAbilitySystem>());
-	systems_.push_back(std::make_unique<BossActionSystem>());   // ボスの移動を雑魚の押し合いより先に処理する
-	systems_.push_back(std::make_unique<EnemyAISystem>());      // 戦闘の判定より先に敵同士を離す
-	systems_.push_back(std::make_unique<CombatSystem>());         // 攻撃判定 (Hitbox) と食らい判定 (Hurtbox) の判定
-	systems_.push_back(std::make_unique<CameraFollowSystem>());
-	systems_.push_back(std::make_unique<HealthSystem>());
-	auto wave = std::make_unique<WaveSystem>();
-	waveSystem_ = wave.get();
-	systems_.push_back(std::move(wave));
-
-	// スクリプト・音・UI・モーション・ポストエフェクト・後片付け
 	auto scriptSys = std::make_unique<ScriptSystem>();
 	scriptSys->SetScene(this);
 	systems_.push_back(std::move(scriptSys));
-
-// 音・UI・モーション
 	systems_.push_back(std::make_unique<AudioSystem>());
 	systems_.push_back(std::make_unique<UISystem>());
 	systems_.push_back(std::make_unique<MotionSystem>());
-	systems_.push_back(std::make_unique<PostProcessSystem>()); // ポストエフェクト
 	// 破棄の予約を処理するシステム
 	systems_.push_back(std::make_unique<CleanupSystem>());
 	}
@@ -283,7 +248,7 @@ void GameScene::Initialize(Engine::WindowDX* dx, const Engine::SceneParameters& 
 	}
 
 // Web プロファイラとの双方向のパラメータ通信を登録する
-	// Web プロファイラから値を変更されたとき: 環境光の色とプレイヤーの速さ
+	// Web プロファイラから値を変更されたとき: 環境光の色
 	Engine::NetworkProfiler::GetInstance().SetParameterUpdateCallback([this](const std::string& target, const std::string& prop, float val) {
 		// 環境光の R / G / B のどれかを変える
 		if (target == "AmbientColor") {
@@ -292,16 +257,6 @@ void GameScene::Initialize(Engine::WindowDX* dx, const Engine::SceneParameters& 
 			else if (prop == "G") current.y = val;
 			else if (prop == "B") current.z = val;
 			renderer_->SetAmbientColor(current);
-		// プレイヤーの移動の速さを変える
-		} else if (target == "Player" && prop == "Speed") {
-			// 最初のプレイヤーを探して書き換える
-			const auto& players = GetEntitiesByTag(TagType::Player);
-			if (!players.empty()) {
-				entt::entity p = players[0];
-				if (registry_.valid(p) && registry_.all_of<CharacterMovementComponent>(p)) {
-					registry_.get<CharacterMovementComponent>(p).speed = val;
-				}
-			}
 		}
 	});
 
@@ -314,15 +269,6 @@ void GameScene::Initialize(Engine::WindowDX* dx, const Engine::SceneParameters& 
 		j["AmbientColor"]["G"] = amb.y;
 		j["AmbientColor"]["B"] = amb.z;
 		
-		j["Player"]["Speed"] = 15.0f; // プレイヤーが見つからないときの既定値
-		const auto& players = GetEntitiesByTag(TagType::Player);
-		if (!players.empty()) {
-			// 最初のプレイヤーの速さ
-			entt::entity p = players[0];
-			if (registry_.valid(p) && registry_.all_of<CharacterMovementComponent>(p)) {
-				j["Player"]["Speed"] = registry_.get<CharacterMovementComponent>(p).speed;
-			}
-		}
 		// JSON の文字列にして返す
 		return j.dump();
 	});
@@ -362,11 +308,6 @@ void GameScene::Update() {
 	updateTimings_.clear();
 #endif
 
-	// 旧アクションゲーム: Y キーで流体のデバッグ矢印の表示を切り替える
-	if (!chronoMode_ && Engine::Input::GetInstance()->Trigger(0x15)) { // エディタ・旧モードの流体診断用
-		renderer_->SetDrawFluidDebugArrows(!renderer_->GetDrawFluidDebugArrows());
-	}
-
 	// ワールド行列のキャッシュを毎フレーム捨てる
 	ClearMatrixCache();
 
@@ -388,10 +329,6 @@ void GameScene::Update() {
 	// システムへ渡す共有データを更新する
 	// このフレームの経過時間
 	ctx_.dt = dt;
-	// 戦闘の流れ (ヒットストップなど) の状態
-	ctx_.combatFlow = &combatFlow_;
-	// 旧アクションゲームの PLAY 中だけ戦闘の流れの時間を進める
-	if (isPlaying_ && !isPaused_ && !chronoMode_) combatFlow_.Tick(dt);
 	// ステージをクリアしたか
 	const bool stageClear = IsStageClear();
 
@@ -416,9 +353,6 @@ void GameScene::Update() {
 
 	// アニメーションの再生時刻を進める
 	UpdateAnimations(dt);
-
-	// 旧アクションゲーム: 缶を選ぶラジアルメニュー
-	UpdateCanRadialMenu(stageClear);
 
 	// パーティクルエディタのプレビュー更新
 	// パーティクルエディター
@@ -452,9 +386,6 @@ void GameScene::Update() {
 	// システムの後の時間を記録する
 	const auto profileAfterSystems = std::chrono::steady_clock::now();
 #endif
-	// 旧アクションゲーム: プレイヤーの頭上に浮かぶ缶を追従させる
-	UpdateCanFollow(dt, stageClear);
-
 	// エディタがある構成では Scene ビューのカメラを EditorUI が操作する (ビューポート上で右ドラッグ中のみ)。
 	// 以前はここで停止中に camera_ を生のキー入力で動かしており、Inspector の入力中も WASD でカメラが動いていた
 #ifndef USE_IMGUI
@@ -574,28 +505,13 @@ bool GameScene::HandlePlayInput(float dt, bool stageClear) {
 		if (stageClear) {
 			Engine::WindowDX::SetCursorVisible(true);
 		} else if (!isPaused_) {
-			// 強化の選択画面・スライムの調合画面が開いているか
+			// 強化の選択画面が開いているか
 			bool upgradeOpen=false;for(auto e:registry_.view<Chrono::InkPlayer>())upgradeOpen|=registry_.get<Chrono::InkPlayer>(e).rogue.menu;
-			upgradeOpen|=chronoSystem_&&chronoSystem_->SlimeLabOpen();
-			// カットシーン中か
-			const bool cinematic = chronoSystem_ && (chronoSystem_->CinematicActive() || chronoSystem_->StageIntroActive());
-			// どちらでもなければプレイ時間を進める
-			if(!upgradeOpen&&!cinematic)playTime_ += dt;
+			// 開いていなければプレイ時間を進める
+			if(!upgradeOpen)playTime_ += dt;
 			
-			// ラジアルメニューを開いているか調べる
-			bool isRadialMenuOpen = false;
-			// プレイヤーの入力を調べる
-			auto piView = registry_.view<PlayerInputComponent>();
-			for (auto e : piView) {
-				if (piView.get<PlayerInputComponent>(e).isRadialMenuOpen) {
-					isRadialMenuOpen = true;
-					break;
-				}
-			}
-
 			// PLAY 中はマウスカーソルを画面中央に固定する (メニューを開いていない場合)
-			for(auto e:registry_.view<Chrono::InkPlayer>())if(registry_.get<Chrono::InkPlayer>(e).rogue.menu)isRadialMenuOpen=true;
-            if (!upgradeOpen && !isRadialMenuOpen && dx_ && dx_->GetHwnd()) {
+            if (!upgradeOpen && dx_ && dx_->GetHwnd()) {
 				// 画面中央をスクリーン座標に直してカーソルを置く
 				POINT center = { (LONG)Engine::WindowDX::kW / 2, (LONG)Engine::WindowDX::kH / 2 };
 				ClientToScreen(dx_->GetHwnd(), &center);
@@ -626,9 +542,7 @@ void GameScene::UpdateAnimations(float dt) {
 
 				// 有効で再生中のものだけ進める
 				if (anim.enabled && anim.isPlaying) {
-						// ボスは戦闘の流れの速さ (スロー演出など) に合わせて再生する
-						const float animDt = (registry_.all_of<BossActionComponent>(entity) || registry_.all_of<Chrono::Boss>(entity))
-							? dt * combatFlow_.EnemyScale() : dt;
+						const float animDt = dt;
 						// 1 秒 60 フレームとして、再生の速さを掛けて進める
 						anim.time += animDt * 60.0f * anim.speed;
 						// クロスフェード中は残り時間を減らし、直前のクリップも進める
@@ -668,166 +582,6 @@ void GameScene::UpdateAnimations(float dt) {
 			// すべての処理が終わるまで待つ
 			Engine::JobSystem::Wait();
 		}
-	}
-}
-
-// 旧アクションゲーム: 缶を選ぶラジアルメニュー (選択と描画)
-void GameScene::UpdateCanRadialMenu(bool stageClear) {
-	// 旧アクションゲーム: 缶を選ぶラジアルメニュー
-	if (isPlaying_ && !isPaused_) {
-		// プレイヤーの入力を調べる
-		auto piView = registry_.view<PlayerInputComponent>();
-		for (auto e : piView) {
-			auto& pi = registry_.get<PlayerInputComponent>(e);
-			// メニューを開いている間だけ処理する
-			if (pi.isRadialMenuOpen) {
-				Engine::WindowDX::SetCursorVisible(true); // 開いている間はカーソルを表示する
-				
-				// 画面中央とマウスの位置から、マウスがどの扇形を指しているかを求める
-				float centerX = ctx_.viewportSize.x > 0 ? ctx_.viewportSize.x * 0.5f : (float)Engine::WindowDX::kW * 0.5f;
-				float centerY = ctx_.viewportSize.y > 0 ? ctx_.viewportSize.y * 0.5f : (float)Engine::WindowDX::kH * 0.5f;
-				
-				// マウスの位置 (エディタの Game ビューなら換算済みの座標、それ以外はビューポートから内部解像度へ換算する)
-				float mx, my;
-				if (ctx_.useOverrideMouse) {
-					mx = ctx_.overrideMouseX;
-					my = ctx_.overrideMouseY;
-				} else {
-					ctx_.input->GetMousePos(mx, my);
-					if (ctx_.viewportSize.x > 0 && ctx_.viewportSize.y > 0) {
-						mx = (mx - ctx_.viewportOffset.x) * (float)Engine::WindowDX::kW / ctx_.viewportSize.x;
-						my = (my - ctx_.viewportOffset.y) * (float)Engine::WindowDX::kH / ctx_.viewportSize.y;
-					}
-				}
-				
-				// 中心からマウスへの角度 (0〜2π)
-				float dx_mouse = mx - centerX;
-				float dy_mouse = my - centerY;
-				float angle = std::atan2(dy_mouse, dx_mouse);
-				if (angle < 0) angle += 3.14159f * 2.0f;
-				
-				// 装備中の缶の数で円を等分し、角度から選択中の番号を決める
-				const auto& equippedCans = CanLoadout::GetEquipped();
-				const int canCount = (std::max)(1, CanLoadout::Count());
-				const float segment = (3.14159f * 2.0f) / static_cast<float>(canCount);
-				int selectedIndex = static_cast<int>(angle / segment);
-				// 範囲外にならないようにする
-				if (selectedIndex < 0) selectedIndex = 0;
-				if (selectedIndex >= canCount) selectedIndex = canCount - 1;
-				
-				// 選択中の缶を入力へ設定する
-				pi.selectedCan = equippedCans[selectedIndex];
-
-				// 描画 (ImGui を使わずレンダラーのスプライトで描く)
-				// 円の半径とアイコンの大きさ
-				float radius = 120.0f;
-				float boxSize = 80.0f;
-				
-				// 円の画像
-				auto texH = ctx_.renderer->LoadTexture2D("Resources/Textures/ball.png");
-
-				// 各缶のアイコン (円) と名前を円周上に並べる。缶の種類ごとに色を変え、選択中は明るくする
-				for (int i = 0; i < canCount; ++i) {
-					// この扇形の始まりの角度
-					float startAngle = segment * static_cast<float>(i);
-					float textAngle = startAngle + segment * 0.5f; // 扇形の中心の角度
-					
-					// アイコンの中心
-					float px = centerX + std::cos(textAngle) * radius;
-					float py = centerY + std::sin(textAngle) * radius;
-					
-					// 既定の灰色。缶の種類ごとに色を決め、選択中は濃く、それ以外は薄くする
-					Engine::Vector4 color = {100.0f/255.0f, 100.0f/255.0f, 100.0f/255.0f, 180.0f/255.0f};
-					if (equippedCans[i] == CanType::Fire) color = (i == selectedIndex) ? Engine::Vector4{255.0f/255.0f, 100.0f/255.0f, 100.0f/255.0f, 220.0f/255.0f} : Engine::Vector4{150.0f/255.0f, 50.0f/255.0f, 50.0f/255.0f, 180.0f/255.0f};
-					if (equippedCans[i] == CanType::Water) color = (i == selectedIndex) ? Engine::Vector4{100.0f/255.0f, 150.0f/255.0f, 255.0f/255.0f, 220.0f/255.0f} : Engine::Vector4{50.0f/255.0f, 80.0f/255.0f, 150.0f/255.0f, 180.0f/255.0f};
-					if (equippedCans[i] == CanType::Thunder) color = (i == selectedIndex) ? Engine::Vector4{255.0f/255.0f, 255.0f/255.0f, 100.0f/255.0f, 220.0f/255.0f} : Engine::Vector4{150.0f/255.0f, 150.0f/255.0f, 50.0f/255.0f, 180.0f/255.0f};
-					if (equippedCans[i] == CanType::Soda) color = (i == selectedIndex) ? Engine::Vector4{100.0f/255.0f, 255.0f/255.0f, 220.0f/255.0f, 220.0f/255.0f} : Engine::Vector4{45.0f/255.0f, 145.0f/255.0f, 130.0f/255.0f, 180.0f/255.0f};
-					if (equippedCans[i] == CanType::Ice) color = (i == selectedIndex) ? Engine::Vector4{120.0f/255.0f, 235.0f/255.0f, 1.0f, 220.0f/255.0f} : Engine::Vector4{45.0f/255.0f, 125.0f/255.0f, 165.0f/255.0f, 180.0f/255.0f};
-					if (equippedCans[i] == CanType::Magnet) color = (i == selectedIndex) ? Engine::Vector4{215.0f/255.0f, 100.0f/255.0f, 1.0f, 220.0f/255.0f} : Engine::Vector4{110.0f/255.0f, 45.0f/255.0f, 150.0f/255.0f, 180.0f/255.0f};
-					if (equippedCans[i] == CanType::Acid) color = (i == selectedIndex) ? Engine::Vector4{160.0f/255.0f, 1.0f, 75.0f/255.0f, 220.0f/255.0f} : Engine::Vector4{70.0f/255.0f, 145.0f/255.0f, 30.0f/255.0f, 180.0f/255.0f};
-					if (equippedCans[i] == CanType::Bubble) color = (i == selectedIndex) ? Engine::Vector4{1.0f, 115.0f/255.0f, 215.0f/255.0f, 220.0f/255.0f} : Engine::Vector4{155.0f/255.0f, 55.0f/255.0f, 125.0f/255.0f, 180.0f/255.0f};
-					
-					// 枠の代わりに少し大きい円を背景に置く
-					Engine::Renderer::SpriteDesc border;
-					border.x = px - (boxSize + 8.0f) * 0.5f;
-					border.y = py - (boxSize + 8.0f) * 0.5f;
-					border.w = boxSize + 8.0f;
-					border.h = boxSize + 8.0f;
-					border.color = {1.0f, 1.0f, 1.0f, 0.5f};
-					if (i == selectedIndex) border.color = {1.0f, 1.0f, 0.2f, 0.8f}; // 選択中は黄色く光らせる
-					border.layer = 199;
-					ctx_.renderer->DrawSprite(texH, border);
-
-					// 缶の色の円
-					Engine::Renderer::SpriteDesc box;
-					box.x = px - boxSize * 0.5f;
-					box.y = py - boxSize * 0.5f;
-					box.w = boxSize;
-					box.h = boxSize;
-					box.color = color;
-					box.layer = 200;
-					ctx_.renderer->DrawSprite(texH, box);
-
-// 缶の名前
-					const char* canName = CanLoadout::Name(equippedCans[i]);
-					// 文字の幅を測って中央に書く
-					float tw = ctx_.renderer->MeasureTextWidth(canName, 0.3f);
-					ctx_.renderer->DrawString(canName, px - tw * 0.5f, py - 12.0f, 0.3f, {1.0f, 1.0f, 1.0f, 1.0f});
-				}
-			} else {
-				// メニューを閉じたら、ポーズ・クリア中以外は調合画面のときだけカーソルを出す
-				if (!isPaused_ && !stageClear) Engine::WindowDX::SetCursorVisible(chronoSystem_&&chronoSystem_->SlimeLabOpen());
-			}
-		}
-	}
-}
-
-// 旧アクションゲーム: プレイヤーの頭上に浮かぶ缶を、少し遅れて追従させる
-void GameScene::UpdateCanFollow(float dt, bool stageClear) {
-	// 旧アクションゲーム: プレイヤーの頭上に浮かぶ缶を、少し遅れて追従させる
-	if (isPlaying_ && !isPaused_ && !stageClear) {
-		// プレイヤーは PlayerActionSystem の後に移動するので、缶はここで付ける。
-		// 最終的な位置に合わせつつ、旋回や急停止のときは周りの流体と同じだけ少し遅れて付いてくる
-		auto playersWithCan = registry_.view<PlayerActionComponent, TransformComponent>();
-		playersWithCan.each([&](entt::entity, PlayerActionComponent& pa, TransformComponent& playerTc) {
-			// 缶が無いか、消えているか、見た目が無ければ何もしない
-			if (pa.canEntity == entt::null || !registry_.valid(pa.canEntity) ||
-				!registry_.all_of<TransformComponent, MeshRendererComponent>(pa.canEntity)) return;
-			// 缶の位置と見た目
-			auto& canTc = registry_.get<TransformComponent>(pa.canEntity);
-			auto& canMesh = registry_.get<MeshRendererComponent>(pa.canEntity);
-			// 初回はプレイヤーの位置から始める
-			if (!pa.canFollowInitialized) {
-				pa.canFollowPos = playerTc.translate;
-				pa.canFollowInitialized = true;
-			}
-			// プレイヤーとの差
-			const float dx = playerTc.translate.x - pa.canFollowPos.x;
-			const float dy = playerTc.translate.y - pa.canFollowPos.y;
-			const float dz = playerTc.translate.z - pa.canFollowPos.z;
-			// 大きく離れたら即座に移動し、それ以外は指数的に近づける
-			if (dx * dx + dy * dy + dz * dz > 100.0f) {
-				pa.canFollowPos = playerTc.translate;
-			} else {
-				// 経過時間を 1/30 秒までに抑え、毎秒 14 の速さで近づく
-				const float followDt = (std::clamp)(dt, 0.0f, 1.0f / 30.0f);
-				const float blend = 1.0f - std::exp(-14.0f * followDt);
-				pa.canFollowPos.x += dx * blend;
-				pa.canFollowPos.y += dy * blend;
-				pa.canFollowPos.z += dz * blend;
-			}
-			// 上下にゆらゆら揺らしながら回転させる
-			canTc.translate = pa.canFollowPos;
-			canTc.translate.y += 0.35f + std::sin(pa.totalTime * 3.0f) * 0.025f;
-			canTc.rotate.y += dt * 2.0f;
-			canTc.rotate.z = std::sin(pa.totalTime * 2.0f) * 0.2f;
-			// 液状化中の水たまりは缶より薄いので、通常の体に戻ってから少し待って缶を表示する
-			// 液状化中は 0 に戻し、それ以外は時間を数える (最大 1 秒)
-			pa.canRevealTimer = pa.state == PlayerActionState::Liquefy ? 0.0f :
-				(std::min)(1.0f, pa.canRevealTimer + (std::max)(dt, 0.0f));
-			// 0.45 秒経ったら表示する
-			canMesh.enabled = pa.canRevealTimer >= 0.45f;
-		});
 	}
 }
 
@@ -961,11 +715,10 @@ void GameScene::UpdateParticleEmitters(float dt) {
 
 // ゲーム内のポーズの切り替え。BGM を小さくし、カーソルを出し、流体などを止めてメニューを出す
 void GameScene::SetPaused(bool paused) {
-    // 強化の選択画面・スライムの調合画面が開いているか
+    // 強化の選択画面が開いているか
     if(paused&&!isPaused_){pauseOpenedAt_=UI::Seconds();pauseMenu_=0;}
     isPaused_=paused;bool upgradeOpen=false;
     for(auto e:registry_.view<Chrono::InkPlayer>())upgradeOpen|=registry_.get<Chrono::InkPlayer>(e).rogue.menu;
-    upgradeOpen|=chronoSystem_&&chronoSystem_->SlimeLabOpen();
     // BGM の音量を下げる
     if(auto* audio=Engine::Audio::GetInstance()){audio->SetBGMDucked(paused||upgradeOpen);audio->SetSEPaused(paused||upgradeOpen);}
     // カーソルを出す
@@ -1013,7 +766,6 @@ void GameScene::SetIsPlaying(bool play) {
 	SetEditorPaused(false);
 
 	// 流体のプレビューとスライム本編のポストエフェクトを初期状態にする
-	wasLiquidated_ = false;
 	if (play || chronoMode_) ResetFluidPreview();
 	if (chronoMode_) {
 		gpuSlimeEmitted_ = false;
@@ -1051,8 +803,6 @@ void GameScene::SetIsPlaying(bool play) {
 
 		const std::string editSnapshot = EditorUI::SavePlaySnapshot(this);
 		// 各システムをリセットする (スクリプトの再初期化やインスタンスの破棄など) のを先に行う
-		// 戦闘の流れ (ヒットストップなど) を戻す
-		combatFlow_.Reset();
 		for (auto& sys : systems_) {
 			sys->Reset(registry_);
 		}

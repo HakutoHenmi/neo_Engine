@@ -4,7 +4,6 @@
 #include "../Engine/CollisionSystem.h"
 #include "../Game/Scripts/ScriptLifecycle.h"
 #include "../Game/Scripts/ScriptEdits.h"
-#include "../Game/CanHitEffects.h"
 #include <cassert>
 #include <cmath>
 #include <limits>
@@ -54,49 +53,6 @@ void TestScriptLifecycle() {
     Game::StopAllScripts(registry, nullptr);
     Game::StopAllScripts(registry, nullptr);
     assert(calls == 4 && !registry.all_of<Game::ScriptComponent>(entity));
-}
-
-void TestCanHitEffects() {
-    entt::registry registry;
-    auto entity = registry.create();
-    auto& transform = registry.emplace<Game::TransformComponent>(entity);
-    transform.translate = {3, 7, 4};
-    Game::CanAttackEffectComponent effect;
-    effect.strength = 10;
-    const auto* magnet = Game::FindCanHitEffect(Game::CanType::Magnet);
-    magnet->Apply(registry, entity, {0, 0, 0}, effect);
-    assert(transform.translate.x == 9 && transform.translate.z == 12);
-    assert(!registry.all_of<Game::CanStatusComponent>(entity));
-    registry.emplace<Game::BossActionComponent>(entity);
-    transform.translate = {3, 7, 4};
-    magnet->Apply(registry, entity, {0, 0, 0}, effect);
-    assert(std::abs(transform.translate.x - 5.1f) < .0001f);
-    assert(std::abs(transform.translate.z - 6.8f) < .0001f);
-    transform.translate = {0, 7, 0};
-    magnet->Apply(registry, entity, {0, 0, 0}, effect);
-    assert(transform.translate.x == 0 && transform.translate.z == 0);
-
-    effect.duration = 10;
-    Game::FindCanHitEffect(Game::CanType::Ice)->Apply(registry, entity, {}, effect);
-    auto& status = registry.get<Game::CanStatusComponent>(entity);
-    assert(status.freezeTimer == 5.5f);
-    effect.duration = 2;
-    Game::FindCanHitEffect(Game::CanType::Ice)->Apply(registry, entity, {}, effect);
-    assert(status.freezeTimer == 5.5f); // Reapplying does not shorten a status.
-    status.acidTickTimer = 1;
-    Game::FindCanHitEffect(Game::CanType::Acid)->Apply(registry, entity, {}, effect);
-    assert(status.acidTimer == 2 && status.acidTickTimer == 0);
-    Game::FindCanHitEffect(Game::CanType::Bubble)->Apply(registry, entity, {}, effect);
-    assert(status.bubbleTimer == effect.duration * .55f && status.bubbleBaseY == 7);
-    transform.translate.y = 12;
-    Game::FindCanHitEffect(Game::CanType::Bubble)->Apply(registry, entity, {}, effect);
-    assert(status.bubbleBaseY == 7 && status.bubblePositionSaved);
-    registry.remove<Game::BossActionComponent>(entity);
-    effect.duration = 10;
-    Game::FindCanHitEffect(Game::CanType::Ice)->Apply(registry, entity, {}, effect);
-    Game::FindCanHitEffect(Game::CanType::Bubble)->Apply(registry, entity, {}, effect);
-    assert(status.freezeTimer == 10 && status.bubbleTimer == 10);
-    assert(Game::FindCanHitEffect(Game::CanType::None) == nullptr);
 }
 
 void TestScriptEdits() {
@@ -149,7 +105,6 @@ static_assert(std::is_same_v<decltype(std::declval<Engine::Renderer&>().GetGraph
 
 int main() {
     TestScriptLifecycle();
-    TestCanHitEffects();
     TestScriptEdits();
     // Existing HP rules, including the delayed death flag and sandbag values.
     Game::HealthComponent health;
@@ -169,26 +124,6 @@ int main() {
     assert(health.Hp() == 9999 && health.MaxHp() == 9999);
     health.SetHp(std::numeric_limits<float>::quiet_NaN());
     assert(!health.TryConsumeHp(5));
-
-    // Compare the combo/time-scale implementation with the original equations.
-    Game::CombatFlowState flow;
-    int combo = 0; float remaining = 0, scale = 1;
-    for (int frame = 0; frame < 600; ++frame) {
-        if (frame < 80 && frame % 10 == 0) {
-            bool defeated = frame % 20 == 0;
-            flow.RegisterHit(defeated);
-            combo = (std::min)(12, combo + 1 + (defeated ? 1 : 0)); remaining = 1.8f;
-        }
-        constexpr float dt = 1.f / 60.f;
-        if (remaining > 0) { remaining = (std::max)(0.f, remaining - dt); if (remaining == 0) combo = 0; }
-        float target = combo >= 4 ? .45f : combo >= 3 ? .58f : combo >= 2 ? .75f : 1.f;
-        scale += (target - scale) * (std::min)(1.f, dt * 9.f);
-        flow.Tick(dt);
-        assert(flow.Combo() == combo && flow.EnemyScale() == scale);
-    }
-    flow.SetChronoEnemyScale(0);
-    assert(flow.EnemyScale() == 0);
-    flow.Reset(); assert(flow.Combo() == 0 && flow.EnemyScale() == 1);
 
     entt::registry registry;
     Game::SceneComponents components(registry);

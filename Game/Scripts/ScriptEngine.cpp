@@ -3,7 +3,6 @@
 #include "ScriptEngine.h"
 // シーンと、登録するスクリプトの定義
 #include "Scenes/GameScene.h"
-#include "BossTestScript.h"
 #include <iostream>
 #include <Windows.h> // OutputDebugStringA を使うため
 
@@ -23,8 +22,7 @@ ScriptEngine* ScriptEngine::GetInstance() {
 
 // 起動時に呼ぶ: 手動で登録するスクリプトを登録する
 void ScriptEngine::Initialize() {
-	// 新しいスクリプトを作ったらここに登録する
-	RegisterScript("BossTestScript", []() { return std::make_shared<BossTestScript>(); });
+	// 新しいスクリプトを作ったらここに登録する (RegisterScript("クラス名", 作成関数))
 }
 
 // 登録を消してインスタンスを破棄する

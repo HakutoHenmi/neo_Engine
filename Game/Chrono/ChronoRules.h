@@ -19,6 +19,8 @@ inline float Dot(Vec a, Vec b) { return a.x*b.x+a.y*b.y+a.z*b.z; }
 inline float Length(Vec a) { return std::sqrt(Dot(a,a)); }
 inline Vec Unit(Vec a) { float n=Length(a); return n>0.00001f ? a*(1/n) : Vec{}; }
 inline Vec Lerp(Vec a, Vec b, float t) { return a+(b-a)*t; }
+// 0〜1 をなめらかにつなぐ (smoothstep)
+inline float Ease(float x) { x=std::clamp(x,0.f,1.f);return x*x*(3-2*x); }
 // 指数の減衰はフレームレートに依存しない。遅れの上限があるので、
 // 速い引き寄せがカメラを追い越さず、背景の動きは和らげられる
 inline Vec Follow(Vec current,Vec goal,float dt,float maxLag) {

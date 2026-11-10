@@ -55,24 +55,5 @@ struct UIButtonComponent : public Component {
 	UIButtonComponent() { type = ComponentType::UIButton; }
 };
 
-// ワールド空間UIコンポーネント
-struct WorldSpaceUIComponent : public Component {
-	bool showHealthBar = true;
-	bool showDamageNumbers = true;
-	DirectX::XMFLOAT3 offset = {0, 1.2f, 0};
-	float barWidth = 60.0f;
-	float barHeight = 6.0f;
-	WorldSpaceUIComponent() { type = ComponentType::WorldSpaceUI; }
-};
-
-// ダメージ数字の表示
-struct DamageNumberComponent : public Component {
-	float damage = 0.0f;
-	float lifetime = 1.0f;
-	float maxLifetime = 1.0f;
-	DirectX::XMFLOAT3 color = {1.0f, 1.0f, 1.0f};
-	DirectX::XMFLOAT3 startPos = {0,0,0};
-	DamageNumberComponent() { type = static_cast<ComponentType>(999); } // 数字が浮かび上がって消えるまでの表示状態 (実行時専用)
-};
 
 } // namespace Game
