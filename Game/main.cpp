@@ -27,7 +27,6 @@
 // 自動テスト・計測用のシーン (コマンドライン引数で起動する)
 #include "../tests/PackageValidationScene.h"
 #include "../tests/RtLightingValidationScene.h"
-#include "../tests/SceneryBenchmarkScene.h"
 #include "../tests/SlimeLifeValidationScene.h"
 // Debug / Development ビルドだけで使う検証用シーン
 #ifndef NDEBUG
@@ -35,7 +34,6 @@
 #include "../tests/RigidbodyValidationScene.h"
 #include "../tests/FluidValidationScene.h"
 #include "../tests/FluidGameBenchmarkScene.h"
-#include "../tests/ChronoValidationScene.h"
 #include "../tests/UIValidationScene.h"
 #include "../tests/EditorLoadingValidationScene.h"
 #include "../tests/SlimePlayerDemoValidationScene.h"
@@ -127,7 +125,6 @@ int WINAPI WinMain(_In_ HINSTANCE hInst, _In_opt_ HINSTANCE, _In_ LPSTR commandL
         sm.Register("PackageValidation", []() -> std::unique_ptr<Engine::IScene> { return std::make_unique<PackageValidationScene>(); });
         sm.Register("DlssPackageValidation", []() -> std::unique_ptr<Engine::IScene> { return std::make_unique<DlssPackageValidationScene>(); });
         sm.Register("RtLightingValidation", []() -> std::unique_ptr<Engine::IScene> { return std::make_unique<RtLightingValidationScene>(); });
-        sm.Register("SceneryBenchmark", []() -> std::unique_ptr<Engine::IScene> { return std::make_unique<SceneryBenchmarkScene>(); });
         sm.Register("SlimeLifeValidation", []() -> std::unique_ptr<Engine::IScene> { return std::make_unique<SlimeLifeValidationScene>(); });
 		// ゲームの通常の流れ: タイトル → セレクト → ゲーム → ゲームオーバー
 		sm.Register("Title", []() -> std::unique_ptr<Engine::IScene> { return std::unique_ptr<Engine::IScene>(new Game::TitleScene()); });
@@ -153,14 +150,9 @@ int WINAPI WinMain(_In_ HINSTANCE hInst, _In_opt_ HINSTANCE, _In_ LPSTR commandL
         sm.Register("EditorLoadingValidation", []() -> std::unique_ptr<Engine::IScene> { return std::make_unique<EditorLoadingValidationScene>(); });
         sm.Register("UIValidation", []() -> std::unique_ptr<Engine::IScene> { return std::make_unique<UIValidationScene>(); });
         sm.Register("UIGallery", []() -> std::unique_ptr<Engine::IScene> { return std::make_unique<UIGalleryScene>(); });
-        // 描画・影・ボス・回避・ビームのカメラの検証
+        // 描画・影の検証
         sm.Register("GraphicsValidation", []() -> std::unique_ptr<Engine::IScene> { return std::make_unique<GraphicsValidationScene>(); });
         sm.Register("ShadowValidation", []() -> std::unique_ptr<Engine::IScene> { return std::make_unique<ShadowValidationScene>(); });
-        sm.Register("BossValidation", []() -> std::unique_ptr<Engine::IScene> { return std::make_unique<BossValidationScene>(); });
-        sm.Register("DodgeValidation", []() -> std::unique_ptr<Engine::IScene> { return std::make_unique<DodgeValidationScene>(); });
-        sm.Register("BeamCameraValidation", []() -> std::unique_ptr<Engine::IScene> { return std::make_unique<BeamCameraValidationScene>(); });
-        // Chrono (スライム) の検証
-        sm.Register("ChronoValidation", []() -> std::unique_ptr<Engine::IScene> { return std::make_unique<ChronoValidationScene>(); });
 		// 流体を使ったゲームの負荷計測 (通常・エディタ・衝突)
 		sm.Register("FluidGameBenchmark", []() -> std::unique_ptr<Engine::IScene> { return std::make_unique<FluidGameBenchmarkScene>(); });
 		sm.Register("FluidGameBenchmarkEditor", []() -> std::unique_ptr<Engine::IScene> { return std::make_unique<FluidGameBenchmarkScene>(true); });

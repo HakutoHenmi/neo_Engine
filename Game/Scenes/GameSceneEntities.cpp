@@ -16,8 +16,6 @@
 // 流体の放出と時間の管理 (エンジン側)
 #include "../../Engine/FluidEmission.h"
 #include "../../Engine/Time/TimeManager.h"
-// 缶の装備 (旧アクションゲーム)
-#include "../CanLoadout.h"
 #include "../ObjectTypes.h"
 // 音・パス・シーン管理 (エンジン側)
 #include "../../Engine/Audio.h"
@@ -29,29 +27,16 @@
 #include "../Scripts/ScriptLifecycle.h"
 // ゲームの処理を分担するシステム群
 #include "../Systems/AudioSystem.h"
-#include "../Systems/CameraFollowSystem.h"
-#include "../Systems/CharacterMovementSystem.h"
 #include "../Systems/CleanupSystem.h"
 #include "../Systems/FluidSystem.h"
-#include "../Systems/WeaponSystem.h" // 武器の管理
 #include "../../Engine/Input.h"      // キーボード・マウス入力
 
-#include "../Systems/HealthSystem.h"
 #include "../Systems/MotionSystem.h" // キーフレームのモーション
 #include "../Systems/PhysicsSystem.h"
-#include "../Systems/PlayerInputSystem.h"
 #include "../Systems/ChronoSystem.h"
-#include "../Systems/PlayerActionSystem.h" // プレイヤーアクション
-#include "../Systems/CombatSystem.h"       // 戦闘の当たり判定
-#include "../Systems/CanAbilitySystem.h"
-#include "../Systems/EnemyAISystem.h"      // 敵の AI
-#include "../Systems/BossActionSystem.h"    // ボスの AI
-#include "../Systems/WaveSystem.h"         // ウェーブ管理
-#include "../Scripts/BossTestScript.h"      // ボスの生成に使う
 
 #include "../Systems/ScriptSystem.h"
 #include "../Systems/UISystem.h"
-#include "../Systems/PostProcessSystem.h" // ポストエフェクト
 // Web プロファイラ (外部ツールから値を見たり変えたりする)
 #include "../../Engine/NetworkProfiler.h"
 // JSON の読み書き
@@ -440,8 +425,7 @@ void GameScene::ClearScene() {
 	registry_.on_destroy<ScriptComponent>().connect<&GameScene::OnScriptDestroyed>(this);
 
 	// 4. CPU 側スライムメッシュを未初期化に戻す
-	slimeCpuLogic_.initialized = false;
-	projectileCpuLogic_.initialized = false;
+	playerSlimeReady_ = false;
 
 	if (renderer_) {
 		// GPU 流体を空にする

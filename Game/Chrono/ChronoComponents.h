@@ -1,42 +1,12 @@
 // ChronoComponents.h
-// ChronoSystem が使う ECS のコンポーネント (対象・弾・羽・生き物のボス・プレイヤー・入力の記録など)。
+// ChronoSystem が使う ECS のコンポーネント (プレイヤー・入力の記録・当たり判定の箱など)。
 #pragma once
 #include "ChronoRules.h"
-#include "CreatureCombat.h"
-#include "CreatureMotion.h"
 #include "../../externals/entt/entt.hpp"
 namespace Game::Chrono {
-// 対象の種類と、プレイヤーの行動の状態
-enum class Kind { Enemy, Projectile, Anchor, Weakpoint, Boss };
+// プレイヤーの行動の状態
 enum class Action { Free, Extending, Pulling, Retracting, Recovery, Dodge, Collapsed };
-// 狙える対象 (敵・弾・足場・弱点・ボス)
-struct Target {
-    Kind kind=Kind::Enemy;
-    // 当たり半径・体力・倒したときの報酬
-    float radius=1, hp=1, reward=12;
-    // 有効か・波の番号・位置のずれ
-    bool active=true;
-    int wave=-1;
-    Vec offset{};
-};
-// 跳ねる敵 / 弾 / 羽 (始点から目的地へ飛ぶ)
-struct Hopper { Vec velocity{}; float timer=0; bool grounded=false; };
-struct Projectile { Vec velocity{}; float lifetime=18; bool breakable=true; };
-struct Feather { Vec start{},destination{};float age=0,delay=0; bool readySound=false,fast=false; };
-// 生き物のボスの段階 (蛇・集合・連射・扇状の羽・急降下・下降)
-enum class CreatureStage { Snake, Assemble, Volley, Opening, Dive, Descend };
-// 生き物のボスの状態 (段階・時間・攻撃・衝撃・移動・変形)
-struct CreatureBoss { CreatureStage stage=CreatureStage::Snake;float age=0,timer=0,form=0; int sweepPhase=0; float sweepTime=0; Vec sweepCenter{}; bool sweepHit=false;
-    float impactAge=10.f,impactPower=0;Vec impactPoint{};
-    CreatureAttack attack=CreatureAttack::Sweep;int attackCount=0;float wingClock=0,recoil=0;Vec attention{};bool wingCounter=false,wingDone=false;
-    Vec offset{0,0,65},moveVelocity{},cruiseGoal{},diveStart{};float roam=0,heading=0,flightAngle=0,volleyClock=0;int volleys=0,cruiseStep=0;bool cruiseReady=false;
-    CreaturePose morphSource{};Vec morphDestination{};float morphHeading=0;bool morphActive=false;
-};
-// ボスの部位 (大きさ・位置・番号・役割)
-struct CreaturePart { Vec unitScale{1,1,1},unitOffset{};int index=0,segment=-1;CreatureRole role=CreatureRole::Spine; };
-// 蛇の中継 / 足場 / 固い物 / カメラを遮る物
-struct SerpentRelay { Vec origin{}; float progress=0; };
-struct Anchor { bool reusable=false; float cooldown=0; };
+// 固い物 / カメラを遮る物
 struct Solid {};
 struct CameraOccluder { Vec center{},size{};float opacity=1; };
 // チェインが失敗した理由
@@ -47,9 +17,6 @@ struct ControlFrame {
     Vec move{};
     // 攻撃・狙い・切り替え・ジャンプ・回避・ロックオン
     bool attack=false, aim=false, toggle=false, jump=false, dodge=false,lockOn=false;
-    // アリーナ / 生き物 / 蛇のモードの切り替え
-    bool arena=false;
-    bool creature=false,snake=false;
     // 強化の選択・引き直し・見送り
     int upgradeChoice=-1;bool upgradeReroll=false,upgradeSkip=false;
     int attackPattern=-1; // 確認用の上書き。通常のプレイは状況で選ぶ
@@ -64,16 +31,6 @@ struct ControlFrame {
     bool intro=false; // スクリプトの確認でもステージ開始のカメラ演出を出す
     // カメラの向き
     float yaw=0, pitch=0;
-};
-// 旧モードのボスの状態
-struct Boss {
-    // 時間・段階・波・出した数・壊した数
-    float clock=0; int phase=0, wave=0, emitted=0, waveBreaks=0;
-    // 戦闘中か・反撃されたか
-    bool engaged=false, countered=false;
-    // 攻撃の向きと当たったか
-    Vec attackDirection{0,0,-1};
-    bool attackHit=false;
 };
 // プレイヤーの状態 (行動・速度・量・タイマー・カメラ・狙い・先行入力・流れ・成績)
 struct Player {

@@ -31,14 +31,12 @@ class RigidbodyValidationScene final : public Game::GameScene {
         };
         const auto bare=body(0,false), disabledCollider=body(4,true), triggerBody=body(8,true);
         const auto kinematic=body(12,false), disabledBody=body(16,true), noGravity=body(20,false);
-        const auto disabledController=body(24,false), controller=body(28,false), grounded=body(32,true);
+        const auto grounded=body(32,true);
         registry.get<Game::BoxColliderComponent>(disabledCollider).enabled=false;
         registry.get<Game::BoxColliderComponent>(triggerBody).isTrigger=true;
         registry.get<Game::RigidbodyComponent>(kinematic).isKinematic=true;
         registry.get<Game::RigidbodyComponent>(disabledBody).enabled=false;
         registry.get<Game::RigidbodyComponent>(noGravity).useGravity=false;
-        registry.emplace<Game::CharacterMovementComponent>(disabledController).enabled=false;
-        registry.emplace<Game::CharacterMovementComponent>(controller);
         registry.get<Game::TransformComponent>(grounded).translate.y=3;
         const auto floor=registry.create();
         registry.emplace<Game::TransformComponent>(floor).translate={32,-.5f,0};
@@ -55,7 +53,6 @@ class RigidbodyValidationScene final : public Game::GameScene {
         Check(std::abs(y(disabledCollider)-y(bare))<.001f && std::abs(y(triggerBody)-y(bare))<.001f,"disabled/trigger collider does not suppress motion");
         Check(y(kinematic)==10 && registry.get<Game::RigidbodyComponent>(kinematic).velocity.y==0,"kinematic body stays still without accumulating gravity");
         Check(y(disabledBody)==10 && y(noGravity)==10,"disabled body and Use Gravity off remain still");
-        Check(std::abs(y(disabledController)-y(bare))<.001f && y(controller)==10,"enabled character controller owns vertical motion; disabled one does not");
         Check(std::abs(y(grounded)-.5f)<.001f && std::abs(registry.get<Game::RigidbodyComponent>(grounded).velocity.y)<.001f,"box rests on a BoxCollider-only static floor");
         Check(y(throughTrigger)<0,"trigger floor does not block a falling body");
         ctx.isPlaying=false;const auto stopped=y(bare);physics.Update(registry,ctx);

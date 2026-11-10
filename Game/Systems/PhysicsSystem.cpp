@@ -47,29 +47,20 @@ void PhysicsSystem::Update(entt::registry& registry, GameContext& ctx) {
 		// 無効・キネマティック (自分で動かす) の剛体は動かさない
 		if (!rb.enabled || rb.isKinematic) continue;
 
-		// キャラクター移動を持つものは、重力と縦の移動をそちらに任せる
 		float damping = 3.0f;
-		bool isGrounded = false;
-		bool hasCMS = false;
-		if (auto* cm = registry.try_get<CharacterMovementComponent>(entity); cm && cm->enabled) {
-			isGrounded = cm->isGrounded;
-			hasCMS = true;
-		}
 
-		// 重力 (接地中とキャラクター移動を持つものは除く)
-		if (rb.useGravity && !isGrounded && !hasCMS) {
+		// 重力
+		if (rb.useGravity) {
 			float gravity = 9.8f;
 			rb.velocity.y -= gravity * ctx.dt;
 		}
-		// 水平の速度を減衰させ、速度の分だけ位置を進める (縦はキャラクター移動が無いときだけ)
+		// 水平の速度を減衰させ、速度の分だけ位置を進める
 		if (!rb.isKinematic) {
 			rb.velocity.x -= rb.velocity.x * damping * ctx.dt;
 			rb.velocity.z -= rb.velocity.z * damping * ctx.dt;
 
 			tc.translate.x += rb.velocity.x * ctx.dt;
-			if (!hasCMS) {
-				tc.translate.y += rb.velocity.y * ctx.dt;
-			}
+			tc.translate.y += rb.velocity.y * ctx.dt;
 			tc.translate.z += rb.velocity.z * ctx.dt;
 		}
 	}
@@ -319,10 +310,6 @@ void PhysicsSystem::Update(entt::registry& registry, GameContext& ctx) {
 			// キネマティックな剛体は GPU の接触結果を使わない
 			const auto* body = registry.try_get<RigidbodyComponent>(d.entity);
 			if (!body || !body->enabled || body->isKinematic) continue;
-			// CharacterMovementSystem がメッシュへのレイで地形の高さと壁を既に解決している。
-			// GPU での BVH 判定を重ねると処理が二重になり、
-			// キャラクターの反応がフレーム枠の一巡分遅れる
-			if (const auto* movement = registry.try_get<CharacterMovementComponent>(d.entity); movement && movement->enabled) continue;
 			// 動く箱のトランスフォーム
 			auto& tc = registry.get<TransformComponent>(d.entity);
 			auto& bc = registry.get<BoxColliderComponent>(d.entity);

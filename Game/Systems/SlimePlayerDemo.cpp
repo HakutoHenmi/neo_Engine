@@ -5,9 +5,6 @@ namespace Game {
 void ChronoSystem::BuildSlimePlayerDemo(entt::registry& r) {
     auto* renderer=Engine::Renderer::GetInstance();
     renderer->SetDirectionalShadowRange(110,160);
-    std::vector<entt::entity> unused;
-    for(auto e:r.view<CreaturePart>())unused.push_back(e);
-    for(auto e:unused)r.destroy(e);
     cityProps_.clear();cityGateEntity_=entt::null;cityGateProp_=-1;
     cityShots_.clear();cityDebris_.clear();cityStomps_.clear();
     inkSurfaces_.clear();

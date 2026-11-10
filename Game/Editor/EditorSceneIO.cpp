@@ -265,18 +265,8 @@ static void RestoreComponents(GameScene* scene, const json& obj, entt::entity en
 					// 音のファイル・音量・ループ・開始時に鳴らすか
 					c.enabled = en; c.soundPath = comp.value("soundPath", ""); c.volume = comp.value("volume", 1.0f);
 					c.loop = comp.value("loop", false); c.playOnStart = comp.value("playOnStart", false);
-				// 旧アクションゲーム用: 入力・移動・カメラ追従
-				} else if (type == "PlayerInput") {
-					reg.get_or_emplace<PlayerInputComponent>(entity).enabled = en;
-				// 移動の速さ・ジャンプ力・重力など
-				} else if (type == "CharacterMovement") {
-					auto& c = reg.get_or_emplace<CharacterMovementComponent>(entity);
-					c.enabled = en; c.speed = comp.value("speed", 5.0f); c.jumpPower = comp.value("jumpPower", 6.0f); c.gravity = comp.value("gravity", 9.8f); c.heightOffset = comp.value("heightOffset", 1.0f);
-				// カメラ追従の距離・高さ・なめらかさ
-				} else if (type == "CameraTarget") {
-					auto& c = reg.get_or_emplace<CameraTargetComponent>(entity);
-					c.enabled = en; c.distance = comp.value("distance", 10.0f); c.height = comp.value("height", 3.0f); c.smoothSpeed = comp.value("smoothSpeed", 5.0f);
 				// 川 (制御点の一覧)
+				} else if (type == "River") {				// 川 (制御点の一覧)
 				} else if (type == "River") {
 					auto& c = reg.get_or_emplace<RiverComponent>(entity);
 					// 幅・流れの速さ・UV の倍率・テクスチャ
@@ -291,17 +281,6 @@ static void RestoreComponents(GameScene* scene, const json& obj, entt::entity en
 								c.points.push_back({pt[0], pt[1], pt[2]});
 						}
 					}
-				// 頭上の HP バー
-				} else if (type == "WorldSpaceUI") {
-					auto& c = reg.get_or_emplace<WorldSpaceUIComponent>(entity);
-					// HP バーとダメージの数字を出すか
-					c.enabled = en; c.showHealthBar = comp.value("showHealthBar", true);
-					c.showDamageNumbers = comp.value("showDamageNumbers", true);
-					// 頭上のずれと、バーの大きさ
-					ReadFloats(comp, "offset", &c.offset.x, 3);
-					c.barWidth = comp.value("barWidth", 60.0f);
-					c.barHeight = comp.value("barHeight", 6.0f);
-				// GPU メッシュコライダー (パスが無ければ描画用モデルのパスを使う)
 				} else if (type == "GpuMeshCollider") {
 					auto& c = reg.get_or_emplace<GpuMeshColliderComponent>(entity);
 					c.enabled = en;
@@ -419,49 +398,8 @@ static void RestoreComponents(GameScene* scene, const json& obj, entt::entity en
 				// 音を聞く位置
 				} else if (type == "AudioListener") {
 					reg.get_or_emplace<AudioListenerComponent>(entity).enabled = en;
-				// 旧アクションゲーム用: 攻撃判定・食らい判定・プレイヤーの行動・敵の AI
-				} else if (type == "Hitbox") {
-					auto& c = reg.get_or_emplace<HitboxComponent>(entity);
-					c.enabled = en;
-					// 中心・大きさ・ダメージ・有効か・タグ
-					ReadFloats(comp, "center", &c.center.x, 3);
-					ReadFloats(comp, "size", &c.size.x, 3);
-					c.damage = comp.value("damage", 10.0f);
-					c.isActive = comp.value("isActive", false);
-					if (comp.contains("tag")) c.tag = StringToTag(comp.value("tag", "Default"));
-				// 食らい判定: 中心・大きさ・ダメージ倍率・タグ
-				} else if (type == "Hurtbox") {
-					auto& c = reg.get_or_emplace<HurtboxComponent>(entity);
-					c.enabled = en;
-					ReadFloats(comp, "center", &c.center.x, 3);
-					ReadFloats(comp, "size", &c.size.x, 3);
-					c.damageMultiplier = comp.value("damageMultiplier", 1.0f);
-					if (comp.contains("tag")) c.tag = StringToTag(comp.value("tag", "Default"));
-				// プレイヤーの行動: 回避の時間と速さ
-				} else if (type == "PlayerAction") {
-					auto& c = reg.get_or_emplace<PlayerActionComponent>(entity);
-					c.enabled = en;
-					c.dodgeDuration = comp.value("dodgeDuration", 0.4f);
-					c.dodgeSpeed = comp.value("dodgeSpeed", 15.0f);
-				// 敵の AI: 攻撃の間隔・溜め・攻撃・待ち・怯みの時間
-				} else if (type == "EnemyAI") {
-					auto& c = reg.get_or_emplace<EnemyAIComponent>(entity);
-					c.enabled = en;
-					c.attackInterval = comp.value("attackInterval", 3.0f);
-					c.windUpDuration = comp.value("windUpDuration", 0.6f);
-					c.attackDuration = comp.value("attackDuration", 1.0f);
-					c.cooldownDuration = comp.value("cooldownDuration", 1.0f);
-					c.stunDuration = comp.value("stunDuration", 1.5f);
-					// 追跡の速さと範囲、攻撃の範囲
-					c.chaseSpeed = comp.value("chaseSpeed", 4.0f);
-					c.chaseRange = comp.value("chaseRange", 15.0f);
-					c.attackRange = comp.value("attackRange", 15.0f);
-					// 跳ねる敵の設定と、気付く範囲
-					c.hopper = comp.value("hopper", false);
-					c.hopInterval = comp.value("hopInterval", 0.72f);
-					c.hopHeight = comp.value("hopHeight", 1.65f);
-					c.aggroRange = comp.value("aggroRange", 28.0f);
 				// モーション (キーフレームアニメーション): クリップごとのキーフレーム
+				} else if (type == "Motion") {				// モーション (キーフレームアニメーション): クリップごとのキーフレーム
 				} else if (type == "Motion") {
 					auto& c = reg.get_or_emplace<MotionComponent>(entity);
 					c.enabled = en;
@@ -656,19 +594,6 @@ std::string EditorInternal::SerializeEntity(SceneComponents& registry, entt::ent
 		addComma();
 		ss << "        {\"type\": \"Tag\", \"enabled\": " << (cp->enabled ? "true" : "false") << ", \"tag\": \"" << EscapeJson(TagToString(cp->tag)) << "\"}";
 	}
-	// 旧アクションゲーム用: 入力・移動・カメラ追従
-	if (auto* cp = registry.try_get<PlayerInputComponent>(entity)) {
-		addComma();
-		ss << "        {\"type\": \"PlayerInput\", \"enabled\": " << (cp->enabled ? "true" : "false") << "}";
-	}
-	if (auto* cp = registry.try_get<CharacterMovementComponent>(entity)) {
-		addComma();
-		ss << "        {\"type\": \"CharacterMovement\", \"enabled\": " << (cp->enabled ? "true" : "false") << ", \"speed\": " << cp->speed << ", \"jumpPower\": " << cp->jumpPower << ", \"gravity\": " << cp->gravity << ", \"heightOffset\": " << cp->heightOffset << "}";
-	}
-	if (auto* cp = registry.try_get<CameraTargetComponent>(entity)) {
-		addComma();
-		ss << "        {\"type\": \"CameraTarget\", \"enabled\": " << (cp->enabled ? "true" : "false") << ", \"distance\": " << cp->distance << ", \"height\": " << cp->height << ", \"smoothSpeed\": " << cp->smoothSpeed << "}";
-	}
 	// 川 (制御点の一覧)
 	if (auto* cp = registry.try_get<RiverComponent>(entity)) {
 		addComma();
@@ -678,11 +603,6 @@ std::string EditorInternal::SerializeEntity(SceneComponents& registry, entt::ent
 			ss << "[" << cp->points[pi].x << "," << cp->points[pi].y << "," << cp->points[pi].z << "]";
 		}
 		ss << "]}";
-	}
-	// 頭上の HP バー
-	if (auto* cp = registry.try_get<WorldSpaceUIComponent>(entity)) {
-		addComma();
-		ss << "        {\"type\": \"WorldSpaceUI\", \"enabled\": " << (cp->enabled ? "true" : "false") << ", \"showHealthBar\": " << (cp->showHealthBar ? "true" : "false") << ", \"showDamageNumbers\": " << (cp->showDamageNumbers ? "true" : "false") << ", \"offset\": [" << cp->offset.x << "," << cp->offset.y << "," << cp->offset.z << "], \"barWidth\": " << cp->barWidth << ", \"barHeight\": " << cp->barHeight << "}";
 	}
 	// GPU メッシュコライダー
 	if (auto* cp = registry.try_get<GpuMeshColliderComponent>(entity)) {
@@ -776,23 +696,6 @@ std::string EditorInternal::SerializeEntity(SceneComponents& registry, entt::ent
 	if (auto* cp = registry.try_get<AudioListenerComponent>(entity)) {
 		addComma();
 		ss << "        {\"type\": \"AudioListener\", \"enabled\": " << (cp->enabled ? "true" : "false") << "}";
-	}
-	// 旧アクションゲーム用: 攻撃判定・食らい判定・プレイヤーの行動・敵の AI
-	if (auto* cp = registry.try_get<HitboxComponent>(entity)) {
-		addComma();
-		ss << "        {\"type\": \"Hitbox\", \"enabled\": " << (cp->enabled ? "true" : "false") << ", \"center\": [" << cp->center.x << "," << cp->center.y << "," << cp->center.z << "], \"size\": [" << cp->size.x << "," << cp->size.y << "," << cp->size.z << "], \"damage\": " << cp->damage << ", \"isActive\": " << (cp->isActive ? "true" : "false") << ", \"tag\": \"" << EscapeJson(TagToString(cp->tag)) << "\"}";
-	}
-	if (auto* cp = registry.try_get<HurtboxComponent>(entity)) {
-		addComma();
-		ss << "        {\"type\": \"Hurtbox\", \"enabled\": " << (cp->enabled ? "true" : "false") << ", \"center\": [" << cp->center.x << "," << cp->center.y << "," << cp->center.z << "], \"size\": [" << cp->size.x << "," << cp->size.y << "," << cp->size.z << "], \"damageMultiplier\": " << cp->damageMultiplier << ", \"tag\": \"" << EscapeJson(TagToString(cp->tag)) << "\"}";
-	}
-	if (auto* cp = registry.try_get<PlayerActionComponent>(entity)) {
-		addComma();
-		ss << "        {\"type\": \"PlayerAction\", \"enabled\": " << (cp->enabled ? "true" : "false") << ", \"dodgeDuration\": " << cp->dodgeDuration << ", \"dodgeSpeed\": " << cp->dodgeSpeed << "}";
-	}
-	if (auto* cp = registry.try_get<EnemyAIComponent>(entity)) {
-		addComma();
-		ss << "        {\"type\": \"EnemyAI\", \"enabled\": " << (cp->enabled ? "true" : "false") << ", \"attackInterval\": " << cp->attackInterval << ", \"windUpDuration\": " << cp->windUpDuration << ", \"attackDuration\": " << cp->attackDuration << ", \"cooldownDuration\": " << cp->cooldownDuration << ", \"stunDuration\": " << cp->stunDuration << ", \"chaseSpeed\": " << cp->chaseSpeed << ", \"chaseRange\": " << cp->chaseRange << ", \"attackRange\": " << cp->attackRange << ", \"hopper\": " << (cp->hopper ? "true" : "false") << ", \"hopInterval\": " << cp->hopInterval << ", \"hopHeight\": " << cp->hopHeight << ", \"aggroRange\": " << cp->aggroRange << "}";
 	}
 	// モーション: クリップごとのキーフレーム
 	if (auto* cp = registry.try_get<MotionComponent>(entity)) {

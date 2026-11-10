@@ -4,15 +4,8 @@
 //
 // ChronoSystem の実装は役割ごとにファイルを分けている:
 //   ChronoSystem.cpp      共通の処理 (初期化・当たり判定・ダメージ・演出・終了・更新と描画の振り分け)
-//   ChronoChainMode.cpp   旧来の確認用のモード: 鎖で敵を引き寄せる戦闘とアリーナ
-//   ChronoCreature.cpp    旧来の確認用のモード: 生き物のボス (蛇と鳥)
-//   ChronoInk.cpp         新しいゲームのシミュレーションの流れ全体
-//   ChronoCinematic.cpp   開幕とボス出現のムービー
-//   SlimeAssault.cpp      輪を描いて誘導弾を撃つ戦闘
-//   HordeCombat.cpp       群れの敵との戦闘
-//   HomingDomains.cpp     描いた輪から出る誘導弾
-//   RogueliteCombat.cpp   1 回の挑戦の中での成長 (強化カード)
-//   BossDefeat.cpp        ボスの被弾の反応と倒れる演出
+//   ChronoInk.cpp         ステージの作成とカメラ
+//   HordeCombat.cpp       群れの敵の作成・描画
 //   SlimeLife.cpp         スライムの生活モード (現在のゲームの本編)
 //   SlimeHydrant.cpp      消火栓に変形したスライムの水
 //   CityStage.cpp         スライムの街のステージ
@@ -30,8 +23,6 @@
 #include "../UI/GameUI.h"
 #include "../UI/ScaleUI.h"
 #include "../UI/RogueliteUI.h"
-#include "../Chrono/CreatureMotion.h"
-#include "../Chrono/MeadowTerrain.h"
 #include "../Scenes/GameScene.h"
 #include "../../Engine/SceneManager.h"
 #include "../../Engine/Model.h"
@@ -57,9 +48,8 @@ inline DirectX::XMFLOAT3 Write(Vec p){return {p.x,p.y,p.z};}
 inline Engine::Vector3 EV(Vec p){return {p.x,p.y,p.z};}
 inline Vec Forward(float yaw,float pitch){return {std::sin(yaw)*std::cos(pitch),-std::sin(pitch),std::cos(yaw)*std::cos(pitch)};}
 inline bool Down(int key){return (GetAsyncKeyState(key)&0x8000)!=0;}
-// 旧モードで使うモデルのパス
+// 共通で使うモデルのパス (草のブロック・球)
 inline constexpr const char* grass="Resources/Models/Quaternius/Modular Platforms/Single Cube/FBX/Cube_Grass_Single.fbx";
-inline constexpr const char* horn="Resources/Models/Quaternius/Enemies/FBX/Enemy.fbx";
 inline constexpr const char* ball="Resources/Models/player_ball/ball.obj";
 // 最高記録の保存先 (%LOCALAPPDATA%/LiquidTime/records-v1.json)
 inline std::filesystem::path RecordPath(){
@@ -67,8 +57,6 @@ inline std::filesystem::path RecordPath(){
     DWORD n=GetEnvironmentVariableW(L"LOCALAPPDATA",buffer,32768);
     return n>0 && n<32768 ? std::filesystem::path(buffer)/L"LiquidTime"/L"records-v1.json" : std::filesystem::path{};
 }
-// 秒を「分:秒.百分の一秒」の文字列にする
-inline std::string TimeText(float seconds){char b[32];int s=static_cast<int>(seconds);std::snprintf(b,sizeof(b),"%02d:%02d.%02d",s/60,s%60,static_cast<int>(seconds*100)%100);return b;}
 // スライムの生活モードの手応え (ヒットストップ秒・揺れの秒・揺れの大きさ・揺れの速さ・振動の重い側・軽い側・振動の秒)。
 // 自分の攻撃が当たった・倒した・被弾した・壊したなど、プレイヤーが起こした重い瞬間ほど止めて強く揺らす。
 // 敵の攻撃や遠くの爆発は止めず、離れているほど弱める (ChronoSystem::LifeImpact)

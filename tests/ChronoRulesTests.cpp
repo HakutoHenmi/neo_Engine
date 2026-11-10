@@ -1,5 +1,4 @@
 #include "../Game/Chrono/ChronoRules.h"
-#include "../Game/Chrono/CreatureMotion.h"
 #include "../Game/Chrono/InkRules.h"
 #include "../Engine/StaticLod.h"
 #include "../Game/Chrono/LiquidTrail.h"
@@ -268,93 +267,6 @@ int main(){
     assert(InkBossSupport({32,0,9},0)==0);
     assert(InkBossSupport({-75,0,-50},2)==0);
     }
-    static_assert(CreatureMorphSeconds==8.f);
-    for(bool ink:{false,true}){
-        Vec player{12,1,18};
-        Vec left=CreatureCruisePoint(player,{0,0,115},1,ink),right=CreatureCruisePoint(player,{0,0,115},0,ink);
-        if(ink){assert(Length(left-player)>110&&Length(right-player)>110);}
-        else assert(left.x<player.x&&right.x>player.x);
-        for(float hz:{30.f,60.f,144.f}){
-            Vec at{},velocity{};
-            for(int i=0;i<int(hz*8);++i){
-                Vec delta=right-at;
-                velocity=CreatureCruiseVelocity(velocity,delta,1/hz,ink?30.f:40.f);
-                Vec step=velocity*(1/hz);
-                at=at+(Length(step)>Length(delta)?delta:step);
-            }
-            assert(Length(right-at)<1.5f);
-        }
-    }
-    for(Vec player:{Vec{0,1,0},Vec{205,1,0},Vec{-205,1,0},Vec{0,1,245},Vec{0,1,-205}}){
-        Vec goal=CreatureCruisePoint(player,{0,0,115},0,true);
-        assert(Length(goal-player)>145.f&&std::abs(goal.x)<=190.f&&goal.z>=-185.f&&goal.z<=225.f);
-    }
-    for(float step:{1.f/30,1.f/60,1.f/144})for(auto attack:{CreatureAttack::Sweep,CreatureAttack::Charge,CreatureAttack::Slam,CreatureAttack::Wing,CreatureAttack::HeadTail}){
-        bool hit=false;for(float t=step;t<ActiveTime(attack)+step;t+=step)hit|=AttackTouches(attack,{0,1,0},t-step,t);
-        assert(hit);
-        for(float t=step;t<ActiveTime(attack)+step;t+=step){
-            assert(!AttackTouches(attack,{40,1,40},t-step,t));
-            assert(!AttackTouches(attack,{0,40,0},t-step,t));
-        }
-    }
-    assert(AttackTouches(CreatureAttack::Slam,{0,18,0},.27f,.3f));
-    assert(!AttackTouches(CreatureAttack::Sweep,{0,8,0},0,.6f));
-    assert(!AttackTouches(CreatureAttack::Charge,{8,1,0},0,.6f));
-    assert(!AttackTouches(CreatureAttack::Wing,{0,-8,0},0,.8f));
-    assert(AttackHead(CreatureAttack::HeadTail,1,0).z>30);
-    assert(AttackHead(CreatureAttack::HeadTail,2,ActiveTime(CreatureAttack::HeadTail)).z<0);
-    assert(TailTouches({0,1,0},0,TailActiveTime));
-    assert(!TailTouches({0,1,12},0,TailActiveTime));
-    // Check continuity across all departure, lattice-switch and arrival seams.
-    for(float t=0;t<8;t+=.01f){auto a=EvaluateCreature(0,t/8),b=EvaluateCreature(0,(t+.0001f)/8);
-        for(int i=0;i<a.count;++i)assert(Length(a.pieces[i].position-b.pieces[i].position)<.5f);}
-    for(float age:{0.f,1.f,10.f,90.f})for(float form:{0.f,.25f,.5f,.75f,1.f}){
-        auto pose=EvaluateCreature(age,form);assert(pose.count==CreaturePartCount);
-        for(int i=0;i<pose.count;++i){const auto& piece=pose.pieces[i];
-            assert(std::isfinite(Length(piece.position))&&std::isfinite(Length(piece.rotation)));
-            assert(piece.size.x>0&&piece.size.y>0&&piece.size.z>0);}
-        auto again=EvaluateCreature(age,form);assert(Length(again.head-pose.head)==0);
-    }
-    auto snake=EvaluateCreature(0,0),bird=EvaluateCreature(0,1);
-    const auto& tailLink=snake.pieces[snake.spineIndex[25]];
-    assert(std::abs(tailLink.position.y-CreatureVerticalExtent(tailLink))<4.f);
-    assert(snake.head.y-tailLink.position.y>35.f);
-    for(int segment=0;segment<CreatureSpineCount;++segment){
-        const auto& link=snake.pieces[snake.spineIndex[segment]];
-        assert(link.role==CreatureRole::Spine&&link.segment==segment);
-        int armor=0;
-        for(int i=0;i<snake.count;++i)if(snake.pieces[i].segment==segment&&
-            snake.pieces[i].role!=CreatureRole::Spine)++armor;
-        assert(armor==6);
-    }
-    for(int side=0;side<2;++side){
-        assert(bird.pieces[bird.wingRoot[side]].role==CreatureRole::WingSpar);
-        assert(bird.pieces[bird.wingTip[side]].role==CreatureRole::PrimaryFeather);
-        assert(bird.pieces[bird.wingTip[side]].span==17);
-    }
-    assert(bird.pieces[bird.skullIndex].role==CreatureRole::Skull);
-    assert(bird.head.y>145);
-    auto pattern=EvaluateCreature(0,.5f);
-    for(int i=0;i<pattern.count;++i){
-        assert(Length(pattern.pieces[i].position-Lerp(snake.pieces[i].position,bird.pieces[i].position,.5f))>10);
-        auto nearby=EvaluateCreature(0,.5001f);
-        assert(Length(pattern.pieces[i].position-nearby.pieces[i].position)<3); // Fast lattice transfer, still continuous.
-    }
-    assert(bird.head.y>55&&snake.head.y>23);
-    float wingLeft=0,wingRight=0,wingLow=1000,wingHigh=-1000;
-    for(int i=0;i<bird.count;++i){if(!CreatureWing(bird.pieces[i].role))continue;auto at=bird.pieces[i].position;
-        wingLeft=std::min(wingLeft,at.x);wingRight=std::max(wingRight,at.x);
-        wingLow=std::min(wingLow,at.y);wingHigh=std::max(wingHigh,at.y);}
-    assert(wingRight-wingLeft>100&&wingHigh-wingLow>15);
-    assert(Length(bird.pieces[bird.wingRoot[0]].position-bird.pieces[bird.wingTip[0]].position)>1);
-    assert(bird.head.y>snake.head.y+10&&bird.core.y>14);
-    assert(std::abs(bird.pieces[bird.wingTip[1]].position.x)>16);
-    assert(Length(snake.pieces[snake.wingTip[1]].position-bird.pieces[bird.wingTip[1]].position)>10);
-    for(Vec start:{Vec{0,1,-17},Vec{-25,1,-25},Vec{25,1,25},Vec{105,1,-125}}){
-        auto route=FeatherRoute(start,bird.core);Vec from{std::clamp(start.x,-108.f,108.f),3,std::clamp(start.z,-128.f,128.f)};
-        for(Vec point:route){assert(Length(point-from)<Reach(1));from=point;}
-        assert(Length(bird.core-from)<Reach(1));
-    }
     Flow flow;flow.Hit(false);flow.Hit(false);
     assert(flow.remaining==0);flow.Hit(true);assert(flow.remaining>0&&flow.combo==3);
     flow.Tick(0.1f);assert(flow.scale<1&&flow.scale>=0.25f);
@@ -518,14 +430,6 @@ int main(){
         }
         std::cout<<"PASS: one-stroke enclosure accumulation, shared edges, subdivision, retracing, area-based ammo, loop reach, enclosure power, hidden skills, sampling invariance, partial loss, height rejection, bounds, moving-target homing\n";
     }
-    auto referencePose=EvaluateCreature(0,0);
-    for(int part=0;part<referencePose.count;++part){
-        Vec from{1,2,3},to{200,60,220};
-        assert(Length(ReformPart(from,to,referencePose.pieces[part],part,0)-from)<.001f);
-        assert(Length(ReformPart(from,to,referencePose.pieces[part],part,1)-to)<.001f);
-    }
-    assert(Length(ReformPart({0,0,0},{200,60,220},referencePose.pieces[referencePose.spineIndex[0]],0,.4f)-
-        ReformPart({0,0,0},{200,60,220},referencePose.pieces[referencePose.spineIndex[25]],1,.4f))>5);
     for(int angle=0;angle<360;++angle){
         Vec at=SlimeFlightPoint(angle*3.14159265f/180);
         assert(std::abs(at.x)>220||at.z< -220||at.z>260);

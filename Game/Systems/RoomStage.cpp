@@ -96,7 +96,7 @@ void ChronoSystem::BuildRoomGimmicks(entt::registry& r){
         // 絵の具のチューブがパレットのまわりに転がっている
         for(int i=0;i<10;++i){float a=spin(),d=52+18*RingNoise(++seed);V at=palette+V{std::cos(a)*d,0,std::sin(a)*d*.7f};if(std::abs(at.z)>290||RoomTop(at)>.1f)continue;real("paint_tube",at,spin(),.8f,1.2f,colors[i%4]);}}
 
-    // ---- ドミノ: じゅうたんとレールの間をくねって並ぶ。最後のバケツが倒れて、中のおもちゃがあふれる ----
+    // ---- ドミノ: じゅうたんと机の間をくねって並ぶ。最後のバケツが倒れて、中のおもちゃがあふれる ----
     {std::vector<V> path;for(int i=0;i<=24;++i){float u=float(i)/24;path.push_back({40+135*u,0,-210+18*std::sin(u*6.283f)});}
         const int g=AddGimmick(r,GimmickKind::Domino,"ドミノを倒す",path.front()+V{-14,0,0},16,8,1.5708f,{22,0,-232});auto& domino=gimmicks_[size_t(g)];domino.path=path;domino.scale=1.2f;
         const Engine::Vector4 colors[]={kRed,kYellow,kBlue,kGreen,kPink,kSky};const float length=GimmickPathLength(path),step=9;int k=0;
@@ -117,7 +117,8 @@ void ChronoSystem::BuildRoomGimmicks(entt::registry& r){
     // ---- 液体: こぼれた蜂蜜 (机)・のり (本棚)・ジュース (おもちゃ箱) の跡をつたって、床と家具の上を行き来する ----
     {struct Spill {const char* name;const char* item;V bottom,wall,top;float minCm;Engine::Vector4 color;V sign;V item_at;float itemYaw;float itemLift;};
         const Spill spills[]={
-            {"蜂蜜をつたって机へ","honey_jar",{285,0,-206},{285,0,-226.6f},{285,86.4f,-244},8,{1,.62f,.1f,1},{268,0,-196},{287,86.4f+6.2f,-256},0,6.2f},
+            // 机の左の縁からベッド側へ流す。上下の輪も同じ流れの両端に置く。
+            {"蜂蜜をつたって机へ","honey_jar",{148,0,-264},{168.6f,0,-264},{186,86.4f,-264},8,{1,.62f,.1f,1},{140,0,-240},{198,86.4f+6.2f,-266},-1.5708f,6.2f},
             {"のりをつたって本棚へ","glue_bottle",{236,0,-40},{262.6f,0,-40},{274,RoomShelfTop,-40},10,{.92f,.95f,1,1},{232,0,-12},{296,RoomShelfTop+3.8f,-40},-1.5708f,3.8f},
             {"ジュースをつたっておもちゃ箱へ","juice_cup",{-232,0,28},{-232,0,5.4f},{-232,RoomToyboxTop,-14},8,{1,.48f,.14f,1},{-258,0,26},{-232,RoomToyboxTop+4.8f,-26},0,4.8f}};
         for(const auto& s:spills){const V up{s.wall.x,s.top.y,s.wall.z};
@@ -215,8 +216,8 @@ void ChronoSystem::BuildRoomStage(entt::registry& r,const RingCityTools& tools){
     {auto& o=r.get<CameraOccluder>(real("bed",{-180,0,-240},0,0));o.center={-180,44,-240};o.size={240,28,120};}
     {auto& o=r.get<CameraOccluder>(real("desk",{235,0,-264},0,0));o.center={235,84,-264};o.size={130,6,72};}
     real("chair",{235,0,-195},3.14159f,0);real("bookshelf",{282,0,-60},-1.5708f,0);real("toybox",{-232,0,-20},.0f,0);
-    // 本の階段・積んだ本・おもちゃのレール
-    real("book_stairs",{-180,0,-180},0,0);real("book_steps",{148.4f,0,190},-1.5708f,0);real("toy_rail",{24,0,-264},0,0);
+    // 本の階段・積んだ本
+    real("book_stairs",{-180,0,-180},0,0);real("book_steps",{148.4f,0,190},-1.5708f,0);
     // ベッドの下を囲む収納ケース (飲めない。8cm まで育つと段差ジャンプで越えられる)
     {const Engine::Vector4 colors[]={kPlain,{.9f,.95f,1,1},kPlain,{1,.95f,.86f,1},kPlain};
         auto storage=[&](V at,float yaw,Engine::Vector4 tint,V size){r.emplace_or_replace<CameraOccluder>(real("storage_case",at,yaw,0,1,tint),at+V{0,RoomCaseHeight*.5f,0},size,1.f);};

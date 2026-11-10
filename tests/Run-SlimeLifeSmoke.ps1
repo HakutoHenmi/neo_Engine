@@ -1,4 +1,4 @@
-param([Parameter(Mandatory=$true)][string]$Executable,[switch]$LabOnly,[switch]$RoomOnly,[switch]$TurnOnly,[switch]$MixtureOnly,[switch]$StressOnly,[switch]$MotionOnly,[switch]$AbsorbOnly,[switch]$ProgressionOnly,[switch]$CameraOnly,[switch]$CityTour,[switch]$TireOnly,[switch]$HydrantOnly,[switch]$AimOnly,[switch]$CrewOnly,[switch]$ShowcaseOnly,[switch]$AlleyOnly,[switch]$SignalOnly,[switch]$IntroOnly,[switch]$MorphCameraOnly,[switch]$DevourOnly,[switch]$AnimEditor,[string]$AnimTime)
+param([Parameter(Mandatory=$true)][string]$Executable,[switch]$RoomOnly,[switch]$DevourOnly,[switch]$AnimEditor,[string]$AnimTime)
 $ErrorActionPreference='Stop'
 $repoPath=Split-Path $PSScriptRoot -Parent
 $outPath=Join-Path $PSScriptRoot 'out'
@@ -10,29 +10,12 @@ $process=$null
 $validationBefore=@(Get-Content -LiteralPath (Join-Path $repoPath 'd3d12_validation_log.txt') -ErrorAction SilentlyContinue).Count
 $runtimeOutPath=Join-Path (Split-Path (Resolve-Path -LiteralPath $Executable).Path -Parent) 'tests/out'
 New-Item -ItemType Directory -Force $runtimeOutPath | Out-Null
-$reportName=if($RoomOnly){'slime-life-room.txt'}elseif($DevourOnly){'slime-life-devour.txt'}elseif($MorphCameraOnly){'slime-life-morph-camera.txt'}elseif($IntroOnly){'slime-life-intro.txt'}elseif($SignalOnly){'slime-life-signal.txt'}elseif($AlleyOnly){'slime-life-alley.txt'}elseif($ShowcaseOnly){'slime-life-showcase.txt'}elseif($CrewOnly){'slime-life-crew.txt'}elseif($AimOnly){'slime-life-aim.txt'}elseif($HydrantOnly){'slime-life-hydrant.txt'}elseif($TireOnly){'slime-life-tire.txt'}elseif($CameraOnly){'slime-life-camera.txt'}elseif($ProgressionOnly){'slime-life-progression.txt'}elseif($AbsorbOnly){'slime-life-absorb.txt'}elseif($MotionOnly){'slime-life-motion.txt'}elseif($StressOnly){'slime-life-stress.txt'}else{'slime-life-smoke.txt'}
+# 既定は輪の町 (吸収モード) のテスト。-RoomOnly で部屋のテスト
+$reportName=if($RoomOnly){'slime-life-room.txt'}else{'slime-life-devour.txt'}
 $testStarted=Get-Date
 try {
-    $arguments=@('--slime-life-smoke');if($LabOnly){$arguments+='--slime-life-lab-only'}
-    if($TurnOnly){$arguments+='--slime-life-turn-only'}
-    if($MixtureOnly){$arguments+='--slime-life-mixture-only'}
-    if($StressOnly){$arguments+='--slime-life-stress'}
-    if($MotionOnly){$arguments+='--slime-life-motion'}
-    if($AbsorbOnly){$arguments+='--slime-life-absorb-only'}
-    if($CameraOnly){$arguments+='--slime-life-camera'}
-    if($ProgressionOnly){$arguments+='--slime-life-progression'}
-    if($CityTour){$arguments+='--slime-city-tour'}
-    if($TireOnly){$arguments+='--slime-life-tire'}
-    if($HydrantOnly){$arguments+='--slime-life-hydrant';$arguments+='--graphics-validation'}
-    if($AimOnly){$arguments+='--slime-life-aim';$arguments+='--graphics-validation'}
-    if($CrewOnly){$arguments+='--slime-life-crew'}
-    if($ShowcaseOnly){$arguments+='--slime-life-showcase'}
-    if($AlleyOnly){$arguments+='--slime-life-alley'}
-    if($SignalOnly){$arguments+='--slime-life-signal'}
-    if($IntroOnly){$arguments+='--slime-life-intro'}
-    if($MorphCameraOnly){$arguments+='--slime-life-morph-camera'}
-    if($DevourOnly){$arguments+='--slime-devour';$arguments+='--slime-life-devour';$arguments+='--devour-stage=1'}
-    if($RoomOnly){$arguments+='--slime-devour';$arguments+='--slime-life-room';$arguments+='--devour-stage=0'}
+    $arguments=@('--slime-life-smoke')
+    if($RoomOnly){$arguments+='--slime-life-room';$arguments+='--devour-stage=0'}else{$arguments+='--slime-life-devour';$arguments+='--devour-stage=1'}
     if($AnimEditor){$arguments+='--devour-anim-editor'}
     if($AnimTime){$arguments+=('--devour-anim-time='+$AnimTime)}
     $process=Start-Process -FilePath (Resolve-Path -LiteralPath $Executable).Path -ArgumentList $arguments -WorkingDirectory $repoPath -WindowStyle Hidden -PassThru

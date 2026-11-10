@@ -44,13 +44,7 @@
         { "type": "BoxCollider", "enabled": true, "center": [0, 0, 0], "size": [1.5, 1.5, 1.5], "isTrigger": false },
         { "type": "Rigidbody", "enabled": true, "velocity": [0, 0, 0], "useGravity": true, "isKinematic": true },
         { "type": "Health", "enabled": true, "hp": 100, "maxHp": 100, "isDead": false },
-        { "type": "Tag", "enabled": true, "tag": "Player" },
-        { "type": "PlayerInput", "enabled": true },
-        { "type": "CharacterMovement", "enabled": true, "speed": 8.0, "jumpPower": 10.0, "gravity": 9.8, "heightOffset": 0.75 },
-        { "type": "CameraTarget", "enabled": true, "distance": 16.0, "height": 2.5, "smoothSpeed": 8.0 },
-        { "type": "Hitbox", "enabled": true, "center": [0, 0, 1.5], "size": [1.5, 1.5, 4.0], "damage": 15, "isActive": false, "tag": "Player" },
-        { "type": "Hurtbox", "enabled": true, "center": [0, 0, 0], "size": [2.0, 2.0, 2.0], "damageMultiplier": 1.0, "tag": "Player" },
-        { "type": "PlayerAction", "enabled": true, "dodgeDuration": 0.4, "dodgeSpeed": 15.0 }
+        { "type": "Tag", "enabled": true, "tag": "Player" }
       ]
     }
   ]

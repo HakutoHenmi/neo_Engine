@@ -656,9 +656,7 @@ void EditorUI::Show(Engine::Renderer* renderer, GameScene* gameScene) {
 	const int tintColors = PushPlayModeTint(playing, gameScene->IsEditorPaused());
 
 	// PLAY 中 (Game ビュー表示時) は ImGui のカーソルを消す
-	// スライムの調合室を開いているか
-	const bool slimeLabOpen = gameScene->GetChronoSystem() && gameScene->GetChronoSystem()->SlimeLabOpen();
-	if (playing && !gameScene->IsPaused() && !gameScene->IsEditorPaused() && !gameScene->IsResultShowing() && !slimeLabOpen &&
+	if (playing && !gameScene->IsPaused() && !gameScene->IsEditorPaused() && !gameScene->IsResultShowing() &&
 		gameScene->GetEditorView() == GameScene::EditorView::Game) {
 		ImGui::SetMouseCursor(ImGuiMouseCursor_None);
 	} else {

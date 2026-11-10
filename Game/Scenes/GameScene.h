@@ -1,8 +1,8 @@
 // GameScene.h
 // ゲーム本編のシーン。エンティティ (ECS のレジストリ) とシステム群を持ち、
 // 毎フレームのゲーム処理・描画・エディタ表示を行う。
-// スライムの街ステージ (chrono.json) では ChronoSystem が中心になり、
-// それ以外のシーンファイルでは旧アクションゲーム用のシステム群が動く。
+// スライムの本編 (chrono.json) とデモ (slime_player_demo.json) では ChronoSystem が中心になり、
+// エディタで開いたそれ以外のシーンファイルでは物理・スクリプトなどの汎用システムだけが動く。
 #pragma once
 // ゲーム全体の設定 (本編のシーンファイルなど)
 #include "../Data/GameConfig.h"
@@ -29,7 +29,6 @@ namespace Game {
 
 // システムの前方宣言 (本体は Systems/ 以下)
 class ChronoSystem;
-class WaveSystem;
 
 // ゲーム本編のシーン
 class GameScene : public Engine::IScene {
@@ -134,26 +133,8 @@ private:
 #ifndef NDEBUG
     std::vector<UpdateTiming> updateTimings_;
 #endif
-	// CPU側でのプレイヤースライム変形・パーティクル管理用ロジック
-	struct PlayerSlimeCpuLogic {
-		uint32_t dynamicMeshHandle = 0;
-		std::vector<Engine::VertexData> baseVertices;
-		std::vector<Engine::VertexData> baseNormals;
-		std::vector<uint32_t> indices;
-		std::vector<Engine::VertexData> dynamicVerts;
-		float time = 0.0f;
-		float groundY = 0.0f;
-		bool initialized = false;
-
-		struct Particle {
-			Engine::Vector3 basePos;
-			Engine::Vector3 currentPos;
-			Engine::Vector4 color;
-		};
-		std::vector<Particle> particles;
-	};
-	PlayerSlimeCpuLogic slimeCpuLogic_;
-	PlayerSlimeCpuLogic projectileCpuLogic_; // 弾 (飛び道具) のメッシュ変形用
+	// プレイヤーのスライムを GPU 流体で描く準備ができたか (元のモデルを読めたか)
+	bool playerSlimeReady_ = false;
 
     // エンジン側のオブジェクト
     Engine::WindowDX* dx_ = nullptr;
@@ -170,8 +151,6 @@ private:
     // エンティティとコンポーネントを入れる ECS のレジストリと、その編集窓口
     entt::registry registry_;
     SceneComponents components_{registry_};
-	// 旧アクションゲームの戦闘の流れ (開始演出など) の状態
-	CombatFlowState combatFlow_;
     // エディタで選択中のエンティティ
     std::set<entt::entity> selectedEntities_;
     entt::entity selectedEntity_ = entt::null;
@@ -209,20 +188,15 @@ private:
 	void FlushPendingTags();                            // 予約したタグのキャッシュの更新を反映する
 	bool HandlePlayInput(float dt, bool stageClear);    // PLAY 中の入力。設定画面・ポーズメニューを処理したら true
 	void UpdateAnimations(float dt);                    // アニメーションの再生時刻を進める
-	void UpdateCanRadialMenu(bool stageClear);          // 旧アクションゲーム: 缶を選ぶラジアルメニュー
-	void UpdateCanFollow(float dt, bool stageClear);    // 旧アクションゲーム: 頭上の缶を追従させる
 	void FlushPendingSpawnsAndDestroys();               // 予約された生成と破棄を反映する
 	void ApplyLights();                                 // ライトをレンダラーへ渡す
 	void UpdateParticleEmitters(float dt);              // パーティクルエミッターを動かす
 
 	// ---- Draw の手順 (GameSceneDraw.cpp) ----
-	// 流体の描画に使うプレイヤーの状態 (位置・大きさ・液状化・死亡)
+	// 流体の描画に使うプレイヤーの状態 (位置・大きさ・死亡)
 	struct PlayerDrawState {
 		DirectX::XMFLOAT3 corePos = { 0.0f, 1.0f, 0.0f };
 		DirectX::XMFLOAT3 blobRadii = { 1.2f, 0.85f, 1.2f };
-		bool isLiquidated = false;
-		float liquefyInitialFlowSpeed = 0.0f;
-		Engine::Vector3 liquefyFlowForward = {0.0f, 0.0f, 1.0f};
 		bool hasPlayerSlime = false;
 		bool isPlayerDead = false;
 		entt::entity playerEntity = entt::null;
@@ -231,7 +205,7 @@ private:
 	void UploadFluidColliders();                                // 流体がぶつかる箱をレンダラーへ渡す
 	void UpdateFluidPreviewCore(PlayerDrawState& player);       // プレイヤーがいないときの流体の中心
 	void UpdateFluidEmitters(const PlayerDrawState& player);    // 流体エミッターから粒子を出す
-	void UpdatePlayerSlimeFluid(PlayerDrawState& player);       // プレイヤーのスライムの流体・分身・弾のメッシュ
+	void UpdatePlayerSlimeFluid(PlayerDrawState& player);       // プレイヤーのスライムの流体
 	void DrawSceneMeshes();                                     // メッシュの描画 (不透明 → 半透明)
 
 	// ワールド行列の計算結果のキャッシュ (同じフレームで何度も計算しないため)
@@ -249,7 +223,6 @@ private:
     // ECS のシステム一覧 (登録順に更新・描画する)
     std::vector<std::unique_ptr<ISystem>> systems_;
     ChronoSystem* chronoSystem_ = nullptr; // 所有は systems_。ここは参照するためだけのポインタ
-    WaveSystem* waveSystem_ = nullptr;
     // システムへ渡す共有データ (時間・カメラ・入力・ビューポートなど)
     GameContext ctx_;
 
@@ -257,8 +230,6 @@ private:
     Engine::ParticleEditor particleEditor_;
 
     float playTime_ = 0.0f; // クリアタイムの計測用
-    // 前フレームでプレイヤーが液状化していたか
-    bool wasLiquidated_ = false;
     bool gpuSlimeEmitted_ = false; // GPU スライムを最初に放出したか
 
 

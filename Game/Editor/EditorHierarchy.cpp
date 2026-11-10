@@ -80,10 +80,8 @@ std::vector<std::string> NameTokens(const std::string& name) {
 
 // 標準の分類: 持っているコンポーネントから UI・ライト・プレイヤー・敵・エフェクトなどに振り分ける
 const char* DefaultCategory(SceneComponents& reg, entt::entity e) {
-	if (reg.any_of<RectTransformComponent, UIImageComponent, UITextComponent, UIButtonComponent, WorldSpaceUIComponent>(e)) return "UI";
+	if (reg.any_of<RectTransformComponent, UIImageComponent, UITextComponent, UIButtonComponent>(e)) return "UI";
 	if (reg.any_of<DirectionalLightComponent, PointLightComponent, SpotLightComponent>(e)) return "Lights";
-	if (reg.any_of<PlayerInputComponent, CharacterMovementComponent, CameraTargetComponent>(e)) return "Player";
-	if (reg.any_of<EnemyAIComponent>(e)) return "Enemies";
 	if (reg.any_of<ParticleEmitterComponent, FluidEmitterComponent>(e)) return "Effects";
 	if (reg.any_of<AudioSourceComponent, AudioListenerComponent>(e)) return "Audio";
 	if (reg.any_of<ScriptComponent>(e)) return "Scripts";

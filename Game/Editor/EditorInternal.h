@@ -26,8 +26,6 @@
 #include "../Scenes/GameScene.h"
 #include "../Systems/ChronoSystem.h"
 #include "../Systems/RiverSystem.h"
-#include "../Systems/PlayerActionSystem.h"
-#include "../Systems/EnemyAISystem.h"
 #include "../Systems/UISystem.h"
 #include "../Scripts/ScriptEngine.h"
 // MSVC の警告 4865 (列挙型の基になる型の変更) を抑止する
