@@ -475,7 +475,7 @@ bool GameScene::HandlePlayInput(float dt, bool stageClear) {
             int chosen=UI::Scale::UpdatePause(ui,pauseMenu_);
             if(UI::Pressed(DIK_G)||UI::PadPressed(XINPUT_GAMEPAD_BACK))chosen=1;
             if(input->Trigger(DIK_TAB))chosen=2;
-            if(input->PadTrigger(XINPUT_GAMEPAD_B))chosen=0;
+            if(input->Trigger(DIK_ESCAPE)||input->PadTrigger(XINPUT_GAMEPAD_B|XINPUT_GAMEPAD_START))chosen=0;
             if(chosen==1){graphicsOpen_=true;return true;}
             if(chosen==2){Engine::SceneManager::GetInstance()->RequestCoveredChange("Title");return true;}
             if(chosen==0){UI::PlayUISound(UI::UISound::Confirm);SetPaused(false);input->LatchPad();return true;}

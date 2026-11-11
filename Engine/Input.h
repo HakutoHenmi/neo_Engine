@@ -49,7 +49,8 @@ public:
 	// ===== Gamepad (XInput) =====
 	bool PadConnected() const { return padIndex_ >= 0; }
 	bool PadDown(uint32_t button) const { return (padButtons_ & ~padLatch_ & button) != 0; }
-	bool PadTrigger(uint32_t button) const { return PadDown(button) && !(prevPadButtons_ & button); }
+	// 複数ボタンの指定では、どれか 1 つが新しく押されたら反応する
+	bool PadTrigger(uint32_t button) const { return (padButtons_ & ~padLatch_ & ~prevPadButtons_ & button) != 0; }
 	// スティックはデッドゾーン補正済みの -1〜1（上が +Y）
 	float PadLX() const { return padLX_; }
 	float PadLY() const { return padLY_; }
