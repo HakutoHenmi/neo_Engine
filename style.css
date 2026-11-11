@@ -98,7 +98,9 @@ ol, ul { list-style: none; }
 .title-card {
   margin-top: 28px !important; width: fit-content;
   background: var(--lime); border: var(--line) solid var(--ink); box-shadow: var(--shadow);
-  padding: 22px 28px 24px; border-radius: 46% 54% 44% 56% / 58% 50% 50% 42%;
+  /* 角の丸みで文字が欠けないよう、内側の余白を大きめにとる */
+  padding: clamp(30px, 4vw, 46px) clamp(40px, 5.5vw, 68px) clamp(32px, 4vw, 48px);
+  border-radius: 40% 44% 38% 46% / 46% 40% 44% 38%;
   transform: rotate(-1.5deg);
 }
 .title-card h1 { font: 400 clamp(38px, 6vw, 64px)/1.15 var(--head); }
@@ -319,6 +321,23 @@ html.locked { overflow: hidden; }
 
 /* 吸いこまれる物 */
 .pickup { position: absolute; width: 58px; height: 58px; z-index: 2; pointer-events: none; transition: opacity .2s; }
+/* 置き場所: 本文に重ならないよう、セクションの上下の余白と、広い画面では右の空き */
+.pickup.pos-tr { top: 12px; right: 7%; }
+.pickup.pos-br { bottom: 10px; right: 9%; }
+.pickup.pos-bl { bottom: 10px; left: 5%; }
+.pickup.pos-bl2 { bottom: 10px; left: 22%; }
+.pickup.pos-rm { top: var(--y, 50%); right: 4%; }
+.pickup.big.pos-tr, .pickup.big.pos-br { right: 5%; }
+@media (min-width: 1280px) {
+  /* 右の空き (スライムの居場所の上) に寄せる */
+  .pickup.pos-tr, .pickup.pos-br, .pickup.pos-rm { right: calc((100vw - var(--col) - max(40px, (100vw - var(--col) - var(--gutter)) / 2)) / 2 - 46px); }
+}
+@media (max-width: 1279px) {
+  /* 右の空きが無い幅では、本文に重ならないよう上の余白へ逃がす */
+  .pickup.pos-rm { top: auto; bottom: 10px; right: auto; left: calc(34% + var(--n, 0) * 16%); }
+  .pickup.pickup.big { width: 70px; height: 70px; }
+  .pickup.big.pos-tr { top: 6px; }
+}
 .pickup svg { width: 100%; height: 100%; overflow: visible; filter: drop-shadow(3px 3px 0 rgba(0,0,0,.25)); }
 .pickup.eaten { opacity: 0; }
 .pickup.big { width: 92px; height: 92px; }
@@ -379,8 +398,10 @@ html.locked { overflow: hidden; }
   .hud-info { display: none; }
   .hud-size { min-width: 118px; padding: 6px 10px 0; }
   .hud-size strong { font-size: 26px; }
-  .pickup { width: 44px; height: 44px; }
-  .pickup.big { width: 64px; height: 64px; }
+  .pickup { width: 40px; height: 40px; }
+  .pickup.pickup.big { width: 46px; height: 46px; }
+  .pickup.pos-tr, .pickup.big.pos-tr { top: 5px; }
+  .pickup.pos-br, .pickup.pos-bl, .pickup.pos-bl2, .pickup.pos-rm { bottom: 5px; }
   .node { width: 88px; height: 88px; font-size: 24px; }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -394,3 +415,7 @@ html.locked { overflow: hidden; }
 .work-lime .big-number small { color: var(--ink); }
 .work-lime .tags b { background: var(--ink); color: var(--lime); }
 .work-lime .tech figure { border-color: var(--ink); box-shadow: 8px 8px 0 var(--ink); }
+
+/* タイトル: 最初の画面で消しゴムとあめが下の巻尺に隠れないよう、巻尺の上に置く */
+.sec-title { padding-bottom: calc(var(--hud) + 96px); }
+.sec-title .pickup.pos-br, .sec-title .pickup.pos-bl2 { bottom: calc(var(--hud) + 22px); }
