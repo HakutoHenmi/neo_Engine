@@ -1,19 +1,304 @@
 <!doctype html>
 <html lang="ja">
 <head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="description" content="ゲーム制作・技術デモを通して、実装力と制作プロセスを紹介するポートフォリオ。"><meta name="theme-color" content="#12292c"><title>逸見 珀斗 — Game Development Portfolio</title><link rel="icon" href="./assets/favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="./style.css"><script src="./content.js" defer></script><script src="./app.js" defer></script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>逸見 珀斗 ポートフォリオ</title>
+<meta name="description" content="ゲームプログラマー志望 逸見珀斗のポートフォリオ。スクロールするほどスライムが育ちます。">
+<meta name="theme-color" content="#f7c51e">
+<link rel="icon" href="./assets/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Dela+Gothic+One&family=Zen+Kaku+Gothic+New:wght@500;700;900&display=swap">
+<link rel="stylesheet" href="./style.css">
+<script src="./main.js" defer></script>
 </head>
 <body>
-<a class="skip" href="#works">作品一覧へスキップ</a>
-<header class="header"><a class="brand" href="#home" aria-label="ホーム"><span class="brand-icon" aria-hidden="true">✦</span><span data-name>逸見 珀斗</span><small>DEVELOPMENT PORTFOLIO</small></a><nav aria-label="メインメニュー"><a href="#works">WORKS</a><a href="#about">PROFILE</a></nav></header>
-<aside class="hud" aria-label="閲覧状況に連動するゲーム風ステータス"><div class="hud-player"><span class="player-marker" aria-hidden="true">P1</span><div><span class="hud-label">PLAYER STATUS</span><div class="player-level">Lv.<span id="player-level">01</span><small>EXPLORER</small></div></div></div><div class="hud-stats"><div class="stat-line"><span>HP</span><div class="meter hp-meter" role="img" aria-label="装飾用HPバー 100 / 100"><i></i></div><span class="stat-value">100 / 100</span></div><div class="stat-line"><label for="exp-meter">EXP</label><progress id="exp-meter" max="100" value="0" aria-label="ページの閲覧進捗"></progress><span class="stat-value" id="exp-value">0%</span></div></div><div class="hud-depth"><span id="zone-name">SURFACE</span><strong id="depth-value">000 m</strong></div></aside>
+<a class="skip" href="#works">作品一覧へとぶ</a>
+
+<header class="bar">
+  <a class="bar-name" href="#top">逸見 珀斗<small>HENMI HAKUTO</small></a>
+  <nav aria-label="ページ内の移動">
+    <a href="#profile">自己紹介</a>
+    <a href="#works">作品</a>
+    <a href="#goal">まとめ</a>
+  </nav>
+</header>
+
 <main>
-<section id="home" class="surface"><div class="surface-scene" aria-hidden="true"></div><div class="hero wrap"><div class="hero-copy"><p class="eyebrow"><span class="status-dot"></span> GAME DEVELOPMENT / TECHNICAL EXPLORATION</p><h1>発想を実装し、<br><span>体験を磨く。</span></h1><p class="hero-description">ゲーム制作と技術検証の記録。<br>作品とその裏側にある、設計・実装・工夫を紹介します。</p><a class="button primary" href="#works">制作実績を見る <span aria-hidden="true">↓</span></a><div class="hero-note"><span>SCROLL TO EXPLORE</span> 地上から、制作の深部へ。</div></div><div class="scene-caption"><span class="location-icon" aria-hidden="true">＋</span><div><span>AREA 00 / SURFACE</span><p>THE BEGINNING OF EXPLORATION</p></div><span class="scene-coordinates">X: 000<br>Y: 000</span></div></div><div class="surface-bottom"><span>↓ ENTER THE UNDERGROUND</span><span>GAME / TECH DEMO</span></div></section>
-<div class="underground"><div class="cave-scene" aria-hidden="true"></div><div class="depth-rail" aria-hidden="true"><span>−100 m</span><span>−200 m</span><span>−300 m</span></div>
-<section id="works" class="section wrap"><div class="section-heading"><div><p class="eyebrow">01 / PROJECT ARCHIVE <span class="area-chip">−100 m</span></p><h2>Selected works<span class="heading-dot">.</span></h2><p class="section-description">ゲーム作品と技術デモから、制作内容と実装の工夫を紹介します。</p></div><span class="section-counter"></span></div><div class="filters" role="group" aria-label="作品のカテゴリ"><button class="filter active" data-filter="game" aria-pressed="true"><span aria-hidden="true">▸</span> ゲーム <small>GAME</small></button><button class="filter" data-filter="tech" aria-pressed="false"><span aria-hidden="true">▸</span> 技術デモ <small>TECH DEMO</small></button></div><div id="work-grid" class="work-grid"></div><p class="placeholder-note"><span aria-hidden="true">◇</span> 作品説明は編集中です。各作品の詳細から紹介動画をご覧いただけます。</p></section>
-<section id="about" class="section wrap about-section"><div class="section-heading"><div><p class="eyebrow">02 / PLAYER PROFILE <span class="area-chip">−200 m</span></p><h2>制作の、その先へ<span class="heading-dot">.</span></h2><p class="section-description">プロフィールと技術領域をご紹介します。</p></div></div><div class="about-grid"><div class="profile pixel-panel"><div class="panel-heading"><span>PLAYER DATA</span><span>GAME PROGRAMMER</span></div><div class="profile-content"><div class="profile-header"><span class="player-token" aria-hidden="true">P1</span><div><h3 data-name>逸見 珀斗</h3><p data-role>GAME DEVELOPER</p></div></div><p id="bio"></p><p class="sample-note">ゲーム制作と技術検証の記録。プロフィールの詳細は順次更新します。</p><div id="contact-links" class="contact-links"></div></div></div><div class="abilities pixel-panel"><div class="panel-heading"><span>TECHNICAL FOCUS</span><span>ENGINE EDITOR</span></div><p class="ability-intro">自作エンジンのレベルエディター<br><span>配置・当たり判定・演出を、コードを書き換えずに調整。</span></p><div class="ability"><span class="ability-index" aria-hidden="true">01</span><div class="ability-body"><h3>レベルエディター</h3><p>配置・編集・動作確認を、自作エンジン内のひとつの画面で行える制作環境。</p><details class="ability-details"><summary>レベルエディターの実装内容</summary><ul><li>ImGuiでHierarchy、Inspector、Project、Game View、Console、Particle Editorを構成。</li><li>Resources内の.obj / .fbxモデルをGame Viewへドラッグ＆ドロップして配置。MeshRendererを自動追加し、Hierarchyへ登録。</li></ul></details></div></div><div class="ability"><span class="ability-index" aria-hidden="true">02</span><div class="ability-body"><h3>ECS・コンポーネント編集</h3><p>必要な機能をコンポーネントとして追加し、Inspectorから見た目と挙動を調整。</p><details class="ability-details"><summary>ECS・コンポーネント編集の実装内容</summary><ul><li>Transformの位置・回転・スケール、MeshRendererのモデル・テクスチャ・シェーダー・色・UVを編集。</li><li>Colliderに加え、Tag、Health、AudioSource、Script、ParticleEmitterなどを追加・編集。</li></ul></details></div></div><div class="ability"><span class="ability-index" aria-hidden="true">03</span><div class="ability-body"><h3>シーン保存・再生制御</h3><p>JSONでシーンを保存・再利用し、Play / Stopで編集時の状態を保つ仕組み。</p><details class="ability-details"><summary>シーン保存・再生制御の実装内容</summary><ul><li>オブジェクト名・親子関係・Transform・MeshRenderer・Collider・Tag・Scriptとパラメータ・UI・Particleを保存／読み込み。</li><li>Play開始時にシーン状態を保存し、Stop時に開始前の状態へ復元。編集したデータをゲーム側でも再利用。</li></ul></details></div></div><div class="ability"><span class="ability-index" aria-hidden="true">04</span><div class="ability-body"><h3>当たり判定・戦闘判定</h3><p>地形との接触、攻撃判定、食らい判定を可視化し、画面上で調整。</p><details class="ability-details"><summary>当たり判定・戦闘判定の実装内容</summary><ul><li>BoxColliderの中心・サイズ・有効状態・Triggerを編集。GpuMeshColliderで地形のメッシュ形状を移動・接地判定に使用。</li><li>HitboxとHurtboxを分離し、中心・サイズ・Tag、攻撃のダメージ量と有効状態、被弾のダメージ倍率を設定。CombatSystemでダメージを処理。</li></ul></details></div></div><div class="ability"><span class="ability-index" aria-hidden="true">05</span><div class="ability-body"><h3>パーティクル編集</h3><p>専用プレビューで変化をリアルタイムに確認しながら、エフェクトを調整。</p><details class="ability-details"><summary>パーティクル編集の実装内容</summary><ul><li>発生頻度・寿命・発生形状・速度・加速度・サイズ変化・色の変化・回転を編集。</li><li>テクスチャ・加算合成・UVアニメーションにも対応。ゲームへ配置する前に見た目と動きを確認。</li></ul></details></div></div><p class="ability-note">C++ / DirectX 12 / ImGui / ECS / JSON</p></div></div></section>
-<footer class="footer wrap"><a class="brand" href="#home"><span class="brand-icon" aria-hidden="true">✦</span><span data-name>逸見 珀斗</span></a><p>© <span id="year"></span> <span data-name>逸見 珀斗</span> / DEVELOPMENT PORTFOLIO</p><a class="back-top" href="#home">地上へ戻る ↑</a></footer>
-</div></main><dialog id="project-dialog" aria-labelledby="detail-title"><button class="dialog-close" aria-label="閉じる">×</button><div id="project-detail"></div></dialog><div id="announcement" class="sr-only" role="status" aria-live="polite"></div>
-</body></html>
 
+<!-- タイトル -->
+<section id="top" class="sec sec-title">
+  <p class="title-word" aria-hidden="true">PORTFOLIO</p>
+  <div class="title-card">
+    <h1>逸見 珀斗<span>へんみ はくと</span></h1>
+    <p class="chip">ゲームプログラマー志望</p>
+    <p class="school">日本工学院専門学校 デザインカレッジ</p>
+  </div>
+  <p class="title-lead">この体、全部 粒子です。<br><b>スクロールするほど、スライムが育ちます。</b></p>
+  <p class="title-hint">↓ 下へ。まずは消しゴムから。</p>
+  <span class="pickup" data-item="eraser" style="left:62%;top:80%"></span>
+  <span class="pickup" data-item="candy" style="left:14%;top:88%"></span>
+</section>
 
+<!-- 目次 -->
+<section id="stage" class="sec sec-stage">
+  <h2 class="head">目次<span class="head-tag">STAGE SELECT</span></h2>
+  <ol class="stage-map">
+    <li><a href="#profile"><span class="node node-lime">P1</span><span class="node-no">03</span>自己紹介</a></li>
+    <li><a href="#works"><span class="node node-yellow">×5</span><span class="node-no">04</span>掲載作品</a></li>
+    <li><a href="#w-chiritsumo"><span class="node node-img" style="background-image:url(./assets/works/chiritsumo-title.jpg)"></span><span class="node-no">05</span>チリツモ</a></li>
+    <li><a href="#w-defectory"><span class="node node-img" style="background-image:url(./assets/works/defectory.jpg)"></span><span class="node-no">07</span>Defectory</a></li>
+    <li><a href="#w-toto"><span class="node node-img" style="background-image:url(./assets/works/toto.jpg)"></span><span class="node-no">08</span>逃灯</a></li>
+    <li><a href="#w-kezurare"><span class="node node-img" style="background-image:url(./assets/works/kezurarejima.jpg)"></span><span class="node-no">09</span>削られ島で<br>ぶっ飛ばせ!</a></li>
+    <li><a href="#w-rebuild"><span class="node node-img" style="background-image:url(./assets/works/rebuild.jpg)"></span><span class="node-no">10</span>リビルド</a></li>
+    <li><a href="#goal"><span class="node node-blue">GOAL</span><span class="node-no">11</span>ここまでの<br>まとめ</a></li>
+  </ol>
+  <span class="pickup" data-item="pencil" style="left:84%;top:14%"></span>
+  <span class="pickup" data-item="shogi" style="left:3%;top:80%"></span>
+</section>
+
+<!-- 自己紹介 -->
+<section id="profile" class="sec sec-profile">
+  <h2 class="head">自己紹介</h2>
+  <div class="profile">
+    <figure class="polaroid">
+      <img src="./assets/profile.jpg" alt="逸見珀斗の写真" width="600" height="1000" loading="lazy">
+      <figcaption>PLAYER 1</figcaption>
+    </figure>
+    <div class="profile-body">
+      <p class="profile-name">逸見 珀斗</p>
+      <p class="chip chip-lime">自作エンジンでのゲーム開発</p>
+      <dl class="rows">
+        <div><dt>趣味</dt><dd>ディズニー作品と<br>パークに行くこと</dd></div>
+        <div><dt>好物</dt><dd>パスタ全般</dd></div>
+        <div class="rows-tools"><dt>ツール</dt><dd>
+          <ul class="tools">
+            <li><img src="./assets/tools/vs.png" alt="">Visual Studio</li>
+            <li><img src="./assets/tools/vscode.png" alt="">VS Code</li>
+            <li><img src="./assets/tools/cpp.png" alt="">C++</li>
+            <li><img src="./assets/tools/dx12u.png" alt="">DirectX 12</li>
+            <li><span class="tool-pair"><img src="./assets/tools/git.png" alt=""><img src="./assets/tools/github.png" alt=""></span>Git / GitHub</li>
+            <li><img src="./assets/tools/blender.png" alt="">Blender</li>
+            <li><span class="tool-text">ImGui</span>ImGui</li>
+            <li><img src="./assets/tools/fork.png" alt="">Fork</li>
+            <li><img src="./assets/tools/firealpaca.png" alt="" class="tool-wide">FireAlpaca</li>
+          </ul>
+        </dd></div>
+      </dl>
+      <p class="profile-text">はじめまして、ゲームプログラマー志望の逸見珀斗です。C++ と DirectX 12 で自作エンジンから作り、触って気持ちのいいゲームを目指して開発しています。趣味はディズニー作品にふれることと、パークに遊びに行くこと。好きな食べ物はパスタ全般です。開発では Visual Studio・Visual Studio Code・Git / GitHub・Fork・ImGui を使い、Blender や FireAlpaca も使っています。</p>
+    </div>
+    <div class="motto">
+      <p class="bubble">毎日を<br><em>楽しく生きる</em><br>を心掛けて<br>います！</p>
+      <p class="motto-note">ぼくのモットーです</p>
+    </div>
+  </div>
+  <span class="pickup" data-item="pasta" style="left:86%;top:88%"></span>
+  <span class="pickup" data-item="card" style="left:46%;top:4%"></span>
+</section>
+
+<!-- 掲載作品 -->
+<section id="works" class="sec sec-works">
+  <h2 class="head head-light">掲載作品<span class="head-note">新しい順に5作品</span></h2>
+  <ol class="work-list">
+    <li class="wl-main"><a href="#w-chiritsumo"><img src="./assets/works/chiritsumo-title.jpg" alt="チリツモのタイトル画面" loading="lazy"><b><i>01</i>チリツモ</b><span>3D吸収アクション / 個人制作</span></a></li>
+    <li class="wl-blue"><a href="#w-defectory"><img src="./assets/works/defectory.jpg" alt="Defectoryのプレイ画面" loading="lazy"><b><i>02</i>Defectory</b><span>3Dアクション / チーム制作</span></a></li>
+    <li class="wl-orange"><a href="#w-toto"><img src="./assets/works/toto.jpg" alt="逃灯のプレイ画面" loading="lazy"><b><i>03</i>逃灯</b><span>3D FPS / 個人制作</span></a></li>
+    <li class="wl-yellow"><a href="#w-kezurare"><img src="./assets/works/kezurarejima.jpg" alt="削られ島でぶっ飛ばせ!のプレイ画面" loading="lazy"><b><i>04</i>削られ島でぶっ飛ばせ!</b><span>3Dアクション / チーム制作</span></a></li>
+    <li class="wl-red"><a href="#w-rebuild"><img src="./assets/works/rebuild.jpg" alt="リビルドのタイトル画面" loading="lazy"><b><i>05</i>リビルド</b><span>2Dアクション / 1年次・チーム</span></a></li>
+  </ol>
+  <p class="works-hint">まずは 01 を見てください</p>
+  <span class="pickup" data-item="mikan" style="left:90%;top:8%"></span>
+</section>
+
+<!-- 01 チリツモ -->
+<article id="w-chiritsumo" class="sec work work-lime">
+  <header class="work-head">
+    <span class="work-no">01</span>
+    <div><h2>チリツモ</h2><p class="work-catch">触れるだけで、飲む。飲むほど、大きくなる。</p></div>
+  </header>
+  <div class="work-grid">
+    <figure class="shot"><img src="./assets/works/chiritsumo-room.jpg" alt="ぼくの部屋で物を飲みこんだスライム" loading="lazy"></figure>
+    <ul class="points">
+      <li><b>吸収</b>触れた物を飲みこむ</li>
+      <li><b>成長</b>5cmから家より大きく</li>
+      <li class="points-hot"><b>舞台</b>部屋 → 住宅街</li>
+    </ul>
+  </div>
+  <dl class="spec">
+    <div><dt>ジャンル</dt><dd>3D吸収アクション</dd></div>
+    <div><dt>期間</dt><dd>2026.04 – 制作中</dd></div>
+    <div><dt>人数</dt><dd>1名（個人制作）</dd></div>
+    <div><dt>担当</dt><dd>設計・実装すべて</dd></div>
+    <div><dt>環境</dt><dd>C++20・DirectX 12<br>自作エンジン</dd></div>
+  </dl>
+  <p class="work-text">スライムを操作して、部屋や街の物に触れて飲みこみながら大きくなっていく3D吸収アクション。自分より小さい物は通るだけで飲め、大きくなるほど、さっきまで壁だった物も飲めるようになる。ステージは「ぼくの部屋」（5cmから）と「住宅街」（1mから22mを目指す）の2つで、制限時間内にどれだけ大きくなれるかを競う。今の大きさは画面下の巻尺で見せ、飲みこむたびに「もぐもぐ」などの擬音が飛び出す。開発環境は C++20 / DirectX 12 / HLSL、自作エンジン neo_Engine（EnTT・Dear ImGui・DirectXTex・assimp・nlohmann json・DLSS）。エンジン・ゲームともに設計から実装まで一人で担当。3Dモデルは Blender の Python スクリプトで自作。</p>
+  <p class="note">3Dモデルは自作。BGM・効果音・UIの一部にフリー素材（CC0 / CC BY）を使用</p>
+  <span class="pickup" data-item="book" style="left:92%;top:6%"></span>
+</article>
+
+<!-- 01 技術のポイント -->
+<article id="w-chiritsumo-tech" class="sec work work-dark">
+  <header class="work-head">
+    <span class="work-no">01</span>
+    <div><h2>技術のポイント</h2><p class="work-catch">この体、毎フレーム全部 計算しています。</p></div>
+  </header>
+  <div class="tech">
+    <figure class="tech-big"><img src="./assets/works/chiritsumo-inside.jpg" alt="飲みこんだ物が体の中に透けて見えるスライム" loading="lazy"><figcaption><b>飲んだ物が透けて見える</b>屈折・透過で体の中を描画</figcaption></figure>
+    <figure><img src="./assets/works/chiritsumo-comic.jpg" alt="もぐもぐ、ぱくんの擬音" loading="lazy"><figcaption><b>コミック擬音</b>当たり方で文字が変わる</figcaption></figure>
+    <figure><img src="./assets/works/chiritsumo-size.jpg" alt="将棋の駒の横に並んだスライム" loading="lazy"><figcaption><b>大きさで世界が変わる</b>体積で飲める物が決まる</figcaption></figure>
+  </div>
+  <div class="tech-foot">
+    <p class="big-number">6,600<small>粒子</small></p>
+    <ul class="tags">
+      <li><b>流体</b>PBF・6,600粒子</li>
+      <li><b>エンジン</b>ECS・自作エディタ</li>
+      <li><b>検証</b>自動スモークテスト</li>
+    </ul>
+  </div>
+  <p class="work-text">飲んだ物が透けて見える：飲みこんだ物は半透明の体の中にしばらく浮かび、屈折・透過で中身が透けて見える。コミック擬音：ぶつかる・飲む・弾かれるなど当たり方に合わせて「ガンッ」「もぐもぐ」などの文字を出し、言葉は JSON で管理。大きさで世界が変わる：飲めるかどうかは体と物の大きさの比で決まり、大きくなるほどさっきまで壁だった物が飲めるようになる。本体 6,600 粒子を PBF で毎フレーム計算し、等値面のレイマーチで描画。エンジンは EnTT による ECS と Unity 風の ImGui エディタ、調整値は JSON で管理。ルールの単体テストと、実際にゲームを起動して確かめるスモークテストで検証。</p>
+  <span class="pickup" data-item="teddy" style="left:3%;top:8%"></span>
+</article>
+
+<!-- 02 Defectory -->
+<article id="w-defectory" class="sec work work-blue">
+  <header class="work-head">
+    <span class="work-no">02</span>
+    <div><h2>Defectory</h2><p class="work-catch">敵が増えるほど、FPSが落ちた。</p></div>
+    <span class="stamp">60FPS</span>
+  </header>
+  <div class="work-grid">
+    <div class="video" data-video="a_53uxHRYjE" data-title="Defectory 紹介動画"><img src="./assets/works/defectory.jpg" alt="Defectoryのプレイ画面" loading="lazy"></div>
+    <ol class="quest">
+      <li><span>BOSS</span><b>課題</b>敵多数で処理落ち</li>
+      <li><span>ATTACK</span><b>解決</b>カリングと簡易LOD</li>
+      <li><span>DROP</span><b>結果</b>60FPSを安定維持</li>
+    </ol>
+  </div>
+  <dl class="spec">
+    <div><dt>ジャンル</dt><dd>3Dアクション</dd></div>
+    <div><dt>期間</dt><dd>2026.02 – 2026.06</dd></div>
+    <div><dt>人数</dt><dd>5名（チーム制作）</dd></div>
+    <div><dt>担当</dt><dd>エンジン・戦闘演出</dd></div>
+    <div><dt>環境</dt><dd>C++20・DirectX 12</dd></div>
+  </dl>
+  <p class="work-text">5名のチーム制作。担当はチームの自作エンジン（モデル・パーティクル制御）と戦闘シーン全般（演出・ヒットエフェクト）。開発環境は C++20 / DirectX 12、DirectXTex・Dear ImGui・assimp・nlohmann json。敵が多数出現するシーンで FPS が大きく落ちる処理落ちが発生。原因を描画負荷と特定し、画面外を描かないフラスタムカリングと遠景の簡易 LOD を実装。60FPS を安定して維持でき、計測してから最適化する大切さを実践で学んだ。</p>
+  <span class="pickup" data-item="balloon" style="left:93%;top:6%"></span>
+  <span class="pickup" data-item="chair" style="left:2%;top:90%"></span>
+</article>
+
+<!-- 03 逃灯 -->
+<article id="w-toto" class="sec work work-night">
+  <header class="work-head">
+    <span class="work-no">03</span>
+    <div><h2>逃灯</h2><p class="work-catch">明かりは命綱で、敵を呼ぶ合図。</p></div>
+    <span class="stamp">SOLO</span>
+  </header>
+  <div class="work-grid">
+    <div class="video" data-video="Bpxr4WtEc50" data-title="逃灯 紹介動画"><img src="./assets/works/toto.jpg" alt="逃灯のプレイ画面" loading="lazy"></div>
+    <ol class="quest">
+      <li><span>BOSS</span><b>課題</b>暗さと見やすさの両立</li>
+      <li><span>ATTACK</span><b>解決</b>懐中電灯の光を補間で開閉<small>OFFからONへ開く／内角 2→18度・外角 6→40度・距離 4→28</small></li>
+      <li><span>DROP</span><b>学び</b>ライトをリスクとして設計</li>
+    </ol>
+  </div>
+  <dl class="spec">
+    <div><dt>ジャンル</dt><dd>3D FPS</dd></div>
+    <div><dt>期間</dt><dd>2025.12 – 2026.02</dd></div>
+    <div><dt>人数</dt><dd>1名（個人制作）</dd></div>
+    <div><dt>担当</dt><dd>設計・実装すべて</dd></div>
+    <div><dt>環境</dt><dd>C++20・DirectX 12</dd></div>
+  </dl>
+  <p class="work-text">個人制作の一人称ホラー。暗いステージを懐中電灯で進む。環境光は 0.06 まで落とし、カメラに追従するスポットライトで前方だけを照らす。スポットは内角 18°・外角 40°・距離 28。外角を広げて光の縁をなだらかにし、光が穴のように見えないよう調整した。ON / OFF は切り替えず、内角 2→18°、外角 6→40°、距離 4→28 へ補間して光が開くように見せている。ライトは攻略上のリスクでもある。点灯中はバッテリーが減り、隠れている間だけ回復し、0 でゲームオーバー。点灯中の敵は距離 10 以内なら視線がなくても追跡し、速度は 1.25 倍、消した後も 0.8 秒追ってくる。敵が近いほど SAN 値が上がり、CRT / VHS 風のノイズが強まる。開発環境は C++20 / DirectX 12。</p>
+  <span class="pickup" data-item="bicycle" style="left:86%;top:92%"></span>
+</article>
+
+<!-- 04 削られ島でぶっ飛ばせ! -->
+<article id="w-kezurare" class="sec work work-yellow">
+  <header class="work-head">
+    <span class="work-no">04</span>
+    <div><h2>削られ島でぶっ飛ばせ!</h2><p class="work-catch">ボスの一撃で、島が本当にへこむ。</p></div>
+    <span class="stamp">TEAM 3</span>
+  </header>
+  <div class="work-grid">
+    <div class="video" data-video="ETOUy-4aSes" data-title="削られ島でぶっ飛ばせ! 紹介動画"><img src="./assets/works/kezurarejima.jpg" alt="削られ島でぶっ飛ばせ!のプレイ画面" loading="lazy"></div>
+    <ol class="quest">
+      <li><span>BOSS</span><b>課題</b>攻撃の跡を地形に残す</li>
+      <li><span>ATTACK</span><b>解決</b>高さマップをGPUで頂点に反映<small>1撃 = 半径4・深さ1.5</small></li>
+      <li><span>DROP</span><b>学び</b>見た目と判定の高さを統一</li>
+    </ol>
+  </div>
+  <dl class="spec">
+    <div><dt>ジャンル</dt><dd>3Dアクション</dd></div>
+    <div><dt>期間</dt><dd>2025.11 – 2025.12</dd></div>
+    <div><dt>人数</dt><dd>3名（チーム制作）</dd></div>
+    <div><dt>担当</dt><dd>ボス・地形・HP UI</dd></div>
+    <div><dt>環境</dt><dd>C++20・DirectX 12</dd></div>
+  </dl>
+  <p class="work-text">3名のチーム制作。担当はボスの攻撃・地形・HP ゲージなど。ボスの叩き付けや薙ぎ払いが当たると、島の地形が実際にへこむ。1 回の叩き付けは半径 4・深さ 1.5。中心が深く縁が浅い形で高さマップに加算し、掘りすぎないよう深さ 15 で制限している。高さマップは GPU のバッファへ転送し、コンピュートシェーダーが地形の頂点と法線を作り直す。同じ高さマップを CPU 側でも補間して読むので、プレイヤーやボスの接地、カメラも見た目どおりの地面に立つ。へこませた量は島の崩壊率としてリザルトに集計している。開発環境は C++20 / DirectX 12。</p>
+  <span class="pickup" data-item="vending" style="left:2%;top:6%"></span>
+</article>
+
+<!-- 05 リビルド -->
+<article id="w-rebuild" class="sec work work-red">
+  <header class="work-head">
+    <span class="work-no">05</span>
+    <div><h2>リビルド</h2><p class="work-catch">無理と言われた円形ゲージを、四角形で組んだ。</p></div>
+    <span class="stamp">1年次</span>
+  </header>
+  <div class="work-grid">
+    <div class="video" data-video="jxDLSSejB0I" data-title="リビルド 紹介動画"><img src="./assets/works/rebuild.jpg" alt="リビルドのタイトル画面" loading="lazy"></div>
+    <ol class="quest">
+      <li><span>BOSS</span><b>課題</b>エンジンに円弧描画がない</li>
+      <li><span>ATTACK</span><b>解決</b>三角関数で四角形を120枚並べて円弧に<small>位置は cos / sin・太さは法線方向・残量は枚数で</small></li>
+      <li><span>DROP</span><b>学び</b>ない機能はロジックで作る</li>
+    </ol>
+  </div>
+  <dl class="spec">
+    <div><dt>ジャンル</dt><dd>2Dアクション</dd></div>
+    <div><dt>期間</dt><dd>2024.11 – 2024.12</dd></div>
+    <div><dt>人数</dt><dd>3名（1年次）</dd></div>
+    <div><dt>担当</dt><dd>演出全般・ゲージ制作<br><small>組み込みはメンバーが担当</small></dd></div>
+    <div><dt>環境</dt><dd>C++・KAMATA ENGINE</dd></div>
+  </dl>
+  <p class="work-text">1年次の3名チーム制作。開発環境は C++ / KAMATA ENGINE（Novice）。KAMATA ENGINE の描画関数は四角形・三角形・線・楕円・スプライトで、円弧を描く機能がなく、割合で削れる円形ゲージは当時作れないとされていた。そこで円形ゲージのロジックを自分で組み、メンバーに渡してゲームへ組み込んでもらった。仕組みは、円周を細かく分割し、三角関数で求めた位置に小さな四角形（DrawQuad）を並べて円弧に見せるもの。線の法線方向にずらして太さを作り、HP の割合で描く枚数を変える。継ぎ目が見えないよう四角形どうしを少し重ねている。最初は 150 分割の円だけだったが、開始角度と角度範囲を指定できる形に広がり、プレイヤー HP、ボスの部位 HP、スタン表示、レールガンのチャージ表示まで同じ関数で描いている。プレイヤー HP は灰（回復できる量）・赤（遅れて減る HP）・緑（現在の HP）を重ねている。</p>
+  <span class="pickup" data-item="car" style="left:84%;top:94%"></span>
+</article>
+
+<!-- まとめ -->
+<section id="goal" class="sec sec-goal">
+  <h2 class="goal-title">まだ、大きくなります。</h2>
+  <p class="goal-sub">ここまでに取り込んだもの</p>
+  <ol class="eaten">
+    <li><i>2024</i>リビルド<b>ない機能は<br>ロジックで作る</b></li>
+    <li><i>2025</i>削られ島<b>見た目と判定の<br>高さを統一</b></li>
+    <li><i>2026</i>逃灯<b>ライトを<br>リスクに設計</b></li>
+    <li><i>2026</i>Defectory<b>計測してから<br>最適化</b></li>
+    <li class="eaten-now"><i>制作中</i>チリツモ<b>自作エンジンと<br>GPU流体</b></li>
+  </ol>
+  <div class="goal-foot">
+    <p class="goal-name">逸見 珀斗</p>
+    <ul class="links">
+      <li><a href="https://github.com/HakutoHenmi" rel="noopener">GitHub</a></li>
+      <li><a href="./assets/portfolio.pdf">PDFポートフォリオ</a></li>
+    </ul>
+    <p class="goal-thanks">最後まで見てくれて、ありがとう!</p>
+  </div>
+  <span class="pickup" data-item="house" style="left:5%;top:10%"></span>
+  <span class="pickup" data-item="building" style="left:86%;top:12%"></span>
+</section>
+
+</main>
+
+<footer class="foot"><small>© 逸見 珀斗 ／ 画像はすべて本人が制作した作品の画面です</small></footer>
+
+<!-- スライムと巻尺 (飾り) -->
+<canvas id="slime" aria-hidden="true"></canvas>
+<div id="flyers" aria-hidden="true"></div>
+<div class="hud">
+  <div class="hud-size"><span>いまのスライム</span><strong id="size-value">5.0<small>cm</small></strong></div>
+  <div class="hud-tape" aria-hidden="true"><div class="tape" id="tape"></div><i class="tape-needle"></i></div>
+  <div class="hud-info"><span id="size-like">消しゴムより小さい</span><span>飲んだ物 <b id="eaten-count">0</b>個</span></div>
+</div>
+</body>
+</html>
