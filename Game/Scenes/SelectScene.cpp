@@ -68,6 +68,7 @@ void SelectScene::Initialize(Engine::WindowDX* dx, const Engine::SceneParameters
 void SelectScene::Confirm() {
     if (!stages_[size_t(selected_)].unlocked) { shake_ = .4f; UI::PlayUISound(UI::UISound::Back); return; }
     UI::PlayUISound(UI::UISound::Confirm);
+    Engine::Input::GetInstance()->LatchPad();
     S::SaveStage(selected_);
     leaving_ = 0;
 }
@@ -101,18 +102,18 @@ void SelectScene::Update() {
     }
 #endif
     UI::Canvas ui(renderer_);
-    if (UI::BackPressed() || ui.Click(kBack)) { Engine::SceneManager::GetInstance()->RequestInstantChange("Title"); return; }
+    if (UI::BackPressed() || ui.MouseClick(kBack)) { Engine::SceneManager::GetInstance()->RequestInstantChange("Title"); return; }
     // 左右でステージを選ぶ
     const int count = int(stages_.size());
     int step = (UI::Pressed(DIK_RIGHT) || UI::Pressed(DIK_D) || UI::PadPressed(XINPUT_GAMEPAD_DPAD_RIGHT | Engine::Input::kPadLsRight) ? 1 : 0)
         - (UI::Pressed(DIK_LEFT) || UI::Pressed(DIK_A) || UI::PadPressed(XINPUT_GAMEPAD_DPAD_LEFT | Engine::Input::kPadLsLeft) ? 1 : 0);
     if (step) { selected_ = (selected_ + step + count) % count; UI::PlayUISound(UI::UISound::Move); }
     // 帯のクリック: 選んでいない帯は選ぶだけ、選んでいる帯は出発
-    if (!UI::UsingPad()) for (int i = 0; i < count; ++i) if (ui.Click(BarOf(stages_[size_t(i)]))) {
+    for (int i = 0; i < count; ++i) if (ui.MouseClick(BarOf(stages_[size_t(i)]))) {
         if (i == selected_) Confirm(); else selected_ = i;
         return;
     }
-    if (UI::Pressed(DIK_RETURN) || UI::PadPressed(XINPUT_GAMEPAD_START | XINPUT_GAMEPAD_A) || (!UI::UsingPad() && ui.Click(kDeploy))) Confirm();
+    if (UI::Pressed(DIK_RETURN) || UI::PadPressed(XINPUT_GAMEPAD_START | XINPUT_GAMEPAD_A) || ui.MouseClick(kDeploy)) Confirm();
 }
 
 // 描画: メニュー画面を描く

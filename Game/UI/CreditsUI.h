@@ -42,11 +42,11 @@ inline int CreditsPageCount(){return int(Credits().pages.size());}
 
 // 操作: 左右 / LB RB / 章の帯のクリックでめくる。閉じるなら true を返す
 inline bool UpdateCredits(Canvas& ui,int& page){
-    if(BackPressed()||ui.Click(CreditsBack))return true;
+    if(BackPressed()||ui.MouseClick(CreditsBack))return true;
     const int count=CreditsPageCount();
-    const int step=(Pressed(DIK_RIGHT)||Pressed(DIK_D)||PadPressed(XINPUT_GAMEPAD_RIGHT_SHOULDER|XINPUT_GAMEPAD_DPAD_RIGHT)?1:0)-(Pressed(DIK_LEFT)||Pressed(DIK_A)||PadPressed(XINPUT_GAMEPAD_LEFT_SHOULDER|XINPUT_GAMEPAD_DPAD_LEFT)?1:0);
+    const int step=(Pressed(DIK_RIGHT)||Pressed(DIK_D)||PadPressed(XINPUT_GAMEPAD_RIGHT_SHOULDER|XINPUT_GAMEPAD_DPAD_RIGHT|Engine::Input::kPadLsRight)?1:0)-(Pressed(DIK_LEFT)||Pressed(DIK_A)||PadPressed(XINPUT_GAMEPAD_LEFT_SHOULDER|XINPUT_GAMEPAD_DPAD_LEFT|Engine::Input::kPadLsLeft)?1:0);
     const int before=page;page=std::clamp(page+step,0,count-1);
-    if(!UsingPad())for(int i=0;i<count;++i)if(ui.Click(CreditsTab(i)))page=i;
+    for(int i=0;i<count;++i)if(ui.MouseClick(CreditsTab(i)))page=i;
     if(page!=before)PlayUISound(UISound::Move);
     return false;
 }

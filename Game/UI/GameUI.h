@@ -440,10 +440,16 @@ public:
         if(UsingPad()){
             // フォーカス中に A ボタンが押されたら、同じ押下を他で使わないよう止める
             if(!Nav().activate||!Focused(b))return false;
+            Nav().activate=false;
             Engine::Input::GetInstance()->LatchPad();
             PlayUISound(UISound::Confirm);
             return true;
         }
+        return MouseClick(b);
+    }
+    // 専用のパッド操作がある案内用。フォーカス対象には登録せずマウスだけで押す
+    bool MouseClick(Rect b) const {
+        if(UsingPad())return false;
         // マウスが乗っていなければ押されていない
         if(!Hover(b))return false;
         // 左クリックの瞬間か (ImGui のクリックも見る)
