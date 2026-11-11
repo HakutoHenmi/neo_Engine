@@ -132,9 +132,11 @@
   // 物が画面の上 45% より上へ来たら飲みこむ。戻ると吐き出す
   function check(animate) {
     const line = vh * .45;
+    // いちばん下まで来たら、残りも全部飲みこむ
+    const atEnd = innerHeight + scrollY >= document.documentElement.scrollHeight - 4;
     for (const p of pickups) {
       const r = p.el.getBoundingClientRect();
-      const passed = r.top + r.height / 2 < line;
+      const passed = atEnd || r.top + r.height / 2 < line;
       if (passed && !p.eaten) eat(p, animate);
       else if (!passed && p.eaten) spit(p);
     }
@@ -214,17 +216,50 @@
   }
 
   // ---- 動画: 押すまで YouTube を読み込まない ----
-  for (const box of document.querySelectorAll('.video[data-video]')) {
-    const id = box.dataset.video, title = box.dataset.title || '紹介動画';
-    const btn = document.createElement('button'); btn.className = 'video-btn'; btn.type = 'button';
-    btn.innerHTML = '<span>紹介動画を再生</span>'; btn.setAttribute('aria-label', `${title}を再生`);
-    btn.addEventListener('click', () => {
-      box.innerHTML = `<iframe src="https://www.youtube-nocookie.com/embed/${id}?autoplay=1&rel=0" title="${title}" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe>`;
-    });
-    box.appendChild(btn);
-    const link = document.createElement('a'); link.className = 'video-link'; link.href = `https://youtu.be/${id}`; link.target = '_blank'; link.rel = 'noopener'; link.textContent = 'YouTubeで開く ↗';
-    box.appendChild(link);
+  function setupVideos(root) {
+    for (const box of root.querySelectorAll('.video[data-video]')) {
+      const id = box.dataset.video, title = box.dataset.title || '紹介動画';
+      const btn = document.createElement('button'); btn.className = 'video-btn'; btn.type = 'button';
+      btn.innerHTML = '<span>紹介動画を再生</span>'; btn.setAttribute('aria-label', `${title}を再生`);
+      btn.addEventListener('click', () => {
+        box.innerHTML = `<iframe src="https://www.youtube-nocookie.com/embed/${id}?autoplay=1&rel=0" title="${title}" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe>`;
+      });
+      box.appendChild(btn);
+      const link = document.createElement('a'); link.className = 'video-link'; link.href = `https://youtu.be/${id}`; link.target = '_blank'; link.rel = 'noopener'; link.textContent = 'YouTubeで開く ↗';
+      box.appendChild(link);
+    }
   }
+
+  // ---- 作品の詳細: カードを押すと #work-… になり、同じ名前の template をダイアログで開く ----
+  const dialog = document.getElementById('detail');
+  const detailBody = dialog.querySelector('.detail-body');
+  let opener = null;
+  function openDetail(id) {
+    const tpl = document.getElementById(id);
+    if (!tpl || tpl.tagName !== 'TEMPLATE') return false;
+    detailBody.className = `detail-body work work-${tpl.dataset.color || 'paper'}`;
+    detailBody.replaceChildren(tpl.content.cloneNode(true));
+    setupVideos(detailBody);
+    opener = document.activeElement;
+    if (!dialog.open) dialog.showModal();
+    dialog.scrollTop = 0;
+    document.documentElement.classList.add('locked');
+    return true;
+  }
+  function closeDetail() {
+    if (dialog.open) dialog.close();
+  }
+  dialog.addEventListener('close', () => {
+    if (dialog.open) return; // 閉じた直後に別の作品を開いたとき
+    detailBody.replaceChildren(); // 動画も止まる
+    document.documentElement.classList.remove('locked');
+    if (location.hash.startsWith('#work-')) history.replaceState(null, '', location.pathname + location.search);
+    if (opener && opener.focus) opener.focus();
+  });
+  dialog.querySelector('.detail-close').addEventListener('click', closeDetail);
+  dialog.addEventListener('click', (e) => { if (e.target === dialog) closeDetail(); }); // 外側を押すと閉じる
+  function fromHash() { const id = decodeURIComponent(location.hash.slice(1)); if (id.startsWith('work-')) openDetail(id); else closeDetail(); }
+  addEventListener('hashchange', fromHash);
 
   // ---- 起動 ----
   resize(); check(false); state.size = state.target; updateHud();
@@ -232,5 +267,6 @@
   let ticking = false;
   addEventListener('scroll', () => { if (ticking) return; ticking = true; requestAnimationFrame(() => { ticking = false; check(true); }); }, { passive: true });
   addEventListener('load', () => check(false));
+  fromHash();
   requestAnimationFrame(frame);
 })();

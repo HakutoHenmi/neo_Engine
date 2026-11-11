@@ -21,6 +21,7 @@
   <nav aria-label="ページ内の移動">
     <a href="#profile">自己紹介</a>
     <a href="#works">作品</a>
+    <a href="#focus">技術</a>
     <a href="#goal">まとめ</a>
   </nav>
 </header>
@@ -45,14 +46,11 @@
 <section id="stage" class="sec sec-stage">
   <h2 class="head">目次<span class="head-tag">STAGE SELECT</span></h2>
   <ol class="stage-map">
-    <li><a href="#profile"><span class="node node-lime">P1</span><span class="node-no">03</span>自己紹介</a></li>
-    <li><a href="#works"><span class="node node-yellow">×5</span><span class="node-no">04</span>掲載作品</a></li>
-    <li><a href="#w-chiritsumo"><span class="node node-img" style="background-image:url(./assets/works/chiritsumo-title.jpg)"></span><span class="node-no">05</span>チリツモ</a></li>
-    <li><a href="#w-defectory"><span class="node node-img" style="background-image:url(./assets/works/defectory.jpg)"></span><span class="node-no">07</span>Defectory</a></li>
-    <li><a href="#w-toto"><span class="node node-img" style="background-image:url(./assets/works/toto.jpg)"></span><span class="node-no">08</span>逃灯</a></li>
-    <li><a href="#w-kezurare"><span class="node node-img" style="background-image:url(./assets/works/kezurarejima.jpg)"></span><span class="node-no">09</span>削られ島で<br>ぶっ飛ばせ!</a></li>
-    <li><a href="#w-rebuild"><span class="node node-img" style="background-image:url(./assets/works/rebuild.jpg)"></span><span class="node-no">10</span>リビルド</a></li>
-    <li><a href="#goal"><span class="node node-blue">GOAL</span><span class="node-no">11</span>ここまでの<br>まとめ</a></li>
+    <li><a href="#profile"><span class="node node-lime">P1</span><span class="node-no">01</span>自己紹介</a></li>
+    <li><a href="#works"><span class="node node-yellow">×6</span><span class="node-no">02</span>作品</a></li>
+    <li><a href="#work-chiritsumo"><span class="node node-img" style="background-image:url(./assets/works/chiritsumo-title.jpg)"></span><span class="node-no">03</span>いちおし<br>チリツモ</a></li>
+    <li><a href="#focus"><span class="node node-red">TECH</span><span class="node-no">04</span>TECHNICAL<br>FOCUS</a></li>
+    <li><a href="#goal"><span class="node node-blue">GOAL</span><span class="node-no">05</span>ここまでの<br>まとめ</a></li>
   </ol>
   <span class="pickup" data-item="pencil" style="left:84%;top:14%"></span>
   <span class="pickup" data-item="shogi" style="left:3%;top:80%"></span>
@@ -93,177 +91,108 @@
       <p class="motto-note">ぼくのモットーです</p>
     </div>
   </div>
-  <span class="pickup" data-item="pasta" style="left:86%;top:88%"></span>
   <span class="pickup" data-item="card" style="left:46%;top:4%"></span>
+  <span class="pickup" data-item="pasta" style="left:86%;top:88%"></span>
 </section>
 
-<!-- 掲載作品 -->
+<!-- 作品 (概要だけ並べ、押すと動画と詳細が開く) -->
 <section id="works" class="sec sec-works">
-  <h2 class="head head-light">掲載作品<span class="head-note">新しい順に5作品</span></h2>
-  <ol class="work-list">
-    <li class="wl-main"><a href="#w-chiritsumo"><img src="./assets/works/chiritsumo-title.jpg" alt="チリツモのタイトル画面" loading="lazy"><b><i>01</i>チリツモ</b><span>3D吸収アクション / 個人制作</span></a></li>
-    <li class="wl-blue"><a href="#w-defectory"><img src="./assets/works/defectory.jpg" alt="Defectoryのプレイ画面" loading="lazy"><b><i>02</i>Defectory</b><span>3Dアクション / チーム制作</span></a></li>
-    <li class="wl-orange"><a href="#w-toto"><img src="./assets/works/toto.jpg" alt="逃灯のプレイ画面" loading="lazy"><b><i>03</i>逃灯</b><span>3D FPS / 個人制作</span></a></li>
-    <li class="wl-yellow"><a href="#w-kezurare"><img src="./assets/works/kezurarejima.jpg" alt="削られ島でぶっ飛ばせ!のプレイ画面" loading="lazy"><b><i>04</i>削られ島でぶっ飛ばせ!</b><span>3Dアクション / チーム制作</span></a></li>
-    <li class="wl-red"><a href="#w-rebuild"><img src="./assets/works/rebuild.jpg" alt="リビルドのタイトル画面" loading="lazy"><b><i>05</i>リビルド</b><span>2Dアクション / 1年次・チーム</span></a></li>
+  <h2 class="head head-light">作品<span class="head-note">押すと動画と詳細が開きます</span></h2>
+
+  <h3 class="group">GAME<span>ゲーム 5作品・新しい順</span></h3>
+  <ol class="cards">
+    <li class="card card-main" style="--c: var(--lime)">
+      <a href="#work-chiritsumo" class="card-link">
+        <img src="./assets/works/chiritsumo-title.jpg" alt="チリツモのタイトル画面" loading="lazy">
+        <span class="card-no">01</span>
+        <b>チリツモ</b>
+        <span class="card-meta">3D吸収アクション / 個人制作 / 2026 制作中</span>
+        <span class="card-catch">触れるだけで、飲む。飲むほど、大きくなる。</span>
+        <span class="card-more">詳しく見る</span>
+      </a>
+    </li>
+    <li class="card" style="--c: var(--blue)">
+      <a href="#work-defectory" class="card-link">
+        <img src="./assets/works/defectory.jpg" alt="Defectoryのプレイ画面" loading="lazy">
+        <span class="card-no">02</span>
+        <b>Defectory</b>
+        <span class="card-meta">3Dアクション / 5名チーム / 2026</span>
+        <span class="card-catch">敵が増えるほど、FPSが落ちた。</span>
+        <span class="card-more">動画と詳細</span>
+      </a>
+    </li>
+    <li class="card" style="--c: var(--orange)">
+      <a href="#work-toto" class="card-link">
+        <img src="./assets/works/toto.jpg" alt="逃灯のプレイ画面" loading="lazy">
+        <span class="card-no">03</span>
+        <b>逃灯</b>
+        <span class="card-meta">3D FPS / 個人制作 / 2025–2026</span>
+        <span class="card-catch">明かりは命綱で、敵を呼ぶ合図。</span>
+        <span class="card-more">動画と詳細</span>
+      </a>
+    </li>
+    <li class="card" style="--c: var(--yellow)">
+      <a href="#work-kezurare" class="card-link">
+        <img src="./assets/works/kezurarejima.jpg" alt="削られ島でぶっ飛ばせ!のプレイ画面" loading="lazy">
+        <span class="card-no">04</span>
+        <b>削られ島でぶっ飛ばせ!</b>
+        <span class="card-meta">3Dアクション / 3名チーム / 2025</span>
+        <span class="card-catch">ボスの一撃で、島が本当にへこむ。</span>
+        <span class="card-more">動画と詳細</span>
+      </a>
+    </li>
+    <li class="card" style="--c: var(--red)">
+      <a href="#work-rebuild" class="card-link">
+        <img src="./assets/works/rebuild.jpg" alt="リビルドのタイトル画面" loading="lazy">
+        <span class="card-no">05</span>
+        <b>リビルド</b>
+        <span class="card-meta">2Dアクション / 1年次 3名 / 2024</span>
+        <span class="card-catch">無理と言われた円形ゲージを、四角形で組んだ。</span>
+        <span class="card-more">動画と詳細</span>
+      </a>
+    </li>
   </ol>
-  <p class="works-hint">まずは 01 を見てください</p>
-  <span class="pickup" data-item="mikan" style="left:90%;top:8%"></span>
+
+  <h3 class="group">TECH DEMO<span>技術デモ</span></h3>
+  <ol class="cards cards-tech">
+    <li class="card" style="--c: var(--paper)">
+      <a href="#work-nigi" class="card-link">
+        <img src="./assets/works/nigi-nigi.jpg" alt="Nigi-Nigiの画面" loading="lazy">
+        <span class="card-no">T1</span>
+        <b>Nigi-Nigi（にぎにぎ）</b>
+        <span class="card-meta">集中と癒やしのポモドーロツール / Windows</span>
+        <span class="card-catch">作業中の集中と休息を支えるデスクトップツール。</span>
+        <span class="card-more">動画と詳細</span>
+      </a>
+    </li>
+  </ol>
+  <span class="pickup" data-item="mikan" style="left:90%;top:4%"></span>
+  <span class="pickup" data-item="book" style="left:2%;top:34%"></span>
+  <span class="pickup" data-item="teddy" style="left:90%;top:62%"></span>
+  <span class="pickup" data-item="balloon" style="left:4%;top:90%"></span>
 </section>
 
-<!-- 01 チリツモ -->
-<article id="w-chiritsumo" class="sec work work-lime">
-  <header class="work-head">
-    <span class="work-no">01</span>
-    <div><h2>チリツモ</h2><p class="work-catch">触れるだけで、飲む。飲むほど、大きくなる。</p></div>
-  </header>
-  <div class="work-grid">
-    <figure class="shot"><img src="./assets/works/chiritsumo-room.jpg" alt="ぼくの部屋で物を飲みこんだスライム" loading="lazy"></figure>
-    <ul class="points">
-      <li><b>吸収</b>触れた物を飲みこむ</li>
-      <li><b>成長</b>5cmから家より大きく</li>
-      <li class="points-hot"><b>舞台</b>部屋 → 住宅街</li>
-    </ul>
-  </div>
-  <dl class="spec">
-    <div><dt>ジャンル</dt><dd>3D吸収アクション</dd></div>
-    <div><dt>期間</dt><dd>2026.04 – 制作中</dd></div>
-    <div><dt>人数</dt><dd>1名（個人制作）</dd></div>
-    <div><dt>担当</dt><dd>設計・実装すべて</dd></div>
-    <div><dt>環境</dt><dd>C++20・DirectX 12<br>自作エンジン</dd></div>
-  </dl>
-  <p class="work-text">スライムを操作して、部屋や街の物に触れて飲みこみながら大きくなっていく3D吸収アクション。自分より小さい物は通るだけで飲め、大きくなるほど、さっきまで壁だった物も飲めるようになる。ステージは「ぼくの部屋」（5cmから）と「住宅街」（1mから22mを目指す）の2つで、制限時間内にどれだけ大きくなれるかを競う。今の大きさは画面下の巻尺で見せ、飲みこむたびに「もぐもぐ」などの擬音が飛び出す。開発環境は C++20 / DirectX 12 / HLSL、自作エンジン neo_Engine（EnTT・Dear ImGui・DirectXTex・assimp・nlohmann json・DLSS）。エンジン・ゲームともに設計から実装まで一人で担当。3Dモデルは Blender の Python スクリプトで自作。</p>
-  <p class="note">3Dモデルは自作。BGM・効果音・UIの一部にフリー素材（CC0 / CC BY）を使用</p>
-  <span class="pickup" data-item="book" style="left:92%;top:6%"></span>
-</article>
-
-<!-- 01 技術のポイント -->
-<article id="w-chiritsumo-tech" class="sec work work-dark">
-  <header class="work-head">
-    <span class="work-no">01</span>
-    <div><h2>技術のポイント</h2><p class="work-catch">この体、毎フレーム全部 計算しています。</p></div>
-  </header>
-  <div class="tech">
-    <figure class="tech-big"><img src="./assets/works/chiritsumo-inside.jpg" alt="飲みこんだ物が体の中に透けて見えるスライム" loading="lazy"><figcaption><b>飲んだ物が透けて見える</b>屈折・透過で体の中を描画</figcaption></figure>
-    <figure><img src="./assets/works/chiritsumo-comic.jpg" alt="もぐもぐ、ぱくんの擬音" loading="lazy"><figcaption><b>コミック擬音</b>当たり方で文字が変わる</figcaption></figure>
-    <figure><img src="./assets/works/chiritsumo-size.jpg" alt="将棋の駒の横に並んだスライム" loading="lazy"><figcaption><b>大きさで世界が変わる</b>体積で飲める物が決まる</figcaption></figure>
-  </div>
-  <div class="tech-foot">
-    <p class="big-number">6,600<small>粒子</small></p>
-    <ul class="tags">
-      <li><b>流体</b>PBF・6,600粒子</li>
-      <li><b>エンジン</b>ECS・自作エディタ</li>
-      <li><b>検証</b>自動スモークテスト</li>
-    </ul>
-  </div>
-  <p class="work-text">飲んだ物が透けて見える：飲みこんだ物は半透明の体の中にしばらく浮かび、屈折・透過で中身が透けて見える。コミック擬音：ぶつかる・飲む・弾かれるなど当たり方に合わせて「ガンッ」「もぐもぐ」などの文字を出し、言葉は JSON で管理。大きさで世界が変わる：飲めるかどうかは体と物の大きさの比で決まり、大きくなるほどさっきまで壁だった物が飲めるようになる。本体 6,600 粒子を PBF で毎フレーム計算し、等値面のレイマーチで描画。エンジンは EnTT による ECS と Unity 風の ImGui エディタ、調整値は JSON で管理。ルールの単体テストと、実際にゲームを起動して確かめるスモークテストで検証。</p>
-  <span class="pickup" data-item="teddy" style="left:3%;top:8%"></span>
-</article>
-
-<!-- 02 Defectory -->
-<article id="w-defectory" class="sec work work-blue">
-  <header class="work-head">
-    <span class="work-no">02</span>
-    <div><h2>Defectory</h2><p class="work-catch">敵が増えるほど、FPSが落ちた。</p></div>
-    <span class="stamp">60FPS</span>
-  </header>
-  <div class="work-grid">
-    <div class="video" data-video="a_53uxHRYjE" data-title="Defectory 紹介動画"><img src="./assets/works/defectory.jpg" alt="Defectoryのプレイ画面" loading="lazy"></div>
-    <ol class="quest">
-      <li><span>BOSS</span><b>課題</b>敵多数で処理落ち</li>
-      <li><span>ATTACK</span><b>解決</b>カリングと簡易LOD</li>
-      <li><span>DROP</span><b>結果</b>60FPSを安定維持</li>
-    </ol>
-  </div>
-  <dl class="spec">
-    <div><dt>ジャンル</dt><dd>3Dアクション</dd></div>
-    <div><dt>期間</dt><dd>2026.02 – 2026.06</dd></div>
-    <div><dt>人数</dt><dd>5名（チーム制作）</dd></div>
-    <div><dt>担当</dt><dd>エンジン・戦闘演出</dd></div>
-    <div><dt>環境</dt><dd>C++20・DirectX 12</dd></div>
-  </dl>
-  <p class="work-text">5名のチーム制作。担当はチームの自作エンジン（モデル・パーティクル制御）と戦闘シーン全般（演出・ヒットエフェクト）。開発環境は C++20 / DirectX 12、DirectXTex・Dear ImGui・assimp・nlohmann json。敵が多数出現するシーンで FPS が大きく落ちる処理落ちが発生。原因を描画負荷と特定し、画面外を描かないフラスタムカリングと遠景の簡易 LOD を実装。60FPS を安定して維持でき、計測してから最適化する大切さを実践で学んだ。</p>
-  <span class="pickup" data-item="balloon" style="left:93%;top:6%"></span>
-  <span class="pickup" data-item="chair" style="left:2%;top:90%"></span>
-</article>
-
-<!-- 03 逃灯 -->
-<article id="w-toto" class="sec work work-night">
-  <header class="work-head">
-    <span class="work-no">03</span>
-    <div><h2>逃灯</h2><p class="work-catch">明かりは命綱で、敵を呼ぶ合図。</p></div>
-    <span class="stamp">SOLO</span>
-  </header>
-  <div class="work-grid">
-    <div class="video" data-video="Bpxr4WtEc50" data-title="逃灯 紹介動画"><img src="./assets/works/toto.jpg" alt="逃灯のプレイ画面" loading="lazy"></div>
-    <ol class="quest">
-      <li><span>BOSS</span><b>課題</b>暗さと見やすさの両立</li>
-      <li><span>ATTACK</span><b>解決</b>懐中電灯の光を補間で開閉<small>OFFからONへ開く／内角 2→18度・外角 6→40度・距離 4→28</small></li>
-      <li><span>DROP</span><b>学び</b>ライトをリスクとして設計</li>
-    </ol>
-  </div>
-  <dl class="spec">
-    <div><dt>ジャンル</dt><dd>3D FPS</dd></div>
-    <div><dt>期間</dt><dd>2025.12 – 2026.02</dd></div>
-    <div><dt>人数</dt><dd>1名（個人制作）</dd></div>
-    <div><dt>担当</dt><dd>設計・実装すべて</dd></div>
-    <div><dt>環境</dt><dd>C++20・DirectX 12</dd></div>
-  </dl>
-  <p class="work-text">個人制作の一人称ホラー。暗いステージを懐中電灯で進む。環境光は 0.06 まで落とし、カメラに追従するスポットライトで前方だけを照らす。スポットは内角 18°・外角 40°・距離 28。外角を広げて光の縁をなだらかにし、光が穴のように見えないよう調整した。ON / OFF は切り替えず、内角 2→18°、外角 6→40°、距離 4→28 へ補間して光が開くように見せている。ライトは攻略上のリスクでもある。点灯中はバッテリーが減り、隠れている間だけ回復し、0 でゲームオーバー。点灯中の敵は距離 10 以内なら視線がなくても追跡し、速度は 1.25 倍、消した後も 0.8 秒追ってくる。敵が近いほど SAN 値が上がり、CRT / VHS 風のノイズが強まる。開発環境は C++20 / DirectX 12。</p>
-  <span class="pickup" data-item="bicycle" style="left:86%;top:92%"></span>
-</article>
-
-<!-- 04 削られ島でぶっ飛ばせ! -->
-<article id="w-kezurare" class="sec work work-yellow">
-  <header class="work-head">
-    <span class="work-no">04</span>
-    <div><h2>削られ島でぶっ飛ばせ!</h2><p class="work-catch">ボスの一撃で、島が本当にへこむ。</p></div>
-    <span class="stamp">TEAM 3</span>
-  </header>
-  <div class="work-grid">
-    <div class="video" data-video="ETOUy-4aSes" data-title="削られ島でぶっ飛ばせ! 紹介動画"><img src="./assets/works/kezurarejima.jpg" alt="削られ島でぶっ飛ばせ!のプレイ画面" loading="lazy"></div>
-    <ol class="quest">
-      <li><span>BOSS</span><b>課題</b>攻撃の跡を地形に残す</li>
-      <li><span>ATTACK</span><b>解決</b>高さマップをGPUで頂点に反映<small>1撃 = 半径4・深さ1.5</small></li>
-      <li><span>DROP</span><b>学び</b>見た目と判定の高さを統一</li>
-    </ol>
-  </div>
-  <dl class="spec">
-    <div><dt>ジャンル</dt><dd>3Dアクション</dd></div>
-    <div><dt>期間</dt><dd>2025.11 – 2025.12</dd></div>
-    <div><dt>人数</dt><dd>3名（チーム制作）</dd></div>
-    <div><dt>担当</dt><dd>ボス・地形・HP UI</dd></div>
-    <div><dt>環境</dt><dd>C++20・DirectX 12</dd></div>
-  </dl>
-  <p class="work-text">3名のチーム制作。担当はボスの攻撃・地形・HP ゲージなど。ボスの叩き付けや薙ぎ払いが当たると、島の地形が実際にへこむ。1 回の叩き付けは半径 4・深さ 1.5。中心が深く縁が浅い形で高さマップに加算し、掘りすぎないよう深さ 15 で制限している。高さマップは GPU のバッファへ転送し、コンピュートシェーダーが地形の頂点と法線を作り直す。同じ高さマップを CPU 側でも補間して読むので、プレイヤーやボスの接地、カメラも見た目どおりの地面に立つ。へこませた量は島の崩壊率としてリザルトに集計している。開発環境は C++20 / DirectX 12。</p>
-  <span class="pickup" data-item="vending" style="left:2%;top:6%"></span>
-</article>
-
-<!-- 05 リビルド -->
-<article id="w-rebuild" class="sec work work-red">
-  <header class="work-head">
-    <span class="work-no">05</span>
-    <div><h2>リビルド</h2><p class="work-catch">無理と言われた円形ゲージを、四角形で組んだ。</p></div>
-    <span class="stamp">1年次</span>
-  </header>
-  <div class="work-grid">
-    <div class="video" data-video="jxDLSSejB0I" data-title="リビルド 紹介動画"><img src="./assets/works/rebuild.jpg" alt="リビルドのタイトル画面" loading="lazy"></div>
-    <ol class="quest">
-      <li><span>BOSS</span><b>課題</b>エンジンに円弧描画がない</li>
-      <li><span>ATTACK</span><b>解決</b>三角関数で四角形を120枚並べて円弧に<small>位置は cos / sin・太さは法線方向・残量は枚数で</small></li>
-      <li><span>DROP</span><b>学び</b>ない機能はロジックで作る</li>
-    </ol>
-  </div>
-  <dl class="spec">
-    <div><dt>ジャンル</dt><dd>2Dアクション</dd></div>
-    <div><dt>期間</dt><dd>2024.11 – 2024.12</dd></div>
-    <div><dt>人数</dt><dd>3名（1年次）</dd></div>
-    <div><dt>担当</dt><dd>演出全般・ゲージ制作<br><small>組み込みはメンバーが担当</small></dd></div>
-    <div><dt>環境</dt><dd>C++・KAMATA ENGINE</dd></div>
-  </dl>
-  <p class="work-text">1年次の3名チーム制作。開発環境は C++ / KAMATA ENGINE（Novice）。KAMATA ENGINE の描画関数は四角形・三角形・線・楕円・スプライトで、円弧を描く機能がなく、割合で削れる円形ゲージは当時作れないとされていた。そこで円形ゲージのロジックを自分で組み、メンバーに渡してゲームへ組み込んでもらった。仕組みは、円周を細かく分割し、三角関数で求めた位置に小さな四角形（DrawQuad）を並べて円弧に見せるもの。線の法線方向にずらして太さを作り、HP の割合で描く枚数を変える。継ぎ目が見えないよう四角形どうしを少し重ねている。最初は 150 分割の円だけだったが、開始角度と角度範囲を指定できる形に広がり、プレイヤー HP、ボスの部位 HP、スタン表示、レールガンのチャージ表示まで同じ関数で描いている。プレイヤー HP は灰（回復できる量）・赤（遅れて減る HP）・緑（現在の HP）を重ねている。</p>
-  <span class="pickup" data-item="car" style="left:84%;top:94%"></span>
-</article>
+<!-- TECHNICAL FOCUS -->
+<section id="focus" class="sec sec-focus">
+  <h2 class="head">TECHNICAL FOCUS<span class="head-tag">ENGINE EDITOR</span></h2>
+  <p class="focus-lead"><b>自作エンジンのレベルエディター。</b>配置・当たり判定・演出を、コードを書き換えずに調整。</p>
+  <ol class="focus">
+    <li><details><summary><i>01</i><b>レベルエディター</b><span>配置・編集・動作確認を、自作エンジン内のひとつの画面で行える制作環境。</span></summary>
+      <ul><li>ImGuiでHierarchy、Inspector、Project、Game View、Console、Particle Editorを構成。</li><li>Resources内の.obj / .fbxモデルをGame Viewへドラッグ＆ドロップして配置。MeshRendererを自動追加し、Hierarchyへ登録。</li></ul></details></li>
+    <li><details><summary><i>02</i><b>ECS・コンポーネント編集</b><span>必要な機能をコンポーネントとして追加し、Inspectorから見た目と挙動を調整。</span></summary>
+      <ul><li>Transformの位置・回転・スケール、MeshRendererのモデル・テクスチャ・シェーダー・色・UVを編集。</li><li>Colliderに加え、Tag、Health、AudioSource、Script、ParticleEmitterなどを追加・編集。</li></ul></details></li>
+    <li><details><summary><i>03</i><b>シーン保存・再生制御</b><span>JSONでシーンを保存・再利用し、Play / Stopで編集時の状態を保つ仕組み。</span></summary>
+      <ul><li>オブジェクト名・親子関係・Transform・MeshRenderer・Collider・Tag・Scriptとパラメータ・UI・Particleを保存／読み込み。</li><li>Play開始時にシーン状態を保存し、Stop時に開始前の状態へ復元。編集したデータをゲーム側でも再利用。</li></ul></details></li>
+    <li><details><summary><i>04</i><b>当たり判定・戦闘判定</b><span>地形との接触、攻撃判定、食らい判定を可視化し、画面上で調整。</span></summary>
+      <ul><li>BoxColliderの中心・サイズ・有効状態・Triggerを編集。GpuMeshColliderで地形のメッシュ形状を移動・接地判定に使用。</li><li>HitboxとHurtboxを分離し、中心・サイズ・Tag、攻撃のダメージ量と有効状態、被弾のダメージ倍率を設定。CombatSystemでダメージを処理。</li></ul></details></li>
+    <li><details><summary><i>05</i><b>パーティクル編集</b><span>専用プレビューで変化をリアルタイムに確認しながら、エフェクトを調整。</span></summary>
+      <ul><li>発生頻度・寿命・発生形状・速度・加速度・サイズ変化・色の変化・回転を編集。</li><li>テクスチャ・加算合成・UVアニメーションにも対応。ゲームへ配置する前に見た目と動きを確認。</li></ul></details></li>
+  </ol>
+  <p class="focus-stack">C++ / DirectX 12 / ImGui / ECS / JSON</p>
+  <span class="pickup" data-item="chair" style="left:90%;top:6%"></span>
+  <span class="pickup" data-item="bicycle" style="left:86%;top:84%"></span>
+  <span class="pickup" data-item="vending" style="left:2%;top:58%"></span>
+</section>
 
 <!-- まとめ -->
 <section id="goal" class="sec sec-goal">
@@ -284,13 +213,154 @@
     </ul>
     <p class="goal-thanks">最後まで見てくれて、ありがとう!</p>
   </div>
-  <span class="pickup" data-item="house" style="left:5%;top:10%"></span>
-  <span class="pickup" data-item="building" style="left:86%;top:12%"></span>
+  <span class="pickup" data-item="car" style="left:4%;top:8%"></span>
+  <span class="pickup" data-item="house" style="left:74%;top:6%"></span>
+  <span class="pickup" data-item="building" style="left:88%;top:40%"></span>
 </section>
 
 </main>
 
 <footer class="foot"><small>© 逸見 珀斗 ／ 画像はすべて本人が制作した作品の画面です</small></footer>
+
+<!-- 作品の詳細 (カードを押すとこのダイアログに入れて開く) -->
+<dialog id="detail" class="detail" aria-labelledby="detail-title">
+  <button type="button" class="detail-close" aria-label="閉じる">×</button>
+  <div class="detail-body"></div>
+</dialog>
+
+<template id="work-chiritsumo" data-color="lime">
+  <header class="work-head"><span class="work-no">01</span><div><h2 id="detail-title">チリツモ</h2><p class="work-catch">触れるだけで、飲む。飲むほど、大きくなる。</p></div></header>
+  <div class="work-grid">
+    <figure class="shot"><img src="./assets/works/chiritsumo-room.jpg" alt="ぼくの部屋で物を飲みこんだスライム"></figure>
+    <ul class="points">
+      <li><b>吸収</b>触れた物を飲みこむ</li>
+      <li><b>成長</b>5cmから家より大きく</li>
+      <li class="points-hot"><b>舞台</b>部屋 → 住宅街</li>
+    </ul>
+  </div>
+  <dl class="spec">
+    <div><dt>ジャンル</dt><dd>3D吸収アクション</dd></div>
+    <div><dt>期間</dt><dd>2026.04 – 制作中</dd></div>
+    <div><dt>人数</dt><dd>1名（個人制作）</dd></div>
+    <div><dt>担当</dt><dd>設計・実装すべて</dd></div>
+    <div><dt>環境</dt><dd>C++20・DirectX 12<br>自作エンジン</dd></div>
+  </dl>
+  <p class="work-text">スライムを操作して、部屋や街の物に触れて飲みこみながら大きくなっていく3D吸収アクション。自分より小さい物は通るだけで飲め、大きくなるほど、さっきまで壁だった物も飲めるようになる。ステージは「ぼくの部屋」（5cmから）と「住宅街」（1mから22mを目指す）の2つで、制限時間内にどれだけ大きくなれるかを競う。今の大きさは画面下の巻尺で見せ、飲みこむたびに「もぐもぐ」などの擬音が飛び出す。開発環境は C++20 / DirectX 12 / HLSL、自作エンジン neo_Engine（EnTT・Dear ImGui・DirectXTex・assimp・nlohmann json・DLSS）。エンジン・ゲームともに設計から実装まで一人で担当。3Dモデルは Blender の Python スクリプトで自作。</p>
+  <h3 class="detail-sub">技術のポイント<small>この体、毎フレーム全部 計算しています。</small></h3>
+  <div class="tech">
+    <figure class="tech-big"><img src="./assets/works/chiritsumo-inside.jpg" alt="飲みこんだ物が体の中に透けて見えるスライム"><figcaption><b>飲んだ物が透けて見える</b>屈折・透過で体の中を描画</figcaption></figure>
+    <figure><img src="./assets/works/chiritsumo-comic.jpg" alt="もぐもぐ、ぱくんの擬音"><figcaption><b>コミック擬音</b>当たり方で文字が変わる</figcaption></figure>
+    <figure><img src="./assets/works/chiritsumo-size.jpg" alt="将棋の駒の横に並んだスライム"><figcaption><b>大きさで世界が変わる</b>体積で飲める物が決まる</figcaption></figure>
+  </div>
+  <div class="tech-foot">
+    <p class="big-number">6,600<small>粒子</small></p>
+    <ul class="tags">
+      <li><b>流体</b>PBF・6,600粒子</li>
+      <li><b>エンジン</b>ECS・自作エディタ</li>
+      <li><b>検証</b>自動スモークテスト</li>
+    </ul>
+  </div>
+  <p class="work-text">飲んだ物が透けて見える：飲みこんだ物は半透明の体の中にしばらく浮かび、屈折・透過で中身が透けて見える。コミック擬音：ぶつかる・飲む・弾かれるなど当たり方に合わせて「ガンッ」「もぐもぐ」などの文字を出し、言葉は JSON で管理。大きさで世界が変わる：飲めるかどうかは体と物の大きさの比で決まり、大きくなるほどさっきまで壁だった物が飲めるようになる。本体 6,600 粒子を PBF で毎フレーム計算し、等値面のレイマーチで描画。エンジンは EnTT による ECS と Unity 風の ImGui エディタ、調整値は JSON で管理。ルールの単体テストと、実際にゲームを起動して確かめるスモークテストで検証。</p>
+  <p class="note">3Dモデルは自作。BGM・効果音・UIの一部にフリー素材（CC0 / CC BY）を使用</p>
+</template>
+
+<template id="work-defectory" data-color="blue">
+  <header class="work-head"><span class="work-no">02</span><div><h2 id="detail-title">Defectory</h2><p class="work-catch">敵が増えるほど、FPSが落ちた。</p></div><span class="stamp">60FPS</span></header>
+  <div class="work-grid">
+    <div class="video" data-video="a_53uxHRYjE" data-title="Defectory 紹介動画"><img src="./assets/works/defectory.jpg" alt="Defectoryのプレイ画面"></div>
+    <ol class="quest">
+      <li><span>BOSS</span><b>課題</b>敵多数で処理落ち</li>
+      <li><span>ATTACK</span><b>解決</b>カリングと簡易LOD</li>
+      <li><span>DROP</span><b>結果</b>60FPSを安定維持</li>
+    </ol>
+  </div>
+  <dl class="spec">
+    <div><dt>ジャンル</dt><dd>3Dアクション</dd></div>
+    <div><dt>期間</dt><dd>2026.02 – 2026.06</dd></div>
+    <div><dt>人数</dt><dd>5名（チーム制作）</dd></div>
+    <div><dt>担当</dt><dd>エンジン・戦闘演出</dd></div>
+    <div><dt>環境</dt><dd>C++20・DirectX 12</dd></div>
+  </dl>
+  <p class="work-text">5名のチーム制作。担当はチームの自作エンジン（モデル・パーティクル制御）と戦闘シーン全般（演出・ヒットエフェクト）。開発環境は C++20 / DirectX 12、DirectXTex・Dear ImGui・assimp・nlohmann json。敵が多数出現するシーンで FPS が大きく落ちる処理落ちが発生。原因を描画負荷と特定し、画面外を描かないフラスタムカリングと遠景の簡易 LOD を実装。60FPS を安定して維持でき、計測してから最適化する大切さを実践で学んだ。</p>
+</template>
+
+<template id="work-toto" data-color="night">
+  <header class="work-head"><span class="work-no">03</span><div><h2 id="detail-title">逃灯</h2><p class="work-catch">明かりは命綱で、敵を呼ぶ合図。</p></div><span class="stamp">SOLO</span></header>
+  <div class="work-grid">
+    <div class="video" data-video="Bpxr4WtEc50" data-title="逃灯 紹介動画"><img src="./assets/works/toto.jpg" alt="逃灯のプレイ画面"></div>
+    <ol class="quest">
+      <li><span>BOSS</span><b>課題</b>暗さと見やすさの両立</li>
+      <li><span>ATTACK</span><b>解決</b>懐中電灯の光を補間で開閉<small>OFFからONへ開く／内角 2→18度・外角 6→40度・距離 4→28</small></li>
+      <li><span>DROP</span><b>学び</b>ライトをリスクとして設計</li>
+    </ol>
+  </div>
+  <dl class="spec">
+    <div><dt>ジャンル</dt><dd>3D FPS</dd></div>
+    <div><dt>期間</dt><dd>2025.12 – 2026.02</dd></div>
+    <div><dt>人数</dt><dd>1名（個人制作）</dd></div>
+    <div><dt>担当</dt><dd>設計・実装すべて</dd></div>
+    <div><dt>環境</dt><dd>C++20・DirectX 12</dd></div>
+  </dl>
+  <p class="work-text">個人制作の一人称ホラー。暗いステージを懐中電灯で進む。環境光は 0.06 まで落とし、カメラに追従するスポットライトで前方だけを照らす。スポットは内角 18°・外角 40°・距離 28。外角を広げて光の縁をなだらかにし、光が穴のように見えないよう調整した。ON / OFF は切り替えず、内角 2→18°、外角 6→40°、距離 4→28 へ補間して光が開くように見せている。ライトは攻略上のリスクでもある。点灯中はバッテリーが減り、隠れている間だけ回復し、0 でゲームオーバー。点灯中の敵は距離 10 以内なら視線がなくても追跡し、速度は 1.25 倍、消した後も 0.8 秒追ってくる。敵が近いほど SAN 値が上がり、CRT / VHS 風のノイズが強まる。開発環境は C++20 / DirectX 12。</p>
+</template>
+
+<template id="work-kezurare" data-color="yellow">
+  <header class="work-head"><span class="work-no">04</span><div><h2 id="detail-title">削られ島でぶっ飛ばせ!</h2><p class="work-catch">ボスの一撃で、島が本当にへこむ。</p></div><span class="stamp">TEAM 3</span></header>
+  <div class="work-grid">
+    <div class="video" data-video="ETOUy-4aSes" data-title="削られ島でぶっ飛ばせ! 紹介動画"><img src="./assets/works/kezurarejima.jpg" alt="削られ島でぶっ飛ばせ!のプレイ画面"></div>
+    <ol class="quest">
+      <li><span>BOSS</span><b>課題</b>攻撃の跡を地形に残す</li>
+      <li><span>ATTACK</span><b>解決</b>高さマップをGPUで頂点に反映<small>1撃 = 半径4・深さ1.5</small></li>
+      <li><span>DROP</span><b>学び</b>見た目と判定の高さを統一</li>
+    </ol>
+  </div>
+  <dl class="spec">
+    <div><dt>ジャンル</dt><dd>3Dアクション</dd></div>
+    <div><dt>期間</dt><dd>2025.11 – 2025.12</dd></div>
+    <div><dt>人数</dt><dd>3名（チーム制作）</dd></div>
+    <div><dt>担当</dt><dd>ボス・地形・HP UI</dd></div>
+    <div><dt>環境</dt><dd>C++20・DirectX 12</dd></div>
+  </dl>
+  <p class="work-text">3名のチーム制作。担当はボスの攻撃・地形・HP ゲージなど。ボスの叩き付けや薙ぎ払いが当たると、島の地形が実際にへこむ。1 回の叩き付けは半径 4・深さ 1.5。中心が深く縁が浅い形で高さマップに加算し、掘りすぎないよう深さ 15 で制限している。高さマップは GPU のバッファへ転送し、コンピュートシェーダーが地形の頂点と法線を作り直す。同じ高さマップを CPU 側でも補間して読むので、プレイヤーやボスの接地、カメラも見た目どおりの地面に立つ。へこませた量は島の崩壊率としてリザルトに集計している。開発環境は C++20 / DirectX 12。</p>
+</template>
+
+<template id="work-rebuild" data-color="red">
+  <header class="work-head"><span class="work-no">05</span><div><h2 id="detail-title">リビルド</h2><p class="work-catch">無理と言われた円形ゲージを、四角形で組んだ。</p></div><span class="stamp">1年次</span></header>
+  <div class="work-grid">
+    <div class="video" data-video="jxDLSSejB0I" data-title="リビルド 紹介動画"><img src="./assets/works/rebuild.jpg" alt="リビルドのタイトル画面"></div>
+    <ol class="quest">
+      <li><span>BOSS</span><b>課題</b>エンジンに円弧描画がない</li>
+      <li><span>ATTACK</span><b>解決</b>三角関数で四角形を120枚並べて円弧に<small>位置は cos / sin・太さは法線方向・残量は枚数で</small></li>
+      <li><span>DROP</span><b>学び</b>ない機能はロジックで作る</li>
+    </ol>
+  </div>
+  <dl class="spec">
+    <div><dt>ジャンル</dt><dd>2Dアクション</dd></div>
+    <div><dt>期間</dt><dd>2024.11 – 2024.12</dd></div>
+    <div><dt>人数</dt><dd>3名（1年次）</dd></div>
+    <div><dt>担当</dt><dd>演出全般・ゲージ制作<br><small>組み込みはメンバーが担当</small></dd></div>
+    <div><dt>環境</dt><dd>C++・KAMATA ENGINE</dd></div>
+  </dl>
+  <p class="work-text">1年次の3名チーム制作。開発環境は C++ / KAMATA ENGINE（Novice）。KAMATA ENGINE の描画関数は四角形・三角形・線・楕円・スプライトで、円弧を描く機能がなく、割合で削れる円形ゲージは当時作れないとされていた。そこで円形ゲージのロジックを自分で組み、メンバーに渡してゲームへ組み込んでもらった。仕組みは、円周を細かく分割し、三角関数で求めた位置に小さな四角形（DrawQuad）を並べて円弧に見せるもの。線の法線方向にずらして太さを作り、HP の割合で描く枚数を変える。継ぎ目が見えないよう四角形どうしを少し重ねている。最初は 150 分割の円だけだったが、開始角度と角度範囲を指定できる形に広がり、プレイヤー HP、ボスの部位 HP、スタン表示、レールガンのチャージ表示まで同じ関数で描いている。プレイヤー HP は灰（回復できる量）・赤（遅れて減る HP）・緑（現在の HP）を重ねている。</p>
+</template>
+
+<template id="work-nigi" data-color="paper">
+  <header class="work-head"><span class="work-no">T1</span><div><h2 id="detail-title">Nigi-Nigi（にぎにぎ）</h2><p class="work-catch">集中と癒やしのポモドーロツール / Windows</p></div><span class="stamp">TECH DEMO</span></header>
+  <div class="work-grid">
+    <div class="video" data-video="BFgeKeUAiSA" data-title="Nigi-Nigi 紹介動画"><img src="./assets/works/nigi-nigi.jpg" alt="Nigi-Nigiの画面"></div>
+    <ul class="points">
+      <li><b>機能</b>ポモドーロで集中と休息を切り替え</li>
+      <li><b>工夫</b>DirectXによる軽快な動作</li>
+      <li class="points-hot"><b>配布</b><a href="https://yurufuwa-lab.booth.pm/items/8531474" rel="noopener" target="_blank">BOOTHで見る ↗</a></li>
+    </ul>
+  </div>
+  <dl class="spec spec-2">
+    <div><dt>種類</dt><dd>デスクトップツール</dd></div>
+    <div><dt>環境</dt><dd>DirectX / Windows 10・11</dd></div>
+  </dl>
+  <p class="work-text">作業中の集中と休息を支える、ポモドーロ機能つきのデスクトップツールです。DirectXによる軽快な動作と、集中・休息を切り替えるUIを紹介します。</p>
+  <p class="note">BOOTHの商品紹介をもとに掲載</p>
+</template>
 
 <!-- スライムと巻尺 (飾り) -->
 <canvas id="slime" aria-hidden="true"></canvas>
