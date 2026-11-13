@@ -194,6 +194,9 @@
     <ClInclude Include="Engine\StaticLod.h" />
     <ClInclude Include="Engine\TopologyLod.h" />
     <ClInclude Include="Engine\Particle.h" />
+    <ClInclude Include="Engine\ObjectPool.h" />
+    <ClInclude Include="Engine\EmissionShapes.h" />
+    <ClInclude Include="Engine\CommandHistory.h" />
     <ClInclude Include="Engine\GPUParticle.h" />
     <ClInclude Include="Engine\ParticleEmitter.h" />
     <ClInclude Include="Engine\ParticleEditor.h" />

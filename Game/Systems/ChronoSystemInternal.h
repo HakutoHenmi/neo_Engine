@@ -17,6 +17,7 @@
 #include <map>
 #include "../UI/SceneMusic.h"
 #include "ChronoSystem.h"
+#include "DevourGimmickBehaviors.h"
 #include "GameControls.h"
 #include <set>
 #include <unordered_map>

@@ -24,6 +24,7 @@
 #include <optional>
 // エディタから参照するゲーム側のシーンとシステム
 #include "../Scenes/GameScene.h"
+#include "EditorCommandTypes.h"
 #include "../Systems/ChronoSystem.h"
 #include "../Systems/RiverSystem.h"
 #include "../Systems/UISystem.h"
@@ -89,10 +90,6 @@ struct ImGuiIdScope {
 };
 
 // ---- エディタ全体の状態 ----
-// Undo / Redo の履歴 (最大 100 件)
-inline std::deque<UndoCommand> undoStack;
-inline std::deque<UndoCommand> redoStack;
-inline constexpr size_t kMaxUndoDepth = 100;
 // Game ビューの縦横比の選択肢 (0 は自由、-1 は自動)
 inline int currentAspect = 0;
 inline const float aspectValues[] = { 0.0f, 16.0f/9.0f, 4.0f/3.0f, 1.0f/1.0f, -1.0f };
@@ -179,8 +176,6 @@ inline constexpr const char* kFluidSandboxWindow = "Fluid Sandbox";
 std::vector<entt::entity> RestoreSceneFromJson(GameScene* scene, const json& j, bool append);
 // 1 つのエンティティを JSON の文字列にする [EditorSceneIO.cpp]
 std::string SerializeEntity(SceneComponents& registry, entt::entity entity);
-// 生成・削除の Undo を作る (existsAfterRedo: やり直した後に存在する操作か) [EditorCommands.cpp]
-UndoCommand MakeSpawnUndo(GameScene* scene, const std::string& description, const std::string& snapshot, entt::entity current, bool existsAfterRedo);
 // コピー / 貼り付け / 複製 [EditorCommands.cpp]
 void ExecuteCopy(GameScene* scene);
 void ExecutePaste(GameScene* scene);

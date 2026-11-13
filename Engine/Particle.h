@@ -3,6 +3,7 @@
 #include <vector>
 
 #include "Camera.h"
+#include "ObjectPool.h"
 #include "Matrix4x4.h"
 #include "Renderer.h"
 #include "Transform.h"
@@ -25,7 +26,6 @@ struct Particle {
 
 	float life = 1.0f;
 	float age = 0.0f;
-	bool active = false;
 
 	float damping = 0.0f; // ★追加: 摩擦・空気抵抗
 
@@ -49,6 +49,7 @@ public:
 	
 
 	void Clear();
+	size_t ActiveCount() const { return particles_.ActiveCount(); }
 
 	// ★変更: 回転速度(angVel)引数と摩擦(damping)引数を追加
 	void Emit(const Vector3& pos, const Vector3& vel, const Vector3& acceleration, 
@@ -62,7 +63,9 @@ private:
 	Renderer::MeshHandle mesh_ = 0;
 	Renderer::TextureHandle tex_ = 0;
 
-	std::vector<Particle> particles_;
+	// 生存中の粒だけを走査し、放出は空きを O(1) で取り出す (Object Pool)。
+	// 以前は放出のたびに全要素から未使用を線形探索していた
+	ObjectPool<Particle> particles_;
 
 	// ★追加: ビルボードを使用するかどうか
 	bool useBillboard_ = true;

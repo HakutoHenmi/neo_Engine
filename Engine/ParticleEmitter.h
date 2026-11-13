@@ -1,5 +1,6 @@
 #pragma once
 
+#include "EmissionShapes.h"
 #include "Particle.h"
 #include <string>
 #ifdef _MSC_VER
@@ -12,13 +13,6 @@
 #endif
 
 namespace Engine {
-
-// ★追加: 放出形状の定義
-enum class EmissionShape {
-	Point = 0,
-	Sphere = 1,
-	Cone = 2
-};
 
 struct EmitterParams {
 	std::string name = "Default Emitter";
@@ -100,7 +94,7 @@ private:
 	bool currentBillboard_ = true;
 
 	void ApplySystemSettings();
-	float RandomFloat(float min, float max);
+	static float RandomFloat(float min, float max);
 	Vector3 RandomVector3(const Vector3& base, const Vector3& variance);
 };
 

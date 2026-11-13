@@ -316,39 +316,27 @@ void EditorUI::ShowInspector(GameScene* scene) {
 			if (ImGui::DragFloat3("Pos", &tc->translate.x, 0.1f)) {}
 			if (ImGui::IsItemActivated()) s_inspectorStartTranslate = tc->translate;
 			if (ImGui::IsItemDeactivatedAfterEdit()) {
-				DirectX::XMFLOAT3 start = s_inspectorStartTranslate;
-				DirectX::XMFLOAT3 end = tc->translate;
-				entt::entity e = entity;
-				PushUndo({"Change Position",
-					[=, &reg = scene->GetComponents()](){ if(reg.valid(e)) reg.get<TransformComponent>(e).translate = start; },
-					[=, &reg = scene->GetComponents()](){ if(reg.valid(e)) reg.get<TransformComponent>(e).translate = end; }
-				});
+				TransformValues before = TransformValues::From(*tc);
+				before.translate = s_inspectorStartTranslate;
+				RecordCommand(std::make_unique<TransformCommand>(scene, entity, "Change Position", TransformTranslate, before, TransformValues::From(*tc)));
 			}
 
 			// 回転: 同様
 			if (ImGui::DragFloat3("Rot", &tc->rotate.x, 0.01f)) {}
 			if (ImGui::IsItemActivated()) s_inspectorStartRotate = tc->rotate;
 			if (ImGui::IsItemDeactivatedAfterEdit()) {
-				DirectX::XMFLOAT3 start = s_inspectorStartRotate;
-				DirectX::XMFLOAT3 end = tc->rotate;
-				entt::entity e = entity;
-				PushUndo({"Change Rotation",
-					[=, &reg = scene->GetComponents()](){ if(reg.valid(e)) reg.get<TransformComponent>(e).rotate = start; },
-					[=, &reg = scene->GetComponents()](){ if(reg.valid(e)) reg.get<TransformComponent>(e).rotate = end; }
-				});
+				TransformValues before = TransformValues::From(*tc);
+				before.rotate = s_inspectorStartRotate;
+				RecordCommand(std::make_unique<TransformCommand>(scene, entity, "Change Rotation", TransformRotate, before, TransformValues::From(*tc)));
 			}
 
 			// 大きさ: 同様
 			if (ImGui::DragFloat3("Scale", &tc->scale.x, 0.01f)) {}
 			if (ImGui::IsItemActivated()) s_inspectorStartScale = tc->scale;
 			if (ImGui::IsItemDeactivatedAfterEdit()) {
-				DirectX::XMFLOAT3 start = s_inspectorStartScale;
-				DirectX::XMFLOAT3 end = tc->scale;
-				entt::entity e = entity;
-				PushUndo({"Change Scale",
-					[=, &reg = scene->GetComponents()](){ if(reg.valid(e)) reg.get<TransformComponent>(e).scale = start; },
-					[=, &reg = scene->GetComponents()](){ if(reg.valid(e)) reg.get<TransformComponent>(e).scale = end; }
-				});
+				TransformValues before = TransformValues::From(*tc);
+				before.scale = s_inspectorStartScale;
+				RecordCommand(std::make_unique<TransformCommand>(scene, entity, "Change Scale", TransformScale, before, TransformValues::From(*tc)));
 			}
 		}
 

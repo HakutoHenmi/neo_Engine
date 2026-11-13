@@ -385,8 +385,11 @@ void EditorUI::DrawMainMenu(Engine::Renderer* renderer, GameScene* gameScene) {
 	// Edit: Undo・コピー/貼り付け・Frame Selected・Play/Pause/Step
 	if (ImGui::BeginMenu("Edit")) {
 		// Undo / Redo (PLAY 中は無効)
-		if (ImGui::MenuItem("Undo", "Ctrl+Z", false, !playing)) Undo();
-		if (ImGui::MenuItem("Redo", "Ctrl+Y", false, !playing)) Redo();
+		// 次に取り消す / やり直す操作の名前を出す (履歴が無ければ押せない)
+		const std::string undoLabel = history_.CanUndo() ? "Undo " + history_.NextUndoName() : std::string("Undo");
+		const std::string redoLabel = history_.CanRedo() ? "Redo " + history_.NextRedoName() : std::string("Redo");
+		if (ImGui::MenuItem(undoLabel.c_str(), "Ctrl+Z", false, !playing && history_.CanUndo())) Undo();
+		if (ImGui::MenuItem(redoLabel.c_str(), "Ctrl+Y", false, !playing && history_.CanRedo())) Redo();
 		ImGui::Separator();
 		// コピー・貼り付け・複製
 		if (ImGui::MenuItem("Copy", "Ctrl+C")) ExecuteCopy(gameScene);
@@ -570,14 +573,11 @@ void EditorUI::MoveSelectedToView(GameScene* scene) {
 	DirectX::XMStoreFloat3(&position, world.r[3]);
 	DirectX::XMStoreFloat3(&forward, DirectX::XMVector3Normalize(world.r[2]));
 	// 移す前の位置と、移す先
-	auto& tc = reg.get<TransformComponent>(selected);
-	const DirectX::XMFLOAT3 before = tc.translate;
-	const DirectX::XMFLOAT3 after{position.x + forward.x * 10.0f, position.y + forward.y * 10.0f, position.z + forward.z * 10.0f};
-	tc.translate = after;
-	// Undo / Redo を登録する (前の位置に戻す / 移した位置にする)
-	PushUndo({"Move To View",
-		[scene, selected, before]() { auto& r = scene->GetComponents(); if (r.valid(selected) && r.all_of<TransformComponent>(selected)) r.get<TransformComponent>(selected).translate = before; },
-		[scene, selected, after]() { auto& r = scene->GetComponents(); if (r.valid(selected) && r.all_of<TransformComponent>(selected)) r.get<TransformComponent>(selected).translate = after; }});
+	const TransformValues before = TransformValues::From(reg.get<TransformComponent>(selected));
+	TransformValues after = before;
+	after.translate = {position.x + forward.x * 10.0f, position.y + forward.y * 10.0f, position.z + forward.z * 10.0f};
+	// 位置の変更をコマンドとして実行・記録する
+	ExecuteCommand(std::make_unique<TransformCommand>(scene, selected, "Move To View", TransformTranslate, before, after));
 }
 
 // キーボードショートカット (文字入力中は無効)
