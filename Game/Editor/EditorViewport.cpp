@@ -472,38 +472,27 @@ void EditorUI::DrawViewport(Engine::Renderer* renderer, GameScene* gameScene, bo
 				gizmo_.BeginDrag(hoveredAxis);
 				gizmoDragStartMouse = mousePos;
 				gizmoStartTranslate = currentPos;
-				gizmoStartRotate = {0,0,0}; // キーフレームでは回転を使わない
-				gizmoStartScale = {1,1,1};
+				// 回転と大きさは物の今の値を覚える (キーフレームでは使わない)。
+				// 以前は 0 と 1 を入れていたため、移動の取り消しで回転と大きさまで初期値に戻っていた
+				gizmoStartRotate = tc.rotate;
+				gizmoStartScale = tc.scale;
 			}
 
 			if (gizmo_.Dragging()) {
 				if (ImGui::IsMouseReleased(0)) {
-					// Undo の記録
-					// 今の値と、ドラッグを始めたときの値
-					DirectX::XMFLOAT3 endT = tc.translate;
-					DirectX::XMFLOAT3 endR = tc.rotate;
-					DirectX::XMFLOAT3 endS = tc.scale;
-					DirectX::XMFLOAT3 startT = gizmoStartTranslate;
-					DirectX::XMFLOAT3 startR = gizmoStartRotate;
-					DirectX::XMFLOAT3 startS = gizmoStartScale;
-					entt::entity e = selectedEnt;
-
-					// Undo / Redo を登録する (始めの値に戻す / 今の値にする)
-					PushUndo({
-						"Transform",
-						[=, &reg = gameScene->GetComponents()]() {
-							if (reg.valid(e)) {
-								auto& t = reg.get<TransformComponent>(e);
-								t.translate = startT; t.rotate = startR; t.scale = startS;
-							}
-						},
-						[=, &reg = gameScene->GetComponents()]() {
-							if (reg.valid(e)) {
-								auto& t = reg.get<TransformComponent>(e);
-								t.translate = endT; t.rotate = endR; t.scale = endS;
-							}
-						}
-					});
+					// Undo の記録: ドラッグを始めたときの値と今の値をコマンドとして記録する (値はドラッグ中に変更済み)。
+					// キーフレームを動かしたときは、物ではなくキーフレームの位置を対象にする
+					const MotionComponent::Keyframe* keyframe = nullptr;
+					if (mc && mc->selectedKeyframe >= 0 && mc->clips.count(mc->activeClip)) {
+						const auto& kfs = mc->clips.at(mc->activeClip).keyframes;
+						if (mc->selectedKeyframe < (int)kfs.size()) keyframe = &kfs[mc->selectedKeyframe];
+					}
+					if (keyframe) {
+						RecordCommand(std::make_unique<KeyframeMoveCommand>(gameScene, selectedEnt, mc->activeClip, mc->selectedKeyframe, gizmoStartTranslate, keyframe->translate));
+					} else {
+						const TransformValues before{gizmoStartTranslate, gizmoStartRotate, gizmoStartScale};
+						RecordCommand(std::make_unique<TransformCommand>(gameScene, selectedEnt, "Transform", TransformAll, before, TransformValues::From(tc)));
+					}
 
 					// ドラッグを終える
 					gizmo_.EndDrag();

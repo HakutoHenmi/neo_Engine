@@ -73,44 +73,8 @@ void ParticleEmitter::EmitBurst(int count) {
 		Vector3 startVel = RandomVector3(params.startVelocity, params.velocityVariance);
 		Vector3 startPos = params.position;
 
-		// ★追加: 放出形状に基づく計算
-		if (params.shape == EmissionShape::Sphere) {
-			// 球体内のランダムな位置
-			float theta = RandomFloat(0, 3.14159265f * 2.0f);
-			float phi = std::acos(RandomFloat(-1.0f, 1.0f));
-			float r = params.shapeRadius * std::pow(RandomFloat(0.0f, 1.0f), 1.0f/3.0f);
-			Vector3 offset = {
-				r * std::sin(phi) * std::cos(theta),
-				r * std::sin(phi) * std::sin(theta),
-				r * std::cos(phi)
-			};
-			startPos.x += offset.x; startPos.y += offset.y; startPos.z += offset.z;
-			// 速度も放射状に少しブレさせる場合はここで加算可能
-			startVel.x += offset.x * 0.5f; startVel.y += offset.y * 0.5f; startVel.z += offset.z * 0.5f;
-		} 
-		else if (params.shape == EmissionShape::Cone) {
-			// 円錐状（簡易）
-			float angle = RandomFloat(0, params.shapeAngle);
-			float theta = RandomFloat(0, 3.14159265f * 2.0f);
-			float r = params.shapeRadius * std::tan(angle);
-			Vector3 dir = {
-				r * std::cos(theta),
-				1.0f, // 上方向を基本軸とする
-				r * std::sin(theta)
-			};
-			// 正規化して初速方向に合わせる（ここでは簡易に上方向中心）
-			float len = std::sqrt(dir.x*dir.x + dir.y*dir.y + dir.z*dir.z);
-			dir.x /= len; dir.y /= len; dir.z /= len;
-
-			// 初速ベクトルを円錐方向に回転させるなど
-			float speed = std::sqrt(startVel.x*startVel.x + startVel.y*startVel.y + startVel.z*startVel.z);
-			startVel = {dir.x * speed, dir.y * speed, dir.z * speed};
-
-			// 位置は底面の円から
-			float baseR = params.shapeRadius * std::sqrt(RandomFloat(0, 1));
-			startPos.x += baseR * std::cos(theta);
-			startPos.z += baseR * std::sin(theta);
-		}
+		// 放出形状に合わせて位置と初速を決める (形状ごとの計算は EmissionShapes.h の Strategy)
+		EmissionShapeFor(params.shape).Shape({params.shapeRadius, params.shapeAngle}, &ParticleEmitter::RandomFloat, startPos, startVel);
 
 		Vector3 startScale = RandomVector3(params.startSize, params.startSizeVariance);
 		Vector3 endScale = RandomVector3(params.endSize, params.endSizeVariance);

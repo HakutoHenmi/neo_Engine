@@ -45,8 +45,7 @@ int ChronoSystem::AddGimmick(entt::registry& r,GimmickKind kind,const std::strin
         for(uint32_t i=0;i<uint32_t(segments);++i){uint32_t a=i*2;indices.insert(indices.end(),{a,a+1,a+3,a,a+3,a+2});}
         gimmickCurtain_=Engine::Renderer::GetInstance()->CreateDynamicMesh(vertices,indices);}
     DevourGimmick g;g.kind=kind;g.name=name;g.at=at;g.radius=radius;g.minCm=minCm;
-    static const char* signs[]={"sign_shoot","sign_domino","sign_bowling","sign_paint","sign_liquid","sign_plane"};
-    if(signAt.y>=0){g.sign=uint32_t(LowProp(r,signs[int(kind)],signAt,1.2f,signYaw,0,{1,1,1,1},0));
+    if(signAt.y>=0){g.sign=uint32_t(LowProp(r,GimmickBehaviorFor(kind).SignModel(),signAt,1.2f,signYaw,0,{1,1,1,1},0));
         if(signAt.y<1)gimmickSigns_.push_back(signAt);}
     gimmicks_.push_back(std::move(g));return int(gimmicks_.size())-1;
 }
@@ -101,11 +100,25 @@ void ChronoSystem::BurstGimmick(entt::registry& r,GameContext& ctx,DevourGimmick
         prop.at=to;prop.active=true;prop.sealed=true;devourFlies_.push_back(fly);++count;}
     if(count){devourPops_.push_back({from+V{0,10,0},GimmickWord("gimmickBurst"),0,.9f,kPopHit,GimmickSeed()});PlayDevourSound(devourSounds_.shatter,.6f,.9f);LifeImpact(ctx,ImpactDevourTier,from,{0,1,0},.8f);}
 }
-// 輪の中で変形キーを押したか調べて、乗り始める。乗っている間の撃つ・やめるもここで受ける。押した入力を使ったら true
-bool ChronoSystem::TickGimmickInput(entt::registry& r,Player& p,GameContext& ctx,bool pressed,bool cancel){
-    (void)r;(void)p;auto& body=life_.bodies[0];gimmickNear_=-1;
-    if(GimmickRiding()){auto& ride=gimmickRide_;auto& g=gimmicks_[size_t(ride.index)];
-        if(g.kind!=GimmickKind::Shoot)return pressed;
+// ---- ギミックの種類ごとの動き (Strategy Pattern。インターフェースは DevourGimmickBehaviors.h) ----
+namespace {
+// 仕掛けの見た目を動かす
+void MoveGimmickPart(entt::registry& r,uint32_t visual,Vec at,Vec rotate){auto e=entt::entity(visual);if(!r.valid(e))return;if(auto* t=r.try_get<TransformComponent>(e)){t->translate=Write(at);t->rotate=Write(rotate);}}
+}
+
+// だるま落とし: 体が水鉄砲になり、上下に動く狙いに合わせて撃つ。胴を全部抜くと小物がばらまかれる
+class ChronoSystem::ShootGimmick final : public ChronoSystem::GimmickBehavior {
+public:
+    const char* SignModel()const override{return "sign_shoot";}
+    void Begin(ChronoSystem&,DevourGimmick& g,GimmickRide& ride,const Chrono::LifeBody&,float)const override{
+        ride.shape=Chrono::GimmickGunShape;ride.anchor=g.at;g.clock=0;g.pending=-1;}
+    void Step(ChronoSystem& sys,GimmickRideStep& st)const override{
+        auto& ride=st.ride;st.next=st.Settle(ride.anchor);st.body.forward=ride.heading;
+        // カメラをだるまの方へ回す (構図は CameraSubject で引いて広げる)
+        {float want=std::atan2(ride.heading.x,ride.heading.z),turn=std::remainder(want-sys.yaw_,6.2831853f);sys.yaw_+=turn*(1-std::exp(-5*st.dt));}
+        if(ride.release>=0){ride.release+=st.dt;st.end=ride.release>=(st.g.done?1.f:.15f);}}
+    bool RideInput(ChronoSystem& sys,DevourGimmick& g,GimmickRide& ride,bool pressed,bool cancel)const override{
+        auto& body=sys.life_.bodies[0];
         if(cancel&&ride.release<0){ride.release=0;return true;}
         // 水鉄砲を撃つ: 撃った水が届くまでは次を撃てない
         if(pressed&&ride.age>Chrono::GimmickFormTime&&g.pending<0&&ride.release<0&&!g.done){
@@ -113,10 +126,205 @@ bool ChronoSystem::TickGimmickInput(entt::registry& r,Player& p,GameContext& ctx
             const float scale=LifeScale(body.mass);V muzzle=body.at+ride.heading*(5.4f*scale)+V{0,3.2f*scale-1.25f,0};
             V stand=g.spots.empty()?g.at:g.spots[0];const float discH=4*1.2f*g.scale,standTop=2*1.2f*g.scale;
             float y=standTop+(float(g.pending)+.5f)*discH;if(g.pending>=left)y=standTop+float(left)*discH+5*1.2f*g.scale;
-            V hit=stand+V{0,y,0}-ride.heading*(6*1.2f*g.scale);gimmickJets_.push_back({muzzle,hit,0});
-            devourPops_.push_back({muzzle+V{0,2*scale,0},GimmickWord("gimmickShot"),0,.35f,kPopRise,GimmickSeed()});PlayDevourSound(devourSounds_.pounce,.45f,1.7f);
+            V hit=stand+V{0,y,0}-ride.heading*(6*1.2f*g.scale);sys.gimmickJets_.push_back({muzzle,hit,0});
+            sys.devourPops_.push_back({muzzle+V{0,2*scale,0},GimmickWord("gimmickShot"),0,.35f,kPopRise,GimmickSeed()});sys.PlayDevourSound(sys.devourSounds_.pounce,.45f,1.7f);
             body.aspectVelocity-=3;}
         return pressed;}
+    void TickWorld(ChronoSystem& sys,entt::registry& r,GameContext& ctx,size_t gi,float dt)const override{
+        auto& g=sys.gimmicks_[gi];auto& ride=sys.gimmickRide_;
+        const bool aiming=ride.index==int(gi)&&ride.age>Chrono::GimmickFormTime&&ride.release<0&&!g.done;if(aiming&&g.pending<0)g.clock+=dt;
+        V stand=g.spots.empty()?g.at:g.spots[0];const float discH=4*1.2f*g.scale,standTop=2*1.2f*g.scale;int left=0;
+        // 撃った水が届いた: 胴なら抜けて飛び、頭ならぐらつくだけ
+        if(g.pending>=0&&sys.gimmickJets_.empty()){int target=g.pending;g.pending=-1;g.state=0;int n=Chrono::GimmickDarumaDiscs-g.hits;
+            if(target<n){int seen=0;for(size_t i=0;i<std::min(g.parts.size(),size_t(Chrono::GimmickDarumaDiscs));++i){if(g.partAge[i]>=0)continue;if(seen++!=target)continue;
+                    g.partAge[i]=0;++g.hits;sys.HoldGimmickProp(g,i,false);int k=g.partProps[i];
+                    if(k>=0){auto& prop=sys.life_.props[size_t(k)];V face=g.face;V side{face.z,0,-face.x};V to=stand+face*(30+18*GimmickSeed())+side*((GimmickSeed()-.5f)*40);to.y=std::min(1.2f,prop.height*.5f);
+                        if(!sys.DevourWalkable(to,3))to=stand+face*24;
+                        DevourFly fly;fly.index=size_t(k);fly.from=g.partBase[i];fly.to=to;fly.last=prop.at;fly.time=.55f;fly.height=12;fly.spin=9;fly.rotate={1.5708f,GimmickSeed()*6.283f,0};
+                        prop.at=to;prop.sealed=true;sys.devourFlies_.push_back(fly);}
+                    sys.devourPops_.push_back({g.partBase[i]+V{0,discH,0},GimmickWord("gimmickHit"),0,.7f,kPopHit,GimmickSeed()});sys.PlayDevourSound(sys.devourSounds_.hit,.6f,1.3f);sys.LifeImpact(ctx,ImpactDevourBounce,g.partBase[i]);break;}}
+            else{g.wobble=.9f;sys.devourPops_.push_back({stand+V{0,standTop+float(n)*discH+16*1.2f*g.scale,0},GimmickWord("gimmickMiss"),0,.6f,kPopHit,GimmickSeed()});sys.PlayDevourSound(sys.devourSounds_.bounce,.6f,.8f);}
+            if(g.hits>=Chrono::GimmickDarumaDiscs&&!g.done){g.done=true;ride.release=0;
+                sys.devourPops_.push_back({stand+V{0,standTop+18*1.2f*g.scale,0},GimmickWord("gimmickWin"),0,1,kPopHit,GimmickSeed()});sys.PlayDevourSound(sys.devourSounds_.rankUp,.7f);
+                sys.BurstGimmick(r,ctx,g,stand+V{0,standTop+6,0},70);}}
+        // 残った胴は下へ詰め、頭 (最後の部品) はその上に乗る。頭は成功するまで飲めない
+        const size_t discs=std::min(g.parts.size(),size_t(Chrono::GimmickDarumaDiscs));
+        for(size_t i=0;i<discs;++i){if(g.partAge[i]>=0)continue;float want=stand.y+standTop+float(left++)*discH;g.partBase[i].y+=(want-g.partBase[i].y)*std::min(1.f,dt*16);MoveGimmickPart(r,g.parts[i],g.partBase[i],g.partRotate[i]);
+            int k=g.partProps[i];if(k>=0)sys.life_.props[size_t(k)].at=g.partBase[i]+V{0,std::min(1.2f,discH*.5f),0};}
+        if(g.parts.size()>discs){const size_t h=discs;float want=stand.y+standTop+float(left)*discH;g.partBase[h].y+=(want-g.partBase[h].y)*std::min(1.f,dt*14);g.wobble=std::max(0.f,g.wobble-dt);
+            MoveGimmickPart(r,g.parts[h],g.partBase[h],g.partRotate[h]+V{0,0,std::sin(g.wobble*22)*.18f*g.wobble});
+            int k=g.partProps[h];if(k>=0)sys.life_.props[size_t(k)].at=g.partBase[h]+V{0,1.2f,0};
+            if(g.done&&g.partAge[h]<0){g.partAge[h]=0;sys.HoldGimmickProp(g,h,false);}}}
+    void RidePrompts(std::vector<UI::Scale::Prompt>& out)const override{namespace S=UI::Scale;out.push_back({S::KeyMorph,"撃つ"});out.push_back({S::KeyAbsorb,"やめる"});}
+    // 体とだるまの全体が入るように、両方の間を中心にして広く引く
+    bool CameraSubject(const ChronoSystem&,const DevourGimmick& g,Chrono::LifeCameraSubject& subject)const override{
+        const V stand=g.spots.empty()?g.at:g.spots[0];const float tall=(2+4*float(Chrono::GimmickDarumaDiscs)+8)*1.2f*g.scale;
+        const V top=stand+V{0,tall*.5f,0},from=subject.center;
+        subject.center=Lerp(from,top,.42f);subject.radius=std::max({subject.radius,Length(top-from)*.52f,tall*.62f});return true;}
+    // 狙いの印: 上下に動く照準を、だるまの横に出す
+    void DrawMarks(const ChronoSystem& sys,const DevourGimmick& g,UI::Canvas& ui,GameContext& ctx)const override{
+        if(g.done||sys.gimmickRide_.age<Chrono::GimmickFormTime)return;
+        V stand=g.spots.empty()?g.at:g.spots[0];const float discH=4*1.2f*g.scale,standTop=2*1.2f*g.scale;const int left=Chrono::GimmickDarumaDiscs-g.hits;
+        const float aim=Chrono::GimmickAim(g.clock);const int target=Chrono::GimmickAimTarget(aim,left);
+        float y=standTop+(float(target)+.5f)*discH;if(target>=left)y=standTop+float(left)*discH+5*1.2f*g.scale;
+        float x,sy;if(!GimmickScreen(ctx,stand+V{0,y,0}-g.face*(7*1.2f*g.scale),x,sy))return;
+        const Engine::Vector4 black{0,0,0,.85f},red{.95f,.22f,.18f,1},gold{1,.82f,.2f,1};const Engine::Vector4& color=target>=left?red:gold;
+        const float r=26+3*std::sin(sys.life_.age*12);
+        for(int pass=0;pass<2;++pass){const float w=pass?3.f:7.f;const auto& c=pass?color:black;
+            ui.Line(x-r-12,sy,x-r*.45f,sy,w,c);ui.Line(x+r*.45f,sy,x+r+12,sy,w,c);ui.Line(x,sy-r-12,x,sy-r*.45f,w,c);ui.Line(x,sy+r*.45f,x,sy+r+12,w,c);}
+        ui.Dot(x,sy,7,black);ui.Dot(x,sy,5,color);
+        if(target>=left)UI::Scale::Notice(ui,"頭に当てるとぐらつくだけ。胴をねらおう",664,522);}
+    // だるまの台のまわりと、輪から台までの間
+    bool KeepsClear(const DevourGimmick& g,V at,float margin)const override{
+        auto flat=[](V a){a.y=0;return a;};
+        for(const auto& spot:g.spots)if(Length(flat(at-spot))<26+margin)return true;
+        V a=flat(g.at),b=g.spots.empty()?a:flat(g.spots[0]);return Chrono::LifeSegmentDistance(flat(at),a,b)<10+margin;}
+};
+
+// 地面の上の道 (ドミノ・レーン・液体の道) から corridor 以内か
+static bool GimmickNearFloorPath(const std::vector<Vec>& path,Vec at,float corridor,float margin){
+    auto flat=[](Vec a){a.y=0;return a;};
+    for(size_t i=1;i<path.size();++i)if(path[i].y<1&&path[i-1].y<1&&Chrono::LifeSegmentDistance(flat(at),flat(path[i-1]),flat(path[i]))<corridor+margin)return true;
+    return false;
+}
+
+// ドミノ: 体がドミノの 1 枚になって倒れ、並んだドミノが次々に倒れる。最後のバケツが倒れて小物があふれる
+class ChronoSystem::DominoGimmick final : public ChronoSystem::GimmickBehavior {
+public:
+    const char* SignModel()const override{return "sign_domino";}
+    void Begin(ChronoSystem&,DevourGimmick& g,GimmickRide& ride,const Chrono::LifeBody&,float)const override{
+        ride.shape=Chrono::GimmickDominoShape;V start=g.path.size()>1?g.path[1]-g.path[0]:g.face;start.y=0;ride.heading=Unit(start);ride.anchor=g.path.front()-ride.heading*(5*1.2f*g.scale);ride.anchor.y=g.at.y;}
+    void Step(ChronoSystem& sys,GimmickRideStep& st)const override{
+        // ドミノの 1 枚になって立ち、前へ倒れて最初のドミノを押す
+        auto& ride=st.ride;auto& g=st.g;
+        st.next=st.Settle(ride.anchor);const float tip=std::clamp((ride.age-.45f)/.32f,0.f,1.f);ride.pose.tip=1.3f*tip*tip;
+        if(tip>=1&&!ride.fired){ride.fired=true;g.state=1;g.clock=0;sys.PlayDevourSound(sys.devourSounds_.hit,.4f,1.4f);
+            sys.devourPops_.push_back({ride.anchor+ride.heading*8+V{0,8,0},GimmickWord("gimmickDomino"),0,.6f,kPopRise,GimmickSeed()});}
+        st.end=ride.age>=1.05f;}
+    void TickWorld(ChronoSystem& sys,entt::registry& r,GameContext& ctx,size_t gi,float dt)const override{
+        auto& g=sys.gimmicks_[gi];if(g.state!=1)return;
+        // ドミノが前から順に倒れる。倒れたドミノは飲める
+        g.clock+=dt;const size_t n=g.parts.size();
+        for(size_t i=0;i<n;++i){float a=std::clamp((g.clock-float(i)*Chrono::GimmickDominoStep)/Chrono::GimmickDominoFall,0.f,1.f);if(a<=0)continue;
+            float rest=i+1==n?1.5708f:Chrono::GimmickDominoRest;MoveGimmickPart(r,g.parts[i],g.partBase[i],g.partRotate[i]+V{rest*a*a,0,0});
+            if(a>=1&&g.partAge[i]<0){g.partAge[i]=0;sys.HoldGimmickProp(g,i,false);int k=g.partProps[i];V forward{std::sin(g.partRotate[i].y),0,std::cos(g.partRotate[i].y)};
+                if(k>=0)sys.life_.props[size_t(k)].at=g.partBase[i]+forward*(5*1.2f*g.scale)+V{0,1,0};
+                if(i%5==0){sys.PlayDevourSound(sys.devourSounds_.note,.25f,1+.04f*float(i));sys.devourPops_.push_back({g.partBase[i]+V{0,14*g.scale,0},GimmickWord("gimmickDomino"),0,.4f,kPopRise,GimmickSeed()});}}}
+        // 最後のドミノが倒れたら、バケツが倒れて中の物があふれる
+        float tip=std::clamp((g.clock-float(n)*Chrono::GimmickDominoStep-Chrono::GimmickDominoFall)/.45f,0.f,1.f);
+        if(g.extra!=kNone)MoveGimmickPart(r,g.extra,g.extraBase,g.extraRotate+V{1.45f*tip*tip,0,0});
+        if(tip>=.5f&&!g.done){g.done=true;V mouth=g.extraBase+g.face*12+V{0,6,0};sys.PlayDevourSound(sys.devourSounds_.hit,.7f,.8f);sys.BurstGimmick(r,ctx,g,mouth,55);}
+        if(tip>=1)g.state=2;}
+    // 並んだドミノの道と、最後のバケツのまわり
+    bool KeepsClear(const DevourGimmick& g,V at,float margin)const override{
+        if(GimmickNearFloorPath(g.path,at,12,margin))return true;
+        V d=at-g.extraBase;d.y=0;return g.extra!=kNone&&Length(d)<22+margin;}
+};
+
+// ボウリング: 体が玉になってレーンを転がる (スティックで左右)。全部倒すとストライクで小物が降る
+class ChronoSystem::BowlingGimmick final : public ChronoSystem::GimmickBehavior {
+public:
+    const char* SignModel()const override{return "sign_bowling";}
+    void Begin(ChronoSystem&,DevourGimmick& g,GimmickRide& ride,const Chrono::LifeBody&,float)const override{
+        ride.shape=Chrono::GimmickBallShape;ride.anchor=g.path.front();ride.length=Chrono::GimmickPathLength(g.path);}
+    void Step(ChronoSystem& sys,GimmickRideStep& st)const override{
+        auto& ride=st.ride;auto& g=st.g;auto& r=st.r;const float dt=st.dt,scale=st.scale;V& right=st.right;
+        // 玉になってレーンを転がる。スティックで左右へ寄せられる
+        if(ride.age<Chrono::GimmickFormTime+.1f){st.next=st.Settle(ride.anchor);return;}
+        const float speed=Chrono::GimmickBallSpeed*std::min(1.f,(ride.age-Chrono::GimmickFormTime)/.5f),ballR=Chrono::GimmickBallRadius*scale;
+        V dir;Chrono::GimmickPathPoint(g.path,ride.s,&dir);ride.heading=Unit(V{dir.x,0,dir.z});right={ride.heading.z,0,-ride.heading.x};
+        const float half=std::max(0.f,11*1.2f*g.scale-ballR);ride.lateral=std::clamp(ride.lateral+Dot(st.wish,right)*40*dt,-half,half);
+        ride.s+=speed*dt;ride.pose.spin+=speed*dt/std::max(ballR,.1f);
+        V at=Chrono::GimmickPathPoint(g.path,ride.s)+right*ride.lateral;st.next={at.x,at.y+1.25f,at.z};
+        // ピンに届いたら、当たったピンと、それに押されたピンを倒す
+        if(g.state==0&&!g.partBase.empty()){float first=1e9f;for(const auto& pin:g.partBase)first=std::min(first,Dot(pin-g.path.front(),ride.heading));
+            if(ride.s+ballR>=first){g.state=1;std::vector<V> local;std::vector<bool> down;const float pinR=2.6f*1.2f*g.scale,spacing=8*1.2f*g.scale;
+                for(const auto& pin:g.partBase){V d=pin-g.path.front();local.push_back({Dot(d,ride.heading),0,Dot(d,right)});}
+                down=Chrono::GimmickPinsDown(local,ride.lateral,ballR,pinR,spacing);int fallen=0;
+                for(size_t i=0;i<down.size();++i){if(!down[i])continue;++fallen;sys.HoldGimmickProp(g,i,false);int k=g.partProps[i];if(k<0)continue;auto& prop=sys.life_.props[size_t(k)];
+                    float side=local[i].z-ride.lateral;V away=Unit(ride.heading*(.7f+.4f*GimmickSeed())+right*((side>=0?1.f:-1.f)*(.3f+.6f*GimmickSeed())));V to=prop.at+away*(18+30*GimmickSeed());
+                    if(!sys.DevourWalkable(to,2))to=prop.at+ride.heading*12;to.y=prop.at.y;
+                    auto e=entt::entity(prop.visual);DevourFly fly;fly.index=size_t(k);fly.from=prop.at;fly.to=to;fly.last=prop.at;fly.time=.5f+.3f*GimmickSeed();fly.height=10+14*GimmickSeed();fly.spin=(GimmickSeed()<.5f?-1.f:1.f)*(8+6*GimmickSeed());
+                    fly.rotate={1.5708f,GimmickSeed()*6.283f,0};if(r.valid(e))if(auto* t=r.try_get<TransformComponent>(e))t->rotate=Write(fly.rotate);
+                    prop.at=to;prop.sealed=true;sys.devourFlies_.push_back(fly);}
+                V deck=g.partBase.front();for(const auto& pin:g.partBase)deck=deck+pin*(1.f/float(g.partBase.size()));deck=deck-g.partBase.front()*(1.f/float(g.partBase.size()));
+                if(fallen==int(g.partBase.size())){sys.devourPops_.push_back({deck+V{0,22,0},GimmickWord("gimmickStrike"),0,1,kPopHit,GimmickSeed()});sys.PlayDevourSound(sys.devourSounds_.rankTop,.7f);sys.BurstGimmick(r,st.ctx,g,deck+V{0,6,0},60);}
+                else if(fallen>0){sys.devourPops_.push_back({deck+V{0,16,0},GimmickWord("gimmickPins"),0,.4f+.6f*float(fallen)/float(g.partBase.size()),kPopHit,GimmickSeed()});sys.PlayDevourSound(sys.devourSounds_.hit,.6f,1.2f);}
+                sys.LifeImpact(st.ctx,ImpactDevourTier,deck,{0,1,0},.4f+.06f*float(fallen));}}
+        if(ride.s>=ride.length){st.end=true;g.done=true;for(size_t i=0;i<g.parts.size();++i)sys.HoldGimmickProp(g,i,false);}}
+    void RidePrompts(std::vector<UI::Scale::Prompt>& out)const override{out.push_back({UI::Scale::KeyMove,"左右によける"});}
+    bool KeepsClear(const DevourGimmick& g,V at,float margin)const override{return GimmickNearFloorPath(g.path,at,20,margin);}
+};
+
+// 絵の具: しずくになって絵の具へ飛び込み、体がその色になる。同じ色の物を飲むと多く増える
+class ChronoSystem::PaintGimmick final : public ChronoSystem::GimmickBehavior {
+public:
+    const char* SignModel()const override{return "sign_paint";}
+    void Begin(ChronoSystem&,DevourGimmick& g,GimmickRide& ride,const Chrono::LifeBody& body,float floorY)const override{
+        // いちばん近い色の場所へ飛び込む
+        ride.shape=Chrono::GimmickDropShape;float nearest=1e9f;
+        for(size_t k=0;k<g.spots.size();++k){V d=g.spots[k]-body.at;d.y=0;if(Length(d)<nearest){nearest=Length(d);g.pending=int(k);ride.anchor=g.spots[k];}}
+        ride.anchor.y=floorY;}
+    void Step(ChronoSystem& sys,GimmickRideStep& st)const override{
+        // しずくになって跳び上がり、絵の具へ飛び込む。落ちた所で体の色が変わる
+        auto& ride=st.ride;auto& g=st.g;const float scale=st.scale;
+        const float t=ride.age,hop=t<.3f?0:t<.62f?std::sin((t-.3f)/.32f*3.1415927f)*7*scale:0;st.next=st.Settle(ride.anchor)+V{0,hop,0};
+        ride.pose.squash=t<.3f?.15f*LifeSmooth(t/.3f):t<.62f?-.1f:std::max(0.f,.45f*(1-(t-.62f)/.3f));
+        if(t>=.62f&&!ride.fired){ride.fired=true;if(g.pending>=0&&size_t(g.pending)<g.colors.size())sys.devourPaint_=g.colors[size_t(g.pending)];sys.devourPaintFlash_=1;
+            sys.devourPops_.push_back({ride.anchor+V{0,6*scale,0},GimmickWord("gimmickSplash"),0,.8f,kPopHit,GimmickSeed()});sys.PlayDevourSound(sys.devourSounds_.splat,.7f);sys.LifeImpact(st.ctx,ImpactDevour,ride.anchor,{0,1,0},.8f);}
+        st.end=t>=1;}
+};
+
+// 道をたどる: 液体 (蜂蜜・のり・ジュース) は薄い膜になってこぼれた跡をつたい、
+// 紙飛行機は高い所から部屋の向こうまで滑空する (スティックで左右)。動きの大部分が同じなので 1 つのクラスで扱う
+class ChronoSystem::PathGimmick final : public ChronoSystem::GimmickBehavior {
+public:
+    explicit PathGimmick(bool plane):plane_(plane){}
+    const char* SignModel()const override{return plane_?"sign_plane":"sign_liquid";}
+    void Begin(ChronoSystem&,DevourGimmick& g,GimmickRide& ride,const Chrono::LifeBody&,float)const override{
+        ride.shape=plane_?Chrono::GimmickPlaneShape:Chrono::GimmickSheetShape;ride.anchor=g.path.front();ride.length=Chrono::GimmickPathLength(g.path);ride.heading=Chrono::GimmickPathHeading(g.path,0);}
+    void Step(ChronoSystem& sys,GimmickRideStep& st)const override{
+        // 膜 / 紙飛行機になって道をたどる。紙飛行機は左右へ少し寄せられる (入口の近くでは寄せられない)
+        auto& ride=st.ride;auto& g=st.g;const float dt=st.dt,scale=st.scale;V& right=st.right;
+        if(ride.age<Chrono::GimmickFormTime){st.next=st.Settle(ride.anchor);ride.heading=Chrono::GimmickPathHeading(g.path,0);return;}
+        const bool plane=plane_;const float speed=plane?Chrono::GimmickPlaneSpeed:Chrono::GimmickFlowSpeed;
+        ride.s=std::min(ride.length,ride.s+speed*dt);V dir;V at=Chrono::GimmickPathPoint(g.path,ride.s,&dir);
+        V heading=Chrono::GimmickPathHeading(g.path,ride.s);ride.heading=Unit(Lerp(ride.heading,heading,std::min(1.f,dt*10)));right={ride.heading.z,0,-ride.heading.x};
+        float flat=std::sqrt(dir.x*dir.x+dir.z*dir.z),pitch=std::atan2(dir.y,flat);ride.pose.pitch+=(pitch-ride.pose.pitch)*std::min(1.f,dt*(plane?6.f:14.f));
+        if(plane){float room=Chrono::GimmickPlaneSteer;for(size_t k=1;k+1<g.path.size();++k){float sk=Chrono::GimmickPathLength({g.path.begin(),g.path.begin()+std::ptrdiff_t(k)+1});if(g.spots.size()>0&&Length(g.path[k]-g.spots[0])<1)room=std::min(room,Chrono::GimmickPlaneSteer*std::clamp(std::abs(ride.s-sk)/70.f,0.f,1.f));}
+            float steer=Dot(st.wish,right);ride.lateral=std::clamp(ride.lateral+steer*30*dt,-room,room);ride.pose.roll+=(steer*-.6f-ride.pose.roll)*std::min(1.f,dt*5);
+            at=at+right*ride.lateral;if(ride.s<ride.length-1&&std::fmod(ride.age,.5f)<dt)sys.devourPops_.push_back({at+V{0,4*scale,0}-ride.heading*6,GimmickWord("gimmickFly"),0,.3f,kPopRise,GimmickSeed()});}
+        else if(std::fmod(ride.age,.6f)<dt)sys.devourPops_.push_back({at+V{0,4*scale,0},GimmickWord("gimmickFlow"),0,.3f,kPopRise,GimmickSeed()});
+        st.next={at.x,at.y+1.25f,at.z};
+        if(ride.s>=ride.length){st.end=true;at.y=Chrono::RoomGround(V{at.x,at.y+2,at.z});st.next={at.x,at.y+1.25f,at.z};
+            if(plane){sys.devourPops_.push_back({at+V{0,5*scale,0},GimmickWord("gimmickSplash"),0,.6f,kPopHit,GimmickSeed()});sys.PlayDevourSound(sys.devourSounds_.splat,.6f);sys.LifeImpact(st.ctx,ImpactDevour,at,{0,1,0},.7f);}}}
+    void RidePrompts(std::vector<UI::Scale::Prompt>& out)const override{if(plane_)out.push_back({UI::Scale::KeyMove,"左右によける"});}
+    // 液体の道 (床の上の区間) と、紙飛行機の着地点のまわり
+    bool KeepsClear(const DevourGimmick& g,V at,float margin)const override{
+        if(!plane_)return GimmickNearFloorPath(g.path,at,10,margin);
+        if(g.path.empty())return false;V d=at-g.path.back();d.y=0;return Length(d)<16+margin;}
+private:
+    bool plane_;
+};
+
+// 種類から動きを選ぶ (データを持たない共有の不変オブジェクト)
+const ChronoSystem::GimmickBehavior& ChronoSystem::GimmickBehaviorFor(GimmickKind kind){
+    static const ShootGimmick shoot;static const DominoGimmick domino;static const BowlingGimmick bowling;
+    static const PaintGimmick paint;static const PathGimmick liquid(false),plane(true);
+    switch(kind){
+    case GimmickKind::Shoot:return shoot;
+    case GimmickKind::Domino:return domino;
+    case GimmickKind::Bowling:return bowling;
+    case GimmickKind::Liquid:return liquid;
+    case GimmickKind::Plane:return plane;
+    default:return paint;}
+}
+
+// 輪の中で変形キーを押したか調べて、乗り始める。乗っている間の撃つ・やめるもここで受ける。押した入力を使ったら true
+bool ChronoSystem::TickGimmickInput(entt::registry& r,Player& p,GameContext& ctx,bool pressed,bool cancel){
+    (void)r;(void)p;auto& body=life_.bodies[0];gimmickNear_=-1;
+    if(GimmickRiding()){auto& ride=gimmickRide_;auto& g=gimmicks_[size_t(ride.index)];
+        return GimmickBehaviorFor(g.kind).RideInput(*this,g,ride,pressed,cancel);}
     if(finished_||body.action!=LifeAction::Idle||devourHop_.active||devourStun_>0)return false;
     const float floorY=body.at.y-1.25f;float best=1e9f;
     for(size_t i=0;i<gimmicks_.size();++i){const auto& g=gimmicks_[i];if(g.done)continue;V d=body.at-g.at;d.y=0;float distance=Length(d);
@@ -124,17 +332,9 @@ bool ChronoSystem::TickGimmickInput(entt::registry& r,Player& p,GameContext& ctx
     if(gimmickNear_<0||!pressed)return false;
     auto& g=gimmicks_[size_t(gimmickNear_)];const auto& stage=CurrentDevourStage();
     if(DevourSizeCm(stage,body.mass)+1e-3f<g.minCm){life_.message=g.name+"は "+DevourSizeText(g.minCm)+" から遊べる";life_.messageAge=1.6f;PlayDevourSound(devourSounds_.bounce,.35f,1.3f);return true;}
-    // 乗り始める: 体の形と、最初の位置・向きを決める
+    // 乗り始める: 体の形と、最初の位置・向きは種類ごとに決める
     auto& ride=gimmickRide_;ride={};ride.index=gimmickNear_;ride.anchor=body.at;ride.heading=g.face;
-    switch(g.kind){
-    case GimmickKind::Paint:{ride.shape=Chrono::GimmickDropShape;float nearest=1e9f;
-        for(size_t k=0;k<g.spots.size();++k){V d=g.spots[k]-body.at;d.y=0;if(Length(d)<nearest){nearest=Length(d);g.pending=int(k);ride.anchor=g.spots[k];}}
-        ride.anchor.y=floorY;break;}
-    case GimmickKind::Shoot:ride.shape=Chrono::GimmickGunShape;ride.anchor=g.at;g.clock=0;g.pending=-1;break;
-    case GimmickKind::Domino:{ride.shape=Chrono::GimmickDominoShape;V start=g.path.size()>1?g.path[1]-g.path[0]:g.face;start.y=0;ride.heading=Unit(start);ride.anchor=g.path.front()-ride.heading*(5*1.2f*g.scale);ride.anchor.y=g.at.y;break;}
-    case GimmickKind::Bowling:ride.shape=Chrono::GimmickBallShape;ride.anchor=g.path.front();ride.length=Chrono::GimmickPathLength(g.path);break;
-    case GimmickKind::Liquid:ride.shape=Chrono::GimmickSheetShape;ride.anchor=g.path.front();ride.length=Chrono::GimmickPathLength(g.path);ride.heading=Chrono::GimmickPathHeading(g.path,0);break;
-    case GimmickKind::Plane:ride.shape=Chrono::GimmickPlaneShape;ride.anchor=g.path.front();ride.length=Chrono::GimmickPathLength(g.path);ride.heading=Chrono::GimmickPathHeading(g.path,0);break;}
+    GimmickBehaviorFor(g.kind).Begin(*this,g,ride,body,floorY);
     ride.from=body.at;++life_.revision;PlayDevourSound(devourSounds_.morph,.55f);LifeImpact(ctx,ImpactDevour,body.at,{0,1,0},.5f);
     return true;
 }
@@ -142,74 +342,11 @@ bool ChronoSystem::TickGimmickInput(entt::registry& r,Player& p,GameContext& ctx
 ChronoSystem::V ChronoSystem::GimmickStep(entt::registry& r,Player& p,GameContext& ctx,float dt,V wish){
     auto& body=life_.bodies[0];auto& ride=gimmickRide_;auto& g=gimmicks_[size_t(ride.index)];const float scale=LifeScale(body.mass);
     ride.previous=ride.pose;ride.age+=dt;const float form=LifeSmooth(ride.age/Chrono::GimmickFormTime);
-    // 乗り始めの位置から決まった位置へ、形を作りながら寄せる
-    auto settle=[&](V to){V at=Lerp(ride.from,to,form);at.y=to.y+1.25f;return at;};
-    V right{ride.heading.z,0,-ride.heading.x};
-    V next=body.at;bool end=false;
-    switch(g.kind){
-    case GimmickKind::Paint:{
-        // しずくになって跳び上がり、絵の具へ飛び込む。落ちた所で体の色が変わる
-        const float t=ride.age,hop=t<.3f?0:t<.62f?std::sin((t-.3f)/.32f*3.1415927f)*7*scale:0;next=settle(ride.anchor)+V{0,hop,0};
-        ride.pose.squash=t<.3f?.15f*LifeSmooth(t/.3f):t<.62f?-.1f:std::max(0.f,.45f*(1-(t-.62f)/.3f));
-        if(t>=.62f&&!ride.fired){ride.fired=true;if(g.pending>=0&&size_t(g.pending)<g.colors.size())devourPaint_=g.colors[size_t(g.pending)];devourPaintFlash_=1;
-            devourPops_.push_back({ride.anchor+V{0,6*scale,0},GimmickWord("gimmickSplash"),0,.8f,kPopHit,GimmickSeed()});PlayDevourSound(devourSounds_.splat,.7f);LifeImpact(ctx,ImpactDevour,ride.anchor,{0,1,0},.8f);}
-        end=t>=1;break;}
-    case GimmickKind::Shoot:{
-        next=settle(ride.anchor);body.forward=ride.heading;
-        // カメラをだるまの方へ回す (構図は GimmickCameraSubject で引いて広げる)
-        {float want=std::atan2(ride.heading.x,ride.heading.z),turn=std::remainder(want-yaw_,6.2831853f);yaw_+=turn*(1-std::exp(-5*dt));}
-        if(ride.release>=0){ride.release+=dt;end=ride.release>=(g.done?1.f:.15f);}
-        break;}
-    case GimmickKind::Domino:{
-        // ドミノの 1 枚になって立ち、前へ倒れて最初のドミノを押す
-        next=settle(ride.anchor);const float tip=std::clamp((ride.age-.45f)/.32f,0.f,1.f);ride.pose.tip=1.3f*tip*tip;
-        if(tip>=1&&!ride.fired){ride.fired=true;g.state=1;g.clock=0;PlayDevourSound(devourSounds_.hit,.4f,1.4f);
-            devourPops_.push_back({ride.anchor+ride.heading*8+V{0,8,0},GimmickWord("gimmickDomino"),0,.6f,kPopRise,GimmickSeed()});}
-        end=ride.age>=1.05f;break;}
-    case GimmickKind::Bowling:{
-        // 玉になってレーンを転がる。スティックで左右へ寄せられる
-        if(ride.age<Chrono::GimmickFormTime+.1f){next=settle(ride.anchor);break;}
-        const float speed=Chrono::GimmickBallSpeed*std::min(1.f,(ride.age-Chrono::GimmickFormTime)/.5f),ballR=Chrono::GimmickBallRadius*scale;
-        V dir;Chrono::GimmickPathPoint(g.path,ride.s,&dir);ride.heading=Unit(V{dir.x,0,dir.z});right={ride.heading.z,0,-ride.heading.x};
-        const float half=std::max(0.f,11*1.2f*g.scale-ballR);ride.lateral=std::clamp(ride.lateral+Dot(wish,right)*40*dt,-half,half);
-        ride.s+=speed*dt;ride.pose.spin+=speed*dt/std::max(ballR,.1f);
-        V at=Chrono::GimmickPathPoint(g.path,ride.s)+right*ride.lateral;next={at.x,at.y+1.25f,at.z};
-        // ピンに届いたら、当たったピンと、それに押されたピンを倒す
-        if(g.state==0&&!g.partBase.empty()){float first=1e9f;for(const auto& pin:g.partBase)first=std::min(first,Dot(pin-g.path.front(),ride.heading));
-            if(ride.s+ballR>=first){g.state=1;std::vector<V> local;std::vector<bool> down;const float pinR=2.6f*1.2f*g.scale,spacing=8*1.2f*g.scale;
-                for(const auto& pin:g.partBase){V d=pin-g.path.front();local.push_back({Dot(d,ride.heading),0,Dot(d,right)});}
-                down=Chrono::GimmickPinsDown(local,ride.lateral,ballR,pinR,spacing);int fallen=0;
-                for(size_t i=0;i<down.size();++i){if(!down[i])continue;++fallen;HoldGimmickProp(g,i,false);int k=g.partProps[i];if(k<0)continue;auto& prop=life_.props[size_t(k)];
-                    float side=local[i].z-ride.lateral;V away=Unit(ride.heading*(.7f+.4f*GimmickSeed())+right*((side>=0?1.f:-1.f)*(.3f+.6f*GimmickSeed())));V to=prop.at+away*(18+30*GimmickSeed());
-                    if(!DevourWalkable(to,2))to=prop.at+ride.heading*12;to.y=prop.at.y;
-                    auto e=entt::entity(prop.visual);DevourFly fly;fly.index=size_t(k);fly.from=prop.at;fly.to=to;fly.last=prop.at;fly.time=.5f+.3f*GimmickSeed();fly.height=10+14*GimmickSeed();fly.spin=(GimmickSeed()<.5f?-1.f:1.f)*(8+6*GimmickSeed());
-                    fly.rotate={1.5708f,GimmickSeed()*6.283f,0};if(r.valid(e))if(auto* t=r.try_get<TransformComponent>(e))t->rotate=Write(fly.rotate);
-                    prop.at=to;prop.sealed=true;devourFlies_.push_back(fly);}
-                V deck=g.partBase.front();for(const auto& pin:g.partBase)deck=deck+pin*(1.f/float(g.partBase.size()));deck=deck-g.partBase.front()*(1.f/float(g.partBase.size()));
-                if(fallen==int(g.partBase.size())){devourPops_.push_back({deck+V{0,22,0},GimmickWord("gimmickStrike"),0,1,kPopHit,GimmickSeed()});PlayDevourSound(devourSounds_.rankTop,.7f);BurstGimmick(r,ctx,g,deck+V{0,6,0},60);}
-                else if(fallen>0){devourPops_.push_back({deck+V{0,16,0},GimmickWord("gimmickPins"),0,.4f+.6f*float(fallen)/float(g.partBase.size()),kPopHit,GimmickSeed()});PlayDevourSound(devourSounds_.hit,.6f,1.2f);}
-                LifeImpact(ctx,ImpactDevourTier,deck,{0,1,0},.4f+.06f*float(fallen));}}
-        if(ride.s>=ride.length){end=true;g.done=true;for(size_t i=0;i<g.parts.size();++i)HoldGimmickProp(g,i,false);}
-        break;}
-    case GimmickKind::Liquid:
-    case GimmickKind::Plane:{
-        // 膜 / 紙飛行機になって道をたどる。紙飛行機は左右へ少し寄せられる (入口の近くでは寄せられない)
-        if(ride.age<Chrono::GimmickFormTime){next=settle(ride.anchor);ride.heading=Chrono::GimmickPathHeading(g.path,0);break;}
-        const bool plane=g.kind==GimmickKind::Plane;const float speed=plane?Chrono::GimmickPlaneSpeed:Chrono::GimmickFlowSpeed;
-        ride.s=std::min(ride.length,ride.s+speed*dt);V dir;V at=Chrono::GimmickPathPoint(g.path,ride.s,&dir);
-        V heading=Chrono::GimmickPathHeading(g.path,ride.s);ride.heading=Unit(Lerp(ride.heading,heading,std::min(1.f,dt*10)));right={ride.heading.z,0,-ride.heading.x};
-        float flat=std::sqrt(dir.x*dir.x+dir.z*dir.z),pitch=std::atan2(dir.y,flat);ride.pose.pitch+=(pitch-ride.pose.pitch)*std::min(1.f,dt*(plane?6.f:14.f));
-        if(plane){float room=Chrono::GimmickPlaneSteer;for(size_t k=1;k+1<g.path.size();++k){float sk=Chrono::GimmickPathLength({g.path.begin(),g.path.begin()+std::ptrdiff_t(k)+1});if(g.spots.size()>0&&Length(g.path[k]-g.spots[0])<1)room=std::min(room,Chrono::GimmickPlaneSteer*std::clamp(std::abs(ride.s-sk)/70.f,0.f,1.f));}
-            float steer=Dot(wish,right);ride.lateral=std::clamp(ride.lateral+steer*30*dt,-room,room);ride.pose.roll+=(steer*-.6f-ride.pose.roll)*std::min(1.f,dt*5);
-            at=at+right*ride.lateral;if(ride.s<ride.length-1&&std::fmod(ride.age,.5f)<dt)devourPops_.push_back({at+V{0,4*scale,0}-ride.heading*6,GimmickWord("gimmickFly"),0,.3f,kPopRise,GimmickSeed()});}
-        else if(std::fmod(ride.age,.6f)<dt)devourPops_.push_back({at+V{0,4*scale,0},GimmickWord("gimmickFlow"),0,.3f,kPopRise,GimmickSeed()});
-        next={at.x,at.y+1.25f,at.z};
-        if(ride.s>=ride.length){end=true;at.y=Chrono::RoomGround(V{at.x,at.y+2,at.z});next={at.x,at.y+1.25f,at.z};
-            if(plane){devourPops_.push_back({at+V{0,5*scale,0},GimmickWord("gimmickSplash"),0,.6f,kPopHit,GimmickSeed()});PlayDevourSound(devourSounds_.splat,.6f);LifeImpact(ctx,ImpactDevour,at,{0,1,0},.7f);}}
-        break;}}
+    GimmickRideStep step{r,ctx,g,ride,body,dt,scale,form,wish,V{ride.heading.z,0,-ride.heading.x},body.at};
+    GimmickBehaviorFor(g.kind).Step(*this,step);
     body.forward=ride.heading;
-    if(end){EndGimmickRide(false);p.velocity={};body.aspectVelocity+=4;}
-    return next;
+    if(step.end){EndGimmickRide(false);p.velocity={};body.aspectVelocity+=4;}
+    return step.next;
 }
 // 乗るのをやめて、液体の体へ戻る
 void ChronoSystem::EndGimmickRide(bool){gimmickRide_={};++life_.revision;}
@@ -218,52 +355,12 @@ void ChronoSystem::TickDevourGimmicks(entt::registry& r,GameContext& ctx,float d
     devourPaintFlash_=std::max(0.f,devourPaintFlash_-dt*1.5f);gimmickMatchCool_=std::max(0.f,gimmickMatchCool_-dt);
     for(auto& jet:gimmickJets_)jet.age+=dt;
     gimmickJets_.erase(std::remove_if(gimmickJets_.begin(),gimmickJets_.end(),[](const GimmickJet& j){return j.age>Chrono::GimmickShotTime+.18f;}),gimmickJets_.end());
-    auto move=[&](uint32_t visual,V at,V rotate){auto e=entt::entity(visual);if(!r.valid(e))return;if(auto* t=r.try_get<TransformComponent>(e)){t->translate=Write(at);t->rotate=Write(rotate);}};
-    for(size_t gi=0;gi<gimmicks_.size();++gi){auto& g=gimmicks_[gi];
-        if(g.kind==GimmickKind::Shoot){
-            const bool aiming=gimmickRide_.index==int(gi)&&gimmickRide_.age>Chrono::GimmickFormTime&&gimmickRide_.release<0&&!g.done;if(aiming&&g.pending<0)g.clock+=dt;
-            V stand=g.spots.empty()?g.at:g.spots[0];const float discH=4*1.2f*g.scale,standTop=2*1.2f*g.scale;int left=0;
-            // 撃った水が届いた: 胴なら抜けて飛び、頭ならぐらつくだけ
-            if(g.pending>=0&&gimmickJets_.empty()){int target=g.pending;g.pending=-1;g.state=0;int n=Chrono::GimmickDarumaDiscs-g.hits;
-                if(target<n){int seen=0;for(size_t i=0;i<std::min(g.parts.size(),size_t(Chrono::GimmickDarumaDiscs));++i){if(g.partAge[i]>=0)continue;if(seen++!=target)continue;
-                        g.partAge[i]=0;++g.hits;HoldGimmickProp(g,i,false);int k=g.partProps[i];
-                        if(k>=0){auto& prop=life_.props[size_t(k)];V face=g.face;V side{face.z,0,-face.x};V to=stand+face*(30+18*GimmickSeed())+side*((GimmickSeed()-.5f)*40);to.y=std::min(1.2f,prop.height*.5f);
-                            if(!DevourWalkable(to,3))to=stand+face*24;
-                            DevourFly fly;fly.index=size_t(k);fly.from=g.partBase[i];fly.to=to;fly.last=prop.at;fly.time=.55f;fly.height=12;fly.spin=9;fly.rotate={1.5708f,GimmickSeed()*6.283f,0};
-                            prop.at=to;prop.sealed=true;devourFlies_.push_back(fly);}
-                        devourPops_.push_back({g.partBase[i]+V{0,discH,0},GimmickWord("gimmickHit"),0,.7f,kPopHit,GimmickSeed()});PlayDevourSound(devourSounds_.hit,.6f,1.3f);LifeImpact(ctx,ImpactDevourBounce,g.partBase[i]);break;}}
-                else{g.wobble=.9f;devourPops_.push_back({stand+V{0,standTop+float(n)*discH+16*1.2f*g.scale,0},GimmickWord("gimmickMiss"),0,.6f,kPopHit,GimmickSeed()});PlayDevourSound(devourSounds_.bounce,.6f,.8f);}
-                if(g.hits>=Chrono::GimmickDarumaDiscs&&!g.done){g.done=true;gimmickRide_.release=0;
-                    devourPops_.push_back({stand+V{0,standTop+18*1.2f*g.scale,0},GimmickWord("gimmickWin"),0,1,kPopHit,GimmickSeed()});PlayDevourSound(devourSounds_.rankUp,.7f);
-                    BurstGimmick(r,ctx,g,stand+V{0,standTop+6,0},70);}}
-            // 残った胴は下へ詰め、頭 (最後の部品) はその上に乗る。頭は成功するまで飲めない
-            const size_t discs=std::min(g.parts.size(),size_t(Chrono::GimmickDarumaDiscs));
-            for(size_t i=0;i<discs;++i){if(g.partAge[i]>=0)continue;float want=stand.y+standTop+float(left++)*discH;g.partBase[i].y+=(want-g.partBase[i].y)*std::min(1.f,dt*16);move(g.parts[i],g.partBase[i],g.partRotate[i]);
-                int k=g.partProps[i];if(k>=0)life_.props[size_t(k)].at=g.partBase[i]+V{0,std::min(1.2f,discH*.5f),0};}
-            if(g.parts.size()>discs){const size_t h=discs;float want=stand.y+standTop+float(left)*discH;g.partBase[h].y+=(want-g.partBase[h].y)*std::min(1.f,dt*14);g.wobble=std::max(0.f,g.wobble-dt);
-                move(g.parts[h],g.partBase[h],g.partRotate[h]+V{0,0,std::sin(g.wobble*22)*.18f*g.wobble});
-                int k=g.partProps[h];if(k>=0)life_.props[size_t(k)].at=g.partBase[h]+V{0,1.2f,0};
-                if(g.done&&g.partAge[h]<0){g.partAge[h]=0;HoldGimmickProp(g,h,false);}}}
-        else if(g.kind==GimmickKind::Domino&&g.state==1){
-            // ドミノが前から順に倒れる。倒れたドミノは飲める
-            g.clock+=dt;const size_t n=g.parts.size();
-            for(size_t i=0;i<n;++i){float a=std::clamp((g.clock-float(i)*Chrono::GimmickDominoStep)/Chrono::GimmickDominoFall,0.f,1.f);if(a<=0)continue;
-                float rest=i+1==n?1.5708f:Chrono::GimmickDominoRest;move(g.parts[i],g.partBase[i],g.partRotate[i]+V{rest*a*a,0,0});
-                if(a>=1&&g.partAge[i]<0){g.partAge[i]=0;HoldGimmickProp(g,i,false);int k=g.partProps[i];V forward{std::sin(g.partRotate[i].y),0,std::cos(g.partRotate[i].y)};
-                    if(k>=0)life_.props[size_t(k)].at=g.partBase[i]+forward*(5*1.2f*g.scale)+V{0,1,0};
-                    if(i%5==0){PlayDevourSound(devourSounds_.note,.25f,1+.04f*float(i));devourPops_.push_back({g.partBase[i]+V{0,14*g.scale,0},GimmickWord("gimmickDomino"),0,.4f,kPopRise,GimmickSeed()});}}}
-            // 最後のドミノが倒れたら、バケツが倒れて中の物があふれる
-            float tip=std::clamp((g.clock-float(n)*Chrono::GimmickDominoStep-Chrono::GimmickDominoFall)/.45f,0.f,1.f);
-            if(g.extra!=kNone)move(g.extra,g.extraBase,g.extraRotate+V{1.45f*tip*tip,0,0});
-            if(tip>=.5f&&!g.done){g.done=true;V mouth=g.extraBase+g.face*12+V{0,6,0};PlayDevourSound(devourSounds_.hit,.7f,.8f);BurstGimmick(r,ctx,g,mouth,55);}
-            if(tip>=1)g.state=2;}}
+    for(size_t gi=0;gi<gimmicks_.size();++gi)GimmickBehaviorFor(gimmicks_[gi].kind).TickWorld(*this,r,ctx,gi,dt);
 }
-// だるま落としの間の構図: 体とだるまの全体が入るように、両方の間を中心にして広く引く
+// 乗っている間の構図 (だるま落としは体とだるまの全体が入るように広く引く)
 bool ChronoSystem::GimmickCameraSubject(Chrono::LifeCameraSubject& subject)const{
-    if(!GimmickRiding())return false;const auto& g=gimmicks_[size_t(gimmickRide_.index)];if(g.kind!=GimmickKind::Shoot)return false;
-    const V stand=g.spots.empty()?g.at:g.spots[0];const float tall=(2+4*float(Chrono::GimmickDarumaDiscs)+8)*1.2f*g.scale;
-    const V top=stand+V{0,tall*.5f,0},from=subject.center;
-    subject.center=Lerp(from,top,.42f);subject.radius=std::max({subject.radius,Length(top-from)*.52f,tall*.62f});return true;
+    if(!GimmickRiding())return false;const auto& g=gimmicks_[size_t(gimmickRide_.index)];
+    return GimmickBehaviorFor(g.kind).CameraSubject(*this,g,subject);
 }
 // 作動範囲の膜: 輪の縁から垂直に立ち、上へ消えていく光の膜。範囲に入ると濃く光り、小さすぎるときは赤くなる。
 // 終わったギミックと、乗っている間のそのギミック (と液体の道の反対側の端) は出さない
@@ -292,9 +389,7 @@ float ChronoSystem::GimmickFoodBonus(const Chrono::LifeCollectible& prop)const{
 }
 // 乗っている間の操作 (下の操作の札)
 void ChronoSystem::GimmickRidePrompts(std::vector<UI::Scale::Prompt>& out)const{
-    namespace S=UI::Scale;if(!GimmickRiding())return;const auto& g=gimmicks_[size_t(gimmickRide_.index)];
-    if(g.kind==GimmickKind::Shoot){out.push_back({S::KeyMorph,"撃つ"});out.push_back({S::KeyAbsorb,"やめる"});}
-    else if(g.kind==GimmickKind::Bowling||g.kind==GimmickKind::Plane)out.push_back({S::KeyMove,"左右によける"});
+    if(!GimmickRiding())return;GimmickBehaviorFor(gimmicks_[size_t(gimmickRide_.index)].kind).RidePrompts(out);
 }
 // 作動範囲の中で押せる操作: 「変形キー ギミックの名前」。小さすぎるときは薄くして、何 cm から使えるかを添える
 bool ChronoSystem::GimmickNearPrompt(UI::Scale::Prompt& out)const{
@@ -302,19 +397,9 @@ bool ChronoSystem::GimmickNearPrompt(UI::Scale::Prompt& out)const{
     const bool tooSmall=DevourSizeCm(CurrentDevourStage(),life_.bodies[0].mass)+1e-3f<g.minCm;
     out={UI::Scale::KeyMorph,g.name,"",tooSmall?DevourSizeText(g.minCm)+" から":"",tooSmall};return true;
 }
-// だるま落としの狙いの印: 上下に動く照準を、だるまの横に出す
+// 乗っている間の画面の印 (だるま落としの照準など)
 void ChronoSystem::DrawGimmickMarks(UI::Canvas& ui,GameContext& ctx){
     if(!GimmickRiding())return;const auto& g=gimmicks_[size_t(gimmickRide_.index)];
-    if(g.kind!=GimmickKind::Shoot||g.done||gimmickRide_.age<Chrono::GimmickFormTime)return;
-    V stand=g.spots.empty()?g.at:g.spots[0];const float discH=4*1.2f*g.scale,standTop=2*1.2f*g.scale;const int left=Chrono::GimmickDarumaDiscs-g.hits;
-    const float aim=Chrono::GimmickAim(g.clock);const int target=Chrono::GimmickAimTarget(aim,left);
-    float y=standTop+(float(target)+.5f)*discH;if(target>=left)y=standTop+float(left)*discH+5*1.2f*g.scale;
-    float x,sy;if(!GimmickScreen(ctx,stand+V{0,y,0}-g.face*(7*1.2f*g.scale),x,sy))return;
-    const Engine::Vector4 black{0,0,0,.85f},red{.95f,.22f,.18f,1},gold{1,.82f,.2f,1};const Engine::Vector4& color=target>=left?red:gold;
-    const float r=26+3*std::sin(life_.age*12);
-    for(int pass=0;pass<2;++pass){const float w=pass?3.f:7.f;const auto& c=pass?color:black;
-        ui.Line(x-r-12,sy,x-r*.45f,sy,w,c);ui.Line(x+r*.45f,sy,x+r+12,sy,w,c);ui.Line(x,sy-r-12,x,sy-r*.45f,w,c);ui.Line(x,sy+r*.45f,x,sy+r+12,w,c);}
-    ui.Dot(x,sy,7,black);ui.Dot(x,sy,5,color);
-    if(target>=left)UI::Scale::Notice(ui,"頭に当てるとぐらつくだけ。胴をねらおう",664,522);
+    GimmickBehaviorFor(g.kind).DrawMarks(*this,g,ui,ctx);
 }
 }

@@ -5,6 +5,7 @@
 #pragma once
 #include "Renderer.h"
 #include "Audio.h"
+#include "CommandHistory.h"
 #include "IScene.h"
 #include "../ObjectTypes.h"
 #include "../SceneComponents.h"
@@ -12,6 +13,7 @@
 #include <functional>
 #include <string>
 #include <deque>
+#include <memory>
 #include <DirectXMath.h>
 
 // ImGui の 2 次元ベクトル (このヘッダーでは参照だけなので前方宣言)
@@ -22,7 +24,8 @@ namespace Game {
 // ゲームシーン (Scenes/GameScene.h)
 class GameScene;
 
-// Undo/Redo用のコマンド
+// 関数の組で表す Undo/Redo の操作 (専用のコマンドクラスを作らない一度きりの編集用)。
+// 履歴には Engine::FunctionCommand として積まれる。定型の操作は EditorCommandTypes.h のクラスを使う
 struct UndoCommand {
 	std::string description;
 	std::function<void()> undo;
@@ -67,10 +70,14 @@ public:
 	// App から毎フレーム呼ばれる。GameScene 以外 (タイトル・デモ) もエディタの中に表示する
 	static void PresentScene(Engine::IScene& scene, const std::string& sceneName);
 
-	// 取り消しとやり直しの関数
+	// 取り消しとやり直し (Command Pattern)。
+	// ExecuteCommand は実行してから記録し、RecordCommand は操作中にすでに値を変えた操作を記録する
+	static void ExecuteCommand(std::unique_ptr<Engine::ICommand> command);
+	static void RecordCommand(std::unique_ptr<Engine::ICommand> command);
 	static void PushUndo(const UndoCommand& cmd);
 	static void Undo();
 	static void Redo();
+	static const Engine::CommandHistory& History() { return history_; }
 
 	// レンダリングサポート用
 	static void ScreenToWorldRay(float screenX, float screenY, float imageW, float imageH, const DirectX::XMMATRIX& view, const DirectX::XMMATRIX& proj, DirectX::XMVECTOR& outOrig, DirectX::XMVECTOR& outDir);
@@ -124,6 +131,8 @@ private:
     // 変形ツールの状態と、現在のシーンファイルのパス
     static GizmoState gizmo_;
     static std::string currentScenePath;
+	// 取り消し・やり直しの履歴 (最大 100 件)
+	static Engine::CommandHistory history_;
 	// アイコン用テクスチャハンドル
 	struct Icons {
 		uint32_t folder = 0;

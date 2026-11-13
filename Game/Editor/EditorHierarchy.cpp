@@ -492,9 +492,7 @@ void EditorUI::ShowHierarchy(GameScene* scene) {
 				entt::entity target = st.renaming;
 				std::string before = registry.get<NameComponent>(target).name, after = st.renameBuffer;
 				registry.get<NameComponent>(target).name = after;
-				PushUndo({"Rename",
-					[scene, target, before]() { auto& r = scene->GetComponents(); if (r.valid(target) && r.all_of<NameComponent>(target)) r.get<NameComponent>(target).name = before; },
-					[scene, target, after]() { auto& r = scene->GetComponents(); if (r.valid(target) && r.all_of<NameComponent>(target)) r.get<NameComponent>(target).name = after; }});
+				RecordCommand(std::make_unique<RenameCommand>(scene, target, before, after));
 			}
 			ImGui::CloseCurrentPopup();
 		}
@@ -515,20 +513,15 @@ void EditorUI::ShowHierarchy(GameScene* scene) {
 			entt::entity before = hc.parentId;
 			hc.parentId = parent;
 			scene->InvalidateWorldMatrices();
-			PushUndo({"Reparent",
-				[scene, child, before]() { auto& reg = scene->GetComponents(); if (reg.valid(child)) { reg.get_or_emplace<HierarchyComponent>(child).parentId = before; scene->InvalidateWorldMatrices(); } },
-				[scene, child, parent]() { auto& reg = scene->GetComponents(); if (reg.valid(child)) { reg.get_or_emplace<HierarchyComponent>(child).parentId = parent; scene->InvalidateWorldMatrices(); } }});
+			RecordCommand(std::make_unique<ReparentCommand>(scene, child, before, parent));
 		}
 	}
 	if (st.pendingDelete != entt::null) {
-		// 削除の予約を取り出し、Undo を登録してから破棄する
+		// 削除の予約を取り出し、削除のコマンドとして実行・記録する (破棄と選択の解除はコマンドが行う)
 		entt::entity e = st.pendingDelete;
 		st.pendingDelete = entt::null;
-		if (registry.valid(e)) {
-			PushUndo(MakeSpawnUndo(scene, "Delete Entity", SerializeEntity(registry, e), e, false));
-			scene->DestroyObject(static_cast<uint32_t>(e));
-			if (scene->GetSelectedEntity() == e) scene->SelectEntity(entt::null);
-		}
+		if (registry.valid(e))
+			ExecuteCommand(std::make_unique<EntityLifetimeCommand>(scene, "Delete Entity", SerializeEntity(registry, e), e, false));
 	}
 	ImGui::End();
 }

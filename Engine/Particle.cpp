@@ -8,8 +8,7 @@ namespace Engine {
 void ParticleSystem::Initialize(Renderer& renderer, size_t maxCount, const std::string& meshPath, const std::string& texturePath, bool sRGB, bool useBillboard) {
 
 	renderer_ = &renderer;
-	particles_.clear();
-	particles_.resize(maxCount);
+	particles_.Reset(maxCount);
 	useBillboard_ = useBillboard;
 
 	// 新Renderer: メッシュとテクスチャをハンドルで持つ
@@ -24,45 +23,39 @@ void ParticleSystem::Emit(const Vector3& pos, const Vector3& vel, const Vector3&
 			  const Vector3& startScale, const Vector3& endScale,
 			  const Vector4& startColor, const Vector4& endColor, 
 			  float life, const Vector3& angVel, float damping) {
-	for (auto& p : particles_) {
-		if (!p.active) {
-			p.active = true;
-			p.pos = pos;
-			p.vel = vel;
-			p.acceleration = acceleration;
-			p.startScale = startScale;
-			p.endScale = endScale;
-			p.scale = startScale;
-			p.startColor = startColor;
-			p.endColor = endColor;
-			p.color = startColor;
-			p.life = life;
-			p.age = 0.0f;
-			p.damping = damping;
+	// 空きが無ければ放出しない (以前と同じく上限を超えた分は捨てる)
+	Particle* slot = particles_.Acquire();
+	if (!slot)
+		return;
+	Particle& p = *slot;
+	p.pos = pos;
+	p.vel = vel;
+	p.acceleration = acceleration;
+	p.startScale = startScale;
+	p.endScale = endScale;
+	p.scale = startScale;
+	p.startColor = startColor;
+	p.endColor = endColor;
+	p.color = startColor;
+	p.life = life;
+	p.age = 0.0f;
+	p.damping = damping;
 
-			// 回転初期化
-			p.angVel = angVel;
-			// 初期角度をランダムに (0 ~ 2pi)
-			float r1 = (float)(rand() % 628) / 100.0f;
-			float r2 = (float)(rand() % 628) / 100.0f;
-			float r3 = (float)(rand() % 628) / 100.0f;
-			p.rotation = {r1, r2, r3};
-
-			break;
-		}
-	}
+	// 回転初期化
+	p.angVel = angVel;
+	// 初期角度をランダムに (0 ~ 2pi)
+	float r1 = (float)(rand() % 628) / 100.0f;
+	float r2 = (float)(rand() % 628) / 100.0f;
+	float r3 = (float)(rand() % 628) / 100.0f;
+	p.rotation = {r1, r2, r3};
 }
 
 void ParticleSystem::Update(float dt) {
-	for (auto& p : particles_) {
-		if (!p.active)
-			continue;
-
+	// 寿命が尽きた粒は false を返してプールへ返す
+	particles_.ForEachActive([dt](Particle& p) {
 		p.age += dt;
-		if (p.age >= p.life) {
-			p.active = false;
-			continue;
-		}
+		if (p.age >= p.life)
+			return false;
 
 		// ★追加: 摩擦(減衰)の適用
 		if (p.damping > 0.0f) {
@@ -89,13 +82,12 @@ void ParticleSystem::Update(float dt) {
 		p.color.y = p.startColor.y + (p.endColor.y - p.startColor.y) * t;
 		p.color.z = p.startColor.z + (p.endColor.z - p.startColor.z) * t;
 		p.color.w = p.startColor.w + (p.endColor.w - p.startColor.w) * t;
-	}
+		return true;
+	});
 }
 
 void ParticleSystem::Clear() {
-	for (auto& p : particles_) {
-		p.active = false;
-	}
+	particles_.ReleaseAll();
 }
 
 
@@ -111,10 +103,8 @@ void ParticleSystem::Draw(const Camera& cam, const std::string& shaderName, bool
 	const auto cp = cam.Position();
 	const Vector3 camPos{cp.x, cp.y, cp.z};
 
-	for (auto& p : particles_) {
-		if (!p.active)
-			continue;
-
+	const ObjectPool<Particle>& pool = particles_;
+	pool.ForEachActive([&](const Particle& p) {
 		Transform tf;
 		tf.translate = p.pos;
 		tf.scale = p.scale;
@@ -159,7 +149,7 @@ void ParticleSystem::Draw(const Camera& cam, const std::string& shaderName, bool
 
 		// ★GPUインスタンシングを使用して描画予約
 		renderer_->DrawParticleInstanced(mesh_, tex_, tf, p.color, uvScaleOffset, shaderName);
-	}
+	});
 }
 
 } // namespace Engine

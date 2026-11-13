@@ -176,6 +176,11 @@ private:
     void TickDevourGimmicks(entt::registry&,GameContext&,float dt);
     void EndGimmickRide(bool burst);
     bool GimmickRiding()const{return gimmickRide_.index>=0;}
+    // ギミックの種類ごとの動き (Strategy Pattern、DevourGimmickBehaviors.h / DevourGimmick.cpp)。
+    // 乗り始め・乗っている間の動きと入力・仕掛けの動き・操作の札・構図・照準・物を置かない範囲を種類ごとのクラスに分ける
+    struct GimmickRideStep;class GimmickBehavior;
+    class ShootGimmick;class DominoGimmick;class BowlingGimmick;class PaintGimmick;class PathGimmick;
+    static const GimmickBehavior& GimmickBehaviorFor(Chrono::GimmickKind kind);
     // 高い所から落ちたときのヘリコプター (DevourHeli.cpp): 回転翼を回してゆっくり降りる
     struct DevourHeli {bool active=false;float age=0;Chrono::GimmickPose pose{},previous{};};
     DevourHeli devourHeli_;

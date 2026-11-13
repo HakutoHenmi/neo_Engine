@@ -6,9 +6,10 @@ namespace Game {
 // エディタの内部で共有する状態と関数 (EditorInternal.h)
 using namespace EditorInternal;
 
-// 変形ツールの状態と、Project ウィンドウのアイコン (EditorUI の静的メンバー)
+// 変形ツールの状態と、Project ウィンドウのアイコン、取り消し・やり直しの履歴 (EditorUI の静的メンバー)
 EditorUI::GizmoState EditorUI::gizmo_;
 EditorUI::Icons EditorUI::s_icons;
+Engine::CommandHistory EditorUI::history_{100};
 
 // 複製したエンティティの名前を作る: 末尾の "_番号" や " (Copy)" を外し、同じ名前の最大番号 + 1 を付ける
 static std::string GenerateCopyName(const std::string& baseName, SceneComponents& registry) {
@@ -53,34 +54,16 @@ static std::string GenerateCopyName(const std::string& baseName, SceneComponents
 	return base + "_" + std::to_string(maxNum + 1);
 }
 
-// 取り消しとやり直し
-// Undo できる操作を記録する (新しい操作をしたら Redo の履歴は消す)
-void EditorUI::PushUndo(const UndoCommand& cmd) {
-	// 古いものから消して最大件数を保つ
-	undoStack.push_back(cmd);
-	if (undoStack.size() > kMaxUndoDepth) undoStack.pop_front();
-	redoStack.clear();
-}
-// 最後の操作を取り消す
-void EditorUI::Undo() {
-	// 履歴が無ければ何もしない
-	if (undoStack.empty()) return;
-	// 最後の操作を取り出し、取り消して Redo の履歴へ移す
-	auto c = undoStack.back();
-	undoStack.pop_back();
-	c.undo();
-	redoStack.push_back(c);
-}
-// 取り消した操作をやり直す
-void EditorUI::Redo() {
-	// 履歴が無ければ何もしない
-	if (redoStack.empty()) return;
-	// 最後に取り消した操作を取り出し、やり直して Undo の履歴へ戻す
-	auto c = redoStack.back();
-	redoStack.pop_back();
-	c.redo();
-	undoStack.push_back(c);
-}
+// 取り消しとやり直し (Command Pattern)。
+// 履歴 (Engine::CommandHistory) は操作の種類を知らず、ICommand の Execute / Undo を呼ぶだけ。
+// 新しい操作を記録すると Redo の履歴は消え、最大件数を超えたら古いものから捨てる
+void EditorUI::ExecuteCommand(std::unique_ptr<Engine::ICommand> command) { history_.Execute(std::move(command)); }
+void EditorUI::RecordCommand(std::unique_ptr<Engine::ICommand> command) { history_.Record(std::move(command)); }
+// 関数の組で表した操作は FunctionCommand に包んで記録する (すでに実行済みの操作)
+void EditorUI::PushUndo(const UndoCommand& cmd) { history_.Record(std::make_unique<Engine::FunctionCommand>(cmd.description, cmd.undo, cmd.redo)); }
+// 最後の操作を取り消す / 取り消した操作をやり直す (履歴が無ければ何もしない)
+void EditorUI::Undo() { history_.Undo(); }
+void EditorUI::Redo() { history_.Redo(); }
 
 // Console (ログの表示)
 // Console にログを追加する (情報・警告・エラー)
@@ -111,23 +94,14 @@ static entt::entity RestoreEntitySnapshot(GameScene* scene, const std::string& s
 	return entt::null;
 }
 
-// 生成/削除の Undo。復元したエンティティは別IDになるため、最新IDを共有して追跡する
-// (古いIDを保持したままだと Redo→Undo で何も消えなくなる)
-UndoCommand EditorInternal::MakeSpawnUndo(GameScene* scene, const std::string& description, const std::string& snapshot, entt::entity current, bool existsAfterRedo) {
-	// 今のエンティティを共有して覚える
-	auto live = std::make_shared<entt::entity>(current);
-	// 消す処理: 今のエンティティを破棄予約する
-	std::function<void()> destroy = [scene, live]() {
-		if (*live != entt::null) scene->DestroyObject(static_cast<uint32_t>(*live));
-		// 選択中なら選択を外す
-		if (scene->GetSelectedEntity() == *live) scene->SelectEntity(entt::null);
-		*live = entt::null;
-	};
-	// 戻す処理: 保存した JSON から作り直し、新しいエンティティを覚える
-	std::function<void()> restore = [scene, live, snapshot]() { *live = RestoreEntitySnapshot(scene, snapshot); };
-	// Redo 後に存在する操作 (生成・貼り付け) か、消える操作 (削除) かで、取り消しとやり直しを入れ替える
-	return existsAfterRedo ? UndoCommand{description, destroy, restore} : UndoCommand{description, restore, destroy};
+// 生成・削除のコマンド: 今のエンティティを破棄予約し、選択中なら選択を外す
+void EntityLifetimeCommand::Destroy() {
+	if (live_ != entt::null) scene_->DestroyObject(static_cast<uint32_t>(live_));
+	if (scene_->GetSelectedEntity() == live_) scene_->SelectEntity(entt::null);
+	live_ = entt::null;
 }
+// 保存した JSON から作り直し、新しいエンティティを覚える
+void EntityLifetimeCommand::Restore() { live_ = RestoreEntitySnapshot(scene_, snapshot_); }
 
 // 選択中のエンティティをコピーする
 void EditorInternal::ExecuteCopy(GameScene* scene) {
@@ -168,7 +142,7 @@ void EditorInternal::ExecutePaste(GameScene* scene) {
 			// 選択し、Undo を登録してログに残す
 			scene->SelectEntity(e);
 			
-			EditorUI::PushUndo(MakeSpawnUndo(scene, "Paste Entity", SerializeEntity(reg, e), e, true));
+			EditorUI::RecordCommand(std::make_unique<EntityLifetimeCommand>(scene, "Paste Entity", SerializeEntity(reg, e), e, true));
 			EditorUI::Log("Pasted Entity: " + (reg.all_of<NameComponent>(e) ? reg.get<NameComponent>(e).name : "Unknown"));
 		}
 	// 失敗したらエラーを出す

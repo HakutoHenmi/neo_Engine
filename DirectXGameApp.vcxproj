@@ -246,6 +246,7 @@ exit /b %ERRORLEVEL%</Command>
     <ClInclude Include="Game\Scenes\TitleScene.h" />
     <ClInclude Include="Game\Systems\ChronoSystem.h" />
     <ClInclude Include="Game\Systems\ChronoSystemInternal.h" />
+    <ClInclude Include="Game\Systems\DevourGimmickBehaviors.h" />
     <ClInclude Include="Game\Systems\AudioSystem.h" />
     <ClInclude Include="Game\Systems\CleanupSystem.h" />
     <ClInclude Include="Game\Systems\FluidSystem.h" />
@@ -298,6 +299,7 @@ exit /b %ERRORLEVEL%</Command>
     <ClInclude Include="Game\UI\UISound.h" />
     <ClInclude Include="Game\Editor\EditorInternal.h" />
     <ClInclude Include="Game\Editor\EditorUI.h" />
+    <ClInclude Include="Game\Editor\EditorCommandTypes.h" />
     <ClInclude Include="tests\ComponentValidationScene.h" />
     <ClInclude Include="tests\FluidGameBenchmarkScene.h" />
     <ClInclude Include="tests\FluidSandboxValidationScene.h" />

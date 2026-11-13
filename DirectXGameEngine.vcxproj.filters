@@ -157,6 +157,15 @@
     <ClInclude Include="Engine\Particle.h">
       <Filter>Particle</Filter>
     </ClInclude>
+    <ClInclude Include="Engine\ObjectPool.h">
+      <Filter>Core</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\EmissionShapes.h">
+      <Filter>Particle</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\CommandHistory.h">
+      <Filter>Core</Filter>
+    </ClInclude>
     <ClInclude Include="Engine\GPUParticle.h">
       <Filter>Particle</Filter>
     </ClInclude>

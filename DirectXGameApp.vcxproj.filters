@@ -317,6 +317,9 @@
     <ClInclude Include="Game\Systems\ChronoSystemInternal.h">
       <Filter>3. Systems（システム）\スライム本編</Filter>
     </ClInclude>
+    <ClInclude Include="Game\Systems\DevourGimmickBehaviors.h">
+      <Filter>3. Systems（システム）\スライム本編</Filter>
+    </ClInclude>
     <ClInclude Include="Game\Systems\AudioSystem.h">
       <Filter>3. Systems（システム）\共通</Filter>
     </ClInclude>
@@ -456,6 +459,9 @@
       <Filter>8. Editor（エディタ）</Filter>
     </ClInclude>
     <ClInclude Include="Game\Editor\EditorUI.h">
+      <Filter>8. Editor（エディタ）</Filter>
+    </ClInclude>
+    <ClInclude Include="Game\Editor\EditorCommandTypes.h">
       <Filter>8. Editor（エディタ）</Filter>
     </ClInclude>
     <ClInclude Include="tests\ComponentValidationScene.h">

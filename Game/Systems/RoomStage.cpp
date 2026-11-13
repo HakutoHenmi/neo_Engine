@@ -170,13 +170,9 @@ bool ChronoSystem::GimmickClear(V at,float margin)const{
     auto flat=[](V a){a.y=0;return a;};
     // 看板の土台の上には物を散らかさない
     for(const auto& sign:gimmickSigns_)if(Length(flat(at-sign))<14+margin)return true;
+    // 輪の中と、種類ごとの範囲 (道・台・着地点など。DevourGimmick.cpp の各ギミックの KeepsClear)
     for(const auto& g:gimmicks_){V d=flat(at-g.at);if(Length(d)<g.radius+margin)return true;
-        for(const auto& spot:g.spots)if(g.kind==Chrono::GimmickKind::Shoot&&Length(flat(at-spot))<26+margin)return true;
-        if(g.kind==Chrono::GimmickKind::Shoot){V a=flat(g.at),b=g.spots.empty()?a:flat(g.spots[0]);if(Chrono::LifeSegmentDistance(flat(at),a,b)<10+margin)return true;}
-        const float corridor=g.kind==Chrono::GimmickKind::Bowling?20.f:g.kind==Chrono::GimmickKind::Domino?12.f:g.kind==Chrono::GimmickKind::Liquid?10.f:0.f;
-        if(corridor>0)for(size_t i=1;i<g.path.size();++i)if(g.path[i].y<1&&g.path[i-1].y<1&&Chrono::LifeSegmentDistance(flat(at),flat(g.path[i-1]),flat(g.path[i]))<corridor+margin)return true;
-        if(g.kind==Chrono::GimmickKind::Domino&&g.extra!=0xffffffffu&&Length(flat(at-g.extraBase))<22+margin)return true;
-        if(g.kind==Chrono::GimmickKind::Plane&&!g.path.empty()&&Length(flat(at-g.path.back()))<16+margin)return true;}
+        if(GimmickBehaviorFor(g.kind).KeepsClear(g,at,margin))return true;}
     return false;
 }
 // 部屋の床 (見た目はモデルと同じ平らな色の板を上に敷く)

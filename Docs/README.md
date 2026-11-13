@@ -31,6 +31,7 @@
 | [UITheme.md](UITheme.md) | UI の配色と共通部品 |
 | [StatePatternReview.md](StatePatternReview.md) | State パターンでのリファクタリング |
 | [Encapsulation.md](Encapsulation.md) | カプセル化のリファクタリング |
+| [DesignPatternReview.md](DesignPatternReview.md) | State / Singleton 以外のデザインパターン (Object Pool・Strategy・Command) の適用 |
 
 ## 配布
 
