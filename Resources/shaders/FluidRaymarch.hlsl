@@ -20,6 +20,8 @@ Texture3D<float4> fluidVelocity : register(t9);
 cbuffer FarWaterSettings:register(b2){
     float3 farWaterOrigin;float farWaterCell;
     uint3 farWaterSize;uint farWaterEnabled;
+    // x: 体の中から見る量 (結果画面の「おなかの中」)、y: それより手前 (ビュー空間の z) を体の中の物として見せる
+    float4 interior;
 };
 Texture3D<float4> farWaterDensity:register(t10);
 Texture3D<float4> farWaterVelocity:register(t11);
@@ -52,6 +54,13 @@ float ViewDepth(float2 uv) {
     uint w,h; sceneDepth.GetDimensions(w,h);
     float z=sceneDepth.Load(int3(clamp(int2(uv*float2(w,h)),0,int2(w,h)-1),0));
     return projection[3][2]/(z-projection[2][2]);
+}
+// View-space ray through a pixel. projection[2].xy carries the DLSS/DLAA
+// sub-pixel jitter; dropping it leaves the slime unjittered while the rest of
+// the scene is jittered, so the temporal AA cannot resolve its edges (jaggies).
+float3 ViewRayFromUV(float2 uv) {
+    float2 ndc=uv*float2(2,-2)+float2(-1,1)-float2(projection[2][0],projection[2][1]);
+    return normalize(float3(ndc/float2(projection[0][0],projection[1][1]),1));
 }
 float3 Density(float3 p) {
     float3 uv=(p-volumeOrigin)/(voxelSize*volumeSize);
@@ -175,14 +184,14 @@ float3 RainbowColor(float t){
 struct FullscreenIn { float4 position:SV_POSITION; float2 uv:TEXCOORD0; };
 struct RayResult { float4 color:SV_Target0; float depth:SV_Target1; };
 
-RayResult RaymarchPS(FullscreenIn input) {
+RayResult RaymarchCore(FullscreenIn input) {
     RayResult output;
     float2 uv=input.uv;
     float3 background=sceneColor.SampleLevel(linearClamp,uv,0).rgb;
     output.color=float4(background,1); output.depth=0;
     // Interpolate UV, then normalize in the pixel shader. Perspective rays
     // must NOT be normalized at fullscreen-triangle vertices.
-    float3 viewRay=normalize(float3((uv*float2(2,-2)+float2(-1,1))/float2(projection[0][0],projection[1][1]),1));
+    float3 viewRay=ViewRayFromUV(uv);
     float3 ray=normalize(mul(viewRay,transpose((float3x3)view)));
     float nearT,farT;
     bool nearHit=RayBox(cameraPosition,ray,nearT,farT);
@@ -492,7 +501,7 @@ float4 SprayPS(SprayOut input):SV_Target {
         float density=(1-r2)*(1-r2)*smoothstep(.3f,.75f,wisp)*1.8f*soft*input.color.a;
         if(density<=1e-4f) discard;
         // Per-pixel ray: a puff spans more than the 1.8-degree bow band.
-        float3 viewRay=normalize(float3((uv*float2(2,-2)+float2(-1,1))/float2(projection[0][0],projection[1][1]),1));
+        float3 viewRay=ViewRayFromUV(uv);
         float3 pixelRay=normalize(mul(viewRay,transpose((float3x3)view)));
         float3 travel=SunTravel();float sun=SunIntensity();
         // Henyey-Greenstein forward scattering: mist glows against the sun.
@@ -513,7 +522,7 @@ float4 SprayPS(SprayOut input):SV_Target {
     if(input.distantBulk>=2) {
         uint width,height; sceneDepth.GetDimensions(width,height);
         float2 uv=input.position.xy/float2(width,height);
-        float3 viewRay=normalize(float3((uv*float2(2,-2)+float2(-1,1))/float2(projection[0][0],projection[1][1]),1));
+        float3 viewRay=ViewRayFromUV(uv);
         float3 ray=normalize(mul(viewRay,transpose((float3x3)view)));
         bool eye=input.distantBulk==3;
         float3 radii=eye?SlimeEyeRadii():float3(input.radius,input.radius,input.radius);
@@ -560,7 +569,7 @@ float4 SprayPS(SprayOut input):SV_Target {
     if(input.distantBulk!=0) {
         uint width,height; sceneDepth.GetDimensions(width,height);
         float2 uv=input.position.xy/float2(width,height);
-        float3 viewRay=normalize(float3((uv*float2(2,-2)+float2(-1,1))/float2(projection[0][0],projection[1][1]),1));
+        float3 viewRay=ViewRayFromUV(uv);
         float3 ray=normalize(mul(viewRay,transpose((float3x3)view)));
         FluidShape shape=particleShapes[input.shapeIndex];
         shape=WaterFallbackShape(shape,renderParticles[input.shapeIndex]);
@@ -608,4 +617,61 @@ float4 SprayPS(SprayOut input):SV_Target {
     float3 col=lerp(sceneColor.SampleLevel(linearClamp,uv,0).rgb*0.98f,Reflection(n,ray,0.16f),fresnel);
     float coverage=saturate((1-r2)/max(fwidth(r2),0.001f));
     return float4(col,coverage*saturate(input.color.a));
+}
+
+// 体の中から見た景色: 本物の流体の密度を視線に沿って調べ、ゲルの厚み・出口の面の向き・揺らぎで色を決める。
+// 決めた深さより手前 (体の中に並べた物) だけを透かして見せ、外の部屋はゲルの奥に沈める
+float3 InteriorColor(float2 uv,out float depth){
+    float3 viewRay=ViewRayFromUV(uv);
+    float3 ray=normalize(mul(viewRay,transpose((float3x3)view)));
+    float sceneZ=ViewDepth(uv),sceneT=sceneZ/max(viewRay.z,1e-5f);
+    bool item=sceneZ<interior.y;
+    float thick=0,lastInside=-1,nearT,farT;
+    if(RayBox(cameraPosition,ray,nearT,farT)){
+        const int samples=40;float step=(farT-nearT)/samples;
+        [loop]for(int i=0;i<samples;++i){float t=nearT+(i+.5f)*step;if(item&&t>sceneT)break;
+            if(Density(cameraPosition+ray*t).x>=isoValue){thick+=step;lastInside=t;}}
+    }
+    float3 exitNormal=lastInside>0?Normal(cameraPosition+ray*lastInside,0,-ray):-ray;
+    float3 tint=saturate(phaseColor[0].rgb);
+    // ゲルの奥の色: 上から光が差して明るく、下と画面の端ほど深い色になる
+    float2 centered=uv-float2(.62f,.45f);
+    float light=1.05f-.55f*uv.y-.35f*dot(centered,centered);
+    float lit=saturate(dot(exitNormal,-SunTravel())*.5f+.5f);
+    float3 deep=tint*(.42f+.18f*lit)*light;
+    deep*=.9f+.2f*saturate(thick/max(voxelSize*30,1e-3f));
+    // ゆっくり揺れる濃淡と、細く明るい光の網 (水の中の模様)
+    deep*=.94f+.12f*WaterFbm(float3(uv*float2(3,1.8f),time*.15f));
+    float web=WaterNoise(float3(uv*float2(16,9),time*.4f))+WaterNoise(float3(uv*float2(23,13)+5.3f,time*.33f));
+    deep+=lerp(tint,1,.7f)*pow(saturate(1-abs(web-1)*2.4f),8)*.07f*light;
+    // 浮かんでいく泡: 3 層の升目に 1 つずつ、ゆっくり昇る丸い輪
+    float3 bubbles=0;
+    [unroll]for(int layer=0;layer<3;++layer){
+        float scale=6+layer*4.f,speed=.035f+layer*.02f;float2 grid=float2(uv.x*scale*1.78f,uv.y*scale+time*speed*scale);
+        float2 cell=floor(grid),local=frac(grid);float seed=WaterHash(float3(cell,layer*7.1f));
+        if(seed<.55f)continue;
+        float2 center=float2(.25f+.5f*WaterHash(float3(cell,layer+2.3f)),.25f+.5f*WaterHash(float3(cell,layer+5.9f)));
+        float2 offset=(local-center)*float2(1,1);float radius=.08f+.12f*WaterHash(float3(cell,layer+9.7f));float distance=length(offset);
+        float ring=smoothstep(radius,radius*.82f,distance)*smoothstep(radius*.55f,radius*.95f,distance);
+        float shine=smoothstep(radius*.45f,0,length(offset-float2(-.35f,-.35f)*radius));
+        bubbles+=(ring*.45f+shine*.6f)*(.5f+.5f/(1+layer));}
+    deep+=lerp(tint,1,.75f)*bubbles*.35f;
+    float3 color=deep;
+    if(item){
+        // 中の物は少しゆらめいて見え、ゲルの色が薄くかかる
+        float2 wobble=(float2(WaterNoise(float3(uv*12,time*.7f)),WaterNoise(float3(uv*12+9.1f,time*.7f)))-.5f)*.006f;
+        float3 inside=sceneColor.SampleLevel(linearClamp,clamp(uv+wobble,.001f,.999f),0).rgb;
+        color=lerp(deep,inside*lerp(1,tint*1.1f+.1f,.22f),.9f);
+    }
+    depth=item?sceneZ:sceneZ*.999f;
+    return color;
+}
+RayResult RaymarchPS(FullscreenIn input) {
+    RayResult output=RaymarchCore(input);
+    [branch]if(interior.x>.001f){
+        float depth;float3 inside=InteriorColor(input.uv,depth);
+        output.color.rgb=lerp(output.color.rgb,inside,saturate(interior.x));
+        if(interior.x>.5f)output.depth=depth;
+    }
+    return output;
 }

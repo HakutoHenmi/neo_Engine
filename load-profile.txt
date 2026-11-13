@@ -1,0 +1,663 @@
+0.860	audio	782.10	Resources/Sound/BGM/Lamadio Tiado.mp3
+2.556	shader	0.42	(inline) main vs_5_0
+2.557	shader	0.28	(inline) main ps_5_0
+2.779	texture	27.29	C:/Users/k024g/source/repos/neo_Engine/Resources/Textures/UI/Scale/slime_idle_00.png
+2.796	texture	16.36	C:/Users/k024g/source/repos/neo_Engine/Resources/Textures/UI/Scale/slime_idle_01.png
+2.813	texture	16.01	C:/Users/k024g/source/repos/neo_Engine/Resources/Textures/UI/Scale/slime_idle_02.png
+2.829	texture	16.11	C:/Users/k024g/source/repos/neo_Engine/Resources/Textures/UI/Scale/slime_idle_03.png
+2.846	texture	16.14	C:/Users/k024g/source/repos/neo_Engine/Resources/Textures/UI/Scale/slime_idle_04.png
+2.863	texture	16.82	C:/Users/k024g/source/repos/neo_Engine/Resources/Textures/UI/Scale/slime_idle_05.png
+2.880	texture	16.66	C:/Users/k024g/source/repos/neo_Engine/Resources/Textures/UI/Scale/slime_idle_06.png
+2.898	texture	17.16	C:/Users/k024g/source/repos/neo_Engine/Resources/Textures/UI/Scale/slime_idle_07.png
+2.916	texture	17.91	C:/Users/k024g/source/repos/neo_Engine/Resources/Textures/UI/Scale/slime_idle_08.png
+2.934	texture	17.09	C:/Users/k024g/source/repos/neo_Engine/Resources/Textures/UI/Scale/slime_idle_09.png
+2.951	texture	16.48	C:/Users/k024g/source/repos/neo_Engine/Resources/Textures/UI/Scale/slime_idle_10.png
+2.968	texture	16.73	C:/Users/k024g/source/repos/neo_Engine/Resources/Textures/UI/Scale/slime_idle_11.png
+2.982	texture	13.06	C:/Users/k024g/source/repos/neo_Engine/Resources/Textures/UI/Scale/slime_roll_00.png
+2.994	texture	12.14	C:/Users/k024g/source/repos/neo_Engine/Resources/Textures/UI/Scale/slime_roll_01.png
+3.007	texture	11.82	C:/Users/k024g/source/repos/neo_Engine/Resources/Textures/UI/Scale/slime_roll_02.png
+3.019	texture	11.78	C:/Users/k024g/source/repos/neo_Engine/Resources/Textures/UI/Scale/slime_roll_03.png
+3.031	texture	11.85	C:/Users/k024g/source/repos/neo_Engine/Resources/Textures/UI/Scale/slime_roll_04.png
+3.043	texture	11.46	C:/Users/k024g/source/repos/neo_Engine/Resources/Textures/UI/Scale/slime_roll_05.png
+3.055	texture	11.48	C:/Users/k024g/source/repos/neo_Engine/Resources/Textures/UI/Scale/slime_roll_06.png
+3.068	texture	12.08	C:/Users/k024g/source/repos/neo_Engine/Resources/Textures/UI/Scale/slime_roll_07.png
+3.083	texture	15.11	C:/Users/k024g/source/repos/neo_Engine/Resources/Textures/UI/Scale/slime_roll_08.png
+3.096	texture	12.16	C:/Users/k024g/source/repos/neo_Engine/Resources/Textures/UI/Scale/slime_roll_09.png
+3.097	scene	345.69	Change Title
+3.114	texture	10.11	C:/Users/k024g/source/repos/neo_Engine/Resources/Textures/white1x1.png
+3.121	shader	0.45	(inline) main vs_5_0
+3.122	shader	0.33	(inline) main ps_5_0
+3.145	texture	2.54	C:/Users/k024g/source/repos/neo_Engine/Resources/Textures/UI/ui_round.png
+3.148	texture	1.96	C:/Users/k024g/source/repos/neo_Engine/Resources/Textures/UI/kenney_input-prompts_1.5/Keyboard & Mouse/Default/keyboard_enter.png
+3.294	drive	0.00	Title presented, request Select
+3.507	texture	29.63	C:/Users/k024g/source/repos/neo_Engine/Resources/Textures/UI/Scale/slime_shadow.png
+3.650	texture	22.67	C:/Users/k024g/source/repos/neo_Engine/Resources/Textures/UI/Scale/tsumiki_sil.png
+3.662	texture	11.08	C:/Users/k024g/source/repos/neo_Engine/Resources/Textures/UI/Scale/tsumiki.png
+3.761	texture	17.32	C:/Users/k024g/source/repos/neo_Engine/Resources/Textures/UI/Scale/mikan_sil.png
+3.774	texture	12.01	C:/Users/k024g/source/repos/neo_Engine/Resources/Textures/UI/Scale/mikan.png
+3.870	texture	26.13	C:/Users/k024g/source/repos/neo_Engine/Resources/Textures/UI/Scale/nuigurumi_sil.png
+3.891	texture	20.11	C:/Users/k024g/source/repos/neo_Engine/Resources/Textures/UI/Scale/nuigurumi.png
+3.896	audio-async	1143.53	Resources/Sound/BGM/Daily Beetle.mp3
+3.908	texture	11.05	C:/Users/k024g/source/repos/neo_Engine/Resources/Textures/UI/Scale/kago_sil.png
+3.917	texture	7.58	C:/Users/k024g/source/repos/neo_Engine/Resources/Textures/UI/Scale/kago.png
+3.938	texture	20.82	C:/Users/k024g/source/repos/neo_Engine/Resources/Textures/UI/Scale/danboru_sil.png
+3.949	texture	10.22	C:/Users/k024g/source/repos/neo_Engine/Resources/Textures/UI/Scale/danboru.png
+3.970	texture	21.00	C:/Users/k024g/source/repos/neo_Engine/Resources/Textures/UI/Scale/shitsugaiki_sil.png
+3.983	texture	12.39	C:/Users/k024g/source/repos/neo_Engine/Resources/Textures/UI/Scale/shitsugaiki.png
+4.002	texture	17.72	C:/Users/k024g/source/repos/neo_Engine/Resources/Textures/UI/Scale/jihanki_sil.png
+4.013	texture	10.48	C:/Users/k024g/source/repos/neo_Engine/Resources/Textures/UI/Scale/jihanki.png
+4.026	texture	12.93	C:/Users/k024g/source/repos/neo_Engine/Resources/Textures/UI/Scale/kei_car_sil.png
+4.034	texture	7.96	C:/Users/k024g/source/repos/neo_Engine/Resources/Textures/UI/Scale/kei_car.png
+4.054	texture	18.95	C:/Users/k024g/source/repos/neo_Engine/Resources/Textures/UI/Scale/my_house_sil.png
+4.065	texture	10.92	C:/Users/k024g/source/repos/neo_Engine/Resources/Textures/UI/Scale/my_house.png
+4.101	texture	35.27	C:/Users/k024g/source/repos/neo_Engine/Resources/Textures/UI/Scale/logo0.png
+4.139	texture	37.65	C:/Users/k024g/source/repos/neo_Engine/Resources/Textures/UI/Scale/logo1.png
+4.179	texture	39.17	C:/Users/k024g/source/repos/neo_Engine/Resources/Textures/UI/Scale/logo2.png
+4.219	texture	40.12	C:/Users/k024g/source/repos/neo_Engine/Resources/Textures/UI/Scale/logo3.png
+4.222	texture	2.25	C:/Users/k024g/source/repos/neo_Engine/Resources/Textures/UI/kenney_input-prompts_1.5/Keyboard & Mouse/Default/keyboard_arrows_horizontal.png
+4.225	texture	1.96	C:/Users/k024g/source/repos/neo_Engine/Resources/Textures/UI/kenney_input-prompts_1.5/Xbox Series/Default/xbox_dpad.png
+4.514	audio-wait	0.03	Resources/Sound/BGM/Daily Beetle.mp3
+4.533	load	619.38	Select frames=1 longestFrameMs=1 longestFlatBarMs=0 units=18/18 expectedS=0.601 firstRun=0
+4.536	scene	639.93	Change Select
+4.564	texture	2.32	C:/Users/k024g/source/repos/neo_Engine/Resources/Textures/UI/kenney_input-prompts_1.5/Keyboard & Mouse/Default/keyboard_escape.png
+4.582	texture	14.93	C:/Users/k024g/source/repos/neo_Engine/Resources/Textures/UI/Scale/jitensha_sil.png
+4.591	texture	8.57	C:/Users/k024g/source/repos/neo_Engine/Resources/Textures/UI/Scale/jitensha.png
+4.593	hitch	697.42	Select | texture: C:/Users/k024g/source/repos/neo_Engine/Resources/Textures/UI/Scale/logo0.png 35ms; texture: C:/Users/k024g/source/repos/neo_Engine/Resources/Textures/UI/Scale/logo1.png 38ms; texture: C:/Users/k024g/source/repos/neo_Engine/Resources/Textures/UI/Scale/logo2.png 39ms; texture: C:/Users/k024g/source/repos/neo_Engine/Resources/Textures/UI/Scale/logo3.png 40ms; scene: Change Select 640ms; 
+5.208	audio-async	692.34	Resources/Sound/BGM/Local Forecast.mp3
+5.312	drive	0.00	Select presented, request Game
+5.949	shader	0.82	Resources/shaders/DefaultVS.hlsl main vs_5_0
+5.951	shader	1.40	Resources/shaders/DefaultPS.hlsl main ps_5_0
+5.952	shader	1.00	Resources/shaders/SkinningVS.hlsl main vs_5_0
+5.955	shader	0.66	Resources/shaders/InstancedObjVS.hlsl main vs_5_0
+5.957	shader	1.15	Resources/shaders/InstancedObjPS.hlsl main ps_5_0
+5.960	shader	0.70	Resources/shaders/ParticleInstancedVS.hlsl main vs_5_0
+5.960	shader	0.58	Resources/shaders/ParticlePS.hlsl main ps_5_0
+5.963	shader	0.61	Resources/shaders/SoftParticlePS.hlsl main ps_5_0
+5.966	shader	1.21	Resources/shaders/ProceduralSmokePS.hlsl main ps_5_0
+5.968	shader	0.39	(inline) main vs_5_0
+5.969	shader	0.41	(inline) main vs_5_0
+5.970	shader	0.50	(inline) main vs_5_0
+5.973	shader	0.63	Resources/shaders/VegetationShadow.hlsl VSMain vs_5_0
+5.973	shader	0.54	Resources/shaders/VegetationShadow.hlsl VSInstanced vs_5_0
+5.974	shader	0.69	Resources/shaders/VegetationShadow.hlsl PSMain ps_5_0
+5.977	shader	0.42	(inline) main vs_5_0
+5.978	shader	0.39	(inline) main ps_5_0
+5.980	shader	1.12	Resources/shaders/CollisionCompute.hlsl main cs_5_0
+5.983	shader	0.83	Resources/shaders/EnhancedTerrainVS.hlsl main vs_5_0
+5.985	shader	1.83	Resources/shaders/EnhancedTerrainPS.hlsl main ps_5_0
+5.989	shader	1.46	Resources/shaders/StylizedGrassVS.hlsl main vs_5_0
+5.990	shader	1.02	Resources/shaders/StylizedGrassPS.hlsl main ps_5_0
+5.993	shader	1.06	Resources/shaders/ToonVS.hlsl main vs_5_0
+5.995	shader	1.67	Resources/shaders/ToonPS.hlsl main ps_5_0
+5.998	shader	1.09	Resources/shaders/ToonOutlineVS.hlsl main vs_5_0
+6.000	shader	1.21	Resources/shaders/ToonOutlinePS.hlsl main ps_5_0
+6.003	shader	1.09	Resources/shaders/ToonSkinningVS.hlsl main vs_5_0
+6.005	shader	1.37	Resources/shaders/ToonSkinningOutlineVS.hlsl main vs_5_0
+6.007	shader	0.93	Resources/shaders/ObjVS.hlsl main vs_5_0
+6.009	shader	1.74	Resources/shaders/Object3d.PS.hlsl main ps_5_0
+6.012	shader	1.00	Resources/shaders/EmissiveGlowVS.hlsl main vs_5_0
+6.013	shader	0.93	Resources/shaders/EmissiveGlowPS.hlsl main ps_5_0
+6.016	shader	1.37	Resources/shaders/HologramVS.hlsl main vs_5_0
+6.017	shader	0.83	Resources/shaders/HologramPS.hlsl main ps_5_0
+6.020	shader	1.11	Resources/shaders/ForceFieldVS.hlsl main vs_5_0
+6.021	shader	0.84	Resources/shaders/ForceFieldPS.hlsl main ps_5_0
+6.023	shader	1.18	Resources/shaders/DissolveVS.hlsl main vs_5_0
+6.025	shader	0.84	Resources/shaders/DissolvePS.hlsl main ps_5_0
+6.027	shader	1.32	Resources/shaders/SlimeVS.hlsl main vs_5_0
+6.029	shader	1.51	Resources/shaders/SlimePS.hlsl main ps_5_0
+6.030	shader	1.00	Resources/shaders/SlimeNoFacePS.hlsl main ps_5_0
+6.034	shader	1.14	Resources/shaders/RiverVS.hlsl main vs_5_0
+6.035	shader	0.57	Resources/shaders/RiverPS.hlsl main ps_5_0
+6.037	shader	0.90	Resources/shaders/Distortion.hlsl main vs_5_0
+6.039	shader	1.07	Resources/shaders/Distortion.hlsl ps_main ps_5_0
+6.044	shader	1.00	Resources/shaders/SkyboxVS.hlsl main vs_5_0
+6.045	shader	1.23	Resources/shaders/SkyboxPS.hlsl main ps_5_0
+6.048	bar	86.93	11.6% units=47 main: shader: Resources/shaders/BoostRingVS.hlsl main vs_5_0
+6.049	shader	1.14	Resources/shaders/BoostRingVS.hlsl main vs_5_0
+6.050	shader	0.96	Resources/shaders/BoostRingPS.hlsl main ps_5_0
+6.051	pipeline	3.43	BoostRing
+6.052	shader	1.31	Resources/shaders/EnergyCylinderVS.hlsl main vs_5_0
+6.054	shader	1.27	Resources/shaders/EnergyCylinderPS.hlsl main ps_5_0
+6.056	pipeline	4.86	EnergyCylinder
+6.058	shader	1.36	Resources/shaders/EnergyCylinderVS.hlsl main vs_5_0
+6.060	shader	1.60	Resources/shaders/EnergyBeamPS.hlsl main ps_5_0
+6.061	pipeline	4.67	EnergyBeam
+6.063	shader	1.28	Resources/shaders/JumpPadEnergyVS.hlsl main vs_5_0
+6.065	shader	1.40	Resources/shaders/JumpPadEnergyPS.hlsl main ps_5_0
+6.066	pipeline	4.21	JumpPadEnergy
+6.068	shader	1.51	Resources/shaders/HeathazeVS.hlsl main vs_5_0
+6.069	shader	1.32	Resources/shaders/HeathazePS.hlsl main ps_5_0
+6.071	pipeline	4.93	Heathaze
+6.073	shader	1.35	Resources/shaders/LiftVS.hlsl main vs_5_0
+6.074	shader	0.84	Resources/shaders/LiftPS.hlsl main ps_5_0
+6.075	pipeline	3.45	Lift
+6.077	shader	1.18	Resources/shaders/TimedBlockVS.hlsl main vs_5_0
+6.078	shader	1.00	Resources/shaders/TimedBlockPS.hlsl main ps_5_0
+6.079	pipeline	3.74	TimedBlock
+6.081	shader	1.38	Resources/shaders/GlassVS.hlsl main vs_5_0
+6.082	shader	0.95	Resources/shaders/GlassPS.hlsl main ps_5_0
+6.084	pipeline	4.53	Glass
+6.089	shader	0.57	(inline) main vs_5_0
+6.091	shader	1.51	Resources/shaders/CRTPost.hlsl main ps_5_0
+6.097	shader	4.93	Resources/shaders/ChronoFocusPost.hlsl main ps_5_0
+6.134	texture	34.53	C:/Users/k024g/source/repos/neo_Engine/Resources/Textures/ColorGrading/CinematicLUT.png
+6.148	bar	187.54	19.5% units=67 main: texture: C:/Users/k024g/source/repos/neo_Engine/Resources/Textures/PBR/NeutralNormal.png
+6.167	texture	32.71	C:/Users/k024g/source/repos/neo_Engine/Resources/Textures/PBR/NeutralNormal.png
+6.175	shader	0.63	Resources/shaders/FluidCompositeVS.hlsl main vs_5_0
+6.178	shader	2.02	Resources/shaders/HdrBloom.hlsl Downsample ps_5_0
+6.181	shader	0.89	Resources/shaders/HdrBloom.hlsl Upsample ps_5_0
+6.188	shader	5.18	Resources/shaders/Gtao.hlsl main ps_5_0
+6.195	shader	2.72	Resources/shaders/OcclusionComposite.hlsl main ps_5_0
+6.198	shader	1.49	Resources/shaders/CopyPS.hlsl main ps_5_0
+6.201	shader	1.64	Resources/shaders/RichPostProcess.hlsl main ps_5_0
+6.204	shader	1.71	Resources/shaders/AnimePostProcess.hlsl main ps_5_0
+6.208	shader	2.06	Resources/shaders/GrayscalePost.hlsl main ps_5_0
+6.211	shader	1.72	Resources/shaders/SmoothingPost.hlsl main ps_5_0
+6.214	shader	1.88	Resources/shaders/GaussianPost.hlsl main ps_5_0
+6.217	shader	1.62	Resources/shaders/OutlinePost.hlsl main ps_5_0
+6.220	shader	1.34	Resources/shaders/DepthBasedOutline.hlsl main ps_5_0
+6.222	shader	1.23	Resources/shaders/Vignetting.hlsl main ps_5_0
+6.225	shader	1.62	Resources/shaders/BoxFilter.hlsl main ps_5_0
+6.228	shader	2.55	Resources/shaders/Dissolve.hlsl main ps_5_0
+6.231	shader	1.31	Resources/shaders/RadialBlurPost.hlsl main ps_5_0
+6.233	shader	1.25	Resources/shaders/RandomPost.hlsl main ps_5_0
+6.237	shader	1.93	Resources/shaders/FlowingWaterPost.hlsl main ps_5_0
+6.239	shader	1.28	Resources/shaders/PaperFramePost.hlsl main ps_5_0
+6.244	shader	3.22	Resources/shaders/FluidSurfacePS.hlsl main ps_5_0
+6.248	bar	286.81	25.2% units=89 main: shader: Resources/shaders/MetaballPS.hlsl main ps_5_0
+6.251	shader	3.97	Resources/shaders/MetaballPS.hlsl main ps_5_0
+6.257	shader	1.03	Resources/shaders/Distortion.hlsl main vs_5_0
+6.258	shader	0.87	Resources/shaders/Distortion.hlsl ps_main ps_5_0
+6.275	shader	4.42	Resources/shaders/FluidSimCS.hlsl Emit cs_5_0
+6.281	shader	5.01	Resources/shaders/FluidSimCS.hlsl ExtractLostFluid cs_5_0
+6.286	shader	5.33	Resources/shaders/FluidSimCS.hlsl SyncLostFluidGroup cs_5_0
+6.291	shader	4.10	Resources/shaders/FluidSimCS.hlsl AbsorbLostFluidGroup cs_5_0
+6.295	shader	4.05	Resources/shaders/FluidSimCS.hlsl InitParticles cs_5_0
+6.300	shader	4.14	Resources/shaders/FluidSimCS.hlsl ClearOriginalIndices cs_5_0
+6.304	shader	4.31	Resources/shaders/FluidSimCS.hlsl ClearGridCount cs_5_0
+6.309	shader	3.74	Resources/shaders/FluidSimCS.hlsl CountParticles cs_5_0
+6.313	shader	4.44	Resources/shaders/FluidSimCS.hlsl PrefixSum cs_5_0
+6.318	shader	4.73	Resources/shaders/FluidSimCS.hlsl SortParticles cs_5_0
+6.323	shader	4.24	Resources/shaders/FluidSimCS.hlsl SortParticlesVelocity cs_5_0
+6.327	shader	3.96	Resources/shaders/FluidSimCS.hlsl CalcDensity cs_5_0
+6.333	shader	5.10	Resources/shaders/FluidSimCS.hlsl CalcForce cs_5_0
+6.337	shader	3.51	Resources/shaders/FluidSimCS.hlsl WriteBack cs_5_0
+6.348	bar	387.85	31.6% units=106 main: engine: Renderer::InitializeDeferred
+6.358	shader	4.02	Resources/shaders/FluidSimCS.hlsl SavePrevious cs_5_0
+6.364	shader	4.04	Resources/shaders/FluidSimCS.hlsl CalcDeltaP cs_5_0
+6.370	shader	4.45	Resources/shaders/FluidSimCS.hlsl ApplyDeltaP cs_5_0
+6.377	shader	4.02	Resources/shaders/FluidSimCS.hlsl UpdateVelocity cs_5_0
+6.380	shader	1.05	Resources/shaders/GPUFluidVS.hlsl mainPhase0 vs_5_0
+6.381	shader	1.02	Resources/shaders/GPUFluidPS.hlsl mainPhase0 ps_5_0
+6.382	shader	0.62	Resources/shaders/GPUFluidDepthPS.hlsl mainPhase0 ps_5_0
+6.384	shader	1.26	Resources/shaders/GPUFluidVS.hlsl mainPhase1 vs_5_0
+6.385	shader	0.81	Resources/shaders/GPUFluidPS.hlsl mainPhase1 ps_5_0
+6.386	shader	0.78	Resources/shaders/GPUFluidDepthPS.hlsl mainPhase1 ps_5_0
+6.387	shader	0.84	Resources/shaders/GPUFluidVS.hlsl mainPhase2 vs_5_0
+6.389	shader	0.98	Resources/shaders/GPUFluidPS.hlsl mainPhase2 ps_5_0
+6.390	shader	0.88	Resources/shaders/GPUFluidDepthPS.hlsl mainPhase2 ps_5_0
+6.395	shader	1.61	Resources/shaders/GPUFluidShadowVS.hlsl main vs_5_0
+6.396	shader	0.75	Resources/shaders/GPUFluidShadowPS.hlsl main ps_5_0
+6.399	shader	1.08	Resources/shaders/GPUFluidDebugVS.hlsl main vs_5_0
+6.400	shader	0.70	Resources/shaders/GPUFluidDebugPS.hlsl main ps_5_0
+6.410	shader	3.74	Resources/shaders/FluidSimCS.hlsl MorphKeys cs_5_0
+6.415	shader	3.84	Resources/shaders/FluidSimCS.hlsl MorphSort cs_5_0
+6.420	shader	4.05	Resources/shaders/FluidSimCS.hlsl MorphAssign cs_5_0
+6.426	shader	3.91	Resources/shaders/FluidSimCS.hlsl MorphMeasure cs_5_0
+6.432	shader	1.23	Resources/shaders/FluidShadow.hlsl ShadowVS vs_5_0
+6.433	shader	1.24	Resources/shaders/FluidShadow.hlsl ShadowPS ps_5_0
+6.437	shader	2.17	Resources/shaders/FluidVolumeCS.hlsl ClearVolume cs_5_0
+6.441	shader	3.38	Resources/shaders/FluidVolumeCS.hlsl BuildShapes cs_5_0
+6.448	bar	487.09	38.5% units=131 main: shader: Resources/shaders/FluidVolumeCS.hlsl SplatDensity cs_5_0
+6.449	shader	2.25	Resources/shaders/FluidVolumeCS.hlsl SplatDensity cs_5_0
+6.453	shader	2.27	Resources/shaders/FluidVolumeCS.hlsl ResolveDensity cs_5_0
+6.456	shader	2.24	Resources/shaders/FluidVolumeCS.hlsl SmoothDensity cs_5_0
+6.460	shader	2.13	Resources/shaders/FluidVolumeCS.hlsl TemporalDensity cs_5_0
+6.464	shader	2.58	Resources/shaders/FluidVolumeCS.hlsl SplatFarWater cs_5_0
+6.468	shader	2.14	Resources/shaders/FluidVolumeCS.hlsl BuildOccupancy cs_5_0
+6.472	shader	2.47	Resources/shaders/FluidVolumeCS.hlsl SplatTendrils cs_5_0
+6.474	shader	0.69	Resources/shaders/FluidCompositeVS.hlsl main vs_5_0
+6.485	shader	10.62	Resources/shaders/FluidRaymarch.hlsl RaymarchPS ps_5_0
+6.491	shader	4.99	Resources/shaders/FluidRaymarch.hlsl SprayVS vs_5_0
+6.497	shader	5.72	Resources/shaders/FluidRaymarch.hlsl SprayPS ps_5_0
+6.550	bar	587.83	43.2% units=142 main: engine: Renderer::InitializeDeferred
+6.557	shader	0.54	Resources/shaders/FluidCompositeVS.hlsl main vs_5_0
+6.558	shader	0.58	Resources/shaders/TemporalPrepare.hlsl main ps_5_0
+6.560	shader	0.61	Resources/shaders/TemporalObject.hlsl VSMain vs_5_0
+6.561	shader	0.65	Resources/shaders/TemporalObject.hlsl PSMain ps_5_0
+6.648	bar	689.27	45.4% units=146 main: engine: Renderer::InitializeDeferred
+6.696	shader	3.65	Resources/shaders/RtLightingDenoise.hlsl main cs_5_0
+6.702	shader	0.57	Resources/shaders/FluidCompositeVS.hlsl main vs_5_0
+6.705	shader	2.97	Resources/shaders/RtLightingComposite.hlsl main ps_5_0
+6.748	bar	788.72	47.2% units=149 main: texture: Resources/Textures/PolyHaven/kloppenheim_06_puresky_8k_cube.dds
+6.859	bar	912.06	48.7% units=150 main: texture: Resources/Textures/PolyHaven/kloppenheim_06_puresky_8k_cube.dds
+6.864	texture	132.17	Resources/Textures/PolyHaven/kloppenheim_06_puresky_8k_cube.dds
+6.864	engine	915.94	Renderer::InitializeDeferred
+6.882	mesh	15.85	Resources/Models/player_ball/ball.obj
+6.882	phase	17.89	EditorUI::LoadScene
+6.960	bar	1012.95	50.0% units=151 main: phase: GameScene::Initialize
+7.005	texture	19.99	C:/Users/k024g/source/repos/neo_Engine/Resources/Editor/Icons/folder.png
+7.028	texture	22.50	C:/Users/k024g/source/repos/neo_Engine/Resources/Editor/Icons/file.png
+7.057	texture	28.57	C:/Users/k024g/source/repos/neo_Engine/Resources/Editor/Icons/model.png
+7.062	bar	1114.18	51.9% units=154 main: texture: C:/Users/k024g/source/repos/neo_Engine/Resources/Editor/Icons/prefab.png
+7.085	texture	27.61	C:/Users/k024g/source/repos/neo_Engine/Resources/Editor/Icons/prefab.png
+7.112	texture	26.31	C:/Users/k024g/source/repos/neo_Engine/Resources/Editor/Icons/audio.png
+7.135	texture	22.16	C:/Users/k024g/source/repos/neo_Engine/Resources/Editor/Icons/script.png
+7.135	texture	0.01	Resources/Textures/PolyHaven/kloppenheim_06_puresky_8k_cube.dds
+7.148	mesh	12.67	Resources/Models/plane.obj
+7.160	bar	1212.76	54.0% units=158 main: texture: C:/Users/k024g/source/repos/neo_Engine/Resources/Textures/uvChecker.png
+7.184	texture	35.65	C:/Users/k024g/source/repos/neo_Engine/Resources/Textures/uvChecker.png
+7.260	bar	1312.93	55.2% units=159 main: phase: GameScene::Initialize
+7.290	audio-wait	0.02	Resources/Sound/BGM/Local Forecast.mp3
+7.291	mesh	0.00	Resources/Models/player_ball/ball.obj
+7.295	audio	3.63	Resources/Sound/Devour/hit.wav
+7.302	audio	7.10	Resources/Sound/Devour/confirm.wav
+7.307	shader	1.07	Resources/shaders/InstancedObjVS.hlsl main vs_5_0
+7.311	shader	2.74	Resources/shaders/SlimeChildHighlightPS.hlsl main ps_5_0
+7.314	pipeline	7.51	SlimeChildGlow
+7.315	shader	1.30	Resources/shaders/InstancedObjVS.hlsl main vs_5_0
+7.317	shader	0.80	Resources/shaders/SlimeChildHighlightPS.hlsl main ps_5_0
+7.317	pipeline	3.25	SlimeChildXRay
+7.319	shader	1.05	Resources/shaders/InstancedObjVS.hlsl main vs_5_0
+7.321	shader	1.53	Resources/shaders/SplashWaterPS.hlsl main ps_5_0
+7.323	pipeline	4.35	SplashWater
+7.324	shader	0.93	Resources/shaders/InstancedObjVS.hlsl main vs_5_0
+7.327	shader	1.71	Resources/shaders/SplashMistPS.hlsl main ps_5_0
+7.328	pipeline	4.62	SplashMist
+7.330	shader	1.06	Resources/shaders/InstancedObjVS.hlsl main vs_5_0
+7.332	shader	1.67	Resources/shaders/WetTrailPS.hlsl main ps_5_0
+7.334	pipeline	4.76	WetTrail
+7.338	dynmesh	3.94	4 verts
+7.340	shader	1.02	Resources/shaders/InstancedObjVS.hlsl main vs_5_0
+7.345	shader	5.01	Resources/shaders/EnvironmentSurfacePS.hlsl main ps_5_0
+7.348	pipeline	8.96	EnvironmentSurface
+7.349	shader	0.90	Resources/shaders/InstancedObjVS.hlsl main vs_5_0
+7.353	shader	3.50	Resources/shaders/CitySurfacePS.hlsl main ps_5_0
+7.357	pipeline	8.21	CitySurface
+7.358	shader	1.11	Resources/shaders/InstancedObjVS.hlsl main vs_5_0
+7.360	bar	1412.49	60.0% units=174 main: shader: Resources/shaders/LowpolySurfacePS.hlsl main ps_5_0
+7.363	shader	4.09	Resources/shaders/LowpolySurfacePS.hlsl main ps_5_0
+7.367	pipeline	9.21	LowpolySurface
+7.369	shader	1.02	Resources/shaders/InstancedObjVS.hlsl main vs_5_0
+7.373	shader	3.54	Resources/shaders/LowpolySurfacePS.hlsl main ps_5_0
+7.374	pipeline	6.34	LowpolyNoShadow
+7.376	shader	1.03	Resources/shaders/InstancedObjVS.hlsl main vs_5_0
+7.380	shader	3.95	Resources/shaders/CityGlassPS.hlsl main ps_5_0
+7.384	pipeline	9.19	CityGlass
+7.386	shader	1.21	Resources/shaders/InstancedObjVS.hlsl main vs_5_0
+7.390	shader	3.47	Resources/shaders/CityArmorPS.hlsl main ps_5_0
+7.394	pipeline	9.27	CityArmor
+7.396	shader	1.37	Resources/shaders/InstancedObjVS.hlsl main vs_5_0
+7.399	shader	2.50	Resources/shaders/DomainGlowPS.hlsl main ps_5_0
+7.401	pipeline	6.81	DomainGlow
+7.403	shader	1.04	Resources/shaders/InstancedObjVS.hlsl main vs_5_0
+7.406	shader	2.30	Resources/shaders/MorphItemHighlightPS.hlsl main ps_5_0
+7.408	pipeline	6.31	MorphItemHighlight
+7.410	shader	1.04	Resources/shaders/InstancedObjVS.hlsl main vs_5_0
+7.412	shader	1.69	Resources/shaders/SpillLiquidPS.hlsl main ps_5_0
+7.414	pipeline	5.17	SpillLiquid
+7.416	shader	1.22	Resources/shaders/InstancedObjVS.hlsl main vs_5_0
+7.418	shader	1.91	Resources/shaders/GimmickCurtainPS.hlsl main ps_5_0
+7.420	pipeline	5.57	GimmickCurtain
+7.421	mark	0.00	city: surfaces requested
+7.422	mark	0.00	city: geometry built
+7.427	dynmesh	4.65	4 verts
+7.428	mark	0.00	city: surface entities
+7.428	texture	0.02	C:/Users/k024g/source/repos/neo_Engine/Resources/Textures/Lowpoly/palette.png
+7.429	texture	0.05	C:/Users/k024g/source/repos/neo_Engine/Resources/Textures/UI/Comic/atlas.png
+7.432	dynmesh	3.11	20 verts
+7.435	dynmesh	2.09	200 verts
+7.438	dynmesh	1.95	20 verts
+7.441	dynmesh	2.73	20 verts
+7.445	dynmesh	3.03	20 verts
+7.448	dynmesh	2.15	20 verts
+7.451	dynmesh	2.43	240 verts
+7.454	dynmesh	1.97	20 verts
+7.456	dynmesh	1.88	20 verts
+7.460	dynmesh	3.04	20 verts
+7.460	bar	1512.57	65.1% units=189 main: dynmesh: 20 verts
+7.464	dynmesh	3.19	20 verts
+7.466	dynmesh	2.10	20 verts
+7.469	dynmesh	2.00	20 verts
+7.472	dynmesh	2.12	20 verts
+7.474	dynmesh	1.54	20 verts
+7.477	dynmesh	2.07	20 verts
+7.480	dynmesh	3.06	20 verts
+7.483	dynmesh	2.22	20 verts
+7.504	mesh	20.06	Resources/Models/Lowpoly/bed.obj
+7.521	mesh	16.04	Resources/Models/Lowpoly/desk.obj
+7.538	mesh	17.22	Resources/Models/Lowpoly/chair.obj
+7.556	mesh	17.35	Resources/Models/Lowpoly/bookshelf.obj
+7.560	bar	1612.84	67.3% units=193 main: mesh: Resources/Models/Lowpoly/toybox.obj
+7.571	mesh	14.28	Resources/Models/Lowpoly/toybox.obj
+7.592	mesh	20.62	Resources/Models/Lowpoly/book_stairs.obj
+7.612	mesh	18.99	Resources/Models/Lowpoly/book_steps.obj
+7.633	mesh	20.71	Resources/Models/Lowpoly/storage_case.obj
+7.648	mesh	14.00	Resources/Models/Lowpoly/manga.obj
+7.662	bar	1713.47	69.5% units=198 main: mesh: Resources/Models/Lowpoly/paint_palette.obj
+7.669	mesh	19.43	Resources/Models/Lowpoly/paint_palette.obj
+7.671	dynmesh	1.90	98 verts
+7.685	audio-async	394.81	Resources/Sound/BGM/Cheery Monday.mp3
+7.689	audio-async	398.62	Resources/Sound/BGM/Fluffing a Duck.mp3
+7.691	mesh	18.68	Resources/Models/Lowpoly/sign_paint.obj
+7.707	mesh	15.44	Resources/Models/Lowpoly/paint_tube.obj
+7.724	mesh	16.64	Resources/Models/Lowpoly/sign_domino.obj
+7.737	mesh	13.05	Resources/Models/Lowpoly/domino.obj
+7.753	mesh	14.85	Resources/Models/Lowpoly/toy_bucket.obj
+7.761	bar	1813.11	72.1% units=204 main: mesh: Resources/Models/Lowpoly/tsumiki.obj
+7.767	mesh	13.47	Resources/Models/Lowpoly/tsumiki.obj
+7.781	mesh	13.86	Resources/Models/Lowpoly/marble.obj
+7.798	mesh	16.21	Resources/Models/Lowpoly/toy_ball.obj
+7.811	mesh	12.69	Resources/Models/Lowpoly/minicar.obj
+7.824	mesh	12.64	Resources/Models/Lowpoly/candy.obj
+7.839	mesh	13.57	Resources/Models/Lowpoly/bowling_lane.obj
+7.853	mesh	14.13	Resources/Models/Lowpoly/sign_bowling.obj
+7.861	bar	1913.96	75.0% units=211 main: mesh: Resources/Models/Lowpoly/bowling_pin.obj
+7.870	mesh	15.91	Resources/Models/Lowpoly/bowling_pin.obj
+7.883	mesh	12.84	Resources/Models/Lowpoly/coin.obj
+7.898	mesh	14.36	Resources/Models/Lowpoly/sign_liquid.obj
+7.911	mesh	12.51	Resources/Models/Lowpoly/honey_jar.obj
+7.927	mesh	15.29	Resources/Models/Lowpoly/spill.obj
+7.930	dynmesh	2.93	40 verts
+7.946	mesh	15.21	Resources/Models/Lowpoly/glue_bottle.obj
+7.949	dynmesh	1.95	40 verts
+7.962	bar	2012.56	77.6% units=217 main: mesh: Resources/Models/Lowpoly/juice_cup.obj
+7.963	mesh	13.78	Resources/Models/Lowpoly/juice_cup.obj
+7.965	dynmesh	1.84	40 verts
+7.981	mesh	15.51	Resources/Models/Lowpoly/nuigurumi.obj
+7.998	mesh	15.61	Resources/Models/Lowpoly/sign_shoot.obj
+8.009	mesh	11.02	Resources/Models/Lowpoly/daruma_stand.obj
+8.024	mesh	14.45	Resources/Models/Lowpoly/daruma_disc.obj
+8.049	mesh	24.26	Resources/Models/Lowpoly/daruma.obj
+8.060	bar	2113.01	80.3% units=223 main: mesh: Resources/Models/Lowpoly/mikan.obj
+8.063	mesh	13.23	Resources/Models/Lowpoly/mikan.obj
+8.076	mesh	12.64	Resources/Models/Lowpoly/koma_fu.obj
+8.092	mesh	15.17	Resources/Models/Lowpoly/sign_plane.obj
+8.107	mesh	15.28	Resources/Models/Lowpoly/kami_hikoki.obj
+8.122	mesh	13.70	Resources/Models/Lowpoly/kotatsu.obj
+8.136	mesh	13.99	Resources/Models/Lowpoly/zabuton.obj
+8.150	mesh	13.38	Resources/Models/Lowpoly/kago.obj
+8.161	bar	2213.68	83.1% units=230 main: mesh: Resources/Models/Lowpoly/kyusu.obj
+8.164	mesh	13.49	Resources/Models/Lowpoly/kyusu.obj
+8.181	mesh	15.79	Resources/Models/Lowpoly/yunomi.obj
+8.195	mesh	14.14	Resources/Models/Lowpoly/remocon.obj
+8.210	mesh	14.00	Resources/Models/Lowpoly/shogi_board.obj
+8.224	mesh	13.11	Resources/Models/Lowpoly/koma_ou.obj
+8.237	mesh	12.89	Resources/Models/Lowpoly/koma_kin.obj
+8.253	mesh	15.30	Resources/Models/Lowpoly/koma_gin.obj
+8.261	bar	2313.81	86.0% units=237 main: mesh: Resources/Models/Lowpoly/koma_kaku.obj
+8.267	mesh	14.11	Resources/Models/Lowpoly/koma_kaku.obj
+8.281	mesh	13.06	Resources/Models/Lowpoly/koma_hi.obj
+8.295	mesh	13.54	Resources/Models/Lowpoly/koma_kei.obj
+8.307	mesh	11.95	Resources/Models/Lowpoly/koma_kyo.obj
+8.324	mesh	15.61	Resources/Models/Lowpoly/trump_back.obj
+8.337	mesh	12.66	Resources/Models/Lowpoly/trump_red.obj
+8.350	mesh	12.49	Resources/Models/Lowpoly/trump_black.obj
+8.356	audio-async	1065.11	Resources/Sound/BGM/Samba Isobel.mp3
+8.359	bar	2412.33	88.9% units=244 main: mesh: Resources/Models/Lowpoly/maneki.obj
+8.364	mesh	13.25	Resources/Models/Lowpoly/maneki.obj
+8.375	mesh	11.07	Resources/Models/Lowpoly/tissue.obj
+8.388	mesh	11.89	Resources/Models/Lowpoly/note.obj
+8.399	mesh	10.68	Resources/Models/Lowpoly/enpitsu.obj
+8.410	mesh	10.62	Resources/Models/Lowpoly/keshigomu.obj
+8.422	mesh	11.08	Resources/Models/Lowpoly/sock.obj
+8.437	dynmesh	2.05	20 verts
+8.439	dynmesh	1.46	20 verts
+8.450	mesh	10.87	Resources/Models/Lowpoly/ceiling_lamp.obj
+8.461	bar	2513.85	91.8% units=251 main: mesh: Resources/Models/Lowpoly/washitsu_lamp.obj
+8.463	mesh	12.39	Resources/Models/Lowpoly/washitsu_lamp.obj
+8.465	dynmesh	1.40	20 verts
+8.466	dynmesh	1.05	100 verts
+8.467	dynmesh	0.97	20 verts
+8.469	dynmesh	1.09	20 verts
+8.470	dynmesh	1.09	20 verts
+8.472	dynmesh	1.25	300 verts
+8.474	dynmesh	1.14	80 verts
+8.476	dynmesh	1.49	80 verts
+8.476	mark	0.00	city: props placed
+8.479	dynmesh	2.25	24 verts
+8.545	shader	1.34	Resources/shaders/GenerateMipsCS.hlsl main cs_5_0
+8.561	bar	2613.64	93.3% units=253 main: texture: batch of 2
+8.570	texture	88.51	batch of 2
+8.580	mesh	9.54	batch wait for 63 uploads
+8.580	phase	1241.43	ChronoSystem::BuildCityStage
+8.599	mesh	18.31	Resources/Models/Ink/slime-beam.obj
+8.600	shader	0.65	Resources/shaders/InstancedObjVS.hlsl main vs_5_0
+8.601	shader	0.75	Resources/shaders/DomainGlowPS.hlsl main ps_5_0
+8.601	pipeline	2.17	DomainGlow
+8.602	shader	0.57	Resources/shaders/InstancedObjVS.hlsl main vs_5_0
+8.604	shader	1.31	Resources/shaders/HordeArmorPS.hlsl main ps_5_0
+8.605	pipeline	3.31	HordeArmor
+8.606	shader	0.59	Resources/shaders/InstancedObjVS.hlsl main vs_5_0
+8.607	shader	1.39	Resources/shaders/HordeEffectPS.hlsl main ps_5_0
+8.609	pipeline	3.56	HordeEffect
+8.625	mesh	16.16	Resources/Models/Chrono/armor.obj
+8.639	mesh	13.71	Resources/Models/Chrono/beak.obj
+8.653	mesh	13.10	Resources/Models/Chrono/horn.obj
+8.655	dynmesh	1.69	4 verts
+8.661	bar	2713.10	97.0% units=266 main: audio: Resources/Sound/slime-life-split-0.wav
+8.661	audio	2.65	Resources/Sound/slime-life-split-0.wav
+8.664	audio	2.17	Resources/Sound/slime-life-split-1.wav
+8.666	audio	1.94	Resources/Sound/slime-life-split-2.wav
+8.668	audio	1.83	Resources/Sound/slime-life-engulf.wav
+8.671	audio	1.74	Resources/Sound/Devour/gulp-small-0.wav
+8.672	audio	1.61	Resources/Sound/Devour/gulp-small-1.wav
+8.674	audio	1.64	Resources/Sound/Devour/gulp-small-2.wav
+8.677	audio	1.58	Resources/Sound/Devour/gulp-small-3.wav
+8.679	audio	1.92	Resources/Sound/Devour/gulp-mid-0.wav
+8.681	audio	1.78	Resources/Sound/Devour/gulp-mid-1.wav
+8.683	audio	1.80	Resources/Sound/Devour/gulp-big.wav
+8.685	audio	1.66	Resources/Sound/Devour/note.wav
+8.687	audio	1.68	Resources/Sound/Devour/splat.wav
+8.689	audio	1.92	Resources/Sound/Devour/pounce.wav
+8.692	audio	1.88	Resources/Sound/Devour/bounce.wav
+8.694	audio	1.59	Resources/Sound/Devour/hit.wav
+8.696	audio	2.07	Resources/Sound/Devour/shatter.wav
+8.699	audio	2.45	Resources/Sound/Devour/vacuum-loop.wav
+8.701	audio	1.76	Resources/Sound/Devour/rank-up.wav
+8.703	audio	1.40	Resources/Sound/Devour/rank-top.wav
+8.706	audio	2.68	Resources/Sound/Devour/gate-open.wav
+8.708	audio	1.57	Resources/Sound/Devour/tick.wav
+8.710	audio	1.95	Resources/Sound/Devour/hurry.wav
+8.713	audio	2.33	Resources/Sound/Devour/time-up.wav
+8.715	audio	1.75	Resources/Sound/Devour/morph.wav
+8.715	phase	59.79	ChronoSystem::BuildSlimeLife
+8.716	phase	1413.30	ChronoSystem::BuildInk
+8.716	phase	1426.76	ChronoSystem::Reset
+8.761	bar	2813.85	97.0% units=266 main: phase: GameScene::Initialize
+8.860	bar	2912.85	97.0% units=266 main: phase: GameScene::Initialize
+8.861	phase	1996.50	GameScene::Initialize
+8.880	load	2915.51	Game+Engine frames=174 longestFrameMs=40 longestFlatBarMs=249 units=266/266 expectedS=2.926 firstRun=0
+8.882	scene	2952.86	Change Game
+8.929	frame	46.08	scene update
+9.038	frame	83.44	renderer EndFrame
+9.047	hitch	3118.10	Game | texture: C:/Users/k024g/source/repos/neo_Engine/Resources/Textures/ColorGrading/CinematicLUT.png 35ms; texture: C:/Users/k024g/source/repos/neo_Engine/Resources/Textures/PBR/NeutralNormal.png 33ms; texture: Resources/Textures/PolyHaven/kloppenheim_06_puresky_8k_cube.dds 132ms; engine: Renderer::InitializeDeferred 916ms; texture: C:/Users/k024g/source/repos/neo_Engine/Resources/Textures/uvChecker.png 36ms; texture: batch of 2 89ms; phase: ChronoSystem::BuildCityStage 1241ms; phase: ChronoSystem::BuildSlimeLife 60ms; phase: ChronoSystem::BuildInk 1413ms; phase: ChronoSystem::Reset 1427ms; phase: GameScene::Initialize 1997ms; scene: Change Game 2953ms; frame: scene update 46ms; frame: renderer EndFrame 83ms; 
+9.148	frame	73.79	present (waits for the GPU)
+9.148	hitch	101.34	Game | frame: present (waits for the GPU) 74ms; 
+9.231	frame	60.49	present (waits for the GPU)
+9.310	frame	57.74	present (waits for the GPU)
+9.362	frame	30.41	present (waits for the GPU)
+9.580	texture	165.36	C:/Users/k024g/source/repos/neo_Engine/Resources/Textures/UI/Comic/atlas.png
+9.580	frame	185.20	scene draw
+9.591	hitch	204.30	Game | texture: C:/Users/k024g/source/repos/neo_Engine/Resources/Textures/UI/Comic/atlas.png 165ms; frame: scene draw 185ms; 
+10.505	drive	0.00	Game presented 30 frames
+11.757	drive	0.00	result: auto finish
+11.761	result	2.78	SaveDevourLog
+11.769	result	8.28	Collection::Add + BuildDevourShelf
+11.770	audio-wait	0.02	Resources/Sound/BGM/Fluffing a Duck.mp3
+11.770	result	0.44	Finish (music)
+11.770	result	12.59	FinishDevour
+13.638	audio	1.22	Resources/Sound/Devour/gulp-small-0.wav
+13.640	audio	1.44	Resources/Sound/Devour/gulp-big.wav
+13.837	texture	1.48	C:/Users/k024g/source/repos/neo_Engine/Resources/Textures/UI/kenney_input-prompts_1.5/Keyboard & Mouse/Default/keyboard_r.png
+13.841	texture	1.32	C:/Users/k024g/source/repos/neo_Engine/Resources/Textures/UI/kenney_input-prompts_1.5/Keyboard & Mouse/Default/keyboard_tab.png
+19.770	drive	0.00	result: auto retry
+19.775	mesh	0.01	Resources/Models/player_ball/ball.obj
+19.776	shader	0.68	Resources/shaders/InstancedObjVS.hlsl main vs_5_0
+19.776	shader	0.54	Resources/shaders/SlimeChildHighlightPS.hlsl main ps_5_0
+19.777	pipeline	2.16	SlimeChildGlow
+19.778	shader	0.70	Resources/shaders/InstancedObjVS.hlsl main vs_5_0
+19.779	shader	0.48	Resources/shaders/SlimeChildHighlightPS.hlsl main ps_5_0
+19.779	pipeline	1.76	SlimeChildXRay
+19.780	shader	0.59	Resources/shaders/InstancedObjVS.hlsl main vs_5_0
+19.781	shader	0.55	Resources/shaders/SplashWaterPS.hlsl main ps_5_0
+19.781	pipeline	1.70	SplashWater
+19.782	shader	0.49	Resources/shaders/InstancedObjVS.hlsl main vs_5_0
+19.782	shader	0.47	Resources/shaders/SplashMistPS.hlsl main ps_5_0
+19.783	pipeline	1.49	SplashMist
+19.783	shader	0.49	Resources/shaders/InstancedObjVS.hlsl main vs_5_0
+19.784	shader	0.57	Resources/shaders/WetTrailPS.hlsl main ps_5_0
+19.785	pipeline	1.57	WetTrail
+19.786	dynmesh	1.35	4 verts
+19.787	shader	0.57	Resources/shaders/InstancedObjVS.hlsl main vs_5_0
+19.789	shader	1.30	Resources/shaders/EnvironmentSurfacePS.hlsl main ps_5_0
+19.789	pipeline	2.45	EnvironmentSurface
+19.790	shader	0.53	Resources/shaders/InstancedObjVS.hlsl main vs_5_0
+19.791	shader	1.50	Resources/shaders/CitySurfacePS.hlsl main ps_5_0
+19.792	pipeline	2.55	CitySurface
+19.793	shader	0.60	Resources/shaders/InstancedObjVS.hlsl main vs_5_0
+19.795	shader	2.12	Resources/shaders/LowpolySurfacePS.hlsl main ps_5_0
+19.796	pipeline	3.67	LowpolySurface
+19.796	shader	0.55	Resources/shaders/InstancedObjVS.hlsl main vs_5_0
+19.798	shader	1.55	Resources/shaders/LowpolySurfacePS.hlsl main ps_5_0
+19.799	pipeline	2.77	LowpolyNoShadow
+19.799	shader	0.53	Resources/shaders/InstancedObjVS.hlsl main vs_5_0
+19.801	shader	1.54	Resources/shaders/CityGlassPS.hlsl main ps_5_0
+19.802	pipeline	2.65	CityGlass
+19.802	shader	0.53	Resources/shaders/InstancedObjVS.hlsl main vs_5_0
+19.804	shader	1.44	Resources/shaders/CityArmorPS.hlsl main ps_5_0
+19.805	pipeline	2.54	CityArmor
+19.805	shader	0.52	Resources/shaders/InstancedObjVS.hlsl main vs_5_0
+19.806	shader	0.47	Resources/shaders/DomainGlowPS.hlsl main ps_5_0
+19.806	pipeline	1.66	DomainGlow
+19.807	shader	0.57	Resources/shaders/InstancedObjVS.hlsl main vs_5_0
+19.808	shader	0.51	Resources/shaders/MorphItemHighlightPS.hlsl main ps_5_0
+19.808	pipeline	1.69	MorphItemHighlight
+19.809	shader	0.62	Resources/shaders/InstancedObjVS.hlsl main vs_5_0
+19.811	shader	0.81	Resources/shaders/SpillLiquidPS.hlsl main ps_5_0
+19.811	pipeline	2.27	SpillLiquid
+19.812	shader	0.55	Resources/shaders/InstancedObjVS.hlsl main vs_5_0
+19.813	shader	0.53	Resources/shaders/GimmickCurtainPS.hlsl main ps_5_0
+19.813	pipeline	1.73	GimmickCurtain
+19.813	mark	0.00	city: surfaces requested
+19.814	mark	0.00	city: geometry built
+19.815	dynmesh	1.14	4 verts
+19.815	mark	0.00	city: surface entities
+19.817	dynmesh	1.06	20 verts
+19.819	dynmesh	1.06	200 verts
+19.820	dynmesh	1.00	20 verts
+19.821	dynmesh	1.24	20 verts
+19.823	dynmesh	1.01	20 verts
+19.824	dynmesh	1.00	20 verts
+19.826	dynmesh	1.16	240 verts
+19.828	dynmesh	1.11	20 verts
+19.829	dynmesh	0.96	20 verts
+19.830	dynmesh	0.95	20 verts
+19.832	dynmesh	1.10	20 verts
+19.833	dynmesh	1.01	20 verts
+19.834	dynmesh	1.09	20 verts
+19.836	dynmesh	1.05	20 verts
+19.837	dynmesh	1.16	20 verts
+19.839	dynmesh	1.52	20 verts
+19.841	dynmesh	1.25	20 verts
+19.843	dynmesh	1.14	20 verts
+19.843	mesh	0.01	Resources/Models/Lowpoly/bed.obj
+19.843	mesh	0.01	Resources/Models/Lowpoly/desk.obj
+19.844	mesh	0.01	Resources/Models/Lowpoly/chair.obj
+19.844	mesh	0.01	Resources/Models/Lowpoly/bookshelf.obj
+19.844	mesh	0.01	Resources/Models/Lowpoly/toybox.obj
+19.845	mesh	0.01	Resources/Models/Lowpoly/book_stairs.obj
+19.845	mesh	0.01	Resources/Models/Lowpoly/book_steps.obj
+19.845	mesh	0.01	Resources/Models/Lowpoly/storage_case.obj
+19.846	mesh	0.01	Resources/Models/Lowpoly/manga.obj
+19.846	mesh	0.01	Resources/Models/Lowpoly/paint_palette.obj
+19.848	dynmesh	1.33	98 verts
+19.848	mesh	0.01	Resources/Models/Lowpoly/sign_paint.obj
+19.849	mesh	0.01	Resources/Models/Lowpoly/paint_tube.obj
+19.849	mesh	0.01	Resources/Models/Lowpoly/sign_domino.obj
+19.850	mesh	0.01	Resources/Models/Lowpoly/domino.obj
+19.850	mesh	0.01	Resources/Models/Lowpoly/toy_bucket.obj
+19.850	mesh	0.01	Resources/Models/Lowpoly/tsumiki.obj
+19.851	mesh	0.01	Resources/Models/Lowpoly/marble.obj
+19.851	mesh	0.01	Resources/Models/Lowpoly/toy_ball.obj
+19.851	mesh	0.01	Resources/Models/Lowpoly/minicar.obj
+19.851	mesh	0.01	Resources/Models/Lowpoly/candy.obj
+19.852	mesh	0.01	Resources/Models/Lowpoly/bowling_lane.obj
+19.852	mesh	0.01	Resources/Models/Lowpoly/sign_bowling.obj
+19.853	mesh	0.01	Resources/Models/Lowpoly/bowling_pin.obj
+19.853	mesh	0.01	Resources/Models/Lowpoly/coin.obj
+19.853	mesh	0.01	Resources/Models/Lowpoly/sign_liquid.obj
+19.854	mesh	0.01	Resources/Models/Lowpoly/honey_jar.obj
+19.854	mesh	0.01	Resources/Models/Lowpoly/spill.obj
+19.856	dynmesh	1.41	40 verts
+19.856	mesh	0.01	Resources/Models/Lowpoly/glue_bottle.obj
+19.858	dynmesh	1.03	40 verts
+19.858	mesh	0.01	Resources/Models/Lowpoly/juice_cup.obj
+19.860	dynmesh	1.23	40 verts
+19.861	mesh	0.01	Resources/Models/Lowpoly/nuigurumi.obj
+19.861	mesh	0.01	Resources/Models/Lowpoly/sign_shoot.obj
+19.861	mesh	0.01	Resources/Models/Lowpoly/daruma_stand.obj
+19.862	mesh	0.01	Resources/Models/Lowpoly/daruma_disc.obj
+19.862	mesh	0.01	Resources/Models/Lowpoly/daruma.obj
+19.862	mesh	0.01	Resources/Models/Lowpoly/mikan.obj
+19.863	mesh	0.01	Resources/Models/Lowpoly/koma_fu.obj
+19.863	mesh	0.01	Resources/Models/Lowpoly/sign_plane.obj
+19.863	mesh	0.01	Resources/Models/Lowpoly/kami_hikoki.obj
+19.864	mesh	0.01	Resources/Models/Lowpoly/kotatsu.obj
+19.864	mesh	0.01	Resources/Models/Lowpoly/zabuton.obj
+19.865	mesh	0.01	Resources/Models/Lowpoly/kago.obj
+19.865	mesh	0.01	Resources/Models/Lowpoly/kyusu.obj
+19.865	mesh	0.01	Resources/Models/Lowpoly/yunomi.obj
+19.866	mesh	0.01	Resources/Models/Lowpoly/remocon.obj
+19.866	mesh	0.01	Resources/Models/Lowpoly/shogi_board.obj
+19.866	mesh	0.01	Resources/Models/Lowpoly/koma_ou.obj
+19.866	mesh	0.01	Resources/Models/Lowpoly/koma_kin.obj
+19.867	mesh	0.01	Resources/Models/Lowpoly/koma_gin.obj
+19.867	mesh	0.01	Resources/Models/Lowpoly/koma_kaku.obj
+19.867	mesh	0.01	Resources/Models/Lowpoly/koma_hi.obj
+19.867	mesh	0.01	Resources/Models/Lowpoly/koma_kei.obj
+19.868	mesh	0.01	Resources/Models/Lowpoly/koma_kyo.obj
+19.868	mesh	0.01	Resources/Models/Lowpoly/trump_back.obj
+19.869	mesh	0.01	Resources/Models/Lowpoly/trump_red.obj
+19.869	mesh	0.01	Resources/Models/Lowpoly/trump_black.obj
+19.869	mesh	0.01	Resources/Models/Lowpoly/maneki.obj
+19.870	mesh	0.01	Resources/Models/Lowpoly/tissue.obj
+19.871	mesh	0.01	Resources/Models/Lowpoly/note.obj
+19.871	mesh	0.01	Resources/Models/Lowpoly/enpitsu.obj
+19.871	mesh	0.01	Resources/Models/Lowpoly/keshigomu.obj
+19.872	mesh	0.01	Resources/Models/Lowpoly/sock.obj
+19.889	dynmesh	1.61	20 verts
+19.891	dynmesh	1.15	20 verts
+19.891	mesh	0.02	Resources/Models/Lowpoly/ceiling_lamp.obj
+19.891	mesh	0.01	Resources/Models/Lowpoly/washitsu_lamp.obj
+19.893	dynmesh	1.32	20 verts
+19.894	dynmesh	0.98	100 verts
+19.896	dynmesh	0.96	20 verts
+19.897	dynmesh	0.95	20 verts
+19.898	dynmesh	0.92	20 verts
+19.912	dynmesh	13.31	300 verts
+19.913	dynmesh	0.84	80 verts
+19.915	dynmesh	0.98	80 verts
+19.915	mark	0.00	city: props placed
+19.916	dynmesh	0.84	24 verts
+19.917	phase	130.09	ChronoSystem::BuildCityStage
+19.917	mesh	0.01	Resources/Models/Ink/slime-beam.obj
+19.918	shader	0.63	Resources/shaders/InstancedObjVS.hlsl main vs_5_0
+19.919	shader	0.47	Resources/shaders/DomainGlowPS.hlsl main ps_5_0
+19.919	pipeline	1.68	DomainGlow
+19.920	shader	0.48	Resources/shaders/InstancedObjVS.hlsl main vs_5_0
+19.920	shader	0.60	Resources/shaders/HordeArmorPS.hlsl main ps_5_0
+19.921	pipeline	1.68	HordeArmor
+19.922	shader	0.53	Resources/shaders/InstancedObjVS.hlsl main vs_5_0
+19.923	shader	0.68	Resources/shaders/HordeEffectPS.hlsl main ps_5_0
+19.923	pipeline	1.87	HordeEffect
+19.923	mesh	0.01	Resources/Models/Chrono/armor.obj
+19.923	mesh	0.01	Resources/Models/Chrono/beak.obj
+19.924	mesh	0.01	Resources/Models/Chrono/horn.obj
+19.925	dynmesh	1.18	4 verts
+19.927	phase	1.67	ChronoSystem::BuildSlimeLife
+19.927	phase	152.51	ChronoSystem::BuildInk
+19.928	phase	157.39	ChronoSystem::Reset
+19.928	frame	158.71	scene update
+19.941	hitch	171.85	Game | phase: ChronoSystem::BuildCityStage 130ms; phase: ChronoSystem::BuildInk 153ms; phase: ChronoSystem::Reset 157ms; frame: scene update 159ms; 
+25.539	drive	0.00	drive finished

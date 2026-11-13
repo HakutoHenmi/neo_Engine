@@ -46,6 +46,13 @@ void ChronoSystem::BuildInk(entt::registry& r){
     // 子分の縁取り: 見えている所と、壁越し (深度を見ない) の 2 種類
     render->CreateShaderPipelineTransparent("SlimeChildGlow",L"Resources/shaders/InstancedObjVS.hlsl",L"Resources/shaders/SlimeChildHighlightPS.hlsl",true,true);
     render->CreateShaderPipelineTransparent("SlimeChildXRay",L"Resources/shaders/InstancedObjVS.hlsl",L"Resources/shaders/SlimeChildHighlightPS.hlsl",true,false);
+    // 育ったときの水しぶき (しずくと霧。DevourGrowth.cpp)
+    render->CreateShaderPipelineTransparent("SplashWater",L"Resources/shaders/InstancedObjVS.hlsl",L"Resources/shaders/SplashWaterPS.hlsl",false,true);
+    render->CreateShaderPipelineTransparent("SplashMist",L"Resources/shaders/InstancedObjVS.hlsl",L"Resources/shaders/SplashMistPS.hlsl",false,true);
+    // スライムが通った所のぬれ跡
+    render->CreateShaderPipelineTransparent("WetTrail",L"Resources/shaders/InstancedObjVS.hlsl",L"Resources/shaders/WetTrailPS.hlsl",false,true);
+    // 霧を描く四角 (XZ 面。法線 +Y をカメラへ向けて描く)
+    growQuad_=render->CreateDynamicMesh({{{-1,0,-1,1},{0,0},{0,1,0}},{{1,0,-1,1},{1,0},{0,1,0}},{{1,0,1,1},{1,1},{0,1,0}},{{-1,0,1,1},{0,1},{0,1,0}}},{0,1,2,0,2,3});
     if(slimePlayerDemo_) BuildSlimePlayerDemo(r);else BuildCityStage(r);
     // こぼれた液体の管のメッシュ (DevourSpill)
     slimeBeamMesh_=render->LoadObjMesh("Resources/Models/Ink/slime-beam.obj");
@@ -60,7 +67,8 @@ void ChronoSystem::BuildInk(entt::registry& r){
 // インクの地面の高さ (真下へのレイで一番高い面)。surface に面の番号を返す
 float ChronoSystem::InkGround(V at,int* surface)const{
     // 吸収モードの部屋は家具の高さがある
-    if(devour_&&CurrentDevourStage().map=="room"){if(surface)*surface=0;return Chrono::RoomGround(at);}
+    // ギミックの看板の土台は、床の上のなだらかな坂として足す
+    if(devour_&&CurrentDevourStage().map=="room"){if(surface)*surface=0;return std::max(Chrono::RoomGround(at),GimmickSignGround(at));}
     // 街のステージは y=0 で平らで、草原の塗れる面より広い
     if(!inkSurfaces_.empty()){if(surface)*surface=0;(void)at;return 0;}
     // 真下へのレイを各面に飛ばし、一番高い当たりを地面にする
@@ -183,6 +191,7 @@ void ChronoSystem::InkCamera(entt::registry& r,Player& p,GameContext& ctx){
     if(aimingHydrant)ctx.camera->StopShake();
     // 吸収モードの結果: 本物の体を測れるよう、横から全身を見る構図へゆっくり移る。体は画面の右、地面は巻尺の高さに置く
     float resultBlend=0;constexpr float resultFov=.62f;
+    if(!(devour_&&finished_))ctx.renderer->SetFluidInterior(0,0);
     if(devour_&&finished_){
         resultCameraAge_+=std::min(ctx.dt,.05f);resultBlend=ShotEase(std::min(1.f,resultCameraAge_/1.25f),0,1);
         const float aspect=ctx.viewportSize.x/std::max(1.f,ctx.viewportSize.y),half=std::tan(resultFov*.5f);
@@ -204,6 +213,8 @@ void ChronoSystem::InkCamera(entt::registry& r,Player& p,GameContext& ctx){
         fits(distance);
         ctx.camera->StopShake();ctx.camera->SetHandheld(0);
         wanted=Lerp(wanted,resultOrigin_+side*slideX+up*slideY-look*distance,resultBlend);view=Unit(Lerp(view,look,resultBlend));wanted.y=std::max(wanted.y,.7f);
+        // 測り終えたら体の中へ入る (DevourShelf.cpp)
+        DevourShelfCamera(ctx,wanted,view,ground);
         // カメラと体の間にある物は隠す (やり直しで元に戻す)
         V toBody=resultOrigin_-wanted;toBody.y=0;const float span=Length(toBody);
         if(span>.01f){toBody=toBody*(1/span);V across{toBody.z,0,-toBody.x};const float lane=(resultHi_-resultLo_)*.6f;

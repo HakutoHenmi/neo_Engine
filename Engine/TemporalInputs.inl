@@ -30,7 +30,11 @@ bool Renderer::EvaluateDlss_(uint32_t frame){
     struct Prepare{Matrix4x4 inverse,previous,current;float nearPlane,farPlane,includeFluid,dt;Vector3 origin;float cell;Vector3 dimensions;float pad;} cb{};
     cb.inverse=XMToM4(InverseCameraViewProjection(M4ToXM(cbFrame_.view),M4ToXM(cbFrame_.proj)));cb.previous=dlssHistoryValid_&&postHistoryValid_?previousTemporalViewProjection_:unjitteredViewProjection_;cb.current=unjitteredViewProjection_;
     float a=cbFrame_.proj.m[2][2],b=cbFrame_.proj.m[3][2];cb.nearPlane=std::abs(b/a);cb.farPlane=std::abs(b/(a-1));cb.includeFluid=volumeSurfaceDepth_&&gpuFluidCoreMode_>=4&&fluidVolumeDebugMode_==0?1.f:0.f;
-    cb.dt=rogueWorldFrozen_?0:fluidSimulatedDt_;cb.origin=volumePreviousOrigin_;cb.cell=.56f;cb.dimensions={176,64,176};
+    cb.dt=rogueWorldFrozen_?0:fluidSimulatedDt_;cb.origin=volumePreviousOrigin_;cb.dimensions={176,64,176};
+    // The morphing slime uses a fitted cell, not the fixed 0.56 one. With a stale
+    // cell the velocity lookup misses the body, so DLSS reprojects slime pixels with
+    // camera-only motion and drops their edge history (jaggies near the camera).
+    cb.cell=volumePreviousVoxelSize_>0?volumePreviousVoxelSize_:.56f;
     UINT offset=upload_[frame].Allocate(256,256);if(offset==UINT32_MAX)return false;std::memcpy(upload_[frame].mapped+offset,&cb,sizeof(cb));
     BeginFluidProfile(DlssPrepare);
     auto transition=[&](ID3D12Resource* resource,D3D12_RESOURCE_STATES from,D3D12_RESOURCE_STATES to){auto barrier=CD3DX12_RESOURCE_BARRIER::Transition(resource,from,to);list_->ResourceBarrier(1,&barrier);};

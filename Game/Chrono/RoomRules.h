@@ -13,15 +13,17 @@ struct RoomSurface {CityRect foot{};float h0=0,h1=0;int area=0;float hill=0,base
 inline constexpr float RoomBedTop=56,RoomStairRise=7,RoomStairDepth=12;
 // ベッドの下を囲む収納ケースの高さ (開始の大きさでは跳び越えられず、8cm で跳び越えられる)
 inline constexpr float RoomCaseHeight=8.4f;
+// 出口の収納ケースの左の端 (x)。ケースは x がこれから -60 まで、z が -192 から -180 まで
+inline constexpr float RoomExitX0=-108;
 // ベッドの下 (収納ケースの内側の床。ステージの最初のチュートリアルの場所)。ケースの上やベッドの上は含まない
 inline bool RoomUnderBed(Vec p){return p.x<-72&&p.z<-192&&p.y<20;}
 // 本棚とおもちゃ箱の上の高さ
 inline constexpr float RoomShelfTop=141.6f,RoomToyboxTop=43.2f;
-inline constexpr std::array<RoomSurface,27> RoomSurfaces{{
+inline constexpr std::array<RoomSurface,26> RoomSurfaces{{
     // ベッド: マットレス・掛け布団・枕・頭の板
     {{-300,-300,-60,-180},52.8f,52.8f,3,0,0,20},{{-232.8f,-296.4f,-69.6f,-180},RoomBedTop,RoomBedTop,0,4,52.8f,20},{{-297.6f,-288,-235.2f,-192},62.4f,62.4f,0,12,52.8f,20},{{-300,-300,-292.8f,-180},86,86,0,0,0,20},
-    // ベッドの下を囲む収納ケース
-    {{-300,-192,-60,-180},RoomCaseHeight,RoomCaseHeight},{{-72,-300,-60,-192},RoomCaseHeight,RoomCaseHeight},
+    // ベッドの下の出口の収納ケース (ベッドの下から見て前の列の右端だけ。ほかは跳び越えられない本の壁 RoomBookWalls)
+    {{RoomExitX0,-192,-60,-180},RoomCaseHeight,RoomCaseHeight},
     // ベッドへ登る本の階段 (高い段から順に)
     {{-230,-180,-130,-168},56,56},{{-230,-168,-130,-156},49,49},{{-230,-156,-130,-144},42,42},{{-230,-144,-130,-132},35,35},
     {{-230,-132,-130,-120},28,28},{{-230,-120,-130,-108},21,21},{{-230,-108,-130,-96},14,14},{{-230,-96,-130,-84},7,7},

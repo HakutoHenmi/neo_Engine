@@ -14,8 +14,9 @@ constexpr UINT kVolumeWidth = 176;
 constexpr UINT kVolumeHeight = 64;
 constexpr UINT kFarWaterWidth=128,kFarWaterHeight=64;
 constexpr float kFarWaterCell=1.f;
-struct FarWaterConstants {Vector3 origin;float cell;UINT dimensions[3];UINT enabled;};
-static_assert(sizeof(FarWaterConstants)==32);
+// interior: x は体の中から見る量 (結果画面の「おなかの中」)、y はそれより手前を体の中の物として見せる深さ
+struct FarWaterConstants {Vector3 origin;float cell;UINT dimensions[3];UINT enabled;Vector4 interior;};
+static_assert(sizeof(FarWaterConstants)==48);
 constexpr float kVoxelSize = 0.56f;
 constexpr float kVolumeHalfWidth = kVolumeWidth * kVoxelSize * 0.5f;
 constexpr D3D12_RESOURCE_STATES kVolumeRead = static_cast<D3D12_RESOURCE_STATES>(
@@ -270,6 +271,8 @@ void Renderer::PrepareFluidVolume() {
         {gpuFluidCorePos_.x,gpuFluidCorePos_.y-1.25f+0.8f*std::clamp(gpuFluidCoreScale_.y,0.0f,1.0f),gpuFluidCorePos_.z},
         gpuFluidCoreMode_>=4.0f ? chronoFluidOpacity_ : 0.0f,
         gpuFluidCoreForward_,slimeFaceCamera_,{},0,slimeGround_,std::clamp(gpuFluidCoreScale_.y,0.f,1.f)};
+    // 体の中から見るときは、顔や泡の飾りを描かない (内側から裏返しに見える)
+    if(fluidInterior_>.01f)cb.playerDecoration=0;
     cb.axis=fluidMorphTargets_.empty()?.4f:-.4f; // Non-morph particles use the unscaled hash; filtering resets axis.
     // Match the simulated containment field, including mass, landing squash and slide.
     float scale=std::cbrt(std::clamp(gpuFluidCoreFlowSpeed_/100.f,.05f,2.f));
@@ -382,7 +385,7 @@ void Renderer::PrepareFluidVolume() {
     transition(volumeTextures_[5].Get(),D3D12_RESOURCE_STATE_UNORDERED_ACCESS,kVolumeRead);
     // Coarse water-only volume; fine shapes and the near history stay intact.
     FarWaterConstants farSettings{};farSettings.cell=kFarWaterCell;farSettings.dimensions[0]=farSettings.dimensions[2]=kFarWaterWidth;farSettings.dimensions[1]=kFarWaterHeight;
-    farSettings.enabled=(gpuFluidPhaseMask_&4u)!=0;
+    farSettings.enabled=(gpuFluidPhaseMask_&4u)!=0;farSettings.interior={fluidInterior_,fluidInteriorDepth_,0,0};
     farSettings.origin={std::floor(center.x/farSettings.cell)*farSettings.cell-kFarWaterWidth*farSettings.cell*.5f,
         std::floor((center.y-4)/(farSettings.cell*.4f))*(farSettings.cell*.4f),
         std::floor(center.z/farSettings.cell)*farSettings.cell-kFarWaterWidth*farSettings.cell*.5f};

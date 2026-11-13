@@ -16,6 +16,7 @@ class StartupValidation {
     // --load-profile-auto: キー入力を送らず Title -> Select -> Game (本編) と進め、各区間を load-profile.txt に残す
     const bool loadDrive = wcsstr(GetCommandLineW(), L"--load-profile-auto") != nullptr;
     int loadPhase = 0, loadFrames = 0;
+    double loadQuitAt = 0;
     void DriveLoad(Engine::WindowDX& window, Engine::SceneManager& scenes, ID3D12Resource* presented) {
 		if (scenes.InTransition()) return;
 		const auto& name = scenes.CurrentName();
@@ -28,8 +29,13 @@ class StartupValidation {
 			loadPhase = 2; loadFrames = 0;
 			Engine::SceneParameters params; params.stagePath = "Resources/Scenes/chrono.json";
 			scenes.RequestChange("Game", params);
-		} else if (loadPhase == 2 && name == "Game" && ++loadFrames >= 30) {
+		} else if (loadPhase == 2 && name == "Game" && ++loadFrames == 30) {
 			Engine::LoadProfile::Record("drive", "Game presented 30 frames", 0);
+		} else if (loadPhase == 2 && name == "Game" && loadFrames > 30 && !loadQuitAt) {
+			// ゲーム側が 2.5 秒で結果画面を出し、8 秒後にやり直す。やり直し後のプレイを少し見てから終える
+			loadQuitAt = Engine::LoadProfile::ProcessSeconds() + 15.0;
+		} else if (loadPhase == 2 && name == "Game" && loadQuitAt && Engine::LoadProfile::ProcessSeconds() >= loadQuitAt) {
+			Engine::LoadProfile::Record("drive", "drive finished", 0);
 			// 遷移後のゲーム画面 (HUD を含む) を残し、見た目の確認に使う
 			DirectX::ScratchImage image;
 			if (SUCCEEDED(DirectX::CaptureTexture(window.Queue(), presented, false, image, D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_PRESENT)))

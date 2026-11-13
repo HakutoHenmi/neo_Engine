@@ -263,8 +263,11 @@ inline void Pause(Canvas& ui,const PauseView& view,int menu,float age){
 inline constexpr float HudTapeTop=662,HudTapeHeight=58,HudReadX=250,HudZoom=700;
 // 巻尺の上の旗: 目標は赤、壁と最高記録は黒
 struct HudFlag{float cm;std::string label;bool red=false;};
+// ランクが上がった知らせを出す秒数と、その間ほかの知らせ (Notice) を下げる高さ (知らせの札の下)
+inline constexpr float RankFlashSeconds=3,RankBannerTop=134,RankNoticeY=290;
 struct HudView{
-    std::string stage,rank,next,gate,itemIcon,itemName,itemState;
+    // flash はランクの知らせの残り (1 で出た瞬間 → 0 で消える)。flashNote は知らせの下に添える次の目標
+    std::string stage,rank,next,gate,itemIcon,itemName,itemState,flashNote;
     float cm=0,shownCm=0,time=0,pulse=0,flash=0,age=9,comboKick=0;
     int combo=0,items=0,percent=0;
     bool bestBroken=false,item=false,itemLit=false,itemKey=false,hideTime=false;
@@ -336,14 +339,16 @@ inline void Hud(Canvas& ui,const HudView& view){
         ui.Text(view.itemName,x+82,top+8,26,Black,Jp);
         // 使えるときは、押すキーを他の操作の案内と同じ黒い台で出す
         if(view.itemKey){const float kx=KeyChip(ui,KeyMorph,x+82,top+44,30,UsingPad())+6;ui.Text(view.itemState,kx,top+48,18,Black,Jp);}else ui.Text(view.itemState,x+82,top+48,18,Black,Jp);}
-    // ランクが上がった瞬間の知らせ
+    // ランクが上がった瞬間の知らせ: 上がった瞬間に弾んで出て、次の目標 (何 cm) を同じ知らせの下に 1 行で添える。
+    // 別の札で出すと同じ場所に重なるので、1 つにまとめる。終わりの 0.3 秒で消える
     if(view.flash>0&&!view.rank.empty()){const float pop=Overshoot((1-Clamp01(view.flash))*5),fade=Clamp01(view.flash*3);const std::string text=Str("scale.hudRankUp")+" "+view.rank;
-        const float w=ui.Width(text,48*pop,Jp)+60;if(fade>.3f){Plate(ui,{640-w*.5f,134,w,78*pop},Red);ui.Text(text,640-w*.5f+30,142,48*pop,White,Jp);}}
+        if(fade>.3f&&pop>.05f){const float w=ui.Width(text,48*pop,Jp)+60,h=78*pop,top=RankBannerTop;Plate(ui,{640-w*.5f,top,w,h},Red);ui.Text(text,640-w*.5f+30,top+8*pop,48*pop,White,Jp);
+            if(!view.flashNote.empty()){const float size=24,nw=ui.Width(view.flashNote,size,Jp)+36,ny=top+h+12;Plate(ui,{640-nw*.5f,ny,nw,size*1.7f},Cream);ui.Text(view.flashNote,640-nw*.5f+18,ny+size*.2f,size,Black,Jp);}}}
 }
 
 inline constexpr Rect ResultNext{48,574,410,50},ResultRetry{48,650,196,50},ResultTitle{254,650,204,50},ResultRetryOnly{48,650,196,50},ResultTitleOnly{254,650,204,50};
 // 結果画面に出す内容。live ならゲームの本物のスライムの上に重ね、体の左右と上の端 (UI 座標) を測る
-struct ResultView{std::string stage;float cm=0,goalCm=0,timeLeft=0;std::string rank;bool won=false,newBest=false,hasNext=false;int items=0,percent=0;bool live=false;float bodyLeft=520,bodyRight=1240,bodyTop=330;};
+struct ResultView{std::string stage;float cm=0,goalCm=0,timeLeft=0;std::string rank;bool won=false,newBest=false,hasNext=false;int items=0,percent=0;bool live=false;float bodyLeft=520,bodyRight=1240,bodyTop=330;float inside=0;};
 // 比べる物: 文字の名前と長さの基準 (cm)
 struct Reference{const char* key;float length;};
 inline const Reference* PickReference(float cm){
@@ -368,14 +373,16 @@ inline void Result(Canvas& ui,const ResultView& view,float age){
     if(!view.live){Backdrop(ui);Slime(ui,(view.bodyLeft+view.bodyRight)*.5f,base,view.bodyRight-view.bodyLeft);}
     // 寸法線: 体の左端から右端へ伸び、両端から巻尺へ線を下ろす
     const float measure=EaseOut((age-.95f)/.75f),lineY=(std::max)(view.bodyTop-24,36.f),lineEnd=view.bodyLeft+(view.bodyRight-view.bodyLeft)*measure;
-    if(age>.95f){
-        ui.Fill({view.bodyLeft-1,lineY,3,base-lineY},WithAlpha(Red,.75f));ui.Fill({lineEnd-1,lineY,3,base-lineY},WithAlpha(Red,.75f));
-        ui.Fill({view.bodyLeft,lineY-3,lineEnd-view.bodyLeft,6},Red);ui.Fill({view.bodyLeft-3,lineY-20,6,40},Red);ui.Fill({lineEnd-3,lineY-20,6,40},Red);
+    // 体の中へ入ったら (inside)、寸法線は消す
+    const float lines=1-Clamp01(view.inside*2.5f);
+    if(age>.95f&&lines>0){
+        ui.Fill({view.bodyLeft-1,lineY,3,base-lineY},WithAlpha(Red,.75f*lines));ui.Fill({lineEnd-1,lineY,3,base-lineY},WithAlpha(Red,.75f*lines));
+        ui.Fill({view.bodyLeft,lineY-3,lineEnd-view.bodyLeft,6},WithAlpha(Red,lines));ui.Fill({view.bodyLeft-3,lineY-20,6,40},WithAlpha(Red,lines));ui.Fill({lineEnd-3,lineY-20,6,40},WithAlpha(Red,lines));
     }
     // 巻尺が左から流れ込む
     // 測り始めたら、目盛りは体の左端を 0 とした読みに変わる
     Tape(ui,age<.95f?std::vector<Mark>{{5},{30},{100},{500},{2200}}:std::vector<Mark>{},base,EaseOut((age-.1f)/.7f),70);
-    if(age>.95f){const std::string reading=SizeText(view.cm*measure);ui.Text("0",view.bodyLeft+8,base+35,27,Red,Num);ui.Text(reading,lineEnd-ui.Width(reading,27,Num)-8,base+35,27,Red,Num);}
+    if(age>.95f&&lines>0){const std::string reading=SizeText(view.cm*measure);ui.Text("0",view.bodyLeft+8,base+35,27,WithAlpha(Red,lines),Num);ui.Text(reading,lineEnd-ui.Width(reading,27,Num)-8,base+35,27,WithAlpha(Red,lines),Num);}
     // 終了の合図
     if(age<1.15f){const float in=EaseOut(age/.18f),out=1-Clamp01((age-.9f)/.25f);const std::string& label=Str("scale.finish");
         const float w=ui.BigWidth(label,84,JpBig,JpBigBase)+70;ui.Fill({640-w*.5f*in,264,w*in,118},WithAlpha(Black,out));

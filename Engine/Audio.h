@@ -8,6 +8,7 @@
 #include <wrl.h>
 #include <xaudio2.h>
 #include <algorithm>
+#include <future>
 
 // Media Foundation
 #include <mfapi.h>
@@ -76,6 +77,9 @@ public:
 	// One scene music channel, independent of sound effects. Tick with real time.
 	// Preload on a worker before the first scene; join before accessing audio again.
 	bool PreloadBGM(const std::string& path);
+	// Decodes a BGM on a background thread, so a later PlayBGM (a scene's or the result screen's music)
+	// only hands the finished PCM to XAudio2 instead of decoding a whole MP3 inside one frame.
+	void PreloadBGMAsync(const std::string& path);
 	bool PlayBGM(const std::string& path, float volume = 0.35f);
 	void StopBGM();
 	void UpdateBGM(float dt);
@@ -86,8 +90,9 @@ public:
 	const std::string& CurrentBGM() const { return bgmPath_; }
 
 private:
-	// 内部用ロード関数
-	bool LoadViaMF(const std::wstring& path, SoundData& outData);
+	// 内部用ロード関数 (メンバーに触れないので、どのスレッドからでも呼べる)
+	static bool LoadViaMF(const std::wstring& path, SoundData& outData);
+	uint32_t Register(const std::string& path, SoundData&& sound);
 
 	// 終了したボイスのお掃除
 	void GarbageCollect();
@@ -107,6 +112,8 @@ private:
 	std::map<size_t, VoiceData> activeVoices_;
 	size_t nextVoiceHandle_ = 1;
 	std::map<std::string, uint32_t> bgmSounds_;
+	// BGM being decoded on a background thread (empty data = failed)
+	std::map<std::string, std::future<SoundData>> pendingBgm_;
 	std::string bgmPath_;
 	size_t bgmVoice_ = 0, retiringBgmVoice_ = 0;
 	float bgmGain_ = 0.35f, bgmFade_ = 0, retiringBgmGain_ = 0, retiringBgmFade_ = 0;

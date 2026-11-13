@@ -5,6 +5,7 @@
 #pragma once
 // テストで表示するシーン
 #include "../Game/Scenes/TitleScene.h"
+#include "../Game/UI/CollectionUI.h"
 #include "../Game/Scenes/SelectScene.h"
 #include "../Game/Scenes/GameOverScene.h"
 // プレイヤー向けの UI (共通部品・グラフィック設定・BGM・クレジット)
@@ -124,10 +125,16 @@ class UIValidationScene final : public Engine::IScene {
     std::unique_ptr<Engine::IScene> scene_;
     int frame_=0, page_=0;
     bool passed_=true;
+    // ずかんのページ (クレジットの後): 見本の数で開く
+    Game::UI::CollectionState collection_;
+    int CollectionPage()const{return 5+Game::UI::CreditsPageCount();}
     // ページに合わせてシーンを用意し、BGM が合っているかを確かめる
     void Load() {
         // クレジットのページではシーンを使わない
-        if(page_>=5){scene_.reset();return;}
+        if(page_>=5){scene_.reset();
+            if(page_==CollectionPage()){collection_={};collection_.age=9;const auto& entries=Game::Collection::Entries();
+                for(size_t i=0;i<entries.size();i+=2)collection_.counts[entries[i].id]=int(i%7)+1;collection_.selected=4;collection_.pickedAt=0;}
+            return;}
         // 0: タイトル / 1: セレクト / 2: ゲームオーバー / それ以外: シーンなし
         if(page_==0)scene_=std::make_unique<Game::TitleScene>();
         else if(page_==1)scene_=std::make_unique<Game::SelectScene>();
@@ -164,10 +171,10 @@ public:
         const wchar_t* paths[]={L"tests/out/ui-title.png",L"tests/out/ui-select.png",L"tests/out/ui-defeat.png",L"tests/out/ui-clear.png",L"tests/out/ui-pause.png",
             L"tests/out/credits-music.png",L"tests/out/credits-sound.png",L"tests/out/credits-art.png",L"tests/out/credits-fonts.png",L"tests/out/credits-software.png"};
         if(SUCCEEDED(hr))hr=DirectX::SaveToWICFile(*image.GetImage(0,0,0),DirectX::WIC_FLAGS_NONE,
-            DirectX::GetWICCodec(DirectX::WIC_CODEC_PNG),paths[page_]);
+            DirectX::GetWICCodec(DirectX::WIC_CODEC_PNG),page_==CollectionPage()?L"tests/out/ui-collection.png":paths[page_]);
         passed_&=SUCCEEDED(hr);
         // すべてのページが終わったら、BGM の停止と再生を確かめて結果を書く
-        if(++page_==5+Game::UI::CreditsPageCount()){
+        if(++page_==CollectionPage()+1){
             auto* audio=Engine::Audio::GetInstance();
             audio->StopAll();passed_&=!audio->IsBGMPlaying() && audio->CurrentBGM().empty();
             Game::Music::Play(Game::Music::Title);passed_&=audio->IsBGMPlaying();
@@ -182,6 +189,7 @@ public:
         if(scene_){scene_->Draw();return;}
         Game::UI::Canvas ui(Engine::Renderer::GetInstance());
         // クレジットのページ
+        if(page_==CollectionPage()){Game::UI::DrawCollection(ui,collection_);return;}
         if(page_>=5){Game::UI::DrawCredits(ui,page_-5);return;}
         // 勝利の結果画面か、ポーズ画面
         namespace S=Game::UI::Scale;

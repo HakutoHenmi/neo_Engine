@@ -1,6 +1,6 @@
 // RoomStage.cpp
 // 吸収モードの部屋のステージ (ChronoSystem の一部)。大きくなるほど行ける場所が広がる。
-// ベッドの下から始まり、8cm まで育つと収納ケースを段差ジャンプで越えて子ども部屋へ出られる。奥の和室へは入口から入れる。
+// ベッドの下から始まり、8cm まで育つと出口の収納ケース (ベッドの下から見て前の右端。ほかは跳び越えられない本の壁) を段差ジャンプで越えて子ども部屋へ出られる。奥の和室へは入口から入れる。
 // 物は実寸 (1cm = 1.2 単位) のローポリのモデルで、関連する物はセットにして置く。
 // モデルは scripts/lowpoly/build_lowpoly.py で作り、高い場所の高さは Game/Chrono/RoomRules.h に置く
 #include "CityBuilder.h"
@@ -17,10 +17,13 @@ constexpr float kUnit=1.2f;
 constexpr float kBedX=-72,kBedZ=-192,kWallZ=40,kWallDepth=12;
 // 和室の入口
 constexpr float kDoors[][2]={{20,80},{220,280}};
-// 飲めない家具の足元: おもちゃ箱・椅子・本棚・間の壁
+// ベッドの下を囲む本の壁: 前の列 (出口の収納ケースの左) と右の列。飲めず、跳び越えもできない
+constexpr CityRect kBookWalls[]={{-300,-192,Chrono::RoomExitX0,-180},{-72,-300,-60,-192}};
+// 飲めない家具の足元: おもちゃ箱・椅子・本棚・間の壁・ベッドの下の本の壁
 const std::vector<CityRect>& RoomLots(){
     static const std::vector<CityRect> lots{{-268,-44,-196,4},{211,-219,259,-171},{264,-110,300,-10},
-        {-300,kWallZ,kDoors[0][0],kWallZ+kWallDepth},{kDoors[0][1],kWallZ,kDoors[1][0],kWallZ+kWallDepth},{kDoors[1][1],kWallZ,300,kWallZ+kWallDepth}};
+        {-300,kWallZ,kDoors[0][0],kWallZ+kWallDepth},{kDoors[0][1],kWallZ,kDoors[1][0],kWallZ+kWallDepth},{kDoors[1][1],kWallZ,300,kWallZ+kWallDepth},
+        kBookWalls[0],kBookWalls[1]};
     return lots;
 }
 // 色
@@ -46,7 +49,7 @@ float ChronoSystem::LowScaleFor(const std::string& id,float width){const auto& m
 // モデルを置く準備: 色の画像と平らな材質 (ステージを作るたびに読み直す)
 void ChronoSystem::BeginLowProps(float occludeHeight){
     auto* render=Engine::Renderer::GetInstance();lowModels_.clear();lowOcclude_=occludeHeight;
-    devourMovers_.clear();gimmicks_.clear();devourSpills_.clear();
+    devourMovers_.clear();gimmicks_.clear();gimmickSigns_.clear();devourSpills_.clear();
     lowPalette_=render->LoadTexture2D("Resources/Textures/Lowpoly/palette.png");
     render->LoadTexture2D("Resources/Textures/UI/Comic/atlas.png");
     lowMaps_={render->LoadTexture2D("Resources/Textures/PBR/NeutralNormal.png",false),white_,white_};
@@ -165,6 +168,8 @@ void ChronoSystem::BuildRoomGimmicks(entt::registry& r){
 // 散らかした物を置かない場所: ギミックの輪と、ドミノ・レーン・液体の道の上、だるま落としの台のまわり
 bool ChronoSystem::GimmickClear(V at,float margin)const{
     auto flat=[](V a){a.y=0;return a;};
+    // 看板の土台の上には物を散らかさない
+    for(const auto& sign:gimmickSigns_)if(Length(flat(at-sign))<14+margin)return true;
     for(const auto& g:gimmicks_){V d=flat(at-g.at);if(Length(d)<g.radius+margin)return true;
         for(const auto& spot:g.spots)if(g.kind==Chrono::GimmickKind::Shoot&&Length(flat(at-spot))<26+margin)return true;
         if(g.kind==Chrono::GimmickKind::Shoot){V a=flat(g.at),b=g.spots.empty()?a:flat(g.spots[0]);if(Chrono::LifeSegmentDistance(flat(at),a,b)<10+margin)return true;}
@@ -184,7 +189,7 @@ void ChronoSystem::BuildRoomStage(entt::registry& r,const RingCityTools& tools){
     using namespace Chrono;auto* render=Engine::Renderer::GetInstance();const auto& stage=DevourStages()[size_t(devourStage_)];
     BeginLowProps(6);
     // 家具は飲み込めない壁 (敷地だけを作り、吸収の対象の番号は持たない)
-    ringLots_.clear();for(const auto& foot:RoomLots()){RingLot lot;lot.foot=foot;ringLots_.push_back(lot);}
+    ringLots_.clear();gimmickSigns_.clear();for(const auto& foot:RoomLots()){RingLot lot;lot.foot=foot;ringLots_.push_back(lot);}
     ringLotProps_.assign(ringLots_.size(),-1);devourBuildingParts_.clear();
     // 平らな色の箱の集まり (床の板や壁)
     auto boxes=[&](const char* name,const std::vector<std::array<V,2>>& list,Engine::Vector4 color){CityBuilder b;for(const auto& box:list)b.Box(CityMetal,box[0],box[1]);auto& g=b.geometry[CityMetal];
@@ -218,12 +223,29 @@ void ChronoSystem::BuildRoomStage(entt::registry& r,const RingCityTools& tools){
     real("chair",{235,0,-195},3.14159f,0);real("bookshelf",{282,0,-60},-1.5708f,0);real("toybox",{-232,0,-20},.0f,0);
     // 本の階段・積んだ本
     real("book_stairs",{-180,0,-180},0,0);real("book_steps",{148.4f,0,190},-1.5708f,0);
-    // ベッドの下を囲む収納ケース (飲めない。8cm まで育つと段差ジャンプで越えられる)
-    {const Engine::Vector4 colors[]={kPlain,{.9f,.95f,1,1},kPlain,{1,.95f,.86f,1},kPlain};
-        auto storage=[&](V at,float yaw,Engine::Vector4 tint,V size){r.emplace_or_replace<CameraOccluder>(real("storage_case",at,yaw,0,1,tint),at+V{0,RoomCaseHeight*.5f,0},size,1.f);};
-        for(int i=0;i<5;++i)storage({-276+48*float(i),0,-186},0,colors[i],{48,RoomCaseHeight,12});
-        storage({-66,0,-276},1.5708f,kPlain,{12,RoomCaseHeight,48});storage({-66,0,-228},1.5708f,colors[1],{12,RoomCaseHeight,48});
-        wall("Chrono Room case end",{{V{-72,0,-204},V{-60,RoomCaseHeight,-192}}},{.82f,.82f,.8f,1},V{-72,0,-204},V{-60,RoomCaseHeight,-192});}
+    // ベッドの下の出口: ベッドの下から見て前の列の右端に収納ケースを 1 つだけ置く (飲めない。8cm まで育つと段差ジャンプで越えられる)
+    {const V at{(Chrono::RoomExitX0-60)*.5f,0,-186};r.emplace_or_replace<CameraOccluder>(real("storage_case",at,0,0,1,{1,.95f,.86f,1}),at+V{0,RoomCaseHeight*.5f,0},V{-60-Chrono::RoomExitX0,RoomCaseHeight,12},1.f);}
+    // 出口のほかは、飲めない本を立てたり横に積んだりして並べた壁 (kBookWalls)。跳び越えられないので、出口が 1 つに決まる
+    {const Engine::Vector4 covers[]={kRed,kBlue,kGreen,kYellow,kSky,kPink,kPlain};int bookSeed=7000;
+        const auto& m=LowModelOf("manga");const float thick=(m.hi.y-m.lo.y)*kUnit,length=(m.hi.z-m.lo.z)*kUnit,width=(m.hi.x-m.lo.x)*kUnit;
+        auto book=[&](V at,float yaw,float mult,int color,bool standing,V center,V size){
+            auto e=LowProp(r,"manga",at,kUnit*mult,yaw,0,covers[size_t(color)%7],standing?1.5708f:0.f);r.emplace_or_replace<CameraOccluder>(e,center,size,1.f);};
+        for(const auto& f:kBookWalls){const bool alongX=f.x1-f.x0>f.z1-f.z0;const float run=alongX?f.x1-f.x0:f.z1-f.z0,mid=alongX?(f.z0+f.z1)*.5f:(f.x0+f.x1)*.5f,start=alongX?f.x0:f.z0,yaw=alongX?1.5708f:0.f;
+            // 列の向きの位置 u と高さ y を部屋の座標へ。size は列の向き・高さ・奥行きの大きさ
+            auto place=[&](float u,float y){return alongX?V{start+u,y,mid}:V{mid,y,start+u};};
+            auto box=[&](float along,float tall,float deep){return alongX?V{along,tall,deep}:V{deep,tall,along};};
+            float u=0;for(int group=0;u<run-1;++group){
+                if(group%3==2&&u+length<=run){
+                    // 横に積んだ本: 長い辺を列に沿わせて 6〜8 冊
+                    const int count=6+int(RingNoise(++bookSeed)*3);
+                    for(int i=0;i<count;++i)book(place(u+length*.5f,float(i)*thick),yaw+(RingNoise(++bookSeed)-.5f)*.12f,1,group+i,false,place(u+length*.5f,(float(i)+.5f)*thick),box(length,thick,width));
+                    u+=length+.6f;}
+                else{
+                    // 立てた本: 背を外へ向けて 5〜9 冊。高さを少しずつ変える
+                    const int count=5+int(RingNoise(++bookSeed)*5);
+                    for(int i=0;i<count;++i){const float mult=.9f+.25f*RingNoise(++bookSeed),step=thick*mult;if(u+step>run)break;
+                        book(place(u,length*.5f*mult),yaw,mult,group*3+i,true,place(u+step*.5f,length*.5f*mult),box(step,length*mult,width*mult));u+=step;}
+                    u+=.4f;}}}}
     // 本棚とおもちゃ箱は上に乗れる (こぼれた液体をつたって登る)
     ringLots_[0].top=Chrono::RoomToyboxTop;ringLots_[2].top=Chrono::RoomShelfTop;
     BuildRoomGimmicks(r);BuildRoomSets(r);
@@ -337,7 +359,7 @@ void ChronoSystem::BuildRoomSets(entt::registry& r){
     scatter("marble",stage.spawn,26,40,1,1.6f,1,kPink);scatter("coin",stage.spawn+V{18,0,8},22,14,2.2f,2.6f,1);
     dust("tsumiki",-294,-232,-76,-198,22,3,3.8f,.7f,kRed);dust("tsumiki",-110,-294,-76,-198,10,3,3.8f,.7f,kYellow);
     // 収納ケースを越えた先: ビー玉と硬貨が曲がりながら、崩れた積み木の塔へ続く
-    trail("marble",{-150,0,-172},{40,0,-130},26,1.6f,2.6f,1,kSky);trail("coin",{-200,0,-170},{-40,0,-60},22,2.2f,2.8f,1,kPlain,26);
+    trail("marble",{-84,0,-172},{40,0,-130},26,1.6f,2.6f,1,kSky);trail("coin",{-96,0,-170},{-40,0,-60},22,2.2f,2.8f,1,kPlain,26);
     // 崩れた積み木の塔: 塔の残りのまわりへ、色も大きさもまちまちに崩れている
     for(int k=0;k<4;++k)scatter("tsumiki",{70,0,-110},90,26,3,5,.7f,k==0?kRed:k==1?kYellow:k==2?kGreen:kBlue);
     // ジャーからこぼれたビー玉 (本棚の前) と、壁際まで転がった物

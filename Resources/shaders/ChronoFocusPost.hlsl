@@ -11,7 +11,8 @@ Texture2D<float4> rtReflections : register(t7);
 Texture2D<float4> rtIndirectLight : register(t8);
 SamplerState linearClamp : register(s0);
 cbuffer Post : register(b0) {
-    float time,noise,strength,chroma,damage,scanline,slow,pad;
+    // grow: 大きい物を飲んだ直後の縁の光の強さ (0〜1)
+    float time,noise,strength,chroma,damage,scanline,slow,grow;
     float dofFocus,dofRange,dofStrength,dofNear;
     float dofFar,texelX,texelY,dofBossDepth;
     float bloom,lensFlare,grading,ambientOcclusion;
@@ -66,6 +67,28 @@ float3 rayLighting(Texture2D<float4> light,float2 uv,float z){
     }
     return weights>.0001?sum/weights:0;
 }
+float rtShadowFactor(float2 uv,float centerZ){
+    if(rtStrength<=.001||centerZ>=dofFar*.95)return 1;float visibility=0,weights=0;
+    uint w,h;rtVisibility.GetDimensions(w,h);int2 center=int2(uv*float2(w,h));
+    uint dw,dh;sceneDepth.GetDimensions(dw,dh);float2 depthSize=float2(dw,dh);
+    float2 gradient=inverseDepthGradient(uv,centerZ,depthSize);
+    [unroll]for(int y=-1;y<=1;++y)[unroll]for(int x=-1;x<=1;++x){int2 at=clamp(center+int2(x,y),int2(0,0),int2(w-1,h-1));float2 tap=rtVisibility.Load(int3(at,0));
+        if(!all(isfinite(tap))||tap.y<=0)continue;
+        float2 tapUV=(floor((float2(at)+.5)/float2(w,h)*depthSize)+.5)/depthSize;
+        float expected=1/max(.000001,1/centerZ+dot(gradient,(tapUV-uv)*depthSize));
+        float weight=exp(-abs(tap.y-expected)/max(.15,centerZ*.008))*(x==0?2:1)*(y==0?2:1);
+        visibility+=saturate(tap.x)*weight;weights+=weight;}
+    return lerp(1,weights>.0001?saturate(visibility/weights):1,rtStrength);
+}
+// Ambient occlusion and RT shadow darkening. Under DLSS this is multiplied into
+// the jittered HDR scene before upscaling (OcclusionComposite.hlsl) so DLSS
+// resolves its edges; applying it afterwards made contact shadows shimmer with
+// the jitter and stair-step at the render resolution.
+float occlusionFactor(float2 uv,float centerZ){
+    float factor=rtShadowFactor(uv,centerZ);
+    if(ambientOcclusion>.001)factor*=ambientShadow(uv,centerZ);
+    return factor;
+}
 #ifndef RT_LIGHTING_COMPOSITE
 float4 main(float4 position:SV_POSITION,float2 uv:TEXCOORD0):SV_TARGET {
     float3 original=scene.Sample(linearClamp,uv).rgb;
@@ -110,19 +133,7 @@ float4 main(float4 position:SV_POSITION,float2 uv:TEXCOORD0):SV_TARGET {
             color=lerp(color,sum/weight,coc);
         }
     }
-    [branch]if(rtStrength>.001&&centerZ<dofFar*.95){float visibility=0,weights=0;
-        uint w,h;rtVisibility.GetDimensions(w,h);int2 center=int2(uv*float2(w,h));
-        uint dw,dh;sceneDepth.GetDimensions(dw,dh);float2 depthSize=float2(dw,dh);
-        float2 gradient=inverseDepthGradient(uv,centerZ,depthSize);
-        [unroll]for(int y=-1;y<=1;++y)[unroll]for(int x=-1;x<=1;++x){int2 at=clamp(center+int2(x,y),int2(0,0),int2(w-1,h-1));float2 tap=rtVisibility.Load(int3(at,0));
-            if(!all(isfinite(tap))||tap.y<=0)continue;
-            float2 tapUV=(floor((float2(at)+.5)/float2(w,h)*depthSize)+.5)/depthSize;
-            float expected=1/max(.000001,1/centerZ+dot(gradient,(tapUV-uv)*depthSize));
-            float weight=exp(-abs(tap.y-expected)/max(.15,centerZ*.008))*(x==0?2:1)*(y==0?2:1);
-            visibility+=saturate(tap.x)*weight;weights+=weight;}
-        color*=lerp(1,weights>.0001?saturate(visibility/weights):1,rtStrength);
-    }
-    [branch]if(ambientOcclusion>.001)color*=ambientShadow(uv,centerZ);
+    [branch]if(rtStrength>.001||ambientOcclusion>.001)color*=occlusionFactor(uv,centerZ);
     [branch]if(rtReflection>.001&&centerZ<dofFar*.95)color+=rayLighting(rtReflections,uv,centerZ)*rtReflection;
     [branch]if(rtIndirect>.001&&centerZ<dofFar*.95)color+=rayLighting(rtIndirectLight,uv,centerZ)*rtIndirect;
     color=max(0,color);
@@ -136,6 +147,8 @@ float4 main(float4 position:SV_POSITION,float2 uv:TEXCOORD0):SV_TARGET {
     color=lerp(color,lerp(color,luma.xxx,.3)*float3(.80,1.05,1.18),amount*.6);
     color*=1-amount*.18;
     color=lerp(color,float3(.8,.08,.06),edge*damage*.22);
+    // 大きくなった: 飲んだ直後だけ、画面の縁がうっすら金色に光ってすっと消える (主役は体としずくなので控えめに)
+    [branch]if(grow>.001){float rim=smoothstep(.3,.8,length(delta*float2(1,1.2)))*grow;color+=float3(1,.72,.28)*rim*.08;}
     // Scene lighting is linear (sRGB albedo sampling); the UNORM display target needs explicit encoding.
     color=max(0,color*exposure);
     color=saturate((color*(2.51*color+.03))/(color*(2.43*color+.59)+.14));

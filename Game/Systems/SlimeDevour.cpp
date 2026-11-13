@@ -5,6 +5,7 @@
 #include "ChronoSystemInternal.h"
 #include "../Chrono/DevourAnimation.h"
 #include "../Data/GameData.h"
+#include "../Data/Collection.h"
 #include <random>
 
 namespace Game {
@@ -87,8 +88,10 @@ bool GimmickScreen(const GameContext& ctx,Chrono::Vec point,float& x,float& y){r
 // 小物を 1 つ飲み込む: 隠して成長し、体の中に見せる。塀・バリケード・シャッターなら道を開ける。増えた量を返す
 float ChronoSystem::DevourEat(entt::registry& r,size_t index){
     if(index>=life_.props.size()||!life_.props[index].active)return 0;
-    auto& prop=life_.props[index];auto& body=life_.bodies[0];devourEatAt_=prop.at+V{0,prop.radius,0};DevourRemoveProp(r,index);
-    devourHeavy_=std::max(devourHeavy_,DevourHeavyTime(body.mass,prop.radius));
+    auto& prop=life_.props[index];auto& body=life_.bodies[0];devourEatAt_=prop.at+V{0,prop.radius,0};DevourRecordEaten(r,prop.visual);DevourRemoveProp(r,index);
+    // 限界に近い物は重くて遅くなる。画面では「大きくなった」と見せる (飲んだ瞬間に膨らんで光の輪、遅い間は金色に脈打つ)
+    {const float heavy=DevourHeavyTime(body.mass,prop.radius);if(heavy>0){devourHeavyKick_=1;if(heavy>=devourHeavy_)devourHeavyPeak_=heavy;DevourGrowBurst(std::clamp(heavy-.5f,0.f,1.f));}
+        devourHeavy_=std::max(devourHeavy_,heavy);}
     // 絵の具で塗った色と同じ色の物は多く増える
     const float paint=GimmickFoodBonus(prop);if(paint>1&&gimmickMatchCool_<=0){gimmickMatchCool_=.5f;devourPops_.push_back({prop.at+V{0,prop.radius+2,0},DevourWord("paintMatch"),0,.3f,0,DevourSeed()});}
     float gain=DevourSwallow(body.mass,devourDigest_,prop.reward*paint*DevourFoodValue(body.mass,prop.radius,CurrentDevourStage().smallFood));DevourLogEat(prop,gain);++life_.absorbed;LifeUnlockMorphItem(life_,0x80000000u|uint32_t(index));
@@ -214,13 +217,16 @@ void ChronoSystem::MeasureDevourBody(GameContext& ctx){
 }
 // 時間切れの大きさを記録して終わる。最初の目標に届いていればクリア
 void ChronoSystem::FinishDevour(Player& p){
+    Engine::LoadProfile::Scope profile("result","FinishDevour");
     StopLoopSounds();
     auto& body=life_.bodies[0];DevourGrow(body,devourDigest_);devourDigest_=0;
     const auto& stage=CurrentDevourStage();float& best=devourBests_[size_t(devourStage_)];bool clear=DevourRankAt(stage,body.mass)>0;
-    SaveDevourLog(devourClock_.left<=0?"time_up":"all_eaten");
+    {Engine::LoadProfile::Scope step("result","SaveDevourLog");SaveDevourLog(devourClock_.left<=0?"time_up":"all_eaten");}
+    // 図鑑に足し、結果画面の「おなかの中」の升を作る
+    {Engine::LoadProfile::Scope step("result","Collection::Add + BuildDevourShelf");std::vector<std::string> ids;ids.reserve(devourEaten_.size());for(const auto& eaten:devourEaten_)ids.push_back(eaten.id);BuildDevourShelf(Collection::Add(ids));}
     devourNewBest_=body.mass>best;if(devourNewBest_)best=body.mass;if(clear)++lifeClears_;
-    if(devourNewBest_||clear)SaveSlimeLab();
-    Finish(p,clear);
+    if(devourNewBest_||clear){Engine::LoadProfile::Scope step("result","SaveSlimeLab");SaveSlimeLab();}
+    {Engine::LoadProfile::Scope step("result","Finish (music)");Finish(p,clear);}
 }
 // 保存したステージを読む (--devour-stage=番号 があれば、そのステージを使う)
 void ChronoSystem::LoadDevourStage(){
@@ -291,7 +297,7 @@ void ChronoSystem::DevourBump(entt::registry& r,Player& p,GameContext& ctx,V sou
             // 体の上から飛び出し、弧を描いて落ちる。着地するまでは拾えない
             V from=body.at+V{0,bodyRadius*.9f,0};auto e=entt::entity(prop.visual);DevourFly fly;fly.index=i;fly.from=from;fly.to=at;fly.last=prop.at;fly.time=.55f+.08f*float(popped);fly.height=bodyRadius*1.8f+prop.radius*2;fly.spin=(DevourSeed()<.5f?-1.f:1.f)*(7+5*DevourSeed());
             if(r.valid(e)){if(r.all_of<MeshRendererComponent>(e))r.get<MeshRendererComponent>(e).enabled=true;if(auto* t=r.try_get<TransformComponent>(e))fly.rotate=Read(t->rotate);}
-            prop.at=at;prop.active=true;prop.sealed=true;devourFlies_.push_back(fly);if(life_.absorbed>0)--life_.absorbed;
+            prop.at=at;prop.active=true;prop.sealed=true;devourFlies_.push_back(fly);DevourForgetEaten(prop.visual);if(life_.absorbed>0)--life_.absorbed;
             devourMeals_.erase(devourMeals_.begin()+std::ptrdiff_t(m));--left;++popped;break;}}
     // 弾かれて、しばらく動けない
     p.velocity=away*(7+7*impact)*std::sqrt(scale)+V{0,4+3*impact,0};p.grounded=false;body.aspectVelocity-=8;
@@ -415,7 +421,7 @@ void ChronoSystem::TickDevourPounce(entt::registry& r,Player& p,GameContext& ctx
     if(devourBiteAge_>=0){devourBiteAge_+=dt;if(devourBiteAge_>=DevourPounceTime||body.action!=LifeAction::Idle){if(body.action==LifeAction::Idle){body.aspect=1;body.aspectVelocity=3;}devourBiteAge_=-1;}}
     for(auto& pop:devourPops_)pop.age+=dt;
     devourPops_.erase(std::remove_if(devourPops_.begin(),devourPops_.end(),[](const DevourPop& pop){return pop.age>(pop.kind==0?.8f:pop.kind==1?.9f:1.1f);}),devourPops_.end());
-    TickDevourFlies(r,dt);TickDevourMovers(r,dt);TickDevourGimmicks(r,ctx,dt);TickDevourSpills(ctx,dt);
+    TickDevourFlies(r,dt);TickDevourMovers(r,dt);TickDevourGimmicks(r,ctx,dt);TickDevourSpills(ctx,dt);TickDevourGrowth(dt);if(devour_)TickDevourTrail(p,dt);
     if(devourOpenAll_){devourOpenAll_=false;for(int z=1;z<RingStyleCount;++z)DevourOpenRing(r,z);devourRingOpened_=0;}
     // 輪が開いたら大きく知らせる
     if(devourRingOpened_){life_.message=RingZones()[size_t(devourRingOpened_)].name+"が開いた！";life_.messageAge=3;devourRingOpened_=0;
@@ -594,6 +600,8 @@ void ChronoSystem::DevourMealSkin(std::vector<Engine::Renderer::FluidTendril>& a
 // 体の中に見えたまま、中心へ沈みながら溶けていく物を描く
 void ChronoSystem::DrawDevourMeals(GameContext& ctx){
     const auto& body=life_.bodies[0];if(body.mass<=0)return;
+    // 結果の「おなかの中」では、体の中の物の代わりに升の物を描く
+    if(finished_&&DevourShelfDive()>0){DrawDevourShelf3D(ctx);return;}
     // 吸い口へ飛んでくる物と、吸い込む風の筋
     V mouth=DevourVacuumMouth();
     for(const auto& suck:devourSucks_){const auto& prop=life_.props[suck.index];float u=std::min(1.f,suck.age/suck.flight),shrink=suck.toBody?1+.25f*std::sin(3.1415927f*u)-.3f*u:1-.75f*u;V at=DevourSuckAt(suck);
@@ -628,7 +636,7 @@ void ChronoSystem::DrawDevourUI(GameContext& ctx){
         // 結果画面: 大きさを巻尺で見せる。届かなかったら次の目標までの差を出す
         int rank=DevourRankAt(stage,body.mass);UI::Scale::ResultView view;view.stage=stage.name;view.cm=cm;view.won=won_;view.newBest=devourNewBest_;
         view.rank=rank?DevourRankName(stage,rank):"";view.goalCm=stage.goals.front();view.timeLeft=(std::max)(0.f,devourClock_.left);view.items=life_.absorbed;view.percent=total?eaten*100/total:0;
-        view.hasNext=won_&&devourStage_+1<int(DevourStages().size());view.live=true;
+        view.hasNext=won_&&devourStage_+1<int(DevourStages().size());view.live=true;view.inside=DevourShelfDive();
         // 体そのものを画面へ投影して端を取る (手前の面は奥より大きく映るので、中心の深さで測ると線がずれる)
         // 体とカメラが止まったら線も動かさない
         if(!resultScreenSet_||resultCameraAge_<kResultSettledAge){using namespace DirectX;const XMMATRIX viewProj=ctx.camera->View()*ctx.camera->Proj();std::vector<float> xs,ys;
@@ -647,13 +655,17 @@ void ChronoSystem::DrawDevourUI(GameContext& ctx){
                 resultLeft_+=(left-resultLeft_)*follow;resultRight_+=(right-resultRight_)*follow;resultTop_+=(top-resultTop_)*follow;}}
         view.bodyLeft=std::max(resultLeft_,490.f);view.bodyRight=std::min(resultRight_,1270.f);view.bodyTop=resultTop_;
         UI::Scale::Result(ui,view,finishAge_);
+        DrawDevourShelfUI(ctx,ui);
         // 終わった直後は、今までの表示を薄くしながら残す
         if(finishAge_>=.35f)return;
         ui.MultiplyAlpha(1-finishAge_/.35f);}
     // 物差しの表示へ渡す内容をまとめる
     {if(devourHudCm_<=0||cm<devourHudCm_*.5f)devourHudCm_=cm;devourHudCm_+=(cm-devourHudCm_)*(1-std::exp(-8*std::min(ctx.dt,.05f)));
         UI::Scale::HudView hud;const int rank=devourRank_;hud.stage=stage.name;hud.rank=rank?DevourRankName(stage,rank):"";hud.cm=cm;hud.shownCm=devourHudCm_;hud.time=devourClock_.left;hud.pulse=devourSizePulse_;
-        hud.flash=std::min(1.f,devourClock_.flash);hud.age=life_.age;hud.combo=devourClock_.combo;hud.comboKick=devourClock_.comboClock;hud.items=life_.absorbed;hud.percent=total?eaten*100/total:0;hud.bestBroken=bestMass>0&&body.mass>bestMass;
+        // ランクの知らせ: 残りの割合と、添える次の目標。チュートリアルの札と重なるので、その間は出さない
+        hud.flash=devourTutorial_.step<0?std::clamp(devourClock_.flash/UI::Scale::RankFlashSeconds,0.f,1.f):0.f;
+        if(rank>0)hud.flashNote=rank>=goalCount?std::string("Sランク達成！"):(rank==1?std::string("クリア！ "):std::string())+"次は "+DevourSizeText(stage.goals[size_t(rank)]);
+        hud.age=life_.age;hud.combo=devourClock_.combo;hud.comboKick=devourClock_.comboClock;hud.items=life_.absorbed;hud.percent=total?eaten*100/total:0;hud.bestBroken=bestMass>0&&body.mass>bestMass;
         // 目標の旗: まだ届いていないランクを全部立てる
         for(int i=rank;i<goalCount;++i)hud.flags.push_back({stage.goals[size_t(i)],DevourRankName(stage,i+1)+" "+DevourSizeText(stage.goals[size_t(i)]),true});
         // チュートリアルの間は段差の大きさを目標にして、時計を出さない
