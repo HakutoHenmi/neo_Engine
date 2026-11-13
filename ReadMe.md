@@ -110,6 +110,7 @@ PowerShell で、リポジトリのフォルダーから実行します。
 # ルールの単体テスト
 .\tests\Run-ChronoTests.ps1
 .\tests\Run-SlimeLifeTests.ps1
+.\tests\Run-SlimeTuningTests.ps1
 
 # 起動からタイトルの表示演出完了まで5秒未満か確認 (計測結果と画像は tests/out/)
 .\tests\Run-UISmoke.ps1 -Executable <ビルドした DirectXGameApp.exe> -Startup

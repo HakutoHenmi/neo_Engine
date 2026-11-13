@@ -2,6 +2,7 @@
 // スライムの生活モードの規則 (調合・体の動き・取り込み・成長・被弾と分裂)。エンジンに依存しない。
 #pragma once
 #include "ChronoRules.h"
+#include "../Data/SlimeTuning.h"
 #include <array>
 #include <cstdint>
 #include <vector>
@@ -22,43 +23,47 @@ enum class LifeMorphItem {None,Tire,Hydrant,Signal,Vacuum,Spring};
 // 以前は「変形に必要な量」「攻撃の長さ」「ダメージ」「形の番号」「表示名」「アイコン」「未解放・変形時の案内」が
 // それぞれ LifeAction の三項演算子の連鎖として 6 ファイルに散らばっていた。行動 1 つ分のデータをここに集める。
 // 行動を足すときは enum とこの表に 1 行足すだけで、各処理は表を引くだけで分岐しない。
-struct LifeActionData {
+struct LifeActionDefinition {
     const char* name;            // 表示名 (HUD・デバッグ表示)
     float requiredMass;          // 変形に必要な量 (0 なら変形ではない)
-    float weaponDuration;        // 攻撃の長さ (秒)
-    float weaponDamage;          // 武器のダメージ (大きさ 1 のとき)
     int fluidShape;              // 流体の形の番号 (0: 液体)
     const char* icon;            // 変形アイテムのアイコン (HUD)
     const char* lockedHint;      // 未解放のときの案内 (%d に必要な量が入る。nullptr なら出さない)
     const char* enterHint;       // 変形したときの案内 (戦闘モード)
     const char* enterHintDevour; // 変形したときの案内 (吸収モード。nullptr なら enterHint)
 };
-// LifeAction と同じ順に並べる
-inline constexpr std::array<LifeActionData,11> LifeActionTable{{
-    {"通常",0,.95f,20,0,"",nullptr,nullptr,nullptr},
-    {"取り込み中",0,.95f,20,0,"",nullptr,nullptr,nullptr},
-    {"ハンマー",LifeHammerMass,.58f,24,1,"","ゴミを吸い込んで本体%dまで育つと、ハンマーに変形できる",
+struct LifeActionData : LifeActionDefinition {
+    float weaponDuration;        // JSONで調整する攻撃の長さ (秒)
+    float weaponDamage;          // JSONで調整するダメージ (大きさ1)
+};
+// LifeAction と同じ順に並べる。識別子・表示文・解放条件は固定、戦闘の調整値はJSON。
+inline constexpr std::array<LifeActionDefinition,11> LifeActionTable{{
+    {"通常",0,0,"",nullptr,nullptr,nullptr},
+    {"取り込み中",0,0,"",nullptr,nullptr,nullptr},
+    {"ハンマー",LifeHammerMass,1,"","ゴミを吸い込んで本体%dまで育つと、ハンマーに変形できる",
         "ハンマー変形！ 左クリック・RTで叩きつけ (押し続けると連続) / R・Bで戻る","ハンマー変形！ 左クリック・RTで大きな物を砕く / 右クリック・LTで飛びかかりへ"},
-    {"剣",LifeSwordMass,.64f,16,2,"","本体%dまで育つと変形できる","剣変形！ 左クリック・RTで横なぎ / R・Bで戻る",nullptr},
-    {"飛行機",LifePlaneMass,.95f,20,3,"","本体%dまで育つと変形できる","飛行機変形！ 左クリック・RTで突撃 / R・Bで戻る",nullptr},
-    {"タイヤ",1,.95f,20,4,"form_tire","大通りの金色に光るタイヤを吸収すると、タイヤ変形が解放される",
+    {"剣",LifeSwordMass,2,"","本体%dまで育つと変形できる","剣変形！ 左クリック・RTで横なぎ / R・Bで戻る",nullptr},
+    {"飛行機",LifePlaneMass,3,"","本体%dまで育つと変形できる","飛行機変形！ 左クリック・RTで突撃 / R・Bで戻る",nullptr},
+    {"タイヤ",1,4,"form_tire","大通りの金色に光るタイヤを吸収すると、タイヤ変形が解放される",
         "タイヤ変形！ 左クリック・RT長押しで回転を溜め、離して突進 / R・Bで戻る","タイヤ変形！ 転がるだけで通り道を吸い込む / 溜め突進で大きな物を砕く"},
-    {"消火栓",1,.95f,20,5,"","火事場の金色に光る消火栓を吸収すると、放水攻撃と防御を解放","消火栓変形！ 左クリック・RTで放水 / 右クリック・LTで水の防御 / R・Bで戻る",nullptr},
-    {"復元中",0,.95f,20,0,"",nullptr,nullptr,nullptr},
-    {"信号機",1,.95f,20,6,"","交差点の金色に光る信号機を吸収すると、信号機変形を解放","信号機変形！ 左クリック・RTで 赤 → 青 → 黄 の順に信号を出す / R・Bで戻る",nullptr},
-    {"掃除機",1,.95f,20,7,"form_vacuum","住宅街の大通りの金色に光る掃除機を吸収すると、掃除機変形が解放される","掃除機変形！ 左クリック・RT長押しで前の小物を吸い込む",nullptr},
-    {"バネ",1,.95f,20,8,"form_spring","商店街の大通りの金色に光るバネを吸収すると、バネ変形が解放される","バネ変形！ 左クリック・RT長押しで溜めて、離すと建物を飛び越える",nullptr},
+    {"消火栓",1,5,"","火事場の金色に光る消火栓を吸収すると、放水攻撃と防御を解放","消火栓変形！ 左クリック・RTで放水 / 右クリック・LTで水の防御 / R・Bで戻る",nullptr},
+    {"復元中",0,0,"",nullptr,nullptr,nullptr},
+    {"信号機",1,6,"","交差点の金色に光る信号機を吸収すると、信号機変形を解放","信号機変形！ 左クリック・RTで 赤 → 青 → 黄 の順に信号を出す / R・Bで戻る",nullptr},
+    {"掃除機",1,7,"form_vacuum","住宅街の大通りの金色に光る掃除機を吸収すると、掃除機変形が解放される","掃除機変形！ 左クリック・RT長押しで前の小物を吸い込む",nullptr},
+    {"バネ",1,8,"form_spring","商店街の大通りの金色に光るバネを吸収すると、バネ変形が解放される","バネ変形！ 左クリック・RT長押しで溜めて、離すと建物を飛び越える",nullptr},
 }};
-inline const LifeActionData& LifeActionInfo(LifeAction action){
-    const size_t index=size_t(action);
-    return LifeActionTable[index<LifeActionTable.size()?index:0];
+inline LifeActionData LifeActionInfo(LifeAction action){
+    static_assert(LifeActionTable.size()==std::size(Data::WeaponKeys),"行動と調整値の順序をそろえる");
+    const size_t index=size_t(action)<LifeActionTable.size()?size_t(action):0;
+    const auto settings=Data::SlimeSettings();
+    return {LifeActionTable[index],settings->weapons[index].duration,settings->weapons[index].damage};
 }
 // 変形したときの案内 (モードで違う場合は吸収モード用を使う)
 inline const char* LifeEnterHint(LifeAction action,bool devour){
     const auto& info=LifeActionInfo(action);return devour&&info.enterHintDevour?info.enterHintDevour:info.enterHint;
 }
 // 変形に必要な量 / 量が足りるか
-inline float LifeRequiredMass(LifeAction action){return LifeActionInfo(action).requiredMass;}
+inline float LifeRequiredMass(LifeAction action){const size_t i=size_t(action);return LifeActionTable[i<LifeActionTable.size()?i:0].requiredMass;}
 inline bool LifeCanMorph(float mass,LifeAction action){
     return LifeRequiredMass(action)>0&&mass>=LifeRequiredMass(action);
 }
@@ -86,31 +91,40 @@ struct SlimeRecipe {
     std::array<int,4> mix{40,35,25,0};
     SlimeColor color;
     // 材料の割合 (合計に対する)
+    float RecipeValue(Data::RecipeParameter parameter)const {
+        const auto settings=Data::SlimeSettings();
+        return RecipeValue(settings->recipe[size_t(parameter)]);
+    }
+    float RecipeValue(const Data::RecipeCurve& curve)const {
+        float value=curve.base;
+        for(size_t i=0;i<curve.materials.size();++i)value+=curve.materials[i]*Ratio(int(i));
+        return value;
+    }
     float Ratio(int i)const {return float(mix[size_t(i)])/float(std::max(1,mix[0]+mix[1]+mix[2]+mix[3]));}
     // 移動の速さ・加速・減速・重力・跳ねる高さ・反発
-    float Speed()const {return 1.2f*(8+20*Ratio(0)-2*Ratio(2)+6*Ratio(3));}
-    float Acceleration()const {return 7+13*Ratio(0)-2*Ratio(2)+3*Ratio(1);}
-    float Braking()const {return 10-6*Ratio(0)+5*Ratio(2);}
-    float Gravity()const {return 30-16*Ratio(3);}
-    float Bounce()const {return 8+16*Ratio(1)+7*Ratio(3);}
-    float Rebound()const {return Ratio(1)>=.5f?3+4*Ratio(1):0;}
+    float Speed()const {const auto s=Data::SlimeSettings();return s->speedScale*RecipeValue(s->recipe[size_t(Data::RecipeParameter::Speed)]);}
+    float Acceleration()const {return RecipeValue(Data::RecipeParameter::Acceleration);}
+    float Braking()const {return RecipeValue(Data::RecipeParameter::Braking);}
+    float Gravity()const {return RecipeValue(Data::RecipeParameter::Gravity);}
+    float Bounce()const {return RecipeValue(Data::RecipeParameter::Bounce);}
+    float Rebound()const {const auto s=Data::SlimeSettings();return Ratio(1)>=s->reboundThreshold?RecipeValue(s->recipe[size_t(Data::RecipeParameter::Rebound)]):0;}
     // 取り込みの時間・距離・正面の広さ・つかみ続ける余裕
-    float AbsorbDuration()const {return .48f-.14f*Ratio(0)-.30f*Ratio(2)+.06f*Ratio(1);}
-    float AbsorbRange()const {return 8.f*(1+.85f*Ratio(0));}
-    float AbsorbDot()const {return .35f-.23f*Ratio(0);}
-    float AbsorbHold()const {return 1+2*Ratio(2);}
+    float AbsorbDuration()const {return RecipeValue(Data::RecipeParameter::AbsorbDuration);}
+    float AbsorbRange()const {return RecipeValue(Data::RecipeParameter::AbsorbRange);}
+    float AbsorbDot()const {return RecipeValue(Data::RecipeParameter::AbsorbDot);}
+    float AbsorbHold()const {return RecipeValue(Data::RecipeParameter::AbsorbHold);}
     // 踏みつけのダメージと範囲
-    float StompDamage()const {return 12+42*Ratio(1);}
-    float StompRadius()const {return 3.2f+4.8f*Ratio(1);}
+    float StompDamage()const {return RecipeValue(Data::RecipeParameter::StompDamage);}
+    float StompRadius()const {return RecipeValue(Data::RecipeParameter::StompRadius);}
     // 被ダメージの倍率・分裂の量・子の速さ・子の攻撃
-    float DamageMultiplier()const {return 1+.35f*(Ratio(0)-.4f)+.8f*Ratio(3)-.4f*(Ratio(2)-.25f);}
-    float SplitCap()const {return 20+12*(Ratio(0)-.4f)+10*Ratio(3)-8*(Ratio(2)-.25f);}
-    float SplitRatio()const {return .25f+.18f*(Ratio(0)-.4f)+.12f*Ratio(3)-.1f*(Ratio(2)-.25f);}
-    float ChildSpeed()const {return Speed()*(1+1.3f*Ratio(3));}
-    float ChildCooldown()const {return .95f/(1+2.5f*Ratio(3));}
-    float ChildDamage()const {return 6+5*Ratio(3);}
+    float DamageMultiplier()const {return RecipeValue(Data::RecipeParameter::DamageMultiplier);}
+    float SplitCap()const {return RecipeValue(Data::RecipeParameter::SplitCap);}
+    float SplitRatio()const {return RecipeValue(Data::RecipeParameter::SplitRatio);}
+    float ChildSpeed()const {return Speed()*RecipeValue(Data::RecipeParameter::ChildSpeedMultiplier);}
+    float ChildCooldown()const {const auto s=Data::SlimeSettings();return s->childCooldown/RecipeValue(s->recipe[size_t(Data::RecipeParameter::ChildCooldownDivisor)]);}
+    float ChildDamage()const {return RecipeValue(Data::RecipeParameter::ChildDamage);}
     // 一番多い材料で決まる型・名前・得意・注意
-    int Style()const {int best=0;for(int i=1;i<4;++i)if(mix[size_t(i)]>mix[size_t(best)])best=i;return Ratio(best)>=.5f?best:-1;}
+    int Style()const {int best=0;for(int i=1;i<4;++i)if(mix[size_t(i)]>mix[size_t(best)])best=i;return Ratio(best)>=Data::SlimeSettings()->styleThreshold?best:-1;}
     // 型ごとの名前・得意・注意 (データテーブル。先頭がバランス型、以降は Style() の 0〜3)
     struct StyleText {const char* name;const char* strength;const char* weakness;};
     const StyleText& StyleInfo()const {
@@ -125,12 +139,12 @@ struct SlimeRecipe {
     const char* Strength()const {return StyleInfo().strength;}
     const char* Weakness()const {return StyleInfo().weakness;}
     // 液体の見た目の値 (広がり・粘性・減衰・まとまり・表面張力・揺れ)
-    float Spread()const {return 1+.6f*Ratio(0)-.25f*Ratio(1)-.15f*Ratio(2)+.3f*Ratio(3);}
-    float Viscosity()const {return 3+105*Ratio(2)+28*Ratio(1);}
-    float Damping()const {return 1.5f+7*Ratio(2)+2*Ratio(1);}
-    float Cohesion()const {return 30+65*Ratio(1)+25*Ratio(2);}
-    float SurfaceTension()const {return 8+45*Ratio(2)+18*Ratio(1);}
-    float Slosh()const {return 1.2f+1.6f*Ratio(0)-.65f*Ratio(2)-.7f*Ratio(1);}
+    float Spread()const {return RecipeValue(Data::RecipeParameter::Spread);}
+    float Viscosity()const {return RecipeValue(Data::RecipeParameter::Viscosity);}
+    float Damping()const {return RecipeValue(Data::RecipeParameter::Damping);}
+    float Cohesion()const {return RecipeValue(Data::RecipeParameter::Cohesion);}
+    float SurfaceTension()const {return RecipeValue(Data::RecipeParameter::SurfaceTension);}
+    float Slosh()const {return RecipeValue(Data::RecipeParameter::Slosh);}
 };
 // 武器の攻撃の状態 (時間・先行入力・攻撃中か・形ができたか)
 struct LifeWeaponAttack {
@@ -162,7 +176,7 @@ struct LifeBody {
     // 縦横比・空中の割合・動きの量
     float aspect=1,aspectVelocity=0,air=0,motion=0;
     // 量・体力・待ち時間・時間・行動の時間・成長の予約・戻る長さ
-    float mass=0,health=0,maxHealth=0,cooldown=0,age=0,actionAge=0,pendingGrowth=0,restoreDuration=.4f;
+    float mass=0,health=0,maxHealth=0,cooldown=0,age=0,actionAge=0,pendingGrowth=0,restoreDuration=Data::SlimeSettings()->restoreSeconds;
     // 取り込みの目標
     uint32_t target=0xffffffffu;
     LifeAction action=LifeAction::Idle;
@@ -393,7 +407,7 @@ inline bool LifeAddGrab(SlimeLife& life,LifeBody& body,uint32_t target,Vec at,fl
         reward<=0||life.ReservedMass()+reward>LifeMaxMass||LifeTargetReserved(life,target)||
         !LifeCanAbsorb(body.mass,required,hp,maxHp)||!LifeInMouth(body.at,body.forward,at,body.mass,0,life.recipe))return false;
     // 待機なら取り込みを始める
-    if(body.action==LifeAction::Idle){body.grabs.clear();body.grabOrigin=body.at;body.action=LifeAction::Engulf;body.actionAge=0;body.committed=false;body.restoreDuration=.12f;}
+    if(body.action==LifeAction::Idle){body.grabs.clear();body.grabOrigin=body.at;body.action=LifeAction::Engulf;body.actionAge=0;body.committed=false;body.restoreDuration=Data::SlimeSettings()->engulfRestoreSeconds;}
     body.grabs.push_back({target,at,reward});return true;
 }
 // つかんだ対象を持ち続けられるか

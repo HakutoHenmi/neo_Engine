@@ -235,6 +235,8 @@ exit /b %ERRORLEVEL%</Command>
     <ClInclude Include="Game\Components\UIComponents.h" />
     <ClInclude Include="Game\Data\GameConfig.h" />
     <ClInclude Include="Game\Data\GameData.h" />
+    <ClInclude Include="Game\Data\SlimeTuning.h" />
+    <ClInclude Include="Game\Editor\SlimeTuningUI.h" />
     <ClInclude Include="Game\Data\Collection.h" />
     <ClInclude Include="Game\UI\CollectionUI.h" />
     <ClInclude Include="Game\Scenes\AssignmentConfig.h" />

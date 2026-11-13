@@ -284,6 +284,12 @@
     <ClInclude Include="Game\Data\GameData.h">
       <Filter>1. Main（入口・共通定義）\Data（JSON の読み込み）</Filter>
     </ClInclude>
+    <ClInclude Include="Game\Data\SlimeTuning.h">
+      <Filter>1. Main（入口・共通定義）\Data（JSON の読み込み）</Filter>
+    </ClInclude>
+    <ClInclude Include="Game\Editor\SlimeTuningUI.h">
+      <Filter>8. Editor（エディタ）</Filter>
+    </ClInclude>
     <ClInclude Include="Game\Data\Collection.h">
       <Filter>1. Main（入口・共通定義）\Data（JSON の読み込み）</Filter>
     </ClInclude>

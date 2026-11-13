@@ -1,0 +1,322 @@
+{
+  "version": 1,
+  "_comment": "Slime Dev Toolsで編集・保存可能。recipeは基本値 + materialsの係数 × 材料の割合。materialsの順序は 水 / ホウ砂水 / 洗濯のり / 泡。",
+  "scalars": {
+    "speedScale": 1.2,
+    "reboundThreshold": 0.5,
+    "styleThreshold": 0.5,
+    "childCooldown": 0.95,
+    "restoreSeconds": 0.4,
+    "engulfRestoreSeconds": 0.12,
+    "attackBufferSeconds": 0.24,
+    "turnResponse": 14,
+    "turnRadiansPerSecond": 6,
+    "tireSpeedScale": 2.1,
+    "tireSizeSpeedMax": 0.5,
+    "tireSizeSpeedRate": 0.08,
+    "tireAcceleration": 2.4,
+    "tireBraking": 1.7,
+    "tireAirControl": 0.35,
+    "tireChargeSeconds": 1.1,
+    "tireMinCharge": 0.15,
+    "tireSpinMax": 42,
+    "tireDashSeconds": 0.4,
+    "tireDashChargeSeconds": 0.6,
+    "tireDashSpeed": 1.7,
+    "tireDashChargeSpeed": 1.8,
+    "tireDashDamage": 22,
+    "tireDashChargeDamage": 48,
+    "tireGateDamage": 45,
+    "tireGateChargeDamage": 75,
+    "cameraBlendSeconds": 0.45,
+    "cameraFrameFraction": 0.62,
+    "cameraMinDistance": 17,
+    "cameraPadding": 1.5
+  },
+  "recipe": {
+    "Speed": {
+      "base": 8,
+      "materials": [
+        20,
+        0,
+        -2,
+        6
+      ]
+    },
+    "Acceleration": {
+      "base": 7,
+      "materials": [
+        13,
+        3,
+        -2,
+        0
+      ]
+    },
+    "Braking": {
+      "base": 10,
+      "materials": [
+        -6,
+        0,
+        5,
+        0
+      ]
+    },
+    "Gravity": {
+      "base": 30,
+      "materials": [
+        0,
+        0,
+        0,
+        -16
+      ]
+    },
+    "Bounce": {
+      "base": 8,
+      "materials": [
+        0,
+        16,
+        0,
+        7
+      ]
+    },
+    "Rebound": {
+      "base": 3,
+      "materials": [
+        0,
+        4,
+        0,
+        0
+      ]
+    },
+    "AbsorbDuration": {
+      "base": 0.48,
+      "materials": [
+        -0.14,
+        0.06,
+        -0.3,
+        0
+      ]
+    },
+    "AbsorbRange": {
+      "base": 8,
+      "materials": [
+        6.8,
+        0,
+        0,
+        0
+      ]
+    },
+    "AbsorbDot": {
+      "base": 0.35,
+      "materials": [
+        -0.23,
+        0,
+        0,
+        0
+      ]
+    },
+    "AbsorbHold": {
+      "base": 1,
+      "materials": [
+        0,
+        0,
+        2,
+        0
+      ]
+    },
+    "StompDamage": {
+      "base": 12,
+      "materials": [
+        0,
+        42,
+        0,
+        0
+      ]
+    },
+    "StompRadius": {
+      "base": 3.2,
+      "materials": [
+        0,
+        4.8,
+        0,
+        0
+      ]
+    },
+    "DamageMultiplier": {
+      "base": 0.96,
+      "materials": [
+        0.35,
+        0,
+        -0.4,
+        0.8
+      ]
+    },
+    "SplitCap": {
+      "base": 17.2,
+      "materials": [
+        12,
+        0,
+        -8,
+        10
+      ]
+    },
+    "SplitRatio": {
+      "base": 0.203,
+      "materials": [
+        0.18,
+        0,
+        -0.1,
+        0.12
+      ]
+    },
+    "ChildSpeedMultiplier": {
+      "base": 1,
+      "materials": [
+        0,
+        0,
+        0,
+        1.3
+      ]
+    },
+    "ChildCooldownDivisor": {
+      "base": 1,
+      "materials": [
+        0,
+        0,
+        0,
+        2.5
+      ]
+    },
+    "ChildDamage": {
+      "base": 6,
+      "materials": [
+        0,
+        0,
+        0,
+        5
+      ]
+    },
+    "Spread": {
+      "base": 1,
+      "materials": [
+        0.6,
+        -0.25,
+        -0.15,
+        0.3
+      ]
+    },
+    "Viscosity": {
+      "base": 3,
+      "materials": [
+        0,
+        28,
+        105,
+        0
+      ]
+    },
+    "Damping": {
+      "base": 1.5,
+      "materials": [
+        0,
+        2,
+        7,
+        0
+      ]
+    },
+    "Cohesion": {
+      "base": 30,
+      "materials": [
+        0,
+        65,
+        25,
+        0
+      ]
+    },
+    "SurfaceTension": {
+      "base": 8,
+      "materials": [
+        0,
+        18,
+        45,
+        0
+      ]
+    },
+    "Slosh": {
+      "base": 1.2,
+      "materials": [
+        1.6,
+        -0.7,
+        -0.65,
+        0
+      ]
+    }
+  },
+  "weapons": {
+    "Idle": {
+      "duration": 0.95,
+      "damage": 20,
+      "hitBegin": 0,
+      "hitEnd": 0
+    },
+    "Engulf": {
+      "duration": 0.95,
+      "damage": 20,
+      "hitBegin": 0,
+      "hitEnd": 0
+    },
+    "Hammer": {
+      "duration": 0.58,
+      "damage": 24,
+      "hitBegin": 0.19,
+      "hitEnd": 0.4
+    },
+    "Sword": {
+      "duration": 0.64,
+      "damage": 16,
+      "hitBegin": 0.14,
+      "hitEnd": 0.43
+    },
+    "Plane": {
+      "duration": 0.95,
+      "damage": 20,
+      "hitBegin": 0.18,
+      "hitEnd": 0.72
+    },
+    "Tire": {
+      "duration": 0.95,
+      "damage": 20,
+      "hitBegin": 0,
+      "hitEnd": 0
+    },
+    "Hydrant": {
+      "duration": 0.95,
+      "damage": 20,
+      "hitBegin": 0,
+      "hitEnd": 0
+    },
+    "Restore": {
+      "duration": 0.95,
+      "damage": 20,
+      "hitBegin": 0,
+      "hitEnd": 0
+    },
+    "Signal": {
+      "duration": 0.95,
+      "damage": 20,
+      "hitBegin": 0,
+      "hitEnd": 0
+    },
+    "Vacuum": {
+      "duration": 0.95,
+      "damage": 20,
+      "hitBegin": 0,
+      "hitEnd": 0
+    },
+    "Spring": {
+      "duration": 0.95,
+      "damage": 20,
+      "hitBegin": 0,
+      "hitEnd": 0
+    }
+  }
+}

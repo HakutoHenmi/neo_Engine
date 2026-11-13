@@ -321,7 +321,7 @@ void TestTireCharge(){
     for(int i=0;i<3;++i){LifeTickTireCharge(body,true,1.f/60);velocity=LifeTireChargeVelocity(body,velocity,{},recipe,true,1.f/60);}
     CheckLife(!LifeTickTireCharge(body,false,1.f/60)&&body.weapon.dash==0,"a tap dashed without enough charge");
     for(int i=0;i<120;++i){LifeTickTireCharge(body,true,1.f/60);velocity=LifeTireChargeVelocity(body,velocity,{},recipe,true,1.f/60);body.tireSpin=LifeTireSpinRate(body,1.f/60);}
-    CheckLife(body.weapon.charge==1&&Length(velocity)<1&&body.tireSpin>LifeTireSpinMax*.8f,"charging does not stop in place and spin up");
+    CheckLife(body.weapon.charge==1&&Length(velocity)<1&&body.tireSpin>Game::Data::SlimeSettings()->tireSpinMax*.8f,"charging does not stop in place and spin up");
     CheckLife(LifeTickTireCharge(body,false,1.f/60)&&body.weapon.dashPower==1&&body.weapon.dash>0,"release did not start a full dash");
     velocity=LifeTireChargeVelocity(body,velocity,{},recipe,true,1.f/60);
     Vec roll=LifeTireMoveVelocity(body,{},{0,0,1},recipe,true,10);

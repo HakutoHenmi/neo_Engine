@@ -16,8 +16,8 @@ inline void LifeRetargetWeapon(LifeBody& body){
 }
 // スライムに戻る (取り込み中なら早く戻る)
 inline void LifeReturnToSlime(LifeBody& body){
-    // 取り込みからは早く、それ以外は 0.4 秒で戻る
-    body.restoreDuration=body.action==LifeAction::Engulf?.12f:.4f;
+    const auto tuning=Data::SlimeSettings();
+    body.restoreDuration=body.action==LifeAction::Engulf?tuning->engulfRestoreSeconds:tuning->restoreSeconds;
     body.action=LifeAction::Restore;body.actionAge=0;body.target=0xffffffffu;body.grabs.clear();body.weapon={};
 }
 // 武器に変形する (大きさが足りなければ false)
@@ -30,8 +30,9 @@ inline bool LifeEnterWeapon(LifeBody& body,LifeAction form,Vec facing){
 inline Vec LifeWeaponFacing(Vec facing,Vec desired,float dt){
     // 今のヨーと目標の角度の差
     float yaw=std::atan2(facing.x,facing.z),delta=std::remainder(std::atan2(desired.x,desired.z)-yaw,6.2831853f);
-    // 1 秒に 6 ラジアンまでで回す
-    yaw+=std::clamp(delta*(1-std::exp(-14*dt)),-6*dt,6*dt);
+    const auto tuning=Data::SlimeSettings();
+    const float limit=tuning->turnRadiansPerSecond*dt;
+    yaw+=std::clamp(delta*(1-std::exp(-tuning->turnResponse*dt)),-limit,limit);
     return {std::sin(yaw),0,std::cos(yaw)};
 }
 // カメラの向きを向く形か / 体の向きを更新する (タイヤはゆっくり曲がる)
@@ -68,31 +69,33 @@ inline Vec LifeTirePose(Vec point,float angle){
 inline Vec LifeTireMoveVelocity(const LifeBody& body,Vec velocity,Vec wish,const SlimeRecipe& recipe,bool grounded,float dt,float speedScale=1){
     // 入力の量と最高速
     float amount=std::min(1.f,Length(wish));
-    float top=recipe.Speed()*(2.1f+std::min(.5f,.08f*LifeScale(body.mass)))*speedScale;
+    const auto tuning=Data::SlimeSettings();
+    float top=recipe.Speed()*(tuning->tireSpeedScale+std::min(tuning->tireSizeSpeedMax,tuning->tireSizeSpeedRate*LifeScale(body.mass)))*speedScale;
     // 加速の速さ (空中は弱い)
-    float rate=amount>.05f?2.4f:1.7f;rate*=grounded?1.f:.35f;
+    float rate=amount>.05f?tuning->tireAcceleration:tuning->tireBraking;rate*=grounded?1.f:tuning->tireAirControl;
     // 前方向の目標の速度へ近づける
     float blend=1-std::exp(-rate*dt);Vec goal=body.forward*(top*amount);
     velocity.x+=(goal.x-velocity.x)*blend;velocity.z+=(goal.z-velocity.z)*blend;return velocity;
 }
 // タイヤの溜めと突進: 溜めきる時間・突進できる最小の溜め・溜めたときの最高の回転の速さ
-inline constexpr float LifeTireChargeTime=1.1f,LifeTireMinCharge=.15f,LifeTireSpinMax=42;
+// 調整値は Data::SlimeSettings() から取得する。
 // 突進の長さと速さ (溜めが強いほど長く速い)
-inline float LifeTireDashDuration(float power){return .4f+.6f*power;}
+inline float LifeTireDashDuration(float power){const auto s=Data::SlimeSettings();return s->tireDashSeconds+s->tireDashChargeSeconds*power;}
 inline float LifeTireDashSpeed(const LifeBody& body,const SlimeRecipe& recipe,float power,float speedScale=1){
-    return recipe.Speed()*(2.1f+std::min(.5f,.08f*LifeScale(body.mass)))*(1.7f+1.8f*power)*speedScale;
+    const auto s=Data::SlimeSettings();
+    return recipe.Speed()*(s->tireSpeedScale+std::min(s->tireSizeSpeedMax,s->tireSizeSpeedRate*LifeScale(body.mass)))*(s->tireDashSpeed+s->tireDashChargeSpeed*power)*speedScale;
 }
 // 突進が敵に与えるダメージ / バリケードや門に与えるダメージ
-inline float LifeTireDashDamage(const LifeBody& body,float power){return (22+48*power)*LifeScale(body.mass);}
-inline float LifeTireDashGateDamage(float power){return 45+75*power;}
+inline float LifeTireDashDamage(const LifeBody& body,float power){const auto s=Data::SlimeSettings();return (s->tireDashDamage+s->tireDashChargeDamage*power)*LifeScale(body.mass);}
+inline float LifeTireDashGateDamage(float power){const auto s=Data::SlimeSettings();return s->tireGateDamage+s->tireGateChargeDamage*power;}
 // タイヤの溜めを進める。押している間はその場で回転を溜め、離したら溜めの分だけ突進を始める (始めたら true)
 inline bool LifeTickTireCharge(LifeBody& body,bool held,float dt){
     auto& w=body.weapon;w.dash=std::max(0.f,w.dash-dt);
     if(body.action!=LifeAction::Tire||!w.ready){w.charging=false;w.charge=0;return false;}
     // 突進の最中は溜め直せない
-    if(held&&w.dash<=0){w.charging=true;w.charge=std::min(1.f,w.charge+dt/LifeTireChargeTime);return false;}
+    if(held&&w.dash<=0){w.charging=true;w.charge=std::min(1.f,w.charge+dt/Data::SlimeSettings()->tireChargeSeconds);return false;}
     if(!held&&w.charging){w.charging=false;float power=w.charge;w.charge=0;
-        if(power>=LifeTireMinCharge){w.dashPower=power;w.dash=LifeTireDashDuration(power);return true;}}
+        if(power>=Data::SlimeSettings()->tireMinCharge){w.dashPower=power;w.dash=LifeTireDashDuration(power);return true;}}
     return false;
 }
 // 溜めている間は止まり、突進中は前へ一気に進む (向きは少しだけ曲げられる)。それ以外は普通に転がる
@@ -110,7 +113,7 @@ inline Vec LifeTireChargeVelocity(LifeBody& body,Vec velocity,Vec wish,const Sli
 }
 // その場の回転の速さ: 溜めている間は溜めに合わせて上がり、離すと落ちる
 inline float LifeTireSpinRate(const LifeBody& body,float dt){
-    float goal=body.weapon.charging?LifeTireSpinMax*(.25f+.75f*body.weapon.charge):0;
+    float goal=body.weapon.charging?Data::SlimeSettings()->tireSpinMax*(.25f+.75f*body.weapon.charge):0;
     return body.tireSpin+(goal-body.tireSpin)*(1-std::exp(-(body.weapon.charging?6.f:3.f)*dt));
 }
 // カメラが映す対象と、それが画面に収まるカメラの距離
@@ -119,17 +122,19 @@ struct LifeCameraSubject {Vec center{};float radius=1;};
 // (カメラは壁や体から 0.5 以上離れるので、0.3 でも手前が欠けない)
 inline constexpr float LifeCameraNear=.3f;
 // 液体と武器の形を行き来するときに、カメラの構図をつなぐ時間
-inline constexpr float LifeCameraBlendSeconds=.45f;
+// 構図の切り替え時間は Data::SlimeSettings()->cameraBlendSeconds。
 inline float LifeCameraDistance(float radius,float fovY,float aspect){
-    // 対象全体を、画面の短い方の 62% の中に収める
+    // 対象全体を、調整した画面の占有率の中に収める
     // 画角と比率から、対象が収まる距離
     float tangent=std::tan(fovY*.5f)*std::min(1.f,std::max(.1f,aspect));
-    float halfAngle=std::atan(tangent*.62f);
-    return std::max(17.f,(radius+1.5f)/std::sin(halfAngle));
+    const auto s=Data::SlimeSettings();
+    float halfAngle=std::atan(tangent*s->cameraFrameFraction);
+    return std::max(s->cameraMinDistance,(radius+s->cameraPadding)/std::sin(halfAngle));
 }
 // 武器ごとの攻撃の長さ
 inline float LifeWeaponDuration(LifeAction form){
-    return LifeActionInfo(form).weaponDuration;
+    const size_t i=size_t(form)<std::size(Data::WeaponKeys)?size_t(form):0;
+    return Data::SlimeSettings()->weapons[i].duration;
 }
 // 変形の完成と攻撃の時間は別。先行入力は回復の時間の間だけ残る。
 // ハンマーは押し続ければ、押し直さなくても繰り返す
@@ -138,8 +143,8 @@ inline bool LifeTickWeapon(SlimeLife& life,LifeBody& body,float dt,bool pressed,
     // タイヤと消火栓は攻撃の時間が無い (形ができたかだけ記録する)
     if(body.action==LifeAction::Tire||body.action==LifeAction::Hydrant||body.action==LifeAction::Signal||body.action==LifeAction::Vacuum||body.action==LifeAction::Spring){body.weapon.ready|=formed;return false;}
     auto& attack=body.weapon;attack.ready|=formed;
-    // 先行入力は 0.24 秒残る
-    attack.buffer=pressed?.24f:std::max(0.f,attack.buffer-dt);
+    // 先行入力は調整した時間だけ残る
+    attack.buffer=pressed?Data::SlimeSettings()->attackBufferSeconds:std::max(0.f,attack.buffer-dt);
     attack.previousAge=attack.age;
     // 攻撃中なら時間を進め、終わったら止める
     if(attack.active){
@@ -214,10 +219,10 @@ inline bool LifeWeaponHitInterval(const LifeBody& body,int pulse,float& from,flo
     if(!body.weapon.active||pulse!=0)return false;
     float begin=0,end=0;
     // 武器ごとの当たりの時間の範囲
-    if(body.action==LifeAction::Hammer){if(pulse)return false;begin=.19f;end=.40f;}
-    else if(body.action==LifeAction::Sword){begin=.14f;end=.43f;}
-    else if(body.action==LifeAction::Plane){begin=.18f;end=.72f;}
-    else return false;
+    if(body.action!=LifeAction::Hammer&&body.action!=LifeAction::Sword&&body.action!=LifeAction::Plane)return false;
+    const auto settings=Data::SlimeSettings();
+    const auto& weapon=settings->weapons[size_t(body.action)];
+    begin=weapon.hitBegin;end=weapon.hitEnd;
     // 前のフレームから今のフレームまでの範囲と重なる部分
     from=std::max(begin,body.weapon.previousAge);to=std::min(end,body.weapon.age);return to>=from;
 }
@@ -245,6 +250,7 @@ inline bool LifeWeaponTouches(const LifeBody& body,Vec target,float targetRadius
 }
 // 武器のダメージ (体の大きさに比例する)
 inline float LifeWeaponDamage(const LifeBody& body){
-    return LifeActionInfo(body.action).weaponDamage*LifeScale(body.mass);
+    const size_t i=size_t(body.action)<std::size(Data::WeaponKeys)?size_t(body.action):0;
+    return Data::SlimeSettings()->weapons[i].damage*LifeScale(body.mass);
 }
 }
