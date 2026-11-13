@@ -53,23 +53,8 @@ float SlimeDevTools::massInput_ = Chrono::LifeStartMass;
 
 // このファイルの中だけで使う関数
 namespace {
-// スライムの形態の表示名
-const char* ActionName(Chrono::LifeAction action) {
-	switch (action) {
-	case Chrono::LifeAction::Idle: return "通常";
-	case Chrono::LifeAction::Engulf: return "取り込み中";
-	case Chrono::LifeAction::Hammer: return "ハンマー";
-	case Chrono::LifeAction::Sword: return "剣";
-	case Chrono::LifeAction::Plane: return "飛行機";
-	case Chrono::LifeAction::Tire: return "タイヤ";
-	case Chrono::LifeAction::Hydrant: return "消火栓";
-	case Chrono::LifeAction::Restore: return "復元中";
-	case Chrono::LifeAction::Signal: return "信号機";
-	case Chrono::LifeAction::Vacuum: return "掃除機";
-	case Chrono::LifeAction::Spring: return "バネ";
-	}
-	return "?";
-}
+// スライムの形態の表示名 (行動のデータテーブル LifeActionTable から引く)
+const char* ActionName(Chrono::LifeAction action) { return Chrono::LifeActionInfo(action).name; }
 
 // 文字列が指定の文字で始まるか
 bool StartsWith(const std::string& s, const char* prefix) { return s.rfind(prefix, 0) == 0; }

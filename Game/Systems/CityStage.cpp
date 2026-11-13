@@ -42,10 +42,15 @@ void ChronoSystem::BuildCityStage(entt::registry& r){
     {CityModel flat;flat.texture=white_;flat.extra={render->LoadTexture2D("Resources/Textures/PBR/NeutralNormal.png",false),white_,white_};surfaces.fill(flat);}
     Engine::LoadProfile::Record("mark","city: surfaces requested",0);
     // 材質ごとの色の補正
-    auto tint=[](int i)->DirectX::XMFLOAT4{
-        // 塗装は明るく、黄色の塗装・ガラス・金属・道路は色を変える
-        switch(i){case CityPaint:return {2.5f,2.5f,2.45f,1};case CityPaintYellow:return {2.5f,1.85f,.45f,1};case CityAlleyFloor:return {1.3f,1.28f,1.25f,1};case CityGlass:return {.2f,.26f,.33f,1};
-            case CityMetal:return {.24f,.25f,.27f,1};case CityRoad:return {.85f,.85f,.85f,1};case CityScorch:return {.16f,.14f,.13f,1};default:return {1,1,1,1};}};
+    // 塗装は明るく、黄色の塗装・ガラス・金属・道路は色を変える。補正する材質と色の組のデータから、材質の番号で引く表を作る
+    static const auto tintTable=[]{
+        struct Override {int material;DirectX::XMFLOAT4 color;};
+        static constexpr Override overrides[]={{CityPaint,{2.5f,2.5f,2.45f,1}},{CityPaintYellow,{2.5f,1.85f,.45f,1}},{CityAlleyFloor,{1.3f,1.28f,1.25f,1}},
+            {CityGlass,{.2f,.26f,.33f,1}},{CityMetal,{.24f,.25f,.27f,1}},{CityRoad,{.85f,.85f,.85f,1}},{CityScorch,{.16f,.14f,.13f,1}}};
+        std::array<DirectX::XMFLOAT4,CityMaterialCount> table;table.fill({1,1,1,1});
+        for(const auto& o:overrides)table[size_t(o.material)]=o.color;
+        return table;}();
+    auto tint=[](int i)->DirectX::XMFLOAT4{return tintTable[size_t(i)];};
     // 敵や破片に使う材質を記録する
     cityWood_=surfaces[CityWood];cityStoneSkin_=surfaces[CityStoneSkin];cityIron_=surfaces[CityShutter];cityArmor_=surfaces[CityMetal];cityBlock_=surfaces[CityConcrete];
     // 光る看板の一覧

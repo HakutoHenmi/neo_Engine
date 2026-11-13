@@ -129,7 +129,7 @@ inline float LifeCameraDistance(float radius,float fovY,float aspect){
 }
 // 武器ごとの攻撃の長さ
 inline float LifeWeaponDuration(LifeAction form){
-    return form==LifeAction::Hammer?.58f:form==LifeAction::Sword?.64f:.95f;
+    return LifeActionInfo(form).weaponDuration;
 }
 // 変形の完成と攻撃の時間は別。先行入力は回復の時間の間だけ残る。
 // ハンマーは押し続ければ、押し直さなくても繰り返す
@@ -245,6 +245,6 @@ inline bool LifeWeaponTouches(const LifeBody& body,Vec target,float targetRadius
 }
 // 武器のダメージ (体の大きさに比例する)
 inline float LifeWeaponDamage(const LifeBody& body){
-    return (body.action==LifeAction::Hammer?24.f:body.action==LifeAction::Sword?16.f:20.f)*LifeScale(body.mass);
+    return LifeActionInfo(body.action).weaponDamage*LifeScale(body.mass);
 }
 }

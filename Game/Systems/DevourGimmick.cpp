@@ -307,17 +307,12 @@ private:
     bool plane_;
 };
 
-// 種類から動きを選ぶ (データを持たない共有の不変オブジェクト)
+// 種類から動きを選ぶ (データを持たない共有の不変オブジェクト)。GimmickKind の順の表を引く
 const ChronoSystem::GimmickBehavior& ChronoSystem::GimmickBehaviorFor(GimmickKind kind){
     static const ShootGimmick shoot;static const DominoGimmick domino;static const BowlingGimmick bowling;
     static const PaintGimmick paint;static const PathGimmick liquid(false),plane(true);
-    switch(kind){
-    case GimmickKind::Shoot:return shoot;
-    case GimmickKind::Domino:return domino;
-    case GimmickKind::Bowling:return bowling;
-    case GimmickKind::Liquid:return liquid;
-    case GimmickKind::Plane:return plane;
-    default:return paint;}
+    static const GimmickBehavior* const table[]={&shoot,&domino,&bowling,&paint,&liquid,&plane};
+    const size_t index=size_t(kind);return *table[index<std::size(table)?index:size_t(GimmickKind::Paint)];
 }
 
 // 輪の中で変形キーを押したか調べて、乗り始める。乗っている間の撃つ・やめるもここで受ける。押した入力を使ったら true

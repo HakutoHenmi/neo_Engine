@@ -35,7 +35,7 @@ void ChronoSystem::TickDevourSpills(GameContext& ctx,float frameDt){
         // 入れ物の口から粒を出す (上限まで)
         s.emit+=k.rate*dt;
         while(s.emit>=1){s.emit-=1;if(s.drops.size()>=kSpillMaxDrops)continue;DevourSpillFlow::Drop d;d.serial=++s.serial;
-            d.lane=(SpillNoise(s.seed)-.5f)*(s.kind==Chrono::SpillKind::Juice?3.f:1.6f);d.radius=k.radius*(.8f+.4f*SpillNoise(s.seed));
+            d.lane=(SpillNoise(s.seed)-.5f)*k.lane;d.radius=k.radius*(.8f+.4f*SpillNoise(s.seed));
             d.at=s.source+s.side*d.lane+V{0,d.radius*.5f,0};d.speed=k.topSpeed*(.85f+.3f*SpillNoise(s.seed));s.drops.push_back(d);}
         // 壁を落ちる粒の速さ (粘性で前後の粒へ寄せるため、先に全部を集める)
         std::vector<float> falling(s.drops.size(),-1);for(size_t i=0;i<s.drops.size();++i)if(s.drops[i].phase==SpillWall)falling[i]=s.drops[i].speed;

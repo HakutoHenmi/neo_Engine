@@ -18,10 +18,47 @@ inline constexpr float LifeChildHuntRange=48,LifeChildSight=36,LifeChildLeash=62
 // 体の行動 (待機・取り込み・各武器・回復) と、変形を解放するアイテム
 enum class LifeAction {Idle,Engulf,Hammer,Sword,Plane,Tire,Hydrant,Restore,Signal,Vacuum,Spring};
 enum class LifeMorphItem {None,Tire,Hydrant,Signal,Vacuum,Spring};
-// 変形に必要な量 / 量が足りるか
-inline float LifeRequiredMass(LifeAction action){
-    return action==LifeAction::Hammer?LifeHammerMass:action==LifeAction::Sword?LifeSwordMass:action==LifeAction::Plane?LifePlaneMass:(action==LifeAction::Tire||action==LifeAction::Hydrant||action==LifeAction::Signal||action==LifeAction::Vacuum||action==LifeAction::Spring)?1.f:0;
+// ---- 体の行動ごとのデータテーブル (データドリブン) ----
+// 以前は「変形に必要な量」「攻撃の長さ」「ダメージ」「形の番号」「表示名」「アイコン」「未解放・変形時の案内」が
+// それぞれ LifeAction の三項演算子の連鎖として 6 ファイルに散らばっていた。行動 1 つ分のデータをここに集める。
+// 行動を足すときは enum とこの表に 1 行足すだけで、各処理は表を引くだけで分岐しない。
+struct LifeActionData {
+    const char* name;            // 表示名 (HUD・デバッグ表示)
+    float requiredMass;          // 変形に必要な量 (0 なら変形ではない)
+    float weaponDuration;        // 攻撃の長さ (秒)
+    float weaponDamage;          // 武器のダメージ (大きさ 1 のとき)
+    int fluidShape;              // 流体の形の番号 (0: 液体)
+    const char* icon;            // 変形アイテムのアイコン (HUD)
+    const char* lockedHint;      // 未解放のときの案内 (%d に必要な量が入る。nullptr なら出さない)
+    const char* enterHint;       // 変形したときの案内 (戦闘モード)
+    const char* enterHintDevour; // 変形したときの案内 (吸収モード。nullptr なら enterHint)
+};
+// LifeAction と同じ順に並べる
+inline constexpr std::array<LifeActionData,11> LifeActionTable{{
+    {"通常",0,.95f,20,0,"",nullptr,nullptr,nullptr},
+    {"取り込み中",0,.95f,20,0,"",nullptr,nullptr,nullptr},
+    {"ハンマー",LifeHammerMass,.58f,24,1,"","ゴミを吸い込んで本体%dまで育つと、ハンマーに変形できる",
+        "ハンマー変形！ 左クリック・RTで叩きつけ (押し続けると連続) / R・Bで戻る","ハンマー変形！ 左クリック・RTで大きな物を砕く / 右クリック・LTで飛びかかりへ"},
+    {"剣",LifeSwordMass,.64f,16,2,"","本体%dまで育つと変形できる","剣変形！ 左クリック・RTで横なぎ / R・Bで戻る",nullptr},
+    {"飛行機",LifePlaneMass,.95f,20,3,"","本体%dまで育つと変形できる","飛行機変形！ 左クリック・RTで突撃 / R・Bで戻る",nullptr},
+    {"タイヤ",1,.95f,20,4,"form_tire","大通りの金色に光るタイヤを吸収すると、タイヤ変形が解放される",
+        "タイヤ変形！ 左クリック・RT長押しで回転を溜め、離して突進 / R・Bで戻る","タイヤ変形！ 転がるだけで通り道を吸い込む / 溜め突進で大きな物を砕く"},
+    {"消火栓",1,.95f,20,5,"","火事場の金色に光る消火栓を吸収すると、放水攻撃と防御を解放","消火栓変形！ 左クリック・RTで放水 / 右クリック・LTで水の防御 / R・Bで戻る",nullptr},
+    {"復元中",0,.95f,20,0,"",nullptr,nullptr,nullptr},
+    {"信号機",1,.95f,20,6,"","交差点の金色に光る信号機を吸収すると、信号機変形を解放","信号機変形！ 左クリック・RTで 赤 → 青 → 黄 の順に信号を出す / R・Bで戻る",nullptr},
+    {"掃除機",1,.95f,20,7,"form_vacuum","住宅街の大通りの金色に光る掃除機を吸収すると、掃除機変形が解放される","掃除機変形！ 左クリック・RT長押しで前の小物を吸い込む",nullptr},
+    {"バネ",1,.95f,20,8,"form_spring","商店街の大通りの金色に光るバネを吸収すると、バネ変形が解放される","バネ変形！ 左クリック・RT長押しで溜めて、離すと建物を飛び越える",nullptr},
+}};
+inline const LifeActionData& LifeActionInfo(LifeAction action){
+    const size_t index=size_t(action);
+    return LifeActionTable[index<LifeActionTable.size()?index:0];
 }
+// 変形したときの案内 (モードで違う場合は吸収モード用を使う)
+inline const char* LifeEnterHint(LifeAction action,bool devour){
+    const auto& info=LifeActionInfo(action);return devour&&info.enterHintDevour?info.enterHintDevour:info.enterHint;
+}
+// 変形に必要な量 / 量が足りるか
+inline float LifeRequiredMass(LifeAction action){return LifeActionInfo(action).requiredMass;}
 inline bool LifeCanMorph(float mass,LifeAction action){
     return LifeRequiredMass(action)>0&&mass>=LifeRequiredMass(action);
 }
@@ -74,9 +111,19 @@ struct SlimeRecipe {
     float ChildDamage()const {return 6+5*Ratio(3);}
     // 一番多い材料で決まる型・名前・得意・注意
     int Style()const {int best=0;for(int i=1;i<4;++i)if(mix[size_t(i)]>mix[size_t(best)])best=i;return Ratio(best)>=.5f?best:-1;}
-    const char* StyleName()const {switch(Style()){case 0:return "さらさら回収型";case 1:return "ぷるぷる踏みつけ型";case 2:return "ねばねば本体型";case 3:return "ふわふわ群れ型";default:return "バランス型";}}
-    const char* Strength()const {switch(Style()){case 0:return "得意：高速移動・広い取り込み";case 1:return "得意：高いジャンプ・広く強い踏みつけ";case 2:return "得意：素早く包む・被弾時に本体を保つ";case 3:return "得意：長い滞空・子が速く何度も攻撃";default:return "得意：移動・取り込み・踏みつけを両立";}}
-    const char* Weakness()const {switch(Style()){case 0:return "注意：止まりにくい・被弾で大きくちぎれる";case 1:return "注意：取り込みが遅い・着地で一度弾む";case 2:return "注意：移動と切り返しが重い・子は小さい";case 3:return "注意：本体が傷つきやすく吹き飛ばされる";default:return "材料を半分以上にすると個性が強くなる";}}
+    // 型ごとの名前・得意・注意 (データテーブル。先頭がバランス型、以降は Style() の 0〜3)
+    struct StyleText {const char* name;const char* strength;const char* weakness;};
+    const StyleText& StyleInfo()const {
+        static constexpr StyleText table[]={
+            {"バランス型","得意：移動・取り込み・踏みつけを両立","材料を半分以上にすると個性が強くなる"},
+            {"さらさら回収型","得意：高速移動・広い取り込み","注意：止まりにくい・被弾で大きくちぎれる"},
+            {"ぷるぷる踏みつけ型","得意：高いジャンプ・広く強い踏みつけ","注意：取り込みが遅い・着地で一度弾む"},
+            {"ねばねば本体型","得意：素早く包む・被弾時に本体を保つ","注意：移動と切り返しが重い・子は小さい"},
+            {"ふわふわ群れ型","得意：長い滞空・子が速く何度も攻撃","注意：本体が傷つきやすく吹き飛ばされる"}};
+        return table[Style()+1];}
+    const char* StyleName()const {return StyleInfo().name;}
+    const char* Strength()const {return StyleInfo().strength;}
+    const char* Weakness()const {return StyleInfo().weakness;}
     // 液体の見た目の値 (広がり・粘性・減衰・まとまり・表面張力・揺れ)
     float Spread()const {return 1+.6f*Ratio(0)-.25f*Ratio(1)-.15f*Ratio(2)+.3f*Ratio(3);}
     float Viscosity()const {return 3+105*Ratio(2)+28*Ratio(1);}

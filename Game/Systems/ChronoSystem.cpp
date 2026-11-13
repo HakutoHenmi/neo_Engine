@@ -60,10 +60,10 @@ void ChronoSystem::Reset(entt::registry& r){
     // プレイヤーがいなければここまで
     if(!initialized_)return;
     // ステージの BGM を流す (街は専用の曲)
-    Music::Play(devour_&&CurrentDevourStage().map=="ring"?Music::City:Music::Battle);
+    Music::Play(devour_?Music::TrackFromName(CurrentDevourStage().music):Music::Battle);
     // 結果画面の曲と、「つぎへ」で進むステージの曲を裏で展開しておく (結果を出す瞬間に MP3 を展開して止まらないように)
     Music::Preload(Music::Victory);Music::Preload(Music::Defeat);
-    if(devour_&&devourStage_+1<int(Chrono::DevourStages().size()))Music::Preload(Chrono::DevourStages()[size_t(devourStage_+1)].map=="ring"?Music::City:Music::Battle);
+    if(devour_&&devourStage_+1<int(Chrono::DevourStages().size()))Music::Preload(Music::TrackFromName(Chrono::DevourStages()[size_t(devourStage_+1)].music));
     // プレイヤーの状態を作り直し、位置・体力・入力を初期化する
     r.emplace_or_replace<Player>(player_);
     auto& pt=r.get<TransformComponent>(player_);pt.translate={0,1.3f,-27};pt.scale={1,1,1};

@@ -23,10 +23,15 @@ struct SpillParams {
     float strand;     // 前後の粒を糸でつなぐ距離 (0 ならつながない)
     int splash;       // 床に落ちたときに飛び散る粒の数
     float alpha;      // 透けぐあい
+    float lane;       // 出口で粒を横へ散らす幅
 };
+// 液体の種類ごとのデータテーブル (SpillKind の順)。種類を足すときは enum とここに 1 行足す
 inline const SpillParams& SpillParamsOf(SpillKind kind){
-    static const SpillParams honey{7,9,40,7,.7f,1.3f,8,3,2.6f,7,0,.88f},glue{5,7,34,6,.55f,1.15f,7,2.4f,2.2f,6,0,.82f},juice{22,75,240,.4f,0,.5f,26,13,.8f,0,2,.62f};
-    return kind==SpillKind::Honey?honey:kind==SpillKind::Glue?glue:juice;
+    static const SpillParams table[]={
+        {7,9,40,7,.7f,1.3f,8,3,2.6f,7,0,.88f,1.6f},         // 蜂蜜
+        {5,7,34,6,.55f,1.15f,7,2.4f,2.2f,6,0,.82f,1.6f},    // のり
+        {22,75,240,.4f,0,.5f,26,13,.8f,0,2,.62f,3}};        // ジュース
+    const size_t index=size_t(kind);return table[index<std::size(table)?index:std::size(table)-1];
 }
 // 壁を落ちる 1 歩: 重力で速くなり、終端速度で頭打ちになる (速さは下向きを正)
 inline float SpillWallSpeed(const SpillParams& k,float speed,float dt){return std::min(k.terminal,speed+k.gravity*dt);}

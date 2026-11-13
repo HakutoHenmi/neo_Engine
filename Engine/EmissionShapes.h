@@ -7,6 +7,7 @@
 // ===============================
 #include "Matrix4x4.h"
 #include <cmath>
+#include <iterator>
 
 namespace Engine {
 
@@ -75,11 +76,10 @@ inline const IEmissionShape& EmissionShapeFor(EmissionShape shape) {
 	static const PointEmission point;
 	static const SphereEmission sphere;
 	static const ConeEmission cone;
-	switch (shape) {
-	case EmissionShape::Sphere: return sphere;
-	case EmissionShape::Cone: return cone;
-	default: return point;
-	}
+	// EmissionShape の順の表
+	static const IEmissionShape* const table[] = {&point, &sphere, &cone};
+	const size_t index = static_cast<size_t>(shape);
+	return *table[index < std::size(table) ? index : 0];
 }
 
 } // namespace Engine

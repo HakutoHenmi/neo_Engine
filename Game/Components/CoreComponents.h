@@ -3,6 +3,7 @@
 // ObjectTypes.h がすべての Components/*.h をまとめて読み込む。
 #pragma once
 #include "ComponentBase.h"
+#include <iterator>
 
 namespace Game {
 
@@ -72,31 +73,19 @@ enum class TagType : uint32_t {
 	PauseUI // ポーズメニューの UI
 };
 
+// タグの名前のデータテーブル (TagType の順)。保存・読み込みの両方がこの表を引く
+inline constexpr const char* kTagNames[] = {"Untagged", "Player", "Enemy", "Bullet", "Projectile", "Wall", "Default", "VFX", "PauseUI"};
+
 // タグ → 文字列 (保存・表示用)
 inline const char* TagToString(TagType tag) {
-	switch (tag) {
-	case TagType::Player: return "Player";
-	case TagType::Enemy: return "Enemy";
-	case TagType::Bullet: return "Bullet";
-	case TagType::Projectile: return "Projectile";
-	case TagType::Wall: return "Wall";
-	case TagType::VFX: return "VFX";
-	case TagType::Default: return "Default";
-	case TagType::PauseUI: return "PauseUI";
-	default: return "Untagged";
-	}
+	const size_t index = static_cast<size_t>(tag);
+	return index < std::size(kTagNames) ? kTagNames[index] : kTagNames[0];
 }
 
 // 文字列 → タグ (読み込み用)。知らない文字列は Untagged
 inline TagType StringToTag(const std::string& s) {
-	if (s == "Player") return TagType::Player;
-	if (s == "Enemy") return TagType::Enemy;
-	if (s == "Bullet") return TagType::Bullet;
-	if (s == "Projectile") return TagType::Projectile;
-	if (s == "Wall") return TagType::Wall;
-	if (s == "VFX") return TagType::VFX;
-	if (s == "Default") return TagType::Default;
-	if (s == "PauseUI") return TagType::PauseUI;
+	for (size_t i = 0; i < std::size(kTagNames); ++i)
+		if (s == kTagNames[i]) return static_cast<TagType>(i);
 	return TagType::Untagged;
 }
 

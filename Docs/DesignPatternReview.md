@@ -51,7 +51,7 @@
 - `IEmissionShape::Shape(params, random, position, velocity)` を `PointEmission` / `SphereEmission` / `ConeEmission` が実装する。
 - 形状オブジェクトはデータを持たない不変の共有インスタンス。半径・角度は呼び出しごとに `EmissionShapeParams` で渡す。
 - 乱数は関数ポインタで渡す。エミッターと同じ `rand()` を使い、乱数を引く順番も変更前と同じにしているため、同じシードなら同じ結果になる。テストでは決まった値を返す乱数を渡して形状の性質を確認している。
-- `EmissionShapeFor(shape)` が保存値 (enum) から形状を選ぶ。壊れた JSON などの未知の値は点として扱う。形状を足すときは、クラスを 1 つ追加してここに登録するだけで `EmitBurst` は変えない。
+- `EmissionShapeFor(shape)` が保存値 (enum) を添え字にして形状の表を引く。壊れた JSON などの未知の値は点として扱う。形状を足すときは、クラスを 1 つ追加してここに登録するだけで `EmitBurst` は変えない。
 
 ## 3. Command: エディタの Undo / Redo
 
@@ -111,7 +111,7 @@ State Pattern との違い: ギミックの種類は乗っている間に変わ�
 - 動きのオブジェクトはデータを持たない不変の共有インスタンスで、状態 (時間・狙い・倒れたピン) は今まで通り `DevourGimmick` / `GimmickRide` に置く。State Pattern の実装 (`Engine/IState.h`) と同じ考え方である。
 - `ChronoSystem` の入れ子クラスにしているのは、システムの内部データ (小物・効果音・描き文字) を公開せずに使うため。宣言だけを `ChronoSystem.h` に、定義を `DevourGimmickBehaviors.h` と `DevourGimmick.cpp` に置く。
 - 乗っている間の 1 フレームの共通の情報は `GimmickRideStep` にまとめ、形を作りながら寄せる処理 (`Settle`) も共通化した。
-- `ChronoSystem` 側の 8 つの関数は、共通の処理と `GimmickBehaviorFor(kind)` の呼び出しだけになった。`GimmickKind` で分岐するのは `GimmickBehaviorFor` の 1 か所だけである。
+- `ChronoSystem` 側の 8 つの関数は、共通の処理と `GimmickBehaviorFor(kind)` の呼び出しだけになった。`GimmickKind` から動きを選ぶのは `GimmickBehaviorFor` の表 1 か所だけである。
 
 ## 採用しなかったもの・既存の箇所
 
