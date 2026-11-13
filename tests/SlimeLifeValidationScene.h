@@ -276,9 +276,11 @@ class SlimeLifeValidationScene final:public Game::GameScene {
         }
         Game::GameScene::Update();++frames_;
         const float age=std::chrono::duration<float>(std::chrono::steady_clock::now()-resultFinished_).count();
-        const float at[]={.12f,.4f,.75f,1.1f,1.5f,2.f,3.f,4.5f};
-        if(resultShot_<8&&age>=at[resultShot_]){wchar_t path[64];swprintf_s(path,L"tests/out/result-seq-%d.png",resultShot_++);Capture(path);}
-        if(resultShot_>=8){std::ofstream("tests/out/result-seq.txt")<<"PASS absorbed="<<life.absorbed<<" mass="<<body.mass;
+        // 測るまでと、体の中へ入って飲みこんだ物を並べるまで。最後の 1 枚は升を 1 つ大きく見せる
+        const float at[]={.12f,.4f,.75f,1.1f,1.5f,2.f,2.8f,3.3f,3.9f,4.6f,6.f,9.f,10.5f};constexpr int shots=int(sizeof(at)/sizeof(at[0]));
+        if(resultShot_==shots-1&&age>=at[resultShot_]-.6f)chrono->OpenShelfDetailForTest(0);
+        if(resultShot_<shots&&age>=at[resultShot_]){wchar_t path[64];swprintf_s(path,L"tests/out/result-seq-%d.png",resultShot_++);Capture(path);}
+        if(resultShot_>=shots){std::ofstream("tests/out/result-seq.txt")<<"PASS absorbed="<<life.absorbed<<" mass="<<body.mass<<" shelf="<<chrono->ShelfCellCountForTest();
             // 結果からタイトルへの切り替えも見るときは、外から画面を撮るので終わらない
             if(wcsstr(GetCommandLineW(),L"--slime-result-to-title"))Engine::SceneManager::GetInstance()->RequestCoveredChange("Title");else PostQuitMessage(0);}
     }

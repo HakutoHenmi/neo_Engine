@@ -155,6 +155,7 @@ public:
 		float vignette = 0.0f;
 		float scanline = 0.0f;
 		float san = 0.0f;
+		float grow = 0.0f; // 大きい物を飲んで育っている強さ (ChronoFocus の鼓動の膨らみと金色の縁)
 		float dofFocus=30.f,dofRange=30.f,dofStrength=0.f,dofBossDepth=-1000.f;
         bool cinematicCamera=false;
 	};
@@ -578,6 +579,9 @@ public:
 	Vector3 gpuFluidCoreForward_ = {0.0f, 0.0f, 1.0f};
 	float gpuFluidCoreMode_ = 0.0f;
 	float chronoFluidOpacity_=1,chronoFluidFlash_=0;
+	// 結果画面の「おなかの中」: 体の中から見る量と、体の中の物として見せる深さ (ビュー空間の z)
+	float fluidInterior_=0,fluidInteriorDepth_=0;
+	void SetFluidInterior(float amount,float itemDepth){fluidInterior_=amount;fluidInteriorDepth_=itemDepth;}
 	bool chronoFluidPaused_=false,rogueWorldFrozen_=false;
 	float gpuFluidCoreFlowSpeed_ = 0.0f;
 
@@ -963,6 +967,8 @@ private:
     bool InitHdrBloom_();
     void RenderHdrBloom_(uint32_t frame);
     void RenderGtao_(uint32_t frame);
+    bool RenderOcclusionComposite_(uint32_t frame,bool ambient,bool rtShadow);
+    Microsoft::WRL::ComPtr<ID3D12PipelineState> psoOcclusionComposite_;
     void BindPbrTextures_(const std::vector<TextureHandle>& textures);
     TextureHandle neutralNormal_=0;
     UINT sceneWidth_=WindowDX::kW,sceneHeight_=WindowDX::kH;
@@ -1132,6 +1138,9 @@ private:
 	struct PendingTexture { std::string path; bool sRGB; TextureHandle handle; };
 	std::vector<PendingTexture> pendingTextures_;
 	int assetBatchDepth_ = 0;
+	// Mesh uploads recorded during an asset batch: kept alive until one GPU wait at EndAssetBatch
+	// (a wait per mesh costs about one display frame each while the loading screen is presenting).
+	std::vector<std::pair<Microsoft::WRL::ComPtr<ID3D12CommandAllocator>, Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList>>> pendingMeshUploads_;
 	void FlushTextureBatch_();
 	// 作成済みのテクスチャへ SRV を作り、キャッシュに登録する
 	TextureHandle RegisterTexture_(Microsoft::WRL::ComPtr<ID3D12Resource> tex, DXGI_FORMAT format, UINT mipCount, const std::string& cacheKey);

@@ -8,9 +8,23 @@
     "previous": "PREVIOUS",
     "next": "NEXT"
   },
+  "collection": {
+    "heading": "ずかん",
+    "found": "みつけた",
+    "unknown": "？？？",
+    "unknownText": "まだ飲みこんだことがない。",
+    "thisRun": "今回",
+    "total": "これまで",
+    "new": "NEW",
+    "back": "もどる",
+    "close": "とじる",
+    "inside": "おなかの中",
+    "hint": "クリックでくわしく見る"
+  },
   "title": {
     "start": "はじめる",
     "credits": "クレジット",
+    "collection": "ずかん",
     "exit": "やめる",
     "confirm": "けってい",
     "music": "音楽 SackJo22 / Kevin MacLeod  CC BY"

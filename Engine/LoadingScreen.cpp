@@ -2,6 +2,7 @@
 #define NOMINMAX
 #endif
 #include "LoadingScreen.h"
+#include "LoadProfile.h"
 #include "Input.h"
 #include "Renderer.h"
 #include "WindowDX.h"
@@ -48,6 +49,12 @@ struct Context {
 	QueuedInput input;
 	std::map<std::string, Expectation> history;
 	bool historyLoaded = false;
+	// Longest time the loading thread could not show a frame, and what the main thread was doing then.
+	std::atomic<float> longestStallMs{0};
+	std::atomic<int> frames{0};
+	// Longest time the bar gained less than 1% (what the player reads as "stuck").
+	std::atomic<float> longestFlatMs{0};
+	float flatFrom = 0, flatProgress = 0;
 };
 
 Context& Get() {
@@ -87,8 +94,11 @@ void SaveHistory(const Context& c) {
 // First-run guesses; afterwards the measured size of each load is used.
 Expectation DefaultExpectation(const std::string& scene) {
 	if (scene == "Startup") return {60, 1.5f};
-	if (scene.find("+Engine") != std::string::npos) return {500, 17.f};
-	if (scene == "Game") return {110, 6.f};
+	// Units are loader steps (shaders, meshes, GPU waits) and are the same on every PC; the seconds
+	// only seed the time half of the bar until this PC's own load has been measured once.
+	// Measured in Release with the shipped shader cache (2026-11-13): Game+Engine 258 units in 1.9 s.
+	if (scene.find("+Engine") != std::string::npos) return {260, 3.f};
+	if (scene == "Game") return {110, 2.f};
 	return {20, 1.f};
 }
 
@@ -140,9 +150,11 @@ void PumpMessages(Context& c) {
 void UpdateProgress(Context& c, LoadingScreen::State& s) {
 	if (c.finished) { s.progress = 1; s.finished = true; return; }
 	// Blend completed work with elapsed time: a single slow step still moves the bar.
-	const float byUnits = c.expected.units > 0 ? float(c.units) / c.expected.units : 0.f;
-	const float bySeconds = c.expected.seconds > 0 ? s.elapsed / c.expected.seconds : 0.f;
-	s.progress = std::max(s.progress, std::clamp(0.55f * byUnits + 0.45f * bySeconds, 0.f, 0.97f));
+	// Units (loader steps) are the same on every PC, seconds are not, so units lead; each half is capped
+	// so a PC slower than expected cannot park the bar on the time half while work is left.
+	const float byUnits = c.expected.units > 0 ? std::min(float(c.units) / c.expected.units, 1.f) : 0.f;
+	const float bySeconds = c.expected.seconds > 0 ? std::min(s.elapsed / c.expected.seconds, 1.f) : 0.f;
+	s.progress = std::max(s.progress, std::clamp(0.7f * byUnits + 0.3f * bySeconds, 0.f, 0.97f));
 }
 
 // Loading thread: a steady 60 fps regardless of what the main thread is doing.
@@ -190,7 +202,23 @@ void Worker(Context& c) {
 			previousStickX = stick;
 		}
 		UpdateProgress(c, s);
+		const auto drawStart = Clock::now();
+		const std::string stepBefore = LoadProfile::CurrentStep();
 		renderer->RenderUIFrame([&] { c.drawer(s); });
+		++c.frames;
+		// A frame that takes far longer than 16 ms means the bar visibly froze: log what the main thread was doing.
+		const float frameMs = std::chrono::duration<float, std::milli>(Clock::now() - drawStart).count();
+		if (frameMs > 100.f) {
+			const std::string stepAfter = LoadProfile::CurrentStep();
+			LoadProfile::Log("stall", "loading frame blocked at " + std::to_string(int(s.progress * 100)) + "% while main: " +
+				(stepBefore.empty() ? std::string("(no profiled step)") : stepBefore) + (stepAfter != stepBefore ? " -> " + stepAfter : std::string()), frameMs);
+		}
+		if (frameMs > c.longestStallMs) c.longestStallMs = frameMs;
+		if (s.progress >= c.flatProgress + 0.01f) { c.flatProgress = s.progress; c.flatFrom = s.elapsed; }
+		const float flatMs = (s.elapsed - c.flatFrom) * 1000.f;
+		if (flatMs > c.longestFlatMs) c.longestFlatMs = flatMs;
+		if (LoadProfile::Enabled() && c.frames % 6 == 0)
+			LoadProfile::Record("bar", std::to_string(int(s.progress * 1000) / 10.f).substr(0, 4) + "% units=" + std::to_string(c.units.load()) + " main: " + LoadProfile::CurrentStep(), s.elapsed * 1000.0);
 		next += frame;
 		const auto after = Clock::now();
 		if (next < after) next = after;
@@ -207,7 +235,12 @@ void LoadingScreen::Begin(const std::string& scene, bool startup) {
 	if (c.depth++ > 0) return;
 	LoadHistory(c);
 	c.mainThread = std::this_thread::get_id();
+	LoadProfile::SetMainThread();
 	c.units = 0;
+	c.longestStallMs = 0;
+	c.longestFlatMs = 0;
+	c.flatFrom = c.flatProgress = 0;
+	c.frames = 0;
 	c.finished = c.stop = c.skipped = false;
 	c.state = {};
 	c.state.scene = scene;
@@ -275,6 +308,9 @@ void LoadingScreen::End() {
 	c.state.finished = true;
 	c.state.elapsed = std::chrono::duration<float>(Clock::now() - c.start).count();
 	c.last = c.state;
+	LoadProfile::Log("load", c.state.scene + " frames=" + std::to_string(c.frames.load()) + " longestFrameMs=" +
+		std::to_string(int(c.longestStallMs.load())) + " longestFlatBarMs=" + std::to_string(int(c.longestFlatMs.load())) +
+		" units=" + std::to_string(c.units.load()) + "/" + std::to_string(int(c.expected.units)) + " expectedS=" + std::to_string(c.expected.seconds).substr(0, 5) + " firstRun=" + (c.history.count(c.state.scene) ? "0" : "1"), loadSeconds * 1000.0);
 	if (loadSeconds > 0.05f) {
 		c.history[c.state.scene] = {float(std::max(c.units.load(), 1)), loadSeconds};
 		SaveHistory(c);

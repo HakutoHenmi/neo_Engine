@@ -8,7 +8,7 @@
   squish_03.mp3                  "Squish Sounds Effects" (EZduzziteh)
   mud_08.ogg mud_11.ogg mud_24.ogg mud_25.ogg  "25 CC0 mud sfx" (rubberduck)
   slime_07.ogg                   "80 CC0 creature SFX #2" (rubberduck)
-  jingles_PIZZI02.ogg jingles_SAX07.ogg  "Music Jingles" (Kenney)
+  jingles_PIZZI02.ogg jingles_STEEL15.ogg  "Music Jingles" (Kenney)
 
 気持ちよさの作り:
   - 芯は音程が上がる泡の音 (水の中で泡がはじける音の形)。耳に痛い 4kHz より上は素材から削る
@@ -211,7 +211,8 @@ def build(folder):
     out["confirm"] = finish(place(.5, (0, mallet(g5, .4, 10), .8), (.07, mallet(c6, .42, 9), 1)), .6)
     # ランクが上がった: 生楽器のジングル (ゲームの読み込みは ogg に頼れないので wav にする)
     out["rank-up"] = finish(load(folder, "jingles_PIZZI02.ogg"), .72)
-    out["rank-top"] = finish(load(folder, "jingles_SAX07.ogg"), .72)
+    # 最高ランク・大きな達成: 上がっていくスチールドラム (SAX07 は下がる音形で失敗に聞こえたため使わない)
+    out["rank-top"] = finish(load(folder, "jingles_STEEL15.ogg"), .72)
     # 輪が開いた: 下から持ち上がる
     swell = whoosh(.9, 120, 1500)
     out["gate-open"] = finish(place(1.9,

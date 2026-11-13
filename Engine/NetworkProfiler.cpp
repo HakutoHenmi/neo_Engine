@@ -134,7 +134,8 @@ bool NetworkProfiler::Initialize(int port) {
 
 void NetworkProfiler::ServerThreadRun() {
     std::cout << "[NetworkProfiler] Starting HTTP server on port " << port_ << std::endl;
-    server_->listen("0.0.0.0", port_);
+    // この PC の中だけで待ち受ける (0.0.0.0 だと外から届くため、Windows がネットワークの許可を求める)
+    server_->listen("127.0.0.1", port_);
 }
 
 void NetworkProfiler::Shutdown() {

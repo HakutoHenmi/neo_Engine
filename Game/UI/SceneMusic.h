@@ -31,6 +31,11 @@ inline const std::array<TrackInfo, TrackCount>& Tracks() {
 // 曲のファイルのパス
 inline const std::string& Path(Track track) { return Tracks()[size_t(track)].path; }
 
+// 次に流す曲を裏で読んでおく (MP3 の展開に数百ミリ秒かかるので、切り替えの瞬間に止まらないようにする)
+inline void Preload(Track track) {
+    if (auto* audio = Engine::Audio::GetInstance()) audio->PreloadBGMAsync(Path(track));
+}
+
 // 曲を music.json の音量で再生する (同じ曲なら続きから)
 inline void Play(Track track) {
     if (auto* audio = Engine::Audio::GetInstance()) audio->PlayBGM(Path(track), Tracks()[size_t(track)].volume);

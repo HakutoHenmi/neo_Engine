@@ -29,6 +29,7 @@ private:
     void DrawMenu();
     // 選んでいるステージへ出発する (未解放なら揺らして知らせる)
     void Confirm();
+    void PreloadStageMusic(int stage);
 
     // ウィンドウ・描画のエンジン側オブジェクト
     Engine::WindowDX* dx_ = nullptr;

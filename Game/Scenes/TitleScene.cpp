@@ -35,8 +35,11 @@ void TitleScene::Initialize(Engine::WindowDX* dx, const Engine::SceneParameters&
     dx_ = dx;
     creditsOpen_ = false;
     creditsPage_ = 0;
+    collectionOpen_ = false;
     // タイトル BGM を流す
     Music::Play(Music::Title);
+    // 次のセレクト画面の曲を裏で展開しておく (読み込み画面で MP3 の展開を待たない)
+    Music::Preload(Music::Select);
     renderer_ = Engine::Renderer::GetInstance();
     lastTime_ = std::chrono::steady_clock::now();
 
@@ -85,20 +88,21 @@ constexpr int kPropCount=S::LineupCount;
 inline float LandAt(int index){return .45f+float(index)*.11f;}
 constexpr float kTapeTime=.45f,kIntroEnd=1.9f,kLeaveTime=1.7f;
 // メニューの当たり判定
-constexpr UI::Rect kMenu[3]={{48,38,330,66},{48,110,260,38},{48,152,260,38}};
+constexpr int kMenuCount=4;
+constexpr UI::Rect kMenu[kMenuCount]={{48,38,330,66},{48,110,260,38},{48,152,260,38},{48,194,260,38}};
 // 出発のときのスライム: 右へ転がりながら大きくなり、最後は画面全体を覆う
 float LeaveWidth(float t){return 60+4600*std::pow(S::Clamp01(t/kLeaveTime),3.f);}
 float LeaveX(float t){return 30+700*S::Clamp01(t/kLeaveTime);}
 // 出発のときの巻尺の 1cm の長さ: 家を飲み込むと縮み始める (最初は今の巻尺と同じ 8 ピクセル)。u は 0〜1
 float LeaveZoom(float u){return 8*std::exp(-6*std::pow(S::Clamp01(u),1.4f));}
 // 巻き込まれる物の番号: 物・ロゴ・メニュー・案内・音楽の表記の順
-constexpr int kLogoItem=kPropCount,kMenuItem=kLogoItem+4,kHintItem=kMenuItem+3,kMusicItem=kHintItem+1,kItemCount=kMusicItem+1;
+constexpr int kLogoItem=kPropCount,kMenuItem=kLogoItem+4,kHintItem=kMenuItem+kMenuCount,kMusicItem=kHintItem+1,kItemCount=kMusicItem+1;
 // 物の元の位置 (中央)
 std::array<float,2> ItemPoint(int index){
     if(index<kPropCount)return {S::Lineup[index].cx,S::TapeTop-S::Lineup[index].height*.5f};
     if(index<kMenuItem){const int i=index-kLogoItem;return {S::LogoX(i)+S::LogoSizes[i]*.5f,S::LogoBase-S::LogoSizes[i]*.5f};}
     if(index<kHintItem){const auto& b=kMenu[index-kMenuItem];return {b.x+b.w*.4f,b.y+b.h*.5f};}
-    return index==kHintItem?std::array<float,2>{110,220}:std::array<float,2>{1120,20};
+    return index==kHintItem?std::array<float,2>{110,262}:std::array<float,2>{1120,20};
 }
 // スライムの体に入ったか: 体を床に乗った半楕円として調べる
 bool InsideSlime(float x,float y,float t){
@@ -148,6 +152,11 @@ void TitleScene::Update() {
         if (UI::UpdateCredits(ui, creditsPage_)) creditsOpen_ = false;
         return;
     }
+    // ずかん表示中はずかんの操作だけを受け付ける
+    if (collectionOpen_) {
+        if (UI::UpdateCollection(ui, collection_, dt_)) collectionOpen_ = false;
+        return;
+    }
     const bool enter = UI::Pressed(DIK_RETURN) || UI::PadPressed(XINPUT_GAMEPAD_START);
     // 登場の途中は、決定の操作で最後の状態まで飛ばす
     if (intro_ < kIntroEnd) {
@@ -156,20 +165,21 @@ void TitleScene::Update() {
     }
     // 上下キーで項目を動かす
     int step = (UI::Pressed(DIK_DOWN) || UI::Pressed(DIK_S) ? 1 : 0) - (UI::Pressed(DIK_UP) || UI::Pressed(DIK_W) ? 1 : 0);
-    if (step) { menu_ = (menu_ + step + 3) % 3; UI::PlayUISound(UI::UISound::Move); }
+    if (step) { menu_ = (menu_ + step + kMenuCount) % kMenuCount; UI::PlayUISound(UI::UISound::Move); }
     // マウスを動かしたときだけ、乗っている項目を選ぶ (止まったマウスがキーの操作を上書きしないように)
     const auto pointer = ui.Pointer();
     const bool moved = pointerReady_ && std::abs(pointer[0] - pointerX_) + std::abs(pointer[1] - pointerY_) > .5f;
     pointerX_ = pointer[0]; pointerY_ = pointer[1]; pointerReady_ = true;
     int chosen = enter ? menu_ : -1;
-    for (int i = 0; i < 3; ++i) {
+    for (int i = 0; i < kMenuCount; ++i) {
         ui.Track(kMenu[i], i == 0);
         if (ui.Focused(kMenu[i]) || (moved && ui.Hover(kMenu[i]))) menu_ = i;
         if (ui.Click(kMenu[i])) chosen = i;
     }
     if (chosen == 0) { UI::PlayUISound(UI::UISound::Confirm); leaving_ = 0; }
-    else if (chosen == 1) { creditsOpen_ = true; creditsPage_ = 0; }
-    else if (chosen == 2) PostQuitMessage(0);
+    else if (chosen == 1) { collectionOpen_ = true; UI::OpenCollection(collection_); }
+    else if (chosen == 2) { creditsOpen_ = true; creditsPage_ = 0; }
+    else if (chosen == 3) PostQuitMessage(0);
 }
 
 // ============================================================
@@ -179,6 +189,7 @@ void TitleScene::Draw() {
     if (!renderer_) return;
     // クレジット表示中はクレジットだけを描く
     if (creditsOpen_) { UI::Canvas ui(renderer_); UI::DrawCredits(ui, creditsPage_); return; }
+    if (collectionOpen_) { UI::Canvas ui(renderer_); UI::DrawCollection(ui, collection_); return; }
     UI::Canvas ui(renderer_);
     const float t = intro_;
     S::Backdrop(ui);
@@ -213,9 +224,9 @@ void TitleScene::Draw() {
     // メニュー: 飲まれた文字は体の中で小さくなって漂う
     const float menuAlpha = S::Clamp01((t - .2f) / .3f);
     const auto ink = UI::WithAlpha(S::Black, menuAlpha);
-    const std::string labels[3] = {UI::Str("title.start"), UI::Str("title.credits"), UI::Str("title.exit")};
+    const std::string labels[kMenuCount] = {UI::Str("title.start"), UI::Str("title.collection"), UI::Str("title.credits"), UI::Str("title.exit")};
     float y = 34;
-    for (int i = 0; i < 3; ++i) {
+    for (int i = 0; i < kMenuCount; ++i) {
         const bool on = i == menu_;
         const float size = on ? 56.f : 28.f;
         if (eaten(kMenuItem + i)) {
@@ -229,7 +240,7 @@ void TitleScene::Draw() {
         y += on ? 74 : 42;
     }
     if (eaten(kHintItem)) { const auto s = swallow(kHintItem); S::Hint(ui, "keyboard_enter", "xbox_button_a", UI::Str("title.confirm"), s.x - 60, s.y, ink, 18 * s.scale); }
-    else S::Hint(ui, "keyboard_enter", "xbox_button_a", UI::Str("title.confirm"), 48, 202, ink, 18);
+    else S::Hint(ui, "keyboard_enter", "xbox_button_a", UI::Str("title.confirm"), 48, 244, ink, 18);
     const std::string& music = UI::Str("title.music");
     if (eaten(kMusicItem)) { const auto s = swallow(kMusicItem); ui.Text(music, s.x - 120, s.y, 13, ink, S::Jp); }
     else ui.Text(music, 1250 - ui.Width(music, 13, S::Jp), 12, 13, UI::WithAlpha(S::Black, menuAlpha), S::Jp);

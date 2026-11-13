@@ -195,10 +195,12 @@ exit /b %ERRORLEVEL%</Command>
     <ClCompile Include="Game\Systems\SlimeShowcase.cpp" />
     <ClCompile Include="Game\Systems\SlimeSignal.cpp" />
     <ClCompile Include="Game\Systems\SlimeDevour.cpp" />
+    <ClCompile Include="Game\Systems\DevourShelf.cpp" />
     <ClCompile Include="Game\Systems\DevourGimmick.cpp" />
     <ClCompile Include="Game\Systems\DevourTutorial.cpp" />
     <ClCompile Include="Game\Systems\DevourHeli.cpp" />
     <ClCompile Include="Game\Systems\DevourSpill.cpp" />
+    <ClCompile Include="Game\Systems\DevourGrowth.cpp" />
     <ClCompile Include="Game\Systems\RingCity.cpp" />
     <ClCompile Include="Game\Systems\RoomStage.cpp" />
     <ClCompile Include="Game\Systems\DevourPlayLog.cpp" />
@@ -233,6 +235,8 @@ exit /b %ERRORLEVEL%</Command>
     <ClInclude Include="Game\Components\UIComponents.h" />
     <ClInclude Include="Game\Data\GameConfig.h" />
     <ClInclude Include="Game\Data\GameData.h" />
+    <ClInclude Include="Game\Data\Collection.h" />
+    <ClInclude Include="Game\UI\CollectionUI.h" />
     <ClInclude Include="Game\Scenes\AssignmentConfig.h" />
     <ClInclude Include="Game\Scenes\AssignmentScene.h" />
     <ClInclude Include="Game\Scenes\GameOverScene.h" />
@@ -320,6 +324,7 @@ exit /b %ERRORLEVEL%</Command>
     <None Include="Resources\Data\music.json" />
     <None Include="Resources\Data\roguelite.json" />
     <None Include="Resources\Data\ui_text.json" />
+    <None Include="Resources\Data\collection.json" />
     <None Include="Resources\Editor\Icons\audio.png" />
     <None Include="Resources\Editor\Icons\file.png" />
     <None Include="Resources\Editor\Icons\folder.png" />
@@ -546,6 +551,7 @@ exit /b %ERRORLEVEL%</Command>
     <None Include="Resources\shaders\Rock_MidPS.hlsl" />
     <None Include="Resources\shaders\RockCommonVS.hlsl" />
     <None Include="Resources\shaders\RtLighting.hlsl" />
+    <None Include="Resources\shaders\OcclusionComposite.hlsl" />
     <None Include="Resources\shaders\RtLightingComposite.hlsl" />
     <None Include="Resources\shaders\RtLightingDenoise.hlsl" />
     <None Include="Resources\shaders\RtShadow.hlsl" />

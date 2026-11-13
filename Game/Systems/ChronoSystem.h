@@ -24,7 +24,7 @@
 #include <unordered_map>
 #include <vector>
 namespace Game {
-namespace UI {class Canvas;namespace Scale {struct Prompt;}}
+namespace UI {class Canvas;struct Rect;namespace Scale {struct Prompt;}}
 namespace CityParts {struct CityBuilder;}
 // シーン全体のまとめ役。キャラクターの残る状態はすべて ECS のコンポーネントにある
 class ChronoSystem final : public ISystem {
@@ -43,6 +43,9 @@ public:
     // 吸収モードの結果: カメラが寄る間に顔を向け、測り始めたら体を止める
     float DevourResultFace() const {return devour_&&finished_?std::min(1.f,resultCameraAge_/.8f):0.f;}
     bool DevourResultFrozen() const {return devour_&&finished_&&resultCameraAge_>=kResultFreezeAge;}
+    // 検証の撮影用: 結果の「おなかの中」の升の数と、升を 1 つ大きく見せる
+    size_t ShelfCellCountForTest() const {return shelf_.cells.size();}
+    void OpenShelfDetailForTest(int cell){if(cell>=0&&cell<int(shelf_.cells.size())&&shelf_.detail!=cell){shelf_.detail=cell;shelf_.detailAt=finishAge_;}}
     // 鳴り続ける音を止める (シーンを抜けるとき)
     void StopLoopSounds();
     // スライムの状態・敵・街の門・消火栓の狙いを外 (エディタやテスト) から読むための関数
@@ -183,6 +186,17 @@ private:
     std::vector<DevourSpillFlow> devourSpills_;
     void AddDevourSpill(Chrono::SpillKind,Engine::Vector4 color,Chrono::Vec source,Chrono::Vec edge,Chrono::Vec foot,Chrono::Vec pool);
     void TickDevourSpills(GameContext&,float dt);void DrawDevourSpills(GameContext&);
+    // 大きい物を飲んで育ったときの水しぶき (DevourGrowth.cpp。体の流体とは別に、しずくはメッシュ・霧は四角で描く)。
+    // kind は 0 しずく・1 細かい飛沫・2 地面のぬれ跡・3 霧。age が負の間はまだ出ていない。drag は空気の抵抗 (1 秒あたり)。
+    // wait は飛び散るまでの残り (待っていなければ -1)
+    struct GrowDrop {Chrono::Vec at{},velocity{};float radius=.1f,age=0,life=1,ground=0,gravity=10,drag=0,phase=0;int kind=0;};
+    struct GrowSplash {std::vector<GrowDrop> drops;float wait=-1,cool=0,size=0;};
+    GrowSplash devourGrow_;uint32_t growQuad_=0;
+    void DevourGrowBurst(float size);void TickDevourGrowth(float dt);void DrawDevourGrowth(GameContext&);
+    // スライムが通った所のぬれ跡 (DevourGrowth.cpp)。古い順に並び、時間がたつと薄れて古い順に消える
+    struct WetMark {Chrono::Vec at{};float radius=1,yaw=0,seed=0,age=0;};
+    std::vector<WetMark> wetMarks_;Chrono::Vec wetLast_{};bool wetHasLast_=false;
+    void TickDevourTrail(const Chrono::Player&,float dt);void DrawDevourTrail(GameContext&);
     void TickDevourHeli(Chrono::Player&,float dt,Chrono::Vec wish,bool blocked);
     // 体が道具の形になっている (ギミックに乗っている・ヘリコプター)。形の番号 (無ければ 0)・形になってからの時間・姿勢
     int DevourToolShape()const{return devour_&&GimmickRiding()&&gimmickRide_.shape>0?gimmickRide_.shape:devour_&&devourHeli_.active?Chrono::GimmickHeliShape:0;}
@@ -264,6 +278,30 @@ private:
     void DevourShedBody(Chrono::Player&,GameContext&,float damage,Chrono::Vec source);
     void DrawDevourMeals(GameContext&);
     void DrawDevourUI(GameContext&);
+    // ---- 結果画面の「おなかの中」(DevourShelf.cpp): 測ったあと体の中へ入り、飲みこんだ物を種類ごとに並べる ----
+    // 飲みこんだ物の記録 (図鑑の項目・見た目の番号・色)。ぶつかって飛び出した物は消す
+    struct DevourEaten {std::string id;uint32_t visual=0xffffffffu;Engine::Vector4 tint{1,1,1,1};};
+    std::vector<DevourEaten> devourEaten_;
+    void DevourRecordEaten(entt::registry&,uint32_t visual);
+    void DevourForgetEaten(uint32_t visual);
+    // 並べる升: 図鑑の項目・今の数・出た時刻・数が増えた時刻
+    struct ShelfCell {int entry=-1;int count=0,total=0;float popAt=-1,kickAt=-1;bool fresh=false;Engine::Vector4 tint{1,1,1,1};};
+    struct DevourShelf {std::vector<ShelfCell> cells;std::vector<int> order;size_t shown=0;float clock=0,next=0,soundAt=-1;int detail=-1;float detailAt=0;int cols=1;float cell=96,left=0,top=0;bool built=false;};
+    DevourShelf shelf_;
+    static constexpr float kShelfDive=2.5f,kShelfDiveTime=1.f,kShelfPopStart=kShelfDive+kShelfDiveTime+.15f;
+    void BuildDevourShelf(const std::vector<std::string>& fresh);
+    // 体の中へ入る量 (カメラ 0〜1、流体の見え方 0〜1)
+    float DevourShelfDive()const;
+    float DevourShelfInterior()const;
+    // 升の画面の矩形 (設計座標)
+    UI::Rect DevourShelfRect(size_t cell)const;
+    // 体の中のカメラの位置と向きを求める (結果のカメラの構図に重ねる)
+    void DevourShelfCamera(GameContext&,Chrono::Vec& wanted,Chrono::Vec& view,float ground);
+    // 演出を進め、升のクリックを受け取る。操作を使ったら true
+    bool UpdateDevourShelf(GameContext&,UI::Canvas&);
+    void DrawDevourShelf3D(GameContext&);
+    void DrawDevourShelfUI(GameContext&,UI::Canvas&);
+    float shelfDepth_=6;
     void BuildSlimePlayerDemo(entt::registry&);
     Chrono::Vec ConstrainLifeMovement(Chrono::Vec from,Chrono::Vec to,float radius)const;
     void UpdateSlimePlayerDemo(entt::registry&,Chrono::Player&,GameContext&);
@@ -364,6 +402,10 @@ private:
     void BuildStageItem(entt::registry&,const RingCityTools&);
     // 建物の敷地と、敷地ごとの吸収の対象の番号 (life_.props の番号。建物は飲み込むまで通れない)
     std::vector<Chrono::RingLot> ringLots_;std::vector<int> ringLotProps_;
+    // 床に立つギミックの看板 (旗) の足元。土台はなだらかな丸い坂として乗り越え、柱だけは丸く押し出して横へ滑らせる
+    std::vector<Chrono::Vec> gimmickSigns_;
+    float GimmickSignGround(Chrono::Vec at)const;
+    Chrono::Vec GimmickSignSlide(Chrono::Vec at,float bodyRadius)const;
     // 建物の残りの部位と当たり判定 (飲み込んだら隠し、当たり判定は消す)。キーは life_.props の番号
     std::unordered_map<size_t,std::vector<entt::entity>> devourBuildingParts_;
     // まだ閉じている輪の壁に触れるか
@@ -452,6 +494,8 @@ private:
     // 街のカメラ: 後ろが塞がれたときに持ち上げる量と、届く距離の割合 (なめらかに戻す)
     float cameraLift_=0,cameraReach_=1;
     float postStrength_=0;
+    // 大きい物を飲んで育つ演出: 遅くなる時間の最初の長さ (物の大きさ)・飲んだ瞬間から 1→0 に減る画面の縁の光
+    float devourHeavyPeak_=0,devourHeavyKick_=0;
     uint32_t hitSound_=0xffffffff,coreSound_=0xffffffff;
     uint32_t white_=0,sphere_=0;
     // 状態 (初期化済み・終了・勝利・前フレームの入力)

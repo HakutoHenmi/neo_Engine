@@ -48,8 +48,18 @@ bool App::Initialize(HINSTANCE hInst, int cmdShow) {
 	LogFile("Step 2: JobSystem::Initialize");
 	JobSystem::Initialize();
 
-	LogFile("Step 3: NetworkProfiler::Initialize");
-	NetworkProfiler::GetInstance().Initialize(8080);
+	// Web プロファイラー (Tools/WebProfiler) の HTTP サーバー。ゲームはネットワークを使わないので、
+	// 配布する Release (NDEBUG) では --web-profiler を付けたときだけ開く (Debug / Development では常に開く)。
+	// どちらもこの PC の中 (127.0.0.1) だけで待ち受け、Windows のネットワーク許可の画面を出さない
+#ifdef NDEBUG
+	const bool webProfiler = wcsstr(GetCommandLineW(), L"--web-profiler") != nullptr;
+#else
+	const bool webProfiler = true;
+#endif
+	if (webProfiler) {
+		LogFile("Step 3: NetworkProfiler::Initialize");
+		NetworkProfiler::GetInstance().Initialize(8080);
+	}
 
 	// Input comes before the renderer so the startup loading screen can be operated.
 	LogFile("Step 5: input_.Initialize");
@@ -106,6 +116,7 @@ void App::Run() {
 	float timeElapsed = 0.0f;
 
 	int debugFrameCount = 0;
+	LoadProfile::SetMainThread();
 	while (running) {
 		{
 			char buf[128];
@@ -175,6 +186,12 @@ void App::Run() {
 		auto currentTime = std::chrono::high_resolution_clock::now();
 		float dt = std::chrono::duration<float>(currentTime - prevTime).count();
 		prevTime = currentTime;
+		{
+			// A frame far over budget is a visible hitch: keep what took the time (always logged, see LoadProfile.h).
+			const std::string slow = LoadProfile::TakeSlowSteps();
+			if (dt > 0.1f && debugFrameCount > 2)
+				LoadProfile::Log("hitch", sceneManager_.CurrentName() + (slow.empty() ? std::string(" (no profiled step)") : " | " + slow), dt * 1000.0);
+		}
 
 		// FPSの計算
 		frameCount++;
@@ -242,6 +259,7 @@ void App::Run() {
 		auto logicStart = std::chrono::high_resolution_clock::now();
 
 		try {
+		LoadProfile::Scope frameStep("frame", "scene update", 30);
 		sceneManager_.Update();
 		} catch (const std::exception& e) { LogFile("EXCEPTION in sceneManager_.Update():"); LogFile(e.what()); throw; } catch (...) { LogFile("UNKNOWN EXCEPTION in sceneManager_.Update()"); throw; }
 
@@ -253,10 +271,12 @@ void App::Run() {
 		auto renderStart = std::chrono::high_resolution_clock::now();
 
 		try {
+		LoadProfile::Scope frameStep("frame", "scene draw", 30);
 		sceneManager_.Draw();
 		} catch (const std::exception& e) { LogFile("EXCEPTION in sceneManager_.Draw():"); LogFile(e.what()); throw; } catch (...) { LogFile("UNKNOWN EXCEPTION in sceneManager_.Draw()"); throw; }
 
 		try {
+		LoadProfile::Scope frameStep("frame", "renderer EndFrame", 30);
 		renderer_.EndFrame();
 		} catch (const std::exception& e) { LogFile("EXCEPTION in renderer_.EndFrame():"); LogFile(e.what()); throw; } catch (...) { LogFile("UNKNOWN EXCEPTION in renderer_.EndFrame()"); throw; }
 
@@ -283,6 +303,7 @@ void App::Run() {
 #endif
 #endif
 		try {
+		LoadProfile::Scope frameStep("frame", "present (waits for the GPU)", 30);
 		dx_.EndFrame();
 		} catch (const std::exception& e) { LogFile("EXCEPTION in dx_.EndFrame():"); LogFile(e.what()); throw; } catch (...) { LogFile("UNKNOWN EXCEPTION in dx_.EndFrame()"); throw; }
 

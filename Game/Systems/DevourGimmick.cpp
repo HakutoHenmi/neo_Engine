@@ -17,7 +17,24 @@ namespace {
 constexpr int kPopRise=0,kPopHit=1;
 constexpr uint32_t kNone=0xffffffffu;
 }
-// ギミックを 1 つ足す: 目印の看板 (signAt の y が負なら立てない) を置き、看板の足元は通れないようにする。
+// 看板 (旗) の土台の形: モデル (scripts/lowpoly の gimmick_sign を 1.2 倍) の台は半径 12・高さ 3.6、柱は半径 1.7
+namespace {
+constexpr float kSignBaseOuter=12.5f,kSignBaseInner=9.f,kSignBaseTop=3.6f,kSignPole=1.7f;
+}
+// 土台の上の高さ: 外の縁から内側へなめらかに上がる坂 (どの大きさでも段差として止まらず、そのまま乗り越えられる)
+float ChronoSystem::GimmickSignGround(V at)const{
+    float height=0;
+    for(const auto& sign:gimmickSigns_){const float dx=at.x-sign.x,dz=at.z-sign.z,d=std::sqrt(dx*dx+dz*dz);if(d>=kSignBaseOuter)continue;
+        const float u=std::clamp((kSignBaseOuter-d)/(kSignBaseOuter-kSignBaseInner),0.f,1.f);height=std::max(height,sign.y+kSignBaseTop*u*u*(3-2*u));}
+    return height;
+}
+// 柱: 体の中心を柱から丸く押し出す。角が無いので、ぶつからずに柱の横へ滑る (体はやわらかいので、柱が少し体にめり込んでよい)
+ChronoSystem::V ChronoSystem::GimmickSignSlide(V at,float bodyRadius)const{
+    for(const auto& sign:gimmickSigns_){const float reach=kSignPole+bodyRadius*.35f;V d{at.x-sign.x,0,at.z-sign.z};const float len=Length(d);if(len>=reach)continue;
+        const V dir=len>1e-3f?d*(1/len):V{1,0,0};at.x=sign.x+dir.x*reach;at.z=sign.z+dir.z*reach;}
+    return at;
+}
+// ギミックを 1 つ足す: 目印の看板 (signAt の y が負なら立てない) を置く。床に立つ看板は乗り越えられる (GimmickSignGround)。
 // 作動範囲は床の輪ではなく、縁から垂直に立つ光の膜で示す (DrawGimmickCurtains)
 int ChronoSystem::AddGimmick(entt::registry& r,GimmickKind kind,const std::string& name,V at,float radius,float minCm,float signYaw,V signAt){
     if(gimmicks_.empty()){
@@ -30,7 +47,7 @@ int ChronoSystem::AddGimmick(entt::registry& r,GimmickKind kind,const std::strin
     DevourGimmick g;g.kind=kind;g.name=name;g.at=at;g.radius=radius;g.minCm=minCm;
     static const char* signs[]={"sign_shoot","sign_domino","sign_bowling","sign_paint","sign_liquid","sign_plane"};
     if(signAt.y>=0){g.sign=uint32_t(LowProp(r,signs[int(kind)],signAt,1.2f,signYaw,0,{1,1,1,1},0));
-        if(signAt.y<1){RingLot lot;lot.foot={signAt.x-6,signAt.z-6,signAt.x+6,signAt.z+6};ringLots_.push_back(lot);ringLotProps_.push_back(-1);}}
+        if(signAt.y<1)gimmickSigns_.push_back(signAt);}
     gimmicks_.push_back(std::move(g));return int(gimmicks_.size())-1;
 }
 // 動かす物を止めておく (飲めないが体は止まる) / 放す (普通に飲める)。止めている間は大きさを覚えておく

@@ -88,8 +88,6 @@ void GameScene::Initialize(Engine::WindowDX* dx, const Engine::SceneParameters& 
     graphicsOpen_=false;graphicsSaveFailed_=false;
 	// ウィンドウを覚える
 	dx_ = dx;
-    // 戦闘 BGM を流す
-    Music::Play(Music::Battle);
 	// 描画の窓口
 	renderer_ = Engine::Renderer::GetInstance();
 	// 最初の Update より先に Draw が呼ばれても (検証シーンなど) 調合室の描画が使えるよう、
@@ -104,6 +102,8 @@ void GameScene::Initialize(Engine::WindowDX* dx, const Engine::SceneParameters& 
 	// シーンファイルが空か本編のシーン (game.json の mainStage) ならスライム本編モード (ChronoSystem で動かす)
 	slimePlayerDemo_ = Data::IsSlimePlayerDemoStage(params.stagePath);
 	chronoMode_ = slimePlayerDemo_ || Data::IsMainStage(params.stagePath);
+	// 戦闘 BGM を流す (スライム本編は ChronoSystem::Reset がステージの曲を流すので、別の曲を展開しない)
+	if (!chronoMode_) Music::Play(Music::Battle);
 	// 本編では GPU の流体を最初の状態に戻す
 	if (chronoMode_) renderer_->ResetGPUFluid();
 

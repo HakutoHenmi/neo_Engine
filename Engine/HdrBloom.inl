@@ -40,6 +40,44 @@ bool Renderer::InitHdrBloom_() {
         pso.PS={ps->GetBufferPointer(),ps->GetBufferSize()};auto& target=i==2?psoGtao_:(i?psoBloomUp_:psoBloomDown_);
         if(FAILED(dev_->CreateGraphicsPipelineState(&pso,IID_PPV_ARGS(&target))))return false;
     }
+    // Multiplies AO/RT-shadow visibility into the HDR scene (dest*src) before DLSS.
+    auto occlusion=CompileShaderFromFile(L"Resources/shaders/OcclusionComposite.hlsl","main","ps_5_0");
+    if(!occlusion)return false;
+    pso.PS={occlusion->GetBufferPointer(),occlusion->GetBufferSize()};
+    auto& blend=pso.BlendState.RenderTarget[0];blend.BlendEnable=TRUE;
+    blend.SrcBlend=D3D12_BLEND_ZERO;blend.DestBlend=D3D12_BLEND_SRC_COLOR;blend.BlendOp=D3D12_BLEND_OP_ADD;
+    blend.SrcBlendAlpha=D3D12_BLEND_ZERO;blend.DestBlendAlpha=D3D12_BLEND_ONE;blend.BlendOpAlpha=D3D12_BLEND_OP_ADD;
+    return SUCCEEDED(dev_->CreateGraphicsPipelineState(&pso,IID_PPV_ARGS(&psoOcclusionComposite_)));
+}
+// Darkens the jittered render-resolution scene with AO and RT shadows so DLSS
+// resolves them together with the geometry. Returns false if nothing was applied.
+bool Renderer::RenderOcclusionComposite_(uint32_t frame,bool ambient,bool rtShadow) {
+    if(!psoOcclusionComposite_||(!ambient&&!rtShadow))return false;
+    float a=cbFrame_.proj.m[2][2],b=cbFrame_.proj.m[3][2];
+    struct Post{float data[28]{};Matrix4x4 inverse{},previous{};} cb{};
+    cb.data[11]=std::abs(b/(std::max)(.000001f,a));cb.data[12]=std::abs(b/(std::abs(a-1)>.000001f?a-1:.000001f));
+    cb.data[19]=ambient?graphicsSettings_.ambientOcclusion:0.f;
+    cb.data[24]=volumeSurfaceDepth_&&gpuFluidCoreMode_>=4&&fluidVolumeDebugMode_==0?1.f:0.f;
+    cb.data[25]=rtShadow?.35f:0.f;
+    UINT offset=upload_[frame].Allocate(256,256);if(offset==UINT32_MAX)return false;
+    std::memcpy(upload_[frame].mapped+offset,&cb,sizeof(cb));
+    if(ppSceneState_!=D3D12_RESOURCE_STATE_RENDER_TARGET){auto barrier=CD3DX12_RESOURCE_BARRIER::Transition(ppSceneColor_.Get(),ppSceneState_,D3D12_RESOURCE_STATE_RENDER_TARGET);list_->ResourceBarrier(1,&barrier);}
+    list_->OMSetRenderTargets(1,&ppRtv_,FALSE,nullptr);
+    list_->SetGraphicsRootSignature(rootSigPP_.Get());list_->SetPipelineState(psoOcclusionComposite_.Get());
+    ID3D12DescriptorHeap* heaps[]={srvHeap_};list_->SetDescriptorHeaps(1,heaps);
+    list_->SetGraphicsRootConstantBufferView(0,upload_[frame].buffer->GetGPUVirtualAddress()+offset);
+    // t0 (scene) is not read; bind the depth there so the scene color is never
+    // both a render target and a shader resource.
+    for(UINT root=1;root<10;++root)list_->SetGraphicsRootDescriptorTable(root,ppDepthSrvGpu_);
+    list_->SetGraphicsRootDescriptorTable(3,gtaoTarget_.srv);
+    list_->SetGraphicsRootDescriptorTable(6,cb.data[24]>.5f?volumeSurfaceDepthSrv_:ppDepthSrvGpu_);
+    if(rtShadow)list_->SetGraphicsRootDescriptorTable(7,rtShadowTarget_.srv);
+    D3D12_VIEWPORT vp{0,0,float(sceneWidth_),float(sceneHeight_),0,1};D3D12_RECT rect{0,0,LONG(sceneWidth_),LONG(sceneHeight_)};
+    list_->RSSetViewports(1,&vp);list_->RSSetScissorRects(1,&rect);
+    list_->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);list_->DrawInstanced(3,1,0,0);
+    auto barrier=CD3DX12_RESOURCE_BARRIER::Transition(ppSceneColor_.Get(),D3D12_RESOURCE_STATE_RENDER_TARGET,D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);list_->ResourceBarrier(1,&barrier);
+    ppSceneState_=D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+    list_->RSSetViewports(1,&viewport_);list_->RSSetScissorRects(1,&scissor_);
     return true;
 }
 void Renderer::RenderGtao_(uint32_t frame) {

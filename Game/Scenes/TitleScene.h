@@ -6,6 +6,7 @@
 #include "../../Engine/Camera.h"
 #include "../../Engine/Renderer.h"
 #include "../ObjectTypes.h"
+#include "../UI/CollectionUI.h"
 #include <memory>
 #include <array>
 #include <chrono>
@@ -39,9 +40,12 @@ private:
     // クレジット画面を開いているかと、表示中のページ
     bool creditsOpen_ = false;
     int creditsPage_ = 0;
+    // ずかんを開いているかと、その状態
+    bool collectionOpen_ = false;
+    UI::CollectionState collection_;
     // 経過時間・登場の経過時間・出発の経過時間 (負なら出発前)
     float totalTime_ = 0.0f, intro_ = 0.0f, leaving_ = -1.0f;
-    // 選んでいる項目 (0: はじめる / 1: クレジット / 2: やめる) と、前フレームのマウスの位置
+    // 選んでいる項目 (0: はじめる / 1: ずかん / 2: クレジット / 3: やめる) と、前フレームのマウスの位置
     int menu_ = 0;
     float pointerX_ = 0.0f, pointerY_ = 0.0f;
     bool pointerReady_ = false;

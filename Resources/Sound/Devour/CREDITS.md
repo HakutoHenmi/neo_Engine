@@ -9,4 +9,6 @@ scripts/BuildDevourAudio.py が下の素材を加工・合成して作ってい�
 | Squish Sounds Effects (squish_03) | EZduzziteh | CC0 | https://opengameart.org/content/squish-sounds-effects | gulp-mid-0 |
 | 25 CC0 mud sfx (mud_08,11,24,25) | rubberduck | CC0 | https://opengameart.org/node/87193 | gulp-small-*, gulp-big, splat |
 | 80 CC0 creature SFX #2 (slime_07) | rubberduck | CC0 | https://opengameart.org/node/86875 | gulp-mid-1, splat |
-| Music Jingles (jingles_PIZZI02, jingles_SAX07) | Kenney | CC0 | https://kenney.nl/assets/music-jingles | rank-up, rank-top |
+| Music Jingles (jingles_PIZZI02, jingles_STEEL15) | Kenney | CC0 | https://kenney.nl/assets/music-jingles | rank-up, rank-top |
+
+rank-top は以前 jingles_SAX07 だったが、下がる音形で失敗の音に聞こえたため 2026-11-13 に jingles_STEEL15 へ差し替えた。

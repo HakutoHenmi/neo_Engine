@@ -2,6 +2,7 @@
 // スライムの生活モード (現在のゲームの本編。ChronoSystem の一部)。
 // 吸収で成長し、タイヤと消火栓に変形して街を進む。調合室 (研究所) の画面もここにある。
 #include "ChronoSystemInternal.h"
+#include "../Chrono/RoomRules.h"
 #include "../Chrono/DevourAnimation.h"
 #include <map>
 
@@ -118,6 +119,8 @@ bool ChronoSystem::SaveSlimeLab(){
     // 保存先 (記録と同じフォルダ) に、版・選んだスロット・材料・クリア数・レシピを書く
     try{auto path=RecordPath().parent_path()/L"slime-lab-v1.json";std::filesystem::create_directories(path.parent_path());
         nlohmann::json data{{"version",2},{"slot",lifeRecipeSlot_},{"materials",lifeMaterials_},{"clears",lifeClears_},{"devourBests",devourBests_},{"devourStage",devourStage_}};
+        // 図鑑の記録 (Collection::Add が書く) は残す
+        try{std::ifstream old(path);nlohmann::json previous;if(old&&(old>>previous)&&previous.contains("collection"))data["collection"]=previous["collection"];}catch(...){}
         data["recipes"]=nlohmann::json::array();for(const auto& recipe:lifeRecipes_){auto rgb=recipe.color.ToRGB();data["recipes"].push_back({{"mix",recipe.mix},{"color",{rgb.x,rgb.y,rgb.z}},{"colorHSV",{recipe.color.h,recipe.color.s,recipe.color.v}}});}
         // 一時ファイルに書いてから置き換え、途中で壊れないようにする
         auto temp=path;temp+=L".tmp";{std::ofstream file(temp);if(!file)throw std::runtime_error("Recipe save failed");file<<data.dump(2);if(!file)throw std::runtime_error("Recipe save failed");}
@@ -186,14 +189,19 @@ void ChronoSystem::BuildSlimeLife(entt::registry& r){
     if(devour_)ResetDevourGimmicks(r);
     // 吸収モード: 路地の塀とバリケードも、大きくなれば覆って飲み込める
     devourWallProps_.clear();devourBarricadeProp_=-1;
-    devourClock_={};devourHeli_={};devourPounce_={};devourMeals_.clear();devourSplashes_.clear();devourDigest_=0;devourGulp_={};devourPounceWait_=0;devourBiteAge_=-1;devourChew_=0;devourSizePulse_=0;devourPops_.clear();devourNewBest_=false;devourRank_=0;if(devour_)devourClock_.left=CurrentDevourStage().time;StartDevourTutorial();
+    devourClock_={};devourHeli_={};devourPounce_={};devourMeals_.clear();devourEaten_.clear();shelf_={};Engine::Renderer::GetInstance()->SetFluidInterior(0,0);devourSplashes_.clear();devourDigest_=0;devourGulp_={};devourPounceWait_=0;devourBiteAge_=-1;devourChew_=0;devourSizePulse_=0;devourPops_.clear();devourNewBest_=false;devourRank_=0;if(devour_)devourClock_.left=CurrentDevourStage().time;StartDevourTutorial();
 #ifndef NDEBUG
     // 確認用: --devour-time=秒 で制限時間を差し替える
     if(const wchar_t* arg=wcsstr(GetCommandLineW(),L"--devour-time="))devourClock_.left=float(_wtof(arg+14));
     // 確認用: --devour-cm=大きさ で体の大きさを差し替える
     if(const wchar_t* arg=wcsstr(GetCommandLineW(),L"--devour-cm=");arg&&devour_&&!life_.bodies.empty())life_.bodies[0].mass=Chrono::DevourGoalMass(CurrentDevourStage(),float(_wtof(arg+12)));
+    // 確認用: --devour-no-tutorial でベッドの下のチュートリアルを飛ばす (ランクの知らせなど、本番の表示を見るため)
+    if(wcsstr(GetCommandLineW(),L"--devour-no-tutorial"))devourTutorial_.step=-1;
+    // 確認用: --devour-at=x,z,向き(度) で開始の位置と視点の向きを差し替える (ギミックの看板の乗り越えなどを見るため)
+    if(const wchar_t* arg=wcsstr(GetCommandLineW(),L"--devour-at=");arg&&devour_&&!life_.bodies.empty()){float x=0,z=0,deg=0;
+        if(swscanf_s(arg+12,L"%f,%f,%f",&x,&z,&deg)>=2){V at{x,InkGround(V{x,1,z})+1.25f,z};life_.bodies[0].at=at;r.get<TransformComponent>(player_).translate=Write(at);yaw_=deg*3.1415927f/180;}}
 #endif
-    devourItemReady_=false;devourMorphLeft_=0;devourSucks_.clear();devourSuckClock_=0;devourSucking_=false;devourHop_={};devourHopCooldown_=0;devourStepPush_=0;devourStun_=0;devourBumpCool_=0;devourHeavy_=0;devourBumpMemory_=0;devourFlies_.clear();
+    devourItemReady_=false;devourMorphLeft_=0;devourSucks_.clear();devourSuckClock_=0;devourSucking_=false;devourHop_={};devourHopCooldown_=0;devourStepPush_=0;devourStun_=0;devourBumpCool_=0;devourHeavy_=0;devourHeavyPeak_=0;devourHeavyKick_=0;devourGrow_={};wetMarks_.clear();wetHasLast_=false;devourBumpMemory_=0;devourFlies_.clear();
     StartDevourLog();if(devour_)devourLog_.bestBefore=devourBests_[size_t(devourStage_)];
     // 門・バリケード・弾などの状態を初期化する
     cityGates_={};if(slimePlayerDemo_)cityGates_=CityGates::AllOpen();cityGateUnlocked_=false;cityBarricadeHealth_=CityBarricadeHealth();cityGateHealth_=CityGateHealth();cityAnnounced_=-1;cityHintClock_=0;
@@ -514,7 +522,9 @@ void ChronoSystem::UpdateSlimeLife(entt::registry& r,Player& p,GameContext& ctx)
     // エディタでの確認は、エディタが毎フレーム続けている間だけ
     if(devourPreviewHold_>0)--devourPreviewHold_;else devourPreviewTime_=-1;
     // ベッドの下のチュートリアルの間は時間を進めない
-    if(devour_&&!finished_&&!DevourTutorialHolding()){float before=devourClock_.left;devourClock_.left=std::max(0.f,devourClock_.left-dt);TickDevourTimeSounds(before);devourClock_.flash=std::max(0.f,devourClock_.flash-dt);}
+    if(devour_&&!finished_&&!DevourTutorialHolding()){float before=devourClock_.left;devourClock_.left=std::max(0.f,devourClock_.left-dt);TickDevourTimeSounds(before);}
+    // ランクの知らせはチュートリアルの間も消えていく (時計と一緒に止めると、チュートリアルの後に古い知らせが出る)
+    if(devour_&&!finished_)devourClock_.flash=std::max(0.f,devourClock_.flash-dt);
     // タイヤと消火栓をこのフレームで解放したか調べるために前の状態を記録する
     bool hadTire=body.tireUnlocked,hadHydrant=body.hydrantUnlocked,hadSignal=body.signalUnlocked,hadVacuum=body.vacuumUnlocked,hadSpring=body.springUnlocked;life_.signalNotice=std::max(0.f,life_.signalNotice-dt);SignalTick(life_.signal,dt);life_.tireNotice=std::max(0.f,life_.tireNotice-dt);life_.hydrantNotice=std::max(0.f,life_.hydrantNotice-dt);
     p.invincible=std::max(0.f,p.invincible-dt);p.damageAge+=dt;life_.stompCooldown=std::max(0.f,life_.stompCooldown-dt);life_.contactCooldown=std::max(0.f,life_.contactCooldown-dt);
@@ -632,8 +642,12 @@ void ChronoSystem::UpdateSlimeLife(entt::registry& r,Player& p,GameContext& ctx)
     else{V radii=LifeRadii(body,life_.recipe);V wanted=next;next=ConstrainLifeMovement(old,next,std::max(radii.x,radii.z)*.7f);
         // 吸収モード: 壁や飲めない物へ勢いよくぶつかると弾かれる (変形中と飛びかかり中は別の動き)
         if(devour_&&!pouncing&&!LifeWeaponForm(body.action)&&dt>0){V lost=wanted-next;lost.y=0;float hit=Length(lost)/dt,impact=DevourBumpImpact(hit,speed);
-            if(impact>0&&devourBumpCool_<=0)DevourBump(r,p,ctx,old+Unit(lost)*4.f,impact);
-            next=DevourPropBlock(r,p,ctx,old,next,speed);}
+            // ベッドの下 (チュートリアルの場所) では、本の壁にぶつかっても弾かずに止めるだけにする
+            const bool gentle=CurrentDevourStage().map=="room"&&Chrono::RoomUnderBed(old);
+            if(impact>0&&devourBumpCool_<=0&&!gentle)DevourBump(r,p,ctx,old+Unit(lost)*4.f,impact);
+            next=DevourPropBlock(r,p,ctx,old,next,speed);
+            // ギミックの看板の柱は弾かずに横へ滑らせる (土台は InkGround の坂で乗り越える)
+            next=GimmickSignSlide(next,DevourBodyRadius(body.mass));}
         if(next.x==old.x)p.velocity.x=0;if(next.z==old.z)p.velocity.z=0;}
     // 段差が高すぎれば水平に動かない
     float floor=InkGround(old),nextFloor=InkGround(next);
@@ -799,10 +813,13 @@ void ChronoSystem::UpdateSlimeLife(entt::registry& r,Player& p,GameContext& ctx)
     if(devour_){
         // 吸収モード: 目標に届いたら大きく知らせる。時間切れ (か全部食べ尽くす) で結果を出す
         const auto& stage=CurrentDevourStage();int rank=DevourRankAt(stage,body.mass);
-        if(!finished_&&rank>devourRank_){devourRank_=rank;devourClock_.flash=3;bool top=rank==int(stage.goals.size());
-            life_.message=top?std::string("Sランク達成！"):(rank==1?std::string("クリア！ "):"ランク "+DevourRankName(stage,rank)+"！ ")+"次は "+DevourSizeText(stage.goals[size_t(rank)]);life_.messageAge=3;
+        // 「ランク X」と次の目標 (何 cm) は HUD の 1 つの知らせにまとめて出す (UI::Scale::Hud)。ここでは別の札を出さない
+        if(!finished_&&rank>devourRank_){devourRank_=rank;devourClock_.flash=UI::Scale::RankFlashSeconds;bool top=rank==int(stage.goals.size());
             LifeImpact(ctx,ImpactDevourTier,body.at,{0,1,0});PlayDevourSound(top?devourSounds_.rankTop:devourSounds_.rankUp,.8f);}
         bool cleared=std::none_of(life_.props.begin(),life_.props.end(),[](const LifeCollectible& prop){return prop.active;});
+        // 計測用 (--load-profile-auto): 1 回目は 2.5 秒で結果画面を出し、結果を開くときの引っかかりも記録する
+        static bool autoFinished=false;
+        if(!finished_&&!autoFinished&&life_.age>2.5f&&wcsstr(GetCommandLineW(),L"--load-profile-auto")){autoFinished=true;Engine::LoadProfile::Record("drive","result: auto finish",0);FinishDevour(p);}
         if(!finished_&&(devourClock_.left<=0||cleared))FinishDevour(p);
     }
     else if(body.health<=0)Finish(p,false);
@@ -859,11 +876,14 @@ void ChronoSystem::DrawSlimeLife(entt::registry& r,GameContext& ctx){
         ctx.renderer->DrawLine3D(EV(tip+V{1,1,0}),EV(tip),{1,.72f,.15f,1});
     }
     // 部屋のギミックの作動範囲の膜
-    if(devour_)DrawGimmickCurtains(ctx);
+    if(devour_&&DevourShelfDive()<=0)DrawGimmickCurtains(ctx);
     // こぼれた液体 (近いものだけ)
     if(devour_)DrawDevourSpills(ctx);
+    // スライムが通った所のぬれ跡と、大きい物を飲んで育ったときのしずく (結果の「おなかの中」では描かない)
+    if(devour_&&DevourShelfDive()<=0){DrawDevourTrail(ctx);DrawDevourGrowth(ctx);}
     // 吸収モードの目印 (門と広場の大物): 上に大きな矢印を立てる
-    if(devour_)for(const auto& prop:life_.props)if(prop.active&&prop.beacon&&!prop.sealed){float size=std::max(3.f,prop.radius*.5f),bounce=size*.2f*std::sin(life_.age*3);
+    // (結果の「おなかの中」では、体の外の目印を描かない)
+    if(devour_&&DevourShelfDive()<=0)for(const auto& prop:life_.props)if(prop.active&&prop.beacon&&!prop.sealed){float size=std::max(3.f,prop.radius*.5f),bounce=size*.2f*std::sin(life_.age*3);
         V tip{prop.at.x,prop.at.y+prop.radius*2.4f+size+bounce,prop.at.z};V side{size,size,0},back{0,size,size};
         for(V wing:{side,V{-side.x,side.y,0},back,V{0,back.y,-back.z}})ctx.renderer->DrawLine3D(EV(tip+wing),EV(tip),{1,.72f,.15f,1});
         ctx.renderer->DrawLine3D(EV(tip+V{0,size*3,0}),EV(tip),{1,.72f,.15f,1});}
@@ -1019,7 +1039,8 @@ void ChronoSystem::DrawSlimeLifeUI(entt::registry& r,GameContext& ctx){
     if(life_.hydrantNotice>0)shadowed(UI::UsingPad()?"消火栓変形 解放！ 十字キー↓で変形 → RTで放水 / LTで防御":"消火栓変形 解放！ 3で変形 → 左クリックで放水 / 右クリックで防御",640,190,18,hazard,UI::JapaneseFont,.5f);
     else if(life_.signalNotice>0)shadowed(UI::UsingPad()?"信号機変形 解放！ 十字キー←で変形 → RTで 赤 → 青 → 黄 の順に信号を出す":"信号機変形 解放！ 4で変形 → 左クリックで 赤 → 青 → 黄 の順に信号を出す",640,190,18,hazard,UI::JapaneseFont,.5f);
     else if(life_.tireNotice>0)shadowed(UI::UsingPad()?"タイヤ変形 解放！ 十字キー→で変形 → RT長押しで回転を溜め、離して突進":"タイヤ変形 解放！ 左長押しで回転を溜め、離して突進",640,190,18,hazard,UI::JapaneseFont,.5f);
-    else if(life_.messageAge>0)UI::Scale::Notice(ui,life_.message,640,130);
+    // ランクの知らせ (HUD の赤い札と次の目標) が出ている間は、その下へずらして重ねない
+    else if(life_.messageAge>0)UI::Scale::Notice(ui,life_.message,640,devour_&&!finished_&&devourClock_.flash>0&&devourTutorial_.step<0?UI::Scale::RankNoticeY:130.f);
     DrawSignalUI(ctx);DrawLifeEnemyMarkers(ctx);DrawLifeChildMarkers(ctx);
     // 消火栓の照準: 届かない・遮られるときは金色にして着弾点に印を付ける
     if(hydrantAim_.active){

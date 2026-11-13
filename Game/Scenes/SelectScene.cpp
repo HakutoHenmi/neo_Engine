@@ -55,6 +55,7 @@ void SelectScene::Initialize(Engine::WindowDX* dx, const Engine::SceneParameters
     // 前回のステージから始める。未解放のステージは選ばない
     stages_ = S::LoadStages(&selected_);
     if (!stages_[size_t(selected_)].unlocked) selected_ = 0;
+    PreloadStageMusic(selected_);
     slimeX_ = (std::max)(36.f, S::TapeX(SlimeCm(stages_[size_t(selected_)])));
     slimeWidth_ = selected_ ? 260.f : 140.f;
     S::PreloadSlime(renderer_);
@@ -64,12 +65,19 @@ void SelectScene::Initialize(Engine::WindowDX* dx, const Engine::SceneParameters
     Engine::WindowDX::SetCursorVisible(true);
 }
 
+// 選んだステージの曲を裏で展開しておく (ステージの読み込み中に MP3 の展開を待たない)
+void SelectScene::PreloadStageMusic(int stage) {
+    const auto& stages = Chrono::DevourStages();
+    if (stage >= 0 && stage < int(stages.size())) Music::Preload(stages[size_t(stage)].map == "ring" ? Music::City : Music::Battle);
+}
+
 // 選んでいるステージへ出発する。本編は保存したステージ番号を読んで始まる
 void SelectScene::Confirm() {
     if (!stages_[size_t(selected_)].unlocked) { shake_ = .4f; UI::PlayUISound(UI::UISound::Back); return; }
     UI::PlayUISound(UI::UISound::Confirm);
     Engine::Input::GetInstance()->LatchPad();
     S::SaveStage(selected_);
+    PreloadStageMusic(selected_);
     leaving_ = 0;
 }
 

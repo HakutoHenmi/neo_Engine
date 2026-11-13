@@ -52,6 +52,8 @@ bool Audio::Initialize() {
 }
 
 void Audio::Shutdown() {
+	// Join background decodes before Media Foundation shuts down.
+	pendingBgm_.clear();
 	bgmVoice_ = retiringBgmVoice_ = 0;
 	bgmPath_.clear();
 	bgmSounds_.clear();
@@ -82,16 +84,17 @@ uint32_t Audio::Load(const std::string& path) {
 	std::wstring wpath = Engine::PathUtils::FromUTF8(Engine::PathUtils::GetUnifiedPath(path));
 
 	SoundData newSound = {};
-	if (LoadViaMF(wpath, newSound)) {
-		soundDatas_.push_back(newSound);
-        
-		float sizeMB = (float)newSound.data.size() / (1024.0f * 1024.0f);
-		std::string detailsStr = std::to_string(newSound.wfx.nSamplesPerSec) + "Hz " + std::to_string(newSound.wfx.nChannels) + "ch PCM";
-		NetworkProfiler::GetInstance().RegisterAsset(path, "Audio", sizeMB, detailsStr);
-        
-		return (uint32_t)(soundDatas_.size() - 1);
-	}
+	if (LoadViaMF(wpath, newSound))
+		return Register(path, std::move(newSound));
 	return 0xFFFFFFFF; // エラー
+}
+
+uint32_t Audio::Register(const std::string& path, SoundData&& sound) {
+	float sizeMB = (float)sound.data.size() / (1024.0f * 1024.0f);
+	std::string detailsStr = std::to_string(sound.wfx.nSamplesPerSec) + "Hz " + std::to_string(sound.wfx.nChannels) + "ch PCM";
+	NetworkProfiler::GetInstance().RegisterAsset(path, "Audio", sizeMB, detailsStr);
+	soundDatas_.push_back(std::move(sound));
+	return (uint32_t)(soundDatas_.size() - 1);
 }
 
 // ハンドル指定再生
@@ -182,8 +185,31 @@ void Audio::StopAll() {
 	activeVoices_.clear();
 }
 
+void Audio::PreloadBGMAsync(const std::string& path) {
+	if (path.empty() || !mfStarted_ || bgmSounds_.contains(path) || pendingBgm_.contains(path)) return;
+	const std::wstring wpath = PathUtils::FromUTF8(PathUtils::GetUnifiedPath(path));
+	pendingBgm_[path] = std::async(std::launch::async, [wpath, path] {
+		LoadProfile::Scope profile("audio-async", path);
+		// The decoder is the only CPU-heavy work here; keep it behind the game and loading threads.
+		SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_BELOW_NORMAL);
+		SoundData sound{};
+		if (!LoadViaMF(wpath, sound)) sound.data.clear();
+		return sound;
+	});
+}
+
 bool Audio::PreloadBGM(const std::string& path) {
 	if (bgmSounds_.contains(path)) return true;
+	if (auto pending = pendingBgm_.find(path); pending != pendingBgm_.end()) {
+		// Usually finished long ago; otherwise this waits only for the rest of the decode.
+		LoadProfile::Scope profile("audio-wait", path);
+		SoundData sound = pending->second.get();
+		pendingBgm_.erase(pending);
+		if (!sound.data.empty()) {
+			bgmSounds_[path] = Register(path, std::move(sound));
+			return true;
+		}
+	}
 	const uint32_t sound = Load(path);
 	if (sound == 0xFFFFFFFF) return false;
 	bgmSounds_[path] = sound;

@@ -387,7 +387,7 @@ void Renderer::Shutdown() {
 	rootSigPP_.Reset();
 	ppSceneColor_.Reset();
     for(auto& target:bloomDown_)target.resource.Reset();for(auto& target:bloomUp_)target.resource.Reset();
-    gtaoTarget_.resource.Reset();bloomRtvHeap_.Reset();psoBloomDown_.Reset();psoBloomUp_.Reset();psoGtao_.Reset();
+    gtaoTarget_.resource.Reset();bloomRtvHeap_.Reset();psoBloomDown_.Reset();psoBloomUp_.Reset();psoGtao_.Reset();psoOcclusionComposite_.Reset();
     temporalMotion_.resource.Reset();temporalDepth_.resource.Reset();dlssOutput_.resource.Reset();temporalExposure_.resource.Reset();dlssHistoryValid_=false;
     temporalRtvHeap_.Reset();rootSigTemporal_.Reset();psoTemporalPrepare_.Reset();psoTemporalObjects_.Reset();
     temporalWorlds_.clear();temporalJobs_.clear();
@@ -1368,6 +1368,15 @@ void Renderer::EndFrame() {
     const bool temporalScene=sceneCameraSet_&&frameDrawCalls_>0&&framePPEnabled_&&psoPP_.Get()==pipelines_["ChronoFocus"].Get();
     bool rtReady=temporalScene&&(graphicsSettings_.rtShadows||graphicsSettings_.rtReflections||graphicsSettings_.rtIndirect)&&RenderRtShadows_(fi);
     rtShadowRendered_=rtReady&&graphicsSettings_.rtShadows;
+    // Under DLSS, AO and RT shadows must be in the jittered input. Applied after
+    // upscaling they follow the per-frame jitter (objects appear to tremble) and
+    // keep render-resolution stair-steps along ground contacts.
+    const bool aoEnabled=temporalScene&&graphicsSettings_.ambientOcclusion>.001f;
+    bool occlusionBeforeDlss=false;
+    if(dlssActive_&&temporalScene){
+        if(aoEnabled)RenderGtao_(fi);
+        occlusionBeforeDlss=RenderOcclusionComposite_(fi,aoEnabled,rtShadowRendered_);
+    }
     if(dlssActive_&&temporalScene){
         dlssHistoryValid_=EvaluateDlss_(fi);
         if(dlssHistoryValid_)postColorSrv_=dlssOutput_.srv;
@@ -1375,7 +1384,7 @@ void Renderer::EndFrame() {
     }else dlssHistoryValid_=false;
 
 	// --- 2. finalSceneColor_ をRenderTargetStateに遷移し描画 ---
-    if(framePPEnabled_ && psoPP_.Get()==pipelines_["ChronoFocus"].Get() && graphicsSettings_.ambientOcclusion>.001f)
+    if(!occlusionBeforeDlss && framePPEnabled_ && psoPP_.Get()==pipelines_["ChronoFocus"].Get() && graphicsSettings_.ambientOcclusion>.001f)
         RenderGtao_(fi);
     if(framePPEnabled_ && psoPP_.Get()==pipelines_["ChronoFocus"].Get() && graphicsSettings_.bloom>.001f)
         RenderHdrBloom_(fi);
@@ -1435,6 +1444,7 @@ void Renderer::EndFrame() {
 		cb.vignette = ppParams_.vignette;
 		cb.scanline = ppParams_.scanline;
 		cb.san = ppParams_.san;
+		cb.pad0 = ppParams_.grow;
 		cb.dofFocus=ppParams_.dofFocus;cb.dofRange=ppParams_.dofRange;cb.dofStrength=ppParams_.dofStrength;
 		// Recover the actual camera clip planes from its perspective matrix.
 		float projA=cbFrame_.proj.m[2][2],projB=cbFrame_.proj.m[3][2];
@@ -1452,6 +1462,7 @@ void Renderer::EndFrame() {
         cb.projectionX=cbFrame_.proj.m[0][0];cb.projectionY=cbFrame_.proj.m[1][1];
         cb.useFluidDepth=volumeSurfaceDepth_&&gpuFluidCoreMode_>=4&&fluidVolumeDebugMode_==0?1.f:0.f;
         cb.rtStrength=rtShadowRendered_?.35f:0.f;
+        if(occlusionBeforeDlss)cb.ambientOcclusion=cb.rtStrength=0; // Already in the DLSS input.
         // RT radiance is already in the HDR scene before DLSS, bloom and DoF.
         cb.rtReflection=cb.rtIndirect=0;
         cb.inverseViewProjection=XMToM4(InverseCameraViewProjection(M4ToXM(cbFrame_.view),M4ToXM(cbFrame_.proj)));
@@ -2859,6 +2870,11 @@ void Renderer::EndAssetBatch() {
 		LoadingScreen::Pump();
 	}
 	FlushTextureBatch_();
+	if (!pendingMeshUploads_.empty()) {
+		LoadProfile::Scope profile("mesh", "batch wait for " + std::to_string(pendingMeshUploads_.size()) + " uploads");
+		WaitGPU();
+		pendingMeshUploads_.clear();
+	}
 }
 
 void Renderer::FlushTextureBatch_() {
@@ -3174,8 +3190,13 @@ Renderer::MeshHandle Renderer::LoadObjMesh(const std::string& objFilePath) {
 	ID3D12CommandList* ppCommandLists[] = {cmd.Get()};
 	queue_->ExecuteCommandLists(1, ppCommandLists);
 
-	// 完了を待機 (テクスチャ転送を確実にするため)
-	WaitGPU();
+	// 完了を待機 (テクスチャ転送を確実にするため)。まとめ読み中は同じキューの順序に任せ、
+	// 待ちは EndAssetBatch で 1 回にまとめる (コマンドリストはそれまで保持する)
+	if (assetBatchDepth_ > 0) {
+		pendingMeshUploads_.emplace_back(alloc, cmd);
+		LoadingScreen::Pump();
+	} else
+		WaitGPU();
 
 	if (model->HasTexture()) {
 		std::vector<uint32_t> indices;
@@ -5715,7 +5736,7 @@ void Renderer::ResetGPUFluid() {
     guidedTrailParticles_.clear();previousTrailParticleCount_=0;
     fluidBodySnapshot_={};
     for(auto& pending:fluidBodyPending_)pending=false;
-	chronoFluidOpacity_=1;chronoFluidFlash_=0;chronoFluidPaused_=false;
+	chronoFluidOpacity_=1;chronoFluidFlash_=0;chronoFluidPaused_=false;fluidInterior_=0;
 	gpuFluidTetherActive_ = false;
 	gpuFluidTetherBlend_ = 0;
 	volumeHistoryValid_ = false;

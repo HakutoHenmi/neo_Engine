@@ -61,6 +61,9 @@ void ChronoSystem::Reset(entt::registry& r){
     if(!initialized_)return;
     // ステージの BGM を流す (街は専用の曲)
     Music::Play(devour_&&CurrentDevourStage().map=="ring"?Music::City:Music::Battle);
+    // 結果画面の曲と、「つぎへ」で進むステージの曲を裏で展開しておく (結果を出す瞬間に MP3 を展開して止まらないように)
+    Music::Preload(Music::Victory);Music::Preload(Music::Defeat);
+    if(devour_&&devourStage_+1<int(Chrono::DevourStages().size()))Music::Preload(Chrono::DevourStages()[size_t(devourStage_+1)].map=="ring"?Music::City:Music::Battle);
     // プレイヤーの状態を作り直し、位置・体力・入力を初期化する
     r.emplace_or_replace<Player>(player_);
     auto& pt=r.get<TransformComponent>(player_);pt.translate={0,1.3f,-27};pt.scale={1,1,1};
@@ -134,6 +137,11 @@ void ChronoSystem::Presentation(entt::registry& r,Player& p,GameContext& ctx){
     // 引き寄せ中は歪みを強め、被弾直後は周辺を暗くする
     params.distortion=p.action==Action::Pulling?1.0f:0.65f;
     params.vignette=p.damageAge<.35f?1-p.damageAge/.35f:0;
+    // 大きい物を飲んだ直後だけ、画面の縁をうっすら金色に光らせて約 0.6 秒で消す
+    // (「大きくなった」の主役は体の伸びと飛び散るしずく (DevourGrowth.cpp)。画面は控えめにする)
+    {const float size=std::clamp((devourHeavyPeak_-.5f),0.f,1.f);
+        devourHeavyKick_=std::max(0.f,devourHeavyKick_-ctx.dt*1.7f);
+        params.grow=finished_?0:devourHeavyKick_*devourHeavyKick_*(.6f+.4f*size);}
     // プレイヤーの深度を被写界深度に渡す
     if(!finished_){
         using namespace DirectX;XMFLOAT3 playerView;
@@ -182,6 +190,11 @@ void ChronoSystem::Update(entt::registry& r,GameContext& ctx){
                 const bool next=won_&&devourStage_+1<int(Chrono::DevourStages().size());
                 const bool confirm=UI::Pressed(DIK_RETURN)||UI::PadPressed(XINPUT_GAMEPAD_A);
                 if(finishAge_<2.2f){if(confirm||ctx.input->IsMouseTrigger(0))finishAge_=2.2f;return;}
+                // 計測用 (--load-profile-auto): 「おなかの中」を見せたあと、やり直しを 1 回押したことにする
+                static bool autoRetried=false;
+                if(!autoRetried&&finishAge_>8.f&&wcsstr(GetCommandLineW(),L"--load-profile-auto")){autoRetried=true;Engine::LoadProfile::Record("drive","result: auto retry",0);Reset(r);return;}
+                // 「おなかの中」の升の操作 (大きく見ている間は他の操作を止める)
+                if(UpdateDevourShelf(ctx,ui))return;
                 if(next&&(UI::Pressed(DIK_N)||UI::Pressed(DIK_RETURN)||ui.Click(ResultNext))){++devourStage_;SaveSlimeLab();Reset(r);return;}
                 if(UI::Pressed(DIK_R)||(!next&&UI::Pressed(DIK_RETURN))||UI::PadPressed(XINPUT_GAMEPAD_X)||ui.Click(next?ResultRetry:ResultRetryOnly)){Reset(r);return;}
                 if(UI::Pressed(DIK_TAB)||UI::PadPressed(XINPUT_GAMEPAD_Y)||ui.Click(next?ResultTitle:ResultTitleOnly))Engine::SceneManager::GetInstance()->RequestCoveredChange("Title");

@@ -174,6 +174,9 @@
     <ClCompile Include="Game\Systems\SlimeDevour.cpp">
       <Filter>3. Systems（システム）\スライム本編</Filter>
     </ClCompile>
+    <ClCompile Include="Game\Systems\DevourShelf.cpp">
+      <Filter>3. Systems（システム）\スライム本編</Filter>
+    </ClCompile>
     <ClCompile Include="Game\Systems\DevourGimmick.cpp">
       <Filter>3. Systems（システム）\スライム本編</Filter>
     </ClCompile>
@@ -184,6 +187,9 @@
       <Filter>3. Systems（システム）\スライム本編</Filter>
     </ClCompile>
     <ClCompile Include="Game\Systems\DevourSpill.cpp">
+      <Filter>3. Systems（システム）\スライム本編</Filter>
+    </ClCompile>
+    <ClCompile Include="Game\Systems\DevourGrowth.cpp">
       <Filter>3. Systems（システム）\スライム本編</Filter>
     </ClCompile>
     <ClCompile Include="Game\Systems\RingCity.cpp">
@@ -276,6 +282,12 @@
       <Filter>1. Main（入口・共通定義）\Data（JSON の読み込み）</Filter>
     </ClInclude>
     <ClInclude Include="Game\Data\GameData.h">
+      <Filter>1. Main（入口・共通定義）\Data（JSON の読み込み）</Filter>
+    </ClInclude>
+    <ClInclude Include="Game\Data\Collection.h">
+      <Filter>1. Main（入口・共通定義）\Data（JSON の読み込み）</Filter>
+    </ClInclude>
+    <ClInclude Include="Game\UI\CollectionUI.h">
       <Filter>1. Main（入口・共通定義）\Data（JSON の読み込み）</Filter>
     </ClInclude>
     <ClInclude Include="Game\Scenes\AssignmentConfig.h">
@@ -518,6 +530,9 @@
       <Filter>Resources（素材）\Data</Filter>
     </None>
     <None Include="Resources\Data\ui_text.json">
+      <Filter>Resources（素材）\Data</Filter>
+    </None>
+    <None Include="Resources\Data\collection.json">
       <Filter>Resources（素材）\Data</Filter>
     </None>
     <None Include="Resources\Editor\Icons\audio.png">
@@ -1196,6 +1211,9 @@
       <Filter>Resources（素材）\shaders</Filter>
     </None>
     <None Include="Resources\shaders\RtLighting.hlsl">
+      <Filter>Resources（素材）\shaders</Filter>
+    </None>
+    <None Include="Resources\shaders\OcclusionComposite.hlsl">
       <Filter>Resources（素材）\shaders</Filter>
     </None>
     <None Include="Resources\shaders\RtLightingComposite.hlsl">
