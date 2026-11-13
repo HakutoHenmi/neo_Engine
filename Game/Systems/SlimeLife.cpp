@@ -399,7 +399,7 @@ void ChronoSystem::SyncSlimeBodies(GameContext& ctx){
     for(size_t i=0;i<(life_.lab?size_t(2):LifeBodyCount);++i){const auto& b=renderedBody(i);if(b.mass<=0)continue;
         uint32_t count=b.particles;
         // 形の番号 (1: ハンマー, 2: 剣, 3: 飛行機, 4: タイヤ, 5: 消火栓, 0: 液体)
-        int shape=b.action==LifeAction::Hammer?1:b.action==LifeAction::Sword?2:b.action==LifeAction::Plane?3:b.action==LifeAction::Tire?4:b.action==LifeAction::Hydrant?5:b.action==LifeAction::Signal?6:b.action==LifeAction::Vacuum?7:b.action==LifeAction::Spring?8:0;
+        int shape=LifeActionInfo(b.action).fluidShape;
         // 部屋のギミックに乗っている間は、本体がその道具の形になる
         // (高い所から落ちている間はヘリコプターの形)
         const bool gimmick=devour_&&i==0&&!life_.lab&&DevourToolShape()>0;if(gimmick)shape=DevourToolShape();
@@ -570,11 +570,11 @@ void ChronoSystem::UpdateSlimeLife(entt::registry& r,Player& p,GameContext& ctx)
         bool unlocked=LifeCanMorph(body,life_.form);
         if(!unlocked){
             if(firePressed&&body.action==LifeAction::Idle){life_.tackleTime=.24f;body.cooldown=.45f;}
-            if(life_.form==LifeAction::Hammer){life_.message="ゴミを吸い込んで本体"+std::to_string(int(LifeHammerMass))+"まで育つと、ハンマーに変形できる";life_.messageAge=2;}
-            else if(life_.form==LifeAction::Sword||life_.form==LifeAction::Plane){life_.message="本体"+std::to_string(int(LifeRequiredMass(life_.form)))+"まで育つと変形できる";life_.messageAge=2;}
-            else say(life_.form==LifeAction::Vacuum?"住宅街の大通りの金色に光る掃除機を吸収すると、掃除機変形が解放される":life_.form==LifeAction::Spring?"商店街の大通りの金色に光るバネを吸収すると、バネ変形が解放される":life_.form==LifeAction::Tire?"大通りの金色に光るタイヤを吸収すると、タイヤ変形が解放される":life_.form==LifeAction::Hydrant?"火事場の金色に光る消火栓を吸収すると、放水攻撃と防御を解放":"交差点の金色に光る信号機を吸収すると、信号機変形を解放");
+            // 未解放の案内は行動のデータテーブルから引く (必要な量を %d に入れる)
+            const auto& info=LifeActionInfo(life_.form);
+            if(info.lockedHint){char hint[256];snprintf(hint,sizeof(hint),info.lockedHint,int(info.requiredMass));say(hint);}
         }else if(LifeEnterWeapon(body,life_.form,LifeFacesCamera(life_.form)?Forward(yaw_,0):body.forward)){changedForm=true;life_.chargeLocked=true;++life_.revision;if(devour_)PlayDevourSound(devourSounds_.morph,.55f);if(devour_&&!devourFreeForms_){devourItemReady_=false;devourMorphLeft_=CurrentDevourStage().itemTime;++devourLog_.morphs;DevourLogEvent("morph_start");}
-            say(body.action==LifeAction::Sword?"剣変形！ 左クリック・RTで横なぎ / R・Bで戻る":body.action==LifeAction::Plane?"飛行機変形！ 左クリック・RTで突撃 / R・Bで戻る":body.action==LifeAction::Vacuum?"掃除機変形！ 左クリック・RT長押しで前の小物を吸い込む":body.action==LifeAction::Spring?"バネ変形！ 左クリック・RT長押しで溜めて、離すと建物を飛び越える":body.action==LifeAction::Hammer?(devour_?"ハンマー変形！ 左クリック・RTで大きな物を砕く / 右クリック・LTで飛びかかりへ":"ハンマー変形！ 左クリック・RTで叩きつけ (押し続けると連続) / R・Bで戻る"):body.action==LifeAction::Hydrant?"消火栓変形！ 左クリック・RTで放水 / 右クリック・LTで水の防御 / R・Bで戻る":body.action==LifeAction::Signal?"信号機変形！ 左クリック・RTで 赤 → 青 → 黄 の順に信号を出す / R・Bで戻る":devour_?"タイヤ変形！ 転がるだけで通り道を吸い込む / 溜め突進で大きな物を砕く":"タイヤ変形！ 左クリック・RT長押しで回転を溜め、離して突進 / R・Bで戻る");}}
+            if(const char* hint=LifeEnterHint(body.action,devour_))say(hint);}}
     // 信号機: 押すたびに次の色を出す。待ち時間と点検の間は出せない
     else if(firePressed&&!returned&&body.action==LifeAction::Signal&&body.weapon.ready){SignalColor fired;
         if(SignalFire(life_.signal,fired))FireSignal(r,p,ctx,fired);

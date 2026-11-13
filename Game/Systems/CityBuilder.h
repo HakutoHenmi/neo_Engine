@@ -12,12 +12,48 @@ enum CityMaterialId {CityRoad,CitySidewalk,CityAlleyFloor,CityPaint,CityPaintYel
     // オフィスのガラスの外壁 4 種・高層ビルの外壁 5 種 (ambientCG)
     CityBrick,CityPlaster,CitySiding,CityRoofClay,CityRoofGrey,CityRoofSlate,CityPaving,CityPavingBrick,
     CityOffice1,CityOffice2,CityOffice3,CityOffice4,CityTower1,CityTower2,CityTower3,CityTower4,CityTower5,CityMaterialCount};
-// 吸収モードの材質の色 (写真の材質の代わりに単色で塗り、ローポリの小物と見た目をそろえる)
+// 吸収モードの材質の色 (写真の材質の代わりに単色で塗り、ローポリの小物と見た目をそろえる)。
+// 材質の番号で引くデータテーブル (CityMaterialId の順。以前は材質ごとの switch だった)
 inline Engine::Vector4 FlatCityColor(int material){
-    switch(material){case CityRoad:return {.3f,.31f,.35f,1};case CitySidewalk:case CityPaving:return {.74f,.73f,.68f,1};case CityPavingBrick:return {.82f,.6f,.44f,1};case CityAlleyFloor:return {.46f,.45f,.46f,1};
-        case CityPaint:return {.95f,.95f,.9f,1};case CityPaintYellow:return {1,.8f,.24f,1};case CityConcrete:return {.68f,.68f,.66f,1};case CityDarkTiles:return {.34f,.34f,.38f,1};case CityGlass:return {.3f,.52f,.72f,1};case CityMetal:return {.6f,.62f,.66f,1};
-        case CityWhiteBrick:return {.9f,.88f,.82f,1};case CityWood:return {.6f,.38f,.22f,1};case CityBrick:return {.82f,.46f,.34f,1};case CityPlaster:return {.96f,.9f,.74f,1};case CitySiding:return {.58f,.78f,.82f,1};
-        case CityRoofClay:return {.82f,.28f,.22f,1};case CityRoofGrey:return {.32f,.4f,.58f,1};case CityRoofSlate:return {.28f,.56f,.42f,1};case CityShutter:return {.7f,.72f,.76f,1};case CityRustShutter:return {.78f,.42f,.24f,1};default:return {.7f,.7f,.7f,1};}
+    static const Engine::Vector4 table[CityMaterialCount]={
+        {.3f,.31f,.35f,1}, // CityRoad
+        {.74f,.73f,.68f,1}, // CitySidewalk
+        {.46f,.45f,.46f,1}, // CityAlleyFloor
+        {.95f,.95f,.9f,1}, // CityPaint
+        {1,.8f,.24f,1}, // CityPaintYellow
+        {.68f,.68f,.66f,1}, // CityConcrete
+        {.7f,.7f,.7f,1}, // CityCladding
+        {.7f,.7f,.7f,1}, // CityFacadeTiles
+        {.34f,.34f,.38f,1}, // CityDarkTiles
+        {.7f,.7f,.7f,1}, // CitySlab
+        {.7f,.7f,.7f,1}, // CityGreyTiles
+        {.7f,.72f,.76f,1}, // CityShutter
+        {.78f,.42f,.24f,1}, // CityRustShutter
+        {.3f,.52f,.72f,1}, // CityGlass
+        {.6f,.62f,.66f,1}, // CityMetal
+        {.9f,.88f,.82f,1}, // CityWhiteBrick
+        {.6f,.38f,.22f,1}, // CityWood
+        {.7f,.7f,.7f,1}, // CityStoneSkin
+        {.7f,.7f,.7f,1}, // CityScorch
+        {.82f,.46f,.34f,1}, // CityBrick
+        {.96f,.9f,.74f,1}, // CityPlaster
+        {.58f,.78f,.82f,1}, // CitySiding
+        {.82f,.28f,.22f,1}, // CityRoofClay
+        {.32f,.4f,.58f,1}, // CityRoofGrey
+        {.28f,.56f,.42f,1}, // CityRoofSlate
+        {.74f,.73f,.68f,1}, // CityPaving
+        {.82f,.6f,.44f,1}, // CityPavingBrick
+        {.7f,.7f,.7f,1}, // CityOffice1
+        {.7f,.7f,.7f,1}, // CityOffice2
+        {.7f,.7f,.7f,1}, // CityOffice3
+        {.7f,.7f,.7f,1}, // CityOffice4
+        {.7f,.7f,.7f,1}, // CityTower1
+        {.7f,.7f,.7f,1}, // CityTower2
+        {.7f,.7f,.7f,1}, // CityTower3
+        {.7f,.7f,.7f,1}, // CityTower4
+        {.7f,.7f,.7f,1}, // CityTower5
+    };
+    return material>=0&&material<CityMaterialCount?table[material]:Engine::Vector4{.7f,.7f,.7f,1};
 }
 // 材質ごとの頂点と添字
 struct CityGeometry {std::vector<Engine::VertexData> vertices;std::vector<uint32_t> indices;};

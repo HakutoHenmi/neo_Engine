@@ -13,9 +13,10 @@ inline float DomainDistance(Vec a,Vec b){a.y=b.y=0;return Length(a-b);}
 inline float DomainCross(Vec a,Vec b){return a.x*b.z-a.z*b.x;}
 // 輪の形と、その技の名前
 enum class DomainShape {Loop,Triangle,Square,Infinity};
+// 技の名前のデータテーブル (DomainShape の順)
 inline const char* DomainSkillName(DomainShape shape){
-    switch(shape){case DomainShape::Triangle:return "TRIDENT";case DomainShape::Square:return "FORTRESS";
-        case DomainShape::Infinity:return "TWIN STORM";default:return "HOMING DOMAIN";}
+    static constexpr const char* names[]={"HOMING DOMAIN","TRIDENT","FORTRESS","TWIN STORM"};
+    const size_t index=size_t(shape);return names[index<std::size(names)?index:0];
 }
 // 点と線分の水平の距離
 inline float DomainPointEdgeDistance(Vec p,Vec a,Vec b){

@@ -17,6 +17,14 @@
 #include <vector>
 namespace Game::Chrono {
 enum class DevourBlobKind {Lump=0,Mouth=1,Tail=2,Amoeba=3,Gulp=4};
+// 保存ファイルでの名前 (DevourBlobKind の順のテーブル)。読み込みと保存の両方がこの表を引く
+inline constexpr const char* DevourBlobKindNames[]={"lump","mouth","tail","amoeba","gulp"};
+inline const char* DevourBlobKindName(DevourBlobKind kind){const size_t i=size_t(kind);return i<std::size(DevourBlobKindNames)?DevourBlobKindNames[i]:DevourBlobKindNames[0];}
+// 名前から種類へ。知らない名前は塊 (古いファイルも読める)
+inline DevourBlobKind DevourBlobKindFromName(const std::string& name){
+    for(size_t i=0;i<std::size(DevourBlobKindNames);++i)if(name==DevourBlobKindNames[i])return DevourBlobKind(i);
+    return DevourBlobKind::Lump;
+}
 // 塊: 種類・中心・半径 (口は縁の横と縦の半径と奥行き)。口だけが使う値:
 //   thickness 壁の厚さ (0〜1。1 で中まで詰まる)・reach 触手が前へ伸びる長さ・curl 縁が内側へ巻き込む強さ (0〜1)・
 //   wave 表面を前へ流れる波の大きさ・tentacles 触手の本数・twist 粒子の流れのねじれ (渦を巻いて流れ込む)

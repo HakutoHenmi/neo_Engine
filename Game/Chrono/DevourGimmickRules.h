@@ -58,15 +58,6 @@ inline bool GimmickInsideHeli(Vec p){
     if(std::abs(p.y-GimmickRotorY)<.32f&&((std::abs(p.x)<.6f&&std::abs(p.z)<GimmickRotorReach)||(std::abs(p.z)<.6f&&std::abs(p.x)<GimmickRotorReach)))return true;
     return false;
 }
-inline GimmickBounds GimmickShapeBounds(int shape){
-    switch(shape){case GimmickBallShape:return {GimmickBallRadius,2*GimmickBallRadius,GimmickBallRadius};case GimmickGunShape:return {1.6f,6.8f,5.6f};
-        case GimmickDominoShape:return {GimmickDominoHalfX,GimmickDominoHeight,GimmickDominoHalfZ};case GimmickPlaneShape:return {3.8f,2.7f,4.5f};
-        case GimmickSheetShape:return {3.6f,1.2f,5.4f};case GimmickHeliShape:return {GimmickRotorReach,GimmickRotorY+.4f,GimmickRotorReach};default:return {2.1f,6,2.1f};}
-}
-inline bool GimmickInside(int shape,Vec p){
-    switch(shape){case GimmickBallShape:return GimmickInsideBall(p);case GimmickGunShape:return GimmickInsideGun(p);case GimmickDominoShape:return GimmickInsideDomino(p);
-        case GimmickPlaneShape:return GimmickInsidePlane(p);case GimmickSheetShape:return GimmickInsideSheet(p);case GimmickHeliShape:return GimmickInsideHeli(p);default:return GimmickInsideDrop(p);}
-}
 // 形の姿勢: 前へ転がる (spin)・前へ倒れる (tip、下の前の角を軸に)・機首の上下 (pitch)・左右の傾き (roll)
 struct GimmickPose {float spin=0,tip=0,pitch=0,roll=0,squash=0;};
 inline Vec GimmickRotateX(Vec p,Vec pivot,float a){Vec d=p-pivot;float c=std::cos(a),s=std::sin(a);return pivot+Vec{d.x,d.y*c-d.z*s,d.y*s+d.z*c};}
@@ -89,11 +80,27 @@ inline float GimmickCurtainHeight(float radius){return std::clamp(16+radius*.2f,
 // 形の中の芯: 体の中の物を、形が崩れないように小さくしてここへ集める。center は形の厚い所の真ん中、
 // thin はそこでの厚みの半分 (物の大きさの上限と、物を散らす幅に使う)
 struct GimmickCore {Vec center{};float thin=1;};
-inline GimmickCore GimmickShapeCore(int shape){
-    switch(shape){case GimmickBallShape:return {{0,GimmickBallRadius,0},1.5f};case GimmickGunShape:return {{0,2.8f,-.6f},1.f};
-        case GimmickDominoShape:return {{0,GimmickDominoHeight*.5f,0},1.f};case GimmickPlaneShape:return {{0,2.1f,.8f},.5f};
-        case GimmickSheetShape:return {{0,.5f,0},.45f};case GimmickHeliShape:return {{0,2,.3f},1.3f};default:return {{0,2.1f,0},1.6f};}
+// ---- 道具の形のデータテーブル (データドリブン) ----
+// 以前は「大きさの範囲」「中に入っているかの判定」「芯の位置」が、形の番号の switch として 3 つの関数に分かれていた。
+// 形 1 つ分のデータを 1 行にまとめ、形の番号で引く。形を足すときは番号を足してこの表に 1 行足す
+struct GimmickShapeData {GimmickBounds bounds;GimmickCore core;bool (*inside)(Vec);};
+inline const GimmickShapeData& GimmickShapeInfo(int shape){
+    // GimmickBallShape (20) から GimmickHeliShape (26) の順。それ以外の番号はしずく (GimmickDropShape) として扱う
+    static const GimmickShapeData table[]={
+        {{GimmickBallRadius,2*GimmickBallRadius,GimmickBallRadius},{{0,GimmickBallRadius,0},1.5f},GimmickInsideBall},           // 玉
+        {{1.6f,6.8f,5.6f},{{0,2.8f,-.6f},1.f},GimmickInsideGun},                                                                   // 水鉄砲
+        {{GimmickDominoHalfX,GimmickDominoHeight,GimmickDominoHalfZ},{{0,GimmickDominoHeight*.5f,0},1.f},GimmickInsideDomino},     // ドミノ
+        {{3.8f,2.7f,4.5f},{{0,2.1f,.8f},.5f},GimmickInsidePlane},                                                                  // 紙飛行機
+        {{3.6f,1.2f,5.4f},{{0,.5f,0},.45f},GimmickInsideSheet},                                                                    // 流れる膜
+        {{2.1f,6,2.1f},{{0,2.1f,0},1.6f},GimmickInsideDrop},                                                                       // しずく
+        {{GimmickRotorReach,GimmickRotorY+.4f,GimmickRotorReach},{{0,2,.3f},1.3f},GimmickInsideHeli}};                             // ヘリコプター
+    static_assert(GimmickHeliShape-GimmickBallShape+1==int(std::size(table)),"形の番号と表の行数をそろえる");
+    const int index=shape-GimmickBallShape;
+    return table[index>=0&&index<int(std::size(table))?index:GimmickDropShape-GimmickBallShape];
 }
+inline GimmickBounds GimmickShapeBounds(int shape){return GimmickShapeInfo(shape).bounds;}
+inline bool GimmickInside(int shape,Vec p){return GimmickShapeInfo(shape).inside(p);}
+inline GimmickCore GimmickShapeCore(int shape){return GimmickShapeInfo(shape).core;}
 // 物の大きさ (半分の幅) の上限と、芯から散らす幅 (形の倍率をかける前)
 inline constexpr float GimmickMealSize=.7f,GimmickMealSpread=.45f;
 

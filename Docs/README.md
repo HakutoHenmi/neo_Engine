@@ -32,6 +32,7 @@
 | [StatePatternReview.md](StatePatternReview.md) | State パターンでのリファクタリング |
 | [Encapsulation.md](Encapsulation.md) | カプセル化のリファクタリング |
 | [DesignPatternReview.md](DesignPatternReview.md) | State / Singleton 以外のデザインパターン (Object Pool・Strategy・Command) の適用 |
+| [DataDrivenReview.md](DataDrivenReview.md) | if else / switch からデータテーブルへの置き換え (データドリブン) |
 
 ## 配布
 

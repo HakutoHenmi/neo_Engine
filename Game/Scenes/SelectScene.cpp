@@ -68,7 +68,7 @@ void SelectScene::Initialize(Engine::WindowDX* dx, const Engine::SceneParameters
 // 選んだステージの曲を裏で展開しておく (ステージの読み込み中に MP3 の展開を待たない)
 void SelectScene::PreloadStageMusic(int stage) {
     const auto& stages = Chrono::DevourStages();
-    if (stage >= 0 && stage < int(stages.size())) Music::Preload(stages[size_t(stage)].map == "ring" ? Music::City : Music::Battle);
+    if (stage >= 0 && stage < int(stages.size())) Music::Preload(Music::TrackFromName(stages[size_t(stage)].music));
 }
 
 // 選んでいるステージへ出発する。本編は保存したステージ番号を読んで始まる

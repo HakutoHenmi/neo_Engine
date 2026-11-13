@@ -133,6 +133,8 @@ private:
     void TickDevourMovers(entt::registry&,float dt);
     // 漫画の描き文字: 飲み込んだ所や、ぶつかった所に出して飛び散らせる。kind は 0 飲む音・1 ぶつかる音・2 小さくなった印 (青い下矢印と暗い影)
     struct DevourPop {Chrono::Vec at{};std::string text;float age=0,weight=0;int kind=0;float seed=0;};
+    // 描き文字の種類 (0 跳ねる・1 集中線つき・2 大きな衝撃) ごとの表示時間のテーブル
+    static float DevourPopLife(int kind){static constexpr float life[]={.8f,.9f,1.1f};return life[kind>=0&&kind<2?kind:2];}
     // 体から飛び出して、弧を描いて落ちる物 (着地すると拾い直せる)
     struct DevourFly {size_t index=0;Chrono::Vec from{},to{},last{},rotate{};float age=0,time=.7f,height=0,spin=0;};
     std::vector<DevourFly> devourFlies_;Chrono::Vec devourEatAt_{};
@@ -249,9 +251,11 @@ private:
     void DevourSpringLand(entt::registry&,GameContext&);
     // 変形の並び (1 からのキーの順): 吸収モードはステージのアイテムの形だけ・試験場 (全部の形)・戦闘モード
     const std::vector<Chrono::LifeAction>& LifeForms()const{using A=Chrono::LifeAction;
-        static const std::vector<A> all{A::Hammer,A::Tire,A::Vacuum,A::Spring},tire{A::Tire},vacuum{A::Vacuum},spring{A::Spring},battle{A::Hammer,A::Tire,A::Hydrant,A::Signal},
+        static const std::vector<A> all{A::Hammer,A::Tire,A::Vacuum,A::Spring},battle{A::Hammer,A::Tire,A::Hydrant,A::Signal},
             demo{A::Hammer,A::Tire,A::Hydrant,A::Signal,A::Vacuum,A::Spring,A::Sword,A::Plane};
-        if(devour_&&!devourFreeForms_){A form=Chrono::DevourItemForm(CurrentDevourStage().item);return form==A::Tire?tire:form==A::Spring?spring:vacuum;}
+        // ステージのアイテムの形 1 つだけの並び (行動ごとに作っておき、行動の番号で引く)
+        static const auto single=[]{std::array<std::vector<A>,Chrono::LifeActionTable.size()> t;for(size_t i=0;i<t.size();++i)t[i]={A(i)};return t;}();
+        if(devour_&&!devourFreeForms_)return single[size_t(Chrono::DevourItemForm(CurrentDevourStage().item))];
         return devour_?all:slimePlayerDemo_?demo:battle;}
     int LifeFormIndex()const{const auto& forms=LifeForms();for(size_t i=0;i<forms.size();++i)if(forms[i]==life_.form)return int(i);return 0;}
     // 取り込むときに周りへ体の流体をばらまく (本体と同じ流体シミュレーションの粒子)。

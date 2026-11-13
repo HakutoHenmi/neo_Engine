@@ -23,7 +23,7 @@ bool ReadDevourAnim(Chrono::DevourAnimation& out,std::string& message){
         for(const auto& key:json.at("keys")){Chrono::DevourKey k;k.time=key.at("time").get<float>();
             for(const auto& blob:key.at("blobs")){Chrono::DevourBlob b;b.at=vec(blob.at("at"));b.size=vec(blob.at("size"));
                 // 口の値は無ければ初めの値 (古いファイルも読める)
-                {std::string kind=blob.value("kind",std::string("lump"));b.kind=kind=="mouth"?Chrono::DevourBlobKind::Mouth:kind=="tail"?Chrono::DevourBlobKind::Tail:kind=="amoeba"?Chrono::DevourBlobKind::Amoeba:kind=="gulp"?Chrono::DevourBlobKind::Gulp:Chrono::DevourBlobKind::Lump;}
+                b.kind=Chrono::DevourBlobKindFromName(blob.value("kind",std::string("lump")));
                 b.thickness=blob.value("thickness",b.thickness);b.reach=blob.value("reach",b.reach);b.curl=blob.value("curl",b.curl);
                 b.wave=blob.value("wave",b.wave);b.tentacles=blob.value("tentacles",b.tentacles);b.twist=blob.value("twist",b.twist);
                 k.blobs.push_back(b);}
@@ -41,7 +41,7 @@ Chrono::DevourAnimation& DevourAnim(){
 bool SaveDevourAnim(std::string& message){
     const auto& a=DevourAnim();nlohmann::json json;json["blobs"]=a.names;json["keys"]=nlohmann::json::array();
     for(const auto& key:a.keys){nlohmann::json k;k["time"]=key.time;k["blobs"]=nlohmann::json::array();
-        for(const auto& blob:key.blobs){nlohmann::json b;b["kind"]=blob.kind==Chrono::DevourBlobKind::Mouth?"mouth":blob.kind==Chrono::DevourBlobKind::Tail?"tail":blob.kind==Chrono::DevourBlobKind::Amoeba?"amoeba":blob.kind==Chrono::DevourBlobKind::Gulp?"gulp":"lump";
+        for(const auto& blob:key.blobs){nlohmann::json b;b["kind"]=Chrono::DevourBlobKindName(blob.kind);
             b["at"]={blob.at.x,blob.at.y,blob.at.z};b["size"]={blob.size.x,blob.size.y,blob.size.z};
             if(blob.kind!=Chrono::DevourBlobKind::Lump){b["thickness"]=blob.thickness;b["reach"]=blob.reach;b["curl"]=blob.curl;b["wave"]=blob.wave;b["tentacles"]=blob.tentacles;b["twist"]=blob.twist;}
             k["blobs"].push_back(b);}
@@ -420,7 +420,7 @@ void ChronoSystem::TickDevourPounce(entt::registry& r,Player& p,GameContext& ctx
     // 大口は形の時間を進め、閉じ終えたら液体の体へ戻る
     if(devourBiteAge_>=0){devourBiteAge_+=dt;if(devourBiteAge_>=DevourPounceTime||body.action!=LifeAction::Idle){if(body.action==LifeAction::Idle){body.aspect=1;body.aspectVelocity=3;}devourBiteAge_=-1;}}
     for(auto& pop:devourPops_)pop.age+=dt;
-    devourPops_.erase(std::remove_if(devourPops_.begin(),devourPops_.end(),[](const DevourPop& pop){return pop.age>(pop.kind==0?.8f:pop.kind==1?.9f:1.1f);}),devourPops_.end());
+    devourPops_.erase(std::remove_if(devourPops_.begin(),devourPops_.end(),[](const DevourPop& pop){return pop.age>DevourPopLife(pop.kind);}),devourPops_.end());
     TickDevourFlies(r,dt);TickDevourMovers(r,dt);TickDevourGimmicks(r,ctx,dt);TickDevourSpills(ctx,dt);TickDevourGrowth(dt);if(devour_)TickDevourTrail(p,dt);
     if(devourOpenAll_){devourOpenAll_=false;for(int z=1;z<RingStyleCount;++z)DevourOpenRing(r,z);devourRingOpened_=0;}
     // 輪が開いたら大きく知らせる
@@ -678,7 +678,7 @@ void ChronoSystem::DrawDevourUI(GameContext& ctx){
         if(bestMass>0&&body.mass<=bestMass){const float mark=DevourSizeCm(stage,bestMass);hud.flags.insert(hud.flags.begin(),{mark,"BEST "+best,false});}
         // このステージの変形アイテム
         if(!devourFreeForms_){const LifeAction form=DevourItemForm(stage.item);const bool active=body.action==form,taken=LifeCanMorph(body,form);hud.item=true;hud.itemLit=active||devourItemReady_;
-            hud.itemIcon=form==LifeAction::Tire?"form_tire":form==LifeAction::Spring?"form_spring":"form_vacuum";hud.itemName=form==LifeAction::Tire?"タイヤ":form==LifeAction::Spring?"バネ":"掃除機";
+            hud.itemIcon=LifeActionInfo(form).icon;hud.itemName=LifeActionInfo(form).name;
             hud.itemState=active?"のこり "+std::to_string(int(std::ceil(devourMorphLeft_)))+" 秒":devourItemReady_?"で変形":taken?"使用済み":"";hud.itemKey=!active&&devourItemReady_;
             // まだ見つけていないアイテムの札は出さない
             if(hud.itemState.empty())hud.item=false;}
@@ -691,7 +691,7 @@ void ChronoSystem::DrawDevourUI(GameContext& ctx){
             const auto found=comic.words.find(text);if(found==comic.words.end())return;const auto& glyphs=found->second;const float mid=(float(glyphs.size())-1)*.5f;
             for(size_t i=0;i<glyphs.size();++i){const float c=float(i)-mid,fi=float(i),turn=std::sin(seed*9+fi*2.3f);
                 piece(glyphs[i],x+glyphs[i].x*k+(c*150+turn*70)*k*scatter,y+glyphs[i].y*k+(-170*scatter+420*scatter*scatter)*k,k*(1-.2f*scatter),turn*2.2f*scatter,alpha);}};
-        for(const auto& pop:devourPops_){float x,y;if(!DevourScreen(ctx,pop.at,x,y))continue;const float life=pop.kind==0?.8f:pop.kind==1?.9f:1.1f,u=pop.age/life;
+        for(const auto& pop:devourPops_){float x,y;if(!DevourScreen(ctx,pop.at,x,y))continue;const float life=DevourPopLife(pop.kind),u=pop.age/life;
             const float punch=1+.35f*std::sin(std::min(1.f,u*5)*3.1415927f),scatter=std::max(0.f,(u-.45f)/.55f),alpha=1-scatter*scatter*scatter;
             if(pop.kind==1){const auto& lines=comic.marks.at(pop.weight>.75f?"heavyLines":"lightLines");piece(lines,x,y,(.28f+.16f*pop.weight)*std::min(1.f,u*8)*(1+.25f*scatter),pop.seed*6.283f,alpha*(1-scatter));
                 word(pop.text,x,y,(.26f+.16f*pop.weight)*(1+.5f*(punch-1)),pop.seed,scatter,alpha);}
