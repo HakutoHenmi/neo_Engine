@@ -98,6 +98,7 @@ int WINAPI WinMain(_In_ HINSTANCE hInst, _In_opt_ HINSTANCE, _In_ LPSTR commandL
 	// ゲーム全体の設定を読み、ログファイルを新しく作り直す (読めなければ理由を出して終了する)
 	try {
 		g_logPath = Game::Data::Config().logFile;
+		(void)Game::Data::SlimeTuningData();
 	} catch (const std::exception& e) {
 		MessageBoxA(nullptr, e.what(), "Game data error", MB_ICONERROR);
 		return -1;

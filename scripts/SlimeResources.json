@@ -372,6 +372,7 @@
   "Data/loadout.json",
   "Data/music.json",
   "Data/roguelite.json",
+  "Data/slime_tuning.json",
   "Data/ui_text.json",
   "Scenes/fallback.json",
   "Data/ring_city.json",

@@ -4,6 +4,7 @@
 // このファイルをプロジェクトから外せば機能ごと無くなる。ChronoSystem 側の変更は friend 宣言1行のみ。
 // エディタ本体・シーン・スライム本編のシステム・ImGui
 #include "EditorUI.h"
+#include "SlimeTuningUI.h"
 #include "../Scenes/GameScene.h"
 #include "../Systems/ChronoSystem.h"
 #include "../../externals/imgui/imgui.h"
@@ -154,6 +155,7 @@ void SlimeDevTools::DrawSlime(GameScene* scene) {
 
 // ウィンドウ全体
 void SlimeDevTools::DrawWindow(GameScene* scene) {
+    DrawSlimeTuning();
 	// 使えない状態なら説明だけ出す
 	if (!Ready(scene)) {
 		ImGui::TextWrapped("PLAY 中 (スライム本編) で使えます。Hierarchy の「街: …」分類は常に有効です。");

@@ -287,6 +287,7 @@ void GameScene::Initialize(Engine::WindowDX* dx, const Engine::SceneParameters& 
 // =====================================================
 // 更新: タグの同期 → 時間計算 → ポーズ/グラフィック設定の入力 → アニメーション → 各システム → 生成・破棄の反映 → ライト
 void GameScene::Update() {
+    Data::SlimeTuningData().Poll();
 	// エディタの Pause 中は、Step で要求された分だけ進める
 	if (!renderer_) return;
 	// コントローラーの振動を進める (プレイ外・ポーズ中・エディタの一時停止中は止める)

@@ -384,7 +384,7 @@ bool ChronoSystem::StartDevourPounce(Player& p,GameContext& ctx){
     devourPounce_={body.at,to,pick.index,pick.fits,false,false,std::uniform_real_distribution<float>(0,100)(DevourRandom())};
     // 液体から包み込みの形 (体の各点の行き先) へ移るので、最初の 1 回だけ粒子の割り当てを作り直す。
     // 続けて飛びかかるときは包み込みの形のままなので作り直さない
-    body.forward=direction;body.action=LifeAction::Engulf;body.actionAge=0;body.grabs.clear();body.committed=false;body.restoreDuration=.12f;
+    body.forward=direction;body.action=LifeAction::Engulf;body.actionAge=0;body.grabs.clear();body.committed=false;body.restoreDuration=Data::SlimeSettings()->engulfRestoreSeconds;
     life_.tackleTime=0;devourPounceWait_=DevourPounceCooldown;++devourLog_.pounces;if(!chain)++life_.revision;return true;
 }
 // 体と同じ流体の粒子を周りへばらまく (本体と同じ流体シミュレーションの、弾道で飛ぶ粒子。描き方も本体と同じ)。

@@ -115,7 +115,7 @@ void ChronoSystem::InkCamera(entt::registry& r,Player& p,GameContext& ctx){
         const auto& body=life_.bodies[0];int kind=LifeWeaponForm(body.action)?int(body.action):0;if(devour_&&GimmickCameraSubject(subject))kind=1000;V offset=subject.center-pos;auto& blend=cameraBlend_;
         if(blend.kind<0)blend={kind,1,offset,subject.radius,offset,subject.radius};
         else if(kind!=blend.kind){blend.kind=kind;blend.age=0;blend.fromOffset=blend.offset;blend.fromRadius=blend.radius;}
-        blend.age=std::min(1.f,blend.age+std::min(ctx.dt,.05f)/LifeCameraBlendSeconds);float eased=ShotEase(blend.age,0,1);
+        blend.age=std::min(1.f,blend.age+std::min(ctx.dt,.05f)/Data::SlimeSettings()->cameraBlendSeconds);float eased=ShotEase(blend.age,0,1);
         blend.offset=Lerp(blend.fromOffset,offset,eased);blend.radius=blend.fromRadius+(subject.radius-blend.fromRadius)*eased;
         subject.center=pos+blend.offset;subject.radius=blend.radius;}
     float growthPullback=LifeCameraDistance(subject.radius,1.13f,ctx.viewportSize.x/std::max(1.f,ctx.viewportSize.y))-17.f;
@@ -129,7 +129,7 @@ void ChronoSystem::InkCamera(entt::registry& r,Player& p,GameContext& ctx){
     // 消火栓の形か
     bool aimingHydrant=life_.bodies[0].action==LifeAction::Hydrant;
     // 肩越しの構図へ入るときも戻るときも、同じ時間をかけてなめらかに移る
-    cameraHydrant_=std::clamp(cameraHydrant_+(aimingHydrant?1.f:-1.f)*std::min(ctx.dt,.05f)/LifeCameraBlendSeconds,0.f,1.f);
+    cameraHydrant_=std::clamp(cameraHydrant_+(aimingHydrant?1.f:-1.f)*std::min(ctx.dt,.05f)/Data::SlimeSettings()->cameraBlendSeconds,0.f,1.f);
     bool hydrant=cameraHydrant_>0;float hydrantBlend=ShotEase(cameraHydrant_,0,1);
     // カメラを置きたい位置
     V wanted=focus-forward*(17.f+ink.cameraPullback+heavy*5)+V{0,shot*1.2f+heavy*3+domainView*6,0};(void)right;
