@@ -2,6 +2,8 @@
 #pragma once
 
 #include <cstdint>
+#include <algorithm>
+#include <cmath>
 #include <array>
 #include <memory> // std::shared_ptr
 #include <string>
@@ -401,6 +403,15 @@ public:
 		float type; Vector3 pad2; // ★追加: 0=プレイヤー, 1=水しぶき
 	};
 	// Targets are immutable per frame; assignments live on the GPU by original particle slot.
+	// 液体の体 (shape.w=1) の blend: 動きの量 (0〜1) と、足元の傾き (体の右・前の向きに 1 進むごとの高さ、-1〜1) を
+	// 1 つの数にまとめる (各 101 段階)。まとめた値は kLiquidBlendPacked 以上 (最大約 203 万で float に正確に入る) で、
+	// それより小さい値は今まで通り動きの量そのもの (傾きなし) として扱う。GPU では FluidMorph.hlsli の MorphSlope で戻す。
+	// 1 粒子 128 バイトの目標とルート定数 (64 DWORD の上限まであと 1) に空きが無いため、液体では使っていない精度を使う
+	static constexpr float kLiquidBlendPacked=1000000.f;
+	static float PackLiquidBlend(float motion,float slopeRight,float slopeForward){
+		auto step=[](float v,float lo,float hi){return std::round((std::clamp)((v-lo)/(hi-lo),0.f,1.f)*100.f);};
+		return kLiquidBlendPacked+step(motion,0,1)+101.f*(step(slopeRight,-1,1)+101.f*step(slopeForward,-1,1));}
+	static float LiquidBlendMotion(float blend){return blend<kLiquidBlendPacked?blend:std::fmod(std::round(blend-kLiquidBlendPacked),101.f)/100.f;}
 	struct FluidMorphTarget { Vector3 local;float blend;Vector3 origin;float density;Vector3 forward;float omega;Vector4 color;
         Vector4 material; // damping, viscosity, surface tension, ground height
         Vector4 motion;   // velocity xyz, airborne blend

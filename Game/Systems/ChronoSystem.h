@@ -45,6 +45,8 @@ public:
     bool DevourResultFrozen() const {return devour_&&finished_&&resultCameraAge_>=kResultFreezeAge;}
     // 検証の撮影用: 結果の「おなかの中」の升の数と、升を 1 つ大きく見せる
     size_t ShelfCellCountForTest() const {return shelf_.cells.size();}
+    // 確認用: ステージの物を種類ごとに 1 つずつ飲みこんだことにする (結果の升に全部の種類を並べて見え方を確かめる)
+    void RecordAllKindsForTest(const entt::registry& r);
     void OpenShelfDetailForTest(int cell){if(cell>=0&&cell<int(shelf_.cells.size())&&shelf_.detail!=cell){shelf_.detail=cell;shelf_.detailAt=finishAge_;}}
     // 鳴り続ける音を止める (シーンを抜けるとき)
     void StopLoopSounds();
@@ -157,11 +159,16 @@ private:
     void DrawGimmickCurtains(GameContext&);
     bool GimmickCameraSubject(Chrono::LifeCameraSubject&)const;
     // ---- 最初のチュートリアル (DevourTutorial.cpp): ベッドの下で課題を 1 つずつ出す。step が 0 以上の間は制限時間を止める ----
-    // step 0 動かし方と視点・1 巻尺の見方 (ゲームを止める)・2 段差の大きさまで育つ・3 段差の上り方・4 スタートの知らせ
+    // step 0 動かし方と視点・1 巻尺の見方 (ゲームを止める)・2 段差の大きさまで育つ・3 段差の上り方
     struct DevourTutorial {int step=-1,page=0;float age=0,moved=0,looked=0,clear=-1,yaw=0,pitch=0;Chrono::Vec last{};bool started=false,previousAdvance=true;};
     DevourTutorial devourTutorial_;
-    bool DevourTutorialHolding()const{return devourTutorial_.step>=0&&devourTutorial_.step<4;}
-    void StartDevourTutorial();void TickDevourTutorial(float dt);bool TickDevourTutorialPause(float dt);void DrawDevourTutorial(GameContext&);float DevourTutorialGoal()const;
+    // ベッドの下を出た後: 4 目標の発表・5 ステージの紹介のカメラ・6 カウントダウン (3・2・1) (ここまで時間と操作を止める)・7 収納ケースの上からスタート
+    bool DevourTutorialHolding()const{return devourTutorial_.step>=0&&devourTutorial_.step<7;}
+    bool DevourTutorialGrowing()const{return devourTutorial_.step>=0&&devourTutorial_.step<4;}
+    bool DevourTutorialCutscene()const{return devourTutorial_.step>=4&&devourTutorial_.step<=6;}
+    // cinematics が false (スクリプトの確認) なら、目標の発表と紹介を飛ばしてそのままスタートする
+    void StartDevourTutorial();void TickDevourTutorial(entt::registry&,float dt,bool cinematics);bool TickDevourTutorialPause(float dt);void DrawDevourTutorial(GameContext&);float DevourTutorialGoal()const;
+    void PlaceOnStartCase(entt::registry&);void DevourTourCamera(GameContext&);
     void ClearGimmickAreas(entt::registry&);
     int GimmickAreaAt(Chrono::Vec at,float margin)const;
     // 水鉄砲の水: 銃口から当たる所まで伸びる液体の管
@@ -291,7 +298,7 @@ private:
     // 飲みこんだ物の記録 (図鑑の項目・見た目の番号・色)。ぶつかって飛び出した物は消す
     struct DevourEaten {std::string id;uint32_t visual=0xffffffffu;Engine::Vector4 tint{1,1,1,1};};
     std::vector<DevourEaten> devourEaten_;
-    void DevourRecordEaten(entt::registry&,uint32_t visual);
+    void DevourRecordEaten(const entt::registry&,uint32_t visual);
     void DevourForgetEaten(uint32_t visual);
     // 並べる升: 図鑑の項目・今の数・出た時刻・数が増えた時刻
     struct ShelfCell {int entry=-1;int count=0,total=0;float popAt=-1,kickAt=-1;bool fresh=false;Engine::Vector4 tint{1,1,1,1};};
@@ -321,6 +328,8 @@ private:
     int lifeRecipeSlot_=0,lifeMaterials_=3,lifeClears_=0;
     // 各体の前回の行動と粒子数 (音や演出の切り替えに使う)
     std::array<int,Chrono::LifeBodyCount> lifeLastAction_{};
+    // 体ごとの足元の傾き (x 右向き・z 前向きの、1 単位進むごとの高さの変化)。斜面で体の形を傾けるのに使い、なめらかに変える
+    std::array<Chrono::Vec,Chrono::LifeBodyCount> lifeSlope_{};
     std::array<uint32_t,Chrono::LifeBodyCount> lifeLastCounts_{};
     bool lifeWasLab_=false,lifeReseed_=true,lifePreviewEmitted_=false;
     // 章の見出しを出した段階と、出し始めた時刻 (life_.age)
@@ -402,12 +411,15 @@ private:
     void BuildRoomGimmicks(entt::registry&);
     bool GimmickClear(Chrono::Vec at,float margin)const;
     // ローポリのモデル (scripts/lowpoly/build_lowpoly.py): メッシュと大きさの範囲。部屋と町で同じ置き方を使う
-    struct LowModel {uint32_t mesh=0;Chrono::Vec lo{},hi{};};
+    // pieces はモデルのつながった部分ごとの範囲 (脚・板など。モデルの座標)
+    struct LowModel {uint32_t mesh=0;Chrono::Vec lo{},hi{};std::vector<std::array<Chrono::Vec,2>> pieces;};
     std::map<std::string,LowModel> lowModels_;uint32_t lowPalette_=0;std::vector<uint32_t> lowMaps_;float lowOcclude_=12;
     const LowModel& LowModelOf(const std::string& id);
     float LowScaleFor(const std::string& id,float width);
     void BeginLowProps(float occludeHeight);
     entt::entity LowProp(entt::registry& r,const std::string& id,Chrono::Vec at,float scale,float yaw,float fill,Engine::Vector4 tint={1,1,1,1},float tilt=0);
+    // 置いた物の細い部分 (脚・頭の板など) を、カメラを遮る判定の parts に加える
+    void AddThinOccluderParts(entt::registry& r,entt::entity e,const std::string& id,Chrono::Vec at,float scale,float yaw);
     void BuildStageItem(entt::registry&,const RingCityTools&);
     // 建物の敷地と、敷地ごとの吸収の対象の番号 (life_.props の番号。建物は飲み込むまで通れない)
     std::vector<Chrono::RingLot> ringLots_;std::vector<int> ringLotProps_;

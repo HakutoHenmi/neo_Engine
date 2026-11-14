@@ -3,6 +3,7 @@
 #include "../Game/Systems/ChronoSystem.h"
 #include "../Game/Chrono/SlimeTentacleRules.h"
 #include "../Game/Chrono/DevourMorphRules.h"
+#include "../Game/Chrono/RoomRules.h"
 #include <chrono>
 #include <fstream>
 class SlimeLifeValidationScene final:public Game::GameScene {
@@ -16,6 +17,183 @@ class SlimeLifeValidationScene final:public Game::GameScene {
     bool devourValid_=true,devourBounced_=false,devourWasPouncing_=false,devourFresh_=true;std::array<bool,5> devourImages_{};std::string devourNotes_;
     // 部屋のステージ: 時間と開始の大きさ、アイテムを拾って使うと一時的に変形し、最初の目標でクリア
     int roomPhase_=0;float roomClock_=0;bool roomValid_=true,roomMouthPlaced_=false,roomMouthSeen_=false;std::string roomNotes_;
+    // 部屋のカメラの確認 (--slime-life-room-camera): 家具の脚・壁際・部屋の角・間の壁など、カメラが遮られやすい所に体を置き、
+    // 体を後ろから見るカメラを撮る。カメラと体の距離と、薄くなった物の数を記録する
+    int cameraShot_=0;float cameraClock_=0;std::string cameraNotes_;
+    void UpdateRoomCamera(){
+        using namespace Game;using namespace Game::Chrono;
+        auto player=FindObjectByName("Player");auto& input=GetComponents().get<ControlFrame>(player);input={};
+        auto* chrono=GetChronoSystem();auto& life=const_cast<SlimeLife&>(chrono->LifeState());auto& body=life.bodies[0];
+        // 名前・体の位置・向き (カメラはこの向きの後ろに付く)・見下ろす角度
+        struct Shot {const char* name;Vec at;float yaw,pitch;};
+        static const Shot shots[]={
+            {"bed-corner",{-286,0,-286},.785f,.3f},   // ベッドの下の部屋の角。カメラは角の方へ下がる
+            {"bed-leg",{-55,0,-175},.785f,.3f},       // ベッドの脚の手前。カメラは脚の方へ下がる
+            {"under-bed",{-150,0,-215},3.1416f,.3f},  // ベッドの下から外を見る
+            {"wall-back",{0,0,-292},0,.3f},           // 壁を背にする
+            {"room-corner",{288,0,-288},-.785f,.3f},  // 部屋の角
+            {"desk-leg",{165,0,-221},-.785f,.3f},     // 机の脚の手前
+            {"bookshelf",{250,0,-60},-1.5708f,.3f},   // 本棚を背にする
+            {"partition",{150,0,70},0,.3f},           // 和室から、間の壁を背にする
+            {"rug-props",{60,0,-100},.5f,.2f},        // 小物の多い所
+            {"bowling-lane",{0,0,-8},3.1416f,.25f},   // ボウリングのレーンの向こう側 (カメラはレーンの上)
+            {"kotatsu-up",{-205,0,176},1.5708f,.3f},  // こたつ布団の坂を登る向き
+            {"kotatsu-side",{-205,0,176},0,.3f}};     // こたつ布団の坂を横切る向き
+        constexpr int count=int(std::size(shots));
+        if(frames_<40){++frames_;Game::GameScene::Update();return;}
+        const auto& shot=shots[size_t(cameraShot_)];input.yaw=shot.yaw;input.pitch=shot.pitch;
+        if(cameraClock_==0){Vec at=shot.at;at.y=RoomGround(at+Vec{0,1,0})+1.25f;body.at=at;body.forward=body.liquidForward={std::sin(shot.yaw),0,std::cos(shot.yaw)};
+            GetComponents().get<Player>(player).velocity={};auto& t=GetComponents().get<TransformComponent>(player);t.translate={at.x,at.y,at.z};}
+        float before=life.age;Game::GameScene::Update();++frames_;cameraClock_+=std::max(life.age-before,1.f/120);
+        if(cameraClock_>=1.6f){
+            const auto eye=GetCamera().Position();const float gap=std::sqrt((eye.x-body.at.x)*(eye.x-body.at.x)+(eye.y-body.at.y)*(eye.y-body.at.y)+(eye.z-body.at.z)*(eye.z-body.at.z));
+            int faded=0;for(auto e:GetComponents().view<CameraOccluder>())if(GetComponents().get<CameraOccluder>(e).opacity<.5f)++faded;
+            char line[256];snprintf(line,sizeof(line),"%s camera=(%.1f,%.1f,%.1f) body=(%.1f,%.1f,%.1f) gap=%.1f faded=%d",shot.name,eye.x,eye.y,eye.z,body.at.x,body.at.y,body.at.z,gap,faded);cameraNotes_+=line;
+            // 坂の上: 体の底が地面からどれだけ離れているか (坂の上側と下側の半分ごと、低い方から 5% の粒子)。
+            // 0 に近いほど坂に沿っている (負は地面に埋まり、正は浮いている)。こたつ布団の坂は +x の向きに上る
+            if(std::string(shot.name).rfind("kotatsu",0)==0){const auto& snapshot=GetRenderer()->GetFluidBodySnapshot();std::vector<float> up,down;
+                for(const auto& offset:snapshot.offsets){const Vec p{snapshot.core.x+offset.x,snapshot.core.y+offset.y,snapshot.core.z+offset.z};
+                    if(std::abs(p.x-body.at.x)>20||std::abs(p.z-body.at.z)>20)continue;(p.x>body.at.x?up:down).push_back(p.y-RoomGround(p+Vec{0,30,0}));}
+                auto bottom=[](std::vector<float>& v){if(v.empty())return 0.f;std::sort(v.begin(),v.end());return v[v.size()/20];};
+                char slope[96];snprintf(slope,sizeof(slope)," bottom_uphill=%.2f bottom_downhill=%.2f",bottom(up),bottom(down));cameraNotes_+=slope;}
+            cameraNotes_+="\n";
+            std::wstring path=L"tests/out/room-camera-";for(const char* c=shot.name;*c;++c)path+=wchar_t(*c);path+=L".png";Capture(path.c_str());
+            cameraClock_=0;if(++cameraShot_>=count){std::ofstream("tests/out/room-camera.txt")<<cameraNotes_;PostQuitMessage(0);}}
+        if(frames_>4000){std::ofstream("tests/out/room-camera.txt")<<"timeout\n"<<cameraNotes_;PostQuitMessage(2);}
+    }
+    // 大きい物の手前で開く口の確認 (--slime-life-room-mouth): 10cm の体を、覆える中で大きい物の手前に置いて進ませ、
+    // 口を開けている間の何コマかを撮る。口の幕に穴が開いていないかを画像で見る
+    int mouthTarget_=-1,mouthCase_=0,mouthShot_=0;float mouthClock_=0;std::string mouthNotes_;std::vector<int> mouthTargets_;
+    void UpdateRoomMouth(){
+        using namespace Game;using namespace Game::Chrono;
+        auto player=FindObjectByName("Player");auto& input=GetComponents().get<ControlFrame>(player);input={};input.pitch=.25f;
+        auto* chrono=GetChronoSystem();auto& life=const_cast<SlimeLife&>(chrono->LifeState());auto& body=life.bodies[0];
+        const auto& stage=DevourStages()[size_t(chrono->DevourStageIndex())];
+        if(frames_<40){++frames_;Game::GameScene::Update();return;}
+        if(mouthTargets_.empty()){body.mass=body.health=body.maxHealth=DevourGoalMass(stage,10);++life.revision;
+            // 覆える物のうち、体に比べて大きい物 (.55〜.8) を大きい順に、場所が散るように選ぶ
+            const float r=DevourBodyRadius(body.mass);std::vector<std::pair<float,int>> list;
+            for(size_t i=0;i<life.props.size();++i){const auto& prop=life.props[i];if(!prop.active||prop.sealed||prop.beacon||!DevourCanCover(body.mass,prop.radius)||prop.radius<r*.55f)continue;list.push_back({-prop.radius,int(i)});}
+            std::sort(list.begin(),list.end());
+            for(const auto& [radius,i]:list){bool apart=true;for(int k:mouthTargets_)if(LifeDistance(life.props[size_t(k)].at,life.props[size_t(i)].at)<40)apart=false;if(apart)mouthTargets_.push_back(i);if(mouthTargets_.size()>=5)break;}
+            if(mouthTargets_.empty()){std::ofstream("tests/out/room-mouth.txt")<<"FAIL no target";PostQuitMessage(2);return;}}
+        const int target=mouthTargets_[size_t(mouthCase_)];const auto& prop=life.props[size_t(target)];const float r=DevourBodyRadius(body.mass);
+        if(mouthClock_==0){Vec at=prop.at+Vec{0,0,-3.2f*r};at.y=RoomGround(at+Vec{0,1,0})+1.25f;body.at=at;body.forward=body.liquidForward={0,0,1};
+            GetComponents().get<Player>(player).velocity={};auto& t=GetComponents().get<TransformComponent>(player);t.translate={at.x,at.y,at.z};mouthShot_=0;}
+        input.yaw=0;input.move={0,0,mouthClock_>.4f?1.f:0.f};
+        const float before=life.age;Game::GameScene::Update();++frames_;mouthClock_+=std::max(life.age-before,1.f/120);
+        // 口を開け始めてからの 4 コマ (口の時間で撮る)
+        static constexpr float ages[]={.2f,.28f,.36f,.5f};const float bite=chrono->DevourBiteAge();
+        if(mouthShot_<4&&bite>=ages[mouthShot_]){std::wstring path=L"tests/out/room-mouth-"+std::to_wstring(mouthCase_)+L"-"+std::to_wstring(mouthShot_)+L".png";Capture(path.c_str());
+            char line[200];snprintf(line,sizeof(line)," case%d(r=%.2f ratio=%.2f at=%.0f,%.0f,%.0f bite=%.2f)",mouthCase_,prop.radius,prop.radius/(r*DevourCoverRatio),prop.at.x,prop.at.y,prop.at.z,bite);if(mouthShot_==0)mouthNotes_+=line;++mouthShot_;}
+        if(mouthClock_>3.f){mouthClock_=0;if(++mouthCase_>=int(mouthTargets_.size())){std::ofstream("tests/out/room-mouth.txt")<<"DONE"<<mouthNotes_;PostQuitMessage(0);}}
+        if(frames_>8000){std::ofstream("tests/out/room-mouth.txt")<<"FAIL timeout"<<mouthNotes_;PostQuitMessage(2);}
+    }
+    // ベッドの確認 (--slime-life-room-bed): 本の階段のいちばん上からベッドの奥へ進み、ベッドの上に乗れるか (18cm と 10cm)。
+    // ベッドの上に置いた物が掛け布団と枕の面より下に埋もれていないかも調べる
+    int bedCase_=0;float bedClock_=0;std::string bedNotes_;bool bedValid_=true;
+    void UpdateRoomBed(){
+        using namespace Game;using namespace Game::Chrono;
+        auto player=FindObjectByName("Player");auto& input=GetComponents().get<ControlFrame>(player);input={};input.pitch=.35f;input.yaw=3.1416f;
+        auto* chrono=GetChronoSystem();auto& life=const_cast<SlimeLife&>(chrono->LifeState());auto& body=life.bodies[0];
+        const auto& stage=DevourStages()[size_t(chrono->DevourStageIndex())];
+        if(frames_<40){++frames_;Game::GameScene::Update();return;}
+        static constexpr float sizes[]={18,10};
+        // 枕の上と、枕の横の掛け布団の上: カメラの向きを変えても、乗っているベッドが透けないか (8.6cm)
+        struct PillowCase {const char* name;Vec at;float yaw;};
+        static const PillowCase pillows[]={{"pillow-x",{-266,63.2f,-240},1.5708f},{"pillow-z",{-266,63.2f,-250},0},{"pillow-back",{-266,63.2f,-240},-1.5708f},{"quilt-by-pillow",{-222,RoomQuiltTop,-240},-1.5708f}};
+        const int climbs=int(std::size(sizes)),total=climbs+int(std::size(pillows));
+        if(bedCase_>=climbs){const auto& c=pillows[size_t(bedCase_-climbs)];input.yaw=c.yaw;
+            if(bedClock_==0){body.mass=body.health=body.maxHealth=DevourGoalMass(stage,8.6f);++life.revision;const Vec at=c.at+Vec{0,1.25f,0};body.at=at;body.forward=body.liquidForward={std::sin(c.yaw),0,std::cos(c.yaw)};
+                GetComponents().get<Player>(player).velocity={};auto& t=GetComponents().get<TransformComponent>(player);t.translate={at.x,at.y,at.z};}
+            const float before=life.age;Game::GameScene::Update();++frames_;bedClock_+=std::max(life.age-before,1.f/120);
+            if(bedClock_>=1.5f){float opacity=1;for(auto e:GetComponents().view<CameraOccluder,NameComponent>())if(GetComponents().get<NameComponent>(e).name=="Chrono Lowpoly bed")opacity=GetComponents().get<CameraOccluder>(e).opacity;
+                const bool solid=opacity>.9f;char line[160];snprintf(line,sizeof(line)," %s_bed_opacity=%.2f",c.name,opacity);bedNotes_+=line;bedValid_&=solid;
+                std::wstring path=L"tests/out/room-bed-";for(const char* p=c.name;*p;++p)path+=wchar_t(*p);path+=L".png";Capture(path.c_str());
+                bedClock_=0;if(++bedCase_>=total){std::ofstream("tests/out/room-bed.txt")<<(bedValid_?"PASS":"FAIL")<<bedNotes_;PostQuitMessage(bedValid_?0:2);}}
+            if(frames_>6000){std::ofstream("tests/out/room-bed.txt")<<"FAIL timeout"<<bedNotes_;PostQuitMessage(2);}
+            return;}
+        if(bedClock_==0){
+            // ベッドの上に置かれた物の数 (埋もれていないかは撮った画像で見る)
+            if(bedCase_==0){int onBed=0;for(const auto& prop:life.props){if(!prop.active||prop.visual==0xffffffffu)continue;
+                    if(prop.at.x<-300||prop.at.x>-60||prop.at.z<-300||prop.at.z>-180||prop.at.y<40)continue;++onBed;}
+                bedNotes_+=" bed_props="+std::to_string(onBed);bedValid_&=onBed>0;}
+            body.mass=body.health=body.maxHealth=DevourGoalMass(stage,sizes[bedCase_]);++life.revision;
+            const Vec at{-180,RoomBedTop+1.25f,-172};body.at=at;body.forward=body.liquidForward={0,0,-1};
+            GetComponents().get<Player>(player).velocity={};auto& t=GetComponents().get<TransformComponent>(player);t.translate={at.x,at.y,at.z};}
+        input.move={0,0,bedClock_>.4f?1.f:0.f};
+        const float before=life.age;Game::GameScene::Update();++frames_;bedClock_+=std::max(life.age-before,1.f/120);
+        if(bedClock_>=3.5f){const bool onBed=body.at.z<-190&&body.at.y>RoomMattressTop;
+            char line[160];snprintf(line,sizeof(line)," climb%.0fcm=%d(at=%.1f,%.1f,%.1f)",sizes[bedCase_],int(onBed),body.at.x,body.at.y,body.at.z);bedNotes_+=line;bedValid_&=onBed;
+            std::wstring path=L"tests/out/room-bed-"+std::to_wstring(bedCase_)+L".png";Capture(path.c_str());
+            bedClock_=0;++bedCase_;}
+        if(frames_>4000){std::ofstream("tests/out/room-bed.txt")<<"FAIL timeout"<<bedNotes_;PostQuitMessage(2);}
+    }
+    // 部屋の乗れる面の高さの確認 (--slime-life-room-surfaces): 高さの規則 (RoomSurfaces) の面ごとに数点で、
+    // 実際に置いた家具と床の板のメッシュへ真上から線を下ろし、一番上の面の高さと規則の高さを比べる。
+    // 規則より見た目が高いと、その面に乗った体が見た目の面に埋まる (飲める小物は面の上に置いた物なので除く)
+    void UpdateRoomSurfaces(){
+        using namespace Game;using namespace Game::Chrono;
+        if(frames_<40){++frames_;Game::GameScene::Update();return;}
+        auto& reg=GetComponents();auto* render=Engine::Renderer::GetInstance();auto* chrono=GetChronoSystem();
+        std::set<uint32_t> pickups;for(const auto& prop:chrono->LifeState().props)if(prop.visual!=0xffffffffu)pickups.insert(prop.visual);
+        // 置いた物の三角形 (ワールド座標)
+        struct Mesh {std::string name;Vec lo,hi;std::vector<std::array<Vec,3>> tris;};std::vector<Mesh> meshes;
+        for(auto e:reg.view<MeshRendererComponent,TransformComponent,NameComponent>()){
+            const auto& name=reg.get<NameComponent>(e).name;if(name.rfind("Chrono Lowpoly",0)!=0&&name.rfind("Chrono Room",0)!=0)continue;if(pickups.count(uint32_t(e)))continue;
+            const auto& mr=reg.get<MeshRendererComponent>(e);if(!mr.enabled||!mr.modelHandle)continue;auto* model=render->GetModel(mr.modelHandle);if(!model)continue;
+            const auto& t=reg.get<TransformComponent>(e);const auto world=DirectX::XMMatrixScaling(t.scale.x,t.scale.y,t.scale.z)*DirectX::XMMatrixRotationRollPitchYaw(t.rotate.x,t.rotate.y,t.rotate.z)*DirectX::XMMatrixTranslation(t.translate.x,t.translate.y,t.translate.z);
+            const auto& data=model->GetData();std::vector<Vec> points;for(const auto& v:data.vertices){DirectX::XMFLOAT3 p;DirectX::XMStoreFloat3(&p,DirectX::XMVector3TransformCoord(DirectX::XMVectorSet(v.position.x,v.position.y,v.position.z,1),world));points.push_back({p.x,p.y,p.z});}
+            Mesh m;m.name=name;m.lo={1e9f,1e9f,1e9f};m.hi={-1e9f,-1e9f,-1e9f};for(const auto& p:points){m.lo={std::min(m.lo.x,p.x),std::min(m.lo.y,p.y),std::min(m.lo.z,p.z)};m.hi={std::max(m.hi.x,p.x),std::max(m.hi.y,p.y),std::max(m.hi.z,p.z)};}
+            if(data.indices.empty())for(size_t i=0;i+2<points.size();i+=3)m.tris.push_back({points[i],points[i+1],points[i+2]});
+            else for(size_t i=0;i+2<data.indices.size();i+=3)m.tris.push_back({points[data.indices[i]],points[data.indices[i+1]],points[data.indices[i+2]]});
+            meshes.push_back(std::move(m));}
+        // 真上からの線が当たる一番上の面 (limit より上は天井や照明なので数えない)。当たった物の名前も返す
+        auto topAt=[&](float x,float z,float limit,std::string& hit){float best=-1e9f;
+            for(const auto& m:meshes){if(x<m.lo.x||x>m.hi.x||z<m.lo.z||z>m.hi.z||m.lo.y>limit)continue;
+                for(const auto& tri:m.tris){const Vec a=tri[0],b=tri[1],c=tri[2];const float d=(b.z-c.z)*(a.x-c.x)+(c.x-b.x)*(a.z-c.z);if(std::abs(d)<1e-6f)continue;
+                    const float u=((b.z-c.z)*(x-c.x)+(c.x-b.x)*(z-c.z))/d,v=((c.z-a.z)*(x-c.x)+(a.x-c.x)*(z-c.z))/d,w=1-u-v;if(u<0||v<0||w<0)continue;
+                    const float y=u*a.y+v*b.y+w*c.y;if(y<=limit&&y>best){best=y;hit=m.name;}}}
+            return best;};
+        std::ofstream report("tests/out/room-surfaces.txt");int worst=0;
+        for(size_t s=0;s<RoomSurfaces.size();++s){const auto& f=RoomSurfaces[s].foot;
+            for(float u:{.5f,.25f,.75f})for(float v:{.5f,.25f,.75f}){if((u==.5f)!=(v==.5f))continue;const float x=f.x0+(f.x1-f.x0)*u,z=f.z0+(f.z1-f.z0)*v;
+                const float rule=RoomTop({x,0,z});std::string hit;const float top=topAt(x,z,rule+12,hit);const float diff=top-rule;
+                char line[200];snprintf(line,sizeof(line),"surface%02zu at=(%.0f,%.0f) rule=%.2f mesh=%.2f diff=%+.2f %s\n",s,x,z,rule,top,diff,hit.c_str());report<<line;
+                if(diff>.3f)++worst;}}
+        report<<"sinking_points="<<worst<<"\n";
+        // 丸みのある面 (こたつ布団・座布団) の縁から中心への断面
+        struct Profile {const char* name;Vec from,to;};
+        for(const auto& p:{Profile{"kotatsu",{-238,0,176},{-120,0,176}},Profile{"zabuton",{-299,0,176},{-262,0,176}}}){report<<"profile "<<p.name<<":";
+            for(int i=0;i<=16;++i){const Vec at=Lerp(p.from,p.to,float(i)/16);std::string hit;const float rule=RoomTop(at),top=topAt(at.x,at.z,rule+12,hit);char cell[64];snprintf(cell,sizeof(cell)," %.0f:%.1f/%.1f",Length(at-p.from),rule,top);report<<cell;}
+            report<<"\n";}
+        report.close();PostQuitMessage(0);
+    }
+    // 部屋のチュートリアルの後の流れの確認 (--slime-life-room-intro): ベッドの下から出たら目標の発表 → ステージの紹介 →
+    // 収納ケースの上からスタート。それぞれを撮り、スタートの位置と時間の進み方を記録する
+    float introClock_=0;int introShot_=0;std::string introNotes_;bool introOut_=false;
+    void UpdateRoomIntro(){
+        using namespace Game;using namespace Game::Chrono;
+        auto player=FindObjectByName("Player");auto& input=GetComponents().get<ControlFrame>(player);input={};input.intro=true;input.pitch=.3f;
+        auto* chrono=GetChronoSystem();auto& life=const_cast<SlimeLife&>(chrono->LifeState());auto& body=life.bodies[0];auto& clock=chrono->DevourClockState();
+        if(frames_<40){++frames_;Game::GameScene::Update();return;}
+        // ベッドの下から出す (段差を越えた所へ置く)
+        if(!introOut_){introOut_=true;body.at={-84,1.25f,-160};GetComponents().get<Player>(player).velocity={};auto& t=GetComponents().get<TransformComponent>(player);t.translate={body.at.x,body.at.y,body.at.z};}
+        const float before=life.age,timeBefore=clock.left;Game::GameScene::Update();++frames_;introClock_+=std::max(life.age-before,1.f/120);
+        auto note=[&](const char* name){char line[200];snprintf(line,sizeof(line)," %s(t=%.1f body=%.1f,%.1f,%.1f left=%.1f)",name,introClock_,body.at.x,body.at.y,body.at.z,clock.left);introNotes_+=line;};
+        // 目標の発表 (1 秒)・紹介の 3 つのカット (発表は 8 秒で自動で進む)・スタートの後
+        struct Moment {float at;const char* name;const wchar_t* path;};
+        static const Moment moments[]={{1.5f,"briefing",L"tests/out/room-intro-briefing.png"},{10.f,"tour-room",L"tests/out/room-intro-tour1.png"},{12.8f,"tour-tatami",L"tests/out/room-intro-tour2.png"},
+            {15.5f,"tour-start",L"tests/out/room-intro-tour3.png"},{18.f,"countdown",L"tests/out/room-intro-countdown.png"},{20.3f,"started",L"tests/out/room-intro-start.png"},{23.f,"playing",L"tests/out/room-intro-playing.png"}};
+        if(introShot_<int(std::size(moments))&&introClock_>=moments[size_t(introShot_)].at){note(moments[size_t(introShot_)].name);Capture(moments[size_t(introShot_)].path);++introShot_;}
+        // 発表と紹介の間は時間が止まり、スタートの後は進む
+        if(introShot_==int(std::size(moments))){
+            const bool onCase=body.at.x>RoomExitX0&&body.at.x<-60&&body.at.z>-192&&body.at.z<-180&&body.at.y>RoomCaseHeight;
+            const bool running=clock.left<CurrentStageTime(chrono)-1&&timeBefore>clock.left-1;
+            std::ofstream("tests/out/room-intro.txt")<<(onCase&&running?"PASS":"FAIL")<<" on_case="<<onCase<<" running="<<running<<introNotes_;PostQuitMessage(onCase&&running?0:2);++introShot_;}
+        if(frames_>6000){std::ofstream("tests/out/room-intro.txt")<<"FAIL timeout"<<introNotes_;PostQuitMessage(2);}
+    }
+    static float CurrentStageTime(Game::ChronoSystem* chrono){return Game::Chrono::DevourStages()[size_t(chrono->DevourStageIndex())].time;}
     void UpdateRoom(){
         using namespace Game;using namespace Game::Chrono;
         auto player=FindObjectByName("Player");auto& input=GetComponents().get<ControlFrame>(player);input={};input.pitch=.3f;
@@ -270,14 +448,19 @@ class SlimeLifeValidationScene final:public Game::GameScene {
                 if(index>=0){body.mass=body.health=body.maxHealth=DevourGoalMass(stage,size);++life.revision;}}
             if(frames_>60){input.move={0,0,1};input.yaw=resultPlay_*.5f;resultPlay_+=1.f/60;}
             if(resultPlay_>6&&!hudShot_){hudShot_=true;Capture(L"tests/out/hud-play.png");}
-            if(resultPlay_>9)clock.left=.01f;
+            if(resultPlay_>9){
+                // --result-all-kinds: 終わる直前に、ステージの物を種類ごとに 1 つずつ飲みこんだことにする (升に全部の種類を並べる)
+                if(clock.left>.01f&&wcsstr(GetCommandLineW(),L"--result-all-kinds"))chrono->RecordAllKindsForTest(GetRegistry());
+                clock.left=.01f;}
             if(frames_>40000){PostQuitMessage(2);return;}
             resultFinished_=std::chrono::steady_clock::now();Game::GameScene::Update();++frames_;return;
         }
         Game::GameScene::Update();++frames_;
         const float age=std::chrono::duration<float>(std::chrono::steady_clock::now()-resultFinished_).count();
         // 測るまでと、体の中へ入って飲みこんだ物を並べるまで。最後の 1 枚は升を 1 つ大きく見せる
-        const float at[]={.12f,.4f,.75f,1.1f,1.5f,2.f,2.8f,3.3f,3.9f,4.6f,6.f,9.f,10.5f};constexpr int shots=int(sizeof(at)/sizeof(at[0]));
+        // (--result-all-kinds では升が多いので、全部が並び終わる 18 秒の 1 枚を足す)
+        const bool allKinds=wcsstr(GetCommandLineW(),L"--result-all-kinds")!=nullptr;
+        const float at[]={.12f,.4f,.75f,1.1f,1.5f,2.f,2.8f,3.3f,3.9f,4.6f,6.f,9.f,allKinds?18.f:10.5f,allKinds?19.5f:10.6f};const int shots=allKinds?14:13;
         if(resultShot_==shots-1&&age>=at[resultShot_]-.6f)chrono->OpenShelfDetailForTest(0);
         if(resultShot_<shots&&age>=at[resultShot_]){wchar_t path[64];swprintf_s(path,L"tests/out/result-seq-%d.png",resultShot_++);Capture(path);}
         if(resultShot_>=shots){std::ofstream("tests/out/result-seq.txt")<<"PASS absorbed="<<life.absorbed<<" mass="<<body.mass<<" shelf="<<chrono->ShelfCellCountForTest();
@@ -299,6 +482,11 @@ public:
         // 撮影用の起動引数と、部屋のテスト。それ以外は輪の町 (吸収モード) のテスト
         if(wcsstr(GetCommandLineW(),L"--slime-sprite-capture")){UpdateSpriteCapture();return;}
         if(wcsstr(GetCommandLineW(),L"--slime-result-capture")){UpdateResultCapture();return;}
+        if(wcsstr(GetCommandLineW(),L"--slime-life-room-camera")){UpdateRoomCamera();return;}
+        if(wcsstr(GetCommandLineW(),L"--slime-life-room-intro")){UpdateRoomIntro();return;}
+        if(wcsstr(GetCommandLineW(),L"--slime-life-room-mouth")){UpdateRoomMouth();return;}
+        if(wcsstr(GetCommandLineW(),L"--slime-life-room-bed")){UpdateRoomBed();return;}
+        if(wcsstr(GetCommandLineW(),L"--slime-life-room-surfaces")){UpdateRoomSurfaces();return;}
         if(wcsstr(GetCommandLineW(),L"--slime-life-room")){UpdateRoom();return;}
         UpdateDevour();
     }

@@ -3,12 +3,16 @@
 #pragma once
 #include "ChronoRules.h"
 #include "../../externals/entt/entt.hpp"
+#include <vector>
 namespace Game::Chrono {
 // プレイヤーの行動の状態
 enum class Action { Free, Extending, Pulling, Retracting, Recovery, Dodge, Collapsed };
 // 固い物 / カメラを遮る物
 struct Solid {};
-struct CameraOccluder { Vec center{},size{};float opacity=1; };
+// center と size の箱がカメラと体の間に入ったら薄くする。parts は箱の外に張り出した細い部分
+// (ベッドや机の脚・頭の板など)。上に乗れる家具は箱を天板だけにするので、脚は parts で調べる
+struct OccluderPart { Vec center{},size{}; };
+struct CameraOccluder { Vec center{},size{};float opacity=1;std::vector<OccluderPart> parts; };
 // チェインが失敗した理由
 enum class ChainFailure { None, NoTarget, OutOfRange, Obstructed, Recovering, Unstable, Missed, Fell };
 // 決まった再生や確認用のシーンで使う、任意の入力の元
