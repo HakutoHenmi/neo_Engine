@@ -440,6 +440,10 @@ void ChronoSystem::SyncSlimeBodies(GameContext& ctx){
         // バネのコイルと掃除機のホースは細いので、粒子の広がりを大きくして線がつながるようにする
         if(b.action==LifeAction::Spring)common.density*=.7f;
         if(b.action==LifeAction::Vacuum)common.density*=.75f;
+        // 大きい物の手前で開く口は、形を devourBiteScale_ 倍 (最大 1.35 倍) に広げる。粒子の数は同じなので、
+        // 密度を体積の分 (倍率の 3 乗) だけ下げて粒子どうしの間を広げる。下げないと粒子が普段の間隔に固まろうとして
+        // 広がった口の壁を埋めきれず、口の幕に穴が開く (大きい物ほど開きやすい)
+        if(biting&&devourBiteScale_>1)common.density/=devourBiteScale_*devourBiteScale_*devourBiteScale_;
         auto heading=liquid?b.liquidForward:b.forward;
         common.forward={heading.x,float(i),heading.z};common.omega=liquid?life_.recipe.Cohesion():wrapping?DevourBodyStiffness:b.action==LifeAction::Engulf?36.f:b.weapon.active?80.f:32.f;
         common.material={life_.recipe.Damping(),life_.recipe.Viscosity(),life_.recipe.SurfaceTension(),life_.lab?1200.f:InkGround(b.at)};
@@ -447,6 +451,25 @@ void ChronoSystem::SyncSlimeBodies(GameContext& ctx){
         common.shape={radii.x,b.down?radii.y*.25f:radii.y,radii.z,liquid?1.f:weapon?-float(b.action):gimmick?-float(shape):0.f};common.color=color;
         if(gimmick)common.omega=shape==Chrono::GimmickBallShape?70.f:shape==Chrono::GimmickHeliShape?80.f:shape==Chrono::GimmickSheetShape?30.f:48.f;
         if(liquid)common.reserved={b.flowShape.x,b.flowShape.z,b.coreLead.x-b.fluidOffset.x,b.coreLead.z-b.fluidOffset.z};
+        // 斜面に沿わせる (吸収モード・液体の体と飛びかかりの形): 体の前後と左右で地面の高さを比べて傾きを求める。
+        // 以前は体の中心の高さの水平な面を地面としていたので、坂では上の側が地面に埋まり、下の側が浮いて見えた。
+        // 片側だけ高い所 (段差の縁) は傾きにしない。
+        //   普段の液体の体: GPU は点の行き先を使わず、体を包む楕円体と床で形を作るので、傾きを blend にまとめて渡し、
+        //     GPU 側 (FluidMorph.hlsli の MorphLocal / MorphGround) で楕円体と床を坂に沿って傾ける
+        //   飛びかかりの形: 点の行き先で形を作るので、各点を傾きの分だけ上下にずらす
+        V slope{};
+        if(devour_&&!life_.lab&&(liquid||wrapping)&&!b.down){
+            V f{heading.x,0,heading.z};f=Length(f)>.01f?Unit(f):V{0,0,1};const V right{f.z,0,-f.x};
+            const float span=std::max(1.f,std::max(radii.x,radii.z)*.6f),center=InkGround(b.at);
+            auto groundAt=[&](V d){V at=b.at+d;at.y=b.at.y+span;return InkGround(at);};
+            auto grade=[&](V axis){const float ahead=(groundAt(axis*span)-center)/span,behind=(center-groundAt(axis*-span))/span;
+                return std::abs(ahead-behind)>.35f?0.f:std::clamp((ahead+behind)*.5f,-1.f,1.f);};
+            slope={grade(right),0,grade(f)};}
+        auto& tilt=lifeSlope_[i];tilt=Lerp(tilt,slope,1-std::exp(-10*frameDt));
+        const bool tilted=wrapping&&std::abs(tilt.x)+std::abs(tilt.z)>.01f;
+        if(liquid)common.blend=Engine::Renderer::PackLiquidBlend(b.motion,devour_?tilt.x:0.f,devour_?tilt.z:0.f);
+        // 飛びかかりの形: 下の側の点が地面で止まらないよう、流体の床を坂の下の端の高さまで下げる
+        if(tilted)common.material.w-=(std::abs(tilt.x)+std::abs(tilt.z))*std::max(radii.x,radii.z)*1.2f;
         // 形の各点を、体の大きさと姿勢に合わせて目標の位置にする
         for(size_t pointIndex=0;pointIndex<cloud.size();++pointIndex){auto point=cloud[pointIndex];V local{point.x,point.y,point.z};
             if(liquid)local={local.x/2.55f*radii.x,local.y/1.8f*radii.y,local.z/2.55f*radii.z};
@@ -465,6 +488,8 @@ void ChronoSystem::SyncSlimeBodies(GameContext& ctx){
             if(b.down)local.y*=.25f;
             if(!liquid&&!wrapping)local=local*scale;
             Target target=common;target.local={local.x,std::max(.18f,local.y),local.z};
+            // 斜面の傾きの分だけ上下にずらす (点の位置は体の右・上・前の向きの座標)
+            if(tilted)target.local.y+=tilt.x*local.x+tilt.z*local.z;
             // 形ができる前から点の速度を渡す。渡さないと動いている間は粒子がばねで遅れ続け、形が完成しない
             if(weapon){V velocity=LifeWeaponVelocity(b,{point.x,point.y,point.z},frameDt);target.reserved={velocity.x,velocity.y,velocity.z,-1};}
             if(gimmick)target.reserved={gimmickVelocity.x,gimmickVelocity.y,gimmickVelocity.z,-1};
@@ -529,14 +554,16 @@ void ChronoSystem::UpdateSlimeLife(entt::registry& r,Player& p,GameContext& ctx)
     bool hadTire=body.tireUnlocked,hadHydrant=body.hydrantUnlocked,hadSignal=body.signalUnlocked,hadVacuum=body.vacuumUnlocked,hadSpring=body.springUnlocked;life_.signalNotice=std::max(0.f,life_.signalNotice-dt);SignalTick(life_.signal,dt);life_.tireNotice=std::max(0.f,life_.tireNotice-dt);life_.hydrantNotice=std::max(0.f,life_.hydrantNotice-dt);
     p.invincible=std::max(0.f,p.invincible-dt);p.damageAge+=dt;life_.stompCooldown=std::max(0.f,life_.stompCooldown-dt);life_.contactCooldown=std::max(0.f,life_.contactCooldown-dt);
     // カメラの向き
-    if(control){yaw_=control->yaw;pitch_=control->pitch;}else if(ctx.input){float y,x;Controls::Look(dt,y,x);yaw_+=ctx.input->GetMouseDeltaX()*.0025f+y;pitch_=std::clamp(pitch_+ctx.input->GetMouseDeltaY()*.0025f+x,-.7f,.85f);}
-    if(devour_)TickDevourTutorial(dt);
+    // 目標の発表とステージの紹介の間は、操作を受け付けない (世界は動かしたまま、体はその場で待つ)
+    const bool cutscene=devour_&&DevourTutorialCutscene();
+    if(cutscene){}else if(control){yaw_=control->yaw;pitch_=control->pitch;}else if(ctx.input){float y,x;Controls::Look(dt,y,x);yaw_+=ctx.input->GetMouseDeltaX()*.0025f+y;pitch_=std::clamp(pitch_+ctx.input->GetMouseDeltaY()*.0025f+x,-.7f,.85f);}
+    if(devour_)TickDevourTutorial(r,dt,!control||control->intro);
     // 右スティックの押し込みで、カメラを体の後ろへ向け直す
     if(!control&&UI::PadPressed(XINPUT_GAMEPAD_RIGHT_THUMB)){V facing=body.forward;facing.y=0;if(Length(facing)>.01f)yaw_=std::atan2(facing.x,facing.z);}
     // 入力: 取り込み・変形攻撃・スライムに戻る。変形は 1〜4 キー・十字キー・LB / RB で選ぶ
-    bool absorb=control?control->absorb:Controls::Absorb();
-    bool fire=control?control->attack:Controls::MorphAttack();
-    bool returnToSlime=control?control->returnToSlime:Controls::ReturnToSlime();
+    bool absorb=!cutscene&&(control?control->absorb:Controls::Absorb());
+    bool fire=!cutscene&&(control?control->attack:Controls::MorphAttack());
+    bool returnToSlime=!cutscene&&(control?control->returnToSlime:Controls::ReturnToSlime());
     bool firePressed=fire&&!life_.previousFire,changedForm=false,returned=false;
     // 部屋のギミック: 輪の中で変形キーを押すと動く (押した入力はギミックが使う)
     if(devour_&&TickGimmickInput(r,p,ctx,firePressed,absorb&&!life_.previousAbsorb)){firePressed=false;life_.chargeLocked=true;}
@@ -582,7 +609,7 @@ void ChronoSystem::UpdateSlimeLife(entt::registry& r,Player& p,GameContext& ctx)
     // 前フレームの入力を記録する
     life_.previousFire=fire;life_.previousReturn=returnToSlime;
     // 移動とジャンプ (カメラ基準)
-    V input{};if(control)input=Unit(control->move);else Controls::Move(input.x,input.z);
+    V input{};if(cutscene){}else if(control)input=Unit(control->move);else Controls::Move(input.x,input.z);
     V wish{input.x*std::cos(yaw_)+input.z*std::sin(yaw_),0,-input.x*std::sin(yaw_)+input.z*std::cos(yaw_)};
     // 体の向きを更新する
     LifeUpdateFacing(body,wish,Forward(yaw_,0),dt);
@@ -786,7 +813,7 @@ void ChronoSystem::UpdateSlimeLife(entt::registry& r,Player& p,GameContext& ctx)
         for(const auto& enemy:swarm_)if(SwarmAlive(enemy)&&(rolling?LifeSegmentDistance(enemy.at,old,body.at):LifeDistance(enemy.at,body.at))<2.7f*LifeScale(body.mass)+enemy.scale){
             LifeHit(r,p,ctx,enemy.id,(rolling?20.f:12.f)*LifeScale(body.mass),LifeAction::Idle,body.at);life_.contactCooldown=.55f;break;}}
     // 狙いと発射は、体の移動と向きの後のこのフレームのカメラを使う
-    InkCamera(r,p,ctx);UpdateHydrantAim(ctx);
+    InkCamera(r,p,ctx);if(devour_)DevourTourCamera(ctx);UpdateHydrantAim(ctx);
     UpdateHydrantWater(r,p,ctx,dt,fire,absorb);
     // 街のステージを更新する
     if(!slimePlayerDemo_)UpdateCityStage(r,p,ctx,dt);

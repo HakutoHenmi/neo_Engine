@@ -6,6 +6,7 @@
 #include "CityBuilder.h"
 #include "../Chrono/RoomRules.h"
 #include <stdexcept>
+#include <tuple>
 
 namespace Game {
 using namespace CityParts;
@@ -15,6 +16,8 @@ using Chrono::Vec;
 constexpr float kUnit=1.2f;
 // 区画の境目: ベッドの下 (ここから始まる)・和室との間の壁
 constexpr float kBedX=-72,kBedZ=-192,kWallZ=40,kWallDepth=12;
+// ベッドの枠の下の面の高さ (bed.obj の枠)
+constexpr float kBedFrameBottom=29;
 // 和室の入口
 constexpr float kDoors[][2]={{20,80},{220,280}};
 // ベッドの下を囲む本の壁: 前の列 (出口の収納ケースの左) と右の列。飲めず、跳び越えもできない
@@ -41,8 +44,32 @@ const ChronoSystem::LowModel& ChronoSystem::LowModelOf(const std::string& id){
     auto* render=Engine::Renderer::GetInstance();LowModel m;m.mesh=render->LoadObjMesh("Resources/Models/Lowpoly/"+id+".obj");
     auto* source=render->GetModel(m.mesh);if(!source)throw std::runtime_error("missing lowpoly model: "+id);
     m.lo={1e9f,1e9f,1e9f};m.hi={-1e9f,-1e9f,-1e9f};
-    for(const auto& v:source->GetData().vertices){m.lo={std::min(m.lo.x,v.position.x),std::min(m.lo.y,v.position.y),std::min(m.lo.z,v.position.z)};m.hi={std::max(m.hi.x,v.position.x),std::max(m.hi.y,v.position.y),std::max(m.hi.z,v.position.z)};}
+    const auto& data=source->GetData();
+    for(const auto& v:data.vertices){m.lo={std::min(m.lo.x,v.position.x),std::min(m.lo.y,v.position.y),std::min(m.lo.z,v.position.z)};m.hi={std::max(m.hi.x,v.position.x),std::max(m.hi.y,v.position.y),std::max(m.hi.z,v.position.z)};}
+    // つながった部分 (脚・板など) ごとの範囲: 面でつながった頂点をまとめる。面ごとに分かれた同じ位置の頂点は同じ点とする
+    {const size_t n=data.vertices.size();std::vector<uint32_t> parent(n);for(size_t i=0;i<n;++i)parent[i]=uint32_t(i);
+        auto find=[&](uint32_t a){while(parent[a]!=a)a=parent[a]=parent[parent[a]];return a;};
+        auto unite=[&](uint32_t a,uint32_t b){parent[find(a)]=find(b);};
+        std::map<std::tuple<int,int,int>,uint32_t> same;
+        for(size_t i=0;i<n;++i){const auto& p=data.vertices[i].position;auto key=std::make_tuple(int(std::lround(p.x*100)),int(std::lround(p.y*100)),int(std::lround(p.z*100)));
+            auto [match,added]=same.emplace(key,uint32_t(i));if(!added)unite(uint32_t(i),match->second);}
+        if(data.indices.empty()){for(size_t i=0;i+2<n;i+=3){unite(uint32_t(i),uint32_t(i+1));unite(uint32_t(i),uint32_t(i+2));}}
+        else for(size_t k=0;k+2<data.indices.size();k+=3){unite(data.indices[k],data.indices[k+1]);unite(data.indices[k],data.indices[k+2]);}
+        std::map<uint32_t,std::array<V,2>> boxes;
+        for(size_t i=0;i<n;++i){const auto& p=data.vertices[i].position;const V at{p.x,p.y,p.z};auto [box,added]=boxes.emplace(find(uint32_t(i)),std::array<V,2>{at,at});
+            if(!added){auto& b=box->second;b[0]={std::min(b[0].x,at.x),std::min(b[0].y,at.y),std::min(b[0].z,at.z)};b[1]={std::max(b[1].x,at.x),std::max(b[1].y,at.y),std::max(b[1].z,at.z)};}}
+        for(const auto& [root,box]:boxes)m.pieces.push_back(box);}
     return lowModels_.emplace(id,m).first->second;
+}
+// 置いた物の細い部分 (上から見た広さがモデル全体の 4 分の 1 より狭い部分: 脚・頭の板・背の板など) を、カメラを遮る判定に加える。
+// ベッドや机は上に乗れるように判定の箱を天板だけにしているので、脚の間にカメラが入ると脚が消えず、体が見えなくなっていた
+void ChronoSystem::AddThinOccluderParts(entt::registry& r,entt::entity e,const std::string& id,V at,float scale,float yaw){
+    auto* occluder=r.try_get<CameraOccluder>(e);if(!occluder)return;
+    const auto& m=LowModelOf(id);const float whole=std::max((m.hi.x-m.lo.x)*(m.hi.z-m.lo.z),1e-4f),cs=std::cos(yaw),sn=std::sin(yaw);
+    for(const auto& piece:m.pieces){const V size=(piece[1]-piece[0])*scale;if(size.x*size.z/(scale*scale)>=whole*.25f||size.y<1)continue;
+        // モデルの座標から部屋の座標へ (足元を床に合わせ、向きに合わせて回す)
+        const V mid=(piece[0]+piece[1])*(.5f*scale);
+        occluder->parts.push_back({at+V{mid.x*cs+mid.z*sn,mid.y-m.lo.y*scale,-mid.x*sn+mid.z*cs},V{std::abs(cs)*size.x+std::abs(sn)*size.z,size.y,std::abs(sn)*size.x+std::abs(cs)*size.z}});}
 }
 // 上から見た長い辺が width になる拡大率
 float ChronoSystem::LowScaleFor(const std::string& id,float width){const auto& m=LowModelOf(id);return width/std::max({m.hi.x-m.lo.x,m.hi.z-m.lo.z,.001f});}
@@ -110,7 +137,9 @@ void ChronoSystem::BuildRoomGimmicks(entt::registry& r){
         rewards(domino,bucket+V{0,4,0},{{"tsumiki",3,4.5f,kRed},{"marble",1.6f,2.4f,kSky},{"toy_ball",6,8,kPlain},{"minicar",6,7,kBlue},{"tsumiki",3,4.5f,kYellow},{"marble",1.6f,2.4f,kPink},{"candy",2.4f,3,kPlain}},28);}
 
     // ---- ボウリング: 和室の壁沿いに敷いたレーン。玉になって転がり、全部倒すとストライクで小物が降る ----
-    {const V lane{-175,0,17};real("bowling_lane",lane,0,0);
+    // レーンのモデルはピンの位置の印が板より 1.9 下へ出ていて、足元を一番下の点に合わせると板ごと床から浮く
+    // (ガターの縁がカメラの高さに来て体が隠れる)。板の上の面が床とほぼ同じ高さになるよう沈めて置く
+    {const V lane{-175,0,17};real("bowling_lane",lane+V{0,-2.5f,0},0,0);
         const int g=AddGimmick(r,GimmickKind::Bowling,"ボウリング",lane+V{18,0,0},16,10,.4f,{-186,0,-8});auto& bowl=gimmicks_[size_t(g)];bowl.face={1,0,0};
         bowl.path={lane+V{18,0,0},lane+V{278*kUnit,0,0}};
         for(int row=0;row<4;++row)for(int k=0;k<=row;++k){V at=lane+V{(246+8*float(row))*kUnit,0,(float(k)-float(row)*.5f)*6.4f*kUnit};
@@ -121,7 +150,7 @@ void ChronoSystem::BuildRoomGimmicks(entt::registry& r){
     {struct Spill {const char* name;const char* item;V bottom,wall,top;float minCm;Engine::Vector4 color;V sign;V item_at;float itemYaw;float itemLift;};
         const Spill spills[]={
             // 机の左の縁からベッド側へ流す。上下の輪も同じ流れの両端に置く。
-            {"蜂蜜をつたって机へ","honey_jar",{148,0,-264},{168.6f,0,-264},{186,86.4f,-264},8,{1,.62f,.1f,1},{140,0,-240},{198,86.4f+6.2f,-266},-1.5708f,6.2f},
+            {"蜂蜜をつたって机へ","honey_jar",{148,0,-264},{168.6f,0,-264},{186,RoomDeskTop,-264},8,{1,.62f,.1f,1},{140,0,-240},{198,RoomDeskTop+6.2f,-266},-1.5708f,6.2f},
             {"のりをつたって本棚へ","glue_bottle",{236,0,-40},{262.6f,0,-40},{274,RoomShelfTop,-40},10,{.92f,.95f,1,1},{232,0,-12},{296,RoomShelfTop+3.8f,-40},-1.5708f,3.8f},
             {"ジュースをつたっておもちゃ箱へ","juice_cup",{-232,0,28},{-232,0,5.4f},{-232,RoomToyboxTop,-14},8,{1,.48f,.14f,1},{-258,0,26},{-232,RoomToyboxTop+4.8f,-26},0,4.8f}};
         for(const auto& s:spills){const V up{s.wall.x,s.top.y,s.wall.z};
@@ -159,10 +188,10 @@ void ChronoSystem::BuildRoomGimmicks(entt::registry& r){
         rewards(daruma,stand+V{0,4,0},{{"candy",2.4f,3.2f,kPlain},{"coin",2.2f,2.8f,kPlain},{"marble",1.6f,2.4f,kRed},{"mikan",5,5.5f,kPlain},{"marble",1.6f,2.4f,kSky},{"koma_fu",3,3.4f,kPlain}},26);}
 
     // ---- 紙飛行機: 机の上から飛び立って、和室の入口を抜けて座布団の上へ降りる ----
-    {const V launch{232,86.4f,-240};
-        const int g=AddGimmick(r,GimmickKind::Plane,"紙飛行機で飛ぶ",launch,14,10,.3f,{184,86.4f,-284});auto& plane=gimmicks_[size_t(g)];
+    {const V launch{232,RoomDeskTop,-240};
+        const int g=AddGimmick(r,GimmickKind::Plane,"紙飛行機で飛ぶ",launch,14,10,.3f,{184,RoomDeskTop,-284});auto& plane=gimmicks_[size_t(g)];
         plane.path={launch,{234,98,-216},{238,104,-186},{242,94,-110},{248,76,-30},{250,62,46},{251,40,100},{252,14,140},{254,0,156}};plane.spots={{250,62,46}};
-        for(int i=0;i<3;++i)real("kami_hikoki",{200+float(i)*14,86.4f,-282+float(i%2)*8},spin(),.6f,1.1f);
+        for(int i=0;i<3;++i)real("kami_hikoki",{200+float(i)*14,RoomDeskTop,-282+float(i%2)*8},spin(),.6f,1.1f);
         for(int i=0;i<4;++i)real("kami_hikoki",{236+(RingNoise(++seed)-.5f)*50,0,120+RingNoise(++seed)*40},spin(),.6f,1.1f);}
 }
 // 散らかした物を置かない場所: ギミックの輪と、ドミノ・レーン・液体の道の上、だるま落としの台のまわり
@@ -197,6 +226,8 @@ void ChronoSystem::BuildRoomStage(entt::registry& r,const RingCityTools& tools){
     auto plain=[&](const std::vector<std::array<V,2>>& list,Engine::Vector4 color){wall("Chrono Room wall",list,color,list[0][0],list[0][1]);};
     // 床: 子ども部屋はフローリングとじゅうたん、和室は畳
     boxes("Chrono Room floor",{{V{-h,-.6f,-h},V{h,-.3f,kWallZ}}},{.62f,.42f,.26f,1});
+    // 部屋の外の床 (廊下の板): カメラが壁の外へ出て壁を透かしたときに、足元が空にならないようにする。部屋の床より低く敷く
+    {const float o=h+Chrono::RoomOutsideFloor;boxes("Chrono Room outside floor",{{V{-o,-1.4f,-o},V{o,-1.f,o}}},{.5f,.36f,.24f,1});}
     {std::vector<std::array<V,2>> planks;for(int i=0;i<10;++i){float x=-h+2*h*float(i)/10;planks.push_back({V{x+.6f,-.3f,-h},V{x+h/5-.6f,-.2f,kWallZ}});}boxes("Chrono Room flooring",planks,{.74f,.53f,.33f,1});}
     boxes("Chrono Room rug",{{V{-50,-.2f,-170},V{170,-.14f,-40}}},{.32f,.62f,.72f,1});boxes("Chrono Room rug edge",{{V{-42,-.14f,-162},V{162,-.07f,-48}}},{.96f,.88f,.66f,1});boxes("Chrono Room rug middle",{{V{-34,-.07f,-154},V{154,0,-56}}},{.32f,.62f,.72f,1});
     boxes("Chrono Room tatami edge",{{V{-h,-.6f,kWallZ},V{h,-.2f,h}}},{.42f,.5f,.3f,1});
@@ -214,8 +245,9 @@ void ChronoSystem::BuildRoomStage(entt::registry& r,const RingCityTools& tools){
     auto real=[&](const std::string& id,V at,float yaw,float fill,float mult=1,Engine::Vector4 tint=kPlain,float tilt=0){return LowProp(r,id,at,kUnit*mult,yaw,fill,tint,tilt);};
     // 家具
     // (ベッドと机は上の板の範囲で判定して、上に乗っている間は薄くしない)
-    {auto& o=r.get<CameraOccluder>(real("bed",{-180,0,-240},0,0));o.center={-180,44,-240};o.size={240,28,120};}
-    {auto& o=r.get<CameraOccluder>(real("desk",{235,0,-264},0,0));o.center={235,84,-264};o.size={130,6,72};}
+    // 脚と頭の板は別に判定する (AddThinOccluderParts)
+    {const V at{-180,0,-240};const auto e=real("bed",at,0,0);auto& o=r.get<CameraOccluder>(e);o.center={-180,44,-240};o.size={240,28,120};AddThinOccluderParts(r,e,"bed",at,kUnit,0);}
+    {const V at{235,0,-264};const auto e=real("desk",at,0,0);auto& o=r.get<CameraOccluder>(e);o.center={235,84,-264};o.size={130,6,72};AddThinOccluderParts(r,e,"desk",at,kUnit,0);}
     real("chair",{235,0,-195},3.14159f,0);real("bookshelf",{282,0,-60},-1.5708f,0);real("toybox",{-232,0,-20},.0f,0);
     // 本の階段・積んだ本
     real("book_stairs",{-180,0,-180},0,0);real("book_steps",{148.4f,0,190},-1.5708f,0);
@@ -244,6 +276,9 @@ void ChronoSystem::BuildRoomStage(entt::registry& r,const RingCityTools& tools){
                     u+=.4f;}}}}
     // 本棚とおもちゃ箱は上に乗れる (こぼれた液体をつたって登る)
     ringLots_[0].top=Chrono::RoomToyboxTop;ringLots_[2].top=Chrono::RoomShelfTop;
+    // ベッドの下の本の壁は、ベッドの枠の下までの高さ。その上 (本の階段のいちばん上の段からベッドへ乗り移る所) では止めない。
+    // 高さを決めないと上限が無い壁になり、階段の上からベッドへ進めなかった
+    ringLots_[6].top=ringLots_[7].top=kBedFrameBottom;
     BuildRoomGimmicks(r);BuildRoomSets(r);
     // 天井・窓・照明: 部屋の中から照らす
     {const Engine::Vector4 lampWhite{2.6f,2.5f,2.2f,1},lampWarm{2.8f,2.2f,1.4f,1};
@@ -286,7 +321,7 @@ void ChronoSystem::BuildRoomSets(entt::registry& r){
         for(const auto& p:rolled)real("mikan",ground(p[0],p[1]),spin(),1,mikan);
         real("yunomi",{-24,3.4f,276},.9f,.9f,.9f,kPlain,1.5708f);}
     // 将棋: 盤の上は対局の途中で、駒は盤のまわりにも落ちている
-    {const V s{170,0,190};const float w=21.6f,d=23.4f,edge=1.68f,top=22.9f,cellX=2*(w-edge)/9,cellZ=2*(d-edge)/9;real("shogi_board",s,0,0);
+    {const V s{170,0,190};const float w=21.6f,d=23.4f,edge=1.68f,top=RoomShogiTop,cellX=2*(w-edge)/9,cellZ=2*(d-edge)/9;real("shogi_board",s,0,0);
         real("zabuton",{170,0,130},0,0);real("zabuton",{246,0,190},0,0);
         struct Piece {const char* id;int col,row;};
         const Piece mine[]={{"ou",4,0},{"kin",3,0},{"kin",5,1},{"gin",2,1},{"kaku",1,1},{"hi",7,1},{"kei",1,0},{"kyo",0,0},{"kyo",8,0},{"fu",0,2},{"fu",1,2},{"fu",3,2},{"fu",5,3},{"fu",6,2},{"fu",8,2}};
@@ -326,7 +361,7 @@ void ChronoSystem::BuildRoomSets(entt::registry& r){
     // 本棚の前に落ちた漫画
     for(int i=0;i<4;++i)real("manga",{240-float(i)*12,0,-90+float(i)*18},spin(),.6f);
     // 机の上: ノートと筆記用具。机の下には鉛筆と消しゴムが落ちている
-    {const float y=86.4f;real("note",{205,y,-264},.1f,.6f);real("manga",{270,y,-250},.4f,.7f);real("enpitsu",{196,y,-246},.7f,.8f);real("enpitsu",{232,y,-280},2.4f,.8f);real("keshigomu",{222,y,-250},1,1);
+    {const float y=RoomDeskTop;real("note",{205,y,-264},.1f,.6f);real("manga",{270,y,-250},.4f,.7f);real("enpitsu",{196,y,-246},.7f,.8f);real("enpitsu",{232,y,-280},2.4f,.8f);real("keshigomu",{222,y,-250},1,1);
         for(int i=0;i<8;++i)real(i%2?"keshigomu":"enpitsu",{176+float(i)*15,0,-262+float(i%3)*22},spin(),.6f);}
     // ベッドの上: 枕元のぬいぐるみ・リモコン・靴下
     real("nuigurumi",ground(-210,-214),1.5f,.9f,.8f);real("remocon",ground(-170,-236),.8f,.8f);real("sock",ground(-130,-260),2,.8f);

@@ -623,6 +623,8 @@ void ChronoSystem::DrawDevourMeals(GameContext& ctx){
 }
 // 吸収モードの UI: 右上の制限時間・上の大きさの段階と次の段階までのゲージ・左下の大きさとコンボ・ギミックの操作の吹き出し。終わったら結果
 void ChronoSystem::DrawDevourUI(GameContext& ctx){
+    // ステージの紹介の間は HUD を出さない (紹介の黒帯と場所の名前だけにする)
+    if(!finished_&&DevourTutorialCutscene()&&devourTutorial_.step==5)return;
     UI::Canvas ui(ctx.renderer,ctx.viewportSize.x,ctx.viewportSize.y);
     const auto& body=life_.bodies[0];
     const Engine::Vector4 hazard{.95f,.76f,.19f,1},slime{.61f,.89f,.23f,1},white{.96f,.96f,.94f,1},black{.08f,.08f,.08f,1},red{.9f,.22f,.16f,1};
@@ -669,7 +671,7 @@ void ChronoSystem::DrawDevourUI(GameContext& ctx){
         // 目標の旗: まだ届いていないランクを全部立てる
         for(int i=rank;i<goalCount;++i)hud.flags.push_back({stage.goals[size_t(i)],DevourRankName(stage,i+1)+" "+DevourSizeText(stage.goals[size_t(i)]),true});
         // チュートリアルの間は段差の大きさを目標にして、時計を出さない
-        if(DevourTutorialHolding()){hud.next="目標 "+DevourSizeText(DevourTutorialGoal());hud.hideTime=true;}
+        if(DevourTutorialGrowing()){hud.next="目標 "+DevourSizeText(DevourTutorialGoal());hud.hideTime=true;}
         else if(rank<goalCount){const float to=stage.goals[size_t(rank)];hud.next=(rank?"つぎ ランク"+DevourRankName(stage,rank+1):std::string("目標"))+" あと "+DevourSizeText(std::max(0.f,to-cm));}
         else hud.next="Sランク達成！ もっと大きく";
         // 次に飲める壁と門

@@ -16,12 +16,19 @@ float Smooth(float t){t=std::clamp(t,0.f,1.f);return t*t*(3-2*t);}
 }
 
 // 飲みこんだ物を記録する (図鑑に無い物と、光る球は数えない)
-void ChronoSystem::DevourRecordEaten(entt::registry& r,uint32_t visual){
+void ChronoSystem::DevourRecordEaten(const entt::registry& r,uint32_t visual){
     if(!devour_||visual==0xffffffffu)return;auto e=entt::entity(visual);if(!r.valid(e))return;
     const auto* name=r.try_get<NameComponent>(e);if(!name)return;
     DevourEaten eaten;eaten.id=Collection::KeyOfName(name->name);if(eaten.id.empty())return;eaten.visual=visual;
     if(const auto* mr=r.try_get<MeshRendererComponent>(e))eaten.tint={mr->color.x,mr->color.y,mr->color.z,1};
     devourEaten_.push_back(std::move(eaten));
+}
+// 確認用: ステージの物を種類ごとに 1 つずつ記録する
+void ChronoSystem::RecordAllKindsForTest(const entt::registry& r){
+    std::set<std::string> seen;for(const auto& eaten:devourEaten_)seen.insert(eaten.id);
+    for(const auto& prop:life_.props){if(prop.visual==0xffffffffu)continue;auto e=entt::entity(prop.visual);if(!r.valid(e))continue;
+        const auto* name=r.try_get<NameComponent>(e);if(!name)continue;const auto id=Collection::KeyOfName(name->name);if(id.empty()||!seen.insert(id).second)continue;
+        DevourRecordEaten(r,prop.visual);}
 }
 // ぶつかって体から飛び出した物は、飲みこんだ記録から外す (拾い直せばもう一度数える)
 void ChronoSystem::DevourForgetEaten(uint32_t visual){
@@ -100,28 +107,42 @@ void ChronoSystem::DrawDevourShelf3D(GameContext& ctx){
     const float nearZ=proj._33!=0?-proj._43/proj._33:.3f;
     const float tanX=1/proj._11,tanY=1/proj._22,d=(std::min)(shelfDepth_,(std::max)(nearZ,.01f)*3.f);
     const auto& entries=Collection::Entries();
-    auto draw=[&](const ShelfCell& cell,float cx,float cy,float size,float yaw){
+    // 図鑑の絵 (scripts/lowpoly/render_collection.py: 28 度斜めに置き、24 度見下ろす) と同じ見え方にする。
+    // カメラは水平に見ているので、物の方をカメラへ向けて傾ける。向きは「カメラから見た座標」で決めてから、カメラの向きへ回す
+    const float cameraYaw=std::atan2(forward.x,forward.z);
+    auto draw=[&](const ShelfCell& cell,float cx,float cy,float size,float spin){
         const auto& entry=entries[size_t(cell.entry)];const LowModel* model=nullptr;
         try{model=&LowModelOf(entry.model);}catch(...){return;}
         const V mid=(model->lo+model->hi)*.5f,extent=model->hi-model->lo;const float largest=(std::max)({extent.x,extent.y,extent.z,.001f});
         // 設計座標の大きさを、その深さの面の長さに直す (画面の高さ 720 が 2·d·tanY)
         const float worldSize=size/720*2*d*tanY,scale=worldSize/largest;
-        // 寝かせて作った物 (将棋の駒) は、先を上にして起こし、少し後ろへ傾けて表の文字をこちらへ向ける
-        // (X で -1.3 回すと上の面が -z を向くので、向きを半回転して手前へ返す)
-        const float pitch=entry.stand?-1.3f:0.f;if(entry.stand)yaw-=3.14159f;
+        // 見せる向き: face はカメラから見た水平の向き (π で物の前 +z がカメラを向き、+.46 で図鑑と同じ斜め)、
+        // tilt は上の面をカメラへ倒す角度 (図鑑の見下ろしと同じ 24 度)
+        const float wide=(std::max)(extent.x,extent.z),narrow=(std::min)(extent.x,extent.z);
+        float face=3.14159f+.46f,tilt=.42f;
+        // 寝かせて作った物 (将棋の駒) は、先を上にして起こし、表の文字をこちらへ向ける
+        if(entry.stand){face=0;tilt=1.3f;}
+        // 平たい物 (カード・ノート・コイン・紙): 横から見ると線になるので、上の面を大きくこちらへ倒す
+        else if(extent.y<.45f*wide)tilt=1.f;
+        // 立っている薄い物 (横の幅に比べて奥行きが薄い): 広い面をこちらへ向ける (薄いのが x なら 90 度回す)
+        else if(narrow<.5f*wide&&extent.x<extent.z)face=1.5708f+.46f;
+        const XMMATRIX rotation=XMMatrixRotationY(face+spin)*XMMatrixRotationX(-tilt)*XMMatrixRotationY(cameraYaw);
+        // Transform の回転 (XMMatrixRotationRollPitchYaw の順: z → x → y) に直す
+        XMFLOAT4X4 m;XMStoreFloat4x4(&m,rotation);
+        const float pitch=std::asin(std::clamp(-m._32,-1.f,1.f)),yaw=std::atan2(m._31,m._33),roll=std::atan2(m._12,m._22);
         const V at=eye+forward*d+right*((cx/640-1)*d*tanX)+up*((1-cy/360)*d*tanY);
-        XMFLOAT3 turned;XMStoreFloat3(&turned,XMVector3Transform(XMVectorSet(mid.x,mid.y,mid.z,0),XMMatrixRotationRollPitchYaw(pitch,yaw,0)));
+        XMFLOAT3 turned;XMStoreFloat3(&turned,XMVector3Transform(XMVectorSet(mid.x,mid.y,mid.z,0),rotation));
         const V offset=V{turned.x,turned.y,turned.z}*scale;
-        Engine::Transform t;t.scale={scale,scale,scale};t.rotate={pitch,yaw,0};t.translate=EV(at-offset);
+        Engine::Transform t;t.scale={scale,scale,scale};t.rotate={pitch,yaw,roll};t.translate=EV(at-offset);
         ctx.renderer->DrawMeshInstanced(model->mesh,lowPalette_,t,cell.tint,"LowpolySurface",lowMaps_);};
     const float clock=finishAge_;
     if(shelf_.detail>=0){const auto& cell=shelf_.cells[size_t(shelf_.detail)];const float grow=UI::Scale::Overshoot((clock-shelf_.detailAt)/.35f);
-        draw(cell,kDetailX,kDetailY,kDetailSize*grow,yaw_+3.14159f+clock*1.1f);return;}
+        draw(cell,kDetailX,kDetailY,kDetailSize*grow,clock*1.1f);return;}
     for(size_t i=0;i<shelf_.cells.size();++i){const auto& cell=shelf_.cells[i];if(cell.popAt<0)continue;const auto b=DevourShelfRect(i);
         const float pop=UI::Scale::Overshoot((clock-cell.popAt)/.28f),kick=cell.kickAt>=0?1+.16f*(1-UI::Scale::Clamp01((clock-cell.kickAt)/.18f)):1.f;
         // 浮かんで見えるよう、升ごとにゆっくり揺らす
         const float sway=std::sin(clock*1.3f+float(i)*1.7f),bob=std::sin(clock*1.1f+float(i)*2.3f)*b.h*.03f;
-        draw(cell,b.x+b.w*.5f,b.y+b.h*.46f+bob,b.w*.74f*pop*kick,yaw_+3.6f+.35f*sway);}
+        draw(cell,b.x+b.w*.5f,b.y+b.h*.46f+bob,b.w*.74f*pop*kick,.35f*sway);}
 }
 
 // 升の上の文字: 数・はじめて見つけた印・選んだ物の説明

@@ -246,7 +246,7 @@ void Renderer::PrepareFluidVolume() {
         uint32_t owners=0;
         for(const auto& t:fluidMorphTargets_){
             uint32_t owner=uint32_t(t.forward.y);
-            if(t.shape.w>.5f){if(owners&(1u<<owner))continue;owners|=1u<<owner;float stretch=1+.55f*t.blend;
+            if(t.shape.w>.5f){if(owners&(1u<<owner))continue;owners|=1u<<owner;float stretch=1+.55f*LiquidBlendMotion(t.blend);
                 Vector3 extent{t.shape.x*stretch*1.5f,t.shape.y,t.shape.z*stretch*1.5f};include(t.origin-extent);include(t.origin+extent);
             }else {include(t.origin+Vector3{t.forward.z*t.local.x+t.forward.x*t.local.z,t.local.y,-t.forward.x*t.local.x+t.forward.z*t.local.z});}}
         for(const auto& p:fluidBodySnapshot_.offsets){auto world=p+fluidBodySnapshot_.core;if(std::isfinite(world.x)&&std::isfinite(world.y)&&std::isfinite(world.z)&&std::abs(world.x-center.x)<100&&std::abs(world.y-center.y)<100&&std::abs(world.z-center.z)<100)include(world);}

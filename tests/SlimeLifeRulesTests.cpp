@@ -405,13 +405,13 @@ void TestDevour(){
     for(float mass:{500.f,450000.f})CheckLife(DevourSpringRange(mass,1)>DevourSpringRange(mass,.5f)&&DevourSpringRise(mass,DevourSpringMinPower)>DevourBodyRadius(mass)*5&&DevourLeapRange(mass)<DevourSpringRange(mass,DevourSpringMinPower),"spring reach is wrong");
     // 部屋の高さ: 坂はつながっていて登れる傾きで、床は 0
     // 部屋: ベッドと机は下を通れて上にも乗れる。こたつの布団と座布団はなだらかで、そのまま登れる
-    CheckLife(RoomGround({0,0,-100})==0&&RoomGround({-180,1,-240})==0&&RoomGround({-180,50,-240})==56&&RoomGround({235,1,-264})==0&&RoomGround({235,80,-264})>86,"room heights are wrong");
-    CheckLife(RoomTop({100,0,-264})==0&&RoomGround({148,1,-264})==0&&RoomGround({186,87,-264})==86.4f,"removed desk rail leaves invisible ground or honey endpoints miss the floor/desk");
-    CheckLife(RoomGround({-120,0,176})==42&&RoomGround({-238,0,100})==0&&RoomGround({-200,0,100})>0&&RoomGround({-200,0,100})<42&&RoomTop({-180,0,-240})==56,"kotatsu quilt is not a hill");
+    CheckLife(RoomGround({0,0,-100})==0&&RoomGround({-180,1,-240})==0&&RoomGround({-180,50,-240})==RoomQuiltTop&&RoomGround({235,1,-264})==0&&RoomGround({235,80,-264})>86,"room heights are wrong");
+    CheckLife(RoomTop({100,0,-264})==0&&RoomGround({148,1,-264})==0&&RoomGround({186,88,-264})==RoomDeskTop,"removed desk rail leaves invisible ground or honey endpoints miss the floor/desk");
+    CheckLife(RoomGround({-120,0,176})==RoomKotatsuTop&&RoomGround({-238,0,100})==0&&RoomGround({-200,0,100})>0&&RoomGround({-200,0,100})<RoomKotatsuTop&&RoomTop({-180,0,-240})==RoomQuiltTop,"kotatsu quilt is not a hill");
     for(const auto& s:RoomSurfaces){if(s.hill>0&&s.base==0)CheckLife(s.h0/s.hill<.6f,"room hill is too steep");else if(s.h0!=s.h1)CheckLife(std::abs(s.h1-s.h0)/(s.foot.x1-s.foot.x0)<.6f,"room ramp is too steep");}
     // ベッドの下の収納ケースは開始の大きさでは跳べず、ケースの目標の大きさで跳べる。階段はその大きさで 1 段ずつ登れる
     {const auto& room=DevourStages()[0];CheckLife(DevourStepHeight(LifeStartMass)<RoomCaseHeight&&DevourStepHeight(DevourGoalMass(room,room.gates[0]))>RoomCaseHeight&&RoomStairRise<RoomCaseHeight,"step hop does not gate the bed");
-        CheckLife(RoomGround({-200,0,-186})==RoomCaseHeight&&RoomTop({-180,0,-170})==RoomBedTop,"bed stairs or cases are wrong");}
+        CheckLife(RoomGround({(RoomExitX0-60)*.5f,0,-186})==RoomCaseHeight&&RoomTop({-180,0,-170})==RoomBedTop,"bed stairs or cases are wrong");}
     // 体に対して小さい物は価値が下がり、大きい物は満額。基準が 0 なら下げない
     CheckLife(DevourFoodValue(1000,5,.35f)==1&&DevourFoodValue(1000,7,.35f)>1.5f&&DevourFoodValue(1000,1,.35f)<.3f&&DevourFoodValue(1000,.01f,.35f)==.1f&&DevourFoodValue(1000,.01f,0)==1,"food value is wrong");
     // 限界ギリギリの物は大きく育つが重く、飲めない物へ速くぶつかると縮む。ゆっくりなら何も失わない

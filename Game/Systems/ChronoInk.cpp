@@ -154,7 +154,8 @@ void ChronoSystem::InkCamera(entt::registry& r,Player& p,GameContext& ctx){
         auto lifted=[&](float k){return Unit(back+V{0,k,0});};
         const float lifts[]={0,.35f,.8f,1.5f,3};float goal=0,best=-1;
         for(float k:lifts){float open=reach(lifted(k),distance);if(open>best+.02f){best=open;goal=k;}if(open>=.97f)break;}
-        // 吸収モードの輪の町: 建物はカメラの手前へ寄せず、間に入った建物を透かす (下の CameraOccluder)
+        // 吸収モード (輪の町・部屋): 建物や家具や部屋の壁はカメラの手前へ寄せず、間に入った物を透かす (下の CameraOccluder)。
+        // カメラの位置と向きは操作の通りに保つ (壁際で寄せたり持ち上げたりすると、視点の操作と画面の動きが合わなくなる)
         if(devour_){goal=0;best=1;}
         // 持ち上げは少し速く、戻すのはゆっくり (速すぎると変形で構図が広がった瞬間に跳ね上がる)。届く距離は縮めるときは即座に、伸ばすときはゆっくり
         cameraLift_+=(goal-cameraLift_)*(1-std::exp(-(goal>cameraLift_?4.f:2.5f)*ctx.dt));
@@ -173,8 +174,8 @@ void ChronoSystem::InkCamera(entt::registry& r,Player& p,GameContext& ctx){
     }
     for(const auto& surface:inkSurfaces_){V hit;if(surface.Ray(focus,wanted-focus,f,hit))wanted=focus+(wanted-focus)*std::max(.05f,f-.06f);}
     wanted.y=std::max(wanted.y,.7f);
-    // 吸収モードの部屋: カメラは壁と天井の内側に収める (外から見ると壁が消えて空が見える)
-    if(devour_&&CurrentDevourStage().map=="room"){float h=CurrentDevourStage().half-5;wanted.x=std::clamp(wanted.x,-h,h);wanted.z=std::clamp(wanted.z,-h,h);wanted.y=std::min(wanted.y,290.f);}
+    // 吸収モードの部屋: カメラは壁の外へ出てよい (間の壁は透かす)。部屋の外の床 (RoomStage.cpp) の範囲と天井の下には収める
+    if(devour_&&CurrentDevourStage().map=="room"){float h=CurrentDevourStage().half+Chrono::RoomOutsideFloor-10;wanted.x=std::clamp(wanted.x,-h,h);wanted.z=std::clamp(wanted.z,-h,h);wanted.y=std::min(wanted.y,290.f);}
     // それでも建物の箱の中に残ったら、外へ出るまで注視点の方へ寄せる
     if(!devour_&&hydrantBlend<1){
         auto inside=[&](V at){for(const auto& b:solids_)if(at.x>b.min.x-.2f&&at.x<b.max.x+.2f&&at.y>b.min.y-.2f&&at.y<b.max.y+.2f&&at.z>b.min.z-.2f&&at.z<b.max.z+.2f)return true;return false;};
@@ -241,14 +242,23 @@ void ChronoSystem::InkCamera(entt::registry& r,Player& p,GameContext& ctx){
     // 吸収モードの輪の町: カメラからプレイヤーの体までの間にある建物と、カメラが中に入った建物を透かす
     // (体の上の方まで見通せるよう、線は体の中心と頭の 2 本を調べる)
     if(devour_){V body=pos,head=focus;float bodyRadius=LifeRadii(life_.bodies[0],life_.recipe).x;
+        auto boxOf=[](V center,V size){return Chrono::Bounds{center-size*.5f,center+size*.5f};};
+        auto contains=[](const Chrono::Bounds& b,V p,float pad){return p.x>b.min.x-pad&&p.x<b.max.x+pad&&p.y>b.min.y-pad&&p.y<b.max.y+pad&&p.z>b.min.z-pad&&p.z<b.max.z+pad;};
+        // カメラが箱の中にいるか、カメラから体 (中心と頭) までの線が箱を通るか
+        auto blocks=[&](const Chrono::Bounds& box){float fraction;V normal;const V pad{1,1,1};
+            return contains(box,wanted,1)||(Chrono::Sweep(wanted,body-wanted,box,pad*(.3f+bodyRadius*.3f),fraction,normal)&&fraction<1)||(Chrono::Sweep(wanted,head-wanted,box,pad,fraction,normal)&&fraction<1);};
         for(auto e:r.view<CameraOccluder>()){auto& o=r.get<CameraOccluder>(e);
-            Chrono::Bounds box{o.center-o.size*.5f,o.center+o.size*.5f};float fraction;V normal;V pad{1,1,1};
-            bool inside=wanted.x>box.min.x-1&&wanted.x<box.max.x+1&&wanted.y>box.min.y-1&&wanted.y<box.max.y+1&&wanted.z>box.min.z-1&&wanted.z<box.max.z+1;
-            bool occludes=inside||(Chrono::Sweep(wanted,body-wanted,box,pad*(.3f+bodyRadius*.3f),fraction,normal)&&fraction<1)||(Chrono::Sweep(wanted,head-wanted,box,pad,fraction,normal)&&fraction<1);
+            const auto box=boxOf(o.center,o.size);bool occludes=blocks(box);
             // 乗っている家具は消さない。真上にある物 (ベッドの板) は消す
-            if(body.y>o.center.y+o.size.y*.5f-2)occludes=inside;
+            if(body.y>o.center.y+o.size.y*.5f-2)occludes=contains(box,wanted,1);
             // 体がその物の範囲の中にいるとき (階段やレールや布団を登っているとき) は薄くしない
-            if(body.x>box.min.x&&body.x<box.max.x&&body.y>box.min.y&&body.y<box.max.y&&body.z>box.min.z&&body.z<box.max.z)occludes=false;
+            if(contains(box,body,0))occludes=false;
+            // 脚や頭の板・枕: 間に入ったときと、カメラが中に入ったときに物ごと薄くする (体がその中にいるときは除く)。
+            // 上に乗っている部分 (枕など) は、本体の箱と同じくカメラが中に入ったときだけ薄くする
+            // (乗っている面とカメラへの線が触れるので、そのままだと乗った瞬間にベッドごと透けてしまう)
+            for(const auto& part:o.parts){const auto partBox=boxOf(part.center,part.size);if(contains(partBox,body,0))continue;
+                // (体の中心よりわずかに高いだけの部分 (掛け布団の上から見た枕) も、体を隠さないので同じに扱う)
+                const bool onTop=body.y>partBox.max.y-2-bodyRadius*.5f;if(onTop?contains(partBox,wanted,1):blocks(partBox)){occludes=true;break;}}
             o.opacity+=((occludes?.18f:1.f)-o.opacity)*(1-std::exp(-12.f*ctx.dt));}}
 }
 

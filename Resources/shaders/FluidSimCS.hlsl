@@ -1173,7 +1173,8 @@ void ApplyDeltaP(uint3 id : SV_DispatchThreadID) {
             p.position=MorphWorld(MorphFromField(field,body),body);
         }
         // The actual ground stays below a jumping body; never clamp to its moving origin.
-        p.position.y=max(p.position.y,body.material.w+.15f);
+        // (坂では傾いた地面。平らな所では今まで通りの高さ)
+        p.position.y=max(p.position.y,MorphGround(p.position,body)+.15f);
     }
     if(coreMode>=4.0f&&p.type<.5f&&pad8<.5f){
         float3 origin=SlimeSupportOrigin(),local=p.position-origin;

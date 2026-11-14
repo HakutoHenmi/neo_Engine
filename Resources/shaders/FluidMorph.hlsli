@@ -17,8 +17,22 @@ float MorphSpeedLimit(uint original,float type){
 }
 uint MorphSpread(uint n){n&=1023;n=(n|(n<<16))&0x030000ff;n=(n|(n<<8))&0x0300f00f;n=(n|(n<<4))&0x030c30c3;n=(n|(n<<2))&0x09249249;return n;}
 uint MorphKey(float3 p){uint3 q=(uint3)(clamp((p+12)/24,0,.99999)*1024);return MorphSpread(q.x)|(MorphSpread(q.y)<<1)|(MorphSpread(q.z)<<2);}
-float3 MorphLocal(float3 p,MorphTarget t){float3 d=p-t.origin;return float3(dot(d,float3(t.forward.z,0,-t.forward.x)),d.y,dot(d,float3(t.forward.x,0,t.forward.z)));}
-float3 MorphWorld(float3 p,MorphTarget t){return t.origin+float3(t.forward.z,0,-t.forward.x)*p.x+float3(0,p.y,0)+float3(t.forward.x,0,t.forward.z)*p.z;}
+// 液体の体の足元の傾き (x: 体の右へ 1 進むごとの高さ、y: 前へ 1 進むごとの高さ)。blend にまとめてある
+// (Renderer::PackLiquidBlend。100 万以上がまとめた値で、それより小さいときは傾きなし)。
+// 形の点を持つ体 (変形・飛びかかり) は点そのものを傾けるので 0
+float2 MorphSlope(MorphTarget t){
+    if(t.shape.w<=.5f||t.blend<1000000.f)return 0;
+    float n=round(t.blend-1000000.f);float right=fmod(floor(n/101),101),forward=floor(n/10201);
+    return float2(right,forward)/50-1;}
+// 体の座標: 坂では高さを傾きの分だけずらし (せん断)、液体の体を包む楕円体と床を坂に沿わせる
+float3 MorphLocal(float3 p,MorphTarget t){float3 d=p-t.origin;
+    float3 local=float3(dot(d,float3(t.forward.z,0,-t.forward.x)),d.y,dot(d,float3(t.forward.x,0,t.forward.z)));
+    float2 slope=MorphSlope(t);local.y-=slope.x*local.x+slope.y*local.z;return local;}
+float3 MorphWorld(float3 p,MorphTarget t){float2 slope=MorphSlope(t);
+    return t.origin+float3(t.forward.z,0,-t.forward.x)*p.x+float3(0,p.y+slope.x*p.x+slope.y*p.z,0)+float3(t.forward.x,0,t.forward.z)*p.z;}
+// 体の下の地面の高さ (坂では傾いた面)
+float MorphGround(float3 p,MorphTarget t){float3 d=p-t.origin;float2 slope=MorphSlope(t);
+    return t.material.w+slope.x*dot(d,float3(t.forward.z,0,-t.forward.x))+slope.y*dot(d,float3(t.forward.x,0,t.forward.z));}
 // A symmetric, volume-preserving horizontal deformation in world space.
 // It relaxes the old extension and grows the new one; face yaw cannot swing
 // a long containment field sideways or bend its rear into a hooked tail.
