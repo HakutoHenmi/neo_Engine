@@ -1,9 +1,0 @@
-{
-  "_comment": "吸収モードの町 (Docs/AbsorbCity.md の「町の再構成とビルの吸収」)。中心の路地裏から外へ、住宅街の輪が広がる。約 6 単位で 1 メートル。outer は中心からの距離 (x と z の大きい方) で、その輪の外側の端。block は道路の格子の間隔、road は道路の幅、lots は 1 区画の建物の数 (横 x 縦)、floors は階数の範囲、floorHeight は 1 階の高さ。",
-  "zones": [
-    {"id": "Alley", "name": "路地裏", "outer": 170, "lineFood": 18},
-    {"id": "House", "name": "住宅街", "outer": 780, "block": 112, "road": 26, "lots": [2, 2], "floors": [2, 3], "floorHeight": 17, "props": 150, "avenue": 60, "gateRadius": 5.37, "plazas": 8, "plazaFood": 20, "lineFood": 30}
-  ],
-  "_firesComment": "炎 [x, z, 半径]。今は置かない (消す手段の消火栓を外したため)",
-  "fires": []
-}

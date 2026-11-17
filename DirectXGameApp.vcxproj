@@ -197,12 +197,14 @@ exit /b %ERRORLEVEL%</Command>
     <ClCompile Include="Game\Systems\SlimeDevour.cpp" />
     <ClCompile Include="Game\Systems\DevourShelf.cpp" />
     <ClCompile Include="Game\Systems\DevourGimmick.cpp" />
+    <ClCompile Include="Game\Systems\DevourTownGimmick.cpp" />
+    <ClCompile Include="Game\Systems\DevourHose.cpp" />
     <ClCompile Include="Game\Systems\DevourTutorial.cpp" />
     <ClCompile Include="Game\Systems\DevourHeli.cpp" />
     <ClCompile Include="Game\Systems\DevourSpill.cpp" />
     <ClCompile Include="Game\Systems\DevourGrowth.cpp" />
-    <ClCompile Include="Game\Systems\RingCity.cpp" />
     <ClCompile Include="Game\Systems\RoomStage.cpp" />
+    <ClCompile Include="Game\Systems\SlopeTown.cpp" />
     <ClCompile Include="Game\Systems\DevourPlayLog.cpp" />
     <ClCompile Include="Game\Systems\SlimePlayerDemo.cpp" />
     <ClCompile Include="Game\Systems\SlimeLife.cpp" />
@@ -243,6 +245,7 @@ exit /b %ERRORLEVEL%</Command>
     <ClInclude Include="Game\Scenes\AssignmentScene.h" />
     <ClInclude Include="Game\Scenes\GameOverScene.h" />
     <ClInclude Include="Game\Scenes\SlimePlayerDemoScene.h" />
+    <ClInclude Include="Game\Scenes\WaterDioramaDemoScene.h" />
     <ClInclude Include="Game\Scenes\GameScene.h" />
     <ClInclude Include="Game\Scenes\SelectScene.h" />
     <ClInclude Include="Game\Scenes\TitleScene.h" />
@@ -278,7 +281,7 @@ exit /b %ERRORLEVEL%</Command>
     <ClInclude Include="Game\Chrono\DevourStageRules.h" />
     <ClInclude Include="Game\Chrono\RoomRules.h" />
     <ClInclude Include="Game\Systems\CityBuilder.h" />
-    <ClInclude Include="Game\Chrono\RingCityRules.h" />
+    <ClInclude Include="Game\Chrono\SlopeTownRules.h" />
     <ClInclude Include="Game\Chrono\DevourAnimation.h" />
     <ClInclude Include="Game\Chrono\SlimeLifeRules.h" />
     <ClInclude Include="Game\Chrono\SlimeTentacleRules.h" />
@@ -474,6 +477,7 @@ exit /b %ERRORLEVEL%</Command>
     <None Include="Resources\shaders\FluidMaterial.hlsli" />
     <None Include="Resources\shaders\FluidMorph.hlsli" />
     <None Include="Resources\shaders\FluidRaymarch.hlsl" />
+    <None Include="Resources\shaders\FluidScreenWater.hlsl" />
     <None Include="Resources\shaders\FluidRenderSupport.hlsli" />
     <None Include="Resources\shaders\FluidShadow.hlsl" />
     <None Include="Resources\shaders\FluidSimCS.hlsl" />

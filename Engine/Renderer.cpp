@@ -357,6 +357,8 @@ void Renderer::Shutdown() {
 	volumeAccum_.Reset(); volumeMomentum_.Reset(); volumeShapes_.Reset();
 	for (auto& texture : volumeTextures_) texture.Reset();
 	volumeSurfaceDepth_.Reset(); volumeRtvHeap_.Reset();
+	for(auto& target:screenWaterTargets_)target.Reset();
+	screenWaterRtvHeap_.Reset();rootSigScreenWater_.Reset();psoScreenWaterSprite_.Reset();psoScreenWaterSmooth_.Reset();psoScreenWaterComposite_.Reset();screenWaterReady_=false;
 	gpuFluidPreviousBuffer_.Reset(); gpuFluidScratchBuffer_.Reset();
 	psoFluidSavePrevious_.Reset(); psoFluidDelta_.Reset(); psoFluidApply_.Reset(); psoFluidVelocity_.Reset();
 
@@ -5742,6 +5744,7 @@ void Renderer::ResetGPUFluid() {
 	volumeHistoryValid_ = false;
 	gpuFluidEmitCursorPlayer_ = 0;
 	gpuFluidEmitCursorSplash_ = kPlayerFluidParticles;
+	gpuFluidEmitCursorPool_ = kPoolFluidStart;
     hydrantAttackCursor_=kPlayerFluidParticles;hydrantGuardCursor_=kPlayerFluidParticles+kHydrantAttackParticles;
 	gpuFluidExtractCursor_ = 0;
 	gpuFluidActiveParticleCount_ = 0;
@@ -5789,7 +5792,9 @@ void Renderer::UpdateGPUFluid(float dt) {
 	// Use the fence-protected frame upload ring. A single persistently shared
 	// upload buffer can otherwise change while the previous frame is solving.
 	auto& fluidUpload = upload_[window_->FrameIndex()];
-	const uint32_t aabbOffset = fluidUpload.Allocate(sizeof(FluidAABB) * (kFluidBoxCapacity + kFluidSphereCapacity), 256);
+	// (坂の町の放水の地面の高さの表は、箱と球の後ろに見出し 1 つと、高さを 8 個ずつ詰めて置く)
+	const size_t terrainEntries=HydrantTerrainActive()?1+(hydrantTerrain_.size()+7)/8:0;
+	const uint32_t aabbOffset = fluidUpload.Allocate(uint32_t(sizeof(FluidAABB) * (kFluidBoxCapacity + kFluidSphereCapacity + terrainEntries)), 256);
 	if (aabbOffset == UINT32_MAX) return;
 	size_t aabbCopyCount = (std::min)(gpuFluidAABBs_.size(), kFluidBoxCapacity);
 	if (aabbCopyCount) memcpy(fluidUpload.mapped + aabbOffset, gpuFluidAABBs_.data(), sizeof(FluidAABB) * aabbCopyCount);
@@ -5799,6 +5804,9 @@ void Renderer::UpdateGPUFluid(float dt) {
 		FluidAABB entry{{sphere.x - sphere.w, sphere.y - sphere.w, sphere.z - sphere.w}, 1.0f, {sphere.x + sphere.w, sphere.y + sphere.w, sphere.z + sphere.w}, 0.0f};
 		memcpy(fluidUpload.mapped + aabbOffset + sizeof(FluidAABB) * aabbCopyCount, &entry, sizeof(entry));
 	}
+	if(terrainEntries){FluidAABB head{{hydrantTerrainX_,hydrantTerrainZ_,hydrantTerrainCell_},float(hydrantTerrainSize_),{0,0,0},0};
+		uint8_t* at=fluidUpload.mapped+aabbOffset+sizeof(FluidAABB)*aabbCopyCount;memcpy(at,&head,sizeof(head));
+		std::memset(at+sizeof(FluidAABB),0,sizeof(FluidAABB)*(terrainEntries-1));memcpy(at+sizeof(FluidAABB),hydrantTerrain_.data(),hydrantTerrain_.size()*sizeof(float));}
 	
 	struct CB { 
 		float dt; uint32_t emitCursor; uint32_t emitCount; uint32_t maxParticles; 
@@ -5869,6 +5877,9 @@ void Renderer::UpdateGPUFluid(float dt) {
     }
 	cb.decoyPos = gpuFluidDecoyPos_; cb.decoyAttraction = gpuFluidDecoyAttraction_;
 	cb.decoyScale = gpuFluidDecoyScale_; cb.pad7 = rogueWorldFrozen_?1.f:0.0f;
+	// Morph solves use the compact 8192-bucket neighbour table (FluidSimCS GetGridHash).
+	// The volume's BuildShapes searches the same table, so it receives the size too.
+	fluidHashBuckets_=morphActive?8192u:65536u;
 	cb.decoyForward = gpuFluidDecoyForward_; cb.pad8 = morphActive?1.f:0.f;
 	if(gpuFluidCoreMode_>=4){cb.emitDir=slimeGround_;cb.emitStartIndex=slimeGrounded_?1U:0U;}
 	
@@ -5880,7 +5891,7 @@ void Renderer::UpdateGPUFluid(float dt) {
 	list_->SetComputeRootUnorderedAccessView(3, gpuFluidGridOffsetBuffer_->GetGPUVirtualAddress());
 	list_->SetComputeRootUnorderedAccessView(4, gpuFluidSortedParticlesBuffer_->GetGPUVirtualAddress());
 	list_->SetComputeRootUnorderedAccessView(5, gpuFluidOriginalIndicesBuffer_->GetGPUVirtualAddress());
-	BindFluidMorphResources(fluidUpload.buffer.Get(),aabbOffset);
+	BindFluidMorphResources(fluidUpload.buffer.Get(),aabbOffset,uint32_t(terrainEntries));
 	list_->SetComputeRootUnorderedAccessView(7, gpuFluidPreviousBuffer_->GetGPUVirtualAddress());
 	list_->SetComputeRootUnorderedAccessView(8, gpuFluidScratchBuffer_->GetGPUVirtualAddress());
 
@@ -5962,6 +5973,9 @@ void Renderer::UpdateGPUFluid(float dt) {
         list_->SetPipelineState(psoMorphAssign_.Get());list_->Dispatch((kPlayerFluidParticles+63)/64,1,1);uavBarrier(nullptr);
         fluidMorphApplied_=fluidMorphRevision_;fluidMorphRetargetMask_=0;fluidMorphSeedPending_=false;cb.emitType=0;cb.pad6.x=0;list_->SetComputeRoot32BitConstants(0,48,&cb,0);
     }
+	// 坂の町の放水の地面の高さの表があるか (emitColor の w はソルバーで使われていない。x は武器の経路の時刻)
+	cb.emitColor.w=terrainEntries?1.f:0.f;
+	list_->SetComputeRoot32BitConstants(0,48,&cb,0);
 	// Even during hitstop, build a current grid for surface reconstruction.
 	if (cb.dt <= 0.0f) { rebuildGrid(); return; }
 	if (gpuFluidCoreMode_ < 2.0f) rebuildGrid();
@@ -6055,10 +6069,11 @@ void Renderer::QueueFluidBody(){
 
 void Renderer::CollectHydrantWater(uint32_t frame){
     if(!hydrantWaterPending_[frame]||!hydrantWaterReadback_[frame])return;
-    D3D12_RANGE range{0,sizeof(GPUFluidParticle)*kHydrantWaterParticles};GPUFluidParticle* particles=nullptr;
+    const uint32_t readCount=hydrantWaterReadCount_[frame];
+    D3D12_RANGE range{0,sizeof(GPUFluidParticle)*readCount};GPUFluidParticle* particles=nullptr;
     if(SUCCEEDED(hydrantWaterReadback_[frame]->Map(0,&range,reinterpret_cast<void**>(&particles)))){
         hydrantWaterSnapshot_.particles.clear();
-        if(hydrantWaterReadbackEnabled_)for(uint32_t i=0;i<kHydrantWaterParticles;++i){const auto& p=particles[i];
+        if(hydrantWaterReadbackEnabled_)for(uint32_t i=0;i<readCount;++i){const auto& p=particles[i];
             if(p.type>1.05f&&p.type<1.25f&&p.color.w>.01f&&p.position.y>-500&&
                 std::isfinite(p.position.x)&&std::isfinite(p.position.y)&&std::isfinite(p.position.z)&&
                 std::isfinite(p.velocity.x)&&std::isfinite(p.velocity.y)&&std::isfinite(p.velocity.z))
@@ -6070,11 +6085,15 @@ void Renderer::CollectHydrantWater(uint32_t frame){
 }
 void Renderer::QueueHydrantWater(){
     if(!hydrantWaterReadbackEnabled_||!gpuFluidBuffer_)return;
-    auto frame=window_->FrameIndex();const UINT64 bytes=sizeof(GPUFluidParticle)*kHydrantWaterParticles;
-    if(!hydrantWaterReadback_[frame]){auto heap=CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_READBACK);auto desc=CD3DX12_RESOURCE_DESC::Buffer(bytes);
+    // 坂の町の放水では、水専用の流体の範囲を読む (戦闘の消火栓は今まで通り)
+    auto frame=window_->FrameIndex();const bool pool=HydrantTerrainActive();
+    const uint32_t first=pool?kPoolFluidStart:kPlayerFluidParticles,count=pool?kPoolFluidCapacity:kHydrantWaterParticles;
+    const UINT64 bytes=sizeof(GPUFluidParticle)*count;
+    if(!hydrantWaterReadback_[frame]){auto heap=CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_READBACK);
+        auto desc=CD3DX12_RESOURCE_DESC::Buffer(sizeof(GPUFluidParticle)*(std::max)(kPoolFluidCapacity,kHydrantWaterParticles));
         if(FAILED(dev_->CreateCommittedResource(&heap,D3D12_HEAP_FLAG_NONE,&desc,D3D12_RESOURCE_STATE_COPY_DEST,nullptr,IID_PPV_ARGS(&hydrantWaterReadback_[frame]))))return;}
     auto barrier=CD3DX12_RESOURCE_BARRIER::Transition(gpuFluidBuffer_.Get(),D3D12_RESOURCE_STATE_UNORDERED_ACCESS,D3D12_RESOURCE_STATE_COPY_SOURCE);list_->ResourceBarrier(1,&barrier);
-    list_->CopyBufferRegion(hydrantWaterReadback_[frame].Get(),0,gpuFluidBuffer_.Get(),UINT64(kPlayerFluidParticles)*sizeof(GPUFluidParticle),bytes);
+    list_->CopyBufferRegion(hydrantWaterReadback_[frame].Get(),0,gpuFluidBuffer_.Get(),UINT64(first)*sizeof(GPUFluidParticle),bytes);hydrantWaterReadCount_[frame]=count;
     barrier=CD3DX12_RESOURCE_BARRIER::Transition(gpuFluidBuffer_.Get(),D3D12_RESOURCE_STATE_COPY_SOURCE,D3D12_RESOURCE_STATE_UNORDERED_ACCESS);list_->ResourceBarrier(1,&barrier);
     hydrantWaterPending_[frame]=true;
 }
@@ -6139,13 +6158,20 @@ void Renderer::EmitGPUFluid(const Vector3& pos, const Vector3& velocityDir, cons
 		startIndex = kPlayerFluidParticles;
 		endIndex = effectParticleEnd;
 		cursorPtr = &gpuFluidEmitCursorSplash_;
-        if(type>1.05f&&type<1.25f){
+        if(type>1.05f&&type<1.15f&&HydrantTerrainActive()){
+            // 坂の町の放水: 水専用の流体の大きな範囲 (24576 粒) を使い、地面に長く残ってたまる水にする。
+            // 種類は消火栓の水のまま (地面の高さの表・当たったときのしぶき)
+            startIndex=kPoolFluidStart;endIndex=(std::min)(gpuFluidMaxParticles_,kPoolFluidStart+kPoolFluidCapacity);cursorPtr=&gpuFluidEmitCursorPool_;
+        }else if(type>1.05f&&type<1.25f){
             // Independent rings keep a held shield or an impact splash from
             // replacing the travelling attack stream before it reaches its target.
             bool attack=type<1.15f;
             startIndex=kPlayerFluidParticles+(attack?0:kHydrantAttackParticles);
             endIndex=(std::min)(effectParticleEnd,startIndex+(attack?kHydrantAttackParticles:kHydrantGuardParticles));
             cursorPtr=attack?&hydrantAttackCursor_:&hydrantGuardCursor_;
+        }else if(IsPoolWater(type)){
+            // 水専用の流体: 専用の範囲を順に使う (いっぱいなら古い粒から出口へ戻る)
+            startIndex=kPoolFluidStart;endIndex=(std::min)(gpuFluidMaxParticles_,kPoolFluidStart+kPoolFluidCapacity);cursorPtr=&gpuFluidEmitCursorPool_;
         }else startIndex=kPlayerFluidParticles+kHydrantWaterParticles;
 	}
 	if(*cursorPtr<startIndex||*cursorPtr>=endIndex)*cursorPtr=startIndex;
@@ -6187,7 +6213,9 @@ void Renderer::EmitGPUFluid(const Vector3& pos, const Vector3& velocityDir, cons
 	
 	const uint32_t emittedEnd = (std::min)(endIndex, *cursorPtr + emitCount);
 	*cursorPtr = startIndex + ((*cursorPtr - startIndex + emitCount) % rangeSize);
-	if (type > 0.5f) {
+	if (startIndex == kPoolFluidStart) {
+		gpuFluidActiveParticleCount_ = (std::max)(gpuFluidActiveParticleCount_, emittedEnd);
+	} else if (type > 0.5f) {
 		gpuFluidActiveParticleCount_ = (std::min)(effectParticleEnd, (std::max)(gpuFluidActiveParticleCount_, emittedEnd));
 	} else {
 		gpuFluidActiveParticleCount_ = (std::max)(gpuFluidActiveParticleCount_, (std::min)(endIndex, startIndex + emitCount));

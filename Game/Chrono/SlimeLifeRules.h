@@ -290,10 +290,13 @@ enum class SlimeTrial {None,Move,Absorb,Hit};
 struct LifeCollectible {Vec at{};float required=20,reward=12;bool active=true;uint32_t visual=0xffffffffu;bool orb=false;LifeMorphItem morphItem=LifeMorphItem::None;float radius=1,reach=0;
     // 砕けて飛んだ欠片: 描く半径 (0 なら普通の球)・飛び始めた位置と時刻
     float shard=0,shardStart=0;Vec shardFrom{};
-    // 吸収モードの輪の番号と、輪の壁の向こうで手が届かないか・目印を立てる物か
-    int ring=0;bool sealed=false,beacon=false;
+    // 吸収モードで手が届かないか (飛んでいる途中など)・目印を立てる物か
+    bool sealed=false,beacon=false;
     // 吸収モードで飲めないときに体を止める足元の半径 (0 なら止めない) と高さ
-    float foot=0,height=0;};
+    float foot=0,height=0;
+    // 地面に立つ部分ごとの丸 (x, z は at からのずれ、y は半径)。空なら foot の丸 1 つで止める。
+    // 木の幹・電柱の柱・鳥居の 2 本の柱のように、上に広がる部分では止めない
+    std::vector<Vec> feet;};
 // 報酬の大きさ別の段階・球の半径・色
 inline int LifeOrbTier(float reward){return reward>=30?2:reward>=18?1:0;}
 inline float LifeOrbRadius(float reward){const float radii[]={.42f,.68f,.96f};return radii[LifeOrbTier(reward)];}

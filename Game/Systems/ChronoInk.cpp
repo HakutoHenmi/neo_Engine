@@ -49,6 +49,8 @@ void ChronoSystem::BuildInk(entt::registry& r){
     // 育ったときの水しぶき (しずくと霧。DevourGrowth.cpp)
     render->CreateShaderPipelineTransparent("SplashWater",L"Resources/shaders/InstancedObjVS.hlsl",L"Resources/shaders/SplashWaterPS.hlsl",false,true);
     render->CreateShaderPipelineTransparent("SplashMist",L"Resources/shaders/InstancedObjVS.hlsl",L"Resources/shaders/SplashMistPS.hlsl",false,true);
+    // 消火栓の放水の霧にかかる虹 (DevourHose.cpp)
+    render->CreateShaderPipelineTransparent("Rainbow",L"Resources/shaders/InstancedObjVS.hlsl",L"Resources/shaders/RainbowPS.hlsl",false,true);
     // スライムが通った所のぬれ跡
     render->CreateShaderPipelineTransparent("WetTrail",L"Resources/shaders/InstancedObjVS.hlsl",L"Resources/shaders/WetTrailPS.hlsl",false,true);
     // 霧を描く四角 (XZ 面。法線 +Y をカメラへ向けて描く)
@@ -69,6 +71,9 @@ float ChronoSystem::InkGround(V at,int* surface)const{
     // 吸収モードの部屋は家具の高さがある
     // ギミックの看板の土台は、床の上のなだらかな坂として足す
     if(devour_&&CurrentDevourStage().map=="room"){if(surface)*surface=0;return std::max(Chrono::RoomGround(at),GimmickSignGround(at));}
+    // 坂の町は段・坂・石段の高さ
+    // (石段の上は段ではなく、まっすぐな坂: SlopeWalkGround)
+    if(devour_&&CurrentDevourStage().map=="slope"){if(surface)*surface=0;return Chrono::SlopeWalkGround(at);}
     // 街のステージは y=0 で平らで、草原の塗れる面より広い
     if(!inkSurfaces_.empty()){if(surface)*surface=0;(void)at;return 0;}
     // 真下へのレイを各面に飛ばし、一番高い当たりを地面にする
@@ -79,6 +84,8 @@ float ChronoSystem::InkGround(V at,int* surface)const{
 }
 // インクのモードのカメラ: 追従・肩越し・溜めや領域での引き・消火栓の照準・壁へのめり込み防止・ボスの部位の透明化
 void ChronoSystem::InkCamera(entt::registry& r,Player& p,GameContext& ctx){
+    // 坂の町: カメラは部屋と同じく床の近くまで下げられ、上の段の中 (擁壁の向こう) へは入らない (SlopeCameraFloor)
+    const bool slopeMap=devour_&&CurrentDevourStage().map=="slope";
     // プレイヤーの位置へなめらかに追従する
     V pos=Read(r.get<TransformComponent>(player_).translate);
     if(!cameraReady_){cameraFollow_=pos;cameraReady_=true;}
@@ -117,7 +124,10 @@ void ChronoSystem::InkCamera(entt::registry& r,Player& p,GameContext& ctx){
         else if(kind!=blend.kind){blend.kind=kind;blend.age=0;blend.fromOffset=blend.offset;blend.fromRadius=blend.radius;}
         blend.age=std::min(1.f,blend.age+std::min(ctx.dt,.05f)/Data::SlimeSettings()->cameraBlendSeconds);float eased=ShotEase(blend.age,0,1);
         blend.offset=Lerp(blend.fromOffset,offset,eased);blend.radius=blend.fromRadius+(subject.radius-blend.fromRadius)*eased;
-        subject.center=pos+blend.offset;subject.radius=blend.radius;}
+        // 坂の町: 体の粒子の中心は、坂で体が傾くたびにコマごとに揺れる。そのまま注視点にするとカメラが横にガクガクするので、なめらかに追わせる
+        if(slopeMap){cameraSubjectOffset_=Lerp(cameraSubjectOffset_,blend.offset,1-std::exp(-Chrono::SlopeCameraFocusRate*std::min(ctx.dt,.1f)));subject.center=pos+cameraSubjectOffset_;}
+        else{cameraSubjectOffset_=blend.offset;subject.center=pos+blend.offset;}
+        subject.radius=blend.radius;}
     float growthPullback=LifeCameraDistance(subject.radius,1.13f,ctx.viewportSize.x/std::max(1.f,ctx.viewportSize.y))-17.f;
     // 引く量の合計をなめらかに反映する
     float pullback=growthPullback+((charging||firing)?3*power:0.f)+domainView*14+(devour_?DevourCameraKick(devourGulp_.age,devourGulp_.weight)*subject.radius:0.f)
@@ -127,7 +137,8 @@ void ChronoSystem::InkCamera(entt::registry& r,Player& p,GameContext& ctx){
     // 注視点 (スライムの生活モードは体の中心)
     V focus=cameraFollow_+(subject.center-pos);
     // 消火栓の形か
-    bool aimingHydrant=life_.bodies[0].action==LifeAction::Hydrant;
+    // (坂の町の消火栓のギミックに乗っている間も、同じ肩越しの照準の構図にする)
+    bool aimingHydrant=life_.bodies[0].action==LifeAction::Hydrant||(devour_&&GimmickRidingKind()==int(Chrono::GimmickKind::Hose));
     // 肩越しの構図へ入るときも戻るときも、同じ時間をかけてなめらかに移る
     cameraHydrant_=std::clamp(cameraHydrant_+(aimingHydrant?1.f:-1.f)*std::min(ctx.dt,.05f)/Data::SlimeSettings()->cameraBlendSeconds,0.f,1.f);
     bool hydrant=cameraHydrant_>0;float hydrantBlend=ShotEase(cameraHydrant_,0,1);
@@ -147,8 +158,8 @@ void ChronoSystem::InkCamera(entt::registry& r,Player& p,GameContext& ctx){
             if(!cityGates_.gateOpen)test({CityGateCenter()+V{-32,0,-1.5f},CityGateCenter()+V{32,58,1.5f}});
             return best;};
         // 見上げたときに置きたい位置が路面の下へ潜ると、掃引が建物の箱の下をくぐって
-        // 後から高さを戻したときに建物の中へ入るので、先に路面の上へ戻しておく
-        wanted.y=std::max(wanted.y,.7f);
+        // 後から高さを戻したときに建物の中へ入るので、先に路面の上へ戻しておく (坂の町は真下の地面の上。段の縁で向きが跳ねないよう、周りの段は見ない)
+        wanted.y=std::max(wanted.y,slopeMap?Chrono::SlopeWalkGround(wanted)+Chrono::SlopeCameraLift:.7f);
         float distance=std::max(Length(wanted-focus),.01f);V back=(wanted-focus)*(1/distance);
         // 後ろが塞がれていたら、届くまで上へ傾けた向きを試す (路地の壁際では体の上から見下ろす)
         auto lifted=[&](float k){return Unit(back+V{0,k,0});};
@@ -168,12 +179,24 @@ void ChronoSystem::InkCamera(entt::registry& r,Player& p,GameContext& ctx){
             // 路面へ下がらないようにし、視線はカメラの右に空ける
             V flat{std::sin(yaw_),0,std::cos(yaw_)};
             V shoulderFocus=pos+V{0,-1.25f+4.3f*LifeScale(life_.bodies[0].mass),0},shoulderAt=pos+LifeHydrantCameraOffset(life_.bodies[0].mass,flat);
+            // 坂の町の消火栓: 少し高く右へ寄せ、体を画面の左下に置く (照準 = 画面の真ん中が体の右斜め上に来て、飛ぶ水がよく見える)
+            if(devour_&&GimmickRidingKind()==int(Chrono::GimmickKind::Hose)){const float s=LifeScale(life_.bodies[0].mass);shoulderAt=shoulderAt+V{0,Chrono::HoseCameraLift*s,0}+V{flat.z,0,-flat.x}*(Chrono::HoseCameraSide*s);}
             if(!devour_)for(const auto& box:solids_)if(Chrono::Sweep(shoulderFocus,shoulderAt-shoulderFocus,box,{.3f,.3f,.3f},f,n))shoulderAt=shoulderFocus+(shoulderAt-shoulderFocus)*std::max(.05f,f-.025f);
             wanted=Lerp(wanted,shoulderAt,hydrantBlend);focus=Lerp(focus,shoulderFocus,hydrantBlend);
         }
     }
     for(const auto& surface:inkSurfaces_){V hit;if(surface.Ray(focus,wanted-focus,f,hit))wanted=focus+(wanted-focus)*std::max(.05f,f-.06f);}
-    wanted.y=std::max(wanted.y,.7f);
+    if(!slopeMap)wanted.y=std::max(wanted.y,.7f);
+    // 坂の町: 擁壁のきわ (周りの段) や、体とカメラの間の高い段で視線がさえぎられるときは、その上を越えて見える高さまでカメラを上げる。
+    // (地面は透かせないので、壁のように薄くする代わりに持ち上げる。間に何も無ければ床の近くまで下げられる)
+    // 持ち上げる量は時間をかけて変える。そのまま当てると、段の縁を越えるたびにカメラの高さと向きが跳ねてガクガクする。
+    // ただしカメラ自身の真下の地面には、いつでも潜らない
+    else{const auto& radii=LifeRadii(life_.bodies[0],life_.recipe);const float skip=std::max(radii.x,radii.z)*1.2f+1;
+        // (高い段が体のすぐ後ろにあるときは、真上まで上げずに段の手前まで寄せる。SlopeCameraResolve)
+        const V shift=Chrono::SlopeCameraResolve(focus,wanted,skip)-wanted;
+        const float rate=Length(shift)>Length(slopeCameraShift_)?Chrono::SlopeCameraRise:Chrono::SlopeCameraFall;
+        slopeCameraShift_=Lerp(slopeCameraShift_,shift,1-std::exp(-rate*std::min(ctx.dt,.1f)));
+        wanted=wanted+slopeCameraShift_;wanted.y=std::max(wanted.y,Chrono::SlopeWalkGround(wanted)+Chrono::SlopeCameraLift);}
     // 吸収モードの部屋: カメラは壁の外へ出てよい (間の壁は透かす)。部屋の外の床 (RoomStage.cpp) の範囲と天井の下には収める
     if(devour_&&CurrentDevourStage().map=="room"){float h=CurrentDevourStage().half+Chrono::RoomOutsideFloor-10;wanted.x=std::clamp(wanted.x,-h,h);wanted.z=std::clamp(wanted.z,-h,h);wanted.y=std::min(wanted.y,290.f);}
     // それでも建物の箱の中に残ったら、外へ出るまで注視点の方へ寄せる
@@ -228,10 +251,14 @@ void ChronoSystem::InkCamera(entt::registry& r,Player& p,GameContext& ctx){
     ctx.camera->SetRotation(-std::asin(std::clamp(view.y,-1.f,1.f)),std::atan2(view.x,view.z),0);
     // 画角 (泳いでいるとき・溜め・輪で広げる)
     float goal=(ink.swimming?1.22f:1.13f)+heavy*.06f+domainView*.12f;fov_+=(goal-fov_)*(1-std::exp(-6*ctx.dt));
+    float clipNear=LifeCameraNear+ink.cameraPullback*.002f;
+    if(slopeMap&&resultBlend<=0)clipNear=std::max(clipNear,std::clamp((Length(wanted-subject.center)-subject.radius*Chrono::SlopeCameraNearBody)*.5f,Chrono::SlopeCameraNear,Chrono::SlopeCameraNearMax));
     // 7 度の素早い揺れを加え、0.4 秒以内に通常のカメラへ完全に戻す
     ctx.camera->SetProjection(fov_+.12f*SlimePerfectPulse(ink.perfectAge)+(resultFov-fov_)*resultBlend,ctx.viewportSize.x/std::max(1.f,ctx.viewportSize.y),
         // 大きくなってカメラが引くほど、遠くまで描く (体が描く範囲の外へ出て消えないように)
-        LifeCameraNear+ink.cameraPullback*.002f,2000+4*ink.cameraPullback);
+        // (坂の町は、手前の面をカメラと体の表面の間の半分まで遠くして奥行きの細かさを上げる。遠くの家の壁と窓が重なってちらついていた。
+        //  奥行きの細かさは手前の面の距離にほぼ比例する。結果の画面ではカメラが体の中へ入るので使わない)
+        clipNear,2000+4*ink.cameraPullback);
     // 消火栓のときは揺れを止める
     ctx.camera->SetHandheld(aimingHydrant?0.f:.008f);
     // 吸収モードで大きくなったら、影を落とす範囲も広げる

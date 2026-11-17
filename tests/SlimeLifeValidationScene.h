@@ -13,6 +13,8 @@ class SlimeLifeValidationScene final:public Game::GameScene {
     std::ofstream trace_;
     int devourPhase_=0,devourPounces_=0,devourMaxCombo_=0,devourTarget_=-1;float devourClock_=0,devourMass_=0,devourLeft_=0,devourLastAge_=0,devourBaseY_=0,devourLift_=0;int devourAbsorbed_=0;
     int devourLagStage_=-1;std::array<float,3> devourLag_{};float devourLagWorst_=0;
+    // 家を飲む確認 (phase 5) で一時的に片付けた物 (確認のあとに戻す)
+    std::vector<size_t> devourCleared_;
     int devourGrounded_=0,devourFrames_=0;Game::Chrono::DevourPick devourPrevPick_{},devourTracePick_{};bool devourTraced_=true;
     bool devourValid_=true,devourBounced_=false,devourWasPouncing_=false,devourFresh_=true;std::array<bool,5> devourImages_{};std::string devourNotes_;
     // 部屋のステージ: 時間と開始の大きさ、アイテムを拾って使うと一時的に変形し、最初の目標でクリア
@@ -60,6 +62,308 @@ class SlimeLifeValidationScene final:public Game::GameScene {
             std::wstring path=L"tests/out/room-camera-";for(const char* c=shot.name;*c;++c)path+=wchar_t(*c);path+=L".png";Capture(path.c_str());
             cameraClock_=0;if(++cameraShot_>=count){std::ofstream("tests/out/room-camera.txt")<<cameraNotes_;PostQuitMessage(0);}}
         if(frames_>4000){std::ofstream("tests/out/room-camera.txt")<<"timeout\n"<<cameraNotes_;PostQuitMessage(2);}
+    }
+    // 坂の町の確認 (--slime-life-slope-tour): 道・石段・境内・家の並びを、体の大きさを変えながら撮る (tests/out/slope-tour-*.png)。
+    // 体の高さと地面の高さ・置いた物の数を slope-tour.txt に書く
+    int slopeShot_=0;float slopeClock_=0;std::string slopeNotes_;
+    void UpdateSlopeTour(){
+        using namespace Game;using namespace Game::Chrono;
+        auto player=FindObjectByName("Player");auto& input=GetComponents().get<ControlFrame>(player);input={};
+        auto* chrono=GetChronoSystem();auto& life=const_cast<SlimeLife&>(chrono->LifeState());auto& body=life.bodies[0];
+        // 名前・位置 (メートル)・向き・見下ろす角度・体の大きさ (cm)
+        struct Shot {const char* name;float x,z,yaw,pitch,cm;};
+        static const Shot shots[]={
+            // 石段のまわり (段差の角の斜めの三角形・地面の下が見える穴がないか。大きくする撮影より前に撮る: 大きい体から縮めた直後は液体が広がったまま)
+            {"shrine-stairs-low",-54,67,-.67f,.2f,113},{"shrine-stairs-mid",-62,78,-.67f,.3f,113},{"shrine-stairs-top",-71,91,2.47f,.55f,113},{"tera-stairs",21,18,0,.25f,113},{"roji-stairs",-39,-48,0,.25f,113},{"roji2-stairs",40,-57,0,.25f,113},
+            {"start",-8,-96.7f,0,.3f,100},{"dandanzaka-low",-14,-75,-.67f,.25f,150},{"shotengai",-40,-57,1.5708f,.3f,200},{"sento",12,-61,3.1416f,.3f,300},
+            {"lots-east",30,-2,-1.5708f,.35f,300},{"dandanzaka-bend",-55,-38,-.41f,.3f,300},{"park",62,6,0,.35f,300},{"temple-gate",22,30,0,.3f,400},
+            {"temple",24,47,3.1416f,.4f,600},{"dandanzaka-top",-30,50,-.9f,.3f,400},{"shrine",-73,96,-.63f,.35f,800},{"tsuzura",114,-18,-1.5708f,.45f,400},
+            {"plateau",85,85,0,.45f,1500},{"overview",0,-115,0,.7f,9000},
+            // 視点を一番下げる (床の近くまで下がるか・坂の途中で地面に埋まらないか)・町の端の塀
+            {"low-valley",-8,-96.7f,0,-.7f,100},{"low-slope",-30,-55,-.9f,-.7f,300},
+            {"border-west",-112,-10,-1.5708f,.6f,500},{"border-corner",-105,108,-2.356f,.65f,1200}};
+        constexpr int count=int(std::size(shots));const float m=SlopeData().unit;
+        if(frames_<40){++frames_;Game::GameScene::Update();return;}
+        if(frames_==40){char line[160];snprintf(line,sizeof(line),"props=%zu lots=%zu roads=%zu stairs=%zu\n",life.props.size(),SlopeData().lots.size(),SlopeData().roads.size(),SlopeData().stairs.size());slopeNotes_+=line;
+            // 地面に触れる部分ごとの丸: 鳥居の柱の間 (中心) を体が通れるか。鳥居に一番近い物の丸を書く
+            size_t withFeet=0;for(const auto& prop:life.props)withFeet+=prop.feet.empty()?0:1;
+            const Vec torii{-73*m,0,93.5f*m};const LifeCollectible* gate=nullptr;float best=1e9f;
+            for(const auto& prop:life.props){const float d=std::hypot(prop.at.x-torii.x,prop.at.z-torii.z);if(d<best&&!prop.feet.empty()){best=d;gate=&prop;}}
+            snprintf(line,sizeof(line),"feet props=%zu\n",withFeet);slopeNotes_+=line;
+            // 正面のある物の向き: 正面の 0.9m 先が 0.5m より高い段 (擁壁) になっている物の数 (後ろ向きに置き直したあとも残る物)
+            {int fronted=0,walled=0;std::string examples;
+                for(auto e:GetComponents().view<TransformComponent,NameComponent>()){const auto& name=GetComponents().get<NameComponent>(e).name;bool hasFront=false;
+                    for(const auto& id:SlopeData().fronts)hasFront|=name=="Chrono Lowpoly "+id;if(!hasFront)continue;++fronted;
+                    const auto& t=GetComponents().get<TransformComponent>(e);const Vec at{t.translate.x,0,t.translate.z};const Vec probe=at+Vec{std::sin(t.rotate.y),0,std::cos(t.rotate.y)}*(.9f*m);
+                    if(SlopeGround(probe)-SlopeGround(at)>.5f*m){++walled;if(examples.size()<200)examples+=" "+name.substr(15)+"("+std::to_string(int(at.x/m))+","+std::to_string(int(at.z/m))+")";}}
+                slopeNotes_+="fronts="+std::to_string(fronted)+" facing_wall="+std::to_string(walled)+examples+"\n";}
+            // 物の大きさの分布 (覆うのに要る半径 m ごとの数と成長の量の合計)。育つ段階ごとに食べごろの物が足りているか
+            {const float edges[]={.15f,.3f,.5f,.8f,1.2f,2,3,5,1e9f};int binCount[9]={};float reward[9]={};
+                for(const auto& prop:life.props){if(prop.reward<=0)continue;const float r=prop.radius/m;int b=0;while(r>edges[b])++b;++binCount[b];reward[b]+=prop.reward;}
+                std::string text="sizes";for(int b=0;b<9;++b){char cell[64];snprintf(cell,sizeof(cell)," <%.2gm:%d/%.0f",edges[b],binCount[b],reward[b]);text+=cell;}slopeNotes_+=text+"\n";}
+            // 物の一覧 (育ち方の見積もり scripts/terrain/simulate_growth.py に使う)
+            {std::ofstream csv("tests/out/slope-props.csv");csv<<"x,y,z,radius,reward\n";for(const auto& prop:life.props)if(prop.reward>0)csv<<prop.at.x/m<<","<<prop.at.y/m<<","<<prop.at.z/m<<","<<prop.radius/m<<","<<prop.reward<<"\n";}
+            {const auto [routes,dancing]=chrono->DevourMoverCounts();
+                slopeNotes_+="movers routes="+std::to_string(routes)+" dancing="+std::to_string(dancing)+"\n";}
+            if(gate){float clear=1e9f;for(const auto& f:gate->feet){clear=std::min(clear,std::hypot(gate->at.x+f.x-torii.x,gate->at.z+f.z-torii.z)-f.y);
+                    snprintf(line,sizeof(line),"torii foot (%.1f,%.1f) r=%.2f\n",f.x/m,f.z/m,f.y/m);slopeNotes_+=line;}
+                snprintf(line,sizeof(line),"torii center clear=%.2fm whole-foot=%.2fm\n",clear/m,gate->foot/m);slopeNotes_+=line;}}
+        const auto& shot=shots[size_t(slopeShot_)];input.yaw=shot.yaw;input.pitch=shot.pitch;
+        if(slopeClock_==0){Vec at{shot.x*m,0,shot.z*m};at.y=SlopeGround(at)+1.25f;body.at=at;const DevourStage* slope=&DevourStages().back();for(const auto& s:DevourStages())if(s.map=="slope")slope=&s;body.mass=DevourGoalMass(*slope,shot.cm);
+            body.forward=body.liquidForward={std::sin(shot.yaw),0,std::cos(shot.yaw)};
+            GetComponents().get<Player>(player).velocity={};auto& t=GetComponents().get<TransformComponent>(player);t.translate={at.x,at.y,at.z};}
+        float before=life.age;Game::GameScene::Update();++frames_;slopeClock_+=std::max(life.age-before,1.f/120);
+        if(slopeClock_>=2.f){
+            const auto eye=GetCamera().Position();char line[256];
+            snprintf(line,sizeof(line),"%s body=(%.1f,%.1f,%.1f) ground=%.1f camera=(%.1f,%.1f,%.1f) camera_ground=%.1f\n",shot.name,body.at.x,body.at.y,body.at.z,SlopeGround(body.at),eye.x,eye.y,eye.z,SlopeGround({eye.x,0,eye.z}));slopeNotes_+=line;
+            std::wstring path=L"tests/out/slope-tour-";for(const char* c=shot.name;*c;++c)path+=wchar_t(*c);path+=L".png";Capture(path.c_str());
+            slopeClock_=0;if(++slopeShot_>=count){std::ofstream("tests/out/slope-tour.txt")<<slopeNotes_;PostQuitMessage(0);}}
+        if(frames_>6000){std::ofstream("tests/out/slope-tour.txt")<<"timeout\n"<<slopeNotes_;PostQuitMessage(2);}
+    }
+    // 坂の町の乗り物の確認 (--slime-life-slope-ride): 電柱を登って電線を走る・こいのぼりで滑空する・電柱が飲まれると電線が消える。
+    // 結果は tests/out/slope-ride.txt、途中の画面は tests/out/slope-ride-*.png
+    int rideStep_=0;float rideClock_=0,rideLift_=0,rideDist_=0,rideAir_=0;std::string rideNotes_;Game::Chrono::Vec rideStart_{};bool rideSeen_=false,rideFresh_=true;
+    void UpdateSlopeRide(){
+        using namespace Game;using namespace Game::Chrono;
+        auto player=FindObjectByName("Player");auto& input=GetComponents().get<ControlFrame>(player);input={};
+        auto* chrono=GetChronoSystem();auto& life=const_cast<SlimeLife&>(chrono->LifeState());auto& body=life.bodies[0];const float m=SlopeData().unit;
+        if(frames_<40){++frames_;Game::GameScene::Update();return;}
+        const auto views=chrono->TownGimmicks();
+        auto place=[&](Vec at){at.y=SlopeGround(at)+1.25f;body.at=at;body.action=LifeAction::Idle;GetComponents().get<Player>(player).velocity={};auto& t=GetComponents().get<TransformComponent>(player);t.translate={at.x,at.y,at.z};chrono->RequestFluidReseed();};
+        auto finish=[&](int code){std::ofstream("tests/out/slope-ride.txt")<<rideNotes_;PostQuitMessage(code);};
+        static std::set<std::wstring> taken;auto shot=[&](float at,const wchar_t* name){if(rideClock_>=at&&taken.insert(name).second){std::wstring path=std::wstring(L"tests/out/slope-ride-")+name+L".png";Capture(path.c_str());}};
+        if(frames_==40){int wires=0,gliders=0;for(const auto& v:views){wires+=v.kind==int(GimmickKind::Wire);gliders+=v.kind==int(GimmickKind::Glide);}
+            rideNotes_+="poles="+std::to_string(wires)+" edges="+std::to_string(chrono->TownWireEdges(false))+" gliders="+std::to_string(gliders)+"\n";}
+        // 体の高さ (地面から) と、始めの位置からの水平の距離を記録する
+        auto track=[&](){const bool riding=chrono->GimmickRidingNow();rideSeen_|=riding;if(riding){rideLift_=std::max(rideLift_,(body.at.y-SlopeGround(body.at))/m);rideAir_+=1.f/60;}
+            Vec d=body.at-rideStart_;d.y=0;rideDist_=std::max(rideDist_,Length(d)/m);};
+        auto reset=[&](){rideClock_=0;rideLift_=rideDist_=rideAir_=0;rideSeen_=false;rideFresh_=true;++rideStep_;};
+        float before=life.age;
+        if(rideStep_==0){
+            // 電線: 電線が一番多い電柱の下から登り、一番近い隣の電柱の方へスティックを倒して走る。3.5 秒で飛び降りる
+            static Vec toward{0,0,1};
+            if(rideFresh_){rideFresh_=false;const ChronoSystem::TownGimmickView* pick=nullptr;for(const auto& v:views)if(v.kind==int(GimmickKind::Wire)&&!v.done&&(!pick||v.edges>pick->edges))pick=&v;
+                if(!pick){rideNotes_+="wire none\n";finish(2);return;}
+                float best=1e9f;for(const auto& v:views)if(v.kind==int(GimmickKind::Wire)&&&v!=pick){Vec d=v.at-pick->at;d.y=0;if(Length(d)>1&&Length(d)<best){best=Length(d);toward=Unit(d);}}
+                place(pick->at+Vec{.8f*m,0,0});rideStart_=body.at;}
+            // (1.5 秒までは柱の上で止まって、体が見えるかを撮る)
+            input.yaw=std::atan2(toward.x,toward.z);input.pitch=.35f;input.attack=rideClock_<.05f||(rideClock_>4.5f&&rideClock_<4.55f);input.move={0,0,rideClock_>1.5f&&rideClock_<4.5f?1.f:0.f};
+            shot(.12f,L"wire-start");shot(.3f,L"wire-climb");shot(4.8f,L"wire-fall");shot(1.2f,L"wire-top");if(rideClock_>1.2f&&taken.insert(L"debug-top").second){const auto eye=GetCamera().Position();char why[260];snprintf(why,sizeof(why),"wire_top body=(%.1f,%.1f,%.1f) eye=(%.1f,%.1f,%.1f) ground=%.1f shape=%d riding=%d mass=%.0f",body.at.x/m,body.at.y/m,body.at.z/m,eye.x/m,eye.y/m,eye.z/m,SlopeGround(body.at)/m,chrono->GimmickRideShape(),int(chrono->GimmickRidingNow()),body.mass);rideNotes_+=why;rideNotes_+="\n";}shot(2.2f,L"wire-run");shot(2.7f,L"wire-mid");shot(3.5f,L"wire-far");
+            Game::GameScene::Update();++frames_;rideClock_+=std::max(life.age-before,1.f/120);track();
+            if(rideClock_>8){const bool landed=!chrono->GimmickRidingNow();char line[200];snprintf(line,sizeof(line),"wire rode=%d lift=%.1fm dist=%.1fm landed=%d\n",int(rideSeen_),rideLift_,rideDist_,int(landed));rideNotes_+=line;reset();}
+            return;}
+        if(rideStep_==1){
+            // こいのぼりの前に、スタートのおやつを飲んでおく (こいのぼりの形の中に物が収まるかを見る)
+            if(rideFresh_){rideFresh_=false;place(Vec{-8*m,0,-96.7f*m});body.forward={0,0,1};}
+            input.yaw=0;input.pitch=.3f;input.move={0,0,1};input.absorb=std::fmod(rideClock_,.45f)<.12f;
+            Game::GameScene::Update();++frames_;rideClock_+=std::max(life.age-before,1.f/120);
+            if(rideClock_>4){rideNotes_+="ate="+std::to_string(life.absorbed)+"\n";reset();}
+            return;}
+        if(rideStep_==2){
+            // こいのぼり: 西の丘のこいのぼりから町の真ん中へ向いて飛ぶ。2.5 秒から右へ曲がり、4.5 秒から押し下げ、5.5 秒から引き上げる
+            if(rideFresh_){rideFresh_=false;const ChronoSystem::TownGimmickView* pick=nullptr;float best=1e9f;const Vec hill{-118*m,0,40*m};
+                for(const auto& v:views)if(v.kind==int(GimmickKind::Glide)){Vec d=v.at-hill;d.y=0;if(Length(d)<best){best=Length(d);pick=&v;}}
+                if(!pick){rideNotes_+="glide none\n";finish(2);return;}
+                Vec spot=pick->at+Vec{1.6f*m,0,0};float level=1e9f;for(int k=0;k<8;++k){const float a=6.2831853f*float(k)/8;const Vec at=pick->at+Vec{std::cos(a),0,std::sin(a)}*(1.6f*m);const float gap=std::abs(SlopeGround(at)-pick->at.y);if(gap<level){level=gap;spot=at;}}
+                place(spot);rideStart_=body.at;body.forward={1,0,0};}
+            const bool riding=chrono->GimmickRidingNow();
+            // (カメラは体の向きについていく: ゲームではこいのぼりがカメラを回す)
+            input.yaw=rideClock_<.1f?1.5708f:std::atan2(body.forward.x,body.forward.z);input.pitch=.3f;input.attack=rideClock_<.05f;
+            input.move={rideClock_>2.5f&&rideClock_<4.5f?1.f:0.f,0,rideClock_>4.5f&&rideClock_<5.5f?1.f:rideClock_>5.5f&&rideClock_<6.5f?-1.f:0.f};
+            if(rideClock_>.5f&&rideClock_-.5f<1.f/30&&!rideSeen_){char why[220];snprintf(why,sizeof(why),"glide_debug body=(%.0f,%.0f,%.0f) ground=%.1f action=%d riding=%d\n",body.at.x/m,body.at.y/m,body.at.z/m,SlopeGround(body.at)/m,int(body.action),int(riding));rideNotes_+=why;
+                for(const auto& v:views)if(v.kind==int(GimmickKind::Glide)){snprintf(why,sizeof(why),"  glider at=(%.0f,%.1f,%.0f) done=%d\n",v.at.x/m,v.at.y/m,v.at.z/m,int(v.done));rideNotes_+=why;}}
+            shot(1.2f,L"glide-launch");shot(3.5f,L"glide-turn");shot(6.f,L"glide-climb");
+            Game::GameScene::Update();++frames_;rideClock_+=std::max(life.age-before,1.f/120);track();
+            if((rideSeen_&&!riding&&rideClock_>1)||rideClock_>40){char line[200];snprintf(line,sizeof(line),"glide rode=%d lift=%.1fm dist=%.1fm air=%.1fs time=%.1fs\n",int(rideSeen_),rideLift_,rideDist_,rideAir_,rideClock_);rideNotes_+=line;
+                Capture(L"tests/out/slope-ride-glide-land.png");reset();}
+            return;}
+        if(rideStep_==3){
+            // 電柱を飲む: 8m の体では覆えず、飲まれた (物が消えた) 電柱のギミックは止まり、その電線が消える
+            if(rideFresh_){rideFresh_=false;const ChronoSystem::TownGimmickView* pick=nullptr;for(const auto& v:views)if(v.kind==int(GimmickKind::Wire)&&!v.done&&v.edges>0){pick=&v;break;}
+                if(!pick){rideNotes_+="eat none\n";finish(2);return;}
+                int index=-1;for(size_t i=0;i<life.props.size();++i)if(life.props[i].visual==pick->anchor)index=int(i);
+                if(index<0){rideNotes_+="eat noprop\n";finish(2);return;}
+                const DevourStage* slope=&DevourStages().back();for(const auto& s:DevourStages())if(s.map=="slope")slope=&s;
+                const bool cannot=!DevourCanCover(DevourGoalMass(*slope,800),life.props[size_t(index)].radius),can=DevourCanCover(DevourGoalMass(*slope,1300),life.props[size_t(index)].radius);
+                const int edgesBefore=chrono->TownWireEdges(true);life.props[size_t(index)].active=false;rideStart_=pick->at;
+                rideNotes_+="pole 8m_cannot="+std::to_string(cannot)+" 13m_can="+std::to_string(can)+" edges_before="+std::to_string(edgesBefore);}
+            Game::GameScene::Update();++frames_;rideClock_+=std::max(life.age-before,1.f/120);
+            if(rideClock_>.3f){bool done=false;int edges=-1;for(const auto& v:chrono->TownGimmicks())if(v.kind==int(GimmickKind::Wire)&&Length(v.at-rideStart_)<.01f){done=v.done;edges=v.edges;}
+                rideNotes_+=" after="+std::to_string(chrono->TownWireEdges(true))+" done="+std::to_string(done)+" pole_edges="+std::to_string(edges)+"\n";finish(0);}
+            return;}
+    }
+    // おみこしとこまの確認 (--slime-life-slope-festival): 3m の体でおみこしを担いで歩き、子分が物を持ってきて飲むか。
+    // 2m の体でこまを回し、跳ね返りながら飲むか。結果は tests/out/slope-festival.txt、画面は slope-festival-*.png
+    int festStep_=0;float festClock_=0;bool festFresh_=true,festSeen_=false;int festAte_=0;size_t festHelpers_=0;float festDist_=0;Game::Chrono::Vec festLast_{};std::string festNotes_;
+    void UpdateSlopeFestival(){
+        using namespace Game;using namespace Game::Chrono;
+        auto player=FindObjectByName("Player");auto& input=GetComponents().get<ControlFrame>(player);input={};
+        auto* chrono=GetChronoSystem();auto& life=const_cast<SlimeLife&>(chrono->LifeState());auto& body=life.bodies[0];const float m=SlopeData().unit;
+        if(frames_<40){++frames_;Game::GameScene::Update();return;}
+        const auto views=chrono->TownGimmicks();const auto& stage=chrono->DevourStageInfo();
+        auto place=[&](Vec at){at.y=SlopeGround(at)+1.25f;body.at=at;body.action=LifeAction::Idle;GetComponents().get<Player>(player).velocity={};auto& t=GetComponents().get<TransformComponent>(player);t.translate={at.x,at.y,at.z};chrono->RequestFluidReseed();};
+        auto finish=[&](int code){std::ofstream("tests/out/slope-festival.txt")<<festNotes_;PostQuitMessage(code);};
+        static std::set<std::wstring> taken;auto shot=[&](float at,const wchar_t* name){if(festClock_>=at&&taken.insert(name).second){std::wstring path=std::wstring(L"tests/out/slope-festival-")+name+L".png";Capture(path.c_str());}};
+        auto pick=[&](GimmickKind kind,Vec around)->const ChronoSystem::TownGimmickView*{const ChronoSystem::TownGimmickView* best=nullptr;float d=1e9f;
+            for(const auto& v:views)if(v.kind==int(kind)){Vec e=v.at-around;e.y=0;if(Length(e)<d){d=Length(e);best=&v;}}return best;};
+        auto begin=[&](GimmickKind kind,Vec around,float cm,float yaw){const auto* g=pick(kind,around);if(!g){festNotes_+="none\n";finish(2);return false;}
+            body.mass=body.health=body.maxHealth=DevourGoalMass(stage,cm);++life.revision;place(g->at);festLast_=body.at;festDist_=0;festAte_=int(life.absorbed);festHelpers_=0;festSeen_=false;
+            char line[160];snprintf(line,sizeof(line),"ring at=(%.1f,%.1f,%.1f)m ",g->at.x/m,g->at.y/m,g->at.z/m);festNotes_+=line;(void)yaw;return true;};
+        float before=life.age;
+        if(festStep_==0){
+            // おみこし: お寺の前の輪で担ぎ、2 秒から 10 秒まで前へ歩く
+            if(festFresh_){festFresh_=false;if(!begin(GimmickKind::Mikoshi,Vec{18.5f*m,0,37.5f*m},300,3.1416f))return;}
+            input.yaw=3.1416f;input.pitch=.35f;input.attack=festClock_<.05f;input.move={0,0,festClock_>2&&festClock_<10?1.f:0.f};
+            shot(1.2f,L"mikoshi-form");shot(3.f,L"mikoshi-walk");shot(6.f,L"mikoshi-helpers");shot(9.f,L"mikoshi-late");
+            Game::GameScene::Update();++frames_;festClock_+=std::max(life.age-before,1.f/120);festSeen_|=chrono->GimmickRidingNow();festHelpers_=std::max(festHelpers_,chrono->MikoshiHelperCount());
+            {Vec d=body.at-festLast_;d.y=0;festDist_+=Length(d)/m;festLast_=body.at;}
+            if(festClock_>18){char line[220];snprintf(line,sizeof(line),"mikoshi rode=%d ended=%d helpers_max=%zu helpers_left=%zu ate=%d walked=%.1fm\n",int(festSeen_),int(!chrono->GimmickRidingNow()),festHelpers_,chrono->MikoshiHelperCount(),int(life.absorbed)-festAte_,festDist_);festNotes_+=line;
+                festClock_=0;festFresh_=true;++festStep_;}
+            return;}
+        if(festStep_==1){
+            // こま: 商店街の輪で回し、まっすぐ放す (曲げない)
+            if(festFresh_){festFresh_=false;if(!begin(GimmickKind::Koma,Vec{-4*m,0,-66*m},200,0))return;}
+            input.yaw=-1.5708f;input.pitch=.35f;input.attack=festClock_<.05f;
+            shot(1.f,L"koma-form");shot(2.5f,L"koma-run");shot(5.f,L"koma-bounce");shot(8.f,L"koma-late");
+            Game::GameScene::Update();++frames_;festClock_+=std::max(life.age-before,1.f/120);festSeen_|=chrono->GimmickRidingNow();
+            if(chrono->GimmickRidingNow())festHelpers_=size_t(std::max(int(festHelpers_),chrono->GimmickRideBounces()));
+            {Vec d=body.at-festLast_;d.y=0;festDist_+=Length(d)/m;festLast_=body.at;}
+            if(festClock_>14){char line[220];snprintf(line,sizeof(line),"koma rode=%d ended=%d bounces=%zu ate=%d moved=%.1fm\n",int(festSeen_),int(!chrono->GimmickRidingNow()),festHelpers_,int(life.absorbed)-festAte_,festDist_);festNotes_+=line;festClock_=0;festFresh_=true;++festStep_;}
+            return;}
+        // 消火栓の放水は一旦はずした (slope_town.json の rides.hydrant が空) ので、置かれていなければここで終える
+        if(festStep_==2&&!pick(GimmickKind::Hose,Vec{-17*m,0,40*m})){festNotes_+="hose skipped (no hydrant)\n";finish(0);return;}
+        if(festStep_==2){
+            // 消火栓: 上の段の下り坂の消火栓で、5 秒まで坂の下りへ撃ち (押し流す)、そのあと振り返って反対へ撃つ (引き寄せる)
+            if(festFresh_){festFresh_=false;festWashMax_=festMistMax_=0;festRainbowMax_=0;if(!begin(GimmickKind::Hose,Vec{-17*m,0,40*m},250,0))return;}
+            // (肩越しの照準: 5 秒までは坂の下りを狙い、そのあと振り返って上りを狙う)
+            const float down=std::atan2(.38f,-.92f);input.yaw=festClock_<5?down:down+3.1416f;input.pitch=festClock_<5?.1f:.3f;input.attack=festClock_<.05f;
+            if(festClock_>2.5f&&taken.insert(L"hose-debug").second){const Vec im=chrono->HoseImpact(),nz=chrono->HoseNozzle();char why[200];snprintf(why,sizeof(why),"hose_debug nozzle=(%.0f,%.0f,%.0f) impact=(%.0f,%.0f,%.0f) lob=%d",nz.x,nz.y,nz.z,im.x,im.y,im.z,int(chrono->HoseLob()));festNotes_+=why;festNotes_+=" ";}
+            if(festClock_>4.f&&taken.insert(L"hose-water").second){festNotes_+="water_cells="+std::to_string(chrono->HoseWaterCells())+"\n";}
+            shot(1.2f,L"hose-form");shot(2.5f,L"hose-wash");shot(4.5f,L"hose-rainbow");shot(4.f,L"hose-top");shot(7.5f,L"hose-pull");shot(10.5f,L"hose-late");
+            Game::GameScene::Update();++frames_;festClock_+=std::max(life.age-before,1.f/120);festSeen_|=chrono->GimmickRidingNow();
+            festWashMax_=std::max(festWashMax_,chrono->HoseWashCount());festMistMax_=std::max(festMistMax_,chrono->HoseMistCount());festRainbowMax_=std::max(festRainbowMax_,chrono->HoseRainbow());
+            if(festClock_>15){char line[260];snprintf(line,sizeof(line),"hose rode=%d ended=%d washing_max=%zu mist_max=%zu rainbow=%.2f ate=%d\n",int(festSeen_),int(!chrono->GimmickRidingNow()),festWashMax_,festMistMax_,festRainbowMax_,int(life.absorbed)-festAte_);festNotes_+=line;finish(0);}
+            return;}
+    }
+    size_t festWashMax_=0,festMistMax_=0;float festRainbowMax_=0;
+    // 電線で折り返すときの重さ (--slime-life-slope-wire-perf): 電柱を登って隣の電柱へ走り、2.5 秒ごとにスティックを逆へ倒して折り返す。
+    // コマごとの時間 (ミリ秒)・体の向きが前のコマからどれだけ回ったか・体の速さを tests/out/slope-wire-perf.csv に書き、
+    // 折り返した直後 (向きが 90 度以上回ったコマから 0.4 秒) とそれ以外の平均と最大を slope-wire-perf.txt に書く
+    float wirePerfClock_=0;std::string wirePerfCsv_;std::chrono::steady_clock::time_point wirePerfLast_;Game::Chrono::Vec wirePerfForward_{0,0,1},wirePerfToward_{0,0,1};
+    float wirePerfFlip_=-1,wirePerfSum_[2]={},wirePerfMax_[2]={},wirePerfCamMax_[2]={};int wirePerfCount_[2]={},wirePerfFlips_=0,wirePerfStalls_=0;Game::Chrono::Vec wirePerfEye_{};
+    void UpdateWirePerf(){
+        using namespace Game;using namespace Game::Chrono;
+        auto player=FindObjectByName("Player");auto& input=GetComponents().get<ControlFrame>(player);input={};
+        auto* chrono=GetChronoSystem();auto& life=const_cast<SlimeLife&>(chrono->LifeState());auto& body=life.bodies[0];const float m=SlopeData().unit;
+        if(frames_<40){++frames_;Game::GameScene::Update();wirePerfLast_=std::chrono::steady_clock::now();return;}
+        if(frames_==40){const auto views=chrono->TownGimmicks();const ChronoSystem::TownGimmickView* pick=nullptr;for(const auto& v:views)if(v.kind==int(GimmickKind::Wire)&&(!pick||v.edges>pick->edges))pick=&v;
+            if(!pick){std::ofstream("tests/out/slope-wire-perf.txt")<<"no wire\n";PostQuitMessage(2);return;}
+            float best=1e9f;for(const auto& v:views)if(v.kind==int(GimmickKind::Wire)&&&v!=pick){Vec d=v.at-pick->at;d.y=0;if(Length(d)>1&&Length(d)<best){best=Length(d);wirePerfToward_=Unit(d);}}
+            Vec at=pick->at+Vec{.8f*m,0,0};at.y=SlopeGround(at)+1.25f;body.at=at;GetComponents().get<Player>(player).velocity={};GetComponents().get<TransformComponent>(player).translate={at.x,at.y,at.z};chrono->RequestFluidReseed();
+            wirePerfCsv_="t,ms,turn_deg,speed,riding\n";}
+        // (カメラは最初の向きのまま。スティックを前・後ろと 2.5 秒ごとに入れ替える)
+        const float phase=std::fmod(std::max(0.f,wirePerfClock_-1.f),5.f);const float stick=wirePerfClock_<1?0.f:phase<2.5f?1.f:-1.f;
+        input.yaw=std::atan2(wirePerfToward_.x,wirePerfToward_.z);input.pitch=.35f;input.attack=wirePerfClock_<.05f;input.move={0,0,stick};
+        const Vec before=body.at;const float age=life.age;Game::GameScene::Update();++frames_;const float dt=std::max(life.age-age,1.f/120);wirePerfClock_+=dt;
+        const auto now=std::chrono::steady_clock::now();const float ms=std::chrono::duration<float,std::milli>(now-wirePerfLast_).count();wirePerfLast_=now;
+        Vec f=body.at-before;f.y=0;f=Length(f)>.05f?Unit(f):wirePerfForward_;const float turn=std::acos(std::clamp(Dot(f,wirePerfForward_),-1.f,1.f))*57.2958f;wirePerfForward_=f;
+        if(turn>90){wirePerfFlip_=wirePerfClock_;++wirePerfFlips_;}
+        const bool riding=chrono->GimmickRidingNow();
+        // (カメラが 1 秒にどれだけ動いたか・体が電線の速さの 7 割より遅く進んだコマ = 引っかかったコマ)
+        const auto eyeNow=GetCamera().Position();const Vec eye{eyeNow.x,eyeNow.y,eyeNow.z};const float camStep=Length(eye-wirePerfEye_)/dt/m;wirePerfEye_=eye;const float speed=Length(body.at-before)/dt/m;
+        if(wirePerfClock_>2.2f&&riding){const int k=wirePerfFlip_>=0&&wirePerfClock_-wirePerfFlip_<.4f?1:0;wirePerfSum_[k]+=ms;wirePerfMax_[k]=std::max(wirePerfMax_[k],ms);wirePerfCamMax_[k]=std::max(wirePerfCamMax_[k],camStep);++wirePerfCount_[k];
+            if(speed>.5f&&speed<WireSpeed/m*.7f)++wirePerfStalls_;}
+        char line[120];snprintf(line,sizeof(line),"%.3f,%.1f,%.0f,%.1f,%d\n",wirePerfClock_,ms,turn,speed,int(riding));wirePerfCsv_+=line;
+        if(wirePerfClock_>16){std::ofstream("tests/out/slope-wire-perf.csv")<<wirePerfCsv_;char text[300];
+            snprintf(text,sizeof(text),"flips=%d stalls=%d cam_after_flip=%.1fm/s cam_other=%.1fm/s after_flip avg=%.1fms max=%.1fms (%d frames) other avg=%.1fms max=%.1fms (%d frames)\n",wirePerfFlips_,wirePerfStalls_,wirePerfCamMax_[1],wirePerfCamMax_[0],
+                wirePerfSum_[1]/std::max(1,wirePerfCount_[1]),wirePerfMax_[1],wirePerfCount_[1],wirePerfSum_[0]/std::max(1,wirePerfCount_[0]),wirePerfMax_[0],wirePerfCount_[0]);
+            std::ofstream("tests/out/slope-wire-perf.txt")<<text;PostQuitMessage(0);}
+    }
+    // 坂の町の重さとカメラの確認 (--slime-life-slope-perf): 決まった場所に体を置き、決まった入力で数秒動かして、
+    // 1 コマの時間 (平均と最大)・カメラの揺れ (コマごとの位置の 2 階差分の平均)・カメラと地面の高さの差の最小を slope-perf.txt に書く
+    int perfShot_=0;float perfClock_=0;std::string perfNotes_;std::chrono::steady_clock::time_point perfLast_;
+    double perfSum_=0,perfMax_=0;int perfFrames_=0;std::vector<Game::Chrono::Vec> perfCamera_,perfBody_;float perfLow_=1e9f;
+    void UpdateSlopePerf(){
+        using namespace Game;using namespace Game::Chrono;
+        auto player=FindObjectByName("Player");auto& input=GetComponents().get<ControlFrame>(player);input={};
+        auto* chrono=GetChronoSystem();auto& life=const_cast<SlimeLife&>(chrono->LifeState());auto& body=life.bodies[0];
+        // 名前・位置 (メートル)・向き・カメラの上下の角度・前へ進む入力・体の大きさ (cm)
+        struct Shot {const char* name;float x,z,yaw,pitch,move,cm;};
+        static const Shot shots[]={
+            {"stairs-up",-53.6f,67.9f,-.667f,.3f,1,100},{"stairs-up-big",-53.6f,67.9f,-.667f,.3f,1,250},{"road-still",-8,-96.7f,0,.3f,0,100},{"road-walk",-8,-96.7f,0,.3f,1,100},{"slope-walk",-14,-75,-.67f,.3f,1,150},
+            {"pit-still",7.5f,-88,0,.3f,0,100},{"pit-push",7.5f,-88,0,.3f,1,100},{"river-push",-40,-116,0,.3f,1,100},
+            {"low-road",-8,-96.7f,0,-.7f,0,100},{"low-slope-up",-14,-75,-.67f,-.7f,0,150},{"low-slope-down",-30,-55,2.5f,-.7f,0,150},{"low-walk",-14,-75,-.67f,-.7f,1,150}};
+        constexpr int count=int(std::size(shots));const float m=SlopeData().unit;constexpr float settle=1,measure=4;
+        if(frames_<40){++frames_;Game::GameScene::Update();return;}
+        const auto& shot=shots[size_t(perfShot_)];input.yaw=shot.yaw;input.pitch=shot.pitch;
+        if(perfClock_==0){Vec at{shot.x*m,0,shot.z*m};at.y=SlopeGround(at)+1.25f;body.at=at;const DevourStage* slope=&DevourStages().back();for(const auto& s:DevourStages())if(s.map=="slope")slope=&s;
+            body.mass=DevourGoalMass(*slope,shot.cm);body.forward=body.liquidForward={std::sin(shot.yaw),0,std::cos(shot.yaw)};
+            GetComponents().get<Player>(player).velocity={};auto& t=GetComponents().get<TransformComponent>(player);t.translate={at.x,at.y,at.z};
+            perfSum_=perfMax_=0;perfFrames_=0;perfCamera_.clear();perfBody_.clear();perfLow_=1e9f;perfLast_=std::chrono::steady_clock::now();}
+        if(perfClock_>settle)input.move={0,0,shot.move};
+        float before=life.age;Game::GameScene::Update();++frames_;perfClock_+=std::max(life.age-before,1.f/120);
+        const auto now=std::chrono::steady_clock::now();const double ms=std::chrono::duration<double,std::milli>(now-perfLast_).count();perfLast_=now;
+        if(perfClock_>settle){perfSum_+=ms;perfMax_=std::max(perfMax_,ms);++perfFrames_;const auto eye=GetCamera().Position();perfCamera_.push_back({eye.x,eye.y,eye.z});perfBody_.push_back(body.at);
+            perfLow_=std::min(perfLow_,eye.y-SlopeGround({eye.x,0,eye.z}));}
+        if(perfClock_>=settle+measure){
+            // カメラの揺れ: 位置の 2 階差分 (なめらかに動けば小さい)。高さだけの揺れも別に出す
+            double shake=0,shakeY=0,bodyShake=0,bodyShakeY=0;for(size_t i=2;i<perfCamera_.size();++i){const Vec a=perfCamera_[i-2],b=perfCamera_[i-1],c=perfCamera_[i];const Vec d=c-b*2.f+a;shake+=Length(d);shakeY+=std::abs(d.y);
+                const Vec e=perfBody_[i]-perfBody_[i-1]*2.f+perfBody_[i-2];bodyShake+=Length(e);bodyShakeY+=std::abs(e.y);}
+            const double n=double(std::max<size_t>(1,perfCamera_.size()-2));char line[320];
+            snprintf(line,sizeof(line),"%s frame_ms=%.1f max_ms=%.1f shake=%.3f shake_y=%.3f body_shake=%.3f body_shake_y=%.3f camera_low=%.2f body=(%.0f,%.0f,%.0f) ground=%.1f\n",shot.name,perfSum_/std::max(1,perfFrames_),perfMax_,shake/n,shakeY/n,bodyShake/n,bodyShakeY/n,perfLow_,body.at.x,body.at.y,body.at.z,SlopeGround(body.at));perfNotes_+=line;
+            {std::string csv="tests/out/slope-perf-"+std::string(shot.name)+".csv";std::ofstream trace(csv);trace<<"cx,cy,cz,bx,by,bz"<<std::endl;for(size_t i=0;i<perfCamera_.size();++i)trace<<perfCamera_[i].x<<","<<perfCamera_[i].y<<","<<perfCamera_[i].z<<","<<perfBody_[i].x<<","<<perfBody_[i].y<<","<<perfBody_[i].z<<std::endl;}
+            std::wstring path=L"tests/out/slope-perf-";for(const char* c=shot.name;*c;++c)path+=wchar_t(*c);path+=L".png";Capture(path.c_str());
+            perfClock_=0;if(++perfShot_>=count){std::ofstream("tests/out/slope-perf.txt")<<perfNotes_;PostQuitMessage(0);}}
+        if(frames_>20000){std::ofstream("tests/out/slope-perf.txt")<<"timeout\n"<<perfNotes_;PostQuitMessage(2);}
+    }
+    // 消火栓の放水の重さ (--slime-life-slope-hose-perf): 消火栓の輪で、乗る前・近くへ撃つ・遠くへ撃つ・撃ち終わって水が残る間の
+    // 4 つの区間で、1 コマの時間 (平均と最大)・GPU の流体の各段の時間・放水の CPU の時間・流体を描く升の大きさを
+    // tests/out/slope-hose-perf.txt に書き、区間ごとの画面を slope-hose-perf-*.png に撮る
+    int hosePerfPhase_=-1;float hosePerfClock_=0;std::string hosePerfNotes_;std::chrono::steady_clock::time_point hosePerfLast_;double hosePerfCpu_=0;
+    struct HosePerfSum {double wall=0,wallMax=0,hose=0,cell=0,substeps=0;size_t boxes=0,spheres=0;std::array<double,Engine::Renderer::kFluidProfileStageCount> gpu{};int frames=0,gpuFrames=0;uint32_t particles=0;};
+    HosePerfSum hosePerfSum_{};bool hosePerfLook_=false;
+    void UpdateHosePerf(){
+        using namespace Game;using namespace Game::Chrono;
+        auto player=FindObjectByName("Player");auto& input=GetComponents().get<ControlFrame>(player);input={};
+        auto* chrono=GetChronoSystem();auto& life=const_cast<SlimeLife&>(chrono->LifeState());auto& body=life.bodies[0];const float m=SlopeData().unit;
+        auto* renderer=Engine::Renderer::GetInstance();
+        if(frames_<40){++frames_;Game::GameScene::Update();hosePerfLast_=std::chrono::steady_clock::now();renderer->SetFluidProfilerEnabled(true);return;}
+        // 区間: 名前・始まり・測り始め・終わり (乗った時からの秒。乗る前は -3 から)
+        struct Phase {const char* name;float begin,measure,end;};
+        static const Phase phases[]={{"idle",-3,-2,0},{"near",0,1.5f,4.5f},{"far",4.5f,6.5f,9.5f},{"after",9.5f,10.5f,13.5f}};
+        if(hosePerfPhase_<0){const auto views=chrono->TownGimmicks();const ChronoSystem::TownGimmickView* best=nullptr;float d=1e9f;
+            for(const auto& v:views)if(v.kind==int(GimmickKind::Hose)){Vec e=v.at-Vec{-17*m,0,40*m};e.y=0;if(Length(e)<d){d=Length(e);best=&v;}}
+            if(!best){std::ofstream("tests/out/slope-hose-perf.txt")<<"no hydrant\n";PostQuitMessage(2);return;}
+            const DevourStage* slope=&DevourStages().back();for(const auto& s:DevourStages())if(s.map=="slope")slope=&s;
+            body.mass=body.health=body.maxHealth=DevourGoalMass(*slope,250);++life.revision;Vec at=best->at;at.y=SlopeGround(at)+1.25f;body.at=at;body.action=LifeAction::Idle;
+            GetComponents().get<Player>(player).velocity={};GetComponents().get<TransformComponent>(player).translate={at.x,at.y,at.z};chrono->RequestFluidReseed();
+            hosePerfPhase_=0;hosePerfClock_=-3;hosePerfSum_={};hosePerfCpu_=chrono->HoseCpuMs();}
+        const auto& phase=phases[size_t(hosePerfPhase_)];
+        // 入力: 0 秒で乗る、近くは下向き・4.5 秒からは水平に近く (遠く) を照準で狙う、9.5 秒でやめる
+        const float down=std::atan2(.38f,-.92f);input.yaw=down;input.pitch=hosePerfClock_<4.5f?.4f:.12f;
+        input.attack=(hosePerfClock_>=0&&hosePerfClock_<.05f)||(hosePerfClock_>=9.5f&&hosePerfClock_<9.55f);
+        const float before=life.age;Game::GameScene::Update();++frames_;hosePerfClock_+=std::max(life.age-before,1.f/120);
+        // 着いた水を低い所から近くで見る (撮るだけ。時間は測る区間の外)
+        if(hosePerfClock_>2.6f&&hosePerfClock_<3.2f){const Vec at=chrono->HoseImpact(),from=chrono->HoseNozzle();Vec d=at-from;d.y=0;d=Length(d)>.1f?Unit(d):Vec{0,0,1};
+            const Vec side{d.z,0,-d.x};const Vec eye=at-d*18.f+side*10.f+Vec{0,9,0};const Vec to=at-eye;
+            GetCamera().SetPosition(eye.x,eye.y,eye.z);GetCamera().SetRotation(std::atan2(-to.y,std::sqrt(to.x*to.x+to.z*to.z)),std::atan2(to.x,to.z),0);
+            if(hosePerfClock_>3.1f&&!hosePerfLook_){hosePerfLook_=true;Capture(L"tests/out/slope-hose-perf-look.png");}}
+        const auto now=std::chrono::steady_clock::now();const double ms=std::chrono::duration<double,std::milli>(now-hosePerfLast_).count();hosePerfLast_=now;
+        const double cpu=chrono->HoseCpuMs();const double hoseMs=cpu-hosePerfCpu_;hosePerfCpu_=cpu;
+        if(hosePerfClock_>=phase.measure){auto& s=hosePerfSum_;s.wall+=ms;s.wallMax=std::max(s.wallMax,ms);s.hose+=hoseMs;s.cell+=renderer->volumePreviousVoxelSize_;s.particles=std::max(s.particles,renderer->gpuFluidActiveParticleCount_);++s.frames;
+            const auto& stats=renderer->GetFluidProfileStats();if(stats.valid&&stats.framesSinceSample==0){for(size_t k=0;k<s.gpu.size();++k)s.gpu[k]+=stats.lastMs[k];s.substeps+=stats.substeps;++s.gpuFrames;}
+            s.boxes=std::max(s.boxes,renderer->gpuFluidAABBs_.size());s.spheres=std::max(s.spheres,renderer->gpuFluidSplashSpheres_.size());}
+        if(hosePerfClock_>=phase.end){const auto& s=hosePerfSum_;const double n=std::max(1,s.frames),g=std::max(1,s.gpuFrames);char line[600];
+            snprintf(line,sizeof(line),"%s frame_ms=%.2f max_ms=%.1f hose_cpu_ms=%.3f cell=%.3f particles=%u gpu: sim=%.2f shapes=%.2f splat=%.2f filter=%.2f raymarch=%.2f impostors=%.2f shadow=%.2f screen_water=%.2f scene=%.2f substeps=%.2f boxes=%zu spheres=%zu riding=%d\n",
+                phase.name,s.wall/n,s.wallMax,s.hose/n,s.cell/n,s.particles,s.gpu[Engine::Renderer::FluidSimulation]/g,s.gpu[Engine::Renderer::FluidShapes]/g,s.gpu[Engine::Renderer::FluidSplat]/g,s.gpu[Engine::Renderer::FluidFiltering]/g,
+                s.gpu[Engine::Renderer::FluidRaymarch]/g,s.gpu[Engine::Renderer::FluidImpostors]/g,s.gpu[Engine::Renderer::FluidShadow]/g,s.gpu[Engine::Renderer::FluidScreenWater]/g,s.gpu[Engine::Renderer::SceneRender]/g,s.substeps/g,s.boxes,s.spheres,int(chrono->GimmickRidingNow()));hosePerfNotes_+=line;
+            std::wstring path=L"tests/out/slope-hose-perf-";for(const char* c=phase.name;*c;++c)path+=wchar_t(*c);path+=L".png";Capture(path.c_str());
+            // 消火栓の水の粒のうち、町の地面より 1 以上下に沈んだもの・地面の上にあるもの・空中のもの
+            {int sunk=0,ground=0,air=0;for(const auto& q:renderer->GetHydrantWaterSnapshot().particles){if(q.at.y<-500)continue;const float floor=SlopeGround({q.at.x,0,q.at.z});
+                    if(q.at.y<floor-1)++sunk;else if(q.at.y<floor+1.5f)++ground;else ++air;}
+                hosePerfNotes_+="  water sunk="+std::to_string(sunk)+" ground="+std::to_string(ground)+" air="+std::to_string(air)+"\n";}
+            hosePerfSum_={};if(++hosePerfPhase_>=int(std::size(phases))){std::ofstream("tests/out/slope-hose-perf.txt")<<hosePerfNotes_;PostQuitMessage(0);}}
+        if(frames_>20000){std::ofstream("tests/out/slope-hose-perf.txt")<<"timeout\n"<<hosePerfNotes_;PostQuitMessage(2);}
     }
     // 大きい物の手前で開く口の確認 (--slime-life-room-mouth): 10cm の体を、覆える中で大きい物の手前に置いて進ませ、
     // 口を開けている間の何コマかを撮る。口の幕に穴が開いていないかを画像で見る
@@ -243,15 +547,24 @@ class SlimeLifeValidationScene final:public Game::GameScene {
         auto placeBefore=[&](Vec at,float distance){Vec from=at+Vec{0,0,-distance};from.y=at.y-1.2f+1.25f;body.at=from;body.forward=body.liquidForward={0,0,1};controller.velocity={};
             auto& t=GetComponents().get<TransformComponent>(player);t.translate={from.x,from.y,from.z};};
         // 近くの覆える (覆えない) 物で、moreThan より大きい物を探す
-        auto nearest=[&](float limit,bool fits,float moreThan=0){int best=-1;float d=limit;
-            for(size_t i=0;i<life.props.size();++i){const auto& prop=life.props[i];if(!prop.active||prop.visual==0xffffffffu||prop.reach>0||prop.radius<=moreThan||DevourCanCover(body.mass,prop.radius)!=fits)continue;
+        // 坂の町: 物の手前 (-z の向き) の地面が物の足元と同じ高さか (placeBefore で体を置く所。段の上や下に置くと飛びかかりが届かない)
+        auto levelBefore=[&](const LifeCollectible& prop,float distance){if(DevourStages()[1].map!="slope")return true;const float base=SlopeGround(prop.at);
+            for(float s=0;s<=distance;s+=2)if(std::abs(SlopeGround(prop.at-Vec{0,0,s})-base)>1)return false;return true;};
+        auto nearest=[&](float limit,bool fits,float moreThan=0,float lessThan=1e9f){int best=-1;float d=limit;
+            for(size_t i=0;i<life.props.size();++i){const auto& prop=life.props[i];if(!prop.active||prop.visual==0xffffffffu||prop.reach>0||prop.radius<=moreThan||prop.radius>lessThan||DevourCanCover(body.mass,prop.radius)!=fits||!levelBefore(prop,40))continue;
+                // (歩き回る物は、置いた所から離れていくので狙わない)
+                if(chrono->DevourRouteMover(prop.visual))continue;
+                // (手前 (placeBefore で体を置く -z の側) にほかの物がある物は狙わない。物が増えて、手前の別の物を先に飲んでいた)
+                bool crowded=false;for(size_t j=0;j<life.props.size()&&!crowded;++j){if(j==i||!life.props[j].active)continue;const Vec gap=life.props[j].at-prop.at;crowded=gap.z>-10&&gap.z<1.5f&&std::abs(gap.x)<3;}
+                if(crowded)continue;
                 float distance=LifeDistance(prop.at,body.at);if(distance<d){d=distance;best=int(i);}}return best;};
         bool pouncing=body.action==LifeAction::Engulf;
         if(pouncing&&(!devourWasPouncing_||body.actionAge<devourLastAge_)){devourTracePick_=devourPrevPick_;devourTraced_=false;}
         // 調査用: 飛びかかりごとに、選んだ目標と覆い終えたときの結果を記録する
         if(pouncing&&!devourTraced_&&body.actionAge>DevourCoverEnd){devourTraced_=true;const auto& pick=devourTracePick_;
             trace_<<"pounce phase="<<devourPhase_<<" mass="<<body.mass<<" target="<<pick.index<<" fits="<<pick.fits;
-            if(pick.index>=0){const auto& prop=life.props[size_t(pick.index)];trace_<<" radius="<<prop.radius<<" eaten="<<!prop.active<<" gap="<<LifeDistance(prop.at,body.at)<<" dy="<<prop.at.y-body.at.y;}
+            if(pick.index>=0){const auto& prop=life.props[size_t(pick.index)];trace_<<" radius="<<prop.radius<<" eaten="<<!prop.active<<" gap="<<LifeDistance(prop.at,body.at)<<" dy="<<prop.at.y-body.at.y
+                <<" can_cover="<<DevourCanCover(body.mass,prop.radius)<<" under="<<DevourUnderCover(body.at,prop.at,body.mass,prop.radius,prop.reach)<<" sealed="<<prop.sealed<<" target="<<devourTarget_;}
             trace_<<'\n';}
         devourPrevPick_=DevourChooseTarget(body.at,body.forward,body.mass,life.props);
         if(pouncing&&(!devourWasPouncing_||body.actionAge<devourLastAge_))++devourPounces_;devourWasPouncing_=pouncing;devourLastAge_=body.actionAge;
@@ -282,19 +595,10 @@ class SlimeLifeValidationScene final:public Game::GameScene {
         // 連打しても空へ上っていかない (何も無い所へ何度も飛びかかり、高さが変わらないか)
         else if(devourPhase_==20){if(devourFresh_){devourBaseY_=body.at.y;devourLift_=0;}
             input.absorb=(frames_/4)%2==0;devourLift_=std::max(devourLift_,body.at.y-devourBaseY_);
-            if(devourClock_>3){bool ok=devourLift_<1.5f;devourValid_&=ok;devourNotes_+=" mash_lift="+std::to_string(devourLift_);next();devourPhase_=26;}}
-        // 輪の壁は通れない。門をハンマーで砕くと壁が崩れて通れる
-        else if(devourPhase_==26){input.yaw=0;input.morphForm=1;const float wall=RingWallAt(1);
-            if(devourFresh_){setMass(300);devourTarget_=-1;float best=1e9f;for(size_t i=0;i<life.props.size();++i){const auto& prop=life.props[i];if(!prop.active||!prop.beacon||prop.sealed)continue;
-                    float d=std::abs(prop.at.x)+std::abs(prop.at.z-wall);if(d<best){best=d;devourTarget_=int(i);}}
-                devourValid_&=devourTarget_>=0;if(devourTarget_<0){next();devourPhase_=3;return;}
-                bool closed=chrono->MoveWithinCity({60,1,wall-20},{60,1,wall+20},1).z<wall;devourValid_&=closed;devourNotes_+=" wall_closed="+std::to_string(closed);
-                placeBefore(life.props[size_t(devourTarget_)].at,6*LifeScale(body.mass));}
-            input.morphNow=devourClock_<.05f;input.attack=devourClock_>.5f;
-            if(devourClock_>2.5f){bool ok=!life.props[size_t(devourTarget_)].active&&chrono->MoveWithinCity({60,1,wall-20},{60,1,wall+20},1).z>wall;devourValid_&=ok;devourNotes_+=" gate_open="+std::to_string(ok);
-                Capture(L"tests/out/slime-life-devour-gate.png");chrono->DevourOpenAllRings();next();devourPhase_=3;}}
+            if(devourClock_>3){bool ok=devourLift_<1.5f;devourValid_&=ok;devourNotes_+=" mash_lift="+std::to_string(devourLift_);next();devourPhase_=3;}}
         // 大きすぎる車には弾かれる
-        else if(devourPhase_==3){if(devourFresh_){setMass(300);devourTarget_=nearest(3000,false,10);devourValid_&=devourTarget_>=0;if(devourTarget_<0){next();return;}
+        else if(devourPhase_==3){if(devourFresh_){setMass(300);devourTarget_=nearest(3000,false,10,20);// (車ほどの大きさ。家は足元が広く、飛びかかりの届く所に置けない)
+               devourValid_&=devourTarget_>=0;if(devourTarget_<0){next();return;}
                 placeBefore(life.props[size_t(devourTarget_)].at,16);
                 // 手前の小物を選ばないよう、近くの他の物は片付けておく
                 for(size_t i=0;i<life.props.size();++i)if(int(i)!=devourTarget_&&LifeDistance(life.props[i].at,body.at)<40)life.props[i].active=false;}
@@ -302,43 +606,54 @@ class SlimeLifeValidationScene final:public Game::GameScene {
             if(devourClock_>.1f&&pouncing&&body.actionAge>DevourLandAt+.02f&&body.actionAge<DevourCoverEnd&&!devourImages_[3]){Capture(L"tests/out/slime-life-devour-bounce.png");devourImages_[3]=true;devourBounced_=Dot(Vec{controller.velocity.x,0,controller.velocity.z},body.forward)<0;}
             if(devourClock_>1.2f){bool ok=devourBounced_&&life.props[size_t(devourTarget_)].active;devourValid_&=ok;devourNotes_+=" bounce="+std::to_string(ok);next();}}
         // 大きくなれば車を丸のみにでき、体の中に見える
-        else if(devourPhase_==4){if(devourFresh_){setMass(8000);devourTarget_=nearest(3000,true,10);devourValid_&=devourTarget_>=0;if(devourTarget_<0){next();return;}placeBefore(life.props[size_t(devourTarget_)].at,40);}
+        else if(devourPhase_==4){if(devourFresh_){setMass(8000);devourTarget_=nearest(3000,true,10);devourValid_&=devourTarget_>=0;if(devourTarget_<0){next();return;}placeBefore(life.props[size_t(devourTarget_)].at,40);
+                // 車の手前の小物を先に飲まないよう、近くの他の物は片付けておく (坂の町は道ぞいに小物が多い)
+                for(size_t i=0;i<life.props.size();++i)if(int(i)!=devourTarget_&&LifeDistance(life.props[i].at,body.at)<45)life.props[i].active=false;}
             input.absorb=devourClock_>.4f&&devourClock_<.6f;
             if(devourClock_>.4f&&pouncing&&body.actionAge>DevourCoverEnd+.15f&&!devourImages_[4]){Capture(L"tests/out/slime-life-devour-car.png");devourImages_[4]=true;}
             if(devourClock_>2){bool ok=!life.props[size_t(devourTarget_)].active;devourValid_&=ok;devourNotes_+=" car="+std::to_string(ok);next();}}
         // 家 (建物) も大きさが足りれば丸のみにでき、跡を通れる
         else if(devourPhase_==5){if(devourFresh_){devourTarget_=-1;float best=1e9f;
-                for(size_t i=0;i<life.props.size();++i){const auto& prop=life.props[i];if(!prop.active||prop.reach<10||prop.radius>40)continue;
+                for(size_t i=0;i<life.props.size();++i){const auto& prop=life.props[i];if(!prop.active||std::max(prop.reach,prop.foot)<10||prop.radius>40)continue;
                     float d=LifeDistance(prop.at,body.at);if(d<best){best=d;devourTarget_=int(i);}}
                 devourValid_&=devourTarget_>=0;if(devourTarget_<0){next();return;}
                 const auto& house=life.props[size_t(devourTarget_)];setMass(DevourMassToCover(house.radius)*1.05f);
-                placeBefore(house.at,house.reach+3*LifeScale(body.mass)+4);}
+                placeBefore(house.at,std::max(house.reach,house.foot)+3*LifeScale(body.mass)+4);
+                // 家の前の塀や庭の小物を先に飲まないよう、近くの他の物は片付けておく (坂の町は家ごとに塀と小物がある)
+                for(size_t i=0;i<life.props.size();++i)if(int(i)!=devourTarget_&&std::min(LifeDistance(life.props[i].at,house.at),LifeDistance(life.props[i].at,body.at))<std::max(house.reach,house.foot)+40){life.props[i].active=false;devourCleared_.push_back(i);}}
             input.absorb=devourClock_>.4f&&devourClock_<.6f;
             if(devourClock_>1.6f){const auto& house=life.props[size_t(devourTarget_)];
                 // 飲み込めて、跡の真ん中を通れる
-                bool ok=!house.active&&chrono->MoveWithinCity(house.at,house.at+Vec{1,0,0},1).x>house.at.x+.5f;
-                devourValid_&=ok;devourNotes_+=" house="+std::to_string(ok);Capture(L"tests/out/slime-life-devour-house.png");next();devourPhase_=21;}}
+                const bool eaten=!house.active,pass=chrono->MoveWithinCity(house.at,house.at+Vec{1,0,0},1).x>house.at.x+.5f;bool ok=eaten&&pass;
+                devourValid_&=ok;for(size_t i:devourCleared_)if(i<life.props.size())life.props[i].active=true;devourCleared_.clear();devourNotes_+=" house="+std::to_string(ok)+" house_eaten="+std::to_string(eaten)+" house_pass="+std::to_string(pass)+" house_dy="+std::to_string(int(house.at.y-body.at.y));Capture(L"tests/out/slime-life-devour-house.png");next();devourPhase_=21;}}
         // 建物を背にすると、カメラは手前へ寄らず、間の建物が透ける
         else if(devourPhase_==21){input.yaw=0;
             if(devourFresh_){setMass(150);devourTarget_=-1;float best=1e9f;
-                for(size_t i=0;i<life.props.size();++i){const auto& prop=life.props[i];if(!prop.active||prop.reach<10||prop.radius>40)continue;
+                // (家ほどの大きさの物だけ。坂の町の桜や柿の木は根元が太くても、枝の中にカメラが入るだけで建物の確認にならない)
+                for(size_t i=0;i<life.props.size();++i){const auto& prop=life.props[i];if(!prop.active||std::max(prop.reach,prop.foot)<10||prop.radius>40||prop.radius<24)continue;
+                    // (坂の町は、家の背中の地面が家の敷地と同じ高さの物だけ。段の上から見下ろすと、家は体とカメラの間に入らない)
+                    if(DevourStages()[1].map=="slope"&&std::abs(SlopeGround(prop.at+Vec{0,0,std::max(prop.reach,prop.foot)+8})-(prop.at.y-1.2f))>1)continue;
                     float d=LifeDistance(prop.at,body.at);if(d<best){best=d;devourTarget_=int(i);}}
                 devourValid_&=devourTarget_>=0;if(devourTarget_<0){next();devourPhase_=6;return;}
                 // 建物の北の壁のすぐ外に置き、南 (建物の側) から見る
-                const auto& house=life.props[size_t(devourTarget_)];Vec at=house.at+Vec{0,0,house.reach+8};at.y=1.25f;body.at=at;body.forward=body.liquidForward={0,0,1};controller.velocity={};
+                const auto& house=life.props[size_t(devourTarget_)];Vec at=house.at+Vec{0,0,std::max(house.reach,house.foot)+8};
+                // (坂の町は家ごとに地面の高さが違うので、家の背中の地面に置く)
+                at.y=DevourStages()[1].map=="slope"?SlopeGround(at)+1.25f:1.25f;body.at=at;body.forward=body.liquidForward={0,0,1};controller.velocity={};
                 auto& t=GetComponents().get<TransformComponent>(player);t.translate={at.x,at.y,at.z};}
             if(devourClock_>1.5f){auto camera=GetCamera().Position();float distance=LifeDistance({camera.x,camera.y,camera.z},body.at);
                 float faded=1;for(auto e:GetComponents().view<CameraOccluder>())faded=std::min(faded,GetComponents().get<CameraOccluder>(e).opacity);
                 bool ok=distance>12&&faded<.5f;devourValid_&=ok;
                 devourNotes_+=" see_through="+std::to_string(ok)+" cam_dist="+std::to_string(int(distance))+" faded="+std::to_string(faded);
+                {char where[200];snprintf(where,sizeof(where)," cam=(%.0f,%.0f,%.0f) body=(%.0f,%.0f,%.0f)",camera.x,camera.y,camera.z,body.at.x,body.at.y,body.at.z);devourNotes_+=where;
+                    if(DevourStages()[1].map=="slope"){snprintf(where,sizeof(where)," ground_cam=%.0f ground_body=%.0f",SlopeGround({camera.x,0,camera.z}),SlopeGround(body.at));devourNotes_+=where;}}
                 Capture(L"tests/out/slime-life-devour-seethrough.png");next();devourPhase_=23;}}
         // ハンマー: 大きすぎる建物を叩くと砕けて、飲める欠片が散らばる
         else if(devourPhase_==23){input.yaw=0;input.morphForm=1;
             if(devourFresh_){devourTarget_=-1;float best=1e9f;
-                for(size_t i=0;i<life.props.size();++i){const auto& prop=life.props[i];if(!prop.active||prop.reach<10||prop.radius>40)continue;
+                for(size_t i=0;i<life.props.size();++i){const auto& prop=life.props[i];if(!prop.active||std::max(prop.reach,prop.foot)<10||prop.radius>40)continue;
                     float d=LifeDistance(prop.at,body.at);if(d<best){best=d;devourTarget_=int(i);}}
                 devourValid_&=devourTarget_>=0;if(devourTarget_<0){next();devourPhase_=24;return;}
-                const auto& house=life.props[size_t(devourTarget_)];setMass(DevourMassToShatter(house.radius)*1.1f);placeBefore(house.at,house.reach+2*LifeScale(body.mass));devourAbsorbed_=int(life.props.size());}
+                const auto& house=life.props[size_t(devourTarget_)];setMass(DevourMassToShatter(house.radius)*1.1f);placeBefore(house.at,std::max(house.reach,house.foot)+2*LifeScale(body.mass));devourAbsorbed_=int(life.props.size());}
             input.morphNow=devourClock_<.05f;input.attack=devourClock_>.5f;
             if(devourClock_>2.5f){const auto& house=life.props[size_t(devourTarget_)];bool ok=!house.active&&int(life.props.size())==devourAbsorbed_+DevourShardCount&&DevourCanCover(body.mass,life.props.back().radius);
                 devourValid_&=ok;devourNotes_+=" hammer_shatter="+std::to_string(ok);Capture(L"tests/out/slime-life-devour-shatter.png");next();devourPhase_=24;}}
@@ -346,11 +661,17 @@ class SlimeLifeValidationScene final:public Game::GameScene {
         else if(devourPhase_==24){input.yaw=0;input.morphForm=2;
             if(devourFresh_){setMass(3000);body.tireUnlocked=true;devourTarget_=-1;float best=1e9f;
                 for(size_t i=0;i<life.props.size();++i){const auto& prop=life.props[i];if(!prop.active||prop.reach>0||prop.visual==0xffffffffu||!DevourCanCover(body.mass,prop.radius))continue;
+                    // (歩き回る物と、転がる道 (手前の -z の側) に覆えない物がある物は狙わない)
+                    if(chrono->DevourRouteMover(prop.visual)||!levelBefore(prop,4*LifeScale(body.mass)+2))continue;const float lane=4*LifeScale(body.mass);bool blocked=false;
+                    for(const auto& other:life.props){if(&other==&prop||!other.active||DevourCanCover(body.mass,other.radius))continue;const Vec gap=other.at-prop.at;blocked|=gap.z>-lane-other.radius&&gap.z<other.radius&&std::abs(gap.x)<lane*.6f+other.radius;}
+                    if(blocked)continue;
                     float d=LifeDistance(prop.at,body.at);if(d<best){best=d;devourTarget_=int(i);}}
                 devourValid_&=devourTarget_>=0;if(devourTarget_<0){next();devourPhase_=6;return;}
                 placeBefore(life.props[size_t(devourTarget_)].at,4*LifeScale(body.mass));}
             input.morphNow=devourClock_<.05f;input.move={0,0,devourClock_>.5f?1.f:0.f};
-            if(devourClock_>3){bool ok=!life.props[size_t(devourTarget_)].active;devourValid_&=ok;devourNotes_+=" tire_sink="+std::to_string(ok);next();devourPhase_=27;}}
+            if(devourClock_>3){const auto& target=life.props[size_t(devourTarget_)];bool ok=!target.active;devourValid_&=ok;devourNotes_+=" tire_sink="+std::to_string(ok);
+                if(!ok){char why[200];snprintf(why,sizeof(why)," tire_target=(%.0f,%.0f,%.0f) r=%.1f body=(%.0f,%.0f,%.0f) action=%d",target.at.x,target.at.y,target.at.z,target.radius,body.at.x,body.at.y,body.at.z,int(body.action));devourNotes_+=why;}
+                next();devourPhase_=27;}}
         // 掃除機: 押している間、前の小物を吸い込む
         else if(devourPhase_==27){input.yaw=devourClock_>1.6f?1.5708f:0;input.pitch=.2f;input.morphForm=3;
             if(devourFresh_){setMass(3000);body.vacuumUnlocked=true;devourTarget_=-1;float best=1e9f;
@@ -364,17 +685,18 @@ class SlimeLifeValidationScene final:public Game::GameScene {
             if(devourClock_>2.2f){next();devourPhase_=28;}}
         // バネ: 溜めて離すと建物を飛び越えて、向こうの道に着地する
         else if(devourPhase_==28){input.yaw=devourClock_>.4f?1.5708f:0;input.pitch=.2f;input.morphForm=4;
-            if(devourFresh_){devourTarget_=-1;float best=1e9f;for(size_t i=0;i<life.props.size();++i){const auto& prop=life.props[i];if(!prop.active||prop.sealed||prop.reach<10||prop.radius>40)continue;
+            if(devourFresh_){devourTarget_=-1;float best=1e9f;for(size_t i=0;i<life.props.size();++i){const auto& prop=life.props[i];if(!prop.active||prop.sealed||std::max(prop.reach,prop.foot)<10||prop.radius>40)continue;
                     float d=LifeDistance(prop.at,body.at);if(d<best){best=d;devourTarget_=int(i);}}
                 devourValid_&=devourTarget_>=0;if(devourTarget_<0){next();devourPhase_=6;return;}
-                setMass(6000);body.springUnlocked=true;const auto& house=life.props[size_t(devourTarget_)];placeBefore(house.at,house.reach+2*LifeScale(body.mass));devourBaseY_=body.at.y;devourLift_=0;devourMass_=body.at.z;}
+                setMass(6000);body.springUnlocked=true;const auto& house=life.props[size_t(devourTarget_)];placeBefore(house.at,std::max(house.reach,house.foot)+2*LifeScale(body.mass));devourBaseY_=body.at.y;devourLift_=0;devourMass_=body.at.z;}
             input.morphNow=devourClock_<.05f;input.attack=devourClock_>.6f&&devourClock_<1.4f;input.move=devourClock_>1.3f&&devourClock_<1.5f?Vec{-1,0,0}:Vec{};
             if(devourClock_>1.2f&&devourClock_<1.25f)Capture(L"tests/out/slime-life-devour-spring-charge.png");
             devourLift_=std::max(devourLift_,body.at.y-devourBaseY_);
             if(devourClock_>.52f&&devourClock_<.57f)Capture(L"tests/out/slime-life-devour-spring-idle.png");
             if(devourClock_>1.75f&&devourClock_<1.8f)Capture(L"tests/out/slime-life-devour-spring-air.png");
-            if(devourClock_>3.4f){const auto& house=life.props[size_t(devourTarget_)];bool ok=devourLift_>DevourSpringRise(6000,DevourSpringMinPower)*.8f&&house.active&&body.at.z>devourMass_+20&&std::abs(body.at.y-devourBaseY_)<2;
-                devourValid_&=ok;devourNotes_+=" spring_hop="+std::to_string(ok)+" lift="+std::to_string(int(devourLift_))+" moved="+std::to_string(int(body.at.z-devourMass_));Capture(L"tests/out/slime-life-devour-spring-land.png");next();devourPhase_=6;}}
+            if(devourClock_>3.4f){const auto& house=life.props[size_t(devourTarget_)];// (着地は地面の上。坂の町は段の高さが違う所へ降りることがある)
+                const float ground=DevourStages()[1].map=="slope"?SlopeGround(body.at):devourBaseY_-1.25f;const bool landed=std::abs(body.at.y-1.25f-ground)<2;bool ok=devourLift_>DevourSpringRise(6000,DevourSpringMinPower)*.8f&&house.active&&body.at.z>devourMass_+20&&landed;
+                devourValid_&=ok;devourNotes_+=" spring_hop="+std::to_string(ok)+" landed="+std::to_string(landed)+" house_left="+std::to_string(house.active)+" lift="+std::to_string(int(devourLift_))+" moved="+std::to_string(int(body.at.z-devourMass_));Capture(L"tests/out/slime-life-devour-spring-land.png");next();devourPhase_=6;}}
         // 大きくなっても遠くまで見え、動いても体が見える (撮った画面で確かめる)
         else if(devourPhase_==22){input.yaw=.7f;
             if(devourFresh_){setMass(1.2e6f);Vec at{0,1.25f,0};body.at=at;controller.velocity={};auto& t=GetComponents().get<TransformComponent>(player);t.translate={at.x,at.y,at.z};}
@@ -479,10 +801,16 @@ public:
         auto* renderer=Engine::Renderer::GetInstance();auto settings=renderer->GetGraphicsSettings();settings.rtShadows=settings.rtReflections=settings.rtIndirect=false;renderer->ApplyGraphicsSettings(settings);
     }
     void Update()override {
-        // 撮影用の起動引数と、部屋のテスト。それ以外は輪の町 (吸収モード) のテスト
+        // 撮影用の起動引数と、部屋のテスト。それ以外はステージ 2 (坂の町、吸収モード) のテスト
         if(wcsstr(GetCommandLineW(),L"--slime-sprite-capture")){UpdateSpriteCapture();return;}
         if(wcsstr(GetCommandLineW(),L"--slime-result-capture")){UpdateResultCapture();return;}
         if(wcsstr(GetCommandLineW(),L"--slime-life-room-camera")){UpdateRoomCamera();return;}
+        if(wcsstr(GetCommandLineW(),L"--slime-life-slope-tour")){UpdateSlopeTour();return;}
+        if(wcsstr(GetCommandLineW(),L"--slime-life-slope-perf")){UpdateSlopePerf();return;}
+        if(wcsstr(GetCommandLineW(),L"--slime-life-slope-ride")){UpdateSlopeRide();return;}
+        if(wcsstr(GetCommandLineW(),L"--slime-life-slope-festival")){UpdateSlopeFestival();return;}
+        if(wcsstr(GetCommandLineW(),L"--slime-life-slope-wire-perf")){UpdateWirePerf();return;}
+        if(wcsstr(GetCommandLineW(),L"--slime-life-slope-hose-perf")){UpdateHosePerf();return;}
         if(wcsstr(GetCommandLineW(),L"--slime-life-room-intro")){UpdateRoomIntro();return;}
         if(wcsstr(GetCommandLineW(),L"--slime-life-room-mouth")){UpdateRoomMouth();return;}
         if(wcsstr(GetCommandLineW(),L"--slime-life-room-bed")){UpdateRoomBed();return;}

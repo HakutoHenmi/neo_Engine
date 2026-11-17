@@ -67,6 +67,23 @@ float3 HydrantImpact(float3 velocity,float3 normal,uint seed,float step){
     return result;
 }
 
+// 坂の町の放水の地面の高さの表 (AABBs[aabbCount] が見出し: min = (原点 x, 原点 z, 1 マスの幅)、pad0 = 1 辺のマスの数。
+// その後ろに高さを 8 個ずつ詰めてある)。高さはマスの中心の値で、その間は直線で補う。slope は高さの傾き
+float HydrantTerrainCell(uint n,uint x,uint z){
+    uint index=z*n+x;AABB e=AABBs[aabbCount+1+index/8];uint c=index%8;
+    return c==0?e.min.x:c==1?e.min.y:c==2?e.min.z:c==3?e.pad0:c==4?e.max.x:c==5?e.max.y:c==6?e.max.z:e.pad1;
+}
+bool HydrantTerrain(float3 p,out float height,out float2 slope){
+    height=0;slope=0;AABB head=AABBs[aabbCount];uint n=(uint)head.pad0;float cell=max(head.min.z,1e-3f);
+    float2 g=(p.xz-head.min.xy)/cell-.5f;
+    if(n<2||g.x<0||g.y<0||g.x>=float(n-1)||g.y>=float(n-1))return false;
+    uint2 c=(uint2)g;float2 f=g-float2(c);
+    float h00=HydrantTerrainCell(n,c.x,c.y),h10=HydrantTerrainCell(n,c.x+1,c.y),h01=HydrantTerrainCell(n,c.x,c.y+1),h11=HydrantTerrainCell(n,c.x+1,c.y+1);
+    height=lerp(lerp(h00,h10,f.x),lerp(h01,h11,f.x),f.y);
+    slope=float2(lerp(h10-h00,h11-h01,f.y),lerp(h01-h00,h11-h10,f.x))/cell;
+    return true;
+}
+
 // ==========================================
 // Pass 0: Emit (パーティクル放出)
 // ==========================================
@@ -248,6 +265,11 @@ float3 SlimeFieldRadii() {
 }
 float3 SlimeMotionAxis(){return normalize(float3(coreForward.x,0,coreForward.z)+float3(0,0,1e-6f));}
 float SlimeGroundHeight(float3 position){return emitDir.y+dot(position.xz-corePos.xz,emitDir.xz);}
+// Legacy safety floor for slime particles (y=0.2). The player slime (coreMode>=4) may stand below y=0,
+// so its floor never rises above its own ground (SlimeGroundHeight); on ground at or above 0 it is unchanged.
+float SlimeFloor(float3 position,float particleType){
+    if(coreMode>=4&&particleType<.5f&&emitStartIndex!=0)return min(.2f,SlimeGroundHeight(position)+.18f);
+    return .2f;}
 float SlimeMotionAmount(){return saturate(coreScale.z)*(1-.75f*saturate(coreScale.y));}
 float3 SlimeToField(float3 local){
     local.y-=dot(local.xz,emitDir.xz)*(1-saturate(coreScale.y));
@@ -507,6 +529,8 @@ groupshared uint sharedTotal[256];
 void PrefixSum(uint3 DTid : SV_DispatchThreadID, uint GI : SV_GroupIndex) {
     // The morph path has a fixed 6600-particle budget. A compact table avoids
     // scanning 65536 mostly empty buckets on every PBF iteration/substep.
+    // (Measured with 15k hose particles: a 32768-bucket table is slower overall;
+    //  this single-group scan runs ~10x per frame and outweighs the extra collisions.)
     uint elementsPerThread = (pad8>.5f?8192U:NUM_GRID_CELLS) / 256;
     uint startIdx = GI * elementsPerThread;
     
@@ -907,15 +931,37 @@ void CalcForce(uint3 DTid : SV_DispatchThreadID) {
     float3 incoming=pi.velocity,hitNormal=0;
     // Hydrant water belongs to the flat city street, including PBF projection.
     // Other water keeps scene-collider support and can fall from ledges.
-    if(hydrantWater&&pi.position.y<.22f){
+    // (坂の町の放水: emitColor.w が 1 のとき、AABBs の箱と球の後ろにゲームが町の地面の高さの表を置く
+    //  (建物と、まだ飲めない大きな物の高さも入れてある)。水はその上に落ちて坂を流れ下り、高い段や建物の壁で止まって跳ね返る。
+    //  表の外へ出た水は消える。表が無ければ今まで通り高さ 0.22 の平らな床)
+    if(hydrantWater&&emitColor.w>.5f&&pi.position.y>-500&&pi.color.a>0){
+        float height;float2 slope;
+        if(!HydrantTerrain(pi.position,height,slope)){pi.color.a=0;pi.position.y=-1000;}
+        else if(pi.position.y<height+.22f){
+            // 前の位置から大きな段を上がっていれば壁: 横へ跳ね返す (段の上へ持ち上げない)
+            float3 before=pi.position-pi.velocity*dt;float lower;float2 lowerSlope;
+            if(HydrantTerrain(before,lower,lowerSlope)&&height-lower>1.2f&&before.y<height-.4f){
+                float2 away=normalize(-slope+float2(1e-5f,0));pi.position.xz=before.xz;pi.position.y=max(pi.position.y,lower+.22f);
+                hitNormal=float3(away.x,0,away.y);pi.velocity.xz*=-.25f;
+            }else{
+                groundContact=true;pi.position.y=height+.22f;hitNormal=normalize(float3(-slope.x,1,-slope.y));
+                float into=dot(pi.velocity,hitNormal);if(into<0)pi.velocity-=hitNormal*into;pi.velocity*=friction;
+            }
+        }
+    }
+    else if(hydrantWater&&pi.position.y<.22f&&pi.position.y>-500&&pi.color.a>0){
         groundContact=true;pi.position.y=.22f;pi.velocity.y=abs(pi.velocity.y)*.12f;pi.velocity.xz*=friction;hitNormal=float3(0,1,0);
     }
     
     // Slime retains the legacy safety floor. Water must use scene colliders so
     // it can leave a ledge and fall under gravity.
-    if (!FluidIsWater(pi.type) && pi.position.y < 0.2f) {
+    // The player slime's floor follows its own ground (SlimeFloor): below y=0 (river and
+    // pits of the slope town) the fixed 0.2 floor fought the body every step and made frames
+    // 2.5x slower.
+    float safetyFloor=SlimeFloor(pi.position,pi.type);
+    if (!FluidIsWater(pi.type) && pi.position.y < safetyFloor) {
         groundContact=true;
-        pi.position.y = 0.2f;
+        pi.position.y = safetyFloor;
         pi.velocity.y *= -0.3f;
         pi.velocity.x *= friction; // 床の摩擦
         pi.velocity.z *= friction;
@@ -1137,8 +1183,9 @@ void CalcDeltaP(uint3 id : SV_DispatchThreadID) {
 }
 
 float3 ProjectCollisions(float3 position, float particleType) {
-    if (!FluidIsWater(particleType)) position.y = max(position.y, 0.2f);
-    if(particleType>1.05f&&particleType<1.25f)position.y=max(position.y,.22f);
+    if (!FluidIsWater(particleType)) position.y = max(position.y, SlimeFloor(position,particleType));
+    // (坂の町の放水では地面の高さの表が床。平らな床 0.22 に持ち上げると川や窪みの上に水が浮く)
+    if(particleType>1.05f&&particleType<1.25f&&emitColor.w<.5f)position.y=max(position.y,.22f);
     [loop] for (uint k=0; k<min(aabbCount,128U); ++k) {
         if(coreMode>=4&&particleType<.5f&&emitStartIndex!=0&&AABBs[k].max.y<=SlimeGroundHeight(position)+.4f)continue;
         float3 lo=AABBs[k].min-0.2f, hi=AABBs[k].max+0.2f;
@@ -1166,6 +1213,10 @@ void ApplyDeltaP(uint3 id : SV_DispatchThreadID) {
     float3 corrected = p.position+SolverOutput[i].position;
     if(pad8<.5f)corrected=ConstrainTether(corrected, OriginalIndices[i], p.pad);
     p.position=ProjectCollisions(corrected,p.type);
+    // 坂の町の放水: 押し縮めない補正でも地面の高さの表の下へ潜らせない (CalcForce と同じく、大きな段は壁として横で止める)
+    if(p.type>1.05f&&p.type<1.25f&&emitColor.w>.5f){float height,lower;float2 slope,lowerSlope;
+        if(HydrantTerrain(p.position,height,slope)&&p.position.y<height+.22f){float3 before=PreviousPositions[OriginalIndices[i]].xyz;
+            if(HydrantTerrain(before,lower,lowerSlope)&&height-lower>1.2f&&before.y<height-.4f)p.position.xz=before.xz;else p.position.y=height+.22f;}}
     if(pad8>.5f&&p.type<.5f){MorphTarget body=MorphTargets[MorphData[8192+OriginalIndices[i]].target];
         if(body.shape.w>.5f){
             float3 field=MorphField(MorphLocal(p.position,body),body);float extent=length(field/max(body.shape.xyz,.1f));

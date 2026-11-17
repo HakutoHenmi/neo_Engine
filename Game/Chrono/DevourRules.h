@@ -123,6 +123,10 @@ inline float DevourFoodValue(float mass,float radius,float knee){
 }
 // 限界に近い物を飲んだ後は重くて遅くなる: 遅くなる時間 (0 なら普通)・そのときの速さの倍率
 inline constexpr float DevourHeavySlow=.35f;
+// 遅くなるのは序盤だけ: 体が DevourHeavyUntilCm を越えると遅くなる強さが減り始め、DevourHeavyNoneCm で遅くならなくなる
+// (家くらいの大きさで毎回止まると煩わしいので、そこから先は水の飛び散りだけで重さを見せる)。返すのは 1 (序盤) 〜 0
+inline constexpr float DevourHeavyUntilCm=300,DevourHeavyNoneCm=450;
+inline float DevourHeavyShare(float cm){return std::clamp((DevourHeavyNoneCm-cm)/(DevourHeavyNoneCm-DevourHeavyUntilCm),0.f,1.f);}
 inline float DevourHeavyTime(float mass,float radius){float size=radius/(DevourBodyRadius(mass)*DevourCoverRatio);return size<=DevourBigFrom?0:.5f+1.f*std::min(1.f,(size-DevourBigFrom)/(1-DevourBigFrom));}
 // 飲めない物へぶつかる: 全速のこの割合より速いと弾かれる。impact は 0〜1 の強さ。
 // 1 回目は止まるだけで、DevourBumpMemory 秒の間にもう一度ぶつかると小さくなる

@@ -12,6 +12,8 @@ namespace {
 constexpr float kShelfLeft=500,kShelfRight=1256,kShelfTop=86,kShelfBottom=598,kShelfMaxCell=128;
 // 大きく見せるときの中心と大きさ
 constexpr float kDetailX=878,kDetailY=282,kDetailSize=300;
+// 升の物の明るさ: 体の中は町の光と影のままだと暗く沈むので、色を何倍にして描くか
+constexpr float kShelfBright=1.45f;
 float Smooth(float t){t=std::clamp(t,0.f,1.f);return t*t*(3-2*t);}
 }
 
@@ -134,7 +136,8 @@ void ChronoSystem::DrawDevourShelf3D(GameContext& ctx){
         XMFLOAT3 turned;XMStoreFloat3(&turned,XMVector3Transform(XMVectorSet(mid.x,mid.y,mid.z,0),rotation));
         const V offset=V{turned.x,turned.y,turned.z}*scale;
         Engine::Transform t;t.scale={scale,scale,scale};t.rotate={pitch,yaw,roll};t.translate=EV(at-offset);
-        ctx.renderer->DrawMeshInstanced(model->mesh,lowPalette_,t,cell.tint,"LowpolySurface",lowMaps_);};
+        const Engine::Vector4 tint{cell.tint.x*kShelfBright,cell.tint.y*kShelfBright,cell.tint.z*kShelfBright,cell.tint.w};
+        ctx.renderer->DrawMeshInstanced(model->mesh,lowPalette_,t,tint,"LowpolySurface",lowMaps_);};
     const float clock=finishAge_;
     if(shelf_.detail>=0){const auto& cell=shelf_.cells[size_t(shelf_.detail)];const float grow=UI::Scale::Overshoot((clock-shelf_.detailAt)/.35f);
         draw(cell,kDetailX,kDetailY,kDetailSize*grow,clock*1.1f);return;}

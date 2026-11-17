@@ -55,9 +55,9 @@ void ChronoSystem::BuildCityStage(entt::registry& r){
     cityWood_=surfaces[CityWood];cityStoneSkin_=surfaces[CityStoneSkin];cityIron_=surfaces[CityShutter];cityArmor_=surfaces[CityMetal];cityBlock_=surfaces[CityConcrete];
     // 光る看板の一覧
     cityGlows_.clear();
-    // 部屋か輪の町の地面と道路を作る
+    // 部屋の床を作る (坂の町の地面は段ごとの色の板で、BuildSlopeTown が作る)
     CityBuilder city;
-    if(CurrentDevourStage().map=="room")BuildRoomGround(city);else BuildRingGround(city);
+    if(CurrentDevourStage().map=="room")BuildRoomGround(city);
     Engine::LoadProfile::Record("mark","city: geometry built",0);
     // 材質ごとのメッシュをエンティティとして置く
     for(int i=0;i<CityMaterialCount;++i){auto& g=city.geometry[size_t(i)];if(g.indices.empty())continue;
@@ -70,10 +70,10 @@ void ChronoSystem::BuildCityStage(entt::registry& r){
     // 小物と見た目の記録を消す
     Engine::LoadProfile::Record("mark","city: surface entities",0);
     cityProps_.clear();cityVisuals_.clear();
-    // 輪の町 (RingCity.cpp) か部屋 (RoomStage.cpp) の建物・小物・アイテムを置く
+    // 部屋 (RoomStage.cpp) か坂の町 (SlopeTown.cpp) の建物・小物・アイテムを置く
     cityWalls_.clear();cityBarricade_.clear();cityGateEntity_=entt::null;
-    RingCityTools tools{[&](int i)->const CityModel& {return surfaces[size_t(i)];},tint};
-    if(CurrentDevourStage().map=="room")BuildRoomStage(r,tools);else BuildRingCity(r,tools);
+    StageTools tools{[&](int i)->const CityModel& {return surfaces[size_t(i)];},tint};
+    if(CurrentDevourStage().map=="room")BuildRoomStage(r,tools);else BuildSlopeTown(r,tools);
     Engine::LoadProfile::Record("mark","city: props placed",0);
     // 板・ゴーレムの部品・矢・破片・光る看板に共通で使う単位立方体
     std::vector<Engine::VertexData> cube;std::vector<uint32_t> cubeIndex;
@@ -91,7 +91,7 @@ void ChronoSystem::BuildCityStage(entt::registry& r){
 void ChronoSystem::ResetCityHazards(){
     using namespace Chrono;
     for(size_t i=0;i<cityWalls_.size()&&i<CityWalls().size();++i){cityWalls_[i].health=CityWalls()[i].health;cityWalls_[i].shake=0;cityWalls_[i].hit=0;}
-    cityFires_.clear();for(const auto& spot:devour_?RingData().fires:CityFires())cityFires_.push_back({spot.at,spot.radius,CityFireHealth(),0});
+    cityFires_.clear();if(!devour_)for(const auto& spot:CityFires())cityFires_.push_back({spot.at,spot.radius,CityFireHealth(),0});
     cityHammerAnnounced_=false;
 }
 // 路地の壁を壊す (部品を破片にして飛ばし、通れるようにする。すべて壊れたら大通りへ)
@@ -344,5 +344,29 @@ bool ChronoSystem::DrawCityPropInTentacle(GameContext& ctx,uint32_t visual,Chron
     // 縮めながら触手の先の位置に描く
     Engine::Transform t;t.scale=EV(v.scale*shrink);t.rotate=EV(v.rotate);t.translate=EV(at-v.center*shrink);
     ctx.renderer->DrawMeshInstanced(v.mesh,v.texture,t,v.color,v.shader,v.extra);return true;
+}
+// ステージの変形アイテムを置く。掃除機とバネのモデルは箱を組み合わせて作る
+void ChronoSystem::BuildStageItem(entt::registry& r,const StageTools& tools){
+    using namespace Chrono;auto* render=Engine::Renderer::GetInstance();const auto& stage=CurrentDevourStage();V at=stage.itemAt;
+    if(stage.item==LifeMorphItem::None)return;
+    // 台座: 金色の段の上にアイテムが載っていて、飲むと台座も消える
+    auto pedestal=[&]{if(cityProps_.empty())return;constexpr float high=5;auto& item=cityProps_.back();CityBuilder b;b.Box(CityMetal,{-6,0,-6},{6,1.6f,6});b.Box(CityMetal,{-4.5f,1.6f,-4.5f},{4.5f,3.4f,4.5f});b.Box(CityMetal,{-3.2f,3.4f,-3.2f},{3.2f,high,3.2f});b.Box(CityMetal,{-1.1f,20,-1.1f},{1.1f,900,1.1f});
+        auto& g=b.geometry[CityMetal];const auto& skin=tools.surface(CityMetal);auto e=r.create();r.emplace<NameComponent>(e,"Chrono City prop pedestal");r.emplace<TransformComponent>(e).translate=Write(V{at.x,at.y,at.z});r.get<TransformComponent>(e).scale={1,1,1};
+        auto& mr=r.emplace<MeshRendererComponent>(e);mr.modelHandle=render->CreateDynamicMesh(g.vertices,g.indices);mr.textureHandle=white_;mr.extraTextureHandles=skin.extra;mr.shaderName="LowpolySurface";mr.useCubemap=false;mr.color={1,.72f,.15f,1};
+        devourBuildingParts_[cityProps_.size()-1]={e};auto& t=r.get<TransformComponent>(item.entity);t.translate.y+=high+.6f;devourItemY_=t.translate.y;
+        // 遠くからでも形が分かるよう、大きく見せる
+        t.scale={t.scale.x*2.2f,t.scale.y*2.2f,t.scale.z*2.2f};cityVisuals_[uint32_t(item.entity)].scale=cityVisuals_[uint32_t(item.entity)].scale*2.2f;};
+    if(stage.item==LifeMorphItem::Tire){LowProp(r,"tire",at,LowScaleFor("tire",4.6f),.35f,1);auto& tire=cityProps_.back();tire.required=15;tire.reward=12;tire.morphItem=LifeMorphItem::Tire;pedestal();return;}
+    CityBuilder b;float height=4;
+    if(stage.item==LifeMorphItem::Vacuum){b.Box(CityMetal,{-.8f,.3f,-2},{.8f,1.7f,0});b.Box(CityMetal,{-.25f,1.4f,0},{.25f,1.9f,1.6f});b.Box(CityMetal,{-.2f,.2f,1.5f},{.2f,1.6f,1.9f});b.Box(CityMetal,{-1.3f,0,1.8f},{1.3f,.35f,2.4f});}
+    else{for(int i=0;i<6;++i){float y=float(i)*.7f,w=1.3f;b.Box(CityMetal,{-w,y,-w},{w,y+.3f,-w+.3f});b.Box(CityMetal,{-w,y,w-.3f},{w,y+.3f,w});b.Box(CityMetal,{-w,y,-w},{-w+.3f,y+.3f,w});b.Box(CityMetal,{w-.3f,y,-w},{w,y+.3f,w});}
+        b.Box(CityMetal,{-.2f,0,-.2f},{.2f,3.8f,.2f});}
+    auto& g=b.geometry[CityMetal];uint32_t mesh=render->CreateDynamicMesh(g.vertices,g.indices);const auto& skin=tools.surface(CityMetal);
+    auto e=r.create();r.emplace<NameComponent>(e,"Chrono City prop stage item");auto& t=r.emplace<TransformComponent>(e);t.translate=Write(at);t.scale={1,1,1};
+    // (単色のローポリ。他の小物と同じ見た目)
+    const auto metal=FlatCityColor(CityMetal);
+    auto& mr=r.emplace<MeshRendererComponent>(e);mr.modelHandle=mesh;mr.textureHandle=white_;mr.extraTextureHandles=skin.extra;mr.shaderName="LowpolySurface";mr.useCubemap=false;mr.color={metal.x,metal.y,metal.z,1};
+    {CityPropVisual visual{mesh,white_,skin.extra,{1,1,1},{0,0,0},{0,height*.5f,0},height,"LowpolySurface"};visual.color={metal.x,metal.y,metal.z,1};cityVisuals_[uint32_t(e)]=visual;}
+    cityProps_.push_back({e,at+V{0,1.2f,0},15,24,stage.item,.5f*height});pedestal();
 }
 }

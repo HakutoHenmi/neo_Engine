@@ -37,6 +37,16 @@ WORDS = {
     "gimmickBurst": ["ドサーッ", "ジャラジャラ"],
     "gimmickFlow": ["ヌルーッ", "とろ〜"],
     "gimmickFly": ["スーッ"],
+    "gimmickZap": ["ビリビリ", "バチッ"],
+    "gimmickClimb": ["よじよじ"],
+    "gimmickGlide": ["ヒュ〜", "ビューン"],
+    "mikoshiCall": ["わっしょい", "わっしょい！", "そいやっ"],
+    "mikoshiBring": ["えっさ", "ほいっ", "とってきた"],
+    "komaSpin": ["ギュイーン"],
+    "komaHit": ["カーン", "キンッ", "カキーン"],
+    "komaFall": ["ころん"],
+    "hoseSpray": ["シャーッ", "ジャーッ", "ぷしゅー"],
+    "hoseWash": ["ザバーッ", "ドドドッ"],
     "paintMatch": ["おそろい"],
 }
 
@@ -112,6 +122,19 @@ STYLES = {
     "gimmickBurst": dict(size=170, bold=0, fill=(250, 150, 44), edge=12, shadow=14, tilt=9, step=.76, rise=.08, grow=.12, wob=1),
     "gimmickFlow": dict(size=130, bold=0, fill=(240, 180, 60), edge=10, shadow=0, tilt=6, step=.82, rise=.04, grow=0, wob=1),
     "gimmickFly": dict(size=130, bold=0, fill=(255, 255, 255), edge=10, shadow=0, tilt=4, step=.84, rise=.02, grow=0, wob=1),
+    "gimmickZap": dict(size=140, bold=0, fill=(255, 226, 60), edge=10, shadow=8, tilt=12, step=.8, rise=.06, grow=.1, wob=2),
+    "gimmickClimb": dict(size=110, bold=0, fill=(255, 255, 255), edge=9, shadow=0, tilt=6, step=.84, rise=.04, grow=0, wob=1),
+    "gimmickGlide": dict(size=140, bold=0, fill=(255, 140, 120), edge=10, shadow=6, tilt=6, step=.84, rise=.02, grow=.06, wob=1),
+    # おみこし: 掛け声は赤く元気に、子分が持ってきた声は白く小さく
+    "mikoshiCall": dict(size=150, bold=0, fill=(236, 66, 44), edge=11, shadow=10, tilt=9, step=.8, rise=.08, grow=.1, wob=1),
+    "mikoshiBring": dict(size=104, bold=0, fill=(255, 255, 255), edge=9, shadow=0, tilt=10, step=.86, rise=.1, grow=0, wob=1),
+    # こま: 回る音は横に流れ、跳ね返る音は金色に弾ける
+    "komaSpin": dict(size=140, bold=0, fill=(120, 210, 255), edge=10, shadow=6, tilt=6, step=.84, rise=.02, grow=.06, wob=2),
+    "komaHit": dict(size=170, bold=0, fill=(255, 216, 70), edge=12, shadow=14, tilt=12, step=.76, rise=.1, grow=.16, wob=1),
+    "komaFall": dict(size=120, bold=0, fill=(255, 255, 255), edge=9, shadow=0, tilt=14, step=.86, rise=.04, grow=0, wob=1),
+    # 消火栓: 水の音は水色、押し流す音は大きく
+    "hoseSpray": dict(size=130, bold=0, fill=(120, 210, 255), edge=10, shadow=6, tilt=8, step=.84, rise=.04, grow=.06, wob=2),
+    "hoseWash": dict(size=165, bold=0, fill=(60, 160, 255), edge=12, shadow=12, tilt=10, step=.78, rise=.08, grow=.14, wob=1),
     "paintMatch": dict(size=110, bold=0, fill=(255, 140, 180), edge=9, shadow=0, tilt=10, step=.84, rise=.1, grow=0, wob=1),
 }
 

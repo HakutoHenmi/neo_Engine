@@ -182,8 +182,7 @@ void ChronoSystem::BuildSlimeLife(entt::registry& r){
     // 取り込める物は街の景観から作る。鉄の門は騎士団が倒れた後に加わる
     // 街の小物を取り込める物として登録する
     // 吸収モードでは、増える量を物の大きさから決める
-    devourGates_.clear();ringOpen_={};ringOpen_[0]=true;devourRingOpened_=0;if(devour_&&CurrentDevourStage().map!="ring")ringOpen_.fill(true);
-    for(const auto& seed:cityProps_){LifeCollectible prop;prop.ring=seed.ring;prop.foot=seed.foot;prop.height=seed.height;prop.sealed=devour_&&seed.ring>0;prop.beacon=seed.beacon;if(seed.gate)devourGates_[life_.props.size()]=seed.gate;prop.at=seed.at;prop.required=seed.required;prop.reward=devour_?DevourReward(seed.radius)*seed.fill:seed.reward;
+    for(const auto& seed:cityProps_){LifeCollectible prop;prop.foot=seed.foot;prop.height=seed.height;prop.feet=seed.feet;prop.beacon=seed.beacon;prop.at=seed.at;prop.required=seed.required;prop.reward=devour_?DevourReward(seed.radius)*seed.fill*CurrentDevourStage().growth:seed.reward;
         prop.visual=uint32_t(seed.entity);prop.morphItem=seed.morphItem;prop.radius=seed.radius;prop.reach=seed.reach;life_.props.push_back(prop);}
     // 部屋のギミック: 動かす物を止め、ばらまく物を隠す
     if(devour_)ResetDevourGimmicks(r);
@@ -522,7 +521,12 @@ void ChronoSystem::SyncSlimeBodies(GameContext& ctx){
     // 触手・変形の目標・色をレンダラーへ渡す
     ctx.renderer->SetFluidTendrils(std::move(arms));
     // 飛び散った体のしずくも描く範囲に入れる
-    {std::vector<Engine::Vector4> splashes;for(const auto& s:devourSplashes_)splashes.push_back({s.at.x,s.at.y,s.at.z,s.radius});ctx.renderer->SetFluidVolumeExtras(std::move(splashes));}
+    {std::vector<Engine::Vector4> splashes;for(const auto& s:devourSplashes_)splashes.push_back({s.at.x,s.at.y,s.at.z,s.radius});
+        // 消火栓の水が飛ぶ範囲と、落ちた所 (地面に残った水が消えるまで)。
+        // 水を画面の上の面で描くときは入れない (体積の升がスライムの体まで粗くなり、重くもなる)
+        // (水の道は細く、落ちた水は読み戻した粒を囲む箱だけを入れる。広く入れると升が粗くなり、水がかたまりに見える)
+        if(!hose_.arc.empty()&&!ctx.renderer->HydrantScreenWater()){constexpr float reach=1.5f;for(const auto* arc:{&hose_.arc,&hose_.arcLeft,&hose_.arcRight})for(const auto& p:*arc)splashes.push_back({p.x,p.y,p.z,reach});
+            for(const auto& p:hose_.water)splashes.push_back({p.x,p.y,p.z,1.f});splashes.push_back({hose_.impact.x,hose_.impact.y,hose_.impact.z,3.f});}ctx.renderer->SetFluidVolumeExtras(std::move(splashes));}
     ctx.renderer->SetFluidMorphTargets(std::move(targets),life_.revision,mask,lifeReseed_,frameDt);lifeReseed_=false;
     ctx.renderer->SetSlimeColor(color);
 }
@@ -556,7 +560,8 @@ void ChronoSystem::UpdateSlimeLife(entt::registry& r,Player& p,GameContext& ctx)
     // カメラの向き
     // 目標の発表とステージの紹介の間は、操作を受け付けない (世界は動かしたまま、体はその場で待つ)
     const bool cutscene=devour_&&DevourTutorialCutscene();
-    if(cutscene){}else if(control){yaw_=control->yaw;pitch_=control->pitch;}else if(ctx.input){float y,x;Controls::Look(dt,y,x);yaw_+=ctx.input->GetMouseDeltaX()*.0025f+y;pitch_=std::clamp(pitch_+ctx.input->GetMouseDeltaY()*.0025f+x,-.7f,.85f);}
+    if(cutscene){}else if(control){yaw_=control->yaw;pitch_=control->pitch;}else if(ctx.input){float y,x;Controls::Look(dt,y,x);yaw_+=ctx.input->GetMouseDeltaX()*.0025f+y;
+        pitch_=std::clamp(pitch_+ctx.input->GetMouseDeltaY()*.0025f+x,-.7f,.85f);}
     if(devour_)TickDevourTutorial(r,dt,!control||control->intro);
     // 右スティックの押し込みで、カメラを体の後ろへ向け直す
     if(!control&&UI::PadPressed(XINPUT_GAMEPAD_RIGHT_THUMB)){V facing=body.forward;facing.y=0;if(Length(facing)>.01f)yaw_=std::atan2(facing.x,facing.z);}
@@ -646,7 +651,7 @@ void ChronoSystem::UpdateSlimeLife(entt::registry& r,Player& p,GameContext& ctx)
     // 吸収モードでは、大きくなるほど速く動く (体の大きさに対して同じくらいの速さに感じるように)
     float speed=life_.recipe.Speed()*LifeTravelScale(body)*(devour_?DevourSpeedScale(body.mass):1.f);
     if(devourSucking_)speed*=DevourVacuumSlow;
-    if(devourHeavy_>0)speed*=DevourHeavySlow;else if(devourChew_>0)speed*=.65f;
+    if(devourHeavy_>0)speed*=1-(1-DevourHeavySlow)*DevourHeavyShare(DevourSizeCm(CurrentDevourStage(),body.mass));else if(devourChew_>0)speed*=.65f;
     // 弾かれた直後は動けない
     if(devourStun_>0){devourStun_=std::max(0.f,devourStun_-dt);wish={};}
     if(body.action==LifeAction::Spring&&body.weapon.charging)speed*=.2f;
@@ -681,14 +686,19 @@ void ChronoSystem::UpdateSlimeLife(entt::registry& r,Player& p,GameContext& ctx)
     // 吸収モードでは、体の大きさに合う段差は乗り越えられる。体の前の端で調べて、家具にめり込まないようにする
     float climb=devour_?LifeScale(body.mass):0;bool stepped=false;
     bool blocked=false;V pushDir{};
-    if(devour_&&!hopping){V move=next-old;move.y=0;if(Length(move)>.001f){float edge=InkGround(next+Unit(move)*(LifeRadii(body,life_.recipe).x*.6f));if(edge>old.y+.1f+climb){next.x=old.x;next.z=old.z;nextFloor=floor;blocked=true;pushDir=Unit(move);}}}
+    if(devour_&&!hopping){V move=next-old;move.y=0;if(Length(move)>.001f){const float reach=LifeRadii(body,life_.recipe).x*.6f;const V probe=next+Unit(move)*reach;float edge=InkGround(probe);
+        // (坂の町の石段は、段ではなくまっすぐな坂として上る。体の前の端までに坂が上がる分は段差に数えない。
+        //  数えると大きな体では石段の坂そのものが段差になり、止まっては段差ジャンプで跳ぶのをくり返してガクガクしていた)
+        if(CurrentDevourStage().map=="slope"&&Chrono::SlopeOnStairs(probe,0))edge-=reach*Chrono::SlopeStairsGrade;
+        if(edge>old.y+.1f+climb){next.x=old.x;next.z=old.z;nextFloor=floor;blocked=true;pushDir=Unit(move);}}}
     // 段差ジャンプ: 跳び越えられる高さの段差へ押し続けると、ぴょんと上へ跳ぶ
     if(blocked&&p.grounded&&!LifeWeaponForm(body.action)){devourStepPush_+=dt;
         float radius=DevourBodyRadius(body.mass),reach=LifeRadii(body,life_.recipe).x*.6f+radius*.5f;V landing=old+pushDir*reach;landing.y=old.y+DevourStepHeight(body.mass);float top=InkGround(landing);
         if(devourStepPush_>=DevourStepHold&&top-floor<=DevourStepHeight(body.mass)&&DevourWalkable(landing,radius*.7f)){devourStepPush_=0;landing.y=top+1.25f;
             devourHop_={true,false,old,landing,0,DevourStepTime,radius*.5f+1,true};body.springStretch=.35f;}}
     else if(!hopping)devourStepPush_=0;
-    if(!hopping&&nextFloor>old.y+.1f+climb){next.x=old.x;next.z=old.z;nextFloor=floor;}
+    const float stairsRise=devour_&&CurrentDevourStage().map=="slope"&&Chrono::SlopeOnStairs(next,0)?LifeDistance(V{old.x,0,old.z},V{next.x,0,next.z})*Chrono::SlopeStairsGrade:0.f;
+    if(!hopping&&nextFloor>old.y+.1f+climb+stairsRise){next.x=old.x;next.z=old.z;nextFloor=floor;}
     else if(!hopping&&p.grounded&&nextFloor>floor+.15f+LifeDistance(old,next)*.65f)stepped=true;
     // 接地を判定し、地面へ合わせる
     bool grounded=p.grounded;p.grounded=!hopping&&SlimeGrounded(old.y,next.y,p.velocity.y,p.grounded,jumped,floor,nextFloor,LifeDistance(old,next));
@@ -916,6 +926,8 @@ void ChronoSystem::DrawSlimeLife(entt::registry& r,GameContext& ctx){
         ctx.renderer->DrawLine3D(EV(tip+V{0,size*3,0}),EV(tip),{1,.72f,.15f,1});}
     // 触手を描く (吸収モードでは、体の中で溶けていく物を描く)
     if(devour_||slimePlayerDemo_)DrawDevourMeals(ctx);
+    // おみこしの子分
+    if(devour_&&DevourShelfDive()<=0){DrawMikoshiHelpers(ctx);DrawHose(ctx);}
     else for(const auto& body:life_.bodies)DrawLifeTentacles(ctx,body);
     // 子分を縁取る。壁の向こうでも深度を見ない薄い縁が残るので、どこにいても分かる
     if(!life_.lab)for(size_t i=1;i<life_.bodies.size();++i){const auto& c=life_.bodies[i];if(c.mass<=0)continue;
@@ -925,7 +937,7 @@ void ChronoSystem::DrawSlimeLife(entt::registry& r,GameContext& ctx){
         tint.w=c.down?.25f:.75f;ctx.renderer->DrawMeshInstanced(sphere_,white_,t,tint,"SlimeChildGlow");
         tint.w=c.down?.12f:.5f;ctx.renderer->DrawMeshInstanced(sphere_,white_,t,tint,"SlimeChildXRay");}
     // モデルの無い取り込める物: 光る球 (報酬の段階の輪付き) か、鎧の破片
-    for(const auto& prop:life_.props)if(prop.active&&!(prop.sealed&&prop.ring==0)&&prop.visual==0xffffffffu){Engine::Transform t;
+    for(const auto& prop:life_.props)if(prop.active&&!prop.sealed&&prop.visual==0xffffffffu){Engine::Transform t;
         if(prop.orb){float radius=prop.shard>0?prop.shard:LifeOrbRadius(prop.reward);auto tint=LifeOrbColor(prop.reward);Engine::Vector4 color{tint.x,tint.y,tint.z,1};
             // 砕けた欠片は元の物から弧を描いて飛んでくる
             V orbAt=prop.at;if(prop.shard>0){float u=std::clamp((life_.age-prop.shardStart)/.45f,0.f,1.f);orbAt=Lerp(prop.shardFrom,prop.at,u)+V{0,prop.shard*4*std::sin(3.1415927f*u),0};}

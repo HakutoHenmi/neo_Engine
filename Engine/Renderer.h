@@ -245,12 +245,12 @@ public:
 	uint32_t GetParticleCount() const { return frameParticleCount_; }
 	Vector3 GetPlayerPos() const { return cbFrame_.playerPos; }
 
-	static constexpr uint32_t kFluidProfileStageCount = 15;
+	static constexpr uint32_t kFluidProfileStageCount = 16;
 	enum FluidProfileStage : uint32_t {
 		FluidSimulation, FluidShapes, FluidSplat, FluidFiltering,
 		FluidRaymarch, FluidImpostors, FluidShadow, SceneRender,
         SceneryShadow, RtAcceleration, RtTrace, RtDenoise,
-        DlssPrepare, DlssUpscale, RtComposite
+        DlssPrepare, DlssUpscale, RtComposite, FluidScreenWater
 	};
 	struct FluidProfileStats {
 		bool available = false;
@@ -436,7 +436,8 @@ public:
 	ID3D12Resource* fluidMorphFrame_=nullptr;uint32_t fluidMorphOffset_=0;
     float fluidSamplingScale_=1; // Largest owner spacing, for bounded rendering work.
 	void InitFluidMorph();
-	void BindFluidMorphResources(ID3D12Resource* aabb,uint32_t offset=0);
+	// extraEntries: 箱と球の後ろに置いた坂の町の地面の高さの表の数 (見る範囲に含めないと、表は全部 0 と読まれる)
+	void BindFluidMorphResources(ID3D12Resource* aabb,uint32_t offset=0,uint32_t extraEntries=0);
 	static constexpr size_t kFluidMorphBodyCount=16;
     static constexpr uint32_t kFluidMorphAllBodies=(1u<<kFluidMorphBodyCount)-1;
     uint32_t fluidMorphRetargetMask_=kFluidMorphAllBodies;
@@ -500,14 +501,32 @@ public:
     void EnableHydrantWaterReadback(bool enabled){hydrantWaterReadbackEnabled_=enabled;if(!enabled){hydrantWaterSnapshot_.particles.clear();for(auto& pending:hydrantWaterPending_)pending=false;++hydrantWaterSnapshot_.serial;}}
     Microsoft::WRL::ComPtr<ID3D12Resource> hydrantWaterReadback_[kFrameCount];
     bool hydrantWaterPending_[kFrameCount]{};
+    // 読み戻した粒の範囲 (坂の町の放水では水専用の流体の範囲を使う)
+    uint32_t hydrantWaterReadCount_[kFrameCount]{};
     void CollectHydrantWater(uint32_t frame);void QueueHydrantWater();
     Vector3 slimeGround_{};bool slimeGrounded_=false;
+    // 消火栓の水が当たる地面の高さの表 (坂の町の放水)。原点 (x, z) から 1 マス cell の n×n (z の行ごと)。
+    // 空なら今まで通り高さ 0.22 の平らな床。箱と球の後ろに積んで流体の計算へ渡す
+    std::vector<float> hydrantTerrain_;float hydrantTerrainX_=0,hydrantTerrainZ_=0,hydrantTerrainCell_=1;uint32_t hydrantTerrainSize_=0;
+    void SetHydrantTerrain(float x,float z,float cell,uint32_t n,std::vector<float> heights){hydrantTerrainX_=x;hydrantTerrainZ_=z;hydrantTerrainCell_=cell;hydrantTerrainSize_=n;hydrantTerrain_=std::move(heights);}
+    void ClearHydrantTerrain(){hydrantTerrain_.clear();hydrantTerrainSize_=0;}
+    bool HydrantTerrainActive()const{return hydrantTerrainSize_>1&&hydrantTerrain_.size()==size_t(hydrantTerrainSize_)*hydrantTerrainSize_;}
     void SetSlimeGround(Vector3 slopeHeight,bool grounded){slimeGround_=slopeHeight;slimeGrounded_=grounded;}
     float slimeFaceCamera_=0;
     void SetSlimeFaceCamera(float blend){slimeFaceCamera_=blend;}
 	static constexpr uint32_t kEffectFluidEnd = 28000;
 	static constexpr uint32_t kTrailFluidStart = 32000, kTrailFluidCapacity = 16000;
-	uint32_t gpuFluidMaxParticles_ = kTrailFluidStart+kTrailFluidCapacity;
+	// 水専用の流体 (たまる水)。プレイヤーのスライムと同じ PBF の計算と体積の描画を、水の性質 (水の相) で使う。
+	// 種類の値 kPoolWaterType で出すと、ほかの水しぶきと分けた専用の粒の範囲に入り、時間で消えない (いっぱいになると古い粒から出口へ戻る)
+	static constexpr uint32_t kPoolFluidStart = kTrailFluidStart+kTrailFluidCapacity, kPoolFluidCapacity = 24576;
+	static constexpr float kPoolWaterType = 1.3f;
+	static bool IsPoolWater(float type){return type>1.25f&&type<1.35f;}
+	uint32_t gpuFluidMaxParticles_ = kPoolFluidStart+kPoolFluidCapacity;
+	uint32_t gpuFluidEmitCursorPool_ = kPoolFluidStart;
+	// 流体を細かく描く範囲 (箱庭など)。設定するとスライムがいなくても体積の升をこの箱に合わせ、遠くの水の升は使わない
+	bool fluidVolumeFocusActive_=false;Vector3 fluidVolumeFocusLow_{},fluidVolumeFocusHigh_{};
+	void SetFluidVolumeFocus(const Vector3& low,const Vector3& high){fluidVolumeFocusActive_=true;fluidVolumeFocusLow_=low;fluidVolumeFocusHigh_=high;}
+	void ClearFluidVolumeFocus(){fluidVolumeFocusActive_=false;}
 	std::vector<GPUFluidParticle> guidedTrailParticles_;
 	uint32_t previousTrailParticleCount_=0;
 	void SetGuidedLiquidTrail(std::vector<GPUFluidParticle> particles){guidedTrailParticles_=std::move(particles);}
@@ -526,7 +545,7 @@ public:
 	void PrepareGPUFluidFrame();
 	bool fluidFrameUpdated_=false;
 	void ResetGPUFluid();
-	void ClearGPUFluid() { gpuFluidActiveParticleCount_ = 0; gpuFluidPhaseMask_ = 0; volumeHistoryValid_ = false; isGPUFluidInitialized_ = false;fluidMorphTargets_.clear();fluidTendrils_.clear();fluidVolumeExtras_.clear();fluidMorphApplied_=~uint64_t(0);fluidMorphRetargetMask_=kFluidMorphAllBodies;gpuFluidSplashSpheres_.clear();EnableHydrantWaterReadback(false); }
+	void ClearGPUFluid() { gpuFluidActiveParticleCount_ = 0; gpuFluidPhaseMask_ = 0; volumeHistoryValid_ = false; isGPUFluidInitialized_ = false;fluidMorphTargets_.clear();fluidTendrils_.clear();fluidVolumeExtras_.clear();fluidVolumeFocusActive_=false;fluidMorphApplied_=~uint64_t(0);fluidMorphRetargetMask_=kFluidMorphAllBodies;gpuFluidSplashSpheres_.clear();EnableHydrantWaterReadback(false); }
 	void EmitGPUFluid(const Vector3& pos, const Vector3& velocityDir, const Vector4& color, int count, float type = 0.0f, bool retainWater = false, float nozzleRadius = 0);
 	uint32_t ExtractGPUFluidFromPlayer(const Vector3& pos, const Vector3& velocityDir, int count);
 	void SyncLostGPUFluidGroup(uint32_t groupId, const Vector3& pos);
@@ -559,6 +578,24 @@ public:
 	Microsoft::WRL::ComPtr<ID3D12Resource> volumeSurfaceDepth_;
 	Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> volumeRtvHeap_;
 	D3D12_GPU_DESCRIPTOR_HANDLE volumeSurfaceDepthSrv_{};
+	// 坂の町の放水の水を画面の上で面にして描く (Resources/shaders/FluidScreenWater.hlsl)。
+	// 0: 粒の近さ (1/奥行きの最大)、1: 厚みと速さ (足し合わせ)、2/3: なめらかにした奥行き (交互に使う)。
+	// 体積の升は放水の届く広さ (数十 m) に合わせると粗くなるので、消火栓の水だけはこちらで描く
+	Microsoft::WRL::ComPtr<ID3D12Resource> screenWaterTargets_[4];
+	Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> screenWaterRtvHeap_;
+	D3D12_GPU_DESCRIPTOR_HANDLE screenWaterSrv_[4]{};
+	Microsoft::WRL::ComPtr<ID3D12RootSignature> rootSigScreenWater_;
+	Microsoft::WRL::ComPtr<ID3D12PipelineState> psoScreenWaterSprite_,psoScreenWaterSmooth_,psoScreenWaterComposite_;
+	bool screenWaterReady_=false;
+	bool InitScreenWater();
+	void DrawScreenWater(D3D12_GPU_VIRTUAL_ADDRESS camera);
+	// 坂の町の放水の水の描き方。既定は箱庭のデモ (水専用の流体) と同じ体積の水 (HydrantVolumeWater)。
+	// true にすると画面の上の面 (FluidScreenWater.hlsl) で描く (軽いが、映り込みと厚みはデモほど出ない)
+	bool hydrantScreenWaterEnabled_=false;
+	bool HydrantScreenWater()const{return screenWaterReady_&&hydrantScreenWaterEnabled_&&HydrantTerrainActive();}
+	bool HydrantVolumeWater()const{return HydrantTerrainActive()&&!HydrantScreenWater();}
+	// 流体の近くの粒を探す表の大きさ (変形中は 8192、それ以外は 65536。FluidSimCS の GetGridHash と同じ。体積の BuildShapes へ渡す)
+	uint32_t fluidHashBuckets_=65536;
 	Vector3 volumePreviousOrigin_{};
 	Vector4 volumeColors_[3] = { {0.02f,0.8f,0.06f,1}, {1,0.9f,0.1f,1}, {0.1f,0.65f,1,1} };
     void SetSlimeColor(Vector4 color){volumeColors_[0]=color;}
