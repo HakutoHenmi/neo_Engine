@@ -10,9 +10,10 @@ namespace Game {
 namespace {
 // 区画の名前 (部屋と輪の町)
 const char* const kRoomAreas[]={"bed","floor","back","high"};
-const char* const kRingAreas[]={"alley","house","shop","office","tower"};
 // 飲み方の名前 (DevourEatBy の順)
-const char* const kEatNames[]={"touch","vacuum","pounce","spring","hammer","tire"};
+// (mikoshi は 2026-11-15 に足した。一覧 (summary.csv) は列をそろえるため、前からの 6 つだけを書く)
+const char* const kEatNames[]={"touch","vacuum","pounce","spring","hammer","tire","mikoshi"};
+constexpr int kCsvEatColumns=6;
 std::string DevourLogNumber(float value){char text[32];snprintf(text,sizeof(text),"%.2f",value);return text;}
 }
 std::filesystem::path ChronoSystem::DevourLogFolder()const{
@@ -52,7 +53,7 @@ void ChronoSystem::DevourLogEat(const LifeCollectible& prop,float gain){
 }
 // 記録を書く。result は playing (途中)・time_up・all_eaten
 void ChronoSystem::SaveDevourLog(const char* result){
-    auto& log=devourLog_;if(!log.active)return;const auto& stage=CurrentDevourStage();const auto& body=life_.bodies[0];bool room=stage.map=="room";int areas=room?4:RingStyleCount;
+    auto& log=devourLog_;if(!log.active)return;const auto& stage=CurrentDevourStage();const auto& body=life_.bodies[0];bool room=stage.map=="room";int areas=room?4:int(SlopeData().areas.size());
     float cm=DevourSizeCm(stage,body.mass),fps=log.frames/std::max(log.frameSum,1e-4f);int rank=DevourRankAt(stage,body.mass);bool done=std::string(result)!="playing";
     using nlohmann::json;
     try{auto folder=DevourLogFolder();std::filesystem::create_directories(folder);
@@ -62,8 +63,8 @@ void ChronoSystem::SaveDevourLog(const char* result){
             {"biggestRadius",log.biggest},{"biggestAt",log.biggestAt},{"itemTaken",log.itemTaken},{"morphs",log.morphs},{"morphTime",log.morphTime},{"avgFps",fps},{"worstFrameMs",log.worstFrame*1000},
             {"goals",stage.goals},{"goalTimes",log.goalTimes},{"gates",stage.gates},{"gateSizeTimes",log.gateSizeTimes},{"gateOpenTimes",log.gateOpenTimes}};
         data["tuning"]={{"growth",DevourGrowth},{"coverRatio",DevourCoverRatio},{"leapRange",DevourLeapRange(LifeStartMass)},{"coverRadius",DevourCoverRadius(LifeStartMass)},{"pounceCooldown",DevourPounceCooldown},{"itemTime",stage.itemTime},{"half",stage.half},{"vacuumRange",DevourVacuumRange(LifeStartMass)}};
-        for(int i=0;i<6;++i)data["eatBy"][kEatNames[i]]={{"count",log.eatBy[size_t(i)]},{"mass",log.gainBy[size_t(i)]}};
-        for(int i=0;i<areas;++i)data["areas"][room?kRoomAreas[i]:kRingAreas[i]]={{"firstEnter",log.areaFirst[size_t(i)]},{"eaten",log.areaEaten[size_t(i)]},{"total",log.areaTotal[size_t(i)]},{"massEaten",log.areaGain[size_t(i)]},{"massTotal",log.areaMassTotal[size_t(i)]}};
+        for(int i=0;i<int(std::size(kEatNames));++i)data["eatBy"][kEatNames[i]]={{"count",log.eatBy[size_t(i)]},{"mass",log.gainBy[size_t(i)]}};
+        for(int i=0;i<areas;++i)data["areas"][room?std::string(kRoomAreas[i]):SlopeData().areas[size_t(i)].id]={{"firstEnter",log.areaFirst[size_t(i)]},{"eaten",log.areaEaten[size_t(i)]},{"total",log.areaTotal[size_t(i)]},{"massEaten",log.areaGain[size_t(i)]},{"massTotal",log.areaMassTotal[size_t(i)]}};
         data["events"]=json::array();for(const auto& event:log.events)data["events"].push_back({{"t",event.t},{"name",event.name},{"cm",event.cm}});
         data["samples"]=json::array();for(const auto& s:log.samples)data["samples"].push_back({{"t",s.t},{"cm",s.cm},{"mass",s.mass},{"eaten",s.eaten},{"area",s.area},{"x",s.x},{"z",s.z},{"speed",s.speed},{"combo",s.combo},{"fps",s.fps}});
         log.path=folder/(log.stamp+"_"+stage.id+".json");{std::ofstream file(log.path);file<<data.dump(1);}
@@ -71,13 +72,13 @@ void ChronoSystem::SaveDevourLog(const char* result){
         // 一覧に 1 行足す (表計算で開ける)
         auto summary=folder/L"summary.csv";bool fresh=!std::filesystem::exists(summary);std::ofstream file(summary,std::ios::app);
         if(fresh){file<<"stamp,stage,result,rank,final_cm,time_limit,played_s,left_s,eaten,total,goal1_s,goal2_s,goal3_s,goal4_s,gate1_size_s,gate1_open_s,gate2_size_s,gate2_open_s,item_taken_s,morph_s,pounces,bounces,max_combo,longest_idle_s,moved";
-            for(const char* name:kEatNames)file<<",mass_"<<name;file<<",avg_fps,worst_frame_ms\n";}
+            for(int i=0;i<kCsvEatColumns;++i)file<<",mass_"<<kEatNames[i];file<<",avg_fps,worst_frame_ms\n";}
         auto at=[](const std::vector<float>& values,size_t i){return i<values.size()?DevourLogNumber(values[i]):std::string("-1");};
         file<<log.stamp<<','<<stage.id<<','<<result<<','<<DevourRankName(stage,rank)<<','<<DevourLogNumber(cm)<<','<<DevourLogNumber(stage.time)<<','<<DevourLogNumber(log.elapsed)<<','<<DevourLogNumber(devourClock_.left)<<','<<log.eaten<<','<<log.total;
         for(size_t i=0;i<4;++i)file<<','<<at(log.goalTimes,i);
         for(size_t i=0;i<2;++i)file<<','<<at(log.gateSizeTimes,i)<<','<<at(log.gateOpenTimes,i);
         file<<','<<DevourLogNumber(log.itemTaken)<<','<<DevourLogNumber(log.morphTime)<<','<<log.pounces<<','<<log.bounces<<','<<log.maxCombo<<','<<DevourLogNumber(log.longestIdle)<<','<<DevourLogNumber(log.moved);
-        for(int i=0;i<6;++i)file<<','<<DevourLogNumber(log.gainBy[size_t(i)]);
+        for(int i=0;i<kCsvEatColumns;++i)file<<','<<DevourLogNumber(log.gainBy[size_t(i)]);
         file<<','<<DevourLogNumber(fps)<<','<<DevourLogNumber(log.worstFrame*1000)<<'\n';
         log.active=false;
     }catch(...){log.active=false;}

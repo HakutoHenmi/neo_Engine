@@ -1,9 +1,11 @@
 # render_collection.py
 # 図鑑 (Resources/Data/collection.json) の物の画像を、ゲームのローポリのモデルから撮影する。
 # 使い方: C:/blender/blender.exe --background --factory-startup --python scripts/lowpoly/render_collection.py
+# (--only-new を付けると、まだ画像の無い物だけ撮る: ... --python render_collection.py -- --only-new)
 # 書き出した後、python scripts/lowpoly/finish_collection.py で切り抜いて Resources/Textures/UI/Collection へ置く
 import json
 import math
+import sys
 from pathlib import Path
 
 import bpy
@@ -14,10 +16,14 @@ RAW = ROOT / "../Generated/CollectionRaw"
 PALETTE = ROOT / "Resources/Textures/Lowpoly/palette.png"
 MODELS = ROOT / "Resources/Models/Lowpoly"
 RAW.mkdir(parents=True, exist_ok=True)
+OUT = ROOT / "Resources/Textures/UI/Collection"
+ONLY_NEW = "--only-new" in sys.argv
 entries = json.loads((ROOT / "Resources/Data/collection.json").read_text(encoding="utf-8"))["entries"]
 names = []
 for entry in entries:
     name = entry.get("image", entry["id"])
+    if ONLY_NEW and (OUT / f"{name}.png").exists():
+        continue
     if name not in names and (MODELS / f"{name}.obj").exists():
         names.append(name)
 for name in names:

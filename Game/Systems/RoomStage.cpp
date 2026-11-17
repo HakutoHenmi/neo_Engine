@@ -5,6 +5,7 @@
 // モデルは scripts/lowpoly/build_lowpoly.py で作り、高い場所の高さは Game/Chrono/RoomRules.h に置く
 #include "CityBuilder.h"
 #include "../Chrono/RoomRules.h"
+#include "../Chrono/SlopeTownRules.h"
 #include <stdexcept>
 #include <tuple>
 
@@ -32,9 +33,9 @@ const std::vector<CityRect>& RoomLots(){
 // 色
 constexpr Engine::Vector4 kPlain{1,1,1,1},kRed{.92f,.28f,.24f,1},kYellow{.98f,.8f,.25f,1},kGreen{.32f,.72f,.4f,1},kBlue{.3f,.55f,.92f,1},kPink{.96f,.5f,.66f,1},kSky{.45f,.75f,.95f,1};
 }
-// 記録に使う区画の番号: 部屋は 0 ベッドの下・1 床・2 和室・3 高い場所、輪の町は輪の番号
+// 記録に使う区画の番号: 部屋は 0 ベッドの下・1 床・2 和室・3 高い場所、坂の町は高さで分けた区画の番号
 int ChronoSystem::DevourAreaAt(V p)const{
-    if(CurrentDevourStage().map!="room")return Chrono::RingZoneAt(p);
+    if(CurrentDevourStage().map=="slope")return Chrono::SlopeAreaAt(p);
     if(Chrono::RoomGround(p)>1)return 3;
     return p.x<kBedX&&p.z<kBedZ?0:p.z>kWallZ+kWallDepth*.5f?2:1;
 }
@@ -59,6 +60,29 @@ const ChronoSystem::LowModel& ChronoSystem::LowModelOf(const std::string& id){
         for(size_t i=0;i<n;++i){const auto& p=data.vertices[i].position;const V at{p.x,p.y,p.z};auto [box,added]=boxes.emplace(find(uint32_t(i)),std::array<V,2>{at,at});
             if(!added){auto& b=box->second;b[0]={std::min(b[0].x,at.x),std::min(b[0].y,at.y),std::min(b[0].z,at.z)};b[1]={std::max(b[1].x,at.x),std::max(b[1].y,at.y),std::max(b[1].z,at.z)};}}
         for(const auto& [root,box]:boxes)m.pieces.push_back(box);}
+    // 地面に触れる部分: 一番下から少し (高さの 12%、10〜60cm) までの頂点を、その高さの中の辺でつながった塊に分ける。
+    // 鳥居の 2 本の柱は上の笠木でつながっていても、下の方では別の塊になる。木は幹だけ、電柱は柱だけが残る
+    {const size_t n=data.vertices.size();const float top=m.lo.y+std::clamp((m.hi.y-m.lo.y)*.12f,10.f,60.f);
+        std::vector<uint32_t> parent(n);for(size_t i=0;i<n;++i)parent[i]=uint32_t(i);
+        auto low=[&](uint32_t a){return data.vertices[a].position.y<=top;};
+        auto find=[&](uint32_t a){while(parent[a]!=a)a=parent[a]=parent[parent[a]];return a;};
+        auto unite=[&](uint32_t a,uint32_t b){if(low(a)&&low(b))parent[find(a)]=find(b);};
+        std::map<std::tuple<int,int,int>,uint32_t> same;
+        for(size_t i=0;i<n;++i){const auto& p=data.vertices[i].position;auto key=std::make_tuple(int(std::lround(p.x*100)),int(std::lround(p.y*100)),int(std::lround(p.z*100)));
+            auto [match,added]=same.emplace(key,uint32_t(i));if(!added)unite(uint32_t(i),match->second);}
+        auto face=[&](uint32_t a,uint32_t b,uint32_t c){unite(a,b);unite(b,c);unite(a,c);};
+        if(data.indices.empty()){for(size_t i=0;i+2<n;i+=3)face(uint32_t(i),uint32_t(i+1),uint32_t(i+2));}
+        else for(size_t k=0;k+2<data.indices.size();k+=3)face(data.indices[k],data.indices[k+1],data.indices[k+2]);
+        std::map<uint32_t,std::array<V,2>> boxes;
+        for(size_t i=0;i<n;++i){if(!low(uint32_t(i)))continue;const auto& p=data.vertices[i].position;const V at{p.x,p.y,p.z};auto [box,added]=boxes.emplace(find(uint32_t(i)),std::array<V,2>{at,at});
+            if(!added){auto& b=box->second;b[0]={std::min(b[0].x,at.x),std::min(b[0].y,at.y),std::min(b[0].z,at.z)};b[1]={std::max(b[1].x,at.x),std::max(b[1].y,at.y),std::max(b[1].z,at.z)};}}
+        for(const auto& [root,box]:boxes)m.feet.push_back(box);
+        // 上から見て重なる塊 (柱の外側と内側の面など) は 1 つにまとめる
+        for(bool merged=true;merged;){merged=false;
+            for(size_t i=0;i<m.feet.size()&&!merged;++i)for(size_t j=i+1;j<m.feet.size();++j){auto& a=m.feet[i];const auto& b=m.feet[j];
+                if(a[0].x>b[1].x+2||b[0].x>a[1].x+2||a[0].z>b[1].z+2||b[0].z>a[1].z+2)continue;
+                a[0]={std::min(a[0].x,b[0].x),std::min(a[0].y,b[0].y),std::min(a[0].z,b[0].z)};a[1]={std::max(a[1].x,b[1].x),std::max(a[1].y,b[1].y),std::max(a[1].z,b[1].z)};
+                m.feet.erase(m.feet.begin()+ptrdiff_t(j));merged=true;break;}}}
     return lowModels_.emplace(id,m).first->second;
 }
 // 置いた物の細い部分 (上から見た広さがモデル全体の 4 分の 1 より狭い部分: 脚・頭の板・背の板など) を、カメラを遮る判定に加える。
@@ -76,8 +100,8 @@ float ChronoSystem::LowScaleFor(const std::string& id,float width){const auto& m
 // モデルを置く準備: 色の画像と平らな材質 (ステージを作るたびに読み直す)
 void ChronoSystem::BeginLowProps(float occludeHeight){
     auto* render=Engine::Renderer::GetInstance();lowModels_.clear();lowOcclude_=occludeHeight;
-    devourMovers_.clear();gimmicks_.clear();gimmickSigns_.clear();devourSpills_.clear();
-    lowPalette_=render->LoadTexture2D("Resources/Textures/Lowpoly/palette.png");
+    devourMovers_.clear();gimmicks_.clear();gimmickSigns_.clear();devourSpills_.clear();wireNodes_.clear();wireEdges_.clear();townSolids_.clear();
+    lowPalette_=render->LoadTexture2D("Resources/Textures/Lowpoly/palette.png");lowFeet_=false;
     render->LoadTexture2D("Resources/Textures/UI/Comic/atlas.png");
     lowMaps_={render->LoadTexture2D("Resources/Textures/PBR/NeutralNormal.png",false),white_,white_};
 }
@@ -99,6 +123,11 @@ entt::entity ChronoSystem::LowProp(entt::registry& r,const std::string& id,V at,
     cityProps_.push_back({e,at+offset+V{0,std::min(1.2f,height*.5f),0},1,0,LifeMorphItem::None,.5f*std::max(width,height),fill});
     // 飲めないときに体を止める足元 (細長い物も丸で扱う)
     cityProps_.back().foot=.5f*std::sqrt(size.x*size.z);cityProps_.back().height=height;
+    // 坂の町: 地面に触れる部分ごとの丸で止める。木の枝・電柱の腕木・鳥居の笠木の下は通れ、塀のような細長い物は長さに沿って止める
+    if(lowFeet_)for(const auto& foot:m.feet){const float sx=(foot[1].x-foot[0].x)*scale,sz=(foot[1].z-foot[0].z)*scale,along=std::max(sx,sz),across=std::min(sx,sz);
+        const int count=std::clamp(int(std::lround(along/std::max(across,.5f))),1,6);const float radius=std::max(.5f*std::max(along/count,across),.3f);
+        for(int k=0;k<count;++k){const float along01=(k+.5f)/count-.5f;V c=(foot[0]+foot[1])*.5f;if(sx>=sz)c.x+=along01*(foot[1].x-foot[0].x);else c.z+=along01*(foot[1].z-foot[0].z);
+            const V d{(c.x*cs+c.z*sn)*scale,0,(-c.x*sn+c.z*cs)*scale};cityProps_.back().feet.push_back({d.x-offset.x,radius,d.z-offset.z});}}
     return e;
 }
 // 部屋のギミック: どれも同じ看板と床の輪を目印にし、輪の中で変形キーを押すと動く
@@ -106,11 +135,11 @@ void ChronoSystem::BuildRoomGimmicks(entt::registry& r){
     using namespace Chrono;using Chrono::GimmickKind;auto* render=Engine::Renderer::GetInstance();int seed=907;
     auto real=[&](const std::string& id,V at,float yaw,float fill,float mult=1,Engine::Vector4 tint=kPlain,float tilt=0){return LowProp(r,id,at,kUnit*mult,yaw,fill,tint,tilt);};
     auto sized=[&](const char* id,V at,float cm,float yaw,float fill,Engine::Vector4 tint=kPlain){return LowProp(r,id,at,LowScaleFor(id,cm*kUnit),yaw,fill,tint,0);};
-    auto spin=[&]{return RingNoise(++seed)*6.283f;};
+    auto spin=[&]{return StageNoise(++seed)*6.283f;};
     // 成功したときにばらまく物 (最初は隠す)
     struct Reward {const char* id;float low,high;Engine::Vector4 tint;};
     auto rewards=[&](DevourGimmick& g,V at,std::initializer_list<Reward> kinds,int count){std::vector<Reward> list(kinds);
-        for(int i=0;i<count;++i){const auto& k=list[size_t(i)%list.size()];g.rewards.push_back(uint32_t(sized(k.id,at,k.low+(k.high-k.low)*RingNoise(++seed),spin(),1,k.tint)));}};
+        for(int i=0;i<count;++i){const auto& k=list[size_t(i)%list.size()];g.rewards.push_back(uint32_t(sized(k.id,at,k.low+(k.high-k.low)*StageNoise(++seed),spin(),1,k.tint)));}};
     // 液体の跡 (床・家具の壁・上の面を通る平らな帯)
     auto streak=[&](const char* name,const std::vector<std::array<V,2>>& list,Engine::Vector4 color){CityBuilder b;
         for(const auto& box:list)b.Box(CityMetal,V{std::min(box[0].x,box[1].x),std::min(box[0].y,box[1].y),std::min(box[0].z,box[1].z)},V{std::max(box[0].x,box[1].x),std::max(box[0].y,box[1].y),std::max(box[0].z,box[1].z)});auto& geometry=b.geometry[CityMetal];
@@ -124,7 +153,7 @@ void ChronoSystem::BuildRoomGimmicks(entt::registry& r){
         const float spots[][2]={{-18,-8},{-4,-13},{12,-10},{22,3}};const Engine::Vector4 colors[]={kRed,kYellow,kGreen,kBlue};
         for(int i=0;i<4;++i){paint.spots.push_back(palette+V{spots[i][0]*kUnit,0,spots[i][1]*kUnit});paint.colors.push_back(colors[i]);}
         // 絵の具のチューブがパレットのまわりに転がっている
-        for(int i=0;i<10;++i){float a=spin(),d=52+18*RingNoise(++seed);V at=palette+V{std::cos(a)*d,0,std::sin(a)*d*.7f};if(std::abs(at.z)>290||RoomTop(at)>.1f)continue;real("paint_tube",at,spin(),.8f,1.2f,colors[i%4]);}}
+        for(int i=0;i<10;++i){float a=spin(),d=52+18*StageNoise(++seed);V at=palette+V{std::cos(a)*d,0,std::sin(a)*d*.7f};if(std::abs(at.z)>290||RoomTop(at)>.1f)continue;real("paint_tube",at,spin(),.8f,1.2f,colors[i%4]);}}
 
     // ---- ドミノ: じゅうたんと机の間をくねって並ぶ。最後のバケツが倒れて、中のおもちゃがあふれる ----
     {std::vector<V> path;for(int i=0;i<=24;++i){float u=float(i)/24;path.push_back({40+135*u,0,-210+18*std::sin(u*6.283f)});}
@@ -171,10 +200,10 @@ void ChronoSystem::BuildRoomGimmicks(entt::registry& r){
             streak("Chrono Room spill",{{V{std::min(w0.x,w1.x)-std::abs(out.x)*.5f,0,std::min(w0.z,w1.z)-std::abs(out.z)*.5f},V{std::max(w0.x,w1.x)+std::abs(out.x)*.5f,s.top.y+.4f,std::max(w0.z,w1.z)+std::abs(out.z)*.5f}},
                 {Lerp(s.bottom,s.wall,.3f)-side*4+V{0,.02f,0},s.wall+side*4+V{0,.3f,0}}},s.color);
             // 上の面の小物 (登ったご褒美)
-            for(int i=0;i<10;++i){V at=s.top+V{(RingNoise(++seed)-.5f)*24,0,(RingNoise(++seed)-.5f)*24};at.y=RoomTop(at);if(at.y<s.top.y-1)continue;
+            for(int i=0;i<10;++i){V at=s.top+V{(StageNoise(++seed)-.5f)*24,0,(StageNoise(++seed)-.5f)*24};at.y=RoomTop(at);if(at.y<s.top.y-1)continue;
                 const char* ids[]={"marble","coin","candy","marble"};sized(ids[i%4],at,i%4==1?2.6f:2.2f,spin(),1,i%4==0?marbles[i/4%4]:kPlain);}}
         // 本棚の上: 読み終えた漫画と、置き場に困ったおもちゃ。おもちゃ箱の上: 入りきらなかったおもちゃ
-        for(int i=0;i<4;++i)real("manga",{282+(RingNoise(++seed)-.5f)*10,RoomShelfTop+float(i)*2*kUnit,-92},.1f*float(i),.6f);
+        for(int i=0;i<4;++i)real("manga",{282+(StageNoise(++seed)-.5f)*10,RoomShelfTop+float(i)*2*kUnit,-92},.1f*float(i),.6f);
         real("nuigurumi",{280,RoomShelfTop,-70},-1.5708f,.8f,.7f);real("toy_ball",{282,RoomShelfTop,-22},0,.7f,.7f);
         real("minicar",{-250,RoomToyboxTop,-34},.6f,.7f,1,kBlue);real("toy_ball",{-212,RoomToyboxTop,-30},0,.7f,.6f);}
 
@@ -192,7 +221,7 @@ void ChronoSystem::BuildRoomGimmicks(entt::registry& r){
         const int g=AddGimmick(r,GimmickKind::Plane,"紙飛行機で飛ぶ",launch,14,10,.3f,{184,RoomDeskTop,-284});auto& plane=gimmicks_[size_t(g)];
         plane.path={launch,{234,98,-216},{238,104,-186},{242,94,-110},{248,76,-30},{250,62,46},{251,40,100},{252,14,140},{254,0,156}};plane.spots={{250,62,46}};
         for(int i=0;i<3;++i)real("kami_hikoki",{200+float(i)*14,RoomDeskTop,-282+float(i%2)*8},spin(),.6f,1.1f);
-        for(int i=0;i<4;++i)real("kami_hikoki",{236+(RingNoise(++seed)-.5f)*50,0,120+RingNoise(++seed)*40},spin(),.6f,1.1f);}
+        for(int i=0;i<4;++i)real("kami_hikoki",{236+(StageNoise(++seed)-.5f)*50,0,120+StageNoise(++seed)*40},spin(),.6f,1.1f);}
 }
 // 散らかした物を置かない場所: ギミックの輪と、ドミノ・レーン・液体の道の上、だるま落としの台のまわり
 bool ChronoSystem::GimmickClear(V at,float margin)const{
@@ -210,12 +239,12 @@ void ChronoSystem::BuildRoomGround(CityBuilder& city){
     city.Polygon(CityWood,{{-h,-1,-h},{h,-1,-h},{h,-1,h},{-h,-1,h}},{0,1,0});
 }
 // 部屋の家具・小物・変形アイテム
-void ChronoSystem::BuildRoomStage(entt::registry& r,const RingCityTools& tools){
+void ChronoSystem::BuildRoomStage(entt::registry& r,const StageTools& tools){
     using namespace Chrono;auto* render=Engine::Renderer::GetInstance();const auto& stage=DevourStages()[size_t(devourStage_)];
     BeginLowProps(6);
     // 家具は飲み込めない壁 (敷地だけを作り、吸収の対象の番号は持たない)
-    ringLots_.clear();gimmickSigns_.clear();for(const auto& foot:RoomLots()){RingLot lot;lot.foot=foot;ringLots_.push_back(lot);}
-    ringLotProps_.assign(ringLots_.size(),-1);devourBuildingParts_.clear();
+    stageLots_.clear();gimmickSigns_.clear();for(const auto& foot:RoomLots())stageLots_.push_back({foot});
+    devourBuildingParts_.clear();
     // 平らな色の箱の集まり (床の板や壁)
     auto boxes=[&](const char* name,const std::vector<std::array<V,2>>& list,Engine::Vector4 color){CityBuilder b;for(const auto& box:list)b.Box(CityMetal,box[0],box[1]);auto& g=b.geometry[CityMetal];
         auto e=r.create();r.emplace<NameComponent>(e,name);r.emplace<TransformComponent>(e).scale={1,1,1};
@@ -265,20 +294,20 @@ void ChronoSystem::BuildRoomStage(entt::registry& r,const RingCityTools& tools){
             float u=0;for(int group=0;u<run-1;++group){
                 if(group%3==2&&u+length<=run){
                     // 横に積んだ本: 長い辺を列に沿わせて 6〜8 冊
-                    const int count=6+int(RingNoise(++bookSeed)*3);
-                    for(int i=0;i<count;++i)book(place(u+length*.5f,float(i)*thick),yaw+(RingNoise(++bookSeed)-.5f)*.12f,1,group+i,false,place(u+length*.5f,(float(i)+.5f)*thick),box(length,thick,width));
+                    const int count=6+int(StageNoise(++bookSeed)*3);
+                    for(int i=0;i<count;++i)book(place(u+length*.5f,float(i)*thick),yaw+(StageNoise(++bookSeed)-.5f)*.12f,1,group+i,false,place(u+length*.5f,(float(i)+.5f)*thick),box(length,thick,width));
                     u+=length+.6f;}
                 else{
                     // 立てた本: 背を外へ向けて 5〜9 冊。高さを少しずつ変える
-                    const int count=5+int(RingNoise(++bookSeed)*5);
-                    for(int i=0;i<count;++i){const float mult=.9f+.25f*RingNoise(++bookSeed),step=thick*mult;if(u+step>run)break;
+                    const int count=5+int(StageNoise(++bookSeed)*5);
+                    for(int i=0;i<count;++i){const float mult=.9f+.25f*StageNoise(++bookSeed),step=thick*mult;if(u+step>run)break;
                         book(place(u,length*.5f*mult),yaw,mult,group*3+i,true,place(u+step*.5f,length*.5f*mult),box(step,length*mult,width*mult));u+=step;}
                     u+=.4f;}}}}
     // 本棚とおもちゃ箱は上に乗れる (こぼれた液体をつたって登る)
-    ringLots_[0].top=Chrono::RoomToyboxTop;ringLots_[2].top=Chrono::RoomShelfTop;
+    stageLots_[0].top=Chrono::RoomToyboxTop;stageLots_[2].top=Chrono::RoomShelfTop;
     // ベッドの下の本の壁は、ベッドの枠の下までの高さ。その上 (本の階段のいちばん上の段からベッドへ乗り移る所) では止めない。
     // 高さを決めないと上限が無い壁になり、階段の上からベッドへ進めなかった
-    ringLots_[6].top=ringLots_[7].top=kBedFrameBottom;
+    stageLots_[6].top=stageLots_[7].top=kBedFrameBottom;
     BuildRoomGimmicks(r);BuildRoomSets(r);
     // 天井・窓・照明: 部屋の中から照らす
     {const Engine::Vector4 lampWhite{2.6f,2.5f,2.2f,1},lampWarm{2.8f,2.2f,1.4f,1};
@@ -303,7 +332,7 @@ void ChronoSystem::BuildRoomSets(entt::registry& r){
     using namespace Chrono;int seed=211;constexpr float mikan=.7f;
     const auto& stage=Chrono::DevourStages()[size_t(devourStage_)];
     auto real=[&](const std::string& id,V at,float yaw,float fill,float mult=1,Engine::Vector4 tint=kPlain,float tilt=0){return LowProp(r,id,at,kUnit*mult,yaw,fill,tint,tilt);};
-    auto spin=[&]{return RingNoise(++seed)*6.283f;};
+    auto spin=[&]{return StageNoise(++seed)*6.283f;};
     // その場所の一番上の面に置く
     auto ground=[&](float x,float z){return V{x,RoomTop({x,0,z}),z};};
     // 幅 (cm) を決めて置く
@@ -330,17 +359,17 @@ void ChronoSystem::BuildRoomSets(entt::registry& r){
         for(const auto& p:mine)piece(p,0);
         for(const auto& p:theirs)piece(p,3.14159f);
         const char* spilled[]={"fu","fu","fu","gin","kei","fu","kaku","fu","kin","fu","kyo","fu","fu","gin"};
-        for(int i=0,placed=0;placed<14&&i<300;++i){float a=spin(),dist=30+34*RingNoise(++seed)*RingNoise(++seed);V at=s+V{std::cos(a)*dist,0,std::sin(a)*dist};
+        for(int i=0,placed=0;placed<14&&i<300;++i){float a=spin(),dist=30+34*StageNoise(++seed)*StageNoise(++seed);V at=s+V{std::cos(a)*dist,0,std::sin(a)*dist};
             if(at.z<kWallZ+kWallDepth+6||at.z>294||at.x>294||RoomTop(at)>.1f)continue;real(std::string("koma_")+spilled[placed],at,spin(),1);++placed;}
         real("yunomi",{132,0,226},0,.9f,.9f);real("mikan",{120,0,240},1,1,mikan);}
     // トランプ: 床に配った手札と、飛び散ったカード
     {const V c{120,0,272};const char* cards[]={"trump_red","trump_black","trump_back"};
         for(int i=0;i<5;++i)real("trump_back",c+V{float(i)*1.6f-8,float(i)*.2f,0},(float(i)-2)*.25f,.7f);
-        for(int i=0;i<24;++i){float a=spin(),dist=10+36*RingNoise(++seed);V at=c+V{std::cos(a)*dist,0,std::sin(a)*dist*.5f};real(cards[i%3],at,spin(),.7f);}}
+        for(int i=0;i<24;++i){float a=spin(),dist=10+36*StageNoise(++seed);V at=c+V{std::cos(a)*dist,0,std::sin(a)*dist*.5f};real(cards[i%3],at,spin(),.7f);}}
     // 床の間: 招き猫・だるま・ティッシュ
     // 床の間: 招き猫が寄り集まって踊り、だるまは転がって揺れている
-    {const float maneki[][3]={{288,272,1.1f},{268,262,.9f},{282,248,1},{252,280,1.2f},{262,242,.85f}};for(const auto& m:maneki)AddDance(r,real("maneki",{m[0],0,m[1]},3.14f+(RingNoise(++seed)-.5f)*1.2f,.8f,m[2]),5+RingNoise(++seed)*2,.22f,2.5f);
-        const float daruma[][3]={{200,282,1.3f},{178,270,.9f},{214,262,1},{160,284,.7f},{226,288,1.1f}};for(const auto& d:daruma)AddDance(r,real("daruma",{d[0],0,d[1]},3.14f+(RingNoise(++seed)-.5f)*1.6f,.8f,d[2]),3,.2f,0);}
+    {const float maneki[][3]={{288,272,1.1f},{268,262,.9f},{282,248,1},{252,280,1.2f},{262,242,.85f}};for(const auto& m:maneki)AddDance(r,real("maneki",{m[0],0,m[1]},3.14f+(StageNoise(++seed)-.5f)*1.2f,.8f,m[2]),5+StageNoise(++seed)*2,.22f,2.5f);
+        const float daruma[][3]={{200,282,1.3f},{178,270,.9f},{214,262,1},{160,284,.7f},{226,288,1.1f}};for(const auto& d:daruma)AddDance(r,real("daruma",{d[0],0,d[1]},3.14f+(StageNoise(++seed)-.5f)*1.6f,.8f,d[2]),3,.2f,0);}
     real("tissue",{86,0,240},.3f,.7f);
     // 子ども部屋: 積み木の山
     {const V c{70,0,-110};const Engine::Vector4 colors[]={kRed,kYellow,kBlue,kGreen};constexpr float m=1.4f,side=4*kUnit*m;int k=0;
@@ -352,10 +381,10 @@ void ChronoSystem::BuildRoomSets(entt::registry& r){
     // ミニカーの周回: じゅうたんの縁の道を走る。止まったミニカーは駐車場に並ぶ
     {const Engine::Vector4 colors[]={kPlain,kYellow,kBlue,kGreen};const std::vector<V> track{{-26,0,-146},{146,0,-146},{146,0,-64},{-26,0,-64}};
         for(int i=0;i<7;++i)AddRoute(real("minicar",track[0],0,.7f,1,colors[i%4]),track,34,float(i)/7);
-        for(int i=0;i<6;++i){const float a=RingNoise(++seed)*6.283f,d=60*RingNoise(++seed);real("minicar",{60+std::cos(a)*d*1.4f,0,-104+std::sin(a)*d*.7f},spin(),.7f,1,colors[(i+1)%4]);}}
+        for(int i=0;i<6;++i){const float a=StageNoise(++seed)*6.283f,d=60*StageNoise(++seed);real("minicar",{60+std::cos(a)*d*1.4f,0,-104+std::sin(a)*d*.7f},spin(),.7f,1,colors[(i+1)%4]);}}
     // おもちゃ箱: ひっくり返したように、ボールとミニカーと積み木が広がる
     {const V c{-232,0,-20};const char* toys[]={"toy_ball","minicar","tsumiki","nuigurumi","tsumiki","minicar"};const float mult[]={.6f,1,1,.6f,1,1};const Engine::Vector4 colors[]={kPlain,kBlue,kYellow,kPlain,kRed,kPlain};
-        for(int i=0;i<30;++i){float a=-.6f+2.4f*RingNoise(++seed),dist=46+44*RingNoise(++seed);V at=c+V{std::cos(a)*dist,0,std::sin(a)*dist};if(at.z>kWallZ-6||at.x<-294||GimmickClear(at,4))continue;real(toys[i%6],at,spin(),.7f,mult[i%6],colors[i%6]);}}
+        for(int i=0;i<30;++i){float a=-.6f+2.4f*StageNoise(++seed),dist=46+44*StageNoise(++seed);V at=c+V{std::cos(a)*dist,0,std::sin(a)*dist};if(at.z>kWallZ-6||at.x<-294||GimmickClear(at,4))continue;real(toys[i%6],at,spin(),.7f,mult[i%6],colors[i%6]);}}
     // 漫画の山と、読みかけで広げた物
     {const V c{-20,0,-215};for(int i=0;i<6;++i)real("manga",c+V{float(i%2)*.6f,float(i)*2*kUnit,0},float(i)*.11f-.3f,.6f);real("manga",c+V{30,0,14},1.2f,.6f);real("manga",c+V{-28,0,20},2.4f,.6f);}
     // 本棚の前に落ちた漫画
@@ -369,19 +398,19 @@ void ChronoSystem::BuildRoomSets(entt::registry& r){
     // ---- 散らかし方: 遊んだ跡やこぼれた跡が分かるように、まとまりの中で向きも間隔も崩す ----
     const auto blocked=[](size_t){return true;};
     // その場所に置けるか (家具や収納ケースの中・部屋の外には置かない)
-    auto free=[&](V at,float margin){return std::abs(at.x)<294-margin&&std::abs(at.z)<294-margin&&RingWalkable(at,margin,ringLots_,blocked)&&!GimmickClear(at,margin);};
+    auto free=[&](V at,float margin){return std::abs(at.x)<294-margin&&std::abs(at.z)<294-margin&&StageWalkable(at,margin,stageLots_,blocked)&&!GimmickClear(at,margin);};
     // 範囲 (x0, z0, x1, z1) に一面に散らす。床の高さ (ベッドの上なら y) に置く
     auto dust=[&](const char* id,float x0,float z0,float x1,float z1,int count,float low,float high,float fill,Engine::Vector4 tint,float y=-1){
-        for(int i=0,tries=0;i<count&&tries<count*8;++tries){V at{x0+(x1-x0)*RingNoise(++seed),0,z0+(z1-z0)*RingNoise(++seed)};at.y=y<0?0:y;
-            const float cm=low+(high-low)*RingNoise(++seed);if(y<0&&(RoomGround(at)>.1f||!free(at,cm*.6f)))continue;sized(id,at,cm,spin(),fill,tint);++i;}};
+        for(int i=0,tries=0;i<count&&tries<count*8;++tries){V at{x0+(x1-x0)*StageNoise(++seed),0,z0+(z1-z0)*StageNoise(++seed)};at.y=y<0?0:y;
+            const float cm=low+(high-low)*StageNoise(++seed);if(y<0&&(RoomGround(at)>.1f||!free(at,cm*.6f)))continue;sized(id,at,cm,spin(),fill,tint);++i;}};
     // まわりへ散らばった山: 真ん中ほど多い
     auto scatter=[&](const char* id,V center,float radius,int count,float low,float high,float fill,Engine::Vector4 tint=kPlain){
-        for(int i=0,tries=0;i<count&&tries<count*8;++tries){const float a=RingNoise(++seed)*6.283f,d=radius*(RingNoise(++seed)+RingNoise(++seed))*.5f;V at=center+V{std::cos(a)*d,0,std::sin(a)*d};
-            const float cm=low+(high-low)*RingNoise(++seed);at.y=RoomTop(at);if(at.y<.1f&&!free(at,cm*.6f))continue;sized(id,at,cm,spin(),fill,tint);++i;}};
+        for(int i=0,tries=0;i<count&&tries<count*8;++tries){const float a=StageNoise(++seed)*6.283f,d=radius*(StageNoise(++seed)+StageNoise(++seed))*.5f;V at=center+V{std::cos(a)*d,0,std::sin(a)*d};
+            const float cm=low+(high-low)*StageNoise(++seed);at.y=RoomTop(at);if(at.y<.1f&&!free(at,cm*.6f))continue;sized(id,at,cm,spin(),fill,tint);++i;}};
     // 転がって続いた跡: 曲がりながら、間隔も揃えない
     auto trail=[&](const char* id,V from,V to,int count,float low,float high,float fill,Engine::Vector4 tint=kPlain,float wiggle=18){
-        const V side=Unit(V{-(to.z-from.z),0,to.x-from.x});for(int i=0;i<count;++i){const float u=(float(i)+RingNoise(++seed)*.8f)/float(count);
-            V at=Lerp(from,to,u)+side*(std::sin(u*7.5f+float(seed%7))*wiggle+(RingNoise(++seed)-.5f)*wiggle*.6f);at.y=RoomTop(at);const float cm=low+(high-low)*RingNoise(++seed);
+        const V side=Unit(V{-(to.z-from.z),0,to.x-from.x});for(int i=0;i<count;++i){const float u=(float(i)+StageNoise(++seed)*.8f)/float(count);
+            V at=Lerp(from,to,u)+side*(std::sin(u*7.5f+float(seed%7))*wiggle+(StageNoise(++seed)-.5f)*wiggle*.6f);at.y=RoomTop(at);const float cm=low+(high-low)*StageNoise(++seed);
             if(at.y<.1f&&!free(at,cm*.6f))continue;sized(id,at,cm,spin(),fill,tint);}};
     const Engine::Vector4 marbleColors[]={kPink,kSky,kGreen,kYellow};
     // ベッドの下 (5cm〜8cm): 開始の場所のまわりから一面に、なくした小物がほこりのように積もっている。出口の収納ケースへ近いほど少し大きい
@@ -402,7 +431,7 @@ void ChronoSystem::BuildRoomSets(entt::registry& r){
     // 和室へ続く跡: 入口からトランプとみかんが中へ散らばる
     trail("trump_back",{50,0,30},{110,0,250},14,7,8,.7f,kPlain,22);trail("mikan",{-10,0,50},{-110,0,120},6,5,5.5f,1,kPlain,14);
     // 和室: 壁際の漫画の山は崩れかけ、ティッシュは丸めて散らかっている
-    for(int i=0;i<4;++i){const V at{112+float(i)*44+(RingNoise(++seed)-.5f)*14,0,66+(RingNoise(++seed)-.5f)*10};stack("manga",at,2+i%3,2,.6f);scatter("manga",at,22,1+i%2,10,12,.6f);}
+    for(int i=0;i<4;++i){const V at{112+float(i)*44+(StageNoise(++seed)-.5f)*14,0,66+(StageNoise(++seed)-.5f)*10};stack("manga",at,2+i%3,2,.6f);scatter("manga",at,22,1+i%2,10,12,.6f);}
     scatter("tissue",{40,0,90},26,3,11,13,.6f);scatter("mikan",{-270,0,100},30,6,5,5.5f,1);scatter("daruma",{120,0,110},40,3,8,10,.7f);
     // ベッドの上: 枕のまわりにぬいぐるみと靴下、布団の上にビー玉
     scatter("nuigurumi",{-250,0,-240},40,4,8,10,.8f);scatter("sock",{-130,0,-245},50,6,6,8,.8f);scatter("marble",{-170,0,-230},40,30,1.6f,2.6f,1,kPink);

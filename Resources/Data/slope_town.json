@@ -1,0 +1,192 @@
+{
+  "_comment": "吸収モードの坂の町 (ステージ 2。Game/Chrono/SlopeTownRules.h)。地形は slope_town_terrain.json (scripts/terrain/slope_town_design.py --game で作る)。ここは色・塀・置く物。長さはメートルで、unit 倍してゲームの単位にする (約 6 単位で 1 メートル)。x は東西、z は南北で、北 (+z) ほど高い。half は歩ける範囲の半分の大きさ [x, z]、outside は町の外へ地面を広げる長さ",
+  "unit": 6,
+  "half": [127, 127],
+  "outside": 300,
+  "_borderComment": "町の端の塀 (歩ける範囲のすぐ外を囲む。飲めない)。height は高さ、thick は厚さ、step は地面の高さに合わせる区切りの長さ、post は控え柱の間隔 (メートル)。color は塀、cap は上の笠木と控え柱の色",
+  "border": {"height": 2.2, "thick": 0.4, "step": 2, "post": 6, "color": "block", "cap": "block_cap"},
+  "colors": {
+    "grass": [0.42, 0.62, 0.28], "field": [0.5, 0.66, 0.32], "lot": [0.68, 0.62, 0.52], "water": [0.28, 0.52, 0.74],
+    "road": [0.3, 0.31, 0.35], "gravel": [0.46, 0.44, 0.41], "sando": [0.74, 0.7, 0.6], "line": [0.95, 0.95, 0.9],
+    "stone": [0.62, 0.6, 0.55], "concrete": [0.74, 0.73, 0.69], "outside": [0.46, 0.6, 0.34],
+    "block": [0.68, 0.66, 0.62], "block_seam": [0.5, 0.49, 0.46], "block_cap": [0.42, 0.41, 0.4], "lip": [0.86, 0.84, 0.78]
+  },
+  "_kindColorsComment": "マスの種類ごとの地面の色 (地面・家の敷地・道・石段・川・線路・段々畑と庭・境内の順)。wallColors は擁壁の色 (road は道に面する所、other はそれ以外)",
+  "kindColors": ["grass", "lot", "road", "stone", "water", "gravel", "field", "sando"],
+  "wallColors": {"road": "concrete", "other": "stone"},
+  "_areasComment": "記録に使う区画 (地面の高さ below m より下)",
+  "areas": [
+    {"id": "valley", "name": "線路の谷", "below": 5},
+    {"id": "shops", "name": "商店街", "below": 12},
+    {"id": "houses", "name": "坂の住宅街", "below": 22},
+    {"id": "upper", "name": "上の住宅街", "below": 32},
+    {"id": "top", "name": "神社の山と台地", "below": 100}
+  ],
+  "_housesComment": "家の敷地に建てる家。byRoad は面する道の種類ごとの候補 (avenue 駅前通り / main 団々坂 / shop 商店街 / zigzag つづら折り / street 住宅街の道 / ridge 尾根道)、default はそれ以外。fit は敷地の間口に対して家の幅の上限の割合。塀は敷地が道と同じ高さのときだけ道ぞいに立てる。sink は家を地面へ沈める深さ (m。敷地の縁は隣とならして少し下がるので、家の下にすき間を見せない)",
+  "houses": {
+    "byRoad": {"shop": ["dagashiya", "house_kawara", "house_tin", "dagashiya", "house_hiraya"], "avenue": ["house_tin", "house_kawara", "apartment"]},
+    "default": ["house_kawara", "house_kawara", "house_tin", "house_hiraya"],
+    "fit": 0.9, "fill": 0.5, "sink": 0.3,
+    "fences": ["block_bei", "ikegaki", "block_bei"], "fenceFill": 0.8
+  },
+  "_propsComment": "1 つずつ置く物: id はモデル、at は [x, z]、yaw は向き (度。0 で正面が +z)、fill は吸収の量の割合 (0 は飲めない飾り)、mult は実寸に対する倍率、fit は上から見た長い辺の長さ (m)。landmark が true の物の足元の敷地には家を建てない",
+  "props": [
+    {"id": "tunnel", "at": [124, -104], "yaw": -90, "fill": 0},
+    {"id": "fumikiri", "at": [-4.5, -106.6], "yaw": 0, "fill": 0.6}, {"id": "fumikiri", "at": [-11.5, -100.2], "yaw": 180, "fill": 0.6},
+    {"id": "bus_tei", "at": [-50, -100.4], "yaw": 0, "fill": 0.8}, {"id": "bench", "at": [-46, -100.4], "yaw": 0, "fill": 0.8}, {"id": "jihanki", "at": [-41, -100.4], "yaw": 0, "fill": 0.8},
+    {"id": "denwa_box", "at": [-36, -100.5], "yaw": 0, "fill": 0.8}, {"id": "gomi_station", "at": [30, -100.4], "yaw": 0, "fill": 0.9},
+
+    {"id": "sento", "at": [12, -72], "yaw": 0, "fill": 0.4, "fit": 14, "landmark": true},
+    {"id": "yatai", "at": [-10, -60.6], "yaw": 0, "fill": 0.8}, {"id": "endai", "at": [-16, -60.8], "yaw": 0, "fill": 0.9},
+    {"id": "gachagacha", "at": [-24, -57.2], "yaw": 0, "fill": 0.9}, {"id": "gachagacha", "at": [-23, -57.2], "yaw": 0, "fill": 0.9},
+
+    {"id": "buranko", "at": [57, 24], "yaw": 0, "fill": 0.6}, {"id": "tetsubo", "at": [66, 25], "yaw": 0, "fill": 0.7}, {"id": "suberidai", "at": [56, 15], "yaw": 90, "fill": 0.6},
+    {"id": "bench", "at": [66, 15], "yaw": 180, "fill": 0.8}, {"id": "sakura", "at": [55, 21], "fill": 0.5}, {"id": "sakura", "at": [69, 21], "fill": 0.5},
+
+    {"id": "sanmon", "at": [23.5, 39.5], "yaw": 180, "fill": 0.4, "landmark": true}, {"id": "honden", "at": [24.5, 53], "yaw": 180, "fill": 0.4, "landmark": true},
+    {"id": "ishidoro", "at": [19, 44], "yaw": 180, "fill": 0.8}, {"id": "ishidoro", "at": [29, 44], "yaw": 180, "fill": 0.8},
+    {"id": "saisenbako", "at": [24.5, 44.6], "yaw": 180, "fill": 0.9}, {"id": "hokora", "at": [16, 49], "yaw": 90, "fill": 0.8}, {"id": "matsu", "at": [30.5, 40], "fill": 0.6},
+
+    {"id": "torii", "at": [-73, 93.5], "yaw": 141.6, "fill": 0.6, "landmark": true}, {"id": "honden", "at": [-82, 105], "yaw": 141.6, "fill": 0.4, "landmark": true},
+    {"id": "saisenbako", "at": [-79.6, 101.6], "yaw": 141.6, "fill": 0.9}, {"id": "komainu", "at": [-74.6, 99.8], "yaw": 141.6, "fill": 0.8}, {"id": "komainu", "at": [-79.4, 96.2], "yaw": 141.6, "fill": 0.8},
+    {"id": "ishidoro", "at": [-72.2, 98.6], "yaw": 141.6, "fill": 0.8}, {"id": "ishidoro", "at": [-78.2, 93.8], "yaw": 141.6, "fill": 0.8},
+    {"id": "goshinboku", "at": [-89, 94], "fill": 0.3, "landmark": true}, {"id": "hokora", "at": [-68, 104], "yaw": 180, "fill": 0.8},
+
+    {"id": "danchi", "at": [78, 110], "yaw": 180, "fill": 0.4, "landmark": true}, {"id": "kyusuito", "at": [112, 108], "fill": 0.3, "landmark": true},
+    {"id": "tetto", "at": [-115, 117], "fill": 0.2, "landmark": true}, {"id": "koinobori", "at": [-118, 40], "fill": 0.3}, {"id": "koinobori", "at": [-62, 110], "fill": 0.3}, {"id": "koinobori", "at": [-14, 104], "fill": 0.3}, {"id": "koinobori", "at": [117, 72], "fill": 0.3}
+  ],
+  "_rowsComment": "線に沿って並べる物: ids を順に使う (id 1 つでもよい)。step は間隔、yaw は向き (度)、skip はその割合で間を空ける、jitter は前後のずれ",
+  "rows": [
+    {"id": "senro", "from": [-124, -104], "to": [117, -104], "step": 10, "fill": 0},
+    {"id": "sakura", "from": [-120, -124], "to": [120, -124], "step": 16, "fill": 0.5, "skip": 0.2},
+    {"id": "haka", "from": [38, 34], "to": [54, 34], "step": 2.4, "fill": 0.9, "yaw": 180},
+    {"id": "haka", "from": [38, 37.5], "to": [54, 37.5], "step": 2.4, "fill": 0.9, "yaw": 180},
+    {"id": "haka", "from": [38, 41], "to": [54, 41], "step": 2.4, "fill": 0.9, "yaw": 180},
+    {"id": "haka", "from": [38, 44.5], "to": [54, 44.5], "step": 2.4, "fill": 0.9, "yaw": 180},
+    {"id": "sotoba", "from": [38.6, 35.2], "to": [54, 35.2], "step": 2.4, "fill": 1, "skip": 0.5, "yaw": 180},
+    {"id": "jizo", "from": [14, 40], "to": [14, 47], "step": 1.4, "fill": 1, "yaw": 90},
+    {"id": "ishidoro", "from": [-55, 70], "to": [-69, 88], "step": 6, "fill": 0.8, "yaw": 141.6}
+  ],
+  "_roadsideComment": "道ぞいに置く物: roads (省略で全部の道) の端から offset 外に、step ごとに左右交互に置く",
+  "roadside": [
+    {"id": "denchu", "step": 24, "offset": 0.6, "fill": 0.25},
+    {"id": "curve_mirror", "roads": ["dandanzaka", "tsuzura", "nishi"], "step": 45, "offset": 0.4, "fill": 0.4}
+  ],
+  "_trailsComment": "道の上に並べる物: スタートから団々坂を上るおやつの列 (始めにすぐ飲める物を前に置き、坂へ誘う)。from と to は道の始まりからの距離 (m)",
+  "trails": [
+    {"road": "dandanzaka", "ids": ["bou_gashi", "ramune", "dagashi_box", "akikan", "gyunyu_box", "geta"], "from": 2, "to": 40, "step": 1.3}
+  ],
+  "_scatterComment": "範囲 [x0, z0, x1, z1] にばらまく物 (向きはばらばら)。kinds は置いてよいマスの種類 (ground / lot / road / field / plaza / rail)。石段・擁壁のきわ・大きな物の足元は避ける。下ほど小さく、上ほど大きな物にして、上るほど育つようにする。sets を書くと 1 つの代わりにその組をまとめて置く (鳥の群れ・畑の道具など)。生き物やごみ・駄菓子のように、ばらばらにあってよい物だけをばらまく",
+  "scatter": [
+    {"ids": ["bou_gashi", "ramune", "dagashi_box", "geta", "yakyu_ball", "suzume", "hato", "akikan", "mugiwara", "bat", "kingyobachi", "gyunyu_box"], "rect": [-80, -102, 60, -76], "count": 260, "kinds": ["road", "lot"]},
+    {"ids": ["tire", "cone", "danboru", "gomibukuro", "shitsugaiki", "sanrinsha", "baketsu"], "rect": [-127, -75, 127, 127], "count": 320, "mult": [1.3, 2.2], "kinds": ["road", "ground", "lot", "plaza"]},
+    {"ids": ["yubin_post", "gachagacha", "inugoya", "propane", "bench", "danboru", "jitensha"], "rect": [-127, -72, 127, 127], "count": 220, "mult": [1.0, 1.5], "kinds": ["ground", "lot", "field", "plaza"]},
+    {"ids": ["monooki", "gomi_station", "denwa_box", "yatai", "kei_truck"], "rect": [-127, -60, 127, 127], "count": 150, "mult": [1.0, 1.4], "kinds": ["ground", "lot", "plaza"]},
+    {"sets": ["big_boxes", "tires", "trash_pile", "bike_pair", "vending", "gomi_spot", "garage"], "rect": [-127, -70, 127, 127], "count": 110, "kinds": ["ground", "lot", "plaza"]},
+    {"sets": ["birds_hato", "birds_suzume", "cats"], "rect": [-127, -100, 127, 127], "count": 90, "kinds": ["road", "plaza", "ground"]},
+    {"sets": ["veg_field", "veg_field", "birds_suzume"], "rect": [-127, -90, 127, 127], "count": 70, "kinds": ["field"]},
+    {"ids": ["neko", "karasu", "suzume", "hato", "inu"], "rect": [-127, -100, 127, 127], "count": 110, "kinds": ["road", "lot", "field", "plaza", "ground"]},
+    {"ids": ["akikan", "gomibukuro", "danboru", "kami_hikoki", "soccer_ball", "yakyu_ball", "ramune", "bou_gashi", "gyunyu_box"], "rect": [-127, -100, 127, 127], "count": 150, "kinds": ["road", "ground", "plaza"]},
+    {"ids": ["kaki_no_ki", "sakura", "matsu", "kaki_no_ki"], "rect": [-127, -90, 127, 127], "count": 110, "fill": 0.5, "kinds": ["field"]},
+    {"ids": ["takeyabu", "matsu", "takeyabu", "sakura"], "rect": [-127, 62, -40, 127], "count": 60, "fill": 0.5, "kinds": ["field"]}
+  ],
+  "_setsComment": "組で置く物: 名前 → [[id, x, z, yaw (度), mult]]。x は組の右、z は組の前 (メートル)。敷地の角・道ぞい・決まった所・ばらまく所で使う。組の 1 つ 1 つは、石段・川・線路・大きな物の足元・擁壁のきわ・起点と高さが 0.6m 以上違う所なら置かない",
+  "sets": {
+    "genkan": [["uekibachi", 0, 0], ["uekibachi", 0.45, 0.05], ["nagagutsu", 0.95, 0.1, 20], ["kasa", 0.6, -0.9, 30]],
+    "bonsai_shelf": [["bonsai", 0, 0], ["bonsai", 0.5, 0], ["bonsai", 1.0, 0], ["joro", 1.5, 0.1, 90], ["uekibachi", 0.2, -0.6], ["uekibachi", 0.7, -0.6]],
+    "bike": [["jitensha", 1.0, 0, 0], ["jitensha", 1.0, -0.6, 0], ["sanrinsha", 2.3, 0.1, -20]],
+    "scooter": [["gentsuki", 0.9, -0.1, 0], ["cone", 2.1, 0.2]],
+    "propane": [["propane", 0.4, -0.1], ["shitsugaiki", 1.5, -0.1]],
+    "storage": [["monooki", 1.1, -0.8], ["takebouki", -0.1, -0.2], ["baketsu", 0.1, 0.3], ["danboru", 0.6, 0.35, 15]],
+    "dog": [["inugoya", 0.4, -0.4], ["inu", 0.5, 0.4], ["baketsu", 1.2, 0.2]],
+    "laundry": [["monohoshi", 1.2, -0.4], ["kago", 0.1, 0.2]],
+    "summer": [["kingyobachi", 0, 0], ["suika", 0.5, 0.1], ["suika", 0.75, -0.15], ["mugiwara", 1.2, 0.05], ["mushikago", 0.3, -0.5]],
+    "kids": [["randoseru", 0, 0, 20], ["soccer_ball", 0.6, 0.3], ["bat", 1.1, -0.1, 60], ["yakyu_ball", 1.4, 0.2]],
+    "tanuki": [["tanuki", 0, 0], ["bonsai", 0.55, 0.05], ["uekibachi", 0, -0.55]],
+    "gomi_lot": [["gomibako", 0, 0], ["gomibukuro", 0.55, 0.05], ["danboru", 1.05, 0, 10]],
+    "milk": [["gyunyu_box", 0, 0], ["planter", 0.7, 0]],
+    "dagashi": [["gachagacha", 0, 0], ["gachagacha", 0.55, 0], ["endai", 1.9, -0.2], ["dagashi_box", 1.5, 0.5], ["ramune", 2.1, 0.5], ["bou_gashi", 2.5, 0.45], ["chochin", 0.3, 0.5]],
+    "veg_field": [["suika", 0, 0], ["suika", 0.5, 0.2], ["suika", 0.2, 0.6], ["mugiwara", 1.2, 0.4], ["joro", -0.5, 0.4], ["baketsu", -0.4, -0.3]],
+    "birds_hato": [["hato", 0, 0], ["hato", 0.5, 0.2, 40], ["hato", 0.2, 0.6, 200], ["hato", -0.4, 0.3, 120], ["hato", 0.7, -0.3, 300]],
+    "birds_suzume": [["suzume", 0, 0], ["suzume", 0.25, 0.15, 60], ["suzume", -0.2, 0.3, 170], ["suzume", 0.1, -0.3, 250]],
+    "cats": [["neko", 0, 0], ["neko", 0.6, 0.3, 150]],
+    "gomi_spot": [["gomi_station", 0, -0.9], ["gomibukuro", 1.4, -0.4], ["gomibukuro", 1.8, -0.7], ["karasu", 1.6, 0.0, 210]],
+    "vending": [["jihanki", 0, -0.5], ["jihanki", 1.05, -0.5], ["gomibako", 1.9, -0.4], ["akikan", 1.9, 0.1, 40]],
+    "post_corner": [["yubin_post", 0, -0.3], ["shokasen", 0.8, -0.2]],
+    "bike_park": [["jitensha", 0, -1.0, 90], ["jitensha", 0.6, -1.0, 90], ["jitensha", 1.2, -1.0, 90], ["jitensha", 1.8, -1.0, 90]],
+    "notice": [["keijiban", 0, -0.4], ["shokasen", 1.4, -0.2]],
+    "parked_car": [["kei_car", 0, 1.3, 0]],
+    "parked_truck": [["kei_truck", 0, 1.3, 0]],
+    "kids_play": [["randoseru", -1.5, -2.5, 30], ["randoseru", -1.0, -2.7, -20], ["soccer_ball", 0.5, 0.5], ["bat", 1.5, -1.0, 70], ["yakyu_ball", 2.0, -0.6]],
+    "well": [["ido", 0, 0], ["baketsu", 0.9, 0.2], ["takebouki", -0.8, 0.1]],
+    "flower_row": [["uekibachi", 0, 0], ["uekibachi", 0.45, 0], ["planter", 1.1, 0], ["uekibachi", 1.75, 0], ["uekibachi", 2.2, 0]],
+    "kids_yard": [["sanrinsha", 0, 0, 30], ["soccer_ball", 0.8, 0.3], ["toy_bucket", 1.2, -0.2], ["randoseru", 1.6, 0.2, -20]],
+    "cleaning": [["takebouki", 0, 0], ["baketsu", 0.45, 0.1], ["joro", 0.95, 0], ["gomibukuro", 1.5, 0]],
+    "kingyo": [["kingyobachi", 0, 0], ["joro", 0.5, 0.05, 90], ["bonsai", 1.0, 0]],
+    "drinks": [["gyunyu_box", 0, 0], ["ramune", 0.45, 0.1], ["akikan", 0.75, 0], ["akikan", 0.9, 0.2, 60]],
+    "big_boxes": [["danboru", 0, 0, 0, 2.2], ["danboru", 1.2, 0.1, 10, 1.8], ["danboru", 0.5, -1.0, -8, 2.0]],
+    "tires": [["tire", 0, 0], ["tire", 0.8, 0.1], ["tire", 0.4, -0.8], ["tire", 1.3, -0.7]],
+    "aircon": [["shitsugaiki", 0, 0], ["shitsugaiki", 1.0, 0], ["propane", 2.0, -0.1]],
+    "bike_pair": [["jitensha", 1.0, 0, 0], ["jitensha", 1.0, -0.7, 0], ["gentsuki", 1.0, -1.6, 0]],
+    "garage": [["kei_car", 1.8, -1.0, 0]],
+    "road_work": [["cone", 0, 0], ["cone", 0.9, 0], ["cone", 1.8, 0], ["cone", 2.7, 0], ["baketsu", 1.3, -0.7, 0, 1.5]],
+    "bench_spot": [["bench", 0, -0.5], ["gomibako", 1.2, -0.4], ["akikan", 1.25, 0.1]],
+    "phone_corner": [["denwa_box", 0, -0.8], ["yubin_post", 1.4, -0.4]],
+    "trash_pile": [["gomibukuro", 0, 0, 0, 1.8], ["gomibukuro", 0.8, 0.2, 40, 1.6], ["gomibukuro", 0.3, -0.7, 80, 2.0], ["danboru", 1.4, -0.5, 15, 1.8]]
+  },
+  "_lotSetsComment": "家の敷地に置く組。byHouse は家のモデルごとに必ず置く組 (駄菓子屋の店先など)、byRoad は面する道の種類ごとの候補 (default はそれ以外)。count は 1 軒の組の数で、前の左右の角、後ろの左右の角の順に、角から敷地の内へ置く (前の組は道へ、後ろの組は家へ向く)",
+  "lotSets": {
+    "byHouse": {"dagashiya": ["dagashi"], "apartment": ["bike"]},
+    "byRoad": {"shop": ["genkan", "bonsai_shelf", "gomi_lot", "bike", "propane", "milk", "flower_row", "drinks", "cleaning", "big_boxes", "aircon", "bike_pair"], "avenue": ["bike", "scooter", "gomi_lot", "genkan", "propane", "flower_row", "cleaning", "big_boxes", "bike_pair", "garage", "aircon"], "ridge": ["storage", "dog", "laundry", "summer", "bonsai_shelf", "tanuki", "well", "kingyo", "cleaning", "tires", "big_boxes", "garage"]},
+    "default": ["genkan", "bonsai_shelf", "bike", "scooter", "propane", "storage", "dog", "laundry", "summer", "kids", "tanuki", "gomi_lot", "milk", "flower_row", "kids_yard", "cleaning", "kingyo", "drinks", "big_boxes", "tires", "aircon", "bike_pair", "garage", "trash_pile"],
+    "count": 4, "fill": 1
+  },
+  "_roadSetsComment": "道ぞいの組: kinds は道の種類 (省略で全部)、step ごとに左右交互に、道の端から offset 外へ、組の前を道へ向けて置く。start は道の始まりからの距離 (メートル)。onRoad が true の組 (路上駐車) だけ道のマスの上に置いてよい",
+  "roadSets": [
+    {"sets": ["gomi_spot"], "kinds": ["street", "main", "zigzag", "ridge"], "step": 45, "start": 20, "offset": 0.4, "fill": 0.9},
+    {"sets": ["vending", "vending", "post_corner"], "kinds": ["shop", "avenue", "main", "street"], "step": 30, "start": 12, "offset": 0.4, "fill": 0.9},
+    {"sets": ["bike_park", "notice"], "kinds": ["shop", "avenue"], "step": 40, "start": 25, "offset": 0.4, "fill": 0.9},
+    {"sets": ["flower_row", "cleaning", "drinks"], "kinds": ["street", "shop", "zigzag", "ridge"], "step": 22, "start": 8, "offset": 0.3, "fill": 1},
+    {"sets": ["parked_car", "parked_truck"], "kinds": ["street", "ridge", "main", "zigzag", "avenue", "shop"], "step": 24, "start": 30, "offset": 0.2, "fill": 0.7, "onRoad": true},
+    {"sets": ["bench_spot", "phone_corner", "trash_pile", "big_boxes", "tires"], "kinds": ["street", "main", "shop", "avenue", "zigzag", "ridge"], "step": 18, "start": 4, "offset": 0.4, "fill": 1},
+    {"sets": ["road_work"], "kinds": ["street", "zigzag", "ridge"], "step": 90, "start": 45, "offset": 0, "fill": 1, "onRoad": true}
+  ],
+  "_spotsComment": "決まった所に置く組: at は起点 [x, z]、yaw は組の向き (度)",
+  "spots": [
+    {"set": "kids_play", "at": [62, 20]},
+    {"set": "birds_hato", "at": [24.5, 47.5]},
+    {"set": "birds_hato", "at": [-76.8, 98]},
+    {"set": "birds_hato", "at": [-44, -98.6]},
+    {"set": "bike_park", "at": [-30, -99.4], "yaw": 180},
+    {"set": "well", "at": [20, 50]}
+  ],
+  "_motionComment": "その場で動く物: id → [速さ (拍/秒の角速度), 左右の揺れ (度), 跳ねる高さ (m)]。道を往復する物には付かない",
+  "motion": {
+    "hato": [7, 8, 0.03], "suzume": [9, 10, 0.04], "karasu": [4, 6, 0.04], "neko": [1.2, 3, 0], "inu": [6, 6, 0.06],
+    "furin": [2.5, 14, 0], "chochin": [1.6, 8, 0], "koinobori": [1.0, 2, 0], "monohoshi": [1.8, 3, 0], "kasa": [1.0, 3, 0],
+    "sakura": [0.9, 1.2, 0], "kaki_no_ki": [0.9, 1.2, 0], "matsu": [0.7, 0.8, 0], "takeyabu": [1.1, 2, 0]
+  },
+  "_walkersComment": "道を歩く物 (前が +x のモデル): kinds の種類の道のうち、length (m) の区間を往復する。inset は道の端から内へ寄せる量 (m)、speed は m/秒",
+  "walkers": [
+    {"id": "inu", "kinds": ["street", "ridge", "zigzag"], "count": 6, "speed": 1.2, "length": 16, "inset": 1.0},
+    {"id": "jitensha", "kinds": ["street", "main", "shop", "avenue"], "count": 8, "speed": 3, "length": 40, "inset": 1.2}
+  ],
+  "_wanderComment": "その場を回って歩く物: id → [輪の半径 (m), 速さ (m/秒), 回る割合, 正面が +z なら 1 (ほかは +x)]。輪がどこも同じ高さの歩ける所のときだけ回り、ほかは motion で動く",
+  "wander": {"hato": [0.8, 0.35, 0.7, 0], "suzume": [0.5, 0.4, 0.6, 0], "karasu": [1.0, 0.45, 0.6, 0], "neko": [1.2, 0.3, 0.5, 1], "inu": [1.5, 0.8, 0.8, 0]},
+  "_glideThroughComment": "こいのぼりで飛んでいるときにぶつからない背の高い物 (ほかの 2.5m より高い大きな物にはぶつかって落ちる)",
+  "_ridesComment": "町の乗り物の輪 (m)。おみこしは神社とお寺の前、こまは広場や通り、hydrant (消火栓) は下り坂の道の上 (下りへ撃つと物を押し流せる)。書いた場所の近くの平らな地面へ寄せて置く (SlopeTown.cpp)",
+  "rides": {"mikoshi": [[-75, 110], [18.5, 37.5]], "koma": [[-4, -66], [62, 8], [-55, -30]],
+    "_hydrantOff": "消火栓の放水は一旦はずした (2026-11-17)。戻すときは hydrant に [[113, -14], [-55, -14], [-17, 40], [95, 58]] を書く",
+    "hydrant": []},
+  "glideThrough": ["sakura", "kaki_no_ki", "matsu", "takeyabu", "goshinboku", "denchu", "curve_mirror", "koinobori", "tetto", "kyusuito", "monohoshi"],
+  "_frontsComment": "正面 (+z) のある物: 置いたとき正面のすぐ前が塀・建物・高い段で、後ろが空いていれば後ろ向きに置き直す",
+  "fronts": ["jihanki", "yubin_post", "bench", "gachagacha", "keijiban", "denwa_box", "inugoya", "shitsugaiki", "shokasen", "monooki", "tanuki"],
+  "_moversComment": "往復する物: road は道の名前 (道に沿って上り下りしながら往復する)、path は通る点 [x, z] (平らな所だけ)。speed はメートル毎秒",
+  "movers": [
+    {"id": "densha", "path": [[-118, -104], [110, -104]], "speed": 9, "fill": 0.3},
+    {"id": "bus", "road": "ekimae", "speed": 5, "fill": 0.3},
+    {"id": "kei_truck", "road": "shotengai", "speed": 4, "fill": 0.7},
+    {"id": "kei_car", "road": "naka2", "speed": 4, "fill": 0.7},
+    {"id": "gomi_truck", "road": "one", "speed": 3.5, "fill": 0.4}
+  ]
+}

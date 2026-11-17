@@ -812,7 +812,8 @@ void EditorUI::ShowFluidProfiler(Engine::Renderer* renderer) {
 				"Particle simulation", "Shape reconstruction", "Density splat + resolve",
 				"Filtering + occupancy", "Refraction + raymarch", "Distant impostors", "Fluid shadow", "Whole game render",
 				"Scenery shadow", "RT acceleration", "RT lighting rays", "RT radiance filter",
-				"DLSS depth + motion inputs", "DLSS super resolution", "RT HDR composite"
+				"DLSS depth + motion inputs", "DLSS super resolution", "RT HDR composite",
+				"Screen-space hose water"
 			};
 			// 計測していない処理は inactive と出す
 			for (uint32_t i = 0; i < Engine::Renderer::kFluidProfileStageCount; ++i) {

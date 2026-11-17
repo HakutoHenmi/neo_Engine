@@ -200,7 +200,131 @@ bool Renderer::InitFluidVolume() {
     dev_->CreateShaderResourceView(volumeSurfaceDepth_.Get(),&depthSrv,window_->SRV_CPU_Master(index));
     volumeSurfaceDepthSrv_=window_->SRV_GPU(index);
     volumeHistoryValid_=false;
+    // 放水の水の画面の上の面。作れなくても流体の体積はそのまま使える (水は体積で描く)
+    screenWaterReady_=InitScreenWater();
+    if(!screenWaterReady_)OutputDebugStringA("[Fluid] Screen-space hose water unavailable; hose water uses the volume.\n");
     return true;
+}
+
+bool Renderer::InitScreenWater(){
+    // b0 カメラ・b1 流体の設定・b2 段ごとの値 (8 個)・t0 粒・t1〜t7 の表 (それぞれ 1 つ)
+    CD3DX12_ROOT_PARAMETER parameters[11];CD3DX12_DESCRIPTOR_RANGE ranges[7];
+    parameters[0].InitAsConstantBufferView(0);
+    parameters[1].InitAsConstantBufferView(1);
+    parameters[2].InitAsConstants(8,2);
+    parameters[3].InitAsShaderResourceView(0,0,D3D12_SHADER_VISIBILITY_VERTEX);
+    for(UINT i=0;i<7;++i){ranges[i].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV,1,i+1);parameters[4+i].InitAsDescriptorTable(1,&ranges[i],D3D12_SHADER_VISIBILITY_PIXEL);}
+    CD3DX12_STATIC_SAMPLER_DESC sampler(0,D3D12_FILTER_MIN_MAG_MIP_LINEAR,D3D12_TEXTURE_ADDRESS_MODE_CLAMP,D3D12_TEXTURE_ADDRESS_MODE_CLAMP,D3D12_TEXTURE_ADDRESS_MODE_CLAMP);
+    CD3DX12_ROOT_SIGNATURE_DESC desc(_countof(parameters),parameters,1,&sampler);
+    ComPtr<ID3DBlob> blob,error;
+    if(FAILED(D3D12SerializeRootSignature(&desc,D3D_ROOT_SIGNATURE_VERSION_1,&blob,&error))){if(error)OutputDebugStringA(static_cast<const char*>(error->GetBufferPointer()));return false;}
+    if(FAILED(dev_->CreateRootSignature(0,blob->GetBufferPointer(),blob->GetBufferSize(),IID_PPV_ARGS(&rootSigScreenWater_))))return false;
+    const wchar_t* file=L"Resources/shaders/FluidScreenWater.hlsl";
+    auto spriteVS=CompileShaderFromFile(file,"WaterSpriteVS","vs_5_0"),spritePS=CompileShaderFromFile(file,"WaterSpritePS","ps_5_0");
+    auto smoothPS=CompileShaderFromFile(file,"WaterSmoothPS","ps_5_0"),compositePS=CompileShaderFromFile(file,"WaterCompositePS","ps_5_0");
+    auto fullscreenVS=CompileShaderFromFile(L"Resources/shaders/FluidCompositeVS.hlsl","main","vs_5_0");
+    if(!spriteVS||!spritePS||!smoothPS||!compositePS||!fullscreenVS)return false;
+    D3D12_GRAPHICS_PIPELINE_STATE_DESC pso{};
+    pso.pRootSignature=rootSigScreenWater_.Get();
+    pso.PrimitiveTopologyType=D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+    pso.RasterizerState=CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);pso.RasterizerState.CullMode=D3D12_CULL_MODE_NONE;
+    pso.DepthStencilState=CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);pso.DepthStencilState.DepthEnable=FALSE;pso.DepthStencilState.DepthWriteMask=D3D12_DEPTH_WRITE_MASK_ZERO;
+    pso.SampleDesc.Count=1;pso.SampleMask=UINT_MAX;
+    // 粒: RT0 は近さの最大 (いちばん手前の粒)、RT1 は厚みと速さの足し算
+    pso.VS={spriteVS->GetBufferPointer(),spriteVS->GetBufferSize()};pso.PS={spritePS->GetBufferPointer(),spritePS->GetBufferSize()};
+    pso.BlendState=CD3DX12_BLEND_DESC(D3D12_DEFAULT);pso.BlendState.IndependentBlendEnable=TRUE;
+    for(UINT i=0;i<2;++i){auto& target=pso.BlendState.RenderTarget[i];target.BlendEnable=TRUE;target.SrcBlend=target.SrcBlendAlpha=D3D12_BLEND_ONE;target.DestBlend=target.DestBlendAlpha=D3D12_BLEND_ONE;
+        target.BlendOp=target.BlendOpAlpha=i==0?D3D12_BLEND_OP_MAX:D3D12_BLEND_OP_ADD;}
+    pso.NumRenderTargets=2;pso.RTVFormats[0]=DXGI_FORMAT_R32_FLOAT;pso.RTVFormats[1]=DXGI_FORMAT_R16G16B16A16_FLOAT;
+    if(FAILED(dev_->CreateGraphicsPipelineState(&pso,IID_PPV_ARGS(&psoScreenWaterSprite_))))return false;
+    // なめらかにする段: 奥行きをそのまま書く
+    pso.VS={fullscreenVS->GetBufferPointer(),fullscreenVS->GetBufferSize()};pso.PS={smoothPS->GetBufferPointer(),smoothPS->GetBufferSize()};
+    pso.BlendState=CD3DX12_BLEND_DESC(D3D12_DEFAULT);pso.NumRenderTargets=1;pso.RTVFormats[0]=DXGI_FORMAT_R32_FLOAT;pso.RTVFormats[1]=DXGI_FORMAT_UNKNOWN;
+    if(FAILED(dev_->CreateGraphicsPipelineState(&pso,IID_PPV_ARGS(&psoScreenWaterSmooth_))))return false;
+    // 重ねる段: 前もって掛けた色 (色 + 後ろ × (1 - α))
+    pso.PS={compositePS->GetBufferPointer(),compositePS->GetBufferSize()};pso.RTVFormats[0]=DXGI_FORMAT_R16G16B16A16_FLOAT;
+    auto& blend=pso.BlendState.RenderTarget[0];blend.BlendEnable=TRUE;blend.SrcBlend=D3D12_BLEND_ONE;blend.DestBlend=D3D12_BLEND_INV_SRC_ALPHA;blend.BlendOp=D3D12_BLEND_OP_ADD;
+    blend.SrcBlendAlpha=D3D12_BLEND_ONE;blend.DestBlendAlpha=D3D12_BLEND_INV_SRC_ALPHA;blend.BlendOpAlpha=D3D12_BLEND_OP_ADD;
+    if(FAILED(dev_->CreateGraphicsPipelineState(&pso,IID_PPV_ARGS(&psoScreenWaterComposite_))))return false;
+    // 画面と同じ大きさの 4 枚 (近さ・厚み・なめらかな奥行き 2 枚)
+    D3D12_DESCRIPTOR_HEAP_DESC rtvHeap{};rtvHeap.Type=D3D12_DESCRIPTOR_HEAP_TYPE_RTV;rtvHeap.NumDescriptors=4;
+    if(FAILED(dev_->CreateDescriptorHeap(&rtvHeap,IID_PPV_ARGS(&screenWaterRtvHeap_))))return false;
+    const UINT rtvStep=dev_->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
+    CD3DX12_HEAP_PROPERTIES heap(D3D12_HEAP_TYPE_DEFAULT);
+    for(UINT i=0;i<4;++i){
+        const DXGI_FORMAT format=i==1?DXGI_FORMAT_R16G16B16A16_FLOAT:DXGI_FORMAT_R32_FLOAT;
+        auto texture=CD3DX12_RESOURCE_DESC::Tex2D(format,sceneWidth_,sceneHeight_,1,1,1,0,D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET);
+        D3D12_CLEAR_VALUE clear{};clear.Format=format;
+        if(FAILED(dev_->CreateCommittedResource(&heap,D3D12_HEAP_FLAG_NONE,&texture,D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,&clear,IID_PPV_ARGS(&screenWaterTargets_[i]))))return false;
+        auto rtv=screenWaterRtvHeap_->GetCPUDescriptorHandleForHeapStart();rtv.ptr+=SIZE_T(i)*rtvStep;
+        dev_->CreateRenderTargetView(screenWaterTargets_[i].Get(),nullptr,rtv);
+        D3D12_SHADER_RESOURCE_VIEW_DESC srv{};srv.Format=format;srv.ViewDimension=D3D12_SRV_DIMENSION_TEXTURE2D;srv.Texture2D.MipLevels=1;srv.Shader4ComponentMapping=D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+        const UINT slot=AllocateSrvIndex();
+        dev_->CreateShaderResourceView(screenWaterTargets_[i].Get(),&srv,window_->SRV_CPU(slot));
+        dev_->CreateShaderResourceView(screenWaterTargets_[i].Get(),&srv,window_->SRV_CPU_Master(slot));
+        screenWaterSrv_[i]=window_->SRV_GPU(slot);
+    }
+    return true;
+}
+
+// 放水の水を画面の上で描く: 粒 → 奥行きを 2 回ずつ横・縦になめらかに → 色を付けて画面へ重ねる。
+// 呼ぶ前は画面の色 (ppRtv) が描き先で、場面の奥行き・体の面の奥行きは読める状態
+void Renderer::DrawScreenWater(D3D12_GPU_VIRTUAL_ADDRESS camera){
+    BeginFluidProfile(FluidScreenWater);
+    auto transition=[&](ID3D12Resource* resource,D3D12_RESOURCE_STATES before,D3D12_RESOURCE_STATES after){auto b=CD3DX12_RESOURCE_BARRIER::Transition(resource,before,after);list_->ResourceBarrier(1,&b);};
+    const UINT rtvStep=dev_->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
+    auto rtv=[&](UINT i){auto handle=screenWaterRtvHeap_->GetCPUDescriptorHandleForHeapStart();handle.ptr+=SIZE_T(i)*rtvStep;return handle;};
+    const D3D12_VIEWPORT viewport{0,0,float(sceneWidth_),float(sceneHeight_),0,1};const D3D12_RECT scissor{0,0,LONG(sceneWidth_),LONG(sceneHeight_)};
+    list_->RSSetViewports(1,&viewport);list_->RSSetScissorRects(1,&scissor);
+    list_->SetGraphicsRootSignature(rootSigScreenWater_.Get());
+    list_->SetGraphicsRootConstantBufferView(0,camera);
+    list_->SetGraphicsRootConstantBufferView(1,volumeFrameSettings_);
+    list_->SetGraphicsRootShaderResourceView(3,gpuFluidBuffer_->GetGPUVirtualAddress());
+    list_->SetGraphicsRootDescriptorTable(4,backdropSrv_);
+    list_->SetGraphicsRootDescriptorTable(5,ppDepthSrvGpu_);
+    list_->SetGraphicsRootDescriptorTable(6,envMapSrvGpu_.ptr?envMapSrvGpu_:liquidNullCubeSrv_);
+    list_->SetGraphicsRootDescriptorTable(7,volumeSurfaceDepthSrv_);
+    list_->SetGraphicsRootDescriptorTable(8,screenWaterSrv_[0]);
+    list_->SetGraphicsRootDescriptorTable(9,screenWaterSrv_[1]);
+    list_->SetGraphicsRootDescriptorTable(10,screenWaterSrv_[2]);
+    list_->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    // outsideOnly: 体積で描いている放水では、細かい升の窓の外の粒だけを描く
+    const bool pool=HydrantTerrainActive();
+    struct Pass {float axis[2];float size;uint32_t first,slots;float firstSmooth,outsideOnly,unused;} pass{{0,0},1,pool?kPoolFluidStart:kPlayerFluidParticles,pool?kPoolFluidCapacity:kHydrantWaterParticles,0,HydrantVolumeWater()?1.f:0.f,0};
+    static_assert(sizeof(Pass)==32);
+    // 1. 粒
+    transition(screenWaterTargets_[0].Get(),D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,D3D12_RESOURCE_STATE_RENDER_TARGET);
+    transition(screenWaterTargets_[1].Get(),D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,D3D12_RESOURCE_STATE_RENDER_TARGET);
+    const float zero[4]={0,0,0,0};
+    D3D12_CPU_DESCRIPTOR_HANDLE sprites[2]={rtv(0),rtv(1)};
+    list_->ClearRenderTargetView(sprites[0],zero,0,nullptr);list_->ClearRenderTargetView(sprites[1],zero,0,nullptr);
+    list_->OMSetRenderTargets(2,sprites,FALSE,nullptr);
+    list_->SetGraphicsRoot32BitConstants(2,8,&pass,0);
+    list_->SetPipelineState(psoScreenWaterSprite_.Get());
+    list_->DrawInstanced(6,pass.slots,0,0);
+    transition(screenWaterTargets_[0].Get(),D3D12_RESOURCE_STATE_RENDER_TARGET,D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+    transition(screenWaterTargets_[1].Get(),D3D12_RESOURCE_STATE_RENDER_TARGET,D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+    // 2. なめらかに (横 → 縦 を 2 回)。最初は近さ (RT0) から読み、あとは 2 と 3 を交互に使う
+    list_->SetPipelineState(psoScreenWaterSmooth_.Get());
+    UINT source=3;
+    for(UINT step=0;step<4;++step){
+        const UINT destination=source==2?3:2;
+        pass.axis[0]=step%2==0?1.f:0.f;pass.axis[1]=step%2==0?0.f:1.f;pass.firstSmooth=step==0?1.f:0.f;
+        list_->SetGraphicsRoot32BitConstants(2,8,&pass,0);
+        list_->SetGraphicsRootDescriptorTable(10,screenWaterSrv_[source]);
+        transition(screenWaterTargets_[destination].Get(),D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,D3D12_RESOURCE_STATE_RENDER_TARGET);
+        auto target=rtv(destination);list_->OMSetRenderTargets(1,&target,FALSE,nullptr);
+        list_->DrawInstanced(3,1,0,0);
+        transition(screenWaterTargets_[destination].Get(),D3D12_RESOURCE_STATE_RENDER_TARGET,D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+        source=destination;
+    }
+    // 3. 画面へ重ねる
+    list_->OMSetRenderTargets(1,&ppRtv_,FALSE,nullptr);
+    list_->SetGraphicsRootDescriptorTable(10,screenWaterSrv_[source]);
+    list_->SetPipelineState(psoScreenWaterComposite_.Get());
+    list_->DrawInstanced(3,1,0,0);
+    list_->RSSetViewports(1,&viewport_);list_->RSSetScissorRects(1,&scissor_);
+    EndFluidProfile(FluidScreenWater);
 }
 
 void Renderer::DrawFluidVolumeShadow(const Matrix4x4& lightVP) {
@@ -250,16 +374,37 @@ void Renderer::PrepareFluidVolume() {
                 Vector3 extent{t.shape.x*stretch*1.5f,t.shape.y,t.shape.z*stretch*1.5f};include(t.origin-extent);include(t.origin+extent);
             }else {include(t.origin+Vector3{t.forward.z*t.local.x+t.forward.x*t.local.z,t.local.y,-t.forward.x*t.local.x+t.forward.z*t.local.z});}}
         for(const auto& p:fluidBodySnapshot_.offsets){auto world=p+fluidBodySnapshot_.core;if(std::isfinite(world.x)&&std::isfinite(world.y)&&std::isfinite(world.z)&&std::abs(world.x-center.x)<100&&std::abs(world.y-center.y)<100&&std::abs(world.z-center.z)<100)include(world);}
-        for(const auto& s:fluidVolumeExtras_){Vector3 c{s.x,s.y,s.z},r{s.w,s.w,s.w};include(c-r);include(c+r);}
+        // (ここまでがスライムの体。坂の町の放水では、升が粗くならないように範囲をこの体を含む大きさまでに抑える)
+        const Vector3 bodyLow=lo,bodyHigh=hi;Vector3 extraLow{1e9f,1e9f,1e9f},extraHigh{-1e9f,-1e9f,-1e9f};
+        for(const auto& s:fluidVolumeExtras_){Vector3 c{s.x,s.y,s.z},r{s.w,s.w,s.w};include(c-r);include(c+r);
+            extraLow={(std::min)(extraLow.x,c.x-r.x),(std::min)(extraLow.y,c.y-r.y),(std::min)(extraLow.z,c.z-r.z)};extraHigh={(std::max)(extraHigh.x,c.x+r.x),(std::max)(extraHigh.y,c.y+r.y),(std::max)(extraHigh.z,c.z+r.z)};}
         for(const auto& arm:fluidTendrils_){
             // A box skin stores its half size in end (see SplatTendrils).
             if(arm.endRadius<0){float r=(std::max)({arm.end.x,arm.end.y,arm.end.z})*1.5f-arm.endRadius*2;Vector3 extent{r,r,r};include(arm.start-extent);include(arm.start+extent);continue;}
             float r=(std::max)(arm.radius,arm.endRadius)*2;Vector3 extent{r,r,r};
             include(arm.start-extent);include(arm.start+extent);include(arm.end-extent);include(arm.end+extent);}
+        if(HydrantVolumeWater()&&extraLow.x<=extraHigh.x){
+            // 坂の町の放水: 水は 200 以上の広さに散るので、全部を入れると升が粗くなる (水がかたまりに見える)。
+            // 箱庭のデモに近い細かさ (升 maxCell 以下) の窓を、体を含んだまま水の真ん中へ寄せて置く。窓の外の水は画面の上の面で描く
+            const float maxCell=(std::max)(.7f,.28f*fluidSamplingScale_),margin=2*.8f*fluidSamplingScale_;
+            auto window=[&](float& low,float& high,float bodyMin,float bodyMax,float focus,float extent){
+                if(high-low<=extent||bodyMax-bodyMin>=extent)return;
+                low=std::clamp(focus-extent*.5f,bodyMax-extent,bodyMin);high=low+extent;};
+            const Vector3 focus=(extraLow+extraHigh)*.5f;
+            const float across=maxCell*float(kVolumeWidth-8)-margin,up=maxCell*float(kVolumeHeight-8)-margin;
+            window(lo.x,hi.x,bodyLow.x,bodyHigh.x,focus.x,across);window(lo.y,hi.y,bodyLow.y,bodyHigh.y,focus.y,up);window(lo.z,hi.z,bodyLow.z,bodyHigh.z,focus.z,across);
+        }
         const float shadowMargin=1.2f*fluidSamplingScale_;
         volumeShadowLow_=lo-Vector3{shadowMargin,shadowMargin,shadowMargin};volumeShadowHigh_=hi+Vector3{shadowMargin,shadowMargin,shadowMargin};
         cell=FluidVolumeDomain::StableCell(FluidVolumeDomain::FitCell(hi.x-lo.x,hi.y-lo.y,hi.z-lo.z,kVolumeWidth,kVolumeHeight,.8f*fluidSamplingScale_,.2f*fluidSamplingScale_),volumeHistoryValid_?volumePreviousVoxelSize_:0);
         origin={FluidVolumeDomain::Origin(lo.x,hi.x,cell,kVolumeWidth),FluidVolumeDomain::Origin(lo.y,hi.y,cell,kVolumeHeight),FluidVolumeDomain::Origin(lo.z,hi.z,cell,kVolumeWidth)};
+    }
+    if(fluidVolumeFocusActive_&&fluidMorphTargets_.empty()){
+        // 箱庭など: 決めた箱に升を合わせる (スライムの体と同じ細かさで水を描く)
+        const Vector3 lo=fluidVolumeFocusLow_,hi=fluidVolumeFocusHigh_;
+        cell=FluidVolumeDomain::StableCell(FluidVolumeDomain::FitCell(hi.x-lo.x,hi.y-lo.y,hi.z-lo.z,kVolumeWidth,kVolumeHeight,1.f,.18f),volumeHistoryValid_?volumePreviousVoxelSize_:0);
+        origin={FluidVolumeDomain::Origin(lo.x,hi.x,cell,kVolumeWidth),FluidVolumeDomain::Origin(lo.y,hi.y,cell,kVolumeHeight),FluidVolumeDomain::Origin(lo.z,hi.z,cell,kVolumeWidth)};
+        volumeShadowLow_=lo-Vector3{1,1,1};volumeShadowHigh_=hi+Vector3{1,1,1};
     }
     if(std::abs(volumePreviousVoxelSize_-cell)>1e-5f)volumeHistoryValid_=false;
     volumePreviousVoxelSize_=cell;
@@ -273,7 +418,9 @@ void Renderer::PrepareFluidVolume() {
         gpuFluidCoreForward_,slimeFaceCamera_,{},0,slimeGround_,std::clamp(gpuFluidCoreScale_.y,0.f,1.f)};
     // 体の中から見るときは、顔や泡の飾りを描かない (内側から裏返しに見える)
     if(fluidInterior_>.01f)cb.playerDecoration=0;
-    cb.axis=fluidMorphTargets_.empty()?.4f:-.4f; // Non-morph particles use the unscaled hash; filtering resets axis.
+    // BuildShapes: -(the solver's neighbour-table size), +.5 when hose water is drawn in screen space
+    // instead of the volume. Filtering passes overwrite axis with 0..2.
+    cb.axis=-(float(fluidHashBuckets_)+(HydrantScreenWater()?.5f:HydrantVolumeWater()?.25f:0.f));
     // Match the simulated containment field, including mass, landing squash and slide.
     float scale=std::cbrt(std::clamp(gpuFluidCoreFlowSpeed_/100.f,.05f,2.f));
     float aspect=gpuFluidCoreScale_.x>.1f?std::clamp(gpuFluidCoreScale_.x,.55f,1.6f):1.f;
@@ -385,7 +532,9 @@ void Renderer::PrepareFluidVolume() {
     transition(volumeTextures_[5].Get(),D3D12_RESOURCE_STATE_UNORDERED_ACCESS,kVolumeRead);
     // Coarse water-only volume; fine shapes and the near history stay intact.
     FarWaterConstants farSettings{};farSettings.cell=kFarWaterCell;farSettings.dimensions[0]=farSettings.dimensions[2]=kFarWaterWidth;farSettings.dimensions[1]=kFarWaterHeight;
-    farSettings.enabled=(gpuFluidPhaseMask_&4u)!=0;farSettings.interior={fluidInterior_,fluidInteriorDepth_,0,0};
+    // (放水の水を画面の上で描いている間は、遠くの水の升は使わない)
+    // (坂の町の放水では、水の範囲を細かい升に入れるので遠くの水の升は使わない)
+    farSettings.enabled=(gpuFluidPhaseMask_&4u)!=0&&!HydrantTerrainActive()&&!fluidVolumeFocusActive_;farSettings.interior={fluidInterior_,fluidInteriorDepth_,0,0};
     farSettings.origin={std::floor(center.x/farSettings.cell)*farSettings.cell-kFarWaterWidth*farSettings.cell*.5f,
         std::floor((center.y-4)/(farSettings.cell*.4f))*(farSettings.cell*.4f),
         std::floor(center.z/farSettings.cell)*farSettings.cell-kFarWaterWidth*farSettings.cell*.5f};
@@ -419,6 +568,8 @@ void Renderer::PrepareFluidVolume() {
         transition(farWaterTextures_[3].Get(),D3D12_RESOURCE_STATE_UNORDERED_ACCESS,kVolumeRead);
     }
     EndFluidProfile(FluidFiltering);
+    // 描く段へ: axis 3 = 坂の町の放水を箱庭のデモと同じ澄んだ水で描く (速い水の白い泡をほとんど出さない)
+    cb.axis=HydrantVolumeWater()?3.f:2.f;
     std::memcpy(fluidUpload.mapped+settingsOffset,&cb,sizeof(cb));
     volumeFrameSettings_=fluidUpload.buffer->GetGPUVirtualAddress()+settingsOffset;
     volumeDrawCount_=cb.count+(cb.playerDecoration>0.001f?224+24+2:0);
@@ -442,15 +593,19 @@ void Renderer::DrawFluidVolume() {
     D3D12_CPU_DESCRIPTOR_HANDLE targets[]={ppRtv_,volumeRtvHeap_->GetCPUDescriptorHandleForHeapStart()};
     list_->OMSetRenderTargets(2,targets,FALSE,nullptr);
     list_->RSSetViewports(1,&viewport_); list_->RSSetScissorRects(1,&scissor_);
-    list_->SetGraphicsRootSignature(rootSigVolumeDraw_.Get());
     // Keep the world's material clock frozen, but give fluid decorations their
     // own visual time so interior and escaped bubbles keep rising in the menu.
     auto fluidCamera=cbFrame_;fluidCamera.time=fluidDecorationTime_;
     uint32_t cameraOffset=fluidUpload.Allocate(sizeof(fluidCamera),256);
+    D3D12_GPU_VIRTUAL_ADDRESS cameraAddress=cbFrameAddr_;
     if(cameraOffset!=UINT32_MAX){
         std::memcpy(fluidUpload.mapped+cameraOffset,&fluidCamera,sizeof(fluidCamera));
-        list_->SetGraphicsRootConstantBufferView(0,fluidUpload.buffer->GetGPUVirtualAddress()+cameraOffset);
-    }else list_->SetGraphicsRootConstantBufferView(0,cbFrameAddr_);
+        cameraAddress=fluidUpload.buffer->GetGPUVirtualAddress()+cameraOffset;
+    }
+    // (放水の水を描いたあと、霧と粒の段のためにもう一度つなぐ)
+    auto bindVolumeDraw=[&](){
+    list_->SetGraphicsRootSignature(rootSigVolumeDraw_.Get());
+    list_->SetGraphicsRootConstantBufferView(0,cameraAddress);
     list_->SetGraphicsRootConstantBufferView(1,volumeFrameSettings_);
     list_->SetGraphicsRootDescriptorTable(2,volumeSrv_[historyDestination]);
     list_->SetGraphicsRootDescriptorTable(3,backdropSrv_);
@@ -467,12 +622,17 @@ void Renderer::DrawFluidVolume() {
     list_->SetGraphicsRootDescriptorTable(13,farWaterSrv_[0]);
     list_->SetGraphicsRootDescriptorTable(14,farWaterSrv_[2]);
     list_->SetGraphicsRootDescriptorTable(15,farWaterSrv_[3]);
+    };
+    bindVolumeDraw();
     list_->SetPipelineState(psoVolumeRaymarch_.Get());
     list_->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     list_->DrawInstanced(3,1,0,0);
     transition(volumeSurfaceDepth_.Get(),D3D12_RESOURCE_STATE_RENDER_TARGET,D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
     EndFluidProfile(FluidRaymarch);
     list_->OMSetRenderTargets(1,&ppRtv_,FALSE,nullptr);
+    // 放水の水 (画面の上の面)。霧と水しぶきの粒はその上に描く
+    // (体積で描くときも、細かい升の窓の外へ流れた水だけは画面の上の面で描く)
+    if((HydrantScreenWater()||HydrantVolumeWater())&&fluidVolumeDebugMode_==0){DrawScreenWater(cameraAddress);bindVolumeDraw();list_->OMSetRenderTargets(1,&ppRtv_,FALSE,nullptr);}
     if(fluidVolumeDebugMode_==0) {
         BeginFluidProfile(FluidImpostors);
         list_->SetPipelineState(psoVolumeSpray_.Get());

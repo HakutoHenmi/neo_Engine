@@ -57,14 +57,17 @@ void ChronoSystem::HoldGimmickProp(DevourGimmick& g,size_t part,bool hold){
 }
 // 作り直した後: 見た目と物の番号を結び、動かす物を止め、ばらまく物を隠す
 void ChronoSystem::ResetDevourGimmicks(entt::registry& r){
-    gimmickRide_={};gimmickNear_=-1;gimmickJets_.clear();devourPaint_={0,0,0,0};devourPaintFlash_=0;gimmickMatchCool_=0;
+    mikoshiHelpers_.clear();mikoshiSend_=0;ResetHose();gimmickRide_={};gimmickNear_=-1;gimmickJets_.clear();devourPaint_={0,0,0,0};devourPaintFlash_=0;gimmickMatchCool_=0;
     std::map<uint32_t,int> byVisual;for(size_t i=0;i<life_.props.size();++i)if(life_.props[i].visual!=kNone)byVisual[life_.props[i].visual]=int(i);
     auto find=[&](uint32_t visual){auto f=byVisual.find(visual);return f==byVisual.end()?-1:f->second;};
-    for(auto& g:gimmicks_){g.state=0;g.hits=0;g.pending=-1;g.clock=0;g.wobble=0;g.done=false;
+    for(auto& g:gimmicks_){g.state=0;g.hits=0;g.pending=-1;g.clock=0;g.wobble=0;g.done=false;g.rest=0;g.anchorProp=find(g.anchor);
         g.partProps.clear();g.partRadius.assign(g.parts.size(),1);g.partAge.assign(g.parts.size(),-1);
         for(size_t i=0;i<g.parts.size();++i){g.partProps.push_back(find(g.parts[i]));HoldGimmickProp(g,i,true);}
         g.rewardProps.clear();for(auto visual:g.rewards){int k=find(visual);g.rewardProps.push_back(k);if(k<0)continue;
             life_.props[size_t(k)].active=false;auto e=entt::entity(visual);if(r.valid(e)&&r.all_of<MeshRendererComponent>(e))r.get<MeshRendererComponent>(e).enabled=false;}}
+    // 坂の町の電線を張り直す (飲まれて消した電線を戻す)
+    for(auto& solid:townSolids_)solid.prop=find(solid.visual);
+    for(auto& edge:wireEdges_){edge.alive=true;auto e=entt::entity(edge.mesh);if(edge.mesh!=kNone&&r.valid(e)&&r.all_of<MeshRendererComponent>(e))r.get<MeshRendererComponent>(e).enabled=true;}
     ClearGimmickAreas(r);
 }
 // 作動範囲の中にある他の物 (散らかした物・家具の上の物) を、範囲の外の同じ高さの床へ押し出す。
@@ -85,7 +88,7 @@ void ChronoSystem::ClearGimmickAreas(entt::registry& r){
 }
 // その点 (半径 margin の物) が入っている作動範囲 (同じ高さの輪)。無ければ -1
 int ChronoSystem::GimmickAreaAt(V at,float margin)const{
-    for(size_t i=0;i<gimmicks_.size();++i){const auto& g=gimmicks_[i];if(std::abs(at.y-g.at.y)>18)continue;
+    for(size_t i=0;i<gimmicks_.size();++i){const auto& g=gimmicks_[i];if(!g.clearArea||std::abs(at.y-g.at.y)>18)continue;
         if(Length(V{at.x-g.at.x,0,at.z-g.at.z})<g.radius+margin)return int(i);}
     return -1;
 }
@@ -311,7 +314,7 @@ private:
 const ChronoSystem::GimmickBehavior& ChronoSystem::GimmickBehaviorFor(GimmickKind kind){
     static const ShootGimmick shoot;static const DominoGimmick domino;static const BowlingGimmick bowling;
     static const PaintGimmick paint;static const PathGimmick liquid(false),plane(true);
-    static const GimmickBehavior* const table[]={&shoot,&domino,&bowling,&paint,&liquid,&plane};
+    static const GimmickBehavior* const table[]={&shoot,&domino,&bowling,&paint,&liquid,&plane,&GlideBehavior(),&WireBehavior(),&MikoshiBehavior(),&KomaBehavior(),&HoseBehavior()};
     const size_t index=size_t(kind);return *table[index<std::size(table)?index:size_t(GimmickKind::Paint)];
 }
 
@@ -322,7 +325,7 @@ bool ChronoSystem::TickGimmickInput(entt::registry& r,Player& p,GameContext& ctx
         return GimmickBehaviorFor(g.kind).RideInput(*this,g,ride,pressed,cancel);}
     if(finished_||body.action!=LifeAction::Idle||devourHop_.active||devourStun_>0)return false;
     const float floorY=body.at.y-1.25f;float best=1e9f;
-    for(size_t i=0;i<gimmicks_.size();++i){const auto& g=gimmicks_[i];if(g.done)continue;V d=body.at-g.at;d.y=0;float distance=Length(d);
+    for(size_t i=0;i<gimmicks_.size();++i){const auto& g=gimmicks_[i];if(g.done||g.rest>0)continue;V d=body.at-g.at;d.y=0;float distance=Length(d);
         if(distance<g.radius&&std::abs(floorY-g.at.y)<8&&distance<best){best=distance;gimmickNear_=int(i);}}
     if(gimmickNear_<0||!pressed)return false;
     auto& g=gimmicks_[size_t(gimmickNear_)];const auto& stage=CurrentDevourStage();
@@ -339,7 +342,7 @@ ChronoSystem::V ChronoSystem::GimmickStep(entt::registry& r,Player& p,GameContex
     ride.previous=ride.pose;ride.age+=dt;const float form=LifeSmooth(ride.age/Chrono::GimmickFormTime);
     GimmickRideStep step{r,ctx,g,ride,body,dt,scale,form,wish,V{ride.heading.z,0,-ride.heading.x},body.at};
     GimmickBehaviorFor(g.kind).Step(*this,step);
-    body.forward=ride.heading;
+    body.forward=GimmickBehaviorFor(g.kind).Facing(ride);
     if(step.end){EndGimmickRide(false);p.velocity={};body.aspectVelocity+=4;}
     return step.next;
 }
@@ -349,6 +352,12 @@ void ChronoSystem::EndGimmickRide(bool){gimmickRide_={};++life_.revision;}
 void ChronoSystem::TickDevourGimmicks(entt::registry& r,GameContext& ctx,float dt){
     devourPaintFlash_=std::max(0.f,devourPaintFlash_-dt*1.5f);gimmickMatchCool_=std::max(0.f,gimmickMatchCool_-dt);
     for(auto& jet:gimmickJets_)jet.age+=dt;
+    TickTownGimmicks(r);
+    // おみこし・こまの輪の休み時間と、おみこしの子分
+    for(auto& g:gimmicks_)g.rest=std::max(0.f,g.rest-dt);
+    TickMikoshiHelpers(r,life_.bodies[0].at,dt);
+    // 消火栓の放水で流れ落ちる物・霧・虹
+    TickHose(r,dt);
     gimmickJets_.erase(std::remove_if(gimmickJets_.begin(),gimmickJets_.end(),[](const GimmickJet& j){return j.age>Chrono::GimmickShotTime+.18f;}),gimmickJets_.end());
     for(size_t gi=0;gi<gimmicks_.size();++gi)GimmickBehaviorFor(gimmicks_[gi].kind).TickWorld(*this,r,ctx,gi,dt);
 }
@@ -364,7 +373,7 @@ void ChronoSystem::DrawGimmickCurtains(GameContext& ctx){
     const bool tooSmall=gimmickNear_>=0&&DevourSizeCm(CurrentDevourStage(),life_.bodies[0].mass)+1e-3f<gimmicks_[size_t(gimmickNear_)].minCm;
     const int riding=gimmickRide_.index,linked=riding>=0?gimmicks_[size_t(riding)].link:-1;
     for(size_t i=0;i<gimmicks_.size();++i){const auto& g=gimmicks_[i];if(g.done||int(i)==riding||int(i)==linked)continue;
-        const bool inside=int(i)==gimmickNear_;const float height=Chrono::GimmickCurtainHeight(g.radius);
+        const bool inside=int(i)==gimmickNear_;if((g.quiet&&!inside)||g.rest>0)continue;const float height=Chrono::GimmickCurtainHeight(g.radius);
         Engine::Transform t;t.translate=EV(g.at+V{0,.05f,0});t.scale={g.radius,height,g.radius};
         Engine::Vector4 color=inside&&tooSmall?Engine::Vector4{.95f,.2f,.12f,.85f}:inside?Engine::Vector4{1,.66f,.1f,.95f}:Engine::Vector4{1,.52f,.05f,.8f};
         if(inside)color.w*=.85f+.15f*std::sin(life_.age*7);

@@ -46,6 +46,8 @@ public:
     virtual bool CameraSubject(const ChronoSystem&, const DevourGimmick&, Chrono::LifeCameraSubject&) const { return false; }
     // 乗っている間の画面の印 (照準など)
     virtual void DrawMarks(const ChronoSystem&, const DevourGimmick&, UI::Canvas&, GameContext&) const {}
+    // 乗っている間の体 (形) の向き。ふだんは進む向き
+    virtual V Facing(const GimmickRide& ride) const { return ride.heading; }
     // 輪の外で、散らかした物を置かない範囲 (道・台のまわりなど) に入っているか
     virtual bool KeepsClear(const DevourGimmick&, V, float) const { return false; }
 };

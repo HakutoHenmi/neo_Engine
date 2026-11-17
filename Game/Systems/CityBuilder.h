@@ -1,5 +1,5 @@
 // CityBuilder.h
-// 街の形を材質ごとのメッシュとして組み立てる道具 (CityStage.cpp と RingCity.cpp で使う)。
+// 街の形を材質ごとのメッシュとして組み立てる道具 (CityStage.cpp と吸収モードのステージで使う)。
 // 材質の種類・箱や多角形の追加・建物の情報・階の高さ・疑似乱数
 #pragma once
 #include "ChronoSystemInternal.h"

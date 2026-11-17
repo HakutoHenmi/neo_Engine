@@ -7,6 +7,7 @@
 // ゲームの各シーン
 #include "GameScene.h"
 #include "Scenes/SlimePlayerDemoScene.h"
+#include "Scenes/WaterDioramaDemoScene.h"
 #include "GameOverScene.h"
 #include "TitleScene.h"
 #include "SelectScene.h"
@@ -131,6 +132,8 @@ int WINAPI WinMain(_In_ HINSTANCE hInst, _In_opt_ HINSTANCE, _In_ LPSTR commandL
 		sm.Register("Title", []() -> std::unique_ptr<Engine::IScene> { return std::unique_ptr<Engine::IScene>(new Game::TitleScene()); });
 		sm.Register("Select", []() -> std::unique_ptr<Engine::IScene> { return std::unique_ptr<Engine::IScene>(new Game::SelectScene()); });
 		sm.Register("SlimePlayerDemo", []() -> std::unique_ptr<Engine::IScene> { return std::make_unique<Game::SlimePlayerDemoScene>(); });
+		// 水のデモ (箱庭に積んだ岩から水が流れてたまる。--water-demo)
+		sm.Register("WaterDioramaDemo", []() -> std::unique_ptr<Engine::IScene> { return std::make_unique<Game::WaterDioramaDemoScene>(); });
         sm.Register("Game", []() -> std::unique_ptr<Engine::IScene> { return std::unique_ptr<Engine::IScene>(new Game::GameScene()); });
 		// 評価課題の確認用デモ (スキニング・パーティクルなど)
 		sm.Register("Assignment", []() -> std::unique_ptr<Engine::IScene> { return std::unique_ptr<Engine::IScene>(new Game::AssignmentScene()); });

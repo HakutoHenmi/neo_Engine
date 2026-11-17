@@ -180,6 +180,12 @@
     <ClCompile Include="Game\Systems\DevourGimmick.cpp">
       <Filter>3. Systems（システム）\スライム本編</Filter>
     </ClCompile>
+    <ClCompile Include="Game\Systems\DevourTownGimmick.cpp">
+      <Filter>3. Systems（システム）\スライム本編</Filter>
+    </ClCompile>
+    <ClCompile Include="Game\Systems\DevourHose.cpp">
+      <Filter>3. Systems（システム）\スライム本編</Filter>
+    </ClCompile>
     <ClCompile Include="Game\Systems\DevourTutorial.cpp">
       <Filter>3. Systems（システム）\スライム本編</Filter>
     </ClCompile>
@@ -192,7 +198,7 @@
     <ClCompile Include="Game\Systems\DevourGrowth.cpp">
       <Filter>3. Systems（システム）\スライム本編</Filter>
     </ClCompile>
-    <ClCompile Include="Game\Systems\RingCity.cpp">
+    <ClCompile Include="Game\Systems\SlopeTown.cpp">
       <Filter>3. Systems（システム）\スライム本編</Filter>
     </ClCompile>
     <ClCompile Include="Game\Systems\SlimePlayerDemo.cpp">
@@ -308,6 +314,9 @@
     <ClInclude Include="Game\Scenes\SlimePlayerDemoScene.h">
       <Filter>2. Scenes（シーン）</Filter>
     </ClInclude>
+    <ClInclude Include="Game\Scenes\WaterDioramaDemoScene.h">
+      <Filter>2. Scenes（シーン）</Filter>
+    </ClInclude>
     <ClInclude Include="Game\Scenes\GameScene.h">
       <Filter>2. Scenes（シーン）</Filter>
     </ClInclude>
@@ -398,7 +407,7 @@
     <ClInclude Include="Game\Systems\CityBuilder.h">
       <Filter>4. Chrono（スライム本編のルール）</Filter>
     </ClInclude>
-    <ClInclude Include="Game\Chrono\RingCityRules.h">
+    <ClInclude Include="Game\Chrono\SlopeTownRules.h">
       <Filter>4. Chrono（スライム本編のルール）</Filter>
     </ClInclude>
     <ClInclude Include="Game\Chrono\DevourAnimation.h">
@@ -980,6 +989,9 @@
       <Filter>Resources（素材）\shaders</Filter>
     </None>
     <None Include="Resources\shaders\FluidRaymarch.hlsl">
+      <Filter>Resources（素材）\shaders</Filter>
+    </None>
+    <None Include="Resources\shaders\FluidScreenWater.hlsl">
       <Filter>Resources（素材）\shaders</Filter>
     </None>
     <None Include="Resources\shaders\FluidRenderSupport.hlsli">

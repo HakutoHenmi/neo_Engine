@@ -2,7 +2,7 @@
 #include "../Game/Chrono/SlimeHydrantRules.h"
 #include "../Game/Chrono/SlimeSignalRules.h"
 #include "../Game/Chrono/CityStageRules.h"
-#include "../Game/Chrono/RingCityRules.h"
+#include "../Game/Chrono/SlopeTownRules.h"
 #include "../Game/Chrono/DevourMorphRules.h"
 #include "../Game/Chrono/DevourStageRules.h"
 #include "../Game/Chrono/RoomRules.h"
@@ -365,15 +365,13 @@ void TestDevour(){
     // 大きい物ほど増える。覆える一番大きな物でも、体が一度に倍にはならない
     CheckLife(DevourReward(13)>DevourReward(1.7f)*50,"growth does not scale with object size");
     for(float mass:{100.f,4000.f,120000.f}){float largest=DevourBodyRadius(mass)*DevourCoverRatio;CheckLife(DevourReward(largest)<mass*.08f&&DevourReward(largest)>mass*.02f,"one bite grows too much or too little");}
-    // 町: 門の大きさが輪の段階に合い、大通りと広場には建物が無く、輪の壁の内側に門がある
-    {const auto& zones=RingZones();const float gates[]={500};
-        for(size_t z=1;z<zones.size();++z)CheckLife(std::abs(DevourMassToCover(zones[z].gateRadius)/gates[z-1]-1)<.02f,"ring gate size does not match its mass");
-        auto lots=RingLots();auto plazas=RingPlazas();int doors=0;
-        for(const auto& lot:lots){if(lot.gate){++doors;CheckLife(std::abs(RingLotRadius(lot)-zones[size_t(lot.gate)].gateRadius)<.01f,"gate radius is wrong");continue;}
-            CheckLife(lot.foot.x0>0||lot.foot.x1<0,"building on the north-south avenue");CheckLife(lot.foot.z0>0||lot.foot.z1<0,"building on the east-west avenue");
-            for(const auto& plaza:plazas)CheckLife(LifeDistance(lot.foot.Center(),plaza.at)>plaza.radius*.9f,"building in a plaza");}
-        CheckLife(doors==4*(RingStyleCount-1)&&plazas.size()==8,"ring gates or plazas are missing");
-        CheckLife(lots.size()<1000,"too many buildings");}
+    // 坂の町: 道は勾配の上限 (16%) 以内で、地面の上を通る。石段の下の端と上の端は地面 (道と境内) につながる
+    {const auto& d=SlopeData();const float u=d.unit;
+        for(const auto& road:d.roads){for(size_t i=1;i<road.path.size();++i){const Vec a=road.path[i-1],b=road.path[i];const float run=Length(Vec{b.x-a.x,0,b.z-a.z});CheckLife(std::abs(b.y-a.y)<=run*.16f+.01f,"slope town road is too steep");}
+            for(size_t i=0;i<road.path.size();i+=5){const Vec p=road.path[i];if(SlopeOnStairs(p,u))continue;CheckLife(std::abs(SlopeGround(p)-p.y)<.6f*u,"slope town road does not sit on the ground");}}
+        for(const auto& s:d.stairs){const Vec axis=Unit(Vec{s.to.x-s.from.x,0,s.to.z-s.from.z});
+            CheckLife(std::abs(SlopeGround(s.from-axis*(1.5f*u))-s.from.y)<.8f*u,"slope town stairs do not start on the ground");
+            CheckLife(std::abs(SlopeGround(s.to+axis*(1.5f*u))-s.to.y)<.8f*u,"slope town stairs do not end on the ground");}}
     // ステージ: 開始の量で開始の大きさ、目標は大きくなる順、最初の目標でクリア、最後の目標で S ランク
     for(const auto& stage:DevourStages()){CheckLife(std::abs(DevourSizeCm(stage,LifeStartMass)-stage.start)<.001f&&DevourRankAt(stage,LifeStartMass)==0&&DevourRankName(stage,0)=="D","stage start is wrong");
         int count=int(stage.goals.size());CheckLife(DevourRankAt(stage,DevourGoalMass(stage,stage.goals[0]))==1&&DevourRankAt(stage,DevourGoalMass(stage,stage.goals.back()))==count&&DevourRankName(stage,count)=="S"&&DevourRankName(stage,count-1)=="A","stage ranks are wrong");
@@ -396,6 +394,11 @@ void TestDevour(){
         CheckLife(DevourCanCover(mass,r*1.5f*.35f)&&DevourShardShare<1,"shards cannot be eaten or are worth too much");}
     // 掃除機: 本体・ホース・柄・吸い口がつながった形で、上の弧の下は空いている
     CheckLife(DevourInsideVacuum({DevourVacuumBodyX,1.9f,-2})&&DevourInsideVacuum({DevourVacuumBodyX+2.2f,1.1f,-2.4f})&&DevourInsideVacuum({DevourVacuumMouthX+2.5f,.5f,6})&&!DevourInsideVacuum({0,1,2.5f})&&!DevourInsideVacuum({DevourVacuumMouthX+2.5f,3,6}),"vacuum shape is wrong");
+    // 坂の町のおみこしとこま: 形 (こまの胴と軸・とがった先の外、おみこしの担ぎ棒の先と横棒の端) と、こまが壁で跳ね返る向き
+    CheckLife(GimmickInsideKoma({0,2,0})&&GimmickInsideKoma({0,4.5f,0})&&!GimmickInsideKoma({2.6f,.3f,0})&&GimmickInsideMikoshi({GimmickMikoshiPoleX,.55f+GimmickMikoshiLift,4.2f})&&
+        GimmickInsideMikoshi({3,.55f+GimmickMikoshiLift,GimmickMikoshiCrossZ})&&!GimmickInsideMikoshi({0,.3f,0})&&GimmickShape(GimmickKomaShape)&&GimmickShape(GimmickMikoshiShape),"festival shapes are wrong");
+    {const Vec back=KomaReflect({1,0,0},{-1,0,0}),slant=KomaReflect(Unit(Vec{1,0,1}),{-1,0,0});
+        CheckLife(back.x<-.99f&&std::abs(slant.x+.7071f)<.01f&&std::abs(slant.z-.7071f)<.01f,"koma bounce is wrong");}
     // バネ: 上下の板の間に隙間の広いコイルがある (真ん中は空洞)
     {int solid=0;for(int i=0;i<200;++i)solid+=DevourInsideSpring({DevourSpringCoil,DevourSpringPlate+.01f+(DevourSpringHeight-2*DevourSpringPlate)*float(i)/200,0});
         CheckLife(DevourInsideSpring({0,.15f,0})&&DevourInsideSpring({0,DevourSpringHeight-.15f,0})&&!DevourInsideSpring({0,DevourSpringHeight*.5f,0})&&solid>40&&solid<130&&DevourSpringPitch>2*DevourSpringTube+1,"spring coil is not readable");}

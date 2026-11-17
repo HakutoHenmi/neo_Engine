@@ -8,6 +8,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 GAP = .015  # これより近い平行な面は重なりと見なす (cm)。大きな物は町の縮尺で見るので大きさに合わせて広げる
+# --town: 町に置く大きな物 (幅 3m 以上) は遠くから見るので、3cm より近い平行な面も重なりとする (遠くの家の壁がちらついていた)
+TOWN_GAP, TOWN_SIZE = 3.0, 300
 
 
 def load(path):
@@ -28,8 +30,8 @@ def cross(a, b): return (a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a
 def overlap(a, b):
     # 2D の三角形が内側で重なるか (分離軸)。辺だけ接している物は重なりにしない
     for tri in (a, b):
-        for i in range(3):
-            p, q = tri[i], tri[(i + 1) % 3]
+        for i in range(len(tri)):
+            p, q = tri[i], tri[(i + 1) % len(tri)]
             n = (q[1] - p[1], p[0] - q[0])
             l = math.hypot(*n) or 1
             n = (n[0] / l, n[1] / l)
@@ -44,6 +46,7 @@ def check(path):
     verts, faces = load(path)
     size = max(max(v[i] for v in verts) - min(v[i] for v in verts) for i in range(3))
     gap = max(GAP, size * .0005)
+    if "--town" in sys.argv and size >= TOWN_SIZE: gap = TOWN_GAP
     tris = []
     for f in faces:
         p = [verts[i] for i in f]
@@ -69,6 +72,7 @@ def check(path):
                 if abs(flat[i][1] - flat[j][1]) < gap and overlap(flat[i][0], flat[j][0]):
                     hits += 1
                     worst = worst or group[i][2][0]
+                    if "--verbose" in sys.argv and hits <= 6: print("   ", path.stem, "gap %.2f" % abs(flat[i][1] - flat[j][1]), [tuple(round(c) for c in q) for q in group[i][2]], [tuple(round(c) for c in q) for q in group[j][2]])
     return hits, worst
 
 

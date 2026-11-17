@@ -90,8 +90,11 @@ float ChronoSystem::DevourEat(entt::registry& r,size_t index){
     if(index>=life_.props.size()||!life_.props[index].active)return 0;
     auto& prop=life_.props[index];auto& body=life_.bodies[0];devourEatAt_=prop.at+V{0,prop.radius,0};DevourRecordEaten(r,prop.visual);DevourRemoveProp(r,index);
     // 限界に近い物は重くて遅くなる。画面では「大きくなった」と見せる (飲んだ瞬間に膨らんで光の輪、遅い間は金色に脈打つ)
-    {const float heavy=DevourHeavyTime(body.mass,prop.radius);if(heavy>0){devourHeavyKick_=1;if(heavy>=devourHeavy_)devourHeavyPeak_=heavy;DevourGrowBurst(std::clamp(heavy-.5f,0.f,1.f));}
-        devourHeavy_=std::max(devourHeavy_,heavy);}
+    // 遅くなるのは序盤だけ。大きくなるほど遅い時間を縮め、代わりに水を大きく飛び散らせる
+    {const float heavy=DevourHeavyTime(body.mass,prop.radius),share=DevourHeavyShare(DevourSizeCm(CurrentDevourStage(),body.mass));
+        if(heavy>0){devourHeavyKick_=1;if(heavy>=devourHeavy_)devourHeavyPeak_=heavy;DevourGrowBurst(std::clamp(heavy-.5f+.5f*(1-share),0.f,1.f));
+            if(share<1){const float late=1-share,R=LifeRadii(body,life_.recipe).x;DevourSplash(body.at,R*.9f,int(10+14*late),std::sqrt(LifeScale(body.mass))*(.7f+.4f*late));}}
+        devourHeavy_=std::max(devourHeavy_,heavy*share);}
     // 絵の具で塗った色と同じ色の物は多く増える
     const float paint=GimmickFoodBonus(prop);if(paint>1&&gimmickMatchCool_<=0){gimmickMatchCool_=.5f;devourPops_.push_back({prop.at+V{0,prop.radius+2,0},DevourWord("paintMatch"),0,.3f,0,DevourSeed()});}
     float gain=DevourSwallow(body.mass,devourDigest_,prop.reward*paint*DevourFoodValue(body.mass,prop.radius,CurrentDevourStage().smallFood));DevourLogEat(prop,gain);++life_.absorbed;LifeUnlockMorphItem(life_,0x80000000u|uint32_t(index));
@@ -125,16 +128,6 @@ void ChronoSystem::DevourRemoveProp(entt::registry& r,size_t index){
     for(size_t i=0;i<devourWallProps_.size();++i)if(devourWallProps_[i]==int(index))BreakCityWall(i,true);
     if(int(index)==devourBarricadeProp_)BreakCityGate(r,true,true);
     if(int(index)==cityGateProp_)BreakCityGate(r,false,true);
-    // 輪の門なら壁が崩れる
-    if(auto gate=devourGates_.find(index);gate!=devourGates_.end())DevourOpenRing(r,gate->second);
-}
-// 輪を開ける: 壁を消し、同じ壁の他の門も消して、向こうの物に手が届くようにする
-void ChronoSystem::DevourOpenRing(entt::registry& r,int ring){
-    if(ring<1||ring>=RingStyleCount||ringOpen_[size_t(ring)])return;
-    ringOpen_[size_t(ring)]=true;devourRingOpened_=ring;DevourLogEvent("ring_open_"+std::to_string(ring));
-    for(auto e:ringWalls_[size_t(ring)])if(r.valid(e)&&r.all_of<MeshRendererComponent>(e))r.get<MeshRendererComponent>(e).enabled=false;
-    for(auto& prop:life_.props)if(prop.ring==ring)prop.sealed=false;
-    for(const auto& [index,gate]:devourGates_)if(gate==ring&&life_.props[index].active)DevourRemoveProp(r,index);
 }
 // 大きすぎる物を砕く: 物を消し、飲める大きさの欠片 (光る球) を周りへ飛ばす
 void ChronoSystem::DevourShatter(entt::registry& r,GameContext& ctx,size_t index){
@@ -251,6 +244,9 @@ void ChronoSystem::DevourTouch(entt::registry& r,V from){
     // タイヤは幅が広いので、通り道の物をより広く吸い込む
     bool tire=body.action==LifeAction::Tire&&body.weapon.ready;
     if(tire)reach=std::max(reach,(LifeTireRadius+1)*scale);
+    // こまとおみこしも形の幅で吸い込む (こまの胴・おみこしの台の広さ)
+    {const int kind=GimmickRidingKind();if(kind==int(Chrono::GimmickKind::Koma))reach=std::max(reach,(Chrono::GimmickKomaRadius+.4f)*scale);
+        else if(kind==int(Chrono::GimmickKind::Mikoshi))reach=std::max(reach,2.4f*scale);}
     V travel=body.at-from;travel.y=0;float squared=Dot(travel,travel);
     for(size_t i=0;i<life_.props.size();++i){const auto& prop=life_.props[i];if(!prop.active||prop.sealed||!DevourCanCover(mass,prop.radius))continue;
         V delta=prop.at-from;delta.y=0;float t=squared>.00001f?std::clamp(Dot(delta,travel)/squared,0.f,1.f):0;V nearest=Lerp(from,body.at,t);
@@ -264,7 +260,7 @@ void ChronoSystem::DevourTouch(entt::registry& r,V from){
 }
 // 物を体か吸い口へ引き寄せ始める: 他から選ばれないようにして、元の場所の見た目は隠す
 void ChronoSystem::DevourPull(entt::registry& r,size_t index,float flight,bool toBody){
-    auto& prop=life_.props[index];prop.sealed=true;prop.ring=0;
+    auto& prop=life_.props[index];prop.sealed=true;
     if(prop.visual!=0xffffffffu){auto e=entt::entity(prop.visual);if(r.valid(e)&&r.all_of<MeshRendererComponent>(e))r.get<MeshRendererComponent>(e).enabled=false;}
     devourSucks_.push_back({index,prop.at,0,flight,toBody});
     if(toBody)DevourOpenMouth(prop,true);
@@ -320,23 +316,27 @@ void ChronoSystem::TickDevourFlies(entt::registry& r,float dt){
         fly.last=at;if(u>=1)prop.sealed=false;}
     devourFlies_.erase(std::remove_if(devourFlies_.begin(),devourFlies_.end(),[](const DevourFly& f){return f.age>=f.time;}),devourFlies_.end());
 }
-// 動く物を登録する: 道は閉じた折れ線で、speed は 1 秒に進む長さ
-void ChronoSystem::AddRoute(entt::entity e,std::vector<V> points,float speed,float phase){DevourMover m;m.visual=uint32_t(e);m.points=std::move(points);m.speed=speed;m.phase=phase;devourMovers_.push_back(std::move(m));}
+// 動く物を登録する: 道は閉じた折れ線で、speed は 1 秒に進む長さ (向きが変わるので、地面に触れる部分ごとの丸は使わない)
+void ChronoSystem::AddRoute(entt::entity e,std::vector<V> points,float speed,float phase,bool frontZ){DevourMover m;m.visual=uint32_t(e);m.points=std::move(points);m.speed=speed;m.phase=phase;m.frontZ=frontZ;devourMovers_.push_back(std::move(m));for(auto& seed:cityProps_)if(seed.entity==e)seed.feet.clear();}
 // その場で踊る物: 左右に揺れて、拍に合わせて跳ねる
 void ChronoSystem::AddDance(entt::registry& r,entt::entity e,float speed,float sway,float hop){DevourMover m;m.visual=uint32_t(e);m.speed=speed;m.sway=sway;m.hop=hop;m.phase=DevourSeed()*6.283f;const auto& t=r.get<TransformComponent>(e);m.baseY=t.translate.y;m.baseYaw=t.rotate.y;devourMovers_.push_back(std::move(m));}
 // 動く物を進める。飲まれた物は止まる
 void ChronoSystem::TickDevourMovers(entt::registry& r,float dt){
+    const bool groundRoutes=devour_&&CurrentDevourStage().map=="slope";
     for(auto& m:devourMovers_){
         if(m.index<0)for(size_t i=0;i<life_.props.size();++i)if(life_.props[i].visual==m.visual){m.index=int(i);break;}
         if(m.index<0)continue;auto& prop=life_.props[size_t(m.index)];// (飲まれた物は止まる。門の向こうの物は手が届かないだけなので動き続ける)
-        if(!prop.active||(prop.sealed&&prop.ring==0)){m.speed=0;continue;}
+        if(!prop.active||prop.sealed){m.speed=0;continue;}
         auto e=entt::entity(m.visual);auto* t=r.valid(e)?r.try_get<TransformComponent>(e):nullptr;if(!t||m.speed==0)continue;m.age+=dt;
         if(m.points.size()>=2){float total=0;for(size_t i=0;i<m.points.size();++i)total+=LifeDistance(m.points[i],m.points[(i+1)%m.points.size()]);
             float s=std::fmod(m.phase*total+m.age*m.speed,total);
             for(size_t i=0;i<m.points.size();++i){const V from=m.points[i],to=m.points[(i+1)%m.points.size()];const float length=LifeDistance(from,to);if(s>length){s-=length;continue;}
-                V at=Lerp(from,to,s/std::max(length,.001f));at.y=prop.at.y;t->translate.x+=at.x-prop.at.x;t->translate.z+=at.z-prop.at.z;prop.at=at;
-                // (車の前は +x。曲がり角は少しずつ向きを変える)
-                const float want=std::atan2(-(to.z-from.z),to.x-from.x),turn=std::remainder(want-t->rotate.y,6.2831853f);t->rotate.y+=turn*(1-std::exp(-9*dt));break;}}
+                V at=Lerp(from,to,s/std::max(length,.001f));at.y=prop.at.y;
+                // 坂の町の道を走る物は、地面の高さに合わせて上り下りする
+                if(groundRoutes){const float rise=InkGround(at)-InkGround(prop.at);at.y+=rise;t->translate.y+=rise;}
+                t->translate.x+=at.x-prop.at.x;t->translate.z+=at.z-prop.at.z;prop.at=at;
+                // (車の前は +x、猫などは +z。曲がり角は少しずつ向きを変える)
+                const float want=m.frontZ?std::atan2(to.x-from.x,to.z-from.z):std::atan2(-(to.z-from.z),to.x-from.x),turn=std::remainder(want-t->rotate.y,6.2831853f);t->rotate.y+=turn*(1-std::exp(-9*dt));break;}}
         else{const float beat=m.age*m.speed+m.phase;t->rotate.z=std::sin(beat)*m.sway;t->rotate.y=m.baseYaw+std::sin(beat*.5f)*m.sway*.5f;t->translate.y=m.baseY+std::abs(std::sin(beat))*m.hop;}}
 }
 // 飲めない物に当たると止まる。勢いが強いと弾かれる
@@ -344,9 +344,13 @@ ChronoSystem::V ChronoSystem::DevourPropBlock(entt::registry& r,Player& p,GameCo
     auto& body=life_.bodies[0];const float mass=body.mass,reach=DevourBodyRadius(mass)*.7f,tall=2*LifeScale(mass);
     for(const auto& prop:life_.props){if(!prop.active||prop.sealed||prop.foot<=0||prop.morphItem!=LifeMorphItem::None||DevourCanCover(mass,prop.radius))continue;
         const float base=prop.at.y-std::min(1.2f,prop.height*.5f);if(old.y>base+prop.height||old.y+tall<base)continue;
-        V delta=next-prop.at;delta.y=0;float distance=Length(delta),touch=reach+prop.foot;if(distance>=touch)continue;
+        // 地面に触れる部分ごとの丸があれば、一番深く入った丸で止める (無ければ物全体の丸)
+        V center=prop.at;float touch=reach+prop.foot,deepest=0;
+        for(const auto& foot:prop.feet){const V c=prop.at+V{foot.x,0,foot.z};V d=next-c;d.y=0;const float into=reach+foot.y-Length(d);if(into>deepest){deepest=into;center=c;touch=reach+foot.y;}}
+        if(!prop.feet.empty()&&deepest<=0)continue;
+        V delta=next-center;delta.y=0;float distance=Length(delta);if(distance>=touch)continue;
         V normal=distance>.001f?delta*(1/distance):body.forward*-1.f;
-        next.x=prop.at.x+normal.x*touch;next.z=prop.at.z+normal.z*touch;
+        next.x=center.x+normal.x*touch;next.z=center.z+normal.z*touch;
         float into=-Dot(p.velocity,normal);if(into<=0)continue;float impact=DevourBumpImpact(into,topSpeed);
         p.velocity=p.velocity+normal*into;
         if(impact>0&&devourBumpCool_<=0){DevourBump(r,p,ctx,prop.at,impact);break;}}
@@ -422,10 +426,6 @@ void ChronoSystem::TickDevourPounce(entt::registry& r,Player& p,GameContext& ctx
     for(auto& pop:devourPops_)pop.age+=dt;
     devourPops_.erase(std::remove_if(devourPops_.begin(),devourPops_.end(),[](const DevourPop& pop){return pop.age>DevourPopLife(pop.kind);}),devourPops_.end());
     TickDevourFlies(r,dt);TickDevourMovers(r,dt);TickDevourGimmicks(r,ctx,dt);TickDevourSpills(ctx,dt);TickDevourGrowth(dt);if(devour_)TickDevourTrail(p,dt);
-    if(devourOpenAll_){devourOpenAll_=false;for(int z=1;z<RingStyleCount;++z)DevourOpenRing(r,z);devourRingOpened_=0;}
-    // 輪が開いたら大きく知らせる
-    if(devourRingOpened_){life_.message=RingZones()[size_t(devourRingOpened_)].name+"が開いた！";life_.messageAge=3;devourRingOpened_=0;
-        LifeImpact(ctx,ImpactStructureBreak,body.at);PlayDevourSound(devourSounds_.gateOpen,.85f);}
     // 体の中の物: 新しい物は表面に付き、後から飲んだ物に埋もれて沈む (飲んだ順に層になる)。体が育って小さく見えるようになった物は溶ける
     {float bodyRadius=DevourBodyRadius(body.mass),cover=0;devourChew_=std::max(0.f,devourChew_-dt);devourHeavy_=std::max(0.f,devourHeavy_-dt);devourBumpCool_=std::max(0.f,devourBumpCool_-dt);devourBumpMemory_=std::max(0.f,devourBumpMemory_-dt);
         for(auto meal=devourMeals_.rbegin();meal!=devourMeals_.rend();++meal){meal->age+=dt;meal->now+=(DevourMealDepth(cover)-meal->now)*(1-std::exp(-5*dt));
@@ -490,8 +490,9 @@ void ChronoSystem::TickDevourVacuum(entt::registry& r,GameContext& ctx,float dt,
         if(body.aspect<1.3f)body.aspectVelocity=std::max(body.aspectVelocity,4+9*weight);
         devourSizePulse_=1;V radii=LifeRadii(body,life_.recipe);float scale=LifeScale(body.mass),side=(float(devourPops_.size()%3)-1)*radii.x*.5f;
         (void)side;(void)scale;if(devourPops_.size()<(devourSucking_?2u:8u))devourPops_.push_back({devourEatAt_,DevourWord(weight>=.6f?"gulpBig":weight>=.3f?"gulpMiddle":"gulpSmall"),0,weight,0,DevourSeed()});
-        // (掃除機は続けて飲むので、体が隠れないよう揺れと輪は出さない)
-        if(weight>=.3f&&!devourSucking_){LifeImpact(ctx,ImpactDevour,body.at,{0,1,0},.3f+.9f*weight);devourChew_=.25f*weight;if(weight>=.6f&&swarmEffects_.size()<128)swarmEffects_.push_back({body.at,0,radii.x*(1+weight),2});}
+        // (掃除機は続けて飲むので、体が隠れないよう揺れは出さない。
+        //  大きい物で出していた床に広がる水色の輪は、水しぶきと重なって安っぽく見えたので出さない)
+        if(weight>=.3f&&!devourSucking_){LifeImpact(ctx,ImpactDevour,body.at,{0,1,0},.3f+.9f*weight);devourChew_=.25f*weight;}
         if(weight>.4f)DevourSplash(body.at,LifeRadii(body,life_.recipe).x*.7f,4+int(8*weight),std::sqrt(LifeScale(body.mass))*.7f);
     }
     devourSucking_=held&&body.action==LifeAction::Vacuum&&body.weapon.ready&&!finished_;devourSuckClock_-=dt;
@@ -527,9 +528,7 @@ void ChronoSystem::StartDevourHop(float power,V wish){
     V to=body.at;
     if(!devour_)to=ConstrainLifeMovement(body.at,body.at+direction*range,margin);
     else for(float f=1;f>.05f;f-=.1f){V at=body.at+direction*(range*f);
-        // 閉じた輪の壁は越えられない
-        bool crossing=false;float a=RingDistance(body.at),b=RingDistance(at);for(int z=1;z<RingStyleCount;++z)crossing|=!ringOpen_[size_t(z)]&&(a<RingWallAt(z))!=(b<RingWallAt(z));
-        if(!crossing&&DevourWalkable(at,margin)){to=at;break;}}
+        if(DevourWalkable(at,margin)){to=at;break;}}
     to.y=InkGround(to)+1.25f;
     devourHop_={true,false,body.at,to,0,DevourSpringTime(power),DevourSpringRise(body.mass,power)};++devourLog_.hops;
     PlayDevourSound(devourSounds_.bounce,.4f+.25f*power,1.3f);
@@ -569,7 +568,10 @@ ChronoSystem::V ChronoSystem::DevourMealAt(const DevourMeal& meal)const{
 // ギミックの形の中の物の位置: 形の芯 (姿勢と向きに合わせる) から、物ごとの向きへ少しだけ散らす
 ChronoSystem::V ChronoSystem::GimmickMealAt(const DevourMeal& meal)const{
     const auto& body=life_.bodies[0];const int shape=DevourToolShape()>0?DevourToolShape():Chrono::GimmickDropShape;const float scale=LifeScale(body.mass);
-    const auto core=Chrono::GimmickShapeCore(shape);V local=Chrono::GimmickPosePoint(shape,core.center+meal.dir*(core.thin*Chrono::GimmickMealSpread),DevourToolPose())*scale;
+    const auto core=Chrono::GimmickShapeCore(shape);V inside=core.center+meal.dir*(core.thin*Chrono::GimmickMealSpread);
+    // 長い形は、物ごとの向きの前後の成分で線の上の位置を決め、横と上下の成分だけ少し散らす
+    if(Length(core.spineB-core.spineA)>.01f){const float t=.5f+.5f*std::clamp(meal.dir.z,-1.f,1.f);inside=Lerp(core.spineA,core.spineB,t)+V{meal.dir.x,meal.dir.y,0}*(core.thin*Chrono::GimmickMealSpread);}
+    V local=Chrono::GimmickPosePoint(shape,inside,DevourToolPose())*scale;
     const V f=body.forward,right{f.z,0,-f.x};return body.at+V{0,-1.25f,0}+right*local.x+V{0,local.y,0}+f*local.z;
 }
 // ギミックの形の中の物を縮める倍率: 形の厚みに収まる大きさまで (元より大きくはしない)
@@ -608,14 +610,15 @@ void ChronoSystem::DrawDevourMeals(GameContext& ctx){
         if(!prop.orb&&DrawCityPropInTentacle(ctx,prop.visual,at,shrink))continue;
         float radius=std::max(prop.shard,LifeOrbRadius(prop.reward))*shrink;Engine::Transform t;t.translate=EV(at);t.scale={radius,radius,radius};auto tint=LifeOrbColor(prop.reward);ctx.renderer->DrawMeshInstanced(sphere_,white_,t,{tint.x,tint.y,tint.z,1});}
     if(devourSucking_){float range=DevourVacuumRange(body.mass);V right{body.forward.z,0,-body.forward.x};
-        for(int i=0;i<14;++i){float lane=(RingNoise(i+1)*2-1)*.8f,u=std::fmod(life_.age*2.4f+RingNoise(i+40),1.f);V at=mouth+(body.forward+right*lane)*(range*(1-u))+V{0,range*.12f*RingNoise(i+80),0};
+        for(int i=0;i<14;++i){float lane=(StageNoise(i+1)*2-1)*.8f,u=std::fmod(life_.age*2.4f+StageNoise(i+40),1.f);V at=mouth+(body.forward+right*lane)*(range*(1-u))+V{0,range*.12f*StageNoise(i+80),0};
             ctx.renderer->DrawLine3D(EV(at),EV(Lerp(at,mouth,.22f)),{.75f,1,.55f,.7f});}}
     // ギミックの形になる間は、体の中の物を小さくして形の芯へ集める (見えたまま、形からははみ出さない)
     devourMealMorph_=std::clamp(devourMealMorph_+(DevourMealsMorphed()?1.f:-1.f)*std::min(ctx.dt,.05f)/Chrono::GimmickFormTime,0.f,1.f);const float morph=LifeSmooth(devourMealMorph_);
     // 武器の形の間は体の形が違うので、体の中の物は見せない
     if(LifeWeaponForm(body.action))return;
     for(const auto& meal:devourMeals_){V at=DevourMealAt(meal);auto visual=cityVisuals_.find(meal.visual);
-        const float extent=visual!=cityVisuals_.end()&&visual->second.half.x>0?std::max({visual->second.half.x,visual->second.half.y,visual->second.half.z}):std::max(LifeOrbRadius(1),meal.radius*.6f);
+        // (half は皮の丸みの分だけ小さくした箱なので、物の大きさは丸みを足して測る。足さないと大きく見積もれず、ギミックの形からはみ出す)
+        const float extent=visual!=cityVisuals_.end()&&visual->second.half.x>0?std::max({visual->second.half.x,visual->second.half.y,visual->second.half.z})+visual->second.round:std::max(LifeOrbRadius(1),meal.radius*.6f);
         float fit=meal.fit;if(morph>0){at=Lerp(at,GimmickMealAt(meal),morph);fit=fit+(GimmickMealFit(meal,extent)-fit)*morph;}
         if(!meal.orb&&DrawCityPropInTentacle(ctx,meal.visual,at,fit))continue;
         float radius=std::max(LifeOrbRadius(1),meal.radius*.6f)*fit;Engine::Transform t3;t3.translate=EV(at);t3.scale={radius,radius,radius};
@@ -676,7 +679,6 @@ void ChronoSystem::DrawDevourUI(GameContext& ctx){
         else hud.next="Sランク達成！ もっと大きく";
         // 次に飲める壁と門
         for(float gate:stage.gates)if(cm<gate){hud.flags.insert(hud.flags.begin(),{gate,"段差 "+DevourSizeText(gate),false});break;}
-        for(int z=1;z<RingStyleCount;++z)if(!ringOpen_[size_t(z)]){const float gate=DevourSizeCm(stage,DevourMassToCover(RingZones()[size_t(z)].gateRadius));hud.gate=RingZones()[size_t(z)].name+"の門 "+DevourSizeText(gate)+" で飲める";break;}
         if(bestMass>0&&body.mass<=bestMass){const float mark=DevourSizeCm(stage,bestMass);hud.flags.insert(hud.flags.begin(),{mark,"BEST "+best,false});}
         // このステージの変形アイテム
         if(!devourFreeForms_){const LifeAction form=DevourItemForm(stage.item);const bool active=body.action==form,taken=LifeCanMorph(body,form);hud.item=true;hud.itemLit=active||devourItemReady_;

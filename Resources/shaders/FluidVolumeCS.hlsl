@@ -81,6 +81,19 @@ void BuildShapes(uint3 id : SV_DispatchThreadID) {
     if (originalIndices[i]==0xffffffffU) { shapes[i]=shape; return; }
     VolumeParticle p=particles[i];
     if (p.color.a<0.01f || p.position.y<-500 || !all(isfinite(p.position))) { shapes[i]=shape; return; }
+    // 坂の町の放水: 消火栓の水は画面の上で面を作って描く (FluidScreenWater.hlsl)。体積へは入れず (密度 0)、
+    // 霧と水しぶきの粒だけが使う形を置く。近くの粒を探す計算もしない
+    // 坂の町の放水の描き方 (filterAxis の端数): .5 = 画面の上の面 (FluidScreenWater)、.25 = 箱庭のデモと同じふつうの水。
+    // ふつうの水では、消火栓の水だけの形 (速い筋・薄く広い膜) を使わず、たまる水と同じ形で描く
+    float hoseMode=filterAxis<0?frac(-filterAxis):0;
+    bool hydrant=p.type>1.05f&&p.type<1.25f,hosePlain=hoseMode>.15f&&hoseMode<.35f;
+    // ふつうの水の描き方でも、細かい升の窓のふち (2 升) より外の粒は画面の上の面 (FluidScreenWater の outsideOnly) が描く
+    float3 windowMargin=min(p.position-volumeOrigin,volumeOrigin+voxelSize*volumeSize-p.position);
+    bool outsideWindow=hosePlain&&min(windowMargin.x,min(windowMargin.y,windowMargin.z))<=2*voxelSize;
+    if(hydrant&&(hoseMode>.4f||outsideWindow)){
+        shape.row0=float4(2,0,0,p.position.x);shape.row1=float4(0,2,0,p.position.y);shape.row2=float4(0,0,2,p.position.z);
+        shape.info=float4(0,.5f,0,1);shapes[i]=shape;return;
+    }
     if(p.type>=8.0f){
         // Overlapping anisotropic kernels form one continuous liquid density
         // surface; the player raymarch supplies the same normals and optics.
@@ -120,13 +133,16 @@ void BuildShapes(uint3 id : SV_DispatchThreadID) {
     }
     bool supported=water && p.pad.z>0 &&
         abs(p.position.y-p.pad.y)<0.35f && abs(p.velocity.y)<2.5f;
-    if(p.type>1.05f&&p.type<1.25f&&!supported&&p.pad.x<.12f&&dot(p.velocity,p.velocity)>16){
+    // (速い筋は、ふつうの水の描き方でも筋の形を使う。まわりの粒から形を決めると、まばらな空中の水が霧だけになって消え、重くもなる)
+    if(hydrant&&!supported&&p.pad.x<.12f&&dot(p.velocity,p.velocity)>16){
         // Fast jets must not toggle between a sub-voxel PCA surface and a tiny
         // isolated spray. Overlapping velocity-aligned kernels reconstruct the
         // actual simulated stream, including sparse tips and the near-volume LOD.
         float speed=length(p.velocity);float3 along=p.velocity/speed;
         float3 across=normalize(cross(along,abs(along.y)<.9f?float3(0,1,0):float3(1,0,0)));
-        float radius=max(max(.48f,p.pad.y*.65f),voxelSize*1.65f);
+        // pad.y はまだ何にも当たっていない水だけがノズルの幅。当たった後は地面の高さ (坂の町では 100 を超える) なので使わない
+        float nozzle=p.pad.x<=0?p.pad.y:0;
+        float radius=max(max(.48f,nozzle*.65f),voxelSize*1.65f);
         float axial=max(radius,clamp(speed/60,.8f,1.5f));
         shape.row0=float4(across/radius,p.position.x);
         shape.row1=float4(cross(along,across)/radius,p.position.y);
@@ -137,7 +153,7 @@ void BuildShapes(uint3 id : SV_DispatchThreadID) {
     float3 mean=0;
     float3x3 moment=(float3x3)0;
     uint neighbours=0;
-    float gridCell=max(.4f,abs(filterAxis)); // Negative = compact morph hash table.
+    const float gridCell=.4f; // Matches the solver's SMOOTHING_RADIUS cell (filterAxis carries the bucket count).
     int3 cell=(int3)floor(p.position/gridCell);
     const float searchRadius=1.1f;
     float nearestDistance=searchRadius;
@@ -183,7 +199,7 @@ void BuildShapes(uint3 id : SV_DispatchThreadID) {
         float radius=neighbours>0 ? clamp(nearestDistance*1.8f,0.65f,1.1f) : 0.5f;
         // A spreading hydrant sheet is a thin continuous film: wider, flatter
         // kernels merge it, and sparse outskirts thin away instead of beading.
-        if(p.type>1.05f&&p.type<1.25f)radius=neighbours>0?clamp(nearestDistance*3.f,1.2f,2.f):.7f;
+        if(hydrant&&!hosePlain)radius=neighbours>0?clamp(nearestDistance*3.f,1.2f,2.f):.7f;
         axes=float3(radius,max(voxelSize,0.25f),radius);
         transform=float3x3(1,0,0,0,1,0,0,0,1);
         center.y=p.position.y;
@@ -201,7 +217,7 @@ void BuildShapes(uint3 id : SV_DispatchThreadID) {
     // a one-voxel reconstruction footprint; this does not change simulation mass.
     // Hydrant films must retain their actual water volume. Inferring volume
     // from neighbour distance made a sparse splash grow as it spread apart.
-    if (supported && neighbours>0 && !(p.type>1.05f&&p.type<1.25f))
+    if (supported && neighbours>0 && !(hydrant&&!hosePlain))
         volume=max(volume,min(nearestDistance,0.65f)*min(nearestDistance,0.65f)*voxelSize);
     float amplitude=(315.0f/(64.0f*3.14159265f))*volume/(axes.x*axes.y*axes.z);
     // A tiny detached slime group still represents visible gameplay mass.

@@ -156,8 +156,14 @@ float2 WaterAeration(float3 world,float3 normal,float3 ray,float thickness){
     if(aerated<=0.001f) return 0;
     // The jet leaves the nozzle glassy and whitens as it breaks up downstream.
     float amount=aerated*lerp(.2f,1,smoothstep(1.5f,14,length(world-playerBodyCenter)));
+    // 坂の町の放水は箱庭のデモと同じ澄んだ水にする (filterAxis 3。FluidVolume.cpp)
+    if(filterAxis>2.5f)amount*=.15f;
     // A sheet sliding over the street keeps only a little white at its front.
-    amount*=lerp(.25f,1,smoothstep(.5f,1.3f,world.y));
+    // (街の道は高さ 0 なので高さで見分けていた。坂の町の地面は高い所にあるので、横へ流れている水も板として扱う:
+    //  そうしないと、坂を流れる水がどこでも泡のように真っ白になる)
+    float flowing=1-smoothstep(.2f,.6f,abs(velocity.y)/max(speed,1e-3f));
+    float sheet=max(1-smoothstep(.5f,1.3f,world.y),flowing);
+    amount*=lerp(1,.25f,sheet);
     // Shear stretches entrained air into thin streaks along the flow.
     float3 along=velocity/speed;
     float3 across=normalize(cross(along,abs(along.y)<.9f?float3(0,1,0):float3(1,0,0)));

@@ -10,7 +10,7 @@ $process=$null
 $validationBefore=@(Get-Content -LiteralPath (Join-Path $repoPath 'd3d12_validation_log.txt') -ErrorAction SilentlyContinue).Count
 $runtimeOutPath=Join-Path (Split-Path (Resolve-Path -LiteralPath $Executable).Path -Parent) 'tests/out'
 New-Item -ItemType Directory -Force $runtimeOutPath | Out-Null
-# 既定は輪の町 (吸収モード) のテスト。-RoomOnly で部屋のテスト
+# 既定はステージ 2 の坂の町 (吸収モード) のテスト。-RoomOnly で部屋のテスト
 $reportName=if($RoomOnly){'slime-life-room.txt'}else{'slime-life-devour.txt'}
 $testStarted=Get-Date
 try {

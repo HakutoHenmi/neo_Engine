@@ -13,7 +13,7 @@
 #include "../Chrono/SlimeSignalRules.h"
 #include "../Chrono/CityStageRules.h"
 #include "../Chrono/DevourRules.h"
-#include "../Chrono/RingCityRules.h"
+#include "../Chrono/SlopeTownRules.h"
 #include "../Chrono/DevourStageRules.h"
 #include "../Chrono/DevourGimmickRules.h"
 #include "../Chrono/DevourSpillRules.h"
@@ -52,13 +52,27 @@ public:
     void StopLoopSounds();
     // スライムの状態・敵・街の門・消火栓の狙いを外 (エディタやテスト) から読むための関数
     const Chrono::SlimeLife& LifeState()const {return life_;}
+    // 動く物の数 (道を往復する物・その場で動く物。確認用)
+    // 坂の町のギミックの様子 (確認用): 種類 (6 こいのぼり・7 電線)・輪の中心・付いている物の見た目・その柱の生きている電線の数・使えなくなったか
+    struct TownGimmickView {int kind=-1;Chrono::Vec at{};uint32_t anchor=0xffffffffu;int edges=0;bool done=false;};
+    std::vector<TownGimmickView> TownGimmicks()const{std::vector<TownGimmickView> out;for(const auto& g:gimmicks_){if(g.kind<Chrono::GimmickKind::Glide)continue;
+        int alive=0;if(g.wireNode>=0)for(int e:wireNodes_[size_t(g.wireNode)].edges)alive+=wireEdges_[size_t(e)].alive?1:0;out.push_back({int(g.kind),g.at,g.anchor,alive,g.done});}return out;}
+    // 確認用: こまが跳ね返った回数・おみこしの子分の数 (取りに行く・持ち帰る)
+    int GimmickRideBounces()const{return gimmickRide_.bounces;}size_t MikoshiHelperCount()const{return mikoshiHelpers_.size();}
+    size_t HoseWashCount()const{return hose_.washes.size();}size_t HoseMistCount()const{return hose_.mist.size();}float HoseRainbow()const{return hose_.rainbow;}Chrono::Vec HoseImpact()const{return hose_.impact;}Chrono::Vec HoseNozzle()const{return hose_.nozzle;}bool HoseLob()const{return hose_.lob;}size_t HoseWaterCells()const{return hose_.water.size();}double HoseCpuMs()const{return hoseCpuMs_;}
+    int TownWireEdges(bool aliveOnly)const{int n=0;for(const auto& e:wireEdges_)n+=(!aliveOnly||e.alive)?1:0;return n;}
+    // 確認用: 体を遠くへ動かしたあと、液体の粒子を体の所に置き直す
+    void RequestFluidReseed(){lifeReseed_=true;}
+    bool GimmickRidingNow()const{return gimmickRide_.index>=0;}int GimmickRideShape()const{return gimmickRide_.shape;}
+    // その物が道や輪をたどって動くか (確認用。visual は物の見た目のエンティティ)
+    bool DevourRouteMover(uint32_t visual)const{for(const auto& m:devourMovers_)if(m.visual==visual&&m.points.size()>=2)return true;return false;}
+    std::pair<size_t,size_t> DevourMoverCounts()const{size_t routes=0,dancing=0;for(const auto& m:devourMovers_)(m.points.size()>=2?routes:dancing)+=1;return {routes,dancing};}
     // 移動を街の通れる範囲に収めた位置 (テストで通れるかを確かめる)
     Chrono::Vec MoveWithinCity(Chrono::Vec from,Chrono::Vec to,float radius)const {return ConstrainLifeMovement(from,to,radius);}
     const std::vector<Chrono::SwarmEnemy>& LifeEnemies()const {return swarm_;}
     // 吸収モードか・制限時間と大きさの段階 (テストから読み書きする)
     bool DevourMode()const {return devour_;}
     // 自動テスト用: 輪の壁を全部開ける
-    void DevourOpenAllRings(){devourOpenAll_=true;}
     void DevourUseAllForms(){devourFreeForms_=true;}
     const std::filesystem::path& DevourLogPath()const{return devourLog_.path;}
     float DevourBiteAge()const{return devourBiteAge_;}
@@ -111,8 +125,6 @@ private:
     // 自己ベストの量 (保存する)・今回で更新したか・最後の段階に届いたか
     bool devourNewBest_=false;
     // 開いた輪・輪の壁のエンティティ・門の小物の番号と開ける輪・このフレームに開いた輪 (演出を出す)
-    std::array<bool,Chrono::RingStyleCount> ringOpen_{true};std::array<std::vector<entt::entity>,Chrono::RingStyleCount> ringWalls_;std::map<size_t,int> devourGates_;int devourRingOpened_=0;bool devourOpenAll_=false;
-    void DevourOpenRing(entt::registry&,int ring);
     // 掃除機: 飛んでくる途中の物 (小物の番号・吸い始めた位置・経過時間)・次に吸い込むまでの時間・吸い込んでいるか
     // (触れて飲み込む物は体の中心へ、掃除機で吸う物は吸い口へ飛ぶ)
     struct DevourSuck {size_t index=0;Chrono::Vec from{};float age=0,flight=.3f;bool toBody=false;};
@@ -128,9 +140,10 @@ private:
     // 弾かれて動けない残り時間・次に弾かれるまでの時間・大物を飲んで遅い残り時間
     float devourStun_=0,devourBumpCool_=0,devourHeavy_=0,devourBumpMemory_=0;
     // 動く物: 道をたどる物 (points が 2 点以上) と、その場で踊る物。index は life_.props の番号 (最初の更新で探す)
-    struct DevourMover {uint32_t visual=0;int index=-1;std::vector<Chrono::Vec> points;float speed=0,phase=0,age=0,sway=0,hop=0,baseY=0,baseYaw=0;};
+    // frontZ: 道をたどる物の正面が +z (猫など。ほかは +x の車や犬)
+    struct DevourMover {uint32_t visual=0;int index=-1;std::vector<Chrono::Vec> points;float speed=0,phase=0,age=0,sway=0,hop=0,baseY=0,baseYaw=0;bool frontZ=false;};
     std::vector<DevourMover> devourMovers_;
-    void AddRoute(entt::entity e,std::vector<Chrono::Vec> points,float speed,float phase);
+    void AddRoute(entt::entity e,std::vector<Chrono::Vec> points,float speed,float phase,bool frontZ=false);
     void AddDance(entt::registry& r,entt::entity e,float speed,float sway,float hop);
     void TickDevourMovers(entt::registry&,float dt);
     // 漫画の描き文字: 飲み込んだ所や、ぶつかった所に出して飛び散らせる。kind は 0 飲む音・1 ぶつかる音・2 小さくなった印 (青い下矢印と暗い影)
@@ -149,10 +162,21 @@ private:
         std::vector<Chrono::Vec> path;std::vector<uint32_t> parts;std::vector<int> partProps;std::vector<float> partRadius,partAge;std::vector<Chrono::Vec> partBase,partRotate;
         std::vector<uint32_t> rewards;std::vector<int> rewardProps;Chrono::Vec burstAt{};uint32_t extra=0xffffffffu;Chrono::Vec extraBase{},extraRotate{};
         std::vector<Engine::Vector4> colors;std::vector<Chrono::Vec> spots;int link=-1,state=0,hits=0,pending=-1;float clock=0,wobble=0,scale=1;bool done=false,reversed=false;
-        uint32_t ring=0xffffffffu,sign=0xffffffffu;};
+        uint32_t ring=0xffffffffu,sign=0xffffffffu;
+        // 坂の町: anchor はそのギミックが付いている物 (電柱・こいのぼり) の見た目と物の番号。飲まれると使えなくなる。
+        // quiet は作動範囲の膜を、範囲に入ったときだけ出す (電柱は数が多い)。clearArea が false なら範囲の中の物を押し出さない。wireNode は電線の柱の番号
+        uint32_t anchor=0xffffffffu;int anchorProp=-1,wireNode=-1;bool quiet=false,clearArea=true;
+        // 使った後に休む残り時間 (おみこし・こま。0 になるまで乗れず、膜も出さない)
+        float rest=0;};
     std::vector<DevourGimmick> gimmicks_;
     // 乗っている間の状態: どのギミックか・体の形・時間・道の上の距離・横のずれ・形の姿勢 (今と前のフレーム)
-    struct GimmickRide {int index=-1,shape=0;float age=0,s=0,length=0,lateral=0,release=-1;Chrono::Vec anchor{},heading{0,0,1},from{};Chrono::GimmickPose pose{},previous{};bool fired=false;};
+    // (坂の町: speed はこいのぼりの速さ、node と edge は電線のいる柱と走っている電線、edgeFrom はその電線のどちらの端から来たか)
+    struct GimmickRide {int index=-1,shape=0;float age=0,s=0,length=0,lateral=0,release=-1;Chrono::Vec anchor{},heading{0,0,1},from{};Chrono::GimmickPose pose{},previous{};bool fired=false;
+        float speed=0,top=0;int node=-1,edge=-1,edgeFrom=-1;Chrono::Vec look{0,0,1};
+        // (おみこし・こま: bounces はこまが跳ね返った回数、beat はおみこしのわっしょいの数)
+        int bounces=0,beat=0;
+        // (消火栓: aim は地面の狙いの印)
+        Chrono::Vec aim{};};
     GimmickRide gimmickRide_;int gimmickNear_=-1;
     // 作動範囲の縁から立つ光の膜 (半径 1・高さ 1 の円筒の側面)
     uint32_t gimmickCurtain_=0;
@@ -188,8 +212,59 @@ private:
     // ギミックの種類ごとの動き (Strategy Pattern、DevourGimmickBehaviors.h / DevourGimmick.cpp)。
     // 乗り始め・乗っている間の動きと入力・仕掛けの動き・操作の札・構図・照準・物を置かない範囲を種類ごとのクラスに分ける
     struct GimmickRideStep;class GimmickBehavior;
-    class ShootGimmick;class DominoGimmick;class BowlingGimmick;class PaintGimmick;class PathGimmick;
+    class ShootGimmick;class DominoGimmick;class BowlingGimmick;class PaintGimmick;class PathGimmick;class GlideGimmick;class WireGimmick;class MikoshiGimmick;class KomaGimmick;class HoseGimmick;
     static const GimmickBehavior& GimmickBehaviorFor(Chrono::GimmickKind kind);
+    static const GimmickBehavior& GlideBehavior();static const GimmickBehavior& WireBehavior();
+    static const GimmickBehavior& MikoshiBehavior();static const GimmickBehavior& KomaBehavior();static const GimmickBehavior& HoseBehavior();
+    // ---- 坂の町のギミック (DevourTownGimmick.cpp): こいのぼりで滑空・電柱を登って電線をつたう ----
+    // 電線の柱 (電柱の上の点・つながる電線) と電線 (両端の柱・見た目・使えるか)。電柱が飲まれると、その柱の電線は消える
+    struct WireNode {Chrono::Vec top{};uint32_t visual=0xffffffffu;std::vector<int> edges;};
+    struct WireEdge {int a=-1,b=-1;uint32_t mesh=0xffffffffu;bool alive=true;};
+    std::vector<WireNode> wireNodes_;std::vector<WireEdge> wireEdges_;
+    // 建物 (背の高い大きな物) の足元と高さ: こいのぼりがぶつかる (飲まれた物はぶつからない)
+    struct TownSolid {float x0=0,z0=0,x1=0,z1=0,top=0;uint32_t visual=0xffffffffu;int prop=-1;};
+    std::vector<TownSolid> townSolids_;
+    // 町を作るときに呼ぶ: 電柱 (見た目・足元・道の番号と道の上の順番) をつないで電線を張り、柱ごとに登る輪を置く。こいのぼりごとに飛ぶ輪を置く
+    struct TownPole {uint32_t visual=0xffffffffu;Chrono::Vec at{};float height=0;int road=-1,order=0;};
+    struct TownGlider {uint32_t visual=0xffffffffu;Chrono::Vec at{};float height=0;};
+    void BuildTownGimmicks(entt::registry&,const std::vector<TownPole>& poles,const std::vector<TownGlider>& gliders);
+    // おみこし (神社・お寺の前) とこま (町の広場) の輪を置く。場所は slope_town.json の rides
+    void BuildTownRides(entt::registry&,const std::vector<Chrono::Vec>& mikoshi,const std::vector<Chrono::Vec>& koma,const std::vector<Chrono::Vec>& hydrants);
+    // ---- 消火栓の放水 (DevourHose.cpp): 消火栓に変形して、画面の真ん中へ GPU 流体の水を撃つ。
+    // 平らな所で当たった物はこちらへ飛んできて飲める。坂の下りへ撃つと、当たった物は坂を流れ落ちて下に溜まる。霧と虹が出る ----
+    // 押し流している物 (物の番号・速さ・時間)・霧の粒 (位置・速さ・大きさ・時間・寿命・模様の種)
+    struct HoseWash {int prop=-1;Chrono::Vec velocity{};float age=0,roll=0;};
+    struct HoseMist {Chrono::Vec at{},velocity{};float size=1,age=0,life=1,seed=0;};
+    // 放水の状態: 撃っているか・ノズルと着弾点・水を出す端数・引き寄せる間隔・水を描く範囲 (流体の範囲に入れる球)・
+    // 水の床を保つ残り時間 (地面に落ちた水が消えるまで)・虹の濃さ・音の間隔
+    struct HoseState {bool spraying=false,washing=false;Chrono::Vec nozzle{},impact{},flow{},plane{};float budget=0,pullClock=0,floorHold=0,rainbow=0,talk=0,sound=0;
+        std::vector<Chrono::Vec> arc;std::vector<HoseWash> washes;std::vector<HoseMist> mist;
+        // 扇の両端の水の道・扇の水が落ちる所 (左から右)・水がある所 (GPU から読み戻した水の粒の場所。流体を描く範囲に入れる)・
+        // 地面の高さの表の中心と作り直す時間・高い弧で撃っているか
+        std::vector<Chrono::Vec> arcLeft,arcRight,lanes,water;Chrono::Vec terrainCenter{};float terrainClock=0;bool lob=false;};
+    HoseState hose_;uint32_t rainbowMesh_=0;
+    // 放水の CPU の時間の合計 (ミリ秒。重さの確認用)
+    double hoseCpuMs_=0;
+    // 乗っている間の放水 (狙い・水・物への効果)、毎フレームの流れ落ちる物と霧、描く
+    void HoseSpray(entt::registry&,GameContext&,GimmickRide&,float dt);
+    void TickHose(entt::registry&,float dt);
+    void DrawHose(GameContext&);
+    void ResetHose();
+    void BuildHoseTerrain(Chrono::Vec center,bool force);
+    // 消火栓の照準の先 (カメラの真ん中の視線が当たる地面か建物)
+    Chrono::Vec HoseSight(GameContext& ctx,Chrono::Vec fallback);
+    // おみこしの子分: 体から飛び出して小物を取りに行き (phase 0)、担いで戻る (phase 1)。戻ったら飲む
+    struct MikoshiHelper {int prop=-1,phase=0;Chrono::Vec at{},from{};float age=0,seed=0;};
+    std::vector<MikoshiHelper> mikoshiHelpers_;float mikoshiSend_=0,mikoshiTalk_=0;
+    void TickMikoshiHelpers(entt::registry&,Chrono::Vec home,float dt);
+    void EndMikoshiHelpers(entt::registry&);
+    void DrawMikoshiHelpers(GameContext&);
+    // 町の乗り物の当たり: from から to へ進むと町の端・高い段差・飲めない物にぶつかるか。ぶつかるなら跳ね返る面の向き (水平) を normal に書く
+    bool TownRideHit(Chrono::Vec from,Chrono::Vec to,float radius,Chrono::Vec& normal)const;
+    // 乗っているギミックの種類 (乗っていなければ -1)
+    int GimmickRidingKind()const{return gimmickRide_.index>=0?int(gimmicks_[size_t(gimmickRide_.index)].kind):-1;}
+    // 毎フレーム: 飲まれた電柱・こいのぼりのギミックを止め、その電線を消す
+    void TickTownGimmicks(entt::registry&);
     // 高い所から落ちたときのヘリコプター (DevourHeli.cpp): 回転翼を回してゆっくり降りる
     struct DevourHeli {bool active=false;float age=0;Chrono::GimmickPose pose{},previous{};};
     DevourHeli devourHeli_;
@@ -242,7 +317,7 @@ private:
         bool active=false;std::string stamp;std::filesystem::path path;
         float elapsed=0,nextSample=0,nextSave=15,moved=0,sinceEat=0,longestIdle=0,frameSum=0,worstFrame=0,morphTime=0,itemTaken=-1,biggest=0,biggestAt=0,bestBefore=0;
         int frames=0,eaten=0,total=0,pounces=0,bounces=0,hops=0,morphs=0,maxCombo=0;Chrono::Vec last{};
-        std::array<int,6> eatBy{};std::array<float,6> gainBy{};
+        std::array<int,7> eatBy{};std::array<float,7> gainBy{};
         std::array<int,8> areaEaten{},areaTotal{};std::array<float,8> areaGain{},areaMassTotal{},areaFirst{};
         std::vector<float> goalTimes,gateSizeTimes,gateOpenTimes;std::vector<Sample> samples;std::vector<Event> events;
     } devourLog_;
@@ -400,42 +475,43 @@ private:
     // 街のステージ (CityStage.inl): 作った建物・CC0 の小物・門・役割ごとの敵
     // 街のモデル (メッシュ・テクスチャ・大きさ)
     struct CityModel {uint32_t mesh=0,texture=0;std::vector<uint32_t> extra;Chrono::Vec lo{},hi{};};
-    // 吸収モードの輪の町 (RingCity.cpp): 街のステージの道具 (小物を置く・材質・色の補正) を借りて作る
-    struct RingCityTools {
+    // 吸収モードのステージを作る道具 (街のステージの材質と色の補正を借りる)
+    struct StageTools {
         std::function<const CityModel&(int)> surface;std::function<DirectX::XMFLOAT4(int)> tint;};
-    void BuildRingGround(CityParts::CityBuilder&);
-    void BuildRingCity(entt::registry&,const RingCityTools&);
     void BuildRoomGround(CityParts::CityBuilder&);
-    void BuildRoomStage(entt::registry&,const RingCityTools&);
+    void BuildRoomStage(entt::registry&,const StageTools&);
     void BuildRoomSets(entt::registry&);
     void BuildRoomGimmicks(entt::registry&);
+    void BuildSlopeTown(entt::registry&,const StageTools&);
     bool GimmickClear(Chrono::Vec at,float margin)const;
     // ローポリのモデル (scripts/lowpoly/build_lowpoly.py): メッシュと大きさの範囲。部屋と町で同じ置き方を使う
     // pieces はモデルのつながった部分ごとの範囲 (脚・板など。モデルの座標)
-    struct LowModel {uint32_t mesh=0;Chrono::Vec lo{},hi{};std::vector<std::array<Chrono::Vec,2>> pieces;};
-    std::map<std::string,LowModel> lowModels_;uint32_t lowPalette_=0;std::vector<uint32_t> lowMaps_;float lowOcclude_=12;
+    // feet: 地面に触れる部分 (一番下から少しの高さまでの頂点を、辺でつながった塊ごとにまとめた範囲)
+    struct LowModel {uint32_t mesh=0;Chrono::Vec lo{},hi{};std::vector<std::array<Chrono::Vec,2>> pieces,feet;};
+    // lowFeet_: 置いた物を、地面に触れる部分だけで体を止める (坂の町)。BeginLowProps で戻る
+    std::map<std::string,LowModel> lowModels_;uint32_t lowPalette_=0;std::vector<uint32_t> lowMaps_;float lowOcclude_=12;bool lowFeet_=false;
     const LowModel& LowModelOf(const std::string& id);
     float LowScaleFor(const std::string& id,float width);
     void BeginLowProps(float occludeHeight);
     entt::entity LowProp(entt::registry& r,const std::string& id,Chrono::Vec at,float scale,float yaw,float fill,Engine::Vector4 tint={1,1,1,1},float tilt=0);
     // 置いた物の細い部分 (脚・頭の板など) を、カメラを遮る判定の parts に加える
     void AddThinOccluderParts(entt::registry& r,entt::entity e,const std::string& id,Chrono::Vec at,float scale,float yaw);
-    void BuildStageItem(entt::registry&,const RingCityTools&);
+    void BuildStageItem(entt::registry&,const StageTools&);
     // 建物の敷地と、敷地ごとの吸収の対象の番号 (life_.props の番号。建物は飲み込むまで通れない)
-    std::vector<Chrono::RingLot> ringLots_;std::vector<int> ringLotProps_;
+    std::vector<Chrono::StageLot> stageLots_;
     // 床に立つギミックの看板 (旗) の足元。土台はなだらかな丸い坂として乗り越え、柱だけは丸く押し出して横へ滑らせる
     std::vector<Chrono::Vec> gimmickSigns_;
     float GimmickSignGround(Chrono::Vec at)const;
     Chrono::Vec GimmickSignSlide(Chrono::Vec at,float bodyRadius)const;
     // 建物の残りの部位と当たり判定 (飲み込んだら隠し、当たり判定は消す)。キーは life_.props の番号
     std::unordered_map<size_t,std::vector<entt::entity>> devourBuildingParts_;
-    // まだ閉じている輪の壁に触れるか
-    bool RingWallClosed(Chrono::Vec p,float margin)const{float d=Chrono::RingDistance(p);for(int z=1;z<Chrono::RingStyleCount;++z)if(!ringOpen_[size_t(z)]&&std::abs(d-Chrono::RingWallAt(z))<margin+3)return true;return false;}
     // 吸収モードの地図の中で、半径 margin の体が歩けるか
-    bool DevourWalkable(Chrono::Vec p,float margin)const{float half=CurrentDevourStage().half;if(half>0&&(std::abs(p.x)+margin>half||std::abs(p.z)+margin>half))return false;
+    bool DevourWalkable(Chrono::Vec p,float margin)const{
+        // 坂の町は建物の敷地を持たず (家は飲み込む物として体を止める)、町の端だけを調べる
+        if(CurrentDevourStage().map=="slope")return Chrono::SlopeInside(p,margin);
+        float half=CurrentDevourStage().half;if(half>0&&(std::abs(p.x)+margin>half||std::abs(p.z)+margin>half))return false;
         // (部屋の本棚やおもちゃ箱のように上に乗れる家具は、その上の面より上にいれば止めない)
-        return !RingWallClosed(p,margin)&&Chrono::RingWalkable(p,margin,ringLots_,[&](size_t i){return RingBlocked(i)&&!(ringLots_[i].top>0&&p.y>=ringLots_[i].top);});}
-    bool RingBlocked(size_t lot)const{int k=lot<ringLotProps_.size()?ringLotProps_[lot]:-1;return k<0||size_t(k)>=life_.props.size()||life_.props[size_t(k)].active;}
+        return Chrono::StageWalkable(p,margin,stageLots_,[&](size_t i){return !(stageLots_[i].top>0&&p.y>=stageLots_[i].top);});}
     // 街の小物の見た目
     struct CityPropVisual {uint32_t mesh=0,texture=0;std::vector<uint32_t> extra;Chrono::Vec scale{1,1,1},rotate{},center{};float height=1;std::string shader="EnvironmentSurface";Engine::Vector4 color{1,1,1,1};
         // 皮で包む形: 半分の大きさと角の丸み (0 なら飲み込む大きさの箱にする)
@@ -444,7 +520,7 @@ private:
     struct CityGlow {Chrono::Vec center{},right{},up{},size{};Engine::Vector4 color{1,1,1,1};int kind=0;float phase=0;};
     std::vector<CityGlow> cityGlows_;
     // 街の小物 (触手で取り込める物)
-    struct CityPropSeed {entt::entity entity=entt::null;Chrono::Vec at{};float required=0,reward=0;Chrono::LifeMorphItem morphItem=Chrono::LifeMorphItem::None;float radius=1,fill=1,reach=0;int ring=0,gate=0;bool beacon=false;float foot=0,height=0;};
+    struct CityPropSeed {entt::entity entity=entt::null;Chrono::Vec at{};float required=0,reward=0;Chrono::LifeMorphItem morphItem=Chrono::LifeMorphItem::None;float radius=1,fill=1,reach=0;bool beacon=false;float foot=0,height=0;std::vector<Chrono::Vec> feet;};
     // バリケードや塀の部品 (材質: 0 木・1 鉄・2 ブロック・3 金属)・敵の弾・壊れた破片・踏みつけの衝撃
     struct CityPlank {Chrono::Vec at{},size{},rotate{};int material=0;};
     struct CityShot {Chrono::Vec at{},velocity{};float age=0;bool shell=false;Chrono::Vec target{};};
@@ -514,6 +590,10 @@ private:
     bool cameraReady_=false;
     // 街のカメラ: 後ろが塞がれたときに持ち上げる量と、届く距離の割合 (なめらかに戻す)
     float cameraLift_=0,cameraReach_=1;
+    // 坂の町で、地形のせいでカメラを動かしている量 (持ち上げ・体へ寄せる。段の縁を越えるたびに跳ねないよう、時間をかけて変える)
+    Chrono::Vec slopeCameraShift_{};
+    // カメラの注視点の体の中心からのずれ (坂の町ではなめらかに追わせる)
+    Chrono::Vec cameraSubjectOffset_{};
     float postStrength_=0;
     // 大きい物を飲んで育つ演出: 遅くなる時間の最初の長さ (物の大きさ)・飲んだ瞬間から 1→0 に減る画面の縁の光
     float devourHeavyPeak_=0,devourHeavyKick_=0;
