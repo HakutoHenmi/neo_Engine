@@ -167,8 +167,12 @@ private:
         // quiet は作動範囲の膜を、範囲に入ったときだけ出す (電柱は数が多い)。clearArea が false なら範囲の中の物を押し出さない。wireNode は電線の柱の番号
         uint32_t anchor=0xffffffffu;int anchorProp=-1,wireNode=-1;bool quiet=false,clearArea=true;
         // 使った後に休む残り時間 (おみこし・こま。0 になるまで乗れず、膜も出さない)
-        float rest=0;};
+        float rest=0;
+        // 坂の町の膜の形: 縁の下の端を地面の高さに合わせた膜を、どの位置と半径で作ったか (違えば作り直す)。curtainSlot は gimmickCurtains_ の番号 (-1 は平らな共通の膜)
+        Chrono::Vec curtainAt{0,-1e9f,0};float curtainRadius=0;int curtainSlot=-1;};
     std::vector<DevourGimmick> gimmicks_;
+    // 坂の町の地面に合わせた膜 (ギミックの番号ごとに 1 つ。作り直しでも捨てずに中身だけ書き換える)
+    std::vector<uint32_t> gimmickCurtains_;
     // 乗っている間の状態: どのギミックか・体の形・時間・道の上の距離・横のずれ・形の姿勢 (今と前のフレーム)
     // (坂の町: speed はこいのぼりの速さ、node と edge は電線のいる柱と走っている電線、edgeFrom はその電線のどちらの端から来たか)
     struct GimmickRide {int index=-1,shape=0;float age=0,s=0,length=0,lateral=0,release=-1;Chrono::Vec anchor{},heading{0,0,1},from{};Chrono::GimmickPose pose{},previous{};bool fired=false;
@@ -181,6 +185,7 @@ private:
     // 作動範囲の縁から立つ光の膜 (半径 1・高さ 1 の円筒の側面)
     uint32_t gimmickCurtain_=0;
     void DrawGimmickCurtains(GameContext&);
+    uint32_t GimmickCurtainMesh(size_t index);
     bool GimmickCameraSubject(Chrono::LifeCameraSubject&)const;
     // ---- 最初のチュートリアル (DevourTutorial.cpp): ベッドの下で課題を 1 つずつ出す。step が 0 以上の間は制限時間を止める ----
     // step 0 動かし方と視点・1 巻尺の見方 (ゲームを止める)・2 段差の大きさまで育つ・3 段差の上り方

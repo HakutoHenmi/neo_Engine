@@ -4,6 +4,6 @@
     {"id": "Room", "name": "ぼくの部屋", "map": "room", "music": "Battle", "half": 300, "time": 180, "start": 5, "goals": [15, 20, 25, 30], "gates": [8], "smallFood": 0.5,
      "item": "vacuum", "itemTime": 15, "itemAt": [-20, 0, -130], "spawn": [-200, 0, -245]},
     {"id": "Slope", "name": "坂の町", "map": "slope", "music": "City", "time": 300, "start": 100, "goals": [600, 1000, 1600, 2200], "smallFood": 0.3, "growth": 1.6,
-     "item": "none", "itemTime": 20, "itemAt": [150, 7.2, -572], "spawn": [-48, 0, -580]}
+     "item": "none", "itemTime": 20, "itemAt": [150, 7.2, -572], "spawn": [-60, 0, -516]}
   ]
 }

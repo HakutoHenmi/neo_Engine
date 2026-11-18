@@ -9,9 +9,11 @@
 //   目標の発表: 制限時間と、めざす大きさ (クリアとランクの大きさ) を伝える (クリック / A で次へ)
 //   ステージの紹介: 子ども部屋・奥の和室・スタートの収納ケースをカメラで見せる (クリック / A でとばせる)
 // その後、収納ケースの上から「スタート！」で時間が動き出す。
+// 坂の町はチュートリアルが無いので、最初から目標の発表・ステージの紹介 (線路の谷と商店街・神社の山・スタートの体)・カウントダウンを出す。
 // 操作のキーはキーボードとパッドで出し分ける。規則 (ベッドの下の範囲) は RoomRules.h。
 #include "ChronoSystemInternal.h"
 #include "../Chrono/RoomRules.h"
+#include "../Chrono/SlopeTownRules.h"
 #include "../UI/ScaleUI.h"
 
 namespace Game {
@@ -30,6 +32,9 @@ constexpr float kBriefingMin=.8f,kBriefingAuto=8;
 // ステージの紹介のカット (始まりの時刻)・全体の長さ・カットの切り替えの暗転・とばせるまでの時間
 constexpr float kTourCuts[]={0,2.9f,5.6f},kTourEnd=8.4f,kTourFade=.35f,kTourSkipMin=.5f;
 constexpr const char* kTourNames[]={"子ども部屋","奥の和室","ここからスタート"};
+constexpr const char* kTownTourNames[]={"線路の谷と商店街","神社の山","ここからスタート"};
+// 坂の町の紹介のカメラ (メートル): 地面からの高さの最小と、スタートの体へ寄るカットの前の距離・高さ (始め → 終わり)
+constexpr float kTownShotClear=2,kTownStartFront[]={11,7},kTownStartRise[]={3.4f,2.2f},kTownStartSide[]={2.5f,0};
 // 説明を進める入力 (クリック・A・Enter・Space)
 bool TutorialAdvanceHeld(){return Controls::Key(VK_LBUTTON)||Controls::Key(VK_RETURN)||Controls::Key(VK_SPACE)||Controls::Pad(XINPUT_GAMEPAD_A);}
 // 今のカットの番号と、カットの中での進み (0〜1)
@@ -42,10 +47,13 @@ std::string TimeText(float seconds){const int total=int(std::lround(seconds)),mi
     if(minutes<=0)return std::to_string(rest)+"秒";return std::to_string(minutes)+"分"+(rest?std::to_string(rest)+"秒":std::string());}
 // 収納ケースの上の、スタートの位置 (ケースの真ん中の上)
 Vec StartCaseTop(){return {(Chrono::RoomExitX0-60)*.5f,Chrono::RoomCaseHeight,-186};}
+// 坂の町のステージか (チュートリアルを飛ばして、目標の発表から始める)
+bool TownStage(const Chrono::DevourStage& stage){return stage.map=="slope";}
 }
 // 部屋のステージをベッドの下から始めたときだけ、チュートリアルを始める
 void ChronoSystem::StartDevourTutorial(){
     devourTutorial_={};const auto& stage=CurrentDevourStage();
+    if(devour_&&TownStage(stage)){devourTutorial_.step=kStepBriefing;devourTutorial_.started=false;return;}
     if(!devour_||stage.map!="room"||stage.gates.empty()||!Chrono::RoomUnderBed(stage.spawn+V{0,1,0}))return;
     devourTutorial_.step=0;devourTutorial_.started=false;
 }
@@ -65,6 +73,8 @@ void ChronoSystem::TickDevourTutorial(entt::registry& r,float dt,bool cinematics
     auto& t=devourTutorial_;if(t.step<0||finished_)return;const auto& body=life_.bodies[0];
     if(!t.started){t.started=true;t.last=body.at;t.yaw=yaw_;t.pitch=pitch_;}
     t.age+=dt;
+    // 坂の町をスクリプトで確認するとき (演出なし) は、発表と紹介を飛ばしてすぐ遊べるようにする
+    if(!cinematics&&TownStage(CurrentDevourStage())&&t.step>=kStepBriefing&&t.step<kStepStart){t.step=-1;return;}
     // 進める入力 (押した瞬間だけ)。スクリプトの確認 (ControlFrame がある) では実際のマウスとキーを読まない
     // (読むと、確認の実行中に PC を操作したクリックで段が進んでしまう)
     const bool scripted=r.try_get<ControlFrame>(player_)!=nullptr;
@@ -84,9 +94,11 @@ void ChronoSystem::TickDevourTutorial(entt::registry& r,float dt,bool cinematics
         if(t.moved>=kTutorialMove&&t.looked>=kTutorialLook){t.clear=0;PlayDevourSound(devourSounds_.rankUp,.45f,1.3f);}break;}
     case 2:if(DevourSizeCm(CurrentDevourStage(),body.mass)+1e-3f>=DevourTutorialGoal()){t.clear=0;PlayDevourSound(devourSounds_.rankUp,.55f,1.15f);}break;
     // 目標の発表を読んだら、体を収納ケースの上へ移してステージの紹介へ (カメラは紹介の構図なので、移すところは見えない)
-    case kStepBriefing:if((pressed&&t.age>=kBriefingMin)||t.age>=kBriefingAuto){t.step=kStepTour;t.age=0;PlaceOnStartCase(r);PlayDevourSound(devourSounds_.note,.35f,1.1f);}break;
+    case kStepBriefing:if((pressed&&t.age>=kBriefingMin)||t.age>=kBriefingAuto){t.step=kStepTour;t.age=0;if(!TownStage(CurrentDevourStage()))PlaceOnStartCase(r);PlayDevourSound(devourSounds_.note,.35f,1.1f);}break;
     // 紹介が終わるか、とばしたら、暗転から収納ケースの上のいつものカメラへ戻してカウントダウン
-    case kStepTour:if(t.age>=kTourEnd||(pressed&&t.age>=kTourSkipMin)){t.step=kStepCountdown;t.age=0;}break;
+    case kStepTour:if(t.age>=kTourEnd||(pressed&&t.age>=kTourSkipMin)){t.step=kStepCountdown;t.age=0;
+        // 坂の町は体を動かさないので、紹介で上書きしたカメラだけ体の後ろからやり直す
+        if(TownStage(CurrentDevourStage())){cameraReady_=false;cameraLift_=0;}}break;
     // 3・2・1 (数字が変わるたびに音を鳴らす)。終わったら「スタート！」で時間と操作が動き出す
     case kStepCountdown:{const float before=t.age-dt-kTourFade,now=t.age-kTourFade;
         if(now>=0&&(before<0||std::floor(before)!=std::floor(now))&&now<float(kCountdownFrom))PlayDevourSound(devourSounds_.note,.5f,1.f+.08f*std::floor(now));
@@ -99,7 +111,26 @@ void ChronoSystem::DevourTourCamera(GameContext& ctx){
     const auto& t=devourTutorial_;if(t.step!=kStepTour||finished_)return;
     const int shot=TourShot(t.age);const float u=ShotEase(TourProgress(t.age,shot),0,1);const V start=StartCaseTop();
     Chrono::CinematicPose pose;
-    if(shot==0){
+    if(TownStage(CurrentDevourStage())){
+        const float m=Chrono::SlopeData().unit;
+        // 地面の上の点 (メートル)。カメラは地面や段にめり込まないよう持ち上げる
+        auto ground=[&](float x,float z,float rise){V p{x*m,0,z*m};p.y=Chrono::SlopeGround(p)+rise*m;return p;};
+        auto clear=[&](V p){p.y=std::max(p.y,Chrono::SlopeCameraFloor(p)+kTownShotClear*m);return p;};
+        if(shot==0){
+            // 線路の谷: 電車の線路の上から、商店街の坂を見上げながら横へ流す
+            pose=Chrono::AimShot(clear(ground(55-45*u,-128,26-4*u)),ground(-5,-60,0),1.f);
+        }else if(shot==1){
+            // 神社の山: 坂の住宅街の上から、鳥居と本殿のある山の上を見上げる
+            pose=Chrono::AimShot(clear(ground(-30-12*u,52+8*u,20-4*u)),ground(-78,100,4),.95f);
+        }else{
+            // スタートの体: 体の前の低い所から寄る
+            const auto& body=life_.bodies[0];V forward=body.forward;forward.y=0;forward=Length(forward)>.01f?Unit(forward):V{0,0,1};const V side{forward.z,0,-forward.x};
+            const auto mix=[&](const float (&v)[2]){return (v[0]+(v[1]-v[0])*u)*m;};
+            const V at=clear(body.at+forward*mix(kTownStartFront)+side*mix(kTownStartSide)+V{0,mix(kTownStartRise),0});
+            pose=Chrono::AimShot(at,body.at+V{0,.3f*m,0},.8f);
+        }
+    }
+    else if(shot==0){
         // 子ども部屋: 本棚の側の高い所から、ベッドと机の方を見渡しながら横へ流す
         pose=Chrono::AimShot(V{250-70*u,215-25*u,10-30*u},V{-40,0,-150},1.05f);
     }else if(shot==1){
@@ -158,7 +189,7 @@ void ChronoSystem::DrawDevourTutorial(GameContext& ctx){
     else if(t.step==kStepBriefing){
         // 目標の発表: 画面を少し暗くし、制限時間とめざす大きさ、ランクの大きさを中央の札で伝える
         const float pop=ShotEase(t.age,0,.25f);ui.Fill({-400,-400,2080,1520},{0,0,0,.45f*pop});
-        const std::string head="ステージ  "+stage.name,lead="ベッドの下から出られた！ ここからが本番",
+        const std::string head="ステージ  "+stage.name,lead=TownStage(stage)?"坂の町をまるごと飲み込もう！":"ベッドの下から出られた！ ここからが本番",
             main=TimeText(stage.time)+"で "+DevourSizeText(stage.goals.front())+" をめざそう";
         std::string ranks="もっと大きくなるとランクが上がる   ";
         for(int i=1;i<=int(stage.goals.size());++i)ranks+=DevourRankName(stage,i)+" "+DevourSizeText(stage.goals[size_t(i-1)])+(i<int(stage.goals.size())?"   ":"");
@@ -175,7 +206,7 @@ void ChronoSystem::DrawDevourTutorial(GameContext& ctx){
         // ステージの紹介: 上下の黒帯・場所の名前・とばす操作。カットの切り替えは暗転でつなぐ
         const float bars=ShotEase(t.age,0,.4f),shot=float(TourShot(t.age)),local=t.age-kTourCuts[size_t(shot)];
         ui.Fill({-400,-400,2080,400+70*bars},{.01f,.02f,.02f,1});ui.Fill({-400,720-70*bars,2080,800},{.01f,.02f,.02f,1});
-        const std::string name=kTourNames[size_t(shot)];const float appear=ShotEase(local,.25f,.6f);
+        const std::string name=(TownStage(stage)?kTownTourNames:kTourNames)[size_t(shot)];const float appear=ShotEase(local,.25f,.6f);
         {UI::Canvas label(ctx.renderer,ctx.viewportSize.x,ctx.viewportSize.y);label.MultiplyAlpha(appear);
             S::Plate(label,{60,560,label.Width(name,34,S::Jp)+48,56},yellow);label.Text(name,84,565,34,black,S::Jp);}
         // 目標はずっと右上に出しておく

@@ -374,10 +374,31 @@ void ChronoSystem::DrawGimmickCurtains(GameContext& ctx){
     const int riding=gimmickRide_.index,linked=riding>=0?gimmicks_[size_t(riding)].link:-1;
     for(size_t i=0;i<gimmicks_.size();++i){const auto& g=gimmicks_[i];if(g.done||int(i)==riding||int(i)==linked)continue;
         const bool inside=int(i)==gimmickNear_;if((g.quiet&&!inside)||g.rest>0)continue;const float height=Chrono::GimmickCurtainHeight(g.radius);
-        Engine::Transform t;t.translate=EV(g.at+V{0,.05f,0});t.scale={g.radius,height,g.radius};
+        // 坂の町では縁の下の端を地面に合わせた膜 (大きさは作るときに入れてあるので、ここでは伸ばさない)
+        const uint32_t shaped=GimmickCurtainMesh(i);
+        Engine::Transform t;t.translate=EV(g.at+V{0,.05f,0});t.scale=shaped?Engine::Vector3{1,1,1}:Engine::Vector3{g.radius,height,g.radius};
         Engine::Vector4 color=inside&&tooSmall?Engine::Vector4{.95f,.2f,.12f,.85f}:inside?Engine::Vector4{1,.66f,.1f,.95f}:Engine::Vector4{1,.52f,.05f,.8f};
         if(inside)color.w*=.85f+.15f*std::sin(life_.age*7);
-        ctx.renderer->DrawMeshInstanced(gimmickCurtain_,white_,t,color,"GimmickCurtain");}
+        ctx.renderer->DrawMeshInstanced(shaped?shaped:gimmickCurtain_,white_,t,color,"GimmickCurtain");}
+}
+// 坂の町の膜: 縁に沿って地面の高さを測り、下の端をその高さに置いた膜を返す (坂でも縁が地面から浮かない)。
+// 縁の地面がほぼ平らなら 0 (共通の膜をそのまま使う)。位置と半径が変わったときだけ測り直す
+uint32_t ChronoSystem::GimmickCurtainMesh(size_t index){
+    auto& g=gimmicks_[index];if(!devour_||CurrentDevourStage().map!="slope")return 0;
+    if(g.curtainAt.x==g.at.x&&g.curtainAt.y==g.at.y&&g.curtainAt.z==g.at.z&&g.curtainRadius==g.radius)return g.curtainSlot>=0?gimmickCurtains_[size_t(g.curtainSlot)]:0;
+    g.curtainAt=g.at;g.curtainRadius=g.radius;g.curtainSlot=-1;
+    constexpr int segments=48;constexpr float flat=.15f;const float height=Chrono::GimmickCurtainHeight(g.radius);
+    float rise[segments+1];float low=1e9f,high=-1e9f;
+    for(int i=0;i<=segments;++i){const float a=6.2831853f*float(i)/float(segments);rise[i]=InkGround(g.at+V{std::cos(a)*g.radius,0,std::sin(a)*g.radius})-g.at.y;low=std::min(low,rise[i]);high=std::max(high,rise[i]);}
+    if(high-low<flat&&std::abs(low)<flat)return 0;
+    std::vector<Engine::VertexData> vertices;
+    for(int i=0;i<=segments;++i){const float a=6.2831853f*float(i)/float(segments),c=std::cos(a),s=std::sin(a);
+        for(int k=0;k<2;++k)vertices.push_back({{c*g.radius,rise[i]+float(k)*height,s*g.radius,1},{float(i)/float(segments),float(k)},{c,0,s}});}
+    if(gimmickCurtains_.size()<=index){
+        std::vector<uint32_t> indices;for(uint32_t i=0;i<uint32_t(segments);++i){uint32_t a=i*2;indices.insert(indices.end(),{a,a+1,a+3,a,a+3,a+2});}
+        while(gimmickCurtains_.size()<=index)gimmickCurtains_.push_back(Engine::Renderer::GetInstance()->CreateDynamicMesh(vertices,indices));}
+    else Engine::Renderer::GetInstance()->UpdateDynamicMesh(gimmickCurtains_[index],vertices);
+    g.curtainSlot=int(index);return gimmickCurtains_[index];
 }
 // 水鉄砲の水を、体と同じ液体の管として描く (撃った瞬間に伸びて、届くと細くなって消える)
 void ChronoSystem::GimmickJets(std::vector<Engine::Renderer::FluidTendril>& arms)const{

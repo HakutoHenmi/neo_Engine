@@ -723,7 +723,8 @@ void ChronoSystem::UpdateSlimeLife(entt::registry& r,Player& p,GameContext& ctx)
     // 十分に大きければ、触れた物や敵をそのまま吸収する
     int touchCount=0;float touchGrowth=0;
     // 吸収モードでは、覆える物は触れるだけで体の中へ引き込む
-    if(devour_)DevourTouch(r,old);
+    // (目標の発表・ステージの紹介・カウントダウンの間は飲まない。車や鳩が体に触れても、始まる前に大きくならない)
+    if(devour_){if(!DevourTutorialCutscene())DevourTouch(r,old);}
     else for(size_t i=0;i<life_.props.size();++i){auto& prop=life_.props[i];if(!prop.active)continue;
         if(LifeCollectTouch(life_,0x80000000u|uint32_t(i),prop.at,prop.required,0,1,prop.reward,old)){
             prop.active=false;++touchCount;touchGrowth+=prop.reward;
