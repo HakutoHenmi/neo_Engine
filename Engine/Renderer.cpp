@@ -1187,6 +1187,7 @@ void Renderer::EndFrame() {
 			}
 
             model->Draw(list_,3,!cutout);
+            ++sceneryLodStats_.shadowDraws;sceneryLodStats_.shadowAllIndices+=model->GetIndexCount();
 		}
 
 		// Instanced Shadow Pass
@@ -1216,6 +1217,7 @@ void Renderer::EndFrame() {
 				std::memcpy(upload_[fi].mapped + offset, shadowInstances->data(), dataSize);
 				list_->SetGraphicsRootShaderResourceView(6, upload_[fi].buffer->GetGPUVirtualAddress() + offset);
                 model->DrawInstanced(list_,static_cast<uint32_t>(shadowInstances->size()),3,!cutout);
+                ++sceneryLodStats_.shadowInstancedCalls;sceneryLodStats_.shadowInstances+=uint32_t(shadowInstances->size());sceneryLodStats_.shadowAllIndices+=uint64_t(model->GetIndexCount())*shadowInstances->size();
 			}
 		}
 
@@ -5837,7 +5839,11 @@ void Renderer::UpdateGPUFluid(float dt) {
     // At 100 Hz the normal liquid's 30-unit/s limit travels <=0.3 units,
     // still below its >=0.4-unit neighbour radius. This also avoids the old
     // 33 ms four-to-five-step cost jump feeding back into an already slow frame.
-    const float stepRate=controllerClock?100.f:120.f;
+    // The morph clock allows steps up to 12 ms (83 Hz): 30 units/s then travels
+    // 0.36 units, still under the 0.4-unit neighbour radius. A 100 Hz cap made
+    // every frame just over 20 ms pay a third step (~2.7 ms GPU), which kept the
+    // next frame over 20 ms; 20-24 ms frames now stay at two steps.
+    const float stepRate=controllerClock?1.f/.012f:120.f;
 	const uint32_t substeps = (std::max)(1u, static_cast<uint32_t>(std::ceil(fluidSimulatedDt_ * stepRate - 0.0001f)));
 	if (fluidProfilerEnabled_) {
 		auto& profile = fluidProfilerFrames_[window_->FrameIndex()];

@@ -217,7 +217,9 @@ public:
 	ID3D12Device* GetDevice() const { return dev_; }
 	ID3D12GraphicsCommandList* GetCommandList() const { return list_; }
 	static Renderer* GetInstance() { return instance_; }
-	struct SceneryLodStats {uint64_t originalIndices=0,selectedIndices=0,originalVertices=0,selectedVertices=0,visibleIndices=0,shadowIndices=0;std::array<uint32_t,3> instances{};};
+	struct SceneryLodStats {uint64_t originalIndices=0,selectedIndices=0,originalVertices=0,selectedVertices=0,visibleIndices=0,shadowIndices=0;std::array<uint32_t,3> instances{};
+        // 影のパスで描いた数 (1 つずつの描画・インスタンスの描画の呼び出し・インスタンスの数) と、その三角形の頂点番号の数
+        uint32_t shadowDraws=0,shadowInstancedCalls=0,shadowInstances=0;uint64_t shadowAllIndices=0;};
     uint32_t RtTlasBuilds()const{return rtTlasBuilds_;}
 	void PrepareDistanceLods(uint32_t mesh,bool grassCards=false,bool authoredLeaves=false);
 	void SetDistanceLodEnabled(bool enabled){distanceLodEnabled_=enabled;}

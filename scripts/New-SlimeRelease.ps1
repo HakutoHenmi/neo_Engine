@@ -1,9 +1,10 @@
-param([string]$Executable = '')
+# -Bundle sets the output folder; -NoZip leaves only the folder (used by New-PlaySession.ps1 for play sessions)
+param([string]$Executable = '',[string]$Bundle = '',[switch]$NoZip)
 $ErrorActionPreference = 'Stop'
 $repoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $exe = if ($Executable) { (Resolve-Path -LiteralPath $Executable).Path } else { [IO.Path]::GetFullPath((Join-Path $repoRoot '../Generated/Outputs/Release/DirectXGameApp.exe')) }
 if (!(Test-Path -LiteralPath $exe)) { throw 'Build Release|x64 first.' }
-$bundle = Join-Path $repoRoot 'dist/SlimeAssault'
+$bundle = if ($Bundle) { [IO.Path]::GetFullPath($Bundle) } else { Join-Path $repoRoot 'dist/SlimeAssault' }
 $zip = Join-Path $repoRoot 'dist/SlimeAssault-Release.zip'
 [void][IO.Directory]::CreateDirectory($bundle)
 & (Join-Path $PSScriptRoot 'Package-SlimeResources.ps1') -Destination (Join-Path $bundle 'Resources')
@@ -19,6 +20,7 @@ $warm = Start-Process -FilePath (Join-Path $bundle 'SlimeAssault.exe') -Argument
 if (!$warm.WaitForExit(300000)) { Stop-Process -Id $warm.Id -Force; throw 'Shader cache warm-up timed out.' }
 if ($warm.ExitCode -ne 0 -or @(Get-ChildItem -LiteralPath $cache -Filter '*.cso' -ErrorAction SilentlyContinue).Count -lt 50) { throw 'Shader cache warm-up failed.' }
 Remove-Item -LiteralPath (Join-Path $bundle 'load-profile.txt') -Force -ErrorAction SilentlyContinue
+if ($NoZip) { Write-Output $bundle; return }
 $content=@((Join-Path $bundle 'SlimeAssault.exe'),(Join-Path $bundle 'Resources'),(Join-Path $bundle 'NTC'))
 if(Test-Path -LiteralPath (Join-Path $bundle 'Streamline')){$content+=Join-Path $bundle 'Streamline'}
 Compress-Archive -LiteralPath $content -DestinationPath $zip -Force

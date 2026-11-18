@@ -283,6 +283,8 @@ class SlimeLifeValidationScene final:public Game::GameScene {
     // 1 コマの時間 (平均と最大)・カメラの揺れ (コマごとの位置の 2 階差分の平均)・カメラと地面の高さの差の最小を slope-perf.txt に書く
     int perfShot_=0;float perfClock_=0;std::string perfNotes_;std::chrono::steady_clock::time_point perfLast_;
     double perfSum_=0,perfMax_=0;int perfFrames_=0;std::vector<Game::Chrono::Vec> perfCamera_,perfBody_;float perfLow_=1e9f;
+    // 重さの内訳: ゲームの更新 (CPU) の時間と、GPU の段ごとの時間 (流体のプロファイラ) の合計
+    double perfUpdate_=0,perfUpdateMax_=0,perfGpuMax_=0,perfGpuTotal_=0,perfSubsteps_=0;std::array<double,Engine::Renderer::kFluidProfileStageCount> perfGpu_{};int perfGpuFrames_=0;
     void UpdateSlopePerf(){
         using namespace Game;using namespace Game::Chrono;
         auto player=FindObjectByName("Player");auto& input=GetComponents().get<ControlFrame>(player);input={};
@@ -294,16 +296,20 @@ class SlimeLifeValidationScene final:public Game::GameScene {
             {"pit-still",7.5f,-88,0,.3f,0,100},{"pit-push",7.5f,-88,0,.3f,1,100},{"river-push",-40,-116,0,.3f,1,100},
             {"low-road",-8,-96.7f,0,-.7f,0,100},{"low-slope-up",-14,-75,-.67f,-.7f,0,150},{"low-slope-down",-30,-55,2.5f,-.7f,0,150},{"low-walk",-14,-75,-.67f,-.7f,1,150}};
         constexpr int count=int(std::size(shots));const float m=SlopeData().unit;constexpr float settle=1,measure=4;
-        if(frames_<40){++frames_;Game::GameScene::Update();return;}
+        if(frames_<40){++frames_;Game::GameScene::Update();Engine::Renderer::GetInstance()->SetFluidProfilerEnabled(true);return;}
         const auto& shot=shots[size_t(perfShot_)];input.yaw=shot.yaw;input.pitch=shot.pitch;
         if(perfClock_==0){Vec at{shot.x*m,0,shot.z*m};at.y=SlopeGround(at)+1.25f;body.at=at;const DevourStage* slope=&DevourStages().back();for(const auto& s:DevourStages())if(s.map=="slope")slope=&s;
             body.mass=DevourGoalMass(*slope,shot.cm);body.forward=body.liquidForward={std::sin(shot.yaw),0,std::cos(shot.yaw)};
             GetComponents().get<Player>(player).velocity={};auto& t=GetComponents().get<TransformComponent>(player);t.translate={at.x,at.y,at.z};
-            perfSum_=perfMax_=0;perfFrames_=0;perfCamera_.clear();perfBody_.clear();perfLow_=1e9f;perfLast_=std::chrono::steady_clock::now();}
+            perfSum_=perfMax_=0;perfFrames_=0;perfCamera_.clear();perfBody_.clear();perfLow_=1e9f;perfLast_=std::chrono::steady_clock::now();
+            perfUpdate_=perfUpdateMax_=perfGpuMax_=perfGpuTotal_=perfSubsteps_=0;perfGpu_={};perfGpuFrames_=0;}
         if(perfClock_>settle)input.move={0,0,shot.move};
-        float before=life.age;Game::GameScene::Update();++frames_;perfClock_+=std::max(life.age-before,1.f/120);
+        float before=life.age;const auto updateStart=std::chrono::steady_clock::now();Game::GameScene::Update();++frames_;perfClock_+=std::max(life.age-before,1.f/120);
         const auto now=std::chrono::steady_clock::now();const double ms=std::chrono::duration<double,std::milli>(now-perfLast_).count();perfLast_=now;
-        if(perfClock_>settle){perfSum_+=ms;perfMax_=std::max(perfMax_,ms);++perfFrames_;const auto eye=GetCamera().Position();perfCamera_.push_back({eye.x,eye.y,eye.z});perfBody_.push_back(body.at);
+        if(perfClock_>settle){const double updateMs=std::chrono::duration<double,std::milli>(now-updateStart).count();perfUpdate_+=updateMs;perfUpdateMax_=std::max(perfUpdateMax_,updateMs);
+            const auto& stats=Engine::Renderer::GetInstance()->GetFluidProfileStats();
+            if(stats.valid&&stats.framesSinceSample==0){for(size_t k=0;k<perfGpu_.size();++k)perfGpu_[k]+=stats.lastMs[k];perfGpuTotal_+=stats.totalMs;perfGpuMax_=std::max(perfGpuMax_,double(stats.lastMs[Engine::Renderer::SceneRender]));perfSubsteps_+=stats.substeps;++perfGpuFrames_;}
+            perfSum_+=ms;perfMax_=std::max(perfMax_,ms);++perfFrames_;const auto eye=GetCamera().Position();perfCamera_.push_back({eye.x,eye.y,eye.z});perfBody_.push_back(body.at);
             perfLow_=std::min(perfLow_,eye.y-SlopeGround({eye.x,0,eye.z}));}
         if(perfClock_>=settle+measure){
             // カメラの揺れ: 位置の 2 階差分 (なめらかに動けば小さい)。高さだけの揺れも別に出す
@@ -311,6 +317,11 @@ class SlimeLifeValidationScene final:public Game::GameScene {
                 const Vec e=perfBody_[i]-perfBody_[i-1]*2.f+perfBody_[i-2];bodyShake+=Length(e);bodyShakeY+=std::abs(e.y);}
             const double n=double(std::max<size_t>(1,perfCamera_.size()-2));char line[320];
             snprintf(line,sizeof(line),"%s frame_ms=%.1f max_ms=%.1f shake=%.3f shake_y=%.3f body_shake=%.3f body_shake_y=%.3f camera_low=%.2f body=(%.0f,%.0f,%.0f) ground=%.1f\n",shot.name,perfSum_/std::max(1,perfFrames_),perfMax_,shake/n,shakeY/n,bodyShake/n,bodyShakeY/n,perfLow_,body.at.x,body.at.y,body.at.z,SlopeGround(body.at));perfNotes_+=line;
+            {static const char* names[]={"sim","shapes","splat","filter","raymarch","impostors","fshadow","scene","sshadow","rt_accel","rt_trace","rt_denoise","dlss_prep","dlss","rt_comp","screen_water"};
+                const double g=std::max(1,perfGpuFrames_);std::string text="  update_ms="+std::to_string(perfUpdate_/std::max(1,perfFrames_))+" update_max="+std::to_string(perfUpdateMax_)+" gpu_frame_max="+std::to_string(perfGpuMax_)+" gpu_total="+std::to_string(perfGpuTotal_/g)+" substeps="+std::to_string(perfSubsteps_/g);
+                for(size_t k=0;k<perfGpu_.size();++k){char cell[48];snprintf(cell,sizeof(cell)," %s=%.2f",names[k],perfGpu_[k]/g);text+=cell;}
+                {const auto& lod=Engine::Renderer::GetInstance()->GetSceneryLodStats();char cell[200];snprintf(cell,sizeof(cell)," | shadow draws=%u inst_calls=%u inst=%u tris=%.0fk visible_tris=%.0fk",lod.shadowDraws,lod.shadowInstancedCalls,lod.shadowInstances,double(lod.shadowAllIndices)/3000.,double(lod.visibleIndices)/3000.);text+=cell;
+                    const auto* rd=Engine::Renderer::GetInstance();snprintf(cell,sizeof(cell)," | particles=%u boxes=%zu spheres=%zu",rd->gpuFluidActiveParticleCount_,rd->gpuFluidAABBs_.size(),rd->gpuFluidSplashSpheres_.size());text+=cell;}perfNotes_+=text+"\n";}
             {std::string csv="tests/out/slope-perf-"+std::string(shot.name)+".csv";std::ofstream trace(csv);trace<<"cx,cy,cz,bx,by,bz"<<std::endl;for(size_t i=0;i<perfCamera_.size();++i)trace<<perfCamera_[i].x<<","<<perfCamera_[i].y<<","<<perfCamera_[i].z<<","<<perfBody_[i].x<<","<<perfBody_[i].y<<","<<perfBody_[i].z<<std::endl;}
             std::wstring path=L"tests/out/slope-perf-";for(const char* c=shot.name;*c;++c)path+=wchar_t(*c);path+=L".png";Capture(path.c_str());
             perfClock_=0;if(++perfShot_>=count){std::ofstream("tests/out/slope-perf.txt")<<perfNotes_;PostQuitMessage(0);}}
@@ -497,6 +508,55 @@ class SlimeLifeValidationScene final:public Game::GameScene {
             std::ofstream("tests/out/room-intro.txt")<<(onCase&&running?"PASS":"FAIL")<<" on_case="<<onCase<<" running="<<running<<introNotes_;PostQuitMessage(onCase&&running?0:2);++introShot_;}
         if(frames_>6000){std::ofstream("tests/out/room-intro.txt")<<"FAIL timeout"<<introNotes_;PostQuitMessage(2);}
     }
+    // 坂の町の最初の流れの確認 (--slime-life-slope-intro --devour-stage=1): 目標の発表 → ステージの紹介 (3 カット) → カウントダウン → スタート。
+    // それぞれを撮り、発表と紹介の間は時間が止まり、スタートの後は体がスタートの位置のまま時間が進むことを slope-intro.txt に書く
+    void UpdateSlopeIntro(){
+        using namespace Game;using namespace Game::Chrono;
+        auto player=FindObjectByName("Player");auto& input=GetComponents().get<ControlFrame>(player);input={};input.intro=true;input.pitch=.3f;
+        auto* chrono=GetChronoSystem();auto& life=const_cast<SlimeLife&>(chrono->LifeState());auto& body=life.bodies[0];auto& clock=chrono->DevourClockState();
+        if(frames_==0)introNotes_.clear();
+        const float before=life.age,timeBefore=clock.left;Game::GameScene::Update();++frames_;introClock_+=std::max(life.age-before,1.f/120);
+        const float m=SlopeData().unit;const Vec spawn=DevourStages()[size_t(chrono->DevourStageIndex())].spawn;
+        auto note=[&](const char* name){char line[200];snprintf(line,sizeof(line)," %s(t=%.1f body=%.1f,%.1f,%.1fm left=%.1f)",name,introClock_,body.at.x/m,body.at.y/m,body.at.z/m,clock.left);introNotes_+=line;};
+        struct Moment {float at;const char* name;const wchar_t* path;};
+        static const Moment moments[]={{1.5f,"briefing",L"tests/out/slope-intro-briefing.png"},{9.6f,"tour-valley",L"tests/out/slope-intro-tour1.png"},{12.5f,"tour-shrine",L"tests/out/slope-intro-tour2.png"},
+            {15.3f,"tour-start",L"tests/out/slope-intro-tour3.png"},{17.5f,"countdown",L"tests/out/slope-intro-countdown.png"},{20.3f,"started",L"tests/out/slope-intro-start.png"},{23.f,"playing",L"tests/out/slope-intro-playing.png"}};
+        // 発表と紹介の間 (カウントダウンの終わりまで) は時間が止まる
+        if(introClock_>.5f&&introClock_<19.f&&clock.left<timeBefore-1e-4f)introHeldBroken_=true;
+        if(introShot_<int(std::size(moments))&&introClock_>=moments[size_t(introShot_)].at){note(moments[size_t(introShot_)].name);Capture(moments[size_t(introShot_)].path);++introShot_;}
+        if(introShot_==int(std::size(moments))){
+            Vec d=body.at-spawn;d.y=0;const bool atStart=Length(d)<3*m;const float total=CurrentStageTime(chrono);
+            const bool running=clock.left<total-1&&clock.left>total-6;const bool ok=atStart&&running&&!introHeldBroken_;
+            std::ofstream("tests/out/slope-intro.txt")<<(ok?"PASS":"FAIL")<<" at_start="<<atStart<<" running="<<running<<" held="<<!introHeldBroken_<<introNotes_;PostQuitMessage(ok?0:2);++introShot_;}
+        if(frames_>8000){std::ofstream("tests/out/slope-intro.txt")<<"FAIL timeout"<<introNotes_;PostQuitMessage(2);}
+    }
+    bool introHeldBroken_=false;
+    // 坂の上の作動範囲の膜 (--slime-life-slope-rings --devour-stage=1): 縁の地面の高さの差が一番大きい輪を 2 つ選び、
+    // 横の低い所から撮る (膜の下の端が地面に沿っているかを見る)。高さの差を slope-rings.txt に書く
+    int ringShot_=-1;float ringClock_=0;std::vector<Game::Chrono::Vec> ringAt_;std::string ringNotes_;
+    void UpdateSlopeRings(){
+        using namespace Game;using namespace Game::Chrono;
+        auto player=FindObjectByName("Player");auto& input=GetComponents().get<ControlFrame>(player);input={};input.pitch=.3f;
+        auto* chrono=GetChronoSystem();auto& life=const_cast<SlimeLife&>(chrono->LifeState());auto& body=life.bodies[0];const float m=SlopeData().unit;
+        if(frames_<40){++frames_;Game::GameScene::Update();return;}
+        if(ringShot_<0){struct Pick{float drop;Vec at;};std::vector<Pick> picks;
+            for(const auto& v:chrono->TownGimmicks()){if(v.kind!=int(GimmickKind::Mikoshi)&&v.kind!=int(GimmickKind::Koma))continue;float lo=1e9f,hi=-1e9f;
+                for(int i=0;i<24;++i){const float a=6.2831853f*float(i)/24;const float h=SlopeWalkGround(v.at+Vec{std::cos(a),0,std::sin(a)}*(12*m));lo=std::min(lo,h);hi=std::max(hi,h);}picks.push_back({hi-lo,v.at});}
+            std::sort(picks.begin(),picks.end(),[](const Pick& a,const Pick& b){return a.drop>b.drop;});
+            for(size_t i=0;i<picks.size()&&i<2;++i){ringAt_.push_back(picks[i].at);char line[120];snprintf(line,sizeof(line),"ring at=(%.0f,%.0f)m drop=%.2fm\n",picks[i].at.x/m,picks[i].at.z/m,picks[i].drop/m);ringNotes_+=line;}
+            ringShot_=0;ringClock_=0;
+            if(ringAt_.empty()){std::ofstream("tests/out/slope-rings.txt")<<"no rings\n";PostQuitMessage(2);return;}}
+        const Vec at=ringAt_[size_t(ringShot_)];
+        // 体は輪から離して置く (膜は出たまま)
+        {Vec away=at+Vec{0,0,-40*m};away.y=SlopeGround(away)+1.25f;body.at=away;GetComponents().get<Player>(player).velocity={};GetComponents().get<TransformComponent>(player).translate={away.x,away.y,away.z};}
+        Game::GameScene::Update();++frames_;ringClock_+=1.f/60;
+        // 坂の下り側の低い所から、輪の縁を横に見る
+        Vec down{-(SlopeGround(at+Vec{3,0,0})-SlopeGround(at-Vec{3,0,0})),0,-(SlopeGround(at+Vec{0,0,3})-SlopeGround(at-Vec{0,0,3}))};down=Length(down)>.01f?Unit(down):Vec{1,0,0};
+        const Vec side{down.z,0,-down.x};Vec eye=at+down*(30*m)+side*(14*m);eye.y=std::max(SlopeGround(eye),SlopeGround(at))+4*m;const Vec focus{at.x,SlopeGround(at)+1*m,at.z};const Vec to=focus-eye;
+        GetCamera().SetPosition(eye.x,eye.y,eye.z);GetCamera().SetRotation(std::atan2(-to.y,std::sqrt(to.x*to.x+to.z*to.z)),std::atan2(to.x,to.z),0);
+        if(ringClock_>1.f){std::wstring path=L"tests/out/slope-ring-"+std::to_wstring(ringShot_)+L".png";Capture(path.c_str());ringClock_=0;
+            if(++ringShot_>=int(ringAt_.size())){std::ofstream("tests/out/slope-rings.txt")<<ringNotes_;PostQuitMessage(0);}}
+    }
     static float CurrentStageTime(Game::ChronoSystem* chrono){return Game::Chrono::DevourStages()[size_t(chrono->DevourStageIndex())].time;}
     void UpdateRoom(){
         using namespace Game;using namespace Game::Chrono;
@@ -505,6 +565,7 @@ class SlimeLifeValidationScene final:public Game::GameScene {
         auto place=[&](Vec at){body.at=at;body.at.y=1.25f;GetComponents().get<Player>(player).velocity={};auto& t=GetComponents().get<TransformComponent>(player);t.translate={body.at.x,body.at.y,body.at.z};};
         auto step=[&](bool ok,const char* note){roomValid_&=ok;roomNotes_+=std::string(" ")+note+"="+std::to_string(ok);++roomPhase_;roomClock_=0;};
         if(frames_>40&&roomPhase_==0){bool closed=chrono->MoveWithinCity({-200,1,-158},{-200,1,-150},1).z<-152&&chrono->MoveWithinCity({-70,1,144},{-70,1,160},1).z<150;
+            {char why[160];snprintf(why,sizeof(why)," start_detail(closed=%d stage=%d left=%.1f action=%d)",int(closed),chrono->DevourStageIndex(),clock.left,int(body.action));roomNotes_+=why;}
             step(closed&&chrono->DevourStageIndex()==0&&clock.left>stage.time-10&&clock.left<=stage.time&&body.action==LifeAction::Idle,"start");Capture(L"tests/out/slime-life-room-start.png");}
         else if(roomPhase_==1){input.attack=roomClock_>.1f&&roomClock_<.2f;if(roomClock_>.4f){step(body.action==LifeAction::Idle,"no_item_no_morph");roomPhase_=10;}}
         else if(roomPhase_==10){if(roomClock_<.05f){body.mass=body.health=body.maxHealth=300;++life.revision;}input.move={0,0,1};
@@ -812,6 +873,8 @@ public:
         if(wcsstr(GetCommandLineW(),L"--slime-life-slope-wire-perf")){UpdateWirePerf();return;}
         if(wcsstr(GetCommandLineW(),L"--slime-life-slope-hose-perf")){UpdateHosePerf();return;}
         if(wcsstr(GetCommandLineW(),L"--slime-life-room-intro")){UpdateRoomIntro();return;}
+        if(wcsstr(GetCommandLineW(),L"--slime-life-slope-intro")){UpdateSlopeIntro();return;}
+        if(wcsstr(GetCommandLineW(),L"--slime-life-slope-rings")){UpdateSlopeRings();return;}
         if(wcsstr(GetCommandLineW(),L"--slime-life-room-mouth")){UpdateRoomMouth();return;}
         if(wcsstr(GetCommandLineW(),L"--slime-life-room-bed")){UpdateRoomBed();return;}
         if(wcsstr(GetCommandLineW(),L"--slime-life-room-surfaces")){UpdateRoomSurfaces();return;}
