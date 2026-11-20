@@ -36,6 +36,8 @@ void ChronoSystem::Reset(entt::registry& r){
     // 結果の間に隠した物を戻す
     for(auto e:resultHidden_)if(r.valid(e)&&r.all_of<MeshRendererComponent>(e))r.get<MeshRendererComponent>(e).enabled=true;
     resultHidden_.clear();
+    // 戦闘の状態を消す
+    battle_={};battlePendingRank_=-1;battleArenaEntity_=entt::null;
     Engine::LoadProfile::Scope profile("phase","ChronoSystem::Reset");
     // デモのシーンか
     slimePlayerDemo_ = scene_->IsSlimePlayerDemo();
@@ -72,6 +74,10 @@ void ChronoSystem::Reset(entt::registry& r){
     // 白テクスチャ・球のメッシュ・音を読み込む
     auto* renderer=Engine::Renderer::GetInstance();white_=renderer->LoadTexture2D("Resources/Textures/white1x1.png");
     sphere_=renderer->LoadObjMesh(ball);
+    // 床のゲージ用の板: 2x2 の XZ 板を両面で (どちら向きの巻きでも見える)
+    if(plane_==0){std::vector<Engine::VertexData> v(4);const float xs[4]={-1,1,-1,1},zs[4]={-1,-1,1,1};
+        for(int i=0;i<4;++i){v[size_t(i)].position={xs[i],0,zs[i],1};v[size_t(i)].normal={0,1,0};v[size_t(i)].texcoord={(xs[i]+1)*.5f,(zs[i]+1)*.5f};}
+        plane_=renderer->CreateDynamicMesh(v,{0,2,3,0,3,1,0,3,2,0,1,3});}
     if(hitSound_==0xffffffff)hitSound_=Engine::Audio::GetInstance()->Load("Resources/Sound/Devour/hit.wav");
     if(coreSound_==0xffffffff)coreSound_=Engine::Audio::GetInstance()->Load("Resources/Sound/Devour/confirm.wav");
     // ポストエフェクトを既定に戻してから、ステージを作る
@@ -79,6 +85,11 @@ void ChronoSystem::Reset(entt::registry& r){
     BuildInk(r);CacheSolids(r);
     renderer->SetPostEffect("ChronoFocus");
     renderer->SetAmbientColor({0.65f,0.68f,0.75f});
+    // 確認用 (Release でも使える): --devour-battle で吸収を飛ばして戦闘から始める。
+    // 大きさは --devour-battle-cm=大きさ (省略で 2 番目の目標)、ステージは --devour-stage=番号、戦闘の秒数は --devour-battle-time=秒。
+    // --devour-battle-auto を足すと自動で戦い、記録を tests/out/devour-battle.txt に書く
+    if(devour_&&wcsstr(GetCommandLineW(),L"--devour-battle")&&!life_.bodies.empty()){PrepareBattleForTest(r);StopLoopSounds();
+        battlePendingRank_=DevourRankAt(CurrentDevourStage(),life_.bodies[0].mass);}
 }
 
 // 当たり判定に使う箱の一覧を作る
@@ -169,6 +180,9 @@ void ChronoSystem::Update(entt::registry& r,GameContext& ctx){
     // スライムの生活モードで確認用のやり直しの指示があれば初期化する
     if(slimePlayerDemo_ && ctx.input && ctx.input->Trigger(DIK_F5)){Reset(r);return;}
     {const auto* control=r.try_get<ControlFrame>(player_);if(control&&control->restart){Reset(r);return;}}
+    // 吸収が終わったら戦闘を始め、戦闘の間は戦闘だけを進める (DevourBattle.cpp)
+    if(battlePendingRank_>=0&&!finished_){const int rank=battlePendingRank_;battlePendingRank_=-1;StartDevourBattle(r,rank);}
+    if(BattleActive()&&!finished_){UpdateDevourBattle(r,r.get<Player>(player_),ctx);return;}
     if(finished_){
         auto& p=r.get<Player>(player_);
         {
@@ -195,6 +209,8 @@ void ChronoSystem::Update(entt::registry& r,GameContext& ctx){
                 if(!autoRetried&&finishAge_>8.f&&wcsstr(GetCommandLineW(),L"--load-profile-auto")){autoRetried=true;Engine::LoadProfile::Record("drive","result: auto retry",0);Reset(r);return;}
                 // 「おなかの中」の升の操作 (大きく見ている間は他の操作を止める)
                 if(UpdateDevourShelf(ctx,ui))return;
+                // L / B: 戦闘だけやり直す (吸収が終わったときの体と在庫から)
+                if(battle_.tries>0&&(UI::Pressed(DIK_L)||UI::PadPressed(XINPUT_GAMEPAD_B))){RetryDevourBattle(r);return;}
                 if(next&&(UI::Pressed(DIK_N)||UI::Pressed(DIK_RETURN)||ui.Click(ResultNext))){++devourStage_;SaveSlimeLab();Reset(r);return;}
                 if(UI::Pressed(DIK_R)||(!next&&UI::Pressed(DIK_RETURN))||UI::PadPressed(XINPUT_GAMEPAD_X)||ui.Click(next?ResultRetry:ResultRetryOnly)){Reset(r);return;}
                 if(UI::Pressed(DIK_TAB)||UI::PadPressed(XINPUT_GAMEPAD_Y)||ui.Click(next?ResultTitle:ResultTitleOnly))Engine::SceneManager::GetInstance()->RequestCoveredChange("Title");
@@ -213,6 +229,7 @@ void ChronoSystem::Update(entt::registry& r,GameContext& ctx){
 void ChronoSystem::Draw(entt::registry& r,GameContext& ctx){
     if(!initialized_||!ctx.isPlaying||!r.valid(player_)||!ctx.renderer)return;
     DrawSlimeLife(r,ctx);
+    DrawDevourBattle(ctx);
 }
 
 // UI の描画

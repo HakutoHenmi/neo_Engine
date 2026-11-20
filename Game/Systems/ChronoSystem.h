@@ -15,6 +15,7 @@
 #include "../Chrono/DevourRules.h"
 #include "../Chrono/SlopeTownRules.h"
 #include "../Chrono/DevourStageRules.h"
+#include "../Chrono/DevourBattleRules.h"
 #include "../Chrono/DevourGimmickRules.h"
 #include "../Chrono/DevourSpillRules.h"
 #include <filesystem>
@@ -293,9 +294,9 @@ private:
     void TickDevourTrail(const Chrono::Player&,float dt);void DrawDevourTrail(GameContext&);
     void TickDevourHeli(Chrono::Player&,float dt,Chrono::Vec wish,bool blocked);
     // 体が道具の形になっている (ギミックに乗っている・ヘリコプター)。形の番号 (無ければ 0)・形になってからの時間・姿勢
-    int DevourToolShape()const{return devour_&&GimmickRiding()&&gimmickRide_.shape>0?gimmickRide_.shape:devour_&&devourHeli_.active?Chrono::GimmickHeliShape:0;}
-    float DevourToolAge()const{return GimmickRiding()?gimmickRide_.age:devourHeli_.age;}
-    const Chrono::GimmickPose& DevourToolPose(bool previous=false)const{return GimmickRiding()?(previous?gimmickRide_.previous:gimmickRide_.pose):(previous?devourHeli_.previous:devourHeli_.pose);}
+    int DevourToolShape()const{if(devour_&&battle_.toolShape>0&&battle_.phase!=BattleStep::None)return battle_.toolShape;return devour_&&GimmickRiding()&&gimmickRide_.shape>0?gimmickRide_.shape:devour_&&devourHeli_.active?Chrono::GimmickHeliShape:0;}
+    float DevourToolAge()const{if(devour_&&battle_.toolShape>0&&battle_.phase!=BattleStep::None)return battle_.toolAge;return GimmickRiding()?gimmickRide_.age:devourHeli_.age;}
+    const Chrono::GimmickPose& DevourToolPose(bool previous=false)const{if(devour_&&battle_.toolShape>0&&battle_.phase!=BattleStep::None)return previous?battle_.toolPrevious:battle_.toolPose;return GimmickRiding()?(previous?gimmickRide_.previous:gimmickRide_.pose):(previous?devourHeli_.previous:devourHeli_.pose);}
     void GimmickJets(std::vector<Engine::Renderer::FluidTendril>&)const;
     void DrawGimmickMarks(UI::Canvas&,GameContext&);
     // 乗っている間の操作 (下の操作の札) と、作動範囲の中で押せる操作 (体の上の吹き出し。無ければ false)
@@ -308,6 +309,82 @@ private:
     void TickDevourSpring(Chrono::Player&,float dt,bool held,Chrono::Vec wish);
     void StartDevourHop(float power,Chrono::Vec wish);
     // ステージの番号・読み込んだか・届いた目標の数・ステージごとの自己ベストの量
+    // ---- 戦闘フェーズ (DevourBattle.cpp): 吸収のあと、吸収した物を使って 2 分耐える。結果画面から戦闘だけやり直せる ----
+    enum class BattleStep {None,Intro,Fight,Over};
+    struct BattleItem {uint32_t visual=0xffffffffu;std::string id;float gain=0,radius=1;};
+    // stun は止まっている残りの秒 (ビー玉で転んだなど)
+    struct BattleEnemy {uint32_t id=0;Chrono::Vec at{},knock{};float hp=1,maxHp=1,radius=1,speed=1,hitCool=0,flash=0,dashCool=0,stun=0,weak=0,burn=0,burnDps=0,burnTick=0;bool boss=false;};
+    // 置いた物 (ビー玉・積み木の塔・ドミノ・絵の具の床・ぬいぐるみ)。kind は能力、index はドミノの何枚目か
+    // (かごは閉じ込めた敵の id を target に持ち、その敵の上に描く)
+    struct BattlePlaced {Chrono::BattleAction kind=Chrono::BattleAction::Marbles;Chrono::Vec at{},dir{},velocity{};float age=0,life=1,radius=1,size=1,power=1,itemRadius=1;
+        uint32_t visual=0xffffffffu,target=0;int index=0;bool landed=false,done=false;Engine::Vector4 color{1,1,1,1};};
+    // 投げた物・飴玉・水の粒 (style 0 物・1 飴玉・2 水)
+    // mode は飛び道具の飛び方 (Chrono::BattleAction の Coin〜Pierce。Throw ならふつうに投げる)。hits は残りの当たれる数、hit は当てた敵 (同じ敵に続けて当てない)
+    struct BattleShot {Chrono::Vec at{},velocity{};float radius=1,damage=1,age=0,push=1,life=3,size=1,hitCool=0,spin=0;uint32_t visual=0xffffffffu;int style=0,hits=1;
+        Chrono::BattleAction mode=Chrono::BattleAction::Throw;std::vector<uint32_t> hit;};
+    // 袋: 準備フェーズで吸収した物の種類ごとの山。absorbed は吸収した数 (引く重み)、items は残り
+    struct BattleBag {std::string id;Chrono::BattleAction action=Chrono::BattleAction::Throw;int absorbed=0;std::vector<BattleItem> items;};
+    // 物のスロット: 入っている物の種類と残り。roulette が 0 以上なら引いている途中 (秒)
+    struct BattleSlot {std::string id;Chrono::BattleAction action=Chrono::BattleAction::Throw;std::vector<BattleItem> items;float roulette=-1;};
+    // 敵が落とした物: 飛んで落ち、触れると (体より大きくても) 吸い込まれて袋と体積が戻る。suck が 0 以上なら吸い込まれている途中
+    struct BattleDrop {Chrono::Vec at{},velocity{},suckFrom{};uint32_t visual=0xffffffffu;std::string id;Chrono::BattleAction action=Chrono::BattleAction::Throw;float shrink=1,radius=1,itemRadius=1,age=0,suck=-1,spin=0;};
+    // 落とす物の候補 (ステージの物の見た目と能力)
+    struct BattleDropKind {uint32_t visual=0xffffffffu;std::string id;Chrono::BattleAction action=Chrono::BattleAction::Throw;float radius=1;};
+    // 拾ったときに出す文字 (画面のその位置に浮かべる)
+    struct BattlePop {Chrono::Vec at{};std::string text;float age=0;Engine::Vector4 color{1,1,1,1};};
+    struct BattleFx {Chrono::Vec at{};float radius=1,age=0,life=.4f;Engine::Vector4 color{1,1,1,1};};
+    struct DevourBattle {
+        BattleStep phase=BattleStep::None;
+        // 吸収が終わったときの体と袋 (やり直しはここから)・吸収のランク・物のスロットの数
+        Chrono::Vec startAt{},startForward{0,0,1};float startMass=0,unit=1;int rank=0,slotCount=1;
+        std::vector<BattleBag> startBag;
+        // 今の袋・スロット・HP・時間。selected は使うスロット (slotCount なら飴玉)
+        std::vector<BattleBag> bag;std::array<BattleSlot,Chrono::BattleSlotMax> slots;
+        float finalCm=0,hp=100,maxHp=100,clock=0,intro=0,overAge=0,spawnClock=0,cooldown=0,guard=0,hurtFlash=0;
+        // 自分を強くする効き目の残り秒: 回復し続ける (急須)・攻撃が当たりにくい (ティッシュ)・落とす物が 2 倍 (招き猫)
+        float regen=0,fluff=0,dropBoost=0,regenTick=0;
+        // HUD の巻尺の長さ (戦闘中に残りの物の数が一番多かったとき)
+        int hudTotal=0;
+        int selected=0,kills=0,tries=0;uint32_t nextId=1;bool bossSpawned=false,bossDown=false,won=false,previousFire=false;
+        std::vector<BattleEnemy> enemies;std::vector<BattleShot> shots;std::vector<BattleFx> fx;
+        std::vector<BattleDrop> drops;std::vector<BattleDropKind> dropPool;std::vector<BattlePop> pops;int pickups=0,spent=0,dropped=0;
+        std::vector<BattlePlaced> placed;
+        // 戦闘で戻した建物 (小物の番号)
+        std::vector<size_t> buildings;
+        std::string message;float messageAge=0;
+        float time=Chrono::BattleTime;
+        // 変形: 今の形 (Chrono の Battle*Shape / Gimmick*Shape。0 は液体)・形になってからの秒・形でいる残りの秒・姿勢 (今と前のフレーム)
+        int toolShape=0;float toolAge=0,toolLeft=0;Chrono::GimmickPose toolPose{},toolPrevious{};
+        // 今の能力: 種類・残りの秒・強さ (使ったときの大きさで決まる)・物の大きさの倍率・次の当たりまでの秒・ためた当たり (叩く・剣・ばねの瞬間)
+        Chrono::BattleAction ability=Chrono::BattleAction::Throw;float abilityLeft=0,abilityAge=0,abilityPower=1,abilityItem=1,abilityTick=0,abilityHitAt=-1;bool abilityHit=false;
+        // 突進 (轢く・転がる・飛ぶ・ラジコン) の向き
+        Chrono::Vec dashDir{};
+        // 移動の速度 (普段の移動と同じ加速と減速)
+        Chrono::Vec velocity{};
+        // 戦う場所の円 (半径 0 なら場所を決めない)
+        Chrono::Vec arenaAt{};float arenaRadius=0;
+    } battle_;
+    // 吸収が終わって、次の更新で戦闘を始めるときのランク (-1 なら無し。FinishDevour には registry が無いので次の Update で始める)
+    int battlePendingRank_=-1;
+    bool BattleActive()const{return devour_&&battle_.phase!=BattleStep::None;}
+    static bool BattleEnabled();
+    void StartDevourBattle(entt::registry&,int rank);
+    void BeginBattleFight(entt::registry&);
+    void RetryDevourBattle(entt::registry&);
+    void UpdateDevourBattle(entt::registry&,Chrono::Player&,GameContext&);
+    void UseBattleSlot(GameContext&,int slot);void UseBattleCandy();
+    void StartBattleAbility(GameContext&,Chrono::BattleAction,const BattleItem&);void TickBattleAbility(GameContext&,float dt);
+    void FillBattleSlot(int slot,bool roulette);int DrawFromBattleBag();
+    void ShrinkForBattle(float gain);
+    void HurtBattleEnemy(GameContext&,BattleEnemy&,float damage,Chrono::Vec push);
+    void DrawDevourBattle(GameContext&);
+    void DrawDevourBattleUI(GameContext&);
+    void DrawBattleFloorGauge(GameContext&);void BattleHudCells(std::vector<int>& cells,int& nextCell)const;
+    void DrawDevourBattleRecord(GameContext&);
+    void PrepareBattleForTest(entt::registry&);
+    void TickBattlePlaced(GameContext&,float dt);void DrawBattleProp(GameContext&,uint32_t visual,Chrono::Vec at,float shrink,float yaw,float tilt);
+    void SpawnBattleDrops(Chrono::Vec at,int count);void AbsorbBattleDrop(const BattleDrop&);
+    void BuildBattleArena(entt::registry&);entt::entity battleArenaEntity_=entt::null;
     int devourStage_=0,devourRank_=0;bool devourStageLoaded_=false;std::array<float,8> devourBests_{};
     // 変形アイテムを拾って使える状態か・変形の残り時間・テスト用に全部の形を使うか
     bool devourItemReady_=false,devourFreeForms_=false;float devourMorphLeft_=0;
@@ -376,7 +453,8 @@ private:
     void DrawDevourUI(GameContext&);
     // ---- 結果画面の「おなかの中」(DevourShelf.cpp): 測ったあと体の中へ入り、飲みこんだ物を種類ごとに並べる ----
     // 飲みこんだ物の記録 (図鑑の項目・見た目の番号・色)。ぶつかって飛び出した物は消す
-    struct DevourEaten {std::string id;uint32_t visual=0xffffffffu;Engine::Vector4 tint{1,1,1,1};};
+    // gain は飲んだときに増えた量、radius は物の大きさ (戦闘で使うと、この量だけ体が縮む)
+    struct DevourEaten {std::string id;uint32_t visual=0xffffffffu;Engine::Vector4 tint{1,1,1,1};float gain=0,radius=1;};
     std::vector<DevourEaten> devourEaten_;
     void DevourRecordEaten(const entt::registry&,uint32_t visual);
     void DevourForgetEaten(uint32_t visual);
@@ -603,7 +681,7 @@ private:
     // 大きい物を飲んで育つ演出: 遅くなる時間の最初の長さ (物の大きさ)・飲んだ瞬間から 1→0 に減る画面の縁の光
     float devourHeavyPeak_=0,devourHeavyKick_=0;
     uint32_t hitSound_=0xffffffff,coreSound_=0xffffffff;
-    uint32_t white_=0,sphere_=0;
+    uint32_t white_=0,sphere_=0,plane_=0;
     // 状態 (初期化済み・終了・勝利・前フレームの入力)
     bool initialized_=false,finished_=false,won_=false,prevSpace_=false;
     bool diagnostic_=false;

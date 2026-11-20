@@ -198,6 +198,9 @@
     <ClCompile Include="Game\Systems\DevourGrowth.cpp">
       <Filter>3. Systems（システム）\スライム本編</Filter>
     </ClCompile>
+    <ClCompile Include="Game\Systems\DevourBattle.cpp">
+      <Filter>3. Systems（システム）\スライム本編</Filter>
+    </ClCompile>
     <ClCompile Include="Game\Systems\SlopeTown.cpp">
       <Filter>3. Systems（システム）\スライム本編</Filter>
     </ClCompile>
@@ -402,6 +405,9 @@
       <Filter>4. Chrono（スライム本編のルール）</Filter>
     </ClInclude>
     <ClInclude Include="Game\Chrono\DevourRules.h">
+      <Filter>4. Chrono（スライム本編のルール）</Filter>
+    </ClInclude>
+    <ClInclude Include="Game\Chrono\DevourBattleRules.h">
       <Filter>4. Chrono（スライム本編のルール）</Filter>
     </ClInclude>
     <ClInclude Include="Game\Systems\CityBuilder.h">

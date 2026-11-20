@@ -68,6 +68,8 @@ void ChronoSystem::BuildInk(entt::registry& r){
 }
 // インクの地面の高さ (真下へのレイで一番高い面)。surface に面の番号を返す
 float ChronoSystem::InkGround(V at,int* surface)const{
+    // 戦闘フェーズの専用の広いステージ (マップの外に置いた平らな床) の上なら、その床の高さ
+    if(battle_.arenaRadius>0&&std::abs(at.x-battle_.arenaAt.x)<battle_.arenaRadius*1.6f&&std::abs(at.z-battle_.arenaAt.z)<battle_.arenaRadius*1.6f){if(surface)*surface=0;return battle_.arenaAt.y;}
     // 吸収モードの部屋は家具の高さがある
     // ギミックの看板の土台は、床の上のなだらかな坂として足す
     if(devour_&&CurrentDevourStage().map=="room"){if(surface)*surface=0;return std::max(Chrono::RoomGround(at),GimmickSignGround(at));}
@@ -85,7 +87,9 @@ float ChronoSystem::InkGround(V at,int* surface)const{
 // インクのモードのカメラ: 追従・肩越し・溜めや領域での引き・消火栓の照準・壁へのめり込み防止・ボスの部位の透明化
 void ChronoSystem::InkCamera(entt::registry& r,Player& p,GameContext& ctx){
     // 坂の町: カメラは部屋と同じく床の近くまで下げられ、上の段の中 (擁壁の向こう) へは入らない (SlopeCameraFloor)
-    const bool slopeMap=devour_&&CurrentDevourStage().map=="slope";
+    // (戦闘フェーズの専用のステージにいる間は、坂の町・部屋のカメラの決まりを使わない)
+    const bool arena=battle_.arenaRadius>0;
+    const bool slopeMap=devour_&&!arena&&CurrentDevourStage().map=="slope";
     // プレイヤーの位置へなめらかに追従する
     V pos=Read(r.get<TransformComponent>(player_).translate);
     if(!cameraReady_){cameraFollow_=pos;cameraReady_=true;}
@@ -198,7 +202,7 @@ void ChronoSystem::InkCamera(entt::registry& r,Player& p,GameContext& ctx){
         slopeCameraShift_=Lerp(slopeCameraShift_,shift,1-std::exp(-rate*std::min(ctx.dt,.1f)));
         wanted=wanted+slopeCameraShift_;wanted.y=std::max(wanted.y,Chrono::SlopeWalkGround(wanted)+Chrono::SlopeCameraLift);}
     // 吸収モードの部屋: カメラは壁の外へ出てよい (間の壁は透かす)。部屋の外の床 (RoomStage.cpp) の範囲と天井の下には収める
-    if(devour_&&CurrentDevourStage().map=="room"){float h=CurrentDevourStage().half+Chrono::RoomOutsideFloor-10;wanted.x=std::clamp(wanted.x,-h,h);wanted.z=std::clamp(wanted.z,-h,h);wanted.y=std::min(wanted.y,290.f);}
+    if(devour_&&!arena&&CurrentDevourStage().map=="room"){float h=CurrentDevourStage().half+Chrono::RoomOutsideFloor-10;wanted.x=std::clamp(wanted.x,-h,h);wanted.z=std::clamp(wanted.z,-h,h);wanted.y=std::min(wanted.y,290.f);}
     // それでも建物の箱の中に残ったら、外へ出るまで注視点の方へ寄せる
     if(!devour_&&hydrantBlend<1){
         auto inside=[&](V at){for(const auto& b:solids_)if(at.x>b.min.x-.2f&&at.x<b.max.x+.2f&&at.y>b.min.y-.2f&&at.y<b.max.y+.2f&&at.z>b.min.z-.2f&&at.z<b.max.z+.2f)return true;return false;};

@@ -23,7 +23,8 @@ inline bool StageWalkable(Vec p,float margin,const std::vector<StageLot>& lots,B
     return true;
 }
 // map は "room" (部屋) か "slope" (坂の町)。half は部屋の半分の大きさ (坂の町は町の大きさで決まるので 0)
-struct DevourStage {std::string id,name,map,music="Battle";float time=240,start=5,itemTime=15,half=0,smallFood=0,growth=1;std::vector<float> goals,gates;LifeMorphItem item=LifeMorphItem::None;Vec itemAt{},spawn{};};
+// battleColor: 戦闘フェーズの専用の広いステージの床の色 (DevourBattle.cpp)
+struct DevourStage {Vec battleColor{.55f,.6f,.66f};std::string id,name,map,music="Battle";float time=240,start=5,itemTime=15,half=0,smallFood=0,growth=1;std::vector<float> goals,gates;LifeMorphItem item=LifeMorphItem::None;Vec itemAt{},spawn{};};
 inline const std::vector<DevourStage>& DevourStages(){
     static const std::vector<DevourStage> stages=[]{
         const char* file="devour_stages.json";const auto& json=Data::Load(file);std::vector<DevourStage> out;
@@ -31,6 +32,7 @@ inline const std::vector<DevourStage>& DevourStages(){
         for(const auto& s:Data::Require(json,"stages",file)){DevourStage stage;stage.id=s.at("id").get<std::string>();stage.name=s.at("name").get<std::string>();stage.map=s.at("map").get<std::string>();stage.music=s.value("music",stage.music);
             stage.time=s.at("time").get<float>();stage.start=s.at("start").get<float>();stage.itemTime=s.at("itemTime").get<float>();stage.half=s.value("half",0.f);stage.smallFood=s.value("smallFood",0.f);stage.growth=s.value("growth",1.f);
             stage.goals=s.at("goals").get<std::vector<float>>();stage.gates=s.value("gates",std::vector<float>{});stage.itemAt=vec(s.at("itemAt"));stage.spawn=vec(s.at("spawn"));
+            if(s.contains("battleColor"))stage.battleColor=vec(s.at("battleColor"));
             // 吸収モードで使える変形アイテムの名前の表。知らない名前は None のままで、下の確認で止める
             struct ItemName {const char* name;LifeMorphItem item;};
             // ("none" は変形アイテムを置かないステージ。坂の町は、代わりにおみこしとこまの輪を町に置く)
