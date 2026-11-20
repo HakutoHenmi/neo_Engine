@@ -97,7 +97,9 @@ float ChronoSystem::DevourEat(entt::registry& r,size_t index){
         devourHeavy_=std::max(devourHeavy_,heavy*share);}
     // 絵の具で塗った色と同じ色の物は多く増える
     const float paint=GimmickFoodBonus(prop);if(paint>1&&gimmickMatchCool_<=0){gimmickMatchCool_=.5f;devourPops_.push_back({prop.at+V{0,prop.radius+2,0},DevourWord("paintMatch"),0,.3f,0,DevourSeed()});}
-    float gain=DevourSwallow(body.mass,devourDigest_,prop.reward*paint*DevourFoodValue(body.mass,prop.radius,CurrentDevourStage().smallFood));DevourLogEat(prop,gain);++life_.absorbed;LifeUnlockMorphItem(life_,0x80000000u|uint32_t(index));
+    float gain=DevourSwallow(body.mass,devourDigest_,prop.reward*paint*DevourFoodValue(body.mass,prop.radius,CurrentDevourStage().smallFood));
+    // 戦闘で使ったときに縮む量として、増えた量と大きさを覚えておく
+    if(!devourEaten_.empty()&&devourEaten_.back().visual==prop.visual){devourEaten_.back().gain=gain;devourEaten_.back().radius=prop.radius;}DevourLogEat(prop,gain);++life_.absorbed;LifeUnlockMorphItem(life_,0x80000000u|uint32_t(index));
     // 体の中に残して見せる (モデルか光る球。塀のようにモデルの無い物は見せない)。大きすぎる物は体に収まる大きさにする
     if(prop.visual!=0xffffffffu||prop.orb){
         float bodyRadius=DevourBodyRadius(body.mass);auto uniform=[](float low,float high){return std::uniform_real_distribution<float>(low,high)(DevourRandom());};
@@ -219,6 +221,8 @@ void ChronoSystem::FinishDevour(Player& p){
     {Engine::LoadProfile::Scope step("result","Collection::Add + BuildDevourShelf");std::vector<std::string> ids;ids.reserve(devourEaten_.size());for(const auto& eaten:devourEaten_)ids.push_back(eaten.id);BuildDevourShelf(Collection::Add(ids));}
     devourNewBest_=body.mass>best;if(devourNewBest_)best=body.mass;if(clear)++lifeClears_;
     if(devourNewBest_||clear){Engine::LoadProfile::Scope step("result","SaveSlimeLab");SaveSlimeLab();}
+    // 結果画面の前に戦闘フェーズを挟む (DevourBattle.cpp)。自動テストと計測ではそのまま結果へ
+    if(BattleEnabled()){battlePendingRank_=DevourRankAt(stage,body.mass);return;}
     {Engine::LoadProfile::Scope step("result","Finish (music)");Finish(p,clear);}
 }
 // 保存したステージを読む (--devour-stage=番号 があれば、そのステージを使う)

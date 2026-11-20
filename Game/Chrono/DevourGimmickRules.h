@@ -17,9 +17,71 @@ enum class GimmickKind {Shoot,Domino,Bowling,Paint,Liquid,Plane,Glide,Wire,Mikos
 // (26 のヘリコプターはギミックではなく、高い所から落ちたときの形。27 こいのぼり・28 電気の玉・29 おみこし・30 こま・31 消火栓は坂の町)
 inline constexpr int GimmickBallShape=20,GimmickGunShape=21,GimmickDominoShape=22,GimmickPlaneShape=23,GimmickSheetShape=24,GimmickDropShape=25,GimmickHeliShape=26,GimmickCarpShape=27,GimmickSparkShape=28,
     GimmickMikoshiShape=29,GimmickKomaShape=30,GimmickHoseShape=31;
-inline bool GimmickShape(int shape){return shape>=GimmickBallShape&&shape<=GimmickHoseShape;}
+// 32〜35 は戦闘フェーズの形 (DevourBattle.cpp): 轢く=車・叩く=ハンマー・守る=盾・回復=ハート
+inline constexpr int BattleCarShape=32,BattleHammerShape=33,BattleShieldShape=34,BattleHeartShape=35;
+// 36〜38 は物ごとの能力の形: 剣・ばね・掃除機
+inline constexpr int BattleSwordShape=36,BattleSpringShape=37,BattleVacuumShape=38;
+// 39 は将棋の駒 (駒の技の間の形)
+inline constexpr int BattleShogiShape=39;
+// 40 は消しゴム・41 はだるま
+inline constexpr int BattleEraserShape=40,BattleDarumaShape=41;
+inline bool GimmickShape(int shape){return shape>=GimmickBallShape&&shape<=BattleDarumaShape;}
 // 形を作る範囲 (x は左右の半分、y は 0 から、z は前後の半分)
 struct GimmickBounds {float x=3,y=6,z=3;};
+// ---- 戦闘フェーズの形 (普段の体と同じくらいの体積。先が +z) ----
+// 車: 車体・屋根・4 つの車輪
+inline bool BattleInsideCar(Vec p){
+    if(std::abs(p.x)<1.7f&&p.y>.9f&&p.y<2.2f&&std::abs(p.z)<3.2f)return true;
+    if(std::abs(p.x)<1.4f&&p.y>=2.2f&&p.y<3.3f&&p.z>-1.8f&&p.z<1.f)return true;
+    for(float x:{-1.75f,1.75f})for(float z:{-2.1f,2.1f}){const float dy=p.y-.9f,dz=p.z-z;if(std::abs(p.x-x)<.45f&&dy*dy+dz*dz<.81f)return true;}
+    return false;
+}
+// ハンマー: 柄と大きな頭 (柄の根もとを支点に振り下ろす)
+inline bool BattleInsideHammer(Vec p){
+    if(std::abs(p.x)<.45f&&std::abs(p.z)<.45f&&p.y>.4f&&p.y<4.2f)return true;
+    return std::abs(p.x)<2.2f&&std::abs(p.z)<1.4f&&p.y>=4.f&&p.y<6.4f;
+}
+// 盾: 前に立てた丸い板と、真ん中の出っぱり
+inline bool BattleInsideShield(Vec p){
+    const float dx=p.x,dy=p.y-3.f,r=std::sqrt(dx*dx+dy*dy);
+    if(r<3.f&&p.z>1.2f&&p.z<2.4f)return true;
+    return r<1.1f&&p.z>=2.4f&&p.z<2.4f+std::sqrt(std::max(0.f,1.21f-r*r));
+}
+// 剣: 前 (+z) へ伸ばした刃とつば・柄 (柄の根もと (0,2.2,-1) を軸に左右へ振る)
+inline bool BattleInsideSword(Vec p){
+    if(std::abs(p.x)<.6f&&std::abs(p.y-2.2f)<.38f&&p.z>0&&p.z<7.5f-std::abs(p.x)*1.5f)return true;
+    if(std::abs(p.x)<1.9f&&std::abs(p.y-2.2f)<.55f&&p.z>-.5f&&p.z<=0)return true;
+    return LifeSegmentDistance(p,{0,2.2f,-2.6f},{0,2.2f,-.5f})<.5f;
+}
+// ばね: 巻いた線 (半径 1.8、1 巻き 0.7) と、上の板
+inline bool BattleInsideSpring(Vec p){
+    const float r=std::sqrt(p.x*p.x+p.z*p.z);if(r<2.2f&&p.y>4.1f&&p.y<4.7f)return true;
+    if(p.y<0||p.y>4.3f)return false;
+    const float a=std::atan2(p.z,p.x)/6.2831853f,t=p.y/.7f-a,frac=t-std::round(t),dy=frac*.7f;
+    return (r-1.8f)*(r-1.8f)+dy*dy<.42f*.42f;
+}
+// 掃除機: 本体・持ち手と、前へ伸びる吸い込み口
+inline bool BattleInsideVacuum(Vec p){
+    if(std::abs(p.x)<1.4f&&p.y>.6f&&p.y<3.4f&&p.z>-3.f&&p.z<.4f)return true;
+    if(LifeSegmentDistance(p,{0,3.4f,-2.6f},{0,4.6f,-.4f})<.42f)return true;
+    if(LifeSegmentDistance(p,{0,1.8f,.4f},{0,1.f,4.2f})<.7f)return true;
+    return std::abs(p.x)<1.4f&&p.y>.3f&&p.y<1.6f&&p.z>4.f&&p.z<4.9f;
+}
+// 将棋の駒: 立てた五角形の板 (先が上。前後に厚みがあり、上ほど薄い)
+inline bool BattleInsideShogi(Vec p){
+    if(p.y<0||p.y>6.2f)return false;const float half=p.y<4.2f?2.6f-.1f*p.y:2.18f*(6.2f-p.y)/2.f;
+    return std::abs(p.x)<half&&std::abs(p.z)<1.1f-.08f*p.y;
+}
+// 消しゴム: 横長の箱と、真ん中に巻いた紙の帯 (前後にこする)
+inline bool BattleInsideEraser(Vec p){return std::abs(p.x)<2.9f&&p.y>0&&p.y<2.6f&&std::abs(p.z)<1.5f;}
+// だるま: 大きな胴と、上にのった頭
+// (形の大きさは普段の体と同じくらいの体積にする。大きすぎると粒子が足りず、ばらばらに見える)
+inline bool BattleInsideDaruma(Vec p){return Length(p-Vec{0,2.1f,0})<2.1f||Length(p-Vec{0,4.6f,0})<1.4f;}
+// ハート: 立てたハートの形 (厚みあり)
+inline bool BattleInsideHeart(Vec p){
+    if(std::abs(p.z)>1.2f*(1-std::min(1.f,std::abs(p.x)/3.4f)*.4f))return false;
+    const float x=p.x/2.6f,y=(p.y-3.f)/2.6f,a=x*x+y*y-1;return a*a*a-x*x*y*y*y<=0;
+}
 // ボウリングの玉: 指の穴が 3 つある球 (転がると穴が回って、回っているのが分かる)
 inline constexpr float GimmickBallRadius=2.3f;
 inline bool GimmickInsideBall(Vec p){
@@ -125,6 +187,15 @@ inline Vec GimmickPosePoint(int shape,Vec p,const GimmickPose& pose){
     // ヘリコプター: 回転翼だけが軸の周りを回り、全体は進む向きへ少し前に傾く
     if(shape==GimmickHeliShape){if(p.y>GimmickRotorY-.4f){const float c=std::cos(pose.spin),s=std::sin(pose.spin);p={p.x*c-p.z*s,p.y,p.x*s+p.z*c};}
         p=GimmickRotateZ(p,{0,2,0},pose.roll);return GimmickRotateX(p,{0,2,0},pose.pitch);}
+    // 戦闘: ハンマーは柄の根もとを支点に前へ振り下ろし、ハートはゆっくり回る
+    if(shape==BattleHammerShape)return GimmickRotateX(p,{0,.4f,0},pose.pitch);
+    // 剣は柄の根もとを軸に左右へ振る (spin)・ばねは縮む (squash)
+    if(shape==BattleSwordShape){const float c=std::cos(pose.spin),s=std::sin(pose.spin);const Vec d=p-Vec{0,0,-1.f};return Vec{0,0,-1.f}+Vec{d.x*c+d.z*s,d.y,-d.x*s+d.z*c};}
+    // 消しゴムは前後にこする (spin をずらす量に使う)・だるまは揺れる (roll)
+    if(shape==BattleEraserShape)return {p.x,p.y,p.z+pose.spin};
+    if(shape==BattleDarumaShape)return GimmickRotateZ(p,{0,0,0},pose.roll);
+    if(shape==BattleSpringShape){const float k=1-pose.squash;return {p.x*(1+.3f*pose.squash),p.y*k,p.z*(1+.3f*pose.squash)};}
+    if(shape==BattleHeartShape){const float c=std::cos(pose.spin),s=std::sin(pose.spin);return {p.x*c-p.z*s,p.y,p.x*s+p.z*c};}
     if(shape==GimmickDropShape){float wide=1/std::sqrt(std::max(.2f,1-pose.squash));return {p.x*wide,p.y*(1-pose.squash),p.z*wide};}
     return p;
 }
@@ -154,8 +225,18 @@ inline const GimmickShapeData& GimmickShapeInfo(int shape){
         {{2.5f,4.9f,2.5f},{{0,2.4f,0},1.f},GimmickInsideSpark},                                                                    // 電気の玉
         {{GimmickMikoshiCrossX+.5f,GimmickMikoshiTop,GimmickMikoshiPoleZ+.5f},{{0,2.4f+GimmickMikoshiLift,0},.5f},GimmickInsideMikoshi}, // おみこし
         {{GimmickKomaRadius,GimmickKomaTop,GimmickKomaRadius},{{0,2.f,0},.45f},GimmickInsideKoma},                               // こま
-        {{2.2f,5.1f,2.3f},{{0,2.f,0},.5f},LifeInsideHydrant}};                                                                     // 消火栓 (戦闘モードと同じ形)                               // こま
-    static_assert(GimmickHoseShape-GimmickBallShape+1==int(std::size(table)),"形の番号と表の行数をそろえる");
+        {{2.2f,5.1f,2.3f},{{0,2.f,0},.5f},LifeInsideHydrant},
+        {{2.3f,3.3f,3.2f},{{0,1.6f,0},.6f},BattleInsideCar},                                                                      // 戦闘: 車
+        {{2.2f,6.4f,1.4f},{{0,5.2f,0},1.f},BattleInsideHammer},                                                                   // 戦闘: ハンマー
+        {{3.f,6.f,3.5f},{{0,3.f,1.8f},.5f},BattleInsideShield},                                                                   // 戦闘: 盾
+        {{3.4f,6.3f,1.2f},{{0,3.f,0},.8f},BattleInsideHeart},
+        {{1.9f,2.8f,7.5f},{{0,2.2f,1.f},.4f},BattleInsideSword},                                                                  // 能力: 剣
+        {{2.3f,4.8f,2.3f},{{0,2.2f,0},.5f},BattleInsideSpring},                                                                   // 能力: ばね
+        {{1.5f,5.f,4.9f},{{0,2.f,-1.2f},.8f},BattleInsideVacuum},
+        {{2.7f,6.3f,1.2f},{{0,2.6f,0},.8f},BattleInsideShogi},
+        {{2.9f,2.6f,1.5f},{{0,1.3f,0},.8f},BattleInsideEraser},                                                                   // 能力: 消しゴム
+        {{2.2f,6.1f,2.2f},{{0,2.1f,0},1.1f},BattleInsideDaruma}};                                                                 // 能力: だるま                                                                   // 能力: 将棋の駒                                                                // 能力: 掃除機                                                                    // 戦闘: ハート                                                                     // 消火栓 (戦闘モードと同じ形)                               // こま
+    static_assert(BattleDarumaShape-GimmickBallShape+1==int(std::size(table)),"形の番号と表の行数をそろえる");
     const int index=shape-GimmickBallShape;
     return table[index>=0&&index<int(std::size(table))?index:GimmickDropShape-GimmickBallShape];
 }

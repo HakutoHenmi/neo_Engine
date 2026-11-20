@@ -203,6 +203,7 @@ exit /b %ERRORLEVEL%</Command>
     <ClCompile Include="Game\Systems\DevourHeli.cpp" />
     <ClCompile Include="Game\Systems\DevourSpill.cpp" />
     <ClCompile Include="Game\Systems\DevourGrowth.cpp" />
+    <ClCompile Include="Game\Systems\DevourBattle.cpp" />
     <ClCompile Include="Game\Systems\RoomStage.cpp" />
     <ClCompile Include="Game\Systems\SlopeTown.cpp" />
     <ClCompile Include="Game\Systems\DevourPlayLog.cpp" />
@@ -279,6 +280,7 @@ exit /b %ERRORLEVEL%</Command>
     <ClInclude Include="Game\Chrono\DevourGimmickRules.h" />
     <ClInclude Include="Game\Chrono\DevourSpillRules.h" />
     <ClInclude Include="Game\Chrono\DevourStageRules.h" />
+    <ClInclude Include="Game\Chrono\DevourBattleRules.h" />
     <ClInclude Include="Game\Chrono\RoomRules.h" />
     <ClInclude Include="Game\Systems\CityBuilder.h" />
     <ClInclude Include="Game\Chrono\SlopeTownRules.h" />

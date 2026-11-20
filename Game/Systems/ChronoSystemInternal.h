@@ -9,6 +9,7 @@
 //   SlimeLife.cpp         スライムの生活モード (現在のゲームの本編)
 //   SlimeHydrant.cpp      消火栓に変形したスライムの水
 //   CityStage.cpp         スライムの街のステージ
+//   DevourBattle.cpp      吸収のあとの戦闘フェーズ
 #pragma once
 #include "../../Engine/FluidMorphShape.h"
 #include "../Chrono/DevourMorphRules.h"

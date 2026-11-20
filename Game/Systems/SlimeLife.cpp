@@ -189,9 +189,9 @@ void ChronoSystem::BuildSlimeLife(entt::registry& r){
     // 吸収モード: 路地の塀とバリケードも、大きくなれば覆って飲み込める
     devourWallProps_.clear();devourBarricadeProp_=-1;
     devourClock_={};devourHeli_={};devourPounce_={};devourMeals_.clear();devourEaten_.clear();shelf_={};Engine::Renderer::GetInstance()->SetFluidInterior(0,0);devourSplashes_.clear();devourDigest_=0;devourGulp_={};devourPounceWait_=0;devourBiteAge_=-1;devourChew_=0;devourSizePulse_=0;devourPops_.clear();devourNewBest_=false;devourRank_=0;if(devour_)devourClock_.left=CurrentDevourStage().time;StartDevourTutorial();
-#ifndef NDEBUG
-    // 確認用: --devour-time=秒 で制限時間を差し替える
+    // 確認用 (Release でも使える): --devour-time=秒 で制限時間を差し替える
     if(const wchar_t* arg=wcsstr(GetCommandLineW(),L"--devour-time="))devourClock_.left=float(_wtof(arg+14));
+#ifndef NDEBUG
     // 確認用: --devour-cm=大きさ で体の大きさを差し替える
     if(const wchar_t* arg=wcsstr(GetCommandLineW(),L"--devour-cm=");arg&&devour_&&!life_.bodies.empty())life_.bodies[0].mass=Chrono::DevourGoalMass(CurrentDevourStage(),float(_wtof(arg+12)));
     // 確認用: --devour-no-tutorial でベッドの下のチュートリアルを飛ばす (ランクの知らせなど、本番の表示を見るため)
@@ -914,7 +914,8 @@ void ChronoSystem::DrawSlimeLife(entt::registry& r,GameContext& ctx){
         ctx.renderer->DrawLine3D(EV(tip+V{1,1,0}),EV(tip),{1,.72f,.15f,1});
     }
     // 部屋のギミックの作動範囲の膜
-    if(devour_&&DevourShelfDive()<=0)DrawGimmickCurtains(ctx);
+    // (戦闘フェーズとその後の結果画面ではギミックを使わないので、作動範囲の光の膜を出さない)
+    if(devour_&&DevourShelfDive()<=0&&battle_.tries==0)DrawGimmickCurtains(ctx);
     // こぼれた液体 (近いものだけ)
     if(devour_)DrawDevourSpills(ctx);
     // スライムが通った所のぬれ跡と、大きい物を飲んで育ったときのしずく (結果の「おなかの中」では描かない)
@@ -1013,7 +1014,9 @@ void ChronoSystem::DrawSlimeLifeUI(entt::registry& r,GameContext& ctx){
     // 変形の見せ場の間は HUD を隠し、見せ場の画面だけを描く
     if(showcase_.active&&!life_.lab){DrawMorphShowcase(ctx);return;}
     // 終わったら結果を表示する
-    if(finished_){DrawDevourUI(ctx);return;}
+    // 戦闘フェーズの HUD (DevourBattle.cpp)
+    if(BattleActive()&&!finished_){DrawDevourBattleUI(ctx);return;}
+    if(finished_){DrawDevourUI(ctx);DrawDevourBattleRecord(ctx);return;}
     {
     // 影付きの文字 (真下へずらした黒の上に重ねる)。align=1 なら x を右端、.5 なら中央にする
     const Engine::Vector4 hazard{.95f,.76f,.19f,1},slime{.61f,.89f,.23f,1},white{.96f,.96f,.94f,1},black{.08f,.08f,.08f,1},red{.84f,.2f,.16f,1};

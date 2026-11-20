@@ -15,7 +15,10 @@ namespace Game::Collection {
 
 // 図鑑の 1 項目。image は画像の名前 (Resources/Textures/UI/Collection/<image>.png)、model は 3D で見せるモデル
 // stand は寝かせて作ったモデル (上の面が表、先が +z) を、3D で見せるとき起こして表をこちらへ向ける印 (将棋の駒)
-struct Entry {std::string id,name,text,image,model;std::vector<std::string> ids;bool stand=false;};
+// bundle は戦闘フェーズで何個をまとめて 1 回分にするか (小さい物。省略は 1)
+// action は戦闘フェーズの能力 (DevourBattleRules.h の BattleActionOf。省略は battle の分類の動き)
+// battle は戦闘フェーズでの使い道 (throw / ride / smash / guard / heal / building。省略は throw)
+struct Entry {std::string id,name,text,image,model,battle="throw",action;int bundle=1;std::vector<std::string> ids;bool stand=false;};
 
 // 項目の一覧 (図鑑の順)
 inline const std::vector<Entry>& Entries(){
@@ -23,7 +26,7 @@ inline const std::vector<Entry>& Entries(){
         try{for(const auto& e:Data::Require(Data::Load("collection.json"),"entries","collection.json")){Entry entry;entry.id=e.at("id").get<std::string>();
                 entry.name=e.at("name").get<std::string>();entry.text=e.value("text",std::string());entry.image=e.value("image",entry.id);
                 // 3D は画像と同じモデルで見せる (トランプは赤い札、町のたてものは家)
-                entry.model=entry.image;entry.stand=e.value("stand",false);
+                entry.model=entry.image;entry.stand=e.value("stand",false);entry.battle=e.value("battle",entry.battle);entry.action=e.value("action",std::string());entry.bundle=std::max(1,e.value("bundle",1));
                 if(e.contains("ids"))for(const auto& id:e.at("ids"))entry.ids.push_back(id.get<std::string>());else entry.ids.push_back(entry.id);
                 out.push_back(std::move(entry));}}
         catch(const std::exception& error){OutputDebugStringA((std::string("Collection: ")+error.what()+"\n").c_str());}

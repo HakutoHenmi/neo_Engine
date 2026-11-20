@@ -53,6 +53,8 @@ bool TownStage(const Chrono::DevourStage& stage){return stage.map=="slope";}
 // 部屋のステージをベッドの下から始めたときだけ、チュートリアルを始める
 void ChronoSystem::StartDevourTutorial(){
     devourTutorial_={};const auto& stage=CurrentDevourStage();
+    // 確認用: --devour-no-tutorial ではチュートリアルも始まりの演出もしない (すぐ時間が進む)
+    if(wcsstr(GetCommandLineW(),L"--devour-no-tutorial"))return;
     if(devour_&&TownStage(stage)){devourTutorial_.step=kStepBriefing;devourTutorial_.started=false;return;}
     if(!devour_||stage.map!="room"||stage.gates.empty()||!Chrono::RoomUnderBed(stage.spawn+V{0,1,0}))return;
     devourTutorial_.step=0;devourTutorial_.started=false;

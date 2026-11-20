@@ -311,6 +311,115 @@ def toy_ball():
     return s
 
 
+# ---- 戦闘フェーズの能力の元になるおもちゃ (DevourBattle.cpp。図鑑の action) --------------------------------
+@model()
+def taketombo():
+    # 竹とんぼ: 細い軸と、ねじった羽 (戦闘では回る翼)
+    s = Shape()
+    s.tube((0, 0, 0), (0, 9, 0), .35, .3, "wood_light", sides=5)
+    s.box((-7, 9, -.9), (7, 9.5, .9), "wood")
+    s.box((-7, 9.5, -.9), (-5.5, 9.7, .9), "red")
+    s.box((5.5, 9.5, -.9), (7, 9.7, .9), "red")
+    return s
+
+
+@model()
+def mizudeppo():
+    # 水鉄砲: 本体・筒・水のタンク・持ち手 (戦闘では前へ水を撃つ)
+    s = Shape()
+    s.box((-1.5, 4, -5), (1.5, 7.2, 3), "sky")
+    s.tube((0, 6, 3), (0, 6, 8.5), .8, .7, "blue", sides=6)
+    s.box((-1.1, 0, -4.2), (1.1, 4.2, -1.4), "blue")
+    s.ball((0, 8.6, -1.2), 1.9, "orange", level=1)
+    s.box((-.4, 2.6, -1.4), (.4, 4, -.4), "yellow")
+    return s
+
+
+@model()
+def bowling_ball():
+    # ボウリングの玉: 指の穴が 3 つ (戦闘では転がって轢く)
+    s = Shape()
+    s.ball((0, 10.8, 0), 10.8, lambda i: ("navy", "purple")[i % 7 == 0], level=2)
+    for x, y in ((-2.2, 19), (2.2, 19), (0, 16)):
+        s.ball((x, y, 4.5), 1.1, "black", level=1)
+    return s
+
+
+@model()
+def toy_koma():
+    # こま: 色の帯のある胴と、上の軸 (戦闘では回ってまわりを弾く)
+    s = Shape()
+    s.lathe([(0, 0), (1.2, 1.2), (3.2, 2.6), (3.4, 3.2), (2.4, 4.0), (0.6, 4.3)], lambda band, i: ("red", "yellow", "red", "green_leaf", "wood")[band], sides=10)
+    s.tube((0, 4.2, 0), (0, 6.6, 0), .45, .4, "wood", sides=6)
+    return s
+
+
+@model()
+def toy_sword():
+    # おもちゃの剣: 床に寝かせた刃・つば・柄 (戦闘では剣でなぎ払う)
+    s = Shape()
+    s.box((0, 0, -.9), (16, .7, .9), "gray_light")
+    s.box((16, 0, -.6), (18, .7, .6), "gray_light")
+    s.box((-1, 0, -3), (0, 1.3, 3), "gold")
+    s.tube((-6, .7, 0), (-1, .7, 0), .7, .7, "red", sides=6)
+    s.ball((-6.6, .7, 0), .95, "gold", level=1)
+    return s
+
+
+@model()
+def toy_plane():
+    # おもちゃの飛行機: 胴・主翼・尾翼・プロペラ (戦闘では飛んで突っ込む)
+    s = Shape()
+    s.tube((-8, 2.6, 0), (7, 2.6, 0), 1.3, 1.6, "white", sides=8)
+    s.ball((7.2, 2.6, 0), 1.6, "red", level=1)
+    s.box((-1.5, 2.3, -9), (2, 2.9, 9), "red")
+    s.box((-8, 2.5, -3.5), (-6.2, 2.9, 3.5), "red")
+    s.box((-8, 2.9, -.25), (-6.2, 5.6, .25), "blue")
+    s.box((8.6, .8, -.3), (8.9, 4.4, .3), "charcoal")
+    for z in (-2, 2):
+        s.tube((0, 0, z), (0, 1.4, z), .25, .25, "charcoal", sides=4)
+        s.ball((0, .5, z), .55, "black", level=1)
+    return s
+
+
+@model()
+def bane():
+    # ばねのおもちゃ: 色を替えて重ねた輪 (戦闘では跳んで押しつぶす)
+    s = Shape()
+    colors = ("pink", "sky", "yellow", "green_leaf", "orange", "purple")
+    for i in range(10):
+        y = i * .55
+        s.lathe([(2.3, y), (3.1, y), (3.1, y + .45), (2.3, y + .45)], colors[i % len(colors)], sides=12)
+    return s
+
+
+@model()
+def handy_cleaner():
+    # ハンディ掃除機: 本体・持ち手・前へ伸びる吸い込み口 (戦闘では前を吸い込む)
+    s = Shape()
+    s.box((-2.5, 2, -8), (2.5, 6.8, 2), "red")
+    s.box((-2.6, 2.6, -8.2), (2.6, 3.2, -6), "charcoal")
+    s.tube((0, 6.8, -7), (0, 9, -1.5), 1, 1, "gray", sides=6)
+    s.tube((0, 3.6, 2), (0, 1.2, 14), 1.4, 1.1, "gray_light", sides=8)
+    s.box((-2.4, 0, 13.2), (2.4, 1.6, 15), "charcoal")
+    return s
+
+
+@model()
+def rc_car():
+    # ラジコンカー: 大きな車輪・車体・羽・アンテナ (戦闘では長く走り回る)
+    s = Shape()
+    s.box((-7, 2.2, -3.6), (7, 4.4, 3.6), "blue")
+    s.box((-3, 4.4, -2.8), (3, 6.4, 2.8), "sky")
+    s.box((-7.6, 6, -4), (-6.4, 6.5, 4), "yellow")
+    s.box((-7.2, 4.4, -.3), (-6.8, 6, .3), "yellow")
+    s.tube((5, 4.4, 2.6), (5, 11, 2.6), .15, .1, "black", sides=4)
+    for x in (-4.6, 4.6):
+        for z in (-4.2, 4.2):
+            wheel(s, x, z, 2.2, 2.2, .9, sides=8)
+    return s
+
+
 @model()
 def enpitsu():
     s = Shape()
