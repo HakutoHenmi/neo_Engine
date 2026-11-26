@@ -37,7 +37,7 @@ void ChronoSystem::Reset(entt::registry& r){
     for(auto e:resultHidden_)if(r.valid(e)&&r.all_of<MeshRendererComponent>(e))r.get<MeshRendererComponent>(e).enabled=true;
     resultHidden_.clear();
     // 戦闘の状態を消す
-    battle_={};battlePendingRank_=-1;battleArenaEntity_=entt::null;
+    battle_={};CraftScreenOpen()=false;battlePendingRank_=-1;battleArenaEntity_=entt::null;battleArenaDecor_.clear();territoryStage_.clear();
     Engine::LoadProfile::Scope profile("phase","ChronoSystem::Reset");
     // デモのシーンか
     slimePlayerDemo_ = scene_->IsSlimePlayerDemo();
@@ -78,6 +78,19 @@ void ChronoSystem::Reset(entt::registry& r){
     if(plane_==0){std::vector<Engine::VertexData> v(4);const float xs[4]={-1,1,-1,1},zs[4]={-1,-1,1,1};
         for(int i=0;i<4;++i){v[size_t(i)].position={xs[i],0,zs[i],1};v[size_t(i)].normal={0,1,0};v[size_t(i)].texcoord={(xs[i]+1)*.5f,(zs[i]+1)*.5f};}
         plane_=renderer->CreateDynamicMesh(v,{0,2,3,0,3,1,0,3,2,0,1,3});}
+    // チャレンジの積み木用の立方体 (1 辺 2、中心が原点。面ごとに法線を分ける)
+    if(cube_==0){std::vector<Engine::VertexData> v;std::vector<uint32_t> idx;
+        const float n[6][3]={{1,0,0},{-1,0,0},{0,1,0},{0,-1,0},{0,0,1},{0,0,-1}};
+        for(int f=0;f<6;++f){const V normal{n[f][0],n[f][1],n[f][2]};const V u=std::abs(normal.y)>.5f?V{1,0,0}:V{0,1,0};const V w{normal.y*u.z-normal.z*u.y,normal.z*u.x-normal.x*u.z,normal.x*u.y-normal.y*u.x};
+            const uint32_t base=uint32_t(v.size());const float cs[4][2]={{-1,-1},{1,-1},{1,1},{-1,1}};
+            for(const auto& c:cs){const V p=normal+u*c[0]+w*c[1];Engine::VertexData x{};x.position={p.x,p.y,p.z,1};x.normal={normal.x,normal.y,normal.z};x.texcoord={(c[0]+1)*.5f,(c[1]+1)*.5f};v.push_back(x);}
+            for(uint32_t k:{0u,1u,2u,0u,2u,3u,0u,2u,1u,0u,3u,2u})idx.push_back(base+k);}
+        cube_=renderer->CreateDynamicMesh(v,idx);}
+    // 床に貼る円 (半径 1 の XZ の 32 角形。両面): チャレンジの的やエリア
+    if(disc_==0){std::vector<Engine::VertexData> v;std::vector<uint32_t> idx;Engine::VertexData c{};c.position={0,0,0,1};c.normal={0,1,0};c.texcoord={.5f,.5f};v.push_back(c);
+        for(int k=0;k<32;++k){const float a=6.2831853f*float(k)/32;Engine::VertexData x{};x.position={std::cos(a),0,std::sin(a),1};x.normal={0,1,0};x.texcoord={.5f+.5f*std::cos(a),.5f+.5f*std::sin(a)};v.push_back(x);}
+        for(uint32_t k=0;k<32;++k){const uint32_t a=1+k,b=1+(k+1)%32;idx.insert(idx.end(),{0,a,b,0,b,a});}
+        disc_=renderer->CreateDynamicMesh(v,idx);}
     if(hitSound_==0xffffffff)hitSound_=Engine::Audio::GetInstance()->Load("Resources/Sound/Devour/hit.wav");
     if(coreSound_==0xffffffff)coreSound_=Engine::Audio::GetInstance()->Load("Resources/Sound/Devour/confirm.wav");
     // ポストエフェクトを既定に戻してから、ステージを作る
@@ -87,8 +100,12 @@ void ChronoSystem::Reset(entt::registry& r){
     renderer->SetAmbientColor({0.65f,0.68f,0.75f});
     // 確認用 (Release でも使える): --devour-battle で吸収を飛ばして戦闘から始める。
     // 大きさは --devour-battle-cm=大きさ (省略で 2 番目の目標)、ステージは --devour-stage=番号、戦闘の秒数は --devour-battle-time=秒。
-    // --devour-battle-auto を足すと自動で戦い、記録を tests/out/devour-battle.txt に書く
-    if(devour_&&wcsstr(GetCommandLineW(),L"--devour-battle")&&!life_.bodies.empty()){PrepareBattleForTest(r);StopLoopSounds();
+    // --devour-battle-auto を足すと自動で戦い、記録を tests/out/devour-battle.txt に書く。--devour-battle-legacy も吸収を飛ばす
+    // (--devour-battle-auto などだけのときは、吸収から普通に始める)
+    const auto skipGrowth=[]{const wchar_t* line=GetCommandLineW();for(const wchar_t* at=wcsstr(line,L"--devour-battle");at;at=wcsstr(at+1,L"--devour-battle")){
+        const wchar_t next=at[15];if(next==0||next==L' '||next==L'"'||wcsncmp(at+15,L"-legacy",7)==0)return true;}return false;};
+    // (タイトルの隠しコマンドのチャレンジ直行も、成長を飛ばしてフル装備で始める)
+    if(devour_&&(skipGrowth()||Chrono::QuickChallenge().active)&&!life_.bodies.empty()){PrepareBattleForTest(r);StopLoopSounds();
         battlePendingRank_=DevourRankAt(CurrentDevourStage(),life_.bodies[0].mass);}
 }
 
@@ -198,10 +215,10 @@ void ChronoSystem::Update(entt::registry& r,GameContext& ctx){
         if(finishAge_>0.2f&&ctx.input){
             UI::Canvas ui(ctx.renderer,ctx.viewportSize.x,ctx.viewportSize.y);
             if(ctx.useOverrideMouse)ui.SetPointer(ctx.overrideMouseX,ctx.overrideMouseY);
-            // 吸収モードの結果: 演出の途中は操作で最後まで飛ばす。クリアなら N / Enter / A で次のステージへ
+            // 吸収モードの結果: 演出の途中は操作で最後まで飛ばす。N / Enter で次のステージへ (クリアしていなくても進める)
             if(devour_){
                 using namespace UI::Scale;
-                const bool next=won_&&devourStage_+1<int(Chrono::DevourStages().size());
+                const bool next=devourStage_+1<int(Chrono::DevourStages().size());
                 const bool confirm=UI::Pressed(DIK_RETURN)||UI::PadPressed(XINPUT_GAMEPAD_A);
                 if(finishAge_<2.2f){if(confirm||ctx.input->IsMouseTrigger(0))finishAge_=2.2f;return;}
                 // 計測用 (--load-profile-auto): 「おなかの中」を見せたあと、やり直しを 1 回押したことにする
@@ -209,7 +226,7 @@ void ChronoSystem::Update(entt::registry& r,GameContext& ctx){
                 if(!autoRetried&&finishAge_>8.f&&wcsstr(GetCommandLineW(),L"--load-profile-auto")){autoRetried=true;Engine::LoadProfile::Record("drive","result: auto retry",0);Reset(r);return;}
                 // 「おなかの中」の升の操作 (大きく見ている間は他の操作を止める)
                 if(UpdateDevourShelf(ctx,ui))return;
-                // L / B: 戦闘だけやり直す (吸収が終わったときの体と在庫から)
+                // L / B: チャレンジだけやり直す (吸収が終わったときの体と在庫から)
                 if(battle_.tries>0&&(UI::Pressed(DIK_L)||UI::PadPressed(XINPUT_GAMEPAD_B))){RetryDevourBattle(r);return;}
                 if(next&&(UI::Pressed(DIK_N)||UI::Pressed(DIK_RETURN)||ui.Click(ResultNext))){++devourStage_;SaveSlimeLab();Reset(r);return;}
                 if(UI::Pressed(DIK_R)||(!next&&UI::Pressed(DIK_RETURN))||UI::PadPressed(XINPUT_GAMEPAD_X)||ui.Click(next?ResultRetry:ResultRetryOnly)){Reset(r);return;}

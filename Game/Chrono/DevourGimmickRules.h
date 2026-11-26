@@ -9,6 +9,8 @@
 #include "SlimeHydrantRules.h"
 #include <algorithm>
 #include <cmath>
+#include <array>
+#include <string>
 #include <vector>
 namespace Game::Chrono {
 // Glide (こいのぼり)・Wire (電線)・Mikoshi (おみこし)・Koma (こま) は坂の町のギミック (DevourTownGimmick.cpp)、Hose (消火栓の放水) は DevourHose.cpp
@@ -25,7 +27,9 @@ inline constexpr int BattleSwordShape=36,BattleSpringShape=37,BattleVacuumShape=
 inline constexpr int BattleShogiShape=39;
 // 40 は消しゴム・41 はだるま
 inline constexpr int BattleEraserShape=40,BattleDarumaShape=41;
-inline bool GimmickShape(int shape){return shape>=GimmickBallShape&&shape<=BattleDarumaShape;}
+// 100 から先は、変形チャレンジで作った武器の形 (材料 3 つの物のモデルを組み合わせた形。WeaponShapeGrids に作って入れる)
+inline constexpr int WeaponShapeFirst=100;
+inline bool GimmickShape(int shape){return shape>=GimmickBallShape&&(shape<=BattleDarumaShape||shape>=WeaponShapeFirst);}
 // 形を作る範囲 (x は左右の半分、y は 0 から、z は前後の半分)
 struct GimmickBounds {float x=3,y=6,z=3;};
 // ---- 戦闘フェーズの形 (普段の体と同じくらいの体積。先が +z) ----
@@ -173,10 +177,14 @@ inline bool GimmickInsideKoma(Vec p){
     return true;
 }
 // 形の姿勢: 前へ転がる (spin)・前へ倒れる (tip、下の前の角を軸に)・機首の上下 (pitch)・左右の傾き (roll)
-struct GimmickPose {float spin=0,tip=0,pitch=0,roll=0,squash=0;};
+// (scale は形全体の大きさ。変形武器の形が出てくるとき (F5) にだけ使い、ほかの形では 1 のまま)
+struct GimmickPose {float spin=0,tip=0,pitch=0,roll=0,squash=0,scale=1;};
+// 変形武器の形の姿勢 (WeaponShapeGrids の後ろで定義する)
+inline Vec WeaponShapePose(int shape,Vec p,const GimmickPose& pose);
 inline Vec GimmickRotateX(Vec p,Vec pivot,float a){Vec d=p-pivot;float c=std::cos(a),s=std::sin(a);return pivot+Vec{d.x,d.y*c-d.z*s,d.y*s+d.z*c};}
 inline Vec GimmickRotateZ(Vec p,Vec pivot,float a){Vec d=p-pivot;float c=std::cos(a),s=std::sin(a);return pivot+Vec{d.x*c-d.y*s,d.x*s+d.y*c,d.z};}
 inline Vec GimmickPosePoint(int shape,Vec p,const GimmickPose& pose){
+    if(shape>=WeaponShapeFirst)return WeaponShapePose(shape,p,pose);
     if(shape==GimmickBallShape)return GimmickRotateX(p,{0,GimmickBallRadius,0},pose.spin);
     if(shape==GimmickDominoShape)return GimmickRotateX(p,{0,0,GimmickDominoHalfZ},pose.tip);
     // こま: 軸のまわりに回り (spin)、とがった先を支点に傾く (roll・pitch)
@@ -240,9 +248,38 @@ inline const GimmickShapeData& GimmickShapeInfo(int shape){
     const int index=shape-GimmickBallShape;
     return table[index>=0&&index<int(std::size(table))?index:GimmickDropShape-GimmickBallShape];
 }
-inline GimmickBounds GimmickShapeBounds(int shape){return GimmickShapeInfo(shape).bounds;}
-inline bool GimmickInside(int shape,Vec p){return GimmickShapeInfo(shape).inside(p);}
-inline GimmickCore GimmickShapeCore(int shape){return GimmickShapeInfo(shape).core;}
+// ---- 作った武器の形 (WeaponShapeFirst から) ----
+// 形の中を細かい箱 (cell の立方体) に分け、埋まっている箱を fill に持つ。lo は箱の並びの一番下の角 (形の座標)。part はどの部品が作った箱か (1 本体・2 前・3 左右。0 は空)
+// anchor は材料の物 (1〜3 番目) を体の中に浮かべる所 (形の座標)、anchorFit はそこに収まる半分の大きさ。anchors は入っている数
+struct WeaponShapeGrid {std::string key;GimmickBounds bounds;GimmickCore core;Vec lo{};float cell=1;int nx=0,ny=0,nz=0;std::vector<uint8_t> fill,part;
+    std::array<Vec,3> anchor{};std::array<float,3> anchorFit{};int anchors=0;
+    // (F5) 箱ごとの部品の番号 (pieces の番号 + 1。0 は空) と、部品ごとの動き (SdfMotion の値) と支点 (右側の部品の座標)
+    struct Piece {uint8_t motion=0;Vec pivot{};};std::vector<uint8_t> piece;std::vector<Piece> pieces;
+    int PieceAt(Vec p)const{const int x=int(std::floor((p.x-lo.x)/cell)),y=int(std::floor((p.y-lo.y)/cell)),z=int(std::floor((p.z-lo.z)/cell));
+        if(piece.empty()||x<0||y<0||z<0||x>=nx||y>=ny||z>=nz)return -1;return int(piece[size_t((z*ny+y)*nx+x)])-1;}
+    bool Inside(Vec p)const{const int x=int(std::floor((p.x-lo.x)/cell)),y=int(std::floor((p.y-lo.y)/cell)),z=int(std::floor((p.z-lo.z)/cell));
+        if(x<0||y<0||z<0||x>=nx||y>=ny||z>=nz)return false;return fill[size_t((z*ny+y)*nx+x)]!=0;}};
+inline std::vector<WeaponShapeGrid>& WeaponShapeGrids(){static std::vector<WeaponShapeGrid> grids;return grids;}
+inline const WeaponShapeGrid* WeaponShapeOf(int shape){const auto& grids=WeaponShapeGrids();const int i=shape-WeaponShapeFirst;return i>=0&&i<int(grids.size())?&grids[size_t(i)]:nullptr;}
+inline GimmickBounds GimmickShapeBounds(int shape){if(const auto* w=WeaponShapeOf(shape))return w->bounds;return GimmickShapeInfo(shape).bounds;}
+// 変形武器の形の姿勢: 部品ごとの動き (はばたく: roll・回る: spin・縮む/弾む: tip・ゆらぐ: pitch) のあとに、
+// 形全体の反動 (squash: 前後に縮んで横に広がる) と大きさ (scale。床の高さ 0 を中心に)
+inline Vec WeaponShapePose(int shape,Vec p,const GimmickPose& pose){
+    const auto* g=WeaponShapeOf(shape);if(!g)return p;
+    const int index=g->PieceAt(p);
+    if(index>=0&&index<int(g->pieces.size())){const auto& w=g->pieces[size_t(index)];const float side=p.x<0?-1.f:1.f;const Vec pv{w.pivot.x*side,w.pivot.y,w.pivot.z};const Vec d=p-pv;
+        switch(w.motion){
+        case 1:{const float a=pose.roll*side,c=std::cos(a),s=std::sin(a);p=pv+Vec{d.x*c-d.y*s,d.x*s+d.y*c,d.z};break;}
+        case 2:{const float c=std::cos(pose.spin),s=std::sin(pose.spin);p=pv+Vec{d.x*c-d.z*s,d.y,d.x*s+d.z*c};break;}
+        case 3:p.y=pv.y+d.y*(1-.25f*std::max(0.f,pose.tip));break;
+        case 4:{const float k=1+.18f*pose.pitch;p=pv+d*k;break;}
+        case 5:p.y+=.12f*pose.tip*g->cell*4;break;
+        default:break;}}
+    const float k=pose.squash;p={p.x*(1+.4f*k),p.y*(1+.15f*k),p.z*(1-k)};
+    return p*pose.scale;
+}
+inline bool GimmickInside(int shape,Vec p){if(const auto* w=WeaponShapeOf(shape))return w->Inside(p);return GimmickShapeInfo(shape).inside(p);}
+inline GimmickCore GimmickShapeCore(int shape){if(const auto* w=WeaponShapeOf(shape))return w->core;return GimmickShapeInfo(shape).core;}
 // 物の大きさ (半分の幅) の上限と、芯から散らす幅 (形の倍率をかける前)
 inline constexpr float GimmickMealSize=.7f,GimmickMealSpread=.45f;
 

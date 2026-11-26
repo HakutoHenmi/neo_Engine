@@ -137,6 +137,8 @@ void ChronoSystem::InkCamera(entt::registry& r,Player& p,GameContext& ctx){
     float pullback=growthPullback+((charging||firing)?3*power:0.f)+domainView*14+(devour_?DevourCameraKick(devourGulp_.age,devourGulp_.weight)*subject.radius:0.f)
         // バネで跳ぶ間は引いて、町を見渡す
         +(devourHop_.active?.9f*subject.radius*std::sin(3.1415927f*devourHop_.age/devourHop_.time):0.f);
+    // 確認用: --camera-pull= で引く量をずらす (負なら近づく。変形の形を近くで撮るとき)
+    {static const float shift=[]{const wchar_t* at=wcsstr(GetCommandLineW(),L"--camera-pull=");return at?float(_wtof(at+14)):0.f;}();pullback+=shift;}
     ink.cameraPullback+=(pullback-ink.cameraPullback)*(1-std::exp(-10*ctx.dt));
     // 注視点 (スライムの生活モードは体の中心)
     V focus=cameraFollow_+(subject.center-pos);

@@ -16,6 +16,7 @@
 #include "./GameScene.h"
 // プレイヤー向けの UI (共通部品・強化カード・グラフィック設定)
 #include "../UI/GameUI.h"
+#include "../Chrono/WeaponCraftRules.h"
 #include "../UI/RogueliteUI.h"
 #include "../UI/GraphicsUI.h"
 // 流体の放出と時間の管理 (エンジン側)
@@ -512,7 +513,8 @@ bool GameScene::HandlePlayInput(float dt, bool stageClear) {
 			if(!upgradeOpen)playTime_ += dt;
 			
 			// PLAY 中はマウスカーソルを画面中央に固定する (メニューを開いていない場合)
-            if (!upgradeOpen && dx_ && dx_->GetHwnd()) {
+            // (変形武器を作る画面が開いている間は固定しない。マウスで材料を選ぶ)
+            if (!upgradeOpen && !Chrono::CraftScreenOpen() && dx_ && dx_->GetHwnd()) {
 				// 画面中央をスクリーン座標に直してカーソルを置く
 				POINT center = { (LONG)Engine::WindowDX::kW / 2, (LONG)Engine::WindowDX::kH / 2 };
 				ClientToScreen(dx_->GetHwnd(), &center);

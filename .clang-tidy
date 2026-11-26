@@ -1,0 +1,28 @@
+---
+Checks: >-
+  -*,
+  clang-analyzer-*,
+  bugprone-branch-clone,
+  bugprone-infinite-loop,
+  bugprone-sizeof-expression,
+  bugprone-use-after-move,
+  performance-for-range-copy,
+  performance-unnecessary-copy-initialization,
+  readability-braces-around-statements,
+  readability-function-size,
+  readability-function-cognitive-complexity,
+  readability-redundant-control-flow,
+  readability-simplify-boolean-expr,
+  modernize-use-override
+WarningsAsErrors: ''
+HeaderFilterRegex: '(^|[/\\])(Engine|Game|tests)[/\\]'
+ExcludeHeaderFilterRegex: '(^|[/\\])(externals|ThirdParty)[/\\]'
+SystemHeaders: false
+FormatStyle: file
+CheckOptions:
+  readability-function-size.LineThreshold: '100'
+  readability-function-size.StatementThreshold: '80'
+  readability-function-size.NestingThreshold: '5'
+  readability-function-size.ParameterThreshold: '8'
+  readability-function-cognitive-complexity.Threshold: '25'
+  readability-function-cognitive-complexity.DescribeBasicIncrements: 'false'

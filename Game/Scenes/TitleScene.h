@@ -49,6 +49,10 @@ private:
     int menu_ = 0;
     float pointerX_ = 0.0f, pointerY_ = 0.0f;
     bool pointerReady_ = false;
+    // 隠しコマンド (チャレンジ直行・フル装備): 入れ終わった数・チャレンジを選ぶ札が開いているか・選んでいる番号 (直行できるチャレンジの並び)
+    int quickStep_ = 0;
+    bool quickOpen_ = false;
+    int quickChoice_ = 0;
     // 出発のときに物と文字が飲まれた時刻 (負ならまだ飲まれていない)
     std::array<float, 24> eatenAt_{};
     float dt_ = 1.0f / 60.0f;

@@ -15,6 +15,7 @@
     { "flag": "--water-demo", "scene": "WaterDioramaDemo" },
     { "flag": "--devour-battle", "scene": "Game" },
     { "flag": "--devour-play", "scene": "Game" },
+    { "flag": "--challenge-capture", "scene": "ChallengeCapture" },
     { "flag": "--package-smoke", "scene": "PackageValidation" },
     { "flag": "--dlss-package-smoke", "scene": "DlssPackageValidation" },
     { "flag": "--rt-lighting-smoke", "scene": "RtLightingValidation" },

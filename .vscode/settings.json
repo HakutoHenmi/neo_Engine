@@ -1,4 +1,14 @@
 ﻿{
+  "C_Cpp.formatting": "clangFormat",
+  "C_Cpp.clang_format_style": "file",
+  "C_Cpp.clang_format_path": "${env:ProgramFiles}/LLVM/bin/clang-format.exe",
+  "[cpp]": {
+    "editor.defaultFormatter": "ms-vscode.cpptools",
+    "editor.formatOnSave": true,
+    "editor.insertSpaces": false,
+    "editor.tabSize": 4,
+    "editor.detectIndentation": false
+  },
   "project-actions.workspaceActions": [
     {
       "text": "▶ Run (Debug)",

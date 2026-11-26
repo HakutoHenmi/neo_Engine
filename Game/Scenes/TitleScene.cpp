@@ -14,6 +14,8 @@
 #include "../../Engine/Input.h"
 #include "../../Engine/WindowDX.h"
 #include "../Systems/UISystem.h"
+#include "../Chrono/QuickChallenge.h"
+#include "../Chrono/ChallengeRules.h"
 #include "../ObjectTypes.h"
 #include "../../externals/imgui/imgui.h"
 #include <array>
@@ -36,6 +38,9 @@ void TitleScene::Initialize(Engine::WindowDX* dx, const Engine::SceneParameters&
     creditsOpen_ = false;
     creditsPage_ = 0;
     collectionOpen_ = false;
+    // タイトルに戻ったら、チャレンジ直行は解ける
+    quickStep_ = 0; quickOpen_ = false; quickChoice_ = 0;
+    Chrono::QuickChallenge() = {};
     // タイトル BGM を流す
     Music::Play(Music::Title);
     // 次のセレクト画面の曲を裏で展開しておく (読み込み画面で MP3 の展開を待たない)
@@ -98,6 +103,12 @@ float LeaveZoom(float u){return 8*std::exp(-6*std::pow(S::Clamp01(u),1.4f));}
 // 巻き込まれる物の番号: 物・ロゴ・メニュー・案内・音楽の表記の順
 constexpr int kLogoItem=kPropCount,kMenuItem=kLogoItem+4,kHintItem=kMenuItem+kMenuCount,kMusicItem=kHintItem+1,kItemCount=kMusicItem+1;
 // 物の元の位置 (中央)
+// チャレンジ直行で選べるチャレンジ (作っていないタワーブレイカーは除く)
+std::vector<Chrono::ChallengeKind> QuickChoices(){
+    std::vector<Chrono::ChallengeKind> out;
+    for(int i=0;i<Chrono::ChallengeKindCount;++i)if(Chrono::ChallengeKind(i)!=Chrono::ChallengeKind::Tower)out.push_back(Chrono::ChallengeKind(i));
+    return out;
+}
 std::array<float,2> ItemPoint(int index){
     if(index<kPropCount)return {S::Lineup[index].cx,S::TapeTop-S::Lineup[index].height*.5f};
     if(index<kMenuItem){const int i=index-kLogoItem;return {S::LogoX(i)+S::LogoSizes[i]*.5f,S::LogoBase-S::LogoSizes[i]*.5f};}
@@ -162,6 +173,33 @@ void TitleScene::Update() {
     if (intro_ < kIntroEnd) {
         if (enter || UI::PadPressed(XINPUT_GAMEPAD_A) || input->IsMouseTrigger(0)) intro_ = kIntroEnd;
         return;
+    }
+    // チャレンジ直行の札: 左右で選び、決定で出発 (セレクトへ)。B / Esc で閉じる
+    if (quickOpen_) {
+        const auto choices = QuickChoices();
+        const int turn = (UI::Pressed(DIK_RIGHT) || UI::PadPressed(XINPUT_GAMEPAD_DPAD_RIGHT) ? 1 : 0) - (UI::Pressed(DIK_LEFT) || UI::PadPressed(XINPUT_GAMEPAD_DPAD_LEFT) ? 1 : 0);
+        if (turn && !choices.empty()) { quickChoice_ = (quickChoice_ + turn + int(choices.size())) % int(choices.size()); UI::PlayUISound(UI::UISound::Move); }
+        if ((enter || UI::PadPressed(XINPUT_GAMEPAD_A)) && !choices.empty()) {
+            Chrono::QuickChallenge() = {true, int(choices[size_t(quickChoice_)])};
+            quickOpen_ = false; UI::PlayUISound(UI::UISound::Confirm); leaving_ = 0;
+        } else if (UI::Pressed(DIK_ESCAPE) || UI::PadPressed(XINPUT_GAMEPAD_B)) { quickOpen_ = false; UI::PlayUISound(UI::UISound::Move); }
+        return;
+    }
+    // 隠しコマンド: ↑↑↓↓←→←→ B A (矢印キーと B・A キー、または十字キーと B・A ボタン)。入れ終わったらチャレンジ直行の札を開く
+    {
+        int token = -1;
+        if (UI::Pressed(DIK_UP) || UI::PadPressed(XINPUT_GAMEPAD_DPAD_UP)) token = 0;
+        else if (UI::Pressed(DIK_DOWN) || UI::PadPressed(XINPUT_GAMEPAD_DPAD_DOWN)) token = 1;
+        else if (UI::Pressed(DIK_LEFT) || UI::PadPressed(XINPUT_GAMEPAD_DPAD_LEFT)) token = 2;
+        else if (UI::Pressed(DIK_RIGHT) || UI::PadPressed(XINPUT_GAMEPAD_DPAD_RIGHT)) token = 3;
+        else if (UI::Pressed(DIK_B) || UI::PadPressed(XINPUT_GAMEPAD_B)) token = 4;
+        else if (UI::Pressed(DIK_A) || UI::PadPressed(XINPUT_GAMEPAD_A)) token = 5;
+        if (token >= 0) {
+            const auto& code = Chrono::QuickChallengeCode;
+            if (token == code[size_t(quickStep_)]) ++quickStep_;
+            else quickStep_ = token == code[0] ? 1 : 0;
+            if (quickStep_ >= int(code.size())) { quickStep_ = 0; quickOpen_ = true; quickChoice_ = 0; UI::PlayUISound(UI::UISound::Confirm); return; }
+        }
     }
     // 上下キーで項目を動かす
     int step = (UI::Pressed(DIK_DOWN) || UI::Pressed(DIK_S) ? 1 : 0) - (UI::Pressed(DIK_UP) || UI::Pressed(DIK_W) ? 1 : 0);
@@ -258,6 +296,23 @@ void TitleScene::Draw() {
         S::Slime(ui, 34, S::TapeTop - hop, 62);
         S::Tape(ui, marks, S::TapeTop, S::EaseOut(t / kTapeTime));
     } else S::Tape(ui, marks, S::TapeTop, S::EaseOut(t / kTapeTime));
+    // チャレンジ直行の札
+    if (quickOpen_) {
+        const auto choices = QuickChoices();
+        ui.Clear({0, 0, 0, .45f});
+        const UI::Rect box{340, 230, 600, 250};
+        ui.Fill(box, {1, .97f, .9f, 1});
+        ui.Fill({box.x, box.y, box.w, 6}, S::Red);
+        const std::string head = "チャレンジ直行 (フル装備)";
+        ui.Text(head, box.x + (box.w - ui.Width(head, 28, S::Jp)) * .5f, box.y + 28, 28, S::Black, S::Jp);
+        const std::string name = choices.empty() ? std::string() : Chrono::ChallengeOf(choices[size_t(quickChoice_)]).name;
+        const std::string line = "<  " + name + "  >";
+        ui.Text(line, box.x + (box.w - ui.Width(line, 40, S::Jp)) * .5f, box.y + 96, 40, S::Red, S::Jp);
+        const std::string note = "成長を飛ばして、ステージの物を全部持って始める";
+        ui.Text(note, box.x + (box.w - ui.Width(note, 18, S::Jp)) * .5f, box.y + 160, 18, S::Black, S::Jp);
+        const std::string how = "← →: 選ぶ   Enter / A: 出発   Esc / B: やめる";
+        ui.Text(how, box.x + (box.w - ui.Width(how, 16, S::Jp)) * .5f, box.y + 204, 16, {.35f, .35f, .35f, 1}, S::Jp);
+    }
 }
 
 // ============================================================

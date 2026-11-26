@@ -9,6 +9,7 @@
 #include "DevourRules.h"
 #include "DevourStageRules.h"
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <string>
 namespace Game::Chrono {
@@ -159,4 +160,49 @@ inline constexpr float BattleSmashWindup=.3f,BattleSmashSwing=.14f;
 inline float BattleCooldown(BattleKind kind){static constexpr float wait[]={.35f,1.2f,.8f,.5f,.9f,.22f};return wait[std::min(int(kind),BattleKindCount-1)];}
 // 投げた物の大きさで威力を変える (戦闘の大きさの基準に対して)
 inline float BattleItemScale(float unit,float radius){return std::clamp(std::sqrt(radius/std::max(.01f,unit*.5f)),.5f,2.f);}
+
+// ---- 能力の当たり (衝撃) ----
+// どの能力も、当たりは「衝撃 (BattleImpact)」として出す (ChronoSystem::EmitBattleImpact)。
+// 衝撃を受ける側 (旧来の戦闘の敵・チャレンジの物) は、効き目 (effect) を見て自分の動きで反応する。
+// これで、能力を 1 つずつ作り込まなくても、全部の能力がどのチャレンジでも何かを起こせる。
+//  形: Sphere は at を中心に reach の円 (flat なら高さを見ない)・Cone は at から dir の向きの扇 (dir との内積が cone 以上)・
+//      Segment は at から to の線から width 以内・Strip は at から dir の向きへ -back〜reach、横に width 以内 (相手の半径は横だけに足す)
+//  効き目: Hit 当てる (damage と push)・Pull 引き寄せる (at へ push の強さ。pullCap があれば距離に比例)・PushOut 範囲の外へ押し出す (push は 1 フレームに押す割合)・
+//      Wall 線から width の外へ押し出す・Stun 止める (seconds。damage もあれば当てる)・Weaken 弱らせる (seconds の間、受ける当たりが増える)・
+//      Burn やけど (seconds の間、1 秒に damage)・Capture 閉じ込める (seconds)・Zone 場所に効く物を置いた (絵の具の床・ぬいぐるみなど。範囲だけを知らせる)・
+//      Self 自分に効く (守る・回復など。体のまわりを知らせる)
+enum class ImpactShape : uint8_t {Sphere,Cone,Segment,Strip};
+enum class ImpactEffect : uint8_t {Hit,Pull,PushOut,Wall,Stun,Weaken,Burn,Capture,Zone,Self,Count};
+inline const char* ImpactEffectName(ImpactEffect e){static constexpr const char* names[]={"hit","pull","push_out","wall","stun","weaken","burn","capture","zone","self"};return names[std::min(int(e),int(ImpactEffect::Count)-1)];}
+struct BattleImpact {
+    BattleAction action=BattleAction::Throw;ImpactEffect effect=ImpactEffect::Hit;ImpactShape shape=ImpactShape::Sphere;
+    Vec at{},to{},dir{0,0,1};float reach=0,cone=-1,width=0,back=0;bool flat=true;
+    // 強さ: damage は当たり (威力の倍率をかけたあと)、push は押す強さ (戦闘の大きさの基準 unit の何倍か)。radial なら at から外向き (負なら内向き)、そうでなければ dir の向き
+    float damage=0,push=0,pullCap=0,seconds=0;bool radial=false;
+    // 大きい相手 (ボス・重い物) への効き目の倍率と、大きい相手には効かないか。onlyFree は止まっていない相手だけ。limit は当てる数の上限 (0 は無制限)
+    float bigScale=1;bool spareBig=false,onlyFree=false;int limit=0;
+    // 同じ相手に続けて当てない: source が同じ衝撃は、同じ相手に rehit 秒たつまで当たらない (0 なら毎回当たる)
+    uint32_t source=0;float rehit=0;
+    // only が 0 でなければ、その番号の相手だけに当てる (かごで選んだ 1 体など)
+    uint32_t only=0;
+    // 当たった相手の上に出す文字 (無ければ出さない)
+    const char* label=nullptr;
+    // 飴玉の衝撃 (スライム陣取りで、能力とは別に少しだけ床をぬる)
+    bool candy=false;
+};
+// 相手 (中心 p・半径 radius) が衝撃の形に入るか
+inline bool BattleImpactTouches(const BattleImpact& i,Vec p,float radius){
+    Vec d=p-i.at;if(i.flat)d.y=0;
+    switch(i.shape){
+    case ImpactShape::Sphere:return Length(d)<=i.reach+radius;
+    case ImpactShape::Cone:{const float dist=Length(d);if(dist>i.reach+radius)return false;if(dist<=.01f)return true;Vec aim=i.dir;if(i.flat)aim.y=0;return Dot(d*(1/dist),Unit(aim))>=i.cone;}
+    case ImpactShape::Segment:{Vec a=i.at,b=i.to;if(i.flat){a.y=b.y=p.y;}const Vec ab=b-a;const float t=std::clamp(Dot(p-a,ab)/std::max(1e-6f,Dot(ab,ab)),0.f,1.f);return Length(p-(a+ab*t))<=i.width+radius;}
+    case ImpactShape::Strip:{Vec f=i.dir;f.y=0;f=Unit(f);const Vec side{f.z,0,-f.x};const float along=Dot(d,f);return std::abs(Dot(d,side))<=i.width+radius&&along>=-i.back&&along<=i.reach;}
+    }
+    return false;
+}
+// 衝撃の数え方 (確認用): 能力ごとに出した数と、何かに当たった数
+struct BattleImpactTally {std::array<int,size_t(BattleAction::Count)> emitted{},touched{};std::array<std::array<int,size_t(ImpactEffect::Count)>,size_t(BattleAction::Count)> effects{};};
+// 全部の能力の衝撃を確かめる (--challenge-impact-check): 1 つの能力を使う間隔の秒
+inline constexpr float BattleImpactCheckStep=1.6f;
 }
