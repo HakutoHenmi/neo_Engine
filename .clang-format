@@ -4,9 +4,9 @@ AlignAfterOpenBracket: AlwaysBreak
 AlignArrayOfStructures: Left
 AlignConsecutiveMacros: AcrossComments
 AlignTrailingComments: true
-AllowShortFunctionsOnASingleLine: All
+AllowShortFunctionsOnASingleLine: Empty
 BreakBeforeBraces: Attach
-ColumnLimit: 200
+ColumnLimit: 120
 ConstructorInitializerIndentWidth: 4
 ContinuationIndentWidth: 4
 EmptyLineAfterAccessModifier: Never
@@ -21,9 +21,10 @@ NamespaceIndentation: None
 PointerAlignment: Left
 ReferenceAlignment: Pointer
 SpaceAfterTemplateKeyword: false
+SortIncludes: Never
 Standard: Latest
 TabWidth: 4
 UseCRLF: false
 UseTab: ForIndentation
 BraceWrapping:
-	IndentBraces: false
+  IndentBraces: false

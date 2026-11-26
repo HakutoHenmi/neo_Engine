@@ -1,0 +1,3 @@
+# Also protects editor integrations that pass buffers through stdin.
+DisableFormat: true
+SortIncludes: Never

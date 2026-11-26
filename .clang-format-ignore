@@ -1,0 +1,6 @@
+externals/**
+Engine/ThirdParty/**
+build/**
+bld/**
+artifacts/**
+dist/**

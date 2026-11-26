@@ -15,6 +15,7 @@
 #include "../Chrono/DevourMorphRules.h"
 #include "../../Engine/LoadProfile.h"
 #include "../Chrono/SlimeTentacleRules.h"
+#include "../Chrono/QuickChallenge.h"
 #include <map>
 #include "../UI/SceneMusic.h"
 #include "ChronoSystem.h"

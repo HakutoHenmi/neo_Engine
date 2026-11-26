@@ -1,0 +1,14 @@
+{
+  "_comment": "変形チャレンジ (吸収のあとの第 2 フェーズ。Game/Chrono/ChallengeRules.h)。id は blocks / tower / territory の 3 つ全部が必要。name は名前、tagline はひとこと、goal は遊び方 (始まりの札と成長中の HUD)、recommend はおすすめの能力 (collection.json の action の名前。成長中に何を食べるかの目安として HUD に出す)",
+  "challenges": [
+    {"id": "blocks", "name": "積み木クラッシャー", "tagline": "爽快感重視",
+     "goal": "積み木をできるだけたくさん壊そう",
+     "recommend": ["ride", "smash", "hi", "kaku", "decoy"]},
+    {"id": "tower", "name": "タワーブレイカー", "tagline": "構造攻略と大崩壊",
+     "goal": "支柱を狙って巨大タワーを崩そう",
+     "recommend": ["kyo", "smash", "erase", "gin", "tea"]},
+    {"id": "territory", "name": "スライム陣取り", "tagline": "場所取りと読み合い",
+     "goal": "体液で床をスライム色に広げて、最後に残った陣地を競おう",
+     "recommend": ["marbles", "paint", "hi", "ride", "tea"]}
+  ]
+}

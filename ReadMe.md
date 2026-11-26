@@ -41,6 +41,10 @@ DirectX 12 で作った自作ゲームエンジン **neo_Engine** と、その�
 | `Debug` | デバッグ用 (最適化なし) |
 | `Release` | 配布用。検証用のシーンは含まれません |
 
+### コードの整形と静的解析
+
+`clang-format` / `clang-tidy` の導入手順と実行コマンドは [Docs/CodeQuality.md](Docs/CodeQuality.md) を参照してください。
+
 ### DLSS について (任意)
 DLSS を使う場合は、NVIDIA Streamline SDK を [`scripts/Setup-Streamline.ps1`](scripts/Setup-Streamline.ps1) で配置します。
 ライセンスは [Docs/NVIDIA-RTX-SDK-LICENSE.txt](Docs/NVIDIA-RTX-SDK-LICENSE.txt) です。

@@ -29,6 +29,7 @@
 #include "../tests/PackageValidationScene.h"
 #include "../tests/RtLightingValidationScene.h"
 #include "../tests/SlimeLifeValidationScene.h"
+#include "../tests/ChallengeCaptureScene.h"
 // Debug / Development ビルドだけで使う検証用シーン
 #ifndef NDEBUG
 #include "../tests/FluidSandboxValidationScene.h"
@@ -128,6 +129,7 @@ int WINAPI WinMain(_In_ HINSTANCE hInst, _In_opt_ HINSTANCE, _In_ LPSTR commandL
         sm.Register("DlssPackageValidation", []() -> std::unique_ptr<Engine::IScene> { return std::make_unique<DlssPackageValidationScene>(); });
         sm.Register("RtLightingValidation", []() -> std::unique_ptr<Engine::IScene> { return std::make_unique<RtLightingValidationScene>(); });
         sm.Register("SlimeLifeValidation", []() -> std::unique_ptr<Engine::IScene> { return std::make_unique<SlimeLifeValidationScene>(); });
+        sm.Register("ChallengeCapture", []() -> std::unique_ptr<Engine::IScene> { return std::make_unique<ChallengeCaptureScene>(); });
 		// ゲームの通常の流れ: タイトル → セレクト → ゲーム → ゲームオーバー
 		sm.Register("Title", []() -> std::unique_ptr<Engine::IScene> { return std::unique_ptr<Engine::IScene>(new Game::TitleScene()); });
 		sm.Register("Select", []() -> std::unique_ptr<Engine::IScene> { return std::unique_ptr<Engine::IScene>(new Game::SelectScene()); });

@@ -118,7 +118,7 @@ bool ChronoSystem::SaveSlimeLab(){
     if(slimePlayerDemo_ || wcsstr(GetCommandLineW(),L"--slime-life-smoke"))return true;
     // 保存先 (記録と同じフォルダ) に、版・選んだスロット・材料・クリア数・レシピを書く
     try{auto path=RecordPath().parent_path()/L"slime-lab-v1.json";std::filesystem::create_directories(path.parent_path());
-        nlohmann::json data{{"version",2},{"slot",lifeRecipeSlot_},{"materials",lifeMaterials_},{"clears",lifeClears_},{"devourBests",devourBests_},{"devourStage",devourStage_}};
+        nlohmann::json data{{"version",2},{"slot",lifeRecipeSlot_},{"materials",lifeMaterials_},{"clears",lifeClears_},{"devourBests",devourBests_},{"devourStage",devourStage_},{"challengeBests",challengeBests_}};
         // 図鑑の記録 (Collection::Add が書く) は残す
         try{std::ifstream old(path);nlohmann::json previous;if(old&&(old>>previous)&&previous.contains("collection"))data["collection"]=previous["collection"];}catch(...){}
         data["recipes"]=nlohmann::json::array();for(const auto& recipe:lifeRecipes_){auto rgb=recipe.color.ToRGB();data["recipes"].push_back({{"mix",recipe.mix},{"color",{rgb.x,rgb.y,rgb.z}},{"colorHSV",{recipe.color.h,recipe.color.s,recipe.color.v}}});}
@@ -138,6 +138,8 @@ void ChronoSystem::BuildSlimeLife(entt::registry& r){
             std::ifstream file(RecordPath().parent_path()/L"slime-lab-v1.json");nlohmann::json data;if(file){file>>data;
                 // スロット・材料の数・クリア数を読み、範囲に収める
                 lifeRecipeSlot_=std::clamp(data.value("slot",0),0,2);lifeMaterials_=std::clamp(data.value("materials",3),3,4);lifeClears_=std::max(0,data.value("clears",0));if(data.contains("devourBests")&&data["devourBests"].is_array())for(size_t i=0;i<devourBests_.size()&&i<data["devourBests"].size();++i)devourBests_[i]=std::max(0.f,data["devourBests"][i].get<float>());
+                // 変形チャレンジの自己ベスト (ステージとチャレンジの組ごと)
+                if(data.contains("challengeBests")&&data["challengeBests"].is_object())for(const auto& [key,value]:data["challengeBests"].items())if(value.is_number())challengeBests_[key]=std::max(0,value.get<int>());
                 // 各レシピの配合と色 (新しい HSV・古い RGB・さらに古い番号の形式に対応)
                 const auto& recipes=data.at("recipes");for(size_t i=0;i<lifeRecipes_.size()&&i<recipes.size();++i){auto& out=lifeRecipes_[i];out.mix=recipes[i].at("mix").get<std::array<int,4>>();
                     for(int& n:out.mix)n=std::clamp(n,0,100);if(lifeMaterials_<4)out.mix[3]=0;if(out.mix[0]+out.mix[1]+out.mix[2]+out.mix[3]==0)out.mix[0]=40;
@@ -202,6 +204,8 @@ void ChronoSystem::BuildSlimeLife(entt::registry& r){
 #endif
     devourItemReady_=false;devourMorphLeft_=0;devourSucks_.clear();devourSuckClock_=0;devourSucking_=false;devourHop_={};devourHopCooldown_=0;devourStepPush_=0;devourStun_=0;devourBumpCool_=0;devourHeavy_=0;devourHeavyPeak_=0;devourHeavyKick_=0;devourGrow_={};wetMarks_.clear();wetHasLast_=false;devourBumpMemory_=0;devourFlies_.clear();
     StartDevourLog();if(devour_)devourLog_.bestBefore=devourBests_[size_t(devourStage_)];
+    // 変形チャレンジ: このステージで挑むものを決める (成長の間も HUD に出す)
+    if(devour_)PickChallenge();challengeHold_=0;challengeMoved_=false;
     // 門・バリケード・弾などの状態を初期化する
     cityGates_={};if(slimePlayerDemo_)cityGates_=CityGates::AllOpen();cityGateUnlocked_=false;cityBarricadeHealth_=CityBarricadeHealth();cityGateHealth_=CityGateHealth();cityAnnounced_=-1;cityHintClock_=0;
     ResetCityHazards();life_.form=slimePlayerDemo_?LifeAction::Tire:LifeForms()[0];
@@ -482,7 +486,7 @@ void ChronoSystem::SyncSlimeBodies(GameContext& ctx){
             // ギミックの形: 転がる・倒れる・傾く。点の速度は前のフレームの姿勢との差と体の速さ
             // (形の点は体の向きで回したローカルの座標なので、形の動きの速さも体の向きでワールドの向きに直す。
             //  直さないと +z 以外へ進むとき、回転翼などの速い点が間違った向きへ引かれて形が崩れる)
-            if(gimmick){V before=Chrono::GimmickPosePoint(shape,local,DevourToolPose(true))*scale;local=Chrono::GimmickPosePoint(shape,local,DevourToolPose());
+            if(gimmick){V before=Chrono::GimmickPosePoint(DevourPoseShape(),local,DevourToolPose(true))*scale;local=Chrono::GimmickPosePoint(DevourPoseShape(),local,DevourToolPose());
                 const V d=frameDt>0?(local*scale-before)*(1/frameDt):V{},f=heading;gimmickVelocity=b.velocity+V{f.z,0,-f.x}*d.x+V{0,d.y,0}+V{f.x,0,f.z}*d.z;}
             if(b.down)local.y*=.25f;
             if(!liquid&&!wrapping)local=local*scale;
@@ -522,6 +526,9 @@ void ChronoSystem::SyncSlimeBodies(GameContext& ctx){
     ctx.renderer->SetFluidTendrils(std::move(arms));
     // 飛び散った体のしずくも描く範囲に入れる
     {std::vector<Engine::Vector4> splashes;for(const auto& s:devourSplashes_)splashes.push_back({s.at.x,s.at.y,s.at.z,s.radius});
+        // スライム陣取りの飛んでいる体液のしずく (今の位置と、落ちる所)
+        for(const auto& f:battle_.territory.flights){if(!f.launched)continue;const float k=f.age-f.delay;const V p=f.from+f.velocity*k-V{0,ChallengeTerritoryFlightGravity*k*k,0};
+            splashes.push_back({p.x,p.y,p.z,battle_.unit*.8f});splashes.push_back({f.to.x,f.to.y+battle_.unit*.3f,f.to.z,battle_.unit*.8f});}
         // 消火栓の水が飛ぶ範囲と、落ちた所 (地面に残った水が消えるまで)。
         // 水を画面の上の面で描くときは入れない (体積の升がスライムの体まで粗くなり、重くもなる)
         // (水の道は細く、落ちた水は読み戻した粒を囲む箱だけを入れる。広く入れると升が粗くなり、水がかたまりに見える)
@@ -858,6 +865,8 @@ void ChronoSystem::UpdateSlimeLife(entt::registry& r,Player& p,GameContext& ctx)
         // 計測用 (--load-profile-auto): 1 回目は 2.5 秒で結果画面を出し、結果を開くときの引っかかりも記録する
         static bool autoFinished=false;
         if(!finished_&&!autoFinished&&life_.age>2.5f&&wcsstr(GetCommandLineW(),L"--load-profile-auto")){autoFinished=true;Engine::LoadProfile::Record("drive","result: auto finish",0);FinishDevour(p);}
+        // 変形チャレンジへ: 長押しで自分で移るか、残り 30 秒で自動で移る (チュートリアルの間と、目標の発表の間は移らない)
+        if(!finished_&&!cutscene&&TickChallengeMove(p,dt,!control&&(Controls::Key(VK_RETURN)||Controls::Pad(XINPUT_GAMEPAD_Y))))return;
         if(!finished_&&(devourClock_.left<=0||cleared))FinishDevour(p);
     }
     else if(body.health<=0)Finish(p,false);
@@ -1026,6 +1035,7 @@ void ChronoSystem::DrawSlimeLifeUI(entt::registry& r,GameContext& ctx){
         x-=ui.SpacedWidth(text,size,spacing)*align;ui.Spaced(text,x+1,y+2,size,spacing,{0,0,0,.8f*color.w});return ui.Spaced(text,x,y,size,spacing,color);};
     // 吸収モード: 見出し・残りの敵・門・体力の代わりに、制限時間・大きさの段階・大きさを出す
     DrawDevourUI(ctx);
+    DrawChallengeCard(ctx);
     // 左下: 体力の数値と、工事の縞の上を満たすスライムのゲージ
     // 右下: 変形のステッカー。選んでいる形は大きく、未解放は斜線
     if(devourFreeForms_){const auto& forms=LifeForms();

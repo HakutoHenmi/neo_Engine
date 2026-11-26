@@ -204,6 +204,11 @@ exit /b %ERRORLEVEL%</Command>
     <ClCompile Include="Game\Systems\DevourSpill.cpp" />
     <ClCompile Include="Game\Systems\DevourGrowth.cpp" />
     <ClCompile Include="Game\Systems\DevourBattle.cpp" />
+    <ClCompile Include="Game\Systems\ChallengeBlocks.cpp" />
+    <ClCompile Include="Game\Systems\ChallengeMatrix.cpp" />
+    <ClCompile Include="Game\Systems\ChallengeTerritory.cpp" />
+    <ClCompile Include="Game\Systems\WeaponCraft.cpp" />
+    <ClCompile Include="Game\Systems\WeaponShapeCheck.cpp" />
     <ClCompile Include="Game\Systems\RoomStage.cpp" />
     <ClCompile Include="Game\Systems\SlopeTown.cpp" />
     <ClCompile Include="Game\Systems\DevourPlayLog.cpp" />
@@ -281,6 +286,13 @@ exit /b %ERRORLEVEL%</Command>
     <ClInclude Include="Game\Chrono\DevourSpillRules.h" />
     <ClInclude Include="Game\Chrono\DevourStageRules.h" />
     <ClInclude Include="Game\Chrono\DevourBattleRules.h" />
+    <ClInclude Include="Game\Chrono\ChallengeRules.h" />
+    <ClInclude Include="Game\Chrono\QuickChallenge.h" />
+    <ClInclude Include="Game\Chrono\WeaponCraftRules.h" />
+    <ClInclude Include="Game\Chrono\WeaponShapeMetrics.h" />
+    <ClInclude Include="Game\Chrono\WeaponShapeSdf.h" />
+    <ClInclude Include="Game\Chrono\WeaponShapeGrammar.h" />
+    <ClInclude Include="tests\ChallengeCaptureScene.h" />
     <ClInclude Include="Game\Chrono\RoomRules.h" />
     <ClInclude Include="Game\Systems\CityBuilder.h" />
     <ClInclude Include="Game\Chrono\SlopeTownRules.h" />
@@ -621,6 +633,7 @@ exit /b %ERRORLEVEL%</Command>
       <Project>{371b9fa9-4c90-4ac6-a123-aced756d6c77}</Project>
     </ProjectReference>
   </ItemGroup>
+  <Import Project="scripts\build\code_quality.props" />
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>

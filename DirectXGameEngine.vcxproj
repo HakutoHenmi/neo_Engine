@@ -233,6 +233,7 @@
   <ItemGroup>
     <ClInclude Include="Engine\IState.h" />
   </ItemGroup>
+  <Import Project="scripts\build\code_quality.props" />
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>

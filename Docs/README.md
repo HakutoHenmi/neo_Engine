@@ -18,6 +18,7 @@
 | 資料 | 内容 |
 | --- | --- |
 | [TDEngine_Manual.md](TDEngine_Manual.md) | エンジンの基本 (ECS とスクリプト) とゲームの作り方 |
+| [CodeQuality.md](CodeQuality.md) | clang-format による整形と clang-tidy による静的解析 |
 | [TDEngine_Technical_Manual.md](TDEngine_Technical_Manual.md) | エンジンの内部構造 (アーキテクチャ、描画、システム) |
 | [FluidVolume.md](FluidVolume.md) | スライムの GPU 流体と、表面の 3D 再構成 |
 | [FluidSandbox.md](FluidSandbox.md) | エディタのガラス水槽で流体を試す機能 |

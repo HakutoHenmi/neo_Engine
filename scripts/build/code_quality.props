@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <EnableClangTidyCodeAnalysis>true</EnableClangTidyCodeAnalysis>
+    <!-- Analysis is explicit; ordinary builds keep their current speed. -->
+    <RunCodeAnalysis Condition="'$(RunCodeAnalysis)' == ''">false</RunCodeAnalysis>
+    <!-- Leave checks empty here so .clang-tidy is the single source of rules. -->
+    <ClangTidyChecks />
+    <ClangTidyToolPath Condition="Exists('$(ProgramW6432)\LLVM\bin\clang-tidy.exe') And ('$(ClangTidyToolPath)' == '' Or '$(ClangTidyToolPath)' == '$(ClangTidyLLVMInstallDir)\bin')">$(ProgramW6432)\LLVM\bin</ClangTidyToolPath>
+  </PropertyGroup>
+
+  <!-- Filter only the compile database used by clang-tidy, then restore build items. -->
+  <Target Name="SelectNeoClangTidySources" BeforeTargets="GetCompileCommands">
+    <ItemGroup>
+      <_NeoOriginalClCompile Include="@(ClCompile)" />
+      <ClCompile Remove="@(ClCompile)"
+                 Condition="!$([System.Text.RegularExpressions.Regex]::IsMatch('%(ClCompile.Identity)', '^(Engine|Game)[\\/]')) Or $([System.Text.RegularExpressions.Regex]::IsMatch('%(ClCompile.Identity)', '^Engine[\\/]ThirdParty[\\/]'))" />
+      <ClCompile Remove="@(ClCompile)"
+                 Condition="'$(NeoClangTidyFile)' != '' And '%(ClCompile.FullPath)' != '$(NeoClangTidyFile)'" />
+      <ClCompile>
+        <TreatWarningAsError>false</TreatWarningAsError>
+      </ClCompile>
+    </ItemGroup>
+    <Error Condition="'$(NeoClangTidyFile)' != '' And '@(ClCompile)' == ''"
+           Text="The requested source is not a ClCompile item in this project: $(NeoClangTidyFile)" />
+  </Target>
+  <Target Name="RestoreNeoClangTidySources" AfterTargets="GetCompileCommands">
+    <ItemGroup>
+      <ClCompile Remove="@(ClCompile)" />
+      <ClCompile Include="@(_NeoOriginalClCompile)" />
+      <_NeoOriginalClCompile Remove="@(_NeoOriginalClCompile)" />
+    </ItemGroup>
+  </Target>
+</Project>

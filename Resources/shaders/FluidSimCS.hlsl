@@ -168,7 +168,9 @@ void Emit(uint3 DTid : SV_DispatchThreadID) {
                 float3 up=cross(along,across);
                 float axial=1-2*(localIndex+.5f)/emitCount,angle=localIndex*2.399963f;
                 // pad6.y > 0 is the droplet size (a grown slime throws proportionally larger liquid).
-                float size=pad6.y>0?pad6.y:1;
+                // pad6.y < 0 is an exact droplet of size -pad6.y: no speed spread, so it lands where the
+                // CPU predicted (slime territory ink stamps the floor at that place and time).
+                float size=pad6.y!=0?abs(pad6.y):1;
                 float radius=sqrt(max(0,1-axial*axial))*.32f*size;
                 p.position=emitPos+along*(axial*.8f*size)+across*(cos(angle)*radius)+up*(sin(angle)*radius);
                 p.velocity=emitDir*5.0f;
@@ -191,7 +193,7 @@ void Emit(uint3 DTid : SV_DispatchThreadID) {
                 // 水飛沫の場合: タイマー初期化
                 p.pad = float3(pad6.x>0.5f ? -1.0f : 0.0f, 0, 0);
                 // Ballistic slime keeps its droplet size for reconstruction (0 = legacy fixed size).
-                if(emitType>=4.0f&&emitType<8.0f)p.pad.y=pad6.y;
+                if(emitType>=4.0f&&emitType<8.0f)p.pad.y=abs(pad6.y);
                 // Airborne hydrant water stores its nozzle width until contact
                 // replaces this channel with the supporting surface height.
                 if(emitType>1.05f&&emitType<1.25f){

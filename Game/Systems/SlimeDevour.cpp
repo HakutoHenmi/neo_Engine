@@ -216,12 +216,12 @@ void ChronoSystem::FinishDevour(Player& p){
     StopLoopSounds();
     auto& body=life_.bodies[0];DevourGrow(body,devourDigest_);devourDigest_=0;
     const auto& stage=CurrentDevourStage();float& best=devourBests_[size_t(devourStage_)];bool clear=DevourRankAt(stage,body.mass)>0;
-    {Engine::LoadProfile::Scope step("result","SaveDevourLog");SaveDevourLog(devourClock_.left<=0?"time_up":"all_eaten");}
+    {Engine::LoadProfile::Scope step("result","SaveDevourLog");SaveDevourLog(devourClock_.left<=0?"time_up":challengeMoved_?"challenge_move":devourClock_.left<=ChallengeAutoAt+1e-3f&&BattleEnabled()?"challenge_auto":"all_eaten");}
     // 図鑑に足し、結果画面の「おなかの中」の升を作る
     {Engine::LoadProfile::Scope step("result","Collection::Add + BuildDevourShelf");std::vector<std::string> ids;ids.reserve(devourEaten_.size());for(const auto& eaten:devourEaten_)ids.push_back(eaten.id);BuildDevourShelf(Collection::Add(ids));}
     devourNewBest_=body.mass>best;if(devourNewBest_)best=body.mass;if(clear)++lifeClears_;
     if(devourNewBest_||clear){Engine::LoadProfile::Scope step("result","SaveSlimeLab");SaveSlimeLab();}
-    // 結果画面の前に戦闘フェーズを挟む (DevourBattle.cpp)。自動テストと計測ではそのまま結果へ
+    // 結果画面の前に変形チャレンジを挟む (DevourBattle.cpp)。自動テストと計測ではそのまま結果へ
     if(BattleEnabled()){battlePendingRank_=DevourRankAt(stage,body.mass);return;}
     {Engine::LoadProfile::Scope step("result","Finish (music)");Finish(p,clear);}
 }
@@ -575,7 +575,7 @@ ChronoSystem::V ChronoSystem::GimmickMealAt(const DevourMeal& meal)const{
     const auto core=Chrono::GimmickShapeCore(shape);V inside=core.center+meal.dir*(core.thin*Chrono::GimmickMealSpread);
     // 長い形は、物ごとの向きの前後の成分で線の上の位置を決め、横と上下の成分だけ少し散らす
     if(Length(core.spineB-core.spineA)>.01f){const float t=.5f+.5f*std::clamp(meal.dir.z,-1.f,1.f);inside=Lerp(core.spineA,core.spineB,t)+V{meal.dir.x,meal.dir.y,0}*(core.thin*Chrono::GimmickMealSpread);}
-    V local=Chrono::GimmickPosePoint(shape,inside,DevourToolPose())*scale;
+    V local=Chrono::GimmickPosePoint(DevourPoseShape(),inside,DevourToolPose())*scale;
     const V f=body.forward,right{f.z,0,-f.x};return body.at+V{0,-1.25f,0}+right*local.x+V{0,local.y,0}+f*local.z;
 }
 // ギミックの形の中の物を縮める倍率: 形の厚みに収まる大きさまで (元より大きくはしない)
@@ -645,7 +645,7 @@ void ChronoSystem::DrawDevourUI(GameContext& ctx){
         // 結果画面: 大きさを巻尺で見せる。届かなかったら次の目標までの差を出す
         int rank=DevourRankAt(stage,body.mass);UI::Scale::ResultView view;view.stage=stage.name;view.cm=cm;view.won=won_;view.newBest=devourNewBest_;
         view.rank=rank?DevourRankName(stage,rank):"";view.goalCm=stage.goals.front();view.timeLeft=(std::max)(0.f,devourClock_.left);view.items=life_.absorbed;view.percent=total?eaten*100/total:0;
-        view.hasNext=won_&&devourStage_+1<int(DevourStages().size());view.live=true;view.inside=DevourShelfDive();
+        view.hasNext=devourStage_+1<int(DevourStages().size());view.live=true;view.inside=DevourShelfDive();
         // 体そのものを画面へ投影して端を取る (手前の面は奥より大きく映るので、中心の深さで測ると線がずれる)
         // 体とカメラが止まったら線も動かさない
         if(!resultScreenSet_||resultCameraAge_<kResultSettledAge){using namespace DirectX;const XMMATRIX viewProj=ctx.camera->View()*ctx.camera->Proj();std::vector<float> xs,ys;
