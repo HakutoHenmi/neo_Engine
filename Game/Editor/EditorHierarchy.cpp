@@ -611,9 +611,8 @@ void EditorUI::ShowHierarchy(GameScene* scene) {
 		entt::entity e = st.pendingDelete;
 		st.pendingDelete = entt::null;
 		if (registry.valid(e))
-			ExecuteCommand(
-			    std::make_unique<EntityLifetimeCommand>(
-			        scene, "Delete Entity", SerializeEntity(registry, e), e, false));
+			ExecuteCommand(std::make_unique<EntityLifetimeCommand>(
+			    scene, "Delete Entity", SerializeEntity(registry, e), e, false));
 	}
 	ImGui::End();
 }

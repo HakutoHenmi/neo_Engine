@@ -150,8 +150,9 @@ void ReduceConnectedSurface(
 			if (common.size() != 2)
 				continue;
 			Point position{(a.p[0] + b.p[0]) * .5f, (a.p[1] + b.p[1]) * .5f, (a.p[2] + b.p[2]) * .5f};
-			float radius = (std::max)(a.radius + std::sqrt(dot(subtract(a.p, position), subtract(a.p, position))),
-			                          b.radius + std::sqrt(dot(subtract(b.p, position), subtract(b.p, position))));
+			float radius = (std::max)(
+			    a.radius + std::sqrt(dot(subtract(a.p, position), subtract(a.p, position))),
+			    b.radius + std::sqrt(dot(subtract(b.p, position), subtract(b.p, position))));
 			if (radius > maxRadius)
 				continue;
 			std::set<uint32_t> affected = a.faces;

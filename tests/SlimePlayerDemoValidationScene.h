@@ -21,10 +21,9 @@ class SlimePlayerDemoValidationScene final : public Game::SlimePlayerDemoScene {
 	int absorbed_ = 0; // 全部の形を順に試す
 	void Capture(const std::wstring& path) {
 		DirectX::ScratchImage image;
-		if (SUCCEEDED(
-		        DirectX::CaptureTexture(
-		            window_->Queue(), window_->GetCurrentBackBufferResource(), false, image,
-		            D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_PRESENT)))
+		if (SUCCEEDED(DirectX::CaptureTexture(
+		        window_->Queue(), window_->GetCurrentBackBufferResource(), false, image, D3D12_RESOURCE_STATE_PRESENT,
+		        D3D12_RESOURCE_STATE_PRESENT)))
 			DirectX::SaveToWICFile(
 			    *image.GetImage(0, 0, 0), DirectX::WIC_FLAGS_NONE, DirectX::GetWICCodec(DirectX::WIC_CODEC_PNG),
 			    path.c_str());

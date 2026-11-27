@@ -633,9 +633,8 @@ static void SaveTextures(Gpu& g, const Material& m, const std::string& variant) 
 		D3D12_RANGE empty{0, 0};
 		readback->Unmap(0, &empty);
 		auto path = Out / variant / (std::string(Names[i]) + ".dds");
-		Check(
-		    DirectX::SaveToDDSFile(
-		        image.GetImages(), image.GetImageCount(), image.GetMetadata(), DirectX::DDS_FLAGS_NONE, path.c_str()));
+		Check(DirectX::SaveToDDSFile(
+		    image.GetImages(), image.GetImageCount(), image.GetMetadata(), DirectX::DDS_FLAGS_NONE, path.c_str()));
 	}
 }
 
@@ -819,9 +818,8 @@ return float4(pow(saturate(color),1/2.2),1);})";
 	Check(readback->Map(0, &readRange, &data));
 	DirectX::Image image{
 	    W, H, DXGI_FORMAT_R8G8B8A8_UNORM, fp.Footprint.RowPitch, size_t(size), static_cast<uint8_t*>(data)};
-	Check(
-	    DirectX::SaveToWICFile(
-	        image, DirectX::WIC_FLAGS_NONE, GUID_ContainerFormatPng, (Out / (variant + "-preview.png")).c_str()));
+	Check(DirectX::SaveToWICFile(
+	    image, DirectX::WIC_FLAGS_NONE, GUID_ContainerFormatPng, (Out / (variant + "-preview.png")).c_str()));
 	D3D12_RANGE empty{0, 0};
 	readback->Unmap(0, &empty);
 	return Median(draws);

@@ -250,10 +250,9 @@ float ChronoSystem::DevourEat(entt::registry& r, size_t index) {
 			return std::uniform_real_distribution<float>(low, high)(DevourRandom());
 		};
 		if (devourMeals_.size() >= kMealLimit)
-			devourMeals_.erase(
-			    std::min_element(
-			        devourMeals_.begin(), devourMeals_.end(),
-			        [](const DevourMeal& a, const DevourMeal& b) { return a.radius * a.fit < b.radius * b.fit; }));
+			devourMeals_.erase(std::min_element(
+			    devourMeals_.begin(), devourMeals_.end(),
+			    [](const DevourMeal& a, const DevourMeal& b) { return a.radius * a.fit < b.radius * b.fit; }));
 		// 飲んだ方向にくっつく。重なって見えなくならないよう、その近くで他の物と一番離れた向きを選ぶ
 		V side = prop.at - body.at;
 		side.y = 0;

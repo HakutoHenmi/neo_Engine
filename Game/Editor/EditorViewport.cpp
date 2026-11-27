@@ -548,15 +548,13 @@ void EditorUI::DrawViewport(Engine::Renderer* renderer, GameScene* gameScene, bo
 							keyframe = &kfs[mc->selectedKeyframe];
 					}
 					if (keyframe) {
-						RecordCommand(
-						    std::make_unique<KeyframeMoveCommand>(
-						        gameScene, selectedEnt, mc->activeClip, mc->selectedKeyframe, gizmoStartTranslate,
-						        keyframe->translate));
+						RecordCommand(std::make_unique<KeyframeMoveCommand>(
+						    gameScene, selectedEnt, mc->activeClip, mc->selectedKeyframe, gizmoStartTranslate,
+						    keyframe->translate));
 					} else {
 						const TransformValues before{gizmoStartTranslate, gizmoStartRotate, gizmoStartScale};
-						RecordCommand(
-						    std::make_unique<TransformCommand>(
-						        gameScene, selectedEnt, "Transform", TransformAll, before, TransformValues::From(tc)));
+						RecordCommand(std::make_unique<TransformCommand>(
+						    gameScene, selectedEnt, "Transform", TransformAll, before, TransformValues::From(tc)));
 					}
 
 					// ドラッグを終える
