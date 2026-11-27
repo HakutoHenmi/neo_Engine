@@ -62,7 +62,7 @@ std::string WindowDX::s_DropDirectory = "Resources";
 static void AppendDebugLog(const char* text) {
 	OutputDebugStringA(text);
 	FILE* f = nullptr;
-	fopen_s(&f, "C:\\Users\\k024g\\source\\repos\\neo_Engine\\d3d12_validation_log.txt", "a");
+	fopen_s(&f, "d3d12_validation_log.txt", "a");
 	if (f) {
 		fputs(text, f);
 		fclose(f);
@@ -204,7 +204,6 @@ bool WindowDX::Initialize(HINSTANCE hInst, int cmdShow, HWND& outHwnd) {
 	sc_.bottom = (LONG)kH;
 
 	// 初回時刻を記録
-	lastFrameTime_ = std::chrono::steady_clock::now();
 
 	return true;
 }
@@ -242,7 +241,7 @@ void WindowDX::PresentList(ID3D12GraphicsCommandList* list) {
 		OutputDebugStringA(buf);
 		// ファイルにも書く
 		FILE* f = nullptr;
-		fopen_s(&f, "C:\\Users\\k024g\\source\\repos\\neo_Engine\\error_log.txt", "a");
+		fopen_s(&f, "error_log.txt", "a");
 		if (f) {
 			fputs(buf, f);
 			fclose(f);
@@ -252,7 +251,7 @@ void WindowDX::PresentList(ID3D12GraphicsCommandList* list) {
 			sprintf_s(buf, "[WindowDX] Device removed reason: 0x%08X\n", (unsigned)reason);
 			OutputDebugStringA(buf);
 			if (f) {
-				fopen_s(&f, "C:\\Users\\k024g\\source\\repos\\neo_Engine\\error_log.txt", "a");
+				fopen_s(&f, "error_log.txt", "a");
 				if (f) {
 					fputs(buf, f);
 					fclose(f);

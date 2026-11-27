@@ -386,7 +386,7 @@ namespace EngineProfiler
             // OpenAI互換（Groq API等）のペイロード構築
             var payload = new
             {
-                model = "llama-3.1-8b-instant", // Groqの最新の超高速・無料モデル
+                model = "llama-3.1-8b-instant",
                 messages = new[]
                 {
                     new { role = "user", content = prompt }

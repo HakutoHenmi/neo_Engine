@@ -141,7 +141,9 @@ async function fetchParameters() {
         if(data.Player) {
             if (p.playerSpeed && p.playerSpeedVal) { p.playerSpeed.value = data.Player.Speed; p.playerSpeedVal.textContent = data.Player.Speed.toFixed(1); }
         }
-    } catch(e) {}
+    } catch(e) {
+        // エンジン未接続時は既定のパラメーター表示を保つ。
+    }
 }
 
 // Update Engine Parameter
@@ -619,7 +621,9 @@ async function fetchAssets() {
             updateAssetChartData();
             updateAssetTotalStats();
         }
-    } catch(e) {}
+    } catch(e) {
+        // エンジン停止中は、最後に取得したアセット一覧を保つ。
+    }
 }
 
 function updateAssetTotalStats() {

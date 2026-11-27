@@ -52,10 +52,6 @@ public:
 	}
 
 private:
-	void BeginFrame_();
-	void EndFrame_();
-
-private:
 	SceneManager sceneManager_;
 	EditorPresenter editorPresenter_;
 	HWND hwnd_ = nullptr;
@@ -68,17 +64,10 @@ private:
 	ImGuiLayer imgui_;
 #endif
 
-	std::chrono::steady_clock::time_point prev_{};
-
-	Microsoft::WRL::ComPtr<ID3D12Fence> fence_;
-	UINT64 fenceValue_ = 0;
-	HANDLE fenceEvent_ = nullptr;
-
 	SceneRegistrar registrar_{};
 	std::string initialSceneKey_{};
 	bool startFullscreen_ = false;
 	std::string startupMusicScene_, startupMusicPath_;
-
 };
 
 } // namespace Engine

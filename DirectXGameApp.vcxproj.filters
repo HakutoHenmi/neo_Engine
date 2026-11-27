@@ -285,6 +285,9 @@
     <ClCompile Include="Game\Scripts\IScript.cpp">
       <Filter>6. Scripts（スクリプト）</Filter>
     </ClCompile>
+    <ClCompile Include="Game\Scripts\ScriptLifecycle.cpp">
+      <Filter>6. Scripts（スクリプト）</Filter>
+    </ClCompile>
     <ClCompile Include="Game\Scripts\ScriptEngine.cpp">
       <Filter>6. Scripts（スクリプト）</Filter>
     </ClCompile>

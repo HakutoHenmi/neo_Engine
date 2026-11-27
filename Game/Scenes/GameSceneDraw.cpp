@@ -494,7 +494,6 @@ void GameScene::DrawSceneMeshes() {
 		}
 
 		// メッシュで描いたか
-		bool hasMeshRenderer = false;
 		// ほぼ透明になった物は描かない (網目が画面全体にかからないように)
 		bool occludedAway = false;
 		if (chronoMode_ && isPlaying_)
@@ -502,13 +501,12 @@ void GameScene::DrawSceneMeshes() {
 				if (occluder->opacity < .995f)
 					color.w = -occluder->opacity; // カメラを遮る物は網目状に透かす (影と当たり判定はそのまま)
 				if (occluder->opacity < .03f)
-					hasMeshRenderer = occludedAway = true;
+					occludedAway = true;
 			}
 		if (registry_.all_of<MeshRendererComponent>(entity)) {
 			// 見た目を持ち、有効でモデルがあるものを描く
 			const auto& mr = registry_.get<MeshRendererComponent>(entity);
 			if (mr.enabled && mr.modelHandle != 0 && !occludedAway) {
-				hasMeshRenderer = true;
 				// アニメーションしているかと、骨の行列
 				bool hasAnim = false;
 				std::vector<Engine::Matrix4x4> bonePalette;
@@ -619,12 +617,6 @@ void GameScene::DrawSceneMeshes() {
 				}
 			}
 		}
-
-		// 旧 SceneObject との互換用 (MeshRenderer を持たず自前の modelHandle を持つ場合)
-		// 基本は MeshRendererComponent にまとめる方針なので、処理は無効化して残している
-		/*
-		if (!hasMeshRenderer && obj.modelHandle != 0) { ... }
-		*/
 
 		// 川の描画 (メッシュはワールド座標で作ってあるので単位行列で描く)
 		// 川を持っていれば

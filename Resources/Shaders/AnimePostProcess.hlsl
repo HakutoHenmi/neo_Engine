@@ -32,13 +32,15 @@ float3 ACESFilm(float3 x) {
 // 簡易ブルーム (1 パスの単純な箱型ぼかし + しきい値)
 float3 PseudoBloom(float2 uv) {
     float3 bloom = float3(0,0,0);
-    float2 texSize = float2(1920.0f, 1080.0f); // 仮の解像度
+    uint width, height;
+    gScene.GetDimensions(width, height);
+    float2 texSize = float2(max(width, 1u), max(height, 1u));
     float2 texel = 1.0f / texSize;
     
     // クロス状の強いブラーで光の溢れを作る
     float weight[5] = {0.227027, 0.1945946, 0.1216216, 0.054054, 0.016216};
     
-    // しきい値を1.5fに上げて、本当に明るい場所だけBloomさせる。強度も0.3fに下げる
+    // 輝度がしきい値を超える画素だけを、指定の強度でぼかしへ加える。
     float bloomThreshold = 1.3f;
     float bloomIntensity = 0.3f;
     

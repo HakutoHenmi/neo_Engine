@@ -1014,7 +1014,7 @@ public:
 	};
 	void DrawSprite(TextureHandle texH, const SpriteDesc& s);
 	void DrawSprite9Slice(TextureHandle texH, const Sprite9SliceDesc& s);
-	void FlushSprites();                                                  // スプライトの描画実行
+	void FlushSprites(); // スプライトの描画実行
 	// 重ねて描く待ち行列が有効な間に積んだスプライト / 文字は、シーンのすべての
 	// スプライトと文字の後に描く (シーンの切り替え、ロード画面)。
 	void SetOverlayQueue(bool on) {
@@ -1277,7 +1277,7 @@ private:
 	void EndFluidProfile(FluidProfileStage stage);
 
 	Microsoft::WRL::ComPtr<ID3D12RootSignature> rootSig3D_;
-	Microsoft::WRL::ComPtr<ID3D12RootSignature> rootSigTerrain_;    // 地形用
+	Microsoft::WRL::ComPtr<ID3D12RootSignature> rootSigTerrain_; // 地形用
 	Microsoft::WRL::ComPtr<ID3D12RootSignature> rootSigDistortion_;
 	Microsoft::WRL::ComPtr<ID3D12RootSignature> rootSigPP_;
 

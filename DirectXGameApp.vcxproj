@@ -233,6 +233,7 @@ exit /b %ERRORLEVEL%</Command>
     <ClCompile Include="Game\Systems\UISystem.cpp" />
     <ClCompile Include="Game\Scripts\BaseScript.cpp" />
     <ClCompile Include="Game\Scripts\IScript.cpp" />
+    <ClCompile Include="Game\Scripts\ScriptLifecycle.cpp" />
     <ClCompile Include="Game\Scripts\ScriptEngine.cpp" />
     <ClCompile Include="Game\Editor\EditorCommands.cpp" />
     <ClCompile Include="Game\Editor\EditorHierarchy.cpp" />

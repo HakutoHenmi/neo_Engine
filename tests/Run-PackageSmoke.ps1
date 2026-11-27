@@ -1,4 +1,4 @@
-param([string]$Executable = 'C:/Users/k024g/source/repos/Generated/Outputs/Release/DirectXGameApp.exe')
+param([string]$Executable = (Join-Path $PSScriptRoot '../../Generated/Outputs/Release/DirectXGameApp.exe'))
 $ErrorActionPreference = 'Stop'
 if (Get-Process -Name DirectXGameApp -ErrorAction SilentlyContinue) { throw 'A game is already running; it will not be interrupted.' }
 $packageExecutable = (Resolve-Path -LiteralPath $Executable).Path
@@ -6,7 +6,7 @@ $packageDirectory = Split-Path $packageExecutable -Parent
 $packageOutput = Join-Path $PSScriptRoot 'out'
 $packageBackup = Join-Path $packageOutput ('package-backup-' + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Force -Path $packageBackup | Out-Null
-$packageLogDirectory=Split-Path $PSScriptRoot -Parent
+$packageLogDirectory=$packageDirectory
 $packageValidationPath=Join-Path $packageLogDirectory 'd3d12_validation_log.txt'
 $packagePreviousLines=if(Test-Path -LiteralPath $packageValidationPath){@(Get-Content -LiteralPath $packageValidationPath).Count}else{0}
 $packageLogs = @('error_log.txt','d3d12_validation_log.txt','black_screen_log.txt','run_log.txt','fluid_debug.txt')

@@ -36,7 +36,6 @@ float fbm(float3 p) {
 
 // プロシージャル和紙マテリアル適用関数
 void ApplyProceduralPaper(float3 worldPos, inout float3 albedo, inout float3 normal, float scale = 1.0, float strength = 1.0) {
-    // ユーザーの要望により、床やオブジェクトに乗る「和紙エフェクト（ノイズ）」を完全に無効化します。
-    // albedo や normal には何の変更も加えません。
+    // 和紙のノイズは無効。既存シェーダーとの呼び出し互換性を保ち、色と法線をそのまま返す。
 }
 #endif // PROCEDURAL_PAPER_HLSLI

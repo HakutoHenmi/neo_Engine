@@ -6,6 +6,7 @@
 #include <knownfolders.h>
 #include <algorithm>
 #include <vector>
+#include <limits>
 
 namespace Engine {
 
@@ -31,7 +32,7 @@ public:
 
 	/**
      * @brief Unity's Application.persistentDataPath equivalent.
-     * Returns %APPDATA%/Local/neo_Engine.
+	 * Returns %LOCALAPPDATA%/neo_Engine.
      * @return Absolute path in UTF-8.
      */
 	static std::string GetPersistentDataPath() {
@@ -56,7 +57,7 @@ public:
 
 	/**
      * @brief Path from either absolute or relative (from root) path.
-     * Ensures result is absolute and uses '/' separators.
+     * Relative paths use '/' separators; absolute paths are preserved.
      * @param relPath Path string (UTF-8).
      * @return Absolute path in UTF-8.
      */
@@ -89,20 +90,28 @@ public:
 	// --- 便利関数: UTF-8 <-> ワイド文字列 ---
 
 	static std::string ToUTF8(const std::wstring& wstr) {
-		if (wstr.empty())
+		if (wstr.empty() || wstr.size() > static_cast<size_t>((std::numeric_limits<int>::max)()))
 			return "";
-		int size = WideCharToMultiByte(CP_UTF8, 0, wstr.c_str(), -1, nullptr, 0, nullptr, nullptr);
-		std::string str(size - 1, 0);
-		WideCharToMultiByte(CP_UTF8, 0, wstr.c_str(), -1, &str[0], size, nullptr, nullptr);
+		const int length = static_cast<int>(wstr.size());
+		const int size = WideCharToMultiByte(CP_UTF8, 0, wstr.data(), length, nullptr, 0, nullptr, nullptr);
+		if (size <= 0)
+			return "";
+		std::string str(size, '\0');
+		if (!WideCharToMultiByte(CP_UTF8, 0, wstr.data(), length, str.data(), size, nullptr, nullptr))
+			return "";
 		return str;
 	}
 
 	static std::wstring FromUTF8(const std::string& str) {
-		if (str.empty())
+		if (str.empty() || str.size() > static_cast<size_t>((std::numeric_limits<int>::max)()))
 			return L"";
-		int size = MultiByteToWideChar(CP_UTF8, 0, str.c_str(), -1, nullptr, 0);
-		std::wstring wstr(size - 1, 0);
-		MultiByteToWideChar(CP_UTF8, 0, str.c_str(), -1, &wstr[0], size);
+		const int length = static_cast<int>(str.size());
+		const int size = MultiByteToWideChar(CP_UTF8, 0, str.data(), length, nullptr, 0);
+		if (size <= 0)
+			return L"";
+		std::wstring wstr(size, L'\0');
+		if (!MultiByteToWideChar(CP_UTF8, 0, str.data(), length, wstr.data(), size))
+			return L"";
 		return wstr;
 	}
 
@@ -121,6 +130,7 @@ private:
 			if (std::filesystem::exists(dir / "DirectXGameApp.vcxproj"))
 				return true;
 		} catch (...) {
+			// アクセスできない場所はプロジェクト候補から除外する。
 		}
 		return false;
 	}
@@ -130,77 +140,73 @@ private:
 #pragma warning(disable : 6262)
 #endif
 	static std::filesystem::path GetRootPathInternal() {
-		static std::filesystem::path rootPath;
-		if (!rootPath.empty())
-			return rootPath;
+		// 初回の探索とキャッシュを、ロード用ワーカーからの呼び出しとも共有する。
+		static const std::filesystem::path rootPath = []() -> std::filesystem::path {
+			// スタック警告 C6262 を避けるため、vector でヒープに確保する
+			const DWORD bufferSize = 32768;
+			std::vector<wchar_t> buffer(bufferSize);
+			DWORD length = GetModuleFileNameW(NULL, buffer.data(), bufferSize);
+			if (length == 0 || length >= bufferSize) {
+				// 失敗したらカレントディレクトリにする
+				return std::filesystem::current_path();
+			}
+			buffer[length] = L'\0'; // 末尾を必ずヌル文字で終わらせる
 
-		// スタック警告 C6262 を避けるため、vector でヒープに確保する
-		const DWORD bufferSize = 32768;
-		std::vector<wchar_t> buffer(bufferSize);
-		DWORD length = GetModuleFileNameW(NULL, buffer.data(), bufferSize);
-		if (length == 0 || length >= bufferSize) {
-			// 失敗したらカレントディレクトリにする
-			rootPath = std::filesystem::current_path();
-			return rootPath;
-		}
-		buffer[length] = L'\0'; // 末尾を必ずヌル文字で終わらせる
-
-		std::filesystem::path exeDir = std::filesystem::path(buffer.data()).parent_path();
+			std::filesystem::path exeDir = std::filesystem::path(buffer.data()).parent_path();
 #ifdef NDEBUG
-		// 配布版のゲームが、無関係なソースのチェックアウトから素材を借りてはいけない。
-		rootPath = exeDir;
-		return rootPath;
+			// 配布版のゲームが、無関係なソースのチェックアウトから素材を借りてはいけない。
+			return exeDir;
 #endif
 
-		auto IsBuildFolder = [](const std::wstring& name) {
-			std::wstring lower = name;
-			std::transform(lower.begin(), lower.end(), lower.begin(), ::towlower);
-			return lower == L"generated" || lower == L"outputs" || lower == L"development" || lower == L"bin" ||
-			       lower == L"obj" || lower == L"x64" || lower == L"debug" || lower == L"release";
-		};
+			auto IsBuildFolder = [](const std::wstring& name) {
+				std::wstring lower = name;
+				std::transform(lower.begin(), lower.end(), lower.begin(), ::towlower);
+				return lower == L"generated" || lower == L"outputs" || lower == L"development" || lower == L"bin" ||
+				       lower == L"obj" || lower == L"x64" || lower == L"debug" || lower == L"release";
+			};
 
-		// 手順 1: プロジェクトの目印を 10 階層上まで探す
-		std::filesystem::path current = exeDir;
-		for (int i = 0; i < 10; ++i) {
-			if (!IsBuildFolder(current.filename().wstring())) {
-				try {
-					if (HasProjectFile(current) || std::filesystem::exists(current / ".git")) {
-						rootPath = current;
-						return rootPath;
+			// 手順 1: プロジェクトの目印を 10 階層上まで探す
+			std::filesystem::path current = exeDir;
+			for (int i = 0; i < 10; ++i) {
+				if (!IsBuildFolder(current.filename().wstring())) {
+					try {
+						if (HasProjectFile(current) || std::filesystem::exists(current / ".git")) {
+							return current;
+						}
+						// 子フォルダーの "neo_Engine" も調べる
+						if (std::filesystem::exists(current / "neo_Engine") &&
+						    (HasProjectFile(current / "neo_Engine") ||
+						     std::filesystem::exists(current / "neo_Engine" / ".git"))) {
+							return current / "neo_Engine";
+						}
+					} catch (...) {
+						// この候補を飛ばし、親フォルダーの探索を続ける。
 					}
-					// 子フォルダーの "neo_Engine" も調べる
-					if (std::filesystem::exists(current / "neo_Engine") &&
-					    (HasProjectFile(current / "neo_Engine") ||
-					     std::filesystem::exists(current / "neo_Engine" / ".git"))) {
-						rootPath = current / "neo_Engine";
-						return rootPath;
+				}
+				if (current.has_parent_path() && current.parent_path() != current) {
+					current = current.parent_path();
+				} else
+					break;
+			}
+
+			// 手順 2: 見つからなければ Resources フォルダーを探す
+			current = exeDir;
+			for (int i = 0; i < 10; ++i) {
+				try {
+					if (std::filesystem::exists(current / "Resources")) {
+						return current;
 					}
 				} catch (...) {
+					// 素材フォルダーを確認できなければ、親フォルダーを調べる。
 				}
+				if (current.has_parent_path() && current.parent_path() != current) {
+					current = current.parent_path();
+				} else
+					break;
 			}
-			if (current.has_parent_path() && current.parent_path() != current) {
-				current = current.parent_path();
-			} else
-				break;
-		}
 
-		// 手順 2: 見つからなければ Resources フォルダーを探す
-		current = exeDir;
-		for (int i = 0; i < 10; ++i) {
-			try {
-				if (std::filesystem::exists(current / "Resources")) {
-					rootPath = current;
-					return rootPath;
-				}
-			} catch (...) {
-			}
-			if (current.has_parent_path() && current.parent_path() != current) {
-				current = current.parent_path();
-			} else
-				break;
-		}
-
-		rootPath = exeDir;
+			return exeDir;
+		}();
 		return rootPath;
 	}
 #ifdef _MSC_VER

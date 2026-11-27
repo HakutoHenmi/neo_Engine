@@ -10,8 +10,6 @@
 #include <string>
 #include <wrl.h>
 
-// 時間計測用
-#include <chrono>
 #include <thread>
 
 namespace Engine {
@@ -132,9 +130,6 @@ private:
 	UINT fi_ = 0;
 	D3D12_VIEWPORT vp_{};
 	D3D12_RECT sc_{};
-
-	// ウィンドウの初期化時刻
-	std::chrono::steady_clock::time_point lastFrameTime_;
 };
 
 } // namespace Engine

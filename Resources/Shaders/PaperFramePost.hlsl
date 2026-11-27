@@ -1,7 +1,5 @@
 // Resources/Shaders/PaperFramePost.hlsl
-// 和紙フレーム・ポストプロセス（画面全体に和紙質感をオーバーレイし、端にかけてシームレスに和紙の地色と水墨フレームに溶け込ませる）
-// 【完全クリーン仕様】中間の黒い水墨汚れを100%完全に排除し、中央を極めてクリアに保ちつつ、
-// 秒間12コマ（12fps）の大振りのダイナミック・ジッターによって、手書きのアナログ感を最高潮に高めます。
+// 和紙の質感をシーン全体へ薄く重ね、周辺を紙の色へなじませる。
 
 Texture2D gScene : register(t0); 
 Texture2D gPaper : register(t1);   // 和紙テクスチャ
@@ -23,15 +21,14 @@ float4 main(float4 svpos:SV_POSITION, float2 uv:TEXCOORD0) : SV_TARGET {
     float3 sceneCol = gScene.Sample(gSmp, uv).rgb;
 
     // 2. ゆっくり流れる連続的なUVスクロール
-    // パラパラとしたジッターではなく、時間経過で斜め方向にゆっくりと和紙が流れるようにします
-    // 速度を少しだけ早めました
+    // 紙のテクスチャを斜め方向へ連続的に流す。
     float2 scrollOffset = float2(-0.030f, 0.020f) * gTime;
 
     // 3. アスペクト比補正とスクロールを加えた紙テクスチャのサンプリング
     float aspect = 1920.0 / 1080.0;
     float2 uvPaper = uv;
     uvPaper.x *= aspect;
-    uvPaper *= 2.5; // タイリングを戻して自然な繊維感へ
+    uvPaper *= 2.5; // 紙の繊維の細かさを設定する。
     uvPaper += scrollOffset;
 
     float3 paperCol = gPaper.Sample(gSmp, uvPaper).rgb;
@@ -46,20 +43,18 @@ float4 main(float4 svpos:SV_POSITION, float2 uv:TEXCOORD0) : SV_TARGET {
     // 繊維の主張を抑え、3Dシーンをクリアに見せる
     float3 paperScene = lerp(sceneCol, overlayCol, saturate(gNoiseStrength * 0.45f));
 
-    // 5. 【水墨汚れの完全排除】ビネットマスクの計算
-    // vignette.png の黒いしぶき（frameCol）を乗算するのを100%完全にカットし、
-    // 単に「周辺に向けて和紙に溶け込むためのマスク」としてのみ使用します。
+    // 5. フレームの輝度を、紙の色へ切り替えるためのマスクとして使う。
     float3 frameCol = gFrame.Sample(gSmp, uv).rgb;
     float mask = frameCol.r;
 
-    // 四隅が露出するのを防ぐため、円形ビネットをブレンドアルファに加算合成します。
+    // 円形のビネットを加え、フレーム画像で覆いきれない四隅も紙の色へ切り替える。
     float2 centerDist = uv - 0.5f;
     float circleMask = saturate(dot(centerDist, centerDist) * (1.0f + gVignette * 4.0f));
 
-    // vignetteのしぶき形状の美しさを活かしつつ、四隅を含む周辺を確実に美しい和紙で覆います。
+    // フレームと円形ビネットの合計を、紙の色の混合率にする。
     float blendAlpha = saturate((1.0f - mask) + circleMask);
 
-    // 黒いインク（frameCol）の乗算を完全にやめ、クリアな和紙（paperCol）とシーン（paperScene）をブレンド！
+    // 紙の質感を重ねたシーンと、紙だけの色を混合する。
     float3 finalCol = lerp(paperScene, paperCol, blendAlpha);
 
     // ダメージを受けた瞬間の赤いダメージビネット

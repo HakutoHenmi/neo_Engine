@@ -17,10 +17,9 @@ public:
 		float x, y, w, h;
 	};
 
-	// 更新 (ボタンの状態) / 描画 / ImGui / リセット
+	// ボタンの入力と描画、状態のリセット。
 	void Update(entt::registry& registry, GameContext& ctx) override;
 	void Draw(entt::registry& registry, GameContext& ctx) override;
-	void DrawUI(entt::registry& registry, GameContext& ctx) override;
 	void Reset(entt::registry& registry) override;
 
 	// 親子関係とアンカー・ピボットから UI 部品の画面上の矩形を求める
@@ -43,11 +42,13 @@ private:
 	    entt::entity entity, entt::registry& registry, const UITextComponent& text, float worldX, float worldY,
 	    float worldW, float worldH, Engine::Renderer* renderer);
 	void ProcessButton(
-	    entt::entity entity, entt::registry& registry, UIButtonComponent& btn, float worldX, float worldY, float worldW,
-	    float worldH, GameContext& ctx);
+	    entt::entity entity, UIButtonComponent& btn, float worldX, float worldY, float worldW, float worldH,
+	    GameContext& ctx);
 
 	// 白テクスチャ
 	Engine::Renderer::TextureHandle whiteTexture_ = 0;
+	// 描画中の ECS 走査を壊さないよう、クリック通知は描画完了後にまとめて行う。
+	std::vector<std::pair<entt::entity, std::string>> pendingClicks_;
 };
 
 } // namespace Game

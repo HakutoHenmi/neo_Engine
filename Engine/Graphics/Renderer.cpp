@@ -26,7 +26,6 @@
 #include <d3dcompiler.h>
 #include <d3dx12.h>
 #include "../Core/UnicodeUtils.h"
-#include <d3dx12.h>
 #ifdef _MSC_VER
 #pragma warning(disable : 4865)
 #endif
@@ -627,7 +626,7 @@ void Renderer::BeginFrame(const float clearColorRGBA[4]) {
 	frameParticleCount_ = 0;
 
 	if (!rogueWorldFrozen_)
-		cbFrame_.time += 0.016f; // 固定値だが、本来はDeltaTimeを使うべき
+		cbFrame_.time += TimeManager::GetInstance().GetDeltaTime();
 
 	// インスタンス描画用のキューをクリア
 	instancedDrawCalls_.clear();
@@ -710,7 +709,7 @@ void Renderer::ResetGameViewport() {
 }
 
 void Renderer::FlushDrawCalls() {
-	// オブジェクトが無くてもSkyboxは描画したいため、早期リターンをSkybox描画の後に移動します。
+	// オブジェクトが無い場合も、Skybox を描いてから終了する。
 
 	const uint32_t fi = window_->FrameIndex();
 
@@ -1309,7 +1308,7 @@ void Renderer::EndFrame() {
 
 		OutputDebugStringA(s.c_str());
 		FILE* f = nullptr;
-		fopen_s(&f, "C:\\Users\\k024g\\source\\repos\\neo_Engine\\black_screen_log.txt", "a");
+		fopen_s(&f, "black_screen_log.txt", "a");
 		if (f) {
 			fputs(s.c_str(), f);
 			fclose(f);
@@ -1793,7 +1792,7 @@ void Renderer::EndFrame() {
 			list_->SetGraphicsRootConstantBufferView(0, cbFrameAddr_);
 		}
 	} else {
-		// cbFrameAddr_ は上で必ず有効な値になっているはず
+		// オブジェクト用定数を確保できない場合は、フレーム定数を共用する。
 		list_->SetGraphicsRootConstantBufferView(0, cbFrameAddr_);
 	}
 
@@ -1853,7 +1852,7 @@ void Renderer::EndFrame() {
 
 	list_->SetPipelineState(psoCopy_.Get());
 	list_->SetGraphicsRootSignature(rootSigPP_.Get());
-	// cbFrameAddr_ は上で必ず有効な値になっているはずなのでそのままバインド
+	// このフレームの定数バッファをコピー用パスにも渡す。
 	list_->SetGraphicsRootConstantBufferView(0, cbFrameAddr_);
 	list_->SetGraphicsRootDescriptorTable(1, finalSrvGpu_);
 

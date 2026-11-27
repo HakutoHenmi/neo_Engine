@@ -19,7 +19,6 @@ struct TransformComponent {
 	Engine::Vector3 translate{0.0f, 0.0f, 0.0f};
 
 	Engine::Matrix4x4 ToMatrix() const {
-#ifdef _WINDOWS
 		using namespace DirectX;
 		XMMATRIX S = XMMatrixScaling(scale.x, scale.y, scale.z);
 		XMMATRIX R = XMMatrixRotationRollPitchYaw(rotate.x, rotate.y, rotate.z);
@@ -27,10 +26,6 @@ struct TransformComponent {
 		Engine::Matrix4x4 out;
 		XMStoreFloat4x4(reinterpret_cast<XMFLOAT4X4*>(&out), S * R * T);
 		return out;
-#else
-		// 非Windows環境用ダミー実装
-		return Engine::Matrix4x4{};
-#endif
 	}
 };
 

@@ -1,6 +1,6 @@
-// とても軽く高速な、手続き生成の宇宙の背景
+// 視線方向と時刻から生成する星雲と星の背景。
 
-// 星用の簡単なハッシュ (計算 1 回で非常に速い)
+// 星の配置と明るさに使うハッシュ。
 float hashFast(float3 p) {
     p = frac(p * 0.3183099 + 0.1);
     p *= 17.0;
@@ -8,7 +8,7 @@ float hashFast(float3 p) {
 }
 
 // 星雲用の、三角関数の波による疑似 3D ノイズ
-// 重い 3D の値ノイズと FBM のループを避け、GPU のタイムアウト (TDR) を防ぐ
+// 三角関数の波を重ねて星雲の濃淡を作る。
 float waveNoise(float3 p) {
     float n = 0.0;
     n += sin(p.x * 2.1 + p.y * 1.3 - p.z * 0.8);
@@ -39,7 +39,7 @@ float3 GetProceduralSpaceColor(float3 dir, float time) {
     float mw = smoothstep(0.5, 0.9, waveNoise(dir * 2.5 + float3(n1, n2, 0)) * 0.5 + 0.5);
     color += float3(0.1, 0.2, 0.3) * mw * 0.8;
 
-    // 3. 超高速の星 (3D の線形補間なし)
+    // 3. 格子セルのハッシュで星を配置する (3D の線形補間なし)。
     // 周波数の高い格子の工夫で、帯状のむらを避けて鋭い星を作る
     // length() の判定を加え、星を角張らせずに丸くする
     float3 gridPos1 = dir * 250.0;

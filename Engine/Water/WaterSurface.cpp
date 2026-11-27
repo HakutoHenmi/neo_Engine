@@ -533,7 +533,7 @@ bool WaterSurface::createPipeline_(WindowDX& dx) {
 	d.BlendState.RenderTarget[0].DestBlendAlpha = D3D12_BLEND_ZERO;
 	d.BlendState.RenderTarget[0].BlendOpAlpha = D3D12_BLEND_OP_ADD;
 	d.BlendState.RenderTarget[0].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
-	// とりあえず不透明。半透明にしたいならここで BlendEnable を TRUE に
+	// アルファ合成し、深度は参照するだけで書き込まない。
 	d.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
 	d.RasterizerState.CullMode = D3D12_CULL_MODE_BACK;
 	d.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);

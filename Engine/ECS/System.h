@@ -17,7 +17,7 @@ public:
 		entities_.erase(entity);
 	}
 	virtual ~System() = default;
-	virtual void Update(float) {} // dt名を削除して警告回避
+	virtual void Update(float) {} // 更新処理を持たないシステムの既定動作。
 private:
 	std::set<Entity> entities_;
 };
