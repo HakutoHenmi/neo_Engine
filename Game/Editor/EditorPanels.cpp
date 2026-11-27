@@ -31,8 +31,9 @@ void EditorUI::ShowProject([[maybe_unused]] Engine::Renderer* renderer, [[maybe_
 	// 右端に検索欄と Clear ボタンを置く
 	const float searchWidth = 180.0f;
 	const float clearWidth = ImGui::CalcTextSize("Clear").x + ImGui::GetStyle().FramePadding.x * 2.0f;
-	ImGui::SameLine((std::max)(ImGui::GetCursorPosX() + 8.0f, ImGui::GetWindowContentRegionMax().x - searchWidth -
-	                                                              clearWidth - ImGui::GetStyle().ItemSpacing.x));
+	ImGui::SameLine((std::max)(
+	    ImGui::GetCursorPosX() + 8.0f,
+	    ImGui::GetWindowContentRegionMax().x - searchWidth - clearWidth - ImGui::GetStyle().ItemSpacing.x));
 	ImGui::SetNextItemWidth(searchWidth);
 	ImGui::InputTextWithHint("##Search", "Search Assets...", searchBuf, sizeof(searchBuf));
 	if (ImGui::IsItemHovered())
@@ -97,9 +98,8 @@ void EditorUI::ShowProject([[maybe_unused]] Engine::Renderer* renderer, [[maybe_
 		const std::string relPath = currentDir + "/" + entry.name;
 		const std::string ext = entry.directory
 		                            ? std::string()
-		                            : ToLower(
-		                                  Engine::PathUtils::ToUTF8(
-		                                      fs::path(Engine::PathUtils::FromUTF8(entry.name)).extension().wstring()));
+		                            : ToLower(Engine::PathUtils::ToUTF8(
+		                                  fs::path(Engine::PathUtils::FromUTF8(entry.name)).extension().wstring()));
 
 		// アイコンを種類で選ぶ (フォルダー・モデル・プレハブ・音・スクリプト)
 		uint32_t icon = s_icons.file;

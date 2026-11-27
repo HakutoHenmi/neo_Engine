@@ -1,0 +1,97 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  merge_group:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows-build-and-tests:
+    name: Windows build and tests
+    runs-on: windows-2022
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      PYTHONUTF8: '1'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.13'
+
+      - name: Install LLVM 19.1.7
+        run: |
+          choco install llvm --version=19.1.7 --allow-downgrade --yes --no-progress
+          if ($LASTEXITCODE -ne 0) { throw 'LLVM installation failed.' }
+          $version = & 'C:/Program Files/LLVM/bin/clang-format.exe' --version
+          Write-Output $version
+          if ($LASTEXITCODE -ne 0 -or $version -notmatch 'version 19\.1\.7\b') {
+              throw 'Expected clang-format 19.1.7.'
+          }
+
+      - name: Install quality tools
+        id: tools
+        run: ./scripts/build/setup_code_quality_tools.ps1
+
+      - name: Check formatting
+        run: ./scripts/build/format_code.ps1 -All -Check
+
+      - name: Build Assimp dependency
+        run: ./scripts/ci/bootstrap_dependencies.ps1
+
+      - name: Build Development x64
+        run: ./scripts/ci/run_ci.ps1 -Stage Build
+
+      - name: Run CPU and tool regression tests
+        if: ${{ !cancelled() && steps.tools.outcome == 'success' }}
+        run: ./scripts/ci/run_ci.ps1 -Stage Tests
+
+      - name: Collect quality reports
+        if: ${{ !cancelled() && steps.tools.outcome == 'success' }}
+        run: |
+          ./scripts/build/quality_log.ps1 -LogDirectory artifacts/ci/quality
+          if ($LASTEXITCODE -ne 0) { throw 'Quality report collection failed.' }
+          $report = Get-Content artifacts/ci/quality/latest.json -Raw | ConvertFrom-Json
+          $summary = @('## Quality reports', '', '| Tool | Status | Findings |', '| --- | --- | --- |')
+          foreach ($tool in $report.tools) {
+              $summary += "| $($tool.tool) | $($tool.status) | $($tool.finding_count) |"
+              if ($tool.status -in @('error', 'timeout', 'skipped')) {
+                  Write-Output "::warning::Quality coverage incomplete: $($tool.tool) = $($tool.status). See artifacts."
+              }
+          }
+          $summary += '', 'Readability findings are informational. Build, formatting and selected tests are required.'
+          $summary | Out-File $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+
+      - name: Upload build, test and quality logs
+        if: ${{ always() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ci-logs-${{ github.run_id }}-${{ github.run_attempt }}
+          retention-days: 14
+          if-no-files-found: warn
+          path: |
+            artifacts/ci/logs/
+            artifacts/ci/quality/*.json
+            artifacts/ci/quality/*.txt
+            artifacts/ci/quality/runs/
+            artifacts/ci/quality/work/lizard/*.json
+            artifacts/ci/quality/work/lizard/*.csv
+            artifacts/ci/quality/work/cpd/*.json
+            artifacts/ci/quality/work/cpd/*.csv
+            artifacts/ci/quality/work/cpd/*.xml

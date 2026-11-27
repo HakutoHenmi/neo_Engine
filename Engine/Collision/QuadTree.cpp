@@ -114,9 +114,8 @@ void PhysicsQuadTreeNode::Query(const QuadRect& range, std::vector<uint32_t>& fo
 }
 
 PhysicsQuadTree::PhysicsQuadTree(float minX, float minZ, float maxX, float maxZ, int maxDepth, int maxObjects)
-    : root_(
-          std::make_unique<PhysicsQuadTreeNode>(
-              QuadRect{minX, minZ, maxX - minX, maxZ - minZ}, 0, maxDepth, maxObjects)) {}
+    : root_(std::make_unique<PhysicsQuadTreeNode>(
+          QuadRect{minX, minZ, maxX - minX, maxZ - minZ}, 0, maxDepth, maxObjects)) {}
 
 void PhysicsQuadTree::Clear() {
 	root_->Clear();

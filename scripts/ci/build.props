@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <_NeoCiRoot>$(MSBuildThisFileDirectory)..\..\artifacts\ci\</_NeoCiRoot>
+    <OutDir>$(_NeoCiRoot)bin\$(Configuration)\</OutDir>
+    <IntDir>$(_NeoCiRoot)obj\$(MSBuildProjectName)\$(Configuration)\</IntDir>
+  </PropertyGroup>
+  <ItemDefinitionGroup>
+    <!-- Use the headers built with this library, rather than a machine-local SDK. -->
+    <ClCompile>
+      <AdditionalIncludeDirectories>$(_NeoCiRoot)deps\assimp\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <Link>
+      <AdditionalLibraryDirectories>$(_NeoCiRoot)deps\assimp\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>zlibstatic.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+  </ItemDefinitionGroup>
+</Project>

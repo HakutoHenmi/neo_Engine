@@ -1508,9 +1508,8 @@ void Renderer::EndFrame() {
 	// バリア遷移
 	std::vector<D3D12_RESOURCE_BARRIER> mainBars;
 	if (ppSceneState_ != D3D12_RESOURCE_STATE_RENDER_TARGET) {
-		mainBars.push_back(
-		    CD3DX12_RESOURCE_BARRIER::Transition(
-		        ppSceneColor_.Get(), ppSceneState_, D3D12_RESOURCE_STATE_RENDER_TARGET));
+		mainBars.push_back(CD3DX12_RESOURCE_BARRIER::Transition(
+		    ppSceneColor_.Get(), ppSceneState_, D3D12_RESOURCE_STATE_RENDER_TARGET));
 		ppSceneState_ = D3D12_RESOURCE_STATE_RENDER_TARGET;
 	}
 	if (ppDepthState_ != D3D12_RESOURCE_STATE_DEPTH_WRITE) {
@@ -1643,15 +1642,13 @@ void Renderer::EndFrame() {
 	// --- 1. Color+Depth を PIXEL_SHADER_RESOURCE に遷移 ---
 	std::vector<D3D12_RESOURCE_BARRIER> postBars;
 	if (ppSceneState_ != D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE) {
-		postBars.push_back(
-		    CD3DX12_RESOURCE_BARRIER::Transition(
-		        ppSceneColor_.Get(), ppSceneState_, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE));
+		postBars.push_back(CD3DX12_RESOURCE_BARRIER::Transition(
+		    ppSceneColor_.Get(), ppSceneState_, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE));
 		ppSceneState_ = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
 	}
 	if (ppDepthState_ != D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE) {
-		postBars.push_back(
-		    CD3DX12_RESOURCE_BARRIER::Transition(
-		        ppSceneDepth_.Get(), ppDepthState_, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE));
+		postBars.push_back(CD3DX12_RESOURCE_BARRIER::Transition(
+		    ppSceneDepth_.Get(), ppDepthState_, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE));
 		ppDepthState_ = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
 	}
 	if (!postBars.empty()) {
@@ -3212,10 +3209,9 @@ bool Renderer::DecodeTextureBase_(const std::string& unifiedPath, bool sRGB, Tex
 	if (!src)
 		return false;
 	if (src->format != DXGI_FORMAT_R8G8B8A8_UNORM && src->format != DXGI_FORMAT_R8G8B8A8_UNORM_SRGB) {
-		if (FAILED(
-		        DirectX::Convert(
-		            *src, DXGI_FORMAT_R8G8B8A8_UNORM, DirectX::TEX_FILTER_DEFAULT, DirectX::TEX_THRESHOLD_DEFAULT,
-		            out.mips)))
+		if (FAILED(DirectX::Convert(
+		        *src, DXGI_FORMAT_R8G8B8A8_UNORM, DirectX::TEX_FILTER_DEFAULT, DirectX::TEX_THRESHOLD_DEFAULT,
+		        out.mips)))
 			return false;
 	} else if (FAILED(out.mips.InitializeFromImage(*src))) {
 		return false;
@@ -3308,10 +3304,8 @@ bool Renderer::DecodeTextureMips_(const std::string& unifiedPath, bool sRGB, Tex
 		return false;
 	DirectX::ScratchImage conv;
 	if (src->format != DXGI_FORMAT_R8G8B8A8_UNORM && src->format != DXGI_FORMAT_R8G8B8A8_UNORM_SRGB) {
-		if (FAILED(
-		        DirectX::Convert(
-		            *src, DXGI_FORMAT_R8G8B8A8_UNORM, DirectX::TEX_FILTER_DEFAULT, DirectX::TEX_THRESHOLD_DEFAULT,
-		            conv)))
+		if (FAILED(DirectX::Convert(
+		        *src, DXGI_FORMAT_R8G8B8A8_UNORM, DirectX::TEX_FILTER_DEFAULT, DirectX::TEX_THRESHOLD_DEFAULT, conv)))
 			return false;
 		src = conv.GetImage(0, 0, 0);
 	}
@@ -3894,9 +3888,9 @@ uint32_t Renderer::SelectDistanceLod(uint32_t mesh, const Matrix4x4& world) {
 	    center.x * world.m[0][2] + center.y * world.m[1][2] + center.z * world.m[2][2] + world.m[3][2]};
 	float scale = 0;
 	for (int a = 0; a < 3; ++a)
-		scale = (std::max)(scale, std::sqrt(
-		                              world.m[a][0] * world.m[a][0] + world.m[a][1] * world.m[a][1] +
-		                              world.m[a][2] * world.m[a][2]));
+		scale = (std::max)(
+		    scale,
+		    std::sqrt(world.m[a][0] * world.m[a][0] + world.m[a][1] * world.m[a][1] + world.m[a][2] * world.m[a][2]));
 	Vector3 delta = point - cbFrame_.cameraPos;
 	float distance = std::sqrt(delta.x * delta.x + delta.y * delta.y + delta.z * delta.z);
 	int level = distanceLodEnabled_ ? (lod.foliage ? (distance > 60   ? 2
@@ -3924,9 +3918,9 @@ bool Renderer::TooSmallOnScreen(uint32_t mesh, const Matrix4x4& world) const {
 	    c.x * world.m[0][2] + c.y * world.m[1][2] + c.z * world.m[2][2] + world.m[3][2]};
 	float scale = 0;
 	for (int a = 0; a < 3; ++a)
-		scale = (std::max)(scale, std::sqrt(
-		                              world.m[a][0] * world.m[a][0] + world.m[a][1] * world.m[a][1] +
-		                              world.m[a][2] * world.m[a][2]));
+		scale = (std::max)(
+		    scale,
+		    std::sqrt(world.m[a][0] * world.m[a][0] + world.m[a][1] * world.m[a][1] + world.m[a][2] * world.m[a][2]));
 	Vector3 d = point - cbFrame_.cameraPos;
 	return TooSmallToDraw(std::sqrt(d.x * d.x + d.y * d.y + d.z * d.z), lod.radius * scale);
 }
@@ -5479,9 +5473,8 @@ void Renderer::BeginCollisionCheck(uint32_t maxPairs) {
 				    FAILED(dev_->CreateCommittedResource(
 				        &defaultHeap, D3D12_HEAP_FLAG_NONE, &reqDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
 				        IID_PPV_ARGS(&collisionRequestBuffer_[i]))) ||
-				    FAILED(
-				        collisionReadbackBuffer_[i]->Map(
-				            0, nullptr, reinterpret_cast<void**>(&collisionReadbackMapped_[i]))))
+				    FAILED(collisionReadbackBuffer_[i]->Map(
+				        0, nullptr, reinterpret_cast<void**>(&collisionReadbackMapped_[i]))))
 					return;
 			}
 
@@ -6790,8 +6783,9 @@ void Renderer::UpdateGPUFluid(float dt) {
 	if (gpuFluidCoreMode_ >= 2.0f) {
 		cb.pad6 = {
 		    1.0f,
-		    (std::clamp)(gpuFluidCoreFlowSpeed_ * (kPlayerFluidParticles / 100.0f), 0.0f,
-		                 static_cast<float>(kPlayerFluidParticles)),
+		    (std::clamp)(
+		        gpuFluidCoreFlowSpeed_ * (kPlayerFluidParticles / 100.0f), 0.0f,
+		        static_cast<float>(kPlayerFluidParticles)),
 		    static_cast<float>(kPlayerFluidParticles)};
 		// 手はすでに連続して進んでいる。見えている当たりの位置まで届かなければならない。
 		gpuFluidTetherBlend_ =

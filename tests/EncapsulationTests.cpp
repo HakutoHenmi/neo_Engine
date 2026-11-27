@@ -84,9 +84,8 @@ void TestScriptEdits() {
 	original->cleanup = [&] {
 		registry.get<Game::ScriptComponent>(entity).scripts.push_back({"added-by-cleanup", "", {}, false});
 	};
-	assert(
-	    Game::ApplyScriptEdit(
-	        registry, {Game::ScriptEditKind::Remove, entity, 0, "mutate-list", original, {}}, nullptr));
+	assert(Game::ApplyScriptEdit(
+	    registry, {Game::ScriptEditKind::Remove, entity, 0, "mutate-list", original, {}}, nullptr));
 	assert(calls == 3 && registry.get<Game::ScriptComponent>(entity).scripts[0].scriptPath == "added-by-cleanup");
 	original = attach("remove-component");
 	original->cleanup = [&] { Game::StopAllScripts(registry, nullptr); };

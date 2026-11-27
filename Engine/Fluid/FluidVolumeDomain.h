@@ -9,9 +9,9 @@ namespace Engine::FluidVolumeDomain {
 inline float FitCell(
     float width, float height, float depth, uint32_t columns, uint32_t rows, float radius = 1.5f,
     float minimum = .18f) {
-	return (
-	    std::
-	        max)({minimum, (width + 2 * radius) / float(columns - 8), (depth + 2 * radius) / float(columns - 8), (height + 2 * radius) / float(rows - 8)});
+	return (std::max)(
+	    {minimum, (width + 2 * radius) / float(columns - 8), (depth + 2 * radius) / float(columns - 8),
+	     (height + 2 * radius) / float(rows - 8)});
 }
 inline float StableCell(float required, float previous) {
 	// 呼吸や向きの変化のような小さな変化で、毎フレーム格子全体の大きさを変えてはいけない。

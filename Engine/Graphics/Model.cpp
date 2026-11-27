@@ -851,9 +851,8 @@ bool Model::LoadWithUFBX(ID3D12Device* device, ID3D12GraphicsCommandList* cmd, c
 			bool textureReady = false;
 
 			if (tex->content.size > 0) {
-				if (SUCCEEDED(
-				        DirectX::LoadFromWICMemory(
-				            tex->content.data, tex->content.size, DirectX::WIC_FLAGS_FORCE_SRGB, nullptr, mip))) {
+				if (SUCCEEDED(DirectX::LoadFromWICMemory(
+				        tex->content.data, tex->content.size, DirectX::WIC_FLAGS_FORCE_SRGB, nullptr, mip))) {
 					textureReady = true;
 				}
 			} else {
@@ -996,7 +995,7 @@ bool Model::InitializeStaticLOD(
 	for (const auto& sub : source.data_.subsets)
 		subsets.push_back({sub.indexStart, sub.indexCount, sub.materialIndex});
 	auto mesh = authoredLeaves ? ReduceLeafCards(source.data_.vertices, source.data_.indices, subsets, uint32_t(grid))
-	            : cluster ? ClusterStaticMesh(source.data_.vertices, source.data_.indices, subsets, grid)
+	            : cluster      ? ClusterStaticMesh(source.data_.vertices, source.data_.indices, subsets, grid)
 	                      : ReduceStaticMesh(source.data_.vertices, source.data_.indices, subsets, grid, grassCards);
 	if (mesh.indices.empty() || mesh.indices.size() >= source.data_.indices.size() * .95)
 		return false;
@@ -1395,12 +1394,10 @@ bool Model::RayCast(
 
 				DirectX::XMVECTOR v0 = DirectX::XMLoadFloat3(
 				    reinterpret_cast<const DirectX::XMFLOAT3*>(&data_.vertices[data_.indices[triIdx * 3]].position));
-				DirectX::XMVECTOR v1 = DirectX::XMLoadFloat3(
-				    reinterpret_cast<const DirectX::XMFLOAT3*>(
-				        &data_.vertices[data_.indices[triIdx * 3 + 1]].position));
-				DirectX::XMVECTOR v2 = DirectX::XMLoadFloat3(
-				    reinterpret_cast<const DirectX::XMFLOAT3*>(
-				        &data_.vertices[data_.indices[triIdx * 3 + 2]].position));
+				DirectX::XMVECTOR v1 = DirectX::XMLoadFloat3(reinterpret_cast<const DirectX::XMFLOAT3*>(
+				    &data_.vertices[data_.indices[triIdx * 3 + 1]].position));
+				DirectX::XMVECTOR v2 = DirectX::XMLoadFloat3(reinterpret_cast<const DirectX::XMFLOAT3*>(
+				    &data_.vertices[data_.indices[triIdx * 3 + 2]].position));
 
 				// DirectXMathのTriangleTests機能を使う (bvhで代用)
 				// Möller–Trumbore intersection algorithm

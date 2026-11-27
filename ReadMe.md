@@ -45,6 +45,11 @@ DirectX 12 で作った自作ゲームエンジン **neo_Engine** と、その�
 
 `clang-format` / `clang-tidy` の導入手順と実行コマンドは [Docs/CodeQuality.md](Docs/CodeQuality.md) を参照してください。
 
+### CI (自動ビルド・テスト)
+
+GitHub Actions で、push / プルリクエスト時に整形チェック、Development ビルド、CPU の回帰テストを実行します。
+品質レポートと失敗時のログも保存します。対象テストとマージ制限の設定は [Docs/CI.md](Docs/CI.md) を参照してください。
+
 ### DLSS について (任意)
 DLSS を使う場合は、NVIDIA Streamline SDK を [`scripts/Setup-Streamline.ps1`](scripts/Setup-Streamline.ps1) で配置します。
 ライセンスは [Docs/NVIDIA-RTX-SDK-LICENSE.txt](Docs/NVIDIA-RTX-SDK-LICENSE.txt) です。

@@ -42,10 +42,9 @@ class StartupValidation {
 			Engine::LoadProfile::Record("drive", "drive finished", 0);
 			// 遷移後のゲーム画面 (HUD を含む) を残し、見た目の確認に使う
 			DirectX::ScratchImage image;
-			if (SUCCEEDED(
-			        DirectX::CaptureTexture(
-			            window.Queue(), presented, false, image, D3D12_RESOURCE_STATE_PRESENT,
-			            D3D12_RESOURCE_STATE_PRESENT)))
+			if (SUCCEEDED(DirectX::CaptureTexture(
+			        window.Queue(), presented, false, image, D3D12_RESOURCE_STATE_PRESENT,
+			        D3D12_RESOURCE_STATE_PRESENT)))
 				DirectX::SaveToWICFile(
 				    *image.GetImage(0, 0, 0), DirectX::WIC_FLAGS_NONE, DirectX::GetWICCodec(DirectX::WIC_CODEC_PNG),
 				    L"load-game.png");

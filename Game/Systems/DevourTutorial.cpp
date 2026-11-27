@@ -268,7 +268,7 @@ void ChronoSystem::DevourTourCamera(GameContext& ctx) {
 			forward.y = 0;
 			forward = Length(forward) > .01f ? Unit(forward) : V{0, 0, 1};
 			const V side{forward.z, 0, -forward.x};
-			const auto mix = [&](const float (&v)[2]) { return (v[0] + (v[1] - v[0]) * u) * m; };
+			const auto mix = [&](const float(&v)[2]) { return (v[0] + (v[1] - v[0]) * u) * m; };
 			const V at = clear(
 			    body.at + forward * mix(kTownStartFront) + side * mix(kTownStartSide) + V{0, mix(kTownStartRise), 0});
 			pose = Chrono::AimShot(at, body.at + V{0, .3f * m, 0}, .8f);

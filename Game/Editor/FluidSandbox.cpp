@@ -190,9 +190,8 @@ void EditorUI::ShowFluidSandbox(Engine::Renderer* renderer, GameScene* scene) {
 	if (registry.valid(selected)) {
 		if (IsFluidTank(registry, selected))
 			selectedTank = selected;
-		else if (
-		    auto* hierarchy = registry.try_get<HierarchyComponent>(selected);
-		    hierarchy && registry.valid(hierarchy->parentId) && IsFluidTank(registry, hierarchy->parentId))
+		else if (auto* hierarchy = registry.try_get<HierarchyComponent>(selected);
+		         hierarchy && registry.valid(hierarchy->parentId) && IsFluidTank(registry, hierarchy->parentId))
 			selectedTank = hierarchy->parentId;
 	}
 	// 水のエミッターだけを作る (水槽を選んでいればその上に)

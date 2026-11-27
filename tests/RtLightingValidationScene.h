@@ -57,9 +57,8 @@ class RtLightingValidationScene final : public Game::GameScene {
 			if (brightness > travelMeanDelta_) {
 				travelMeanDelta_ = brightness;
 				auto path = L"RtLightingCheck/travel-" + std::to_wstring(caseIndex) + L".png";
-				passed_ &= SUCCEEDED(
-				    DirectX::SaveToWICFile(
-				        *pixels, DirectX::WIC_FLAGS_NONE, DirectX::GetWICCodec(DirectX::WIC_CODEC_PNG), path.c_str()));
+				passed_ &= SUCCEEDED(DirectX::SaveToWICFile(
+				    *pixels, DirectX::WIC_FLAGS_NONE, DirectX::GetWICCodec(DirectX::WIC_CODEC_PNG), path.c_str()));
 			}
 		}
 		previousPixels_.assign(pixels->pixels, pixels->pixels + pixels->slicePitch);
@@ -129,9 +128,8 @@ class RtLightingValidationScene final : public Game::GameScene {
 		}
 		previousPixels_.assign(pixels->pixels, pixels->pixels + pixels->slicePitch);
 		std::wstring path = L"RtLightingCheck/moving-" + std::to_wstring(frame) + L".png";
-		passed_ &= SUCCEEDED(
-		    DirectX::SaveToWICFile(
-		        *pixels, DirectX::WIC_FLAGS_NONE, DirectX::GetWICCodec(DirectX::WIC_CODEC_PNG), path.c_str()));
+		passed_ &= SUCCEEDED(DirectX::SaveToWICFile(
+		    *pixels, DirectX::WIC_FLAGS_NONE, DirectX::GetWICCodec(DirectX::WIC_CODEC_PNG), path.c_str()));
 	}
 	void StabilityCapture(bool stationary) {
 		DirectX::ScratchImage image;

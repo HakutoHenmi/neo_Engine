@@ -351,9 +351,8 @@ void EditorUI::ShowInspector(GameScene* scene) {
 			if (ImGui::IsItemDeactivatedAfterEdit()) {
 				TransformValues before = TransformValues::From(*tc);
 				before.translate = s_inspectorStartTranslate;
-				RecordCommand(
-				    std::make_unique<TransformCommand>(
-				        scene, entity, "Change Position", TransformTranslate, before, TransformValues::From(*tc)));
+				RecordCommand(std::make_unique<TransformCommand>(
+				    scene, entity, "Change Position", TransformTranslate, before, TransformValues::From(*tc)));
 			}
 
 			// 回転: 同様
@@ -364,9 +363,8 @@ void EditorUI::ShowInspector(GameScene* scene) {
 			if (ImGui::IsItemDeactivatedAfterEdit()) {
 				TransformValues before = TransformValues::From(*tc);
 				before.rotate = s_inspectorStartRotate;
-				RecordCommand(
-				    std::make_unique<TransformCommand>(
-				        scene, entity, "Change Rotation", TransformRotate, before, TransformValues::From(*tc)));
+				RecordCommand(std::make_unique<TransformCommand>(
+				    scene, entity, "Change Rotation", TransformRotate, before, TransformValues::From(*tc)));
 			}
 
 			// 大きさ: 同様
@@ -377,9 +375,8 @@ void EditorUI::ShowInspector(GameScene* scene) {
 			if (ImGui::IsItemDeactivatedAfterEdit()) {
 				TransformValues before = TransformValues::From(*tc);
 				before.scale = s_inspectorStartScale;
-				RecordCommand(
-				    std::make_unique<TransformCommand>(
-				        scene, entity, "Change Scale", TransformScale, before, TransformValues::From(*tc)));
+				RecordCommand(std::make_unique<TransformCommand>(
+				    scene, entity, "Change Scale", TransformScale, before, TransformValues::From(*tc)));
 			}
 		}
 
