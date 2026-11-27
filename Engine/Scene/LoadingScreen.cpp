@@ -84,6 +84,7 @@ void LoadHistory(Context& c) {
 			if (e.units > 0 && e.seconds > 0)
 				c.history[scene] = e;
 	} catch (...) {
+		// 履歴を利用できない場合は、シーンごとの初期見積もりを使う。
 	}
 }
 
@@ -97,6 +98,7 @@ void SaveHistory(const Context& c) {
 		for (const auto& [scene, e] : c.history)
 			file << scene << ' ' << e.units << ' ' << e.seconds << '\n';
 	} catch (...) {
+		// 次回用の見積もり保存に失敗しても、現在のロードは継続する。
 	}
 }
 

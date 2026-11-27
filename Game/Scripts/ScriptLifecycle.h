@@ -1,5 +1,5 @@
 // ScriptLifecycle.h
-// スクリプトの停止 (OnDestroy の呼び出し) の共通処理。
+// スクリプトへのライフサイクル通知と UI クリック通知。
 #pragma once
 #include "IScript.h"
 #include "../ObjectTypes.h"
@@ -7,6 +7,9 @@
 #include <vector>
 
 namespace Game {
+
+// 実行中のスクリプトへ通知する。通知中のコンポーネント削除・差し替えを考慮する。
+void NotifyScriptClick(entt::registry& registry, entt::entity entity, GameScene* scene, std::string callbackName);
 
 // ユーザーのコードを呼ぶ前に切り離し、OnDestroy の中から再び停止されても二重に止めないようにする
 inline void StopScript(ScriptEntry& entry, entt::entity entity, GameScene* scene) {

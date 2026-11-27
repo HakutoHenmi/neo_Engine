@@ -9,8 +9,6 @@
 
 namespace Game {
 
-// 前方宣言 (SceneObject は旧形式の名残)
-struct SceneObject;
 class GameScene;
 
 // C++ スクリプトの基底クラス (必要なものだけオーバーライドする)

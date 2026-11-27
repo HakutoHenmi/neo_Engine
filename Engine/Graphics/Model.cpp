@@ -27,8 +27,6 @@ using namespace DirectX;
 
 namespace Engine {
 
-// ToWide 関数は PathUtils::FromUTF8 に置き換えた
-
 // モデルの色の画像を読む。隣に同じ名前の .dds (Release パッケージで BCn に圧縮した物) があればそちらを使う。
 // 16 ビットの PNG は 8 ビットにして、ほかの画像と同じく sRGB として扱う
 static bool LoadModelImage(const std::filesystem::path& path, ScratchImage& out) {
@@ -219,7 +217,7 @@ ComPtr<ID3D12Resource> Model::CreateBufferResource(ID3D12Device* device, size_t 
 	    D3D12_TEXTURE_LAYOUT_ROW_MAJOR,
 	    D3D12_RESOURCE_FLAG_NONE};
 	ComPtr<ID3D12Resource> res;
-	// 引数のdeviceがnullptrの場合はシステム全体で共有されているRendererのデバイスを借りる（簡易実装）
+	// device 省略時は Renderer が保持するデバイスを使用する。
 	ID3D12Device* pDev = device;
 	if (!pDev && Renderer::GetInstance())
 		pDev = Renderer::GetInstance()->GetDevice();
@@ -1198,8 +1196,7 @@ void Model::BuildBVH() {
 
 	// GPU用バッファの構築と転送
 	if (!data_.bvhNodes.empty()) {
-		// ※本来は専用のUPLOAD→DEFAULT遷移が必要だが、このエンジンのCreateBufferResourceは
-		// UPLOADヒープで作られているため、そのままMapしてコピーする。
+		// UPLOAD ヒープへ CPU から書き込み、GPU は GENERIC_READ 状態で参照する。
 		vbBvhNodes_ = CreateBufferResource(nullptr, data_.bvhNodes.size() * sizeof(BVHNode));
 		if (vbBvhNodes_) {
 			void* nodePtr = nullptr;
@@ -1426,7 +1423,7 @@ bool Model::RayCast(
 				}
 			}
 		} else {
-			// 子ノードへ（近い方から処理するとより効率的だが、今回はスタックにそのまま積む）
+			// 子ノードをスタックに積み、深さ優先で走査する。
 			stack.push_back(node.leftChild);
 			stack.push_back(node.rightChild);
 		}

@@ -7,11 +7,10 @@
 #include "../../Engine/Core/Input.h"
 #include "../../Engine/Scene/SceneManager.h"
 #include "../Scripts/IScript.h" // ボタンのクリックをスクリプトへ通知するため
+#include "../Scripts/ScriptLifecycle.h"
 #include "../../Engine/Core/WindowDX.h"
 #include "../../externals/imgui/imgui.h"
 #include "../Scenes/GameScene.h" // GameScene を使うため
-#include <unordered_map>
-#include <set>
 #include <algorithm>
 #include <cstdio>
 
@@ -38,6 +37,8 @@ UISystem::WorldRect
 	std::vector<entt::entity> path;
 	entt::entity current = entity;
 	while (registry.valid(current)) {
+		if (std::find(path.begin(), path.end(), current) != path.end())
+			return {0, 0, 0, 0};
 		path.push_back(current);
 		entt::entity parent = entt::null;
 
@@ -73,11 +74,11 @@ UISystem::WorldRect
 
 // Canvas 以下の UI 部品を親から順に描く (親の矩形を基準に子の矩形を求める)
 void UISystem::Draw(entt::registry& registry, GameContext& ctx) {
+	pendingClicks_.clear();
+	if (!ctx.renderer)
+		return;
 	// テクスチャを用意する
 	EnsureWhiteTexture(ctx);
-
-	// 求めた矩形のキャッシュ
-	std::unordered_map<uint32_t, WorldRect> cache;
 
 	// --- 既存のUI（Canvasベース）の描画 ---
 	// 親が parentId の部品を描き、その子を再帰で描く関数
@@ -103,8 +104,6 @@ void UISystem::Draw(entt::registry& registry, GameContext& ctx) {
 				float worldY = anchorY - worldH * rect.pivot.y + rect.pos.y;
 
 				WorldRect selfRect = {worldX, worldY, worldW, worldH};
-				uint32_t eId = static_cast<uint32_t>(e);
-				cache[eId] = selfRect;
 
 				// 自分を描いてから子を描く
 				RenderNodeWithRect(e, registry, selfRect, ctx);
@@ -129,14 +128,11 @@ void UISystem::Draw(entt::registry& registry, GameContext& ctx) {
 			DrawTextW(e, registry, text, transform.translate.x, transform.translate.y, 0.0f, 0.0f, ctx.renderer);
 		}
 	});
-}
-
-// ワールド空間の UI (体力ゲージ) を描く処理
-// 3D 空間の UI と HUD の描画
-void UISystem::DrawUI(entt::registry& registry, GameContext& ctx) {
-	// 現在は処理なし
-	(void)registry;
-	(void)ctx;
+	// ユーザーのスクリプトは、すべての描画用の走査が終わってから呼ぶ。
+	auto clicks = std::move(pendingClicks_);
+	pendingClicks_.clear();
+	for (const auto& [entity, callback] : clicks)
+		NotifyScriptClick(registry, entity, ctx.scene, callback);
 }
 
 // ワールド座標を画面座標へ変換する (画面全体)
@@ -182,8 +178,9 @@ bool UISystem::WorldToScreenWithView(
 	return true;
 }
 
-// PLAY 開始時: 何もしない
-void UISystem::Reset(entt::registry& /*registry*/) {}
+void UISystem::Reset(entt::registry& /*registry*/) {
+	pendingClicks_.clear();
+}
 
 // UI 部品 1 つを描く (ボタンの処理 → 画像 → 文字)
 void UISystem::RenderNodeWithRect(
@@ -192,7 +189,7 @@ void UISystem::RenderNodeWithRect(
 	// ボタンなら入力を処理する
 	if (registry.all_of<UIButtonComponent>(entity)) {
 		auto& btn = registry.get<UIButtonComponent>(entity);
-		ProcessButton(entity, registry, btn, wr.x, wr.y, wr.w, wr.h, ctx);
+		ProcessButton(entity, btn, wr.x, wr.y, wr.w, wr.h, ctx);
 	}
 
 	// ボタンの状態に応じた色を決定
@@ -242,9 +239,6 @@ void UISystem::RenderNodeWithRect(
 				s.color = {finalColor.x, finalColor.y, finalColor.z, finalColor.w};
 				s.rotationRad = DirectX::XMConvertToRadians(registry.get<RectTransformComponent>(entity).rotation);
 				s.layer = img.layer; // レイヤーを設定する
-				// 注意: 9 スライスは中で複数の DrawSprite に分かれるため、レイヤーは個々の SpriteDesc に設定する必要がある
-				// DrawSprite9Slice の中で作られる SpriteDesc にはレイヤーが引き継がれないので、
-				// 通常の描画に切り替えるか、Renderer 側で対応する
 				ctx.renderer->DrawSprite9Slice(img.textureHandle, s);
 			} else {
 				Engine::Renderer::SpriteDesc s;
@@ -304,10 +298,11 @@ void UISystem::DrawTextW(
 
 // ボタンの処理: マウスが矩形 (当たりの大きさとずれを反映) に入っているかと、クリックをスクリプトへ通知する
 void UISystem::ProcessButton(
-    entt::entity entity, entt::registry& registry, UIButtonComponent& btn, float worldX, float worldY, float worldW,
-    float worldH, GameContext& ctx) {
-	// 入力が無ければ何もしない
-	if (!ctx.input)
+    entt::entity entity, UIButtonComponent& btn, float worldX, float worldY, float worldW, float worldH,
+    GameContext& ctx) {
+	btn.isHovered = false;
+	btn.isPressed = false;
+	if (!btn.enabled || !ctx.input)
 		return;
 
 	float mx, my;
@@ -348,20 +343,8 @@ void UISystem::ProcessButton(
 	btn.isHovered = hovered;
 	btn.isPressed = hovered && ctx.input->IsMouseDown(0); // 左ボタン
 
-	// クリックしたらスクリプトへ通知する
-	if (hovered && ctx.input->IsMouseTrigger(0)) {
-		// クリック時: スクリプト側へ通知
-		if (registry.all_of<ScriptComponent>(entity)) {
-			auto& sc = registry.get<ScriptComponent>(entity);
-			if (sc.enabled) {
-				for (auto& entry : sc.scripts) {
-					if (entry.instance) {
-						// TODO: OnClick は SceneObject ではなく entt::entity を受け取るようにする
-					}
-				}
-			}
-		}
-	}
+	if (ctx.isPlaying && hovered && ctx.input->IsMouseTrigger(0))
+		pendingClicks_.emplace_back(entity, btn.onClickCallback);
 }
 
 } // namespace Game

@@ -22,7 +22,7 @@ static void LogFile(const char* msg) {
 	if (std::string_view(msg).starts_with("Step ") || std::string_view(msg).starts_with("App::Initialize"))
 		StartupTiming::Mark(msg);
 	FILE* f = nullptr;
-	fopen_s(&f, "C:\\Users\\k024g\\source\\repos\\neo_Engine\\error_log.txt", "a");
+	fopen_s(&f, "error_log.txt", "a");
 	if (f) {
 		fputs(msg, f);
 		fputc('\n', f);
@@ -155,30 +155,6 @@ void App::Run() {
 			throw;
 		}
 
-		// Web プロファイラからの描画パラメータ変更
-		// スペースキーでダメージ（またはアクション）演出を発動し、時間経過で減衰させる
-		static float effectIntensity = 0.0f;
-		if (input_.Trigger(DIK_SPACE)) {
-			effectIntensity = 1.0f; // 演出開始
-		}
-
-		auto params = renderer_.GetPostProcessParams();
-		if (effectIntensity > 0.0f) {
-			effectIntensity -= 1.0f / 60.0f; // 簡易的な減衰（毎秒約1.0減る）
-			if (effectIntensity < 0.0f)
-				effectIntensity = 0.0f;
-
-			params.vignette = effectIntensity;    // 赤いダメージビネット等
-			params.distortion = effectIntensity;  // ブラーの強さやレンズ歪み
-			params.chromaShift = effectIntensity; // 色収差の強さ
-		} else {
-			params.vignette = 0.0f;
-			params.distortion = 0.0f;
-			params.chromaShift = 0.0f;
-		}
-		params.time += 1.0f / 60.0f; // ノイズ等の時間経過用
-		renderer_.SetPostProcessParams(params);
-
 		// フルスクリーン切り替え (F11 or Alt+Enter)
 		if (input_.Trigger(DIK_F11) || (input_.Down(DIK_LALT) && input_.Trigger(DIK_RETURN))) {
 			dx_.ToggleFullscreen();
@@ -209,6 +185,10 @@ void App::Run() {
 
 		// TimeManagerの更新
 		TimeManager::GetInstance().Update(dt);
+		// ポストエフェクトの設定を保ったまま、実時間でノイズなどの時刻を進める。
+		auto params = renderer_.GetPostProcessParams();
+		params.time += TimeManager::GetInstance().GetUnscaledDeltaTime();
+		renderer_.SetPostProcessParams(params);
 		audio_.UpdateBGM(dt);
 
 		// プロファイラにフレームタイムをセット
@@ -429,8 +409,5 @@ void App::Shutdown() {
 	dx_.WaitIdle();
 	dx_.Shutdown();
 }
-
-void App::BeginFrame_() {}
-void App::EndFrame_() {}
 
 } // namespace Engine

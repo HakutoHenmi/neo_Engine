@@ -2,13 +2,10 @@
 // 新しいスクリプトを作るときのひな形。
 #pragma once
 #include "IScript.h"
-#include "Scenes/GameScene.h"
-
-#include "../../externals/entt/entt.hpp"
 
 namespace Game {
 
-// サンプルスクリプト: 新しいスクリプトを作る際のテンプレートとして利用してください
+// 編集して使う、処理と保存パラメータが空のひな形。
 class BaseScript : public IScript {
 public:
 	void Start(entt::entity entity, GameScene* scene) override;

@@ -37,7 +37,8 @@ public:
 	TransformCommand(
 	    GameScene* scene, entt::entity entity, std::string name, uint8_t fields, const TransformValues& before,
 	    const TransformValues& after)
-	    : scene_(scene), entity_(scene, entity), name_(std::move(name)), fields_(fields), before_(before), after_(after) {}
+	    : scene_(scene), entity_(scene, entity), name_(std::move(name)), fields_(fields), before_(before),
+	      after_(after) {}
 	void Execute() override {
 		Apply(after_);
 	}
@@ -75,7 +76,8 @@ public:
 	KeyframeMoveCommand(
 	    GameScene* scene, entt::entity entity, std::string clip, int keyframe, const DirectX::XMFLOAT3& before,
 	    const DirectX::XMFLOAT3& after)
-	    : scene_(scene), entity_(scene, entity), clip_(std::move(clip)), keyframe_(keyframe), before_(before), after_(after) {}
+	    : scene_(scene), entity_(scene, entity), clip_(std::move(clip)), keyframe_(keyframe), before_(before),
+	      after_(after) {}
 	void Execute() override {
 		Apply(after_);
 	}

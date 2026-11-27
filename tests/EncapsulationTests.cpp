@@ -3,6 +3,8 @@
 #include "../Game/Editor/EditorEntityReference.h"
 #include "../Engine/ECS/System.h"
 #include "../Engine/Collision/CollisionSystem.h"
+#include "../Engine/Core/PathUtils.h"
+#include "../Engine/ECS/Components.h"
 #include "../Game/Scripts/ScriptLifecycle.h"
 #include "../Game/Scripts/ScriptEdits.h"
 #include <cassert>
@@ -10,6 +12,88 @@
 #include <limits>
 #include <type_traits>
 #include <iostream>
+#include <future>
+
+class ClickScript final : public Game::IScript {
+public:
+	std::function<void(entt::entity, const std::string&)> click;
+	void OnClick(entt::entity entity, Game::GameScene*, const std::string& name) override {
+		if (click)
+			click(entity, name);
+	}
+};
+
+void TestScriptClicks() {
+	entt::registry registry;
+	auto entity = registry.create();
+	int calls = 0;
+	auto first = std::make_shared<ClickScript>();
+	auto second = std::make_shared<ClickScript>();
+	first->click = second->click = [&](entt::entity target, const std::string& callback) {
+		assert(target == entity && callback == "Confirm");
+		++calls;
+	};
+	auto attach = [&] {
+		auto& component = registry.get_or_emplace<Game::ScriptComponent>(entity);
+		component.enabled = true;
+		component.scripts = {{"first", "", first, true}, {"second", "", second, true}};
+	};
+	attach();
+	Game::NotifyScriptClick(registry, entity, nullptr, "Confirm");
+	assert(calls == 2);
+	registry.get<Game::ScriptComponent>(entity).enabled = false;
+	Game::NotifyScriptClick(registry, entity, nullptr, "Confirm");
+	assert(calls == 2);
+	attach();
+	registry.get<Game::ScriptComponent>(entity).scripts[1].isStarted = false;
+	Game::NotifyScriptClick(registry, entity, nullptr, "Confirm");
+	assert(calls == 3);
+	attach();
+	first->click = [&](entt::entity, const std::string&) {
+		++calls;
+		registry.remove<Game::ScriptComponent>(entity);
+	};
+	Game::NotifyScriptClick(registry, entity, nullptr, "Confirm");
+	assert(calls == 4 && !registry.all_of<Game::ScriptComponent>(entity));
+	attach();
+	first->click = [&](entt::entity, const std::string&) {
+		++calls;
+		registry.get<Game::ScriptComponent>(entity).scripts.clear();
+	};
+	Game::NotifyScriptClick(registry, entity, nullptr, "Confirm");
+	assert(calls == 5);
+	attach();
+	first->click = [&](entt::entity, const std::string&) {
+		++calls;
+		registry.destroy(entity);
+	};
+	Game::NotifyScriptClick(registry, entity, nullptr, "Confirm");
+	Game::NotifyScriptClick(registry, entity, nullptr, "Confirm");
+	assert(calls == 6 && !registry.valid(entity));
+}
+
+void TestPathConversions() {
+	assert(Engine::PathUtils::ToUTF8(L"").empty() && Engine::PathUtils::FromUTF8("").empty());
+	for (const auto& text :
+	     {std::wstring(L"a"), std::wstring(L"\u65e5\u672c\u8a9e\U0001f600"), std::wstring(4096, L'\u753b'),
+	      std::wstring(L"a\0b", 3)}) {
+		const auto utf8 = Engine::PathUtils::ToUTF8(text);
+		assert(Engine::PathUtils::FromUTF8(utf8) == text);
+	}
+	std::vector<std::future<std::string>> paths;
+	for (int i = 0; i < 8; ++i)
+		paths.push_back(std::async(std::launch::async, [] { return Engine::PathUtils::GetRootPath(); }));
+	const auto expected = paths[0].get();
+	assert(!expected.empty());
+	for (size_t i = 1; i < paths.size(); ++i)
+		assert(paths[i].get() == expected);
+	TDEngine::ECS::TransformComponent transform;
+	transform.scale = {2, 3, 4};
+	transform.translate = {5, 6, 7};
+	const auto matrix = transform.ToMatrix();
+	assert(matrix.m[0][0] == 2 && matrix.m[1][1] == 3 && matrix.m[2][2] == 4);
+	assert(matrix.m[3][0] == 5 && matrix.m[3][1] == 6 && matrix.m[3][2] == 7);
+}
 
 class CleanupScript final : public Game::IScript {
 public:
@@ -180,6 +264,8 @@ void TestEditorEntityUndo() {
 }
 
 int main() {
+	TestScriptClicks();
+	TestPathConversions();
 	TestEditorEntityUndo();
 	TestScriptLifecycle();
 	TestScriptEdits();

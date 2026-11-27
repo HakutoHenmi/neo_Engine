@@ -108,7 +108,7 @@ void Emit(uint3 DTid : SV_DispatchThreadID) {
             bool isLostSlime = (emitType > 2.5f && emitType < 3.5f);
             bool isSlime = (emitType < 0.5f || (emitType > 1.5f && emitType < 2.5f) || isLostSlime);
             
-            // 位置をばらけさせる (超重要: 同一座標に重なると圧力が爆発する)
+            // 同一座標の粒子で圧力が発散しないよう、初期位置をばらけさせる。
             float3 randVec = float3(rx, ry, rz);
             if (isSlime && length(randVec) > 0.01f) {
                 // 密度の射影の前に、スライムを球の中に広げる。

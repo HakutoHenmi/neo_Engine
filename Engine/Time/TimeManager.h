@@ -1,5 +1,4 @@
 #pragma once
-#include <chrono>
 
 namespace Engine {
 
@@ -44,11 +43,7 @@ public:
 	}
 
 private:
-	TimeManager() {
-		prev_ = std::chrono::steady_clock::now();
-	}
-
-	std::chrono::steady_clock::time_point prev_;
+	TimeManager() = default;
 	float unscaledDt_ = 0.0f;
 	float scaledDt_ = 0.0f;
 	float timeScale_ = 1.0f;

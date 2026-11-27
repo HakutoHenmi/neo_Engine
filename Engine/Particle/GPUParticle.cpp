@@ -26,7 +26,7 @@ bool GPUParticleSystem::Initialize(ID3D12Device* device, uint32_t maxParticles) 
 
 static void LogFileGPU(const char* msg) {
 	FILE* f = nullptr;
-	fopen_s(&f, "C:\\Users\\k024g\\source\\repos\\neo_Engine\\error_log.txt", "a");
+	fopen_s(&f, "error_log.txt", "a");
 	if (f) {
 		fputs(msg, f);
 		fputc('\n', f);

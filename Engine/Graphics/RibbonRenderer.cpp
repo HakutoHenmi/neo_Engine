@@ -52,7 +52,7 @@ void RibbonRenderer::Draw(uint32_t texture, const Vector4& color, const std::str
 		VertexData vTop{};
 		vTop.position = {points_[i].top.x, points_[i].top.y, points_[i].top.z, 1.0f};
 		vTop.texcoord = {u, 0.0f};
-		vTop.normal = {0, 0, 1}; // ダミー
+		vTop.normal = {0, 0, 1}; // 法線は Z 正方向に固定する。
 
 		VertexData vBottom{};
 		vBottom.position = {points_[i].bottom.x, points_[i].bottom.y, points_[i].bottom.z, 1.0f};

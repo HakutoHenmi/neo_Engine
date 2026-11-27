@@ -32,7 +32,7 @@ float4 main(PSIn p) : SV_TARGET {
         color = color / (color + 1.0);
         color = pow(color, 1.0 / 2.2);
     } else {
-        // 超高速化＆軽量化された美しい宇宙空間の生成（TDRの原因を取り除いた完全版）
+        // キューブマップ未使用時は、視線方向と時刻から星空を生成する。
         color = GetProceduralSpaceColor(dir, gTime);
     }
 
