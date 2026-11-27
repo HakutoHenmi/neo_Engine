@@ -13,8 +13,7 @@ float noise(float2 p) {
                 lerp(hash(i + float2(0.0, 1.0)), hash(i + float2(1.0, 1.0)), f.x), f.y);
 }
 
-float4 main(VSOutput input) : SV_TARGET
-{
+float4 main(VSOutput input) : SV_TARGET {
     float2 uv = input.uv;
     float4 texColor = tex.Sample(smp, uv);
     

@@ -1,0 +1,118 @@
+#pragma once
+// ==================================================
+// SceneManager.h
+//   ・シーン登録（名前→Factory）
+//   ・現在シーンの保持/切替/更新/描画
+//   ・即時切替と「次フレーム切替（リクエスト）」に対応
+//   ・デバッグ/自動起動用ユーティリティ追加
+// ==================================================
+#include "IScene.h"
+#include "../Core/WindowDX.h"
+#include <chrono>
+#include <functional>
+#include <memory>
+#include <string>
+#include <unordered_map>
+#include <unordered_set>
+#include <vector>
+
+namespace Engine {
+
+class SceneManager {
+public:
+	SceneManager() {
+		instance_ = this;
+	}
+	~SceneManager() {
+		if (instance_ == this)
+			instance_ = nullptr;
+	}
+
+public:
+	static SceneManager* GetInstance();
+
+	using Factory = std::function<std::unique_ptr<IScene>()>;
+
+	// シーンの切り替え: RequestChange はまず画面を覆い、シーンを入れ替え
+	// (初期化中はロード画面を見せる)、それから画面を見せる。
+	struct Transition {
+		enum class Phase { Cover, Reveal } phase = Phase::Cover;
+		float progress = 0;        // その段階の中での 0..1
+		float seconds = 0;         // その段階の長さ
+		bool loadingShown = false; // 入れ替えの間にロード画面が出ていた
+		std::string from, to;
+	};
+	using TransitionDrawer = std::function<void(const Transition&)>;
+	void SetTransitionDrawer(TransitionDrawer drawer) {
+		transitionDrawer_ = std::move(drawer);
+	}
+	bool InTransition() const {
+		return transitionActive_;
+	}
+	// UI 専用シーン (RequiresFullRenderer()==false) でも 3D パイプラインを先に用意するシーン。
+	// タイトル・セレクトの Game ビューは軽量経路で表示できるため、通常は指定不要
+	void SetFullRendererScenes(std::unordered_set<std::string> names) {
+		fullRendererScenes_ = std::move(names);
+	}
+
+public:
+	void Register(const std::string& name, Factory factory);
+
+	bool Change(const std::string& name, const SceneParameters& params = {});
+	void RequestChange(const std::string& name, const SceneParameters& params = {});
+	// 暗転もロード画面も挟まずに切り替える (読み込みの軽いシーンどうしの演出をつなぐとき)
+	void RequestInstantChange(const std::string& name, const SceneParameters& params = {});
+	// 黄色の面で覆ったまま、ロード画面も抜ける演出も挟まずに切り替える (次のシーンが同じ面から登場を始めるとき)
+	void RequestCoveredChange(const std::string& name, const SceneParameters& params = {});
+	bool ArrivedCovered() const {
+		return arrivedCovered_;
+	}
+
+	void ProcessPendingChange(); // ★追加: BeginFrame前にシーン切り替えを処理する
+	void Update();
+	void Draw();
+
+	IScene* Current() const {
+		return current_.get();
+	}
+	const std::string& CurrentName() const {
+		return currentName_;
+	}
+	const SceneParameters& CurrentParameters() const {
+		return currentParams_;
+	}
+
+	void SetDX(WindowDX* dx) {
+		dx_ = dx;
+	}
+
+	void Clear();
+
+	// ---- 追加：原因調査＆自動起動用 ----
+	bool Has(const std::string& name) const;
+	std::string FirstRegisteredName() const; // 登録済みの先頭（無ければ空）
+	std::vector<std::string> RegisteredNames() const;
+
+private:
+	std::unordered_map<std::string, Factory> factories_;
+	std::unordered_set<std::string> fullRendererScenes_;
+	std::unique_ptr<IScene> current_;
+	std::string currentName_;
+	SceneParameters currentParams_;
+	std::string pendingNext_;
+	bool instantChange_ = false;
+	bool coveredChange_ = false, arrivedCovered_ = false;
+	SceneParameters pendingParams_;
+	WindowDX* dx_ = nullptr;
+
+	TransitionDrawer transitionDrawer_;
+	Transition transition_;
+	bool transitionActive_ = false;
+	std::chrono::steady_clock::time_point transitionClock_{};
+	static constexpr float kCoverSeconds = 0.6f, kRevealSeconds = 0.75f;
+	void BeginReveal(const std::string& from, bool loadingShown);
+
+	static SceneManager* instance_;
+};
+
+} // namespace Engine

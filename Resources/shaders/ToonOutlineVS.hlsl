@@ -5,8 +5,7 @@
 
 static const float outlineWidth = 0.008f; // アウトラインの太さ（細め）
 
-VSOutput main(float4 pos : POSITION, float3 normal : NORMAL, float2 uv : TEXCOORD)
-{
+VSOutput main(float4 pos : POSITION, float3 normal : NORMAL, float2 uv : TEXCOORD) {
     VSOutput output;
 
     // ワールド座標変換

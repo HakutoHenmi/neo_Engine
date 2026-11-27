@@ -48,9 +48,9 @@ private:
 
 	// b1: 波パラメータ + 時間
 	//
-	// wave1 : dirX, dirZ, amplitude, frequency
-	// wave2 : dirX, dirZ, amplitude, frequency
-	// misc  : time, waterHeight, reserved, reserved
+	// wave1 : 向きX, 向きZ, 振幅, 周波数
+	// wave2 : 向きX, 向きZ, 振幅, 周波数
+	// misc  : 時間, 水面の高さ, 予約, 予約
 	struct CBWave {
 		DirectX::XMFLOAT4 wave1;
 		DirectX::XMFLOAT4 wave2;

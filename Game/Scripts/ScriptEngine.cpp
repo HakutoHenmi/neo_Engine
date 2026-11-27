@@ -35,7 +35,9 @@ void ScriptEngine::Shutdown() {
 }
 
 // クラス名と作成関数を登録する (同名は上書き)
-void ScriptEngine::RegisterScript(const std::string& className, ScriptCreator creator) { scriptFactory_[className] = creator; }
+void ScriptEngine::RegisterScript(const std::string& className, ScriptCreator creator) {
+	scriptFactory_[className] = creator;
+}
 
 // クラス名からスクリプトを作る。未登録なら原因の候補をデバッグ出力に出して nullptr を返す
 std::shared_ptr<IScript> ScriptEngine::CreateScript(const std::string& className) {
@@ -56,19 +58,23 @@ std::shared_ptr<IScript> ScriptEngine::CreateScript(const std::string& className
 // エンティティに付いたスクリプトを順に実行する
 void ScriptEngine::Execute(entt::entity entity, GameScene* scene, float dt) {
 	// シーンが無ければ何もしない
-	if (!scene) return;
+	if (!scene)
+		return;
 	auto& registry = scene->GetComponents();
 	// エンティティが消えているか、スクリプトのコンポーネントが無ければ何もしない
-	if (!registry.valid(entity) || !registry.all_of<ScriptComponent>(entity)) return;
+	if (!registry.valid(entity) || !registry.all_of<ScriptComponent>(entity))
+		return;
 
 	auto& comp = registry.get<ScriptComponent>(entity);
 	// コンポーネントが無効なら実行しない
-	if (!comp.enabled) return;
+	if (!comp.enabled)
+		return;
 
 	// 付いているスクリプトを順に処理する
 	for (auto& entry : comp.scripts) {
 		// クラス名が空の欄は飛ばす
-		if (entry.scriptPath.empty()) continue;
+		if (entry.scriptPath.empty())
+			continue;
 
 		if (entry.instance) {
 			// 既にインスタンスがあれば、そのパラメータをそのまま使う

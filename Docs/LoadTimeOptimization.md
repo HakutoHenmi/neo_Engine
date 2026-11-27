@@ -4,7 +4,7 @@
 
 ## 計測方法
 
-`--load-profile-auto` を付けて起動すると、キー入力を送らずに Title → Select → Game（本編の `chrono.json`）と進み、Gameを30フレーム表示して終了する。各処理の時間はEXEと同じフォルダの `load-profile.txt` に、プロセス開始からの秒・区分・所要ミリ秒・名前の順で残る。`--load-profile` だけなら記録のみ行う。どちらも付けなければ何もしない（[LoadProfile.h](../Engine/LoadProfile.h)）。
+`--load-profile-auto` を付けて起動すると、キー入力を送らずに Title → Select → Game（本編の `chrono.json`）と進み、Gameを30フレーム表示して終了する。各処理の時間はEXEと同じフォルダの `load-profile.txt` に、プロセス開始からの秒・区分・所要ミリ秒・名前の順で残る。`--load-profile` だけなら記録のみ行う。どちらも付けなければ何もしない（[LoadProfile.h](../Engine/Core/LoadProfile.h)）。
 
 計測した項目: シェーダーのコンパイル、テクスチャ、メッシュ、パイプライン、音、NTC、シーン切り替え、`Renderer::InitializeDeferred`、`ChronoSystem` の構築段階、LOD、まとめ読みの各バッチ。
 
@@ -20,7 +20,7 @@
 
 ## 実施した対策
 
-1. **シェーダーのバイトコードキャッシュ**（[ShaderCache.cpp](../Engine/ShaderCache.cpp)）
+1. **シェーダーのバイトコードキャッシュ**（[ShaderCache.cpp](../Engine/Graphics/ShaderCache.cpp)）
    - `Renderer::CompileShader` と `CompileShaderFromFile` のコンパイル結果（DXBC）を保存し、次回から読むだけにする。
    - キーはターゲット・エントリ・フラグと、本体と `#include` で辿った全ファイルの中身。シェーダーを書き換えると別のキーになり、古い結果は使われない。
    - 読む順は、提出物の `Resources/ShaderCache` →ユーザーごとの `%LOCALAPPDATA%\LiquidTime\ShaderCache`。DXBCのヘッダーと大きさを確かめ、壊れたファイルは捨てて再コンパイルする。
@@ -61,7 +61,7 @@
 
 ## 原因
 
-1. **バーの見積もりが初回だけ大きく外れていた**（[LoadingScreen.cpp](../Engine/LoadingScreen.cpp)）。初回の Game+Engine は「500 段階・17 秒」と仮定していたが、実際は 258 段階。バーは 37% 前後で終わって 100% へ飛んでいた。読み込みが長い PC では、段階の半分が早く終わったあと時間の項 (2.6%/秒) だけで這うように進むので、60〜65% あたりで止まって見える。
+1. **バーの見積もりが初回だけ大きく外れていた**（[LoadingScreen.cpp](../Engine/Scene/LoadingScreen.cpp)）。初回の Game+Engine は「500 段階・17 秒」と仮定していたが、実際は 258 段階。バーは 37% 前後で終わって 100% へ飛んでいた。読み込みが長い PC では、段階の半分が早く終わったあと時間の項 (2.6%/秒) だけで這うように進むので、60〜65% あたりで止まって見える。
 2. **メッシュを 1 つ読むたびに GPU を待っていた**（`Renderer::LoadObjMesh`）。ロード画面のスレッドが表示を続けているため、1 回の待ちが表示 1〜2 フレーム分 (16〜33 ms) になり、部屋の小物 63 個で約 2 秒。この間はバーの段階もほとんど進まない。
 3. **BGM の MP3 をその場で全部展開していた**（`Audio::PlayBGM`）。セレクトの曲 0.8〜1.2 秒、ステージの曲 0.5 秒をロード中に、結果の曲 (勝ち・負け) 0.2 秒を結果画面を出すフレームの中で展開していた。結果画面の一瞬の停止はこれ。
 
@@ -76,7 +76,7 @@
 
 - `--load-profile-auto` は Title → Select → Game のあと、2.5 秒で結果画面を出し、8 秒後にやり直しを 1 回押して終わる (結果画面を開くときの引っかかりも load-profile.txt に残る)。配布物を作るときのシェーダーキャッシュの書き出しもこの順で行うので、結果画面で使うシェーダーも同梱される。
 - ロード画面のスレッドは、バーの値・段階数・メインスレッドの処理を load-profile.txt に 0.1 秒ごとに書く (`bar`)。
-- **引っかかりは常に `%LOCALAPPDATA%\LiquidTime\load-log.txt` に残る**（[LoadProfile.h](../Engine/LoadProfile.h)）。ロードごとの合計・ロード画面の 1 フレームが 100 ms を越えたとき (`stall`、そのときメインスレッドがしていた処理つき)・ゲーム中に 1 フレームが 100 ms を越えたとき (`hitch`、そのフレームで 30 ms 以上かかった段階つき)。遅いと言われた PC からはこのファイルを送ってもらう。
+- **引っかかりは常に `%LOCALAPPDATA%\LiquidTime\load-log.txt` に残る**（[LoadProfile.h](../Engine/Core/LoadProfile.h)）。ロードごとの合計・ロード画面の 1 フレームが 100 ms を越えたとき (`stall`、そのときメインスレッドがしていた処理つき)・ゲーム中に 1 フレームが 100 ms を越えたとき (`hitch`、そのフレームで 30 ms 以上かかった段階つき)。遅いと言われた PC からはこのファイルを送ってもらう。
 
 ## 結果（Release、初回起動相当、このノート PC）
 

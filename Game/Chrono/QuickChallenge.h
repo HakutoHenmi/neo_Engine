@@ -7,8 +7,14 @@
 #include <array>
 #include <cstdint>
 namespace Game::Chrono {
-struct QuickChallengeState {bool active=false;int kind=0;};
-inline QuickChallengeState& QuickChallenge(){static QuickChallengeState state;return state;}
-// コマンドの並び (0 上・1 下・2 左・3 右・4 B・5 A)
-inline constexpr std::array<uint8_t,10> QuickChallengeCode{0,0,1,1,2,3,2,3,4,5};
+struct QuickChallengeState {
+	bool active = false;
+	int kind = 0;
+};
+inline QuickChallengeState& QuickChallenge() {
+	static QuickChallengeState state;
+	return state;
 }
+// コマンドの並び (0 上・1 下・2 左・3 右・4 B・5 A)
+inline constexpr std::array<uint8_t, 10> QuickChallengeCode{0, 0, 1, 1, 2, 3, 2, 3, 4, 5};
+} // namespace Game::Chrono

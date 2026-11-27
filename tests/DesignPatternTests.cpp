@@ -1,9 +1,9 @@
 // DesignPatternTests.cpp
 // エンジン層のデザインパターン (Object Pool / Command / Strategy) の回帰テスト。
 // 描画やウィンドウを初期化せずに、ヘッダーだけで動く部分を確認する。
-#include "../Engine/ObjectPool.h"
-#include "../Engine/CommandHistory.h"
-#include "../Engine/EmissionShapes.h"
+#include "../Engine/Core/ObjectPool.h"
+#include "../Engine/Core/CommandHistory.h"
+#include "../Engine/Particle/EmissionShapes.h"
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -68,7 +68,9 @@ void TestObjectPool() {
 	const Item* first = big.Acquire();
 	big.Release(first);
 	for (int frame = 0; frame < 200; ++frame) {
-		for (int i = 0; i < 20; ++i) if (Item* item = big.Acquire()) item->value = frame;
+		for (int i = 0; i < 20; ++i)
+			if (Item* item = big.Acquire())
+				item->value = frame;
 		big.ForEachActive([&](Item& item) { return frame - item.value < 30; });
 	}
 	Require(big.ActiveCount() <= 1000 && big.ActiveCount() == 600, "steady state keeps 30 frames of items");
@@ -79,9 +81,15 @@ void TestObjectPool() {
 class AddCommand final : public Engine::ICommand {
 public:
 	AddCommand(int& target, int amount) : target_(target), amount_(amount) {}
-	void Execute() override { target_ += amount_; }
-	void Undo() override { target_ -= amount_; }
-	std::string Name() const override { return "Add " + std::to_string(amount_); }
+	void Execute() override {
+		target_ += amount_;
+	}
+	void Undo() override {
+		target_ -= amount_;
+	}
+	std::string Name() const override {
+		return "Add " + std::to_string(amount_);
+	}
 
 private:
 	int& target_;
@@ -111,9 +119,11 @@ void TestCommandHistory() {
 	Require(value == 0 && !history.CanUndo(), "undo walks back through mixed command types");
 
 	// 最大件数を超えたら古いものから捨てる
-	for (int i = 1; i <= 5; ++i) history.Execute(std::make_unique<AddCommand>(value, i));
+	for (int i = 1; i <= 5; ++i)
+		history.Execute(std::make_unique<AddCommand>(value, i));
 	Require(value == 15 && history.UndoCount() == 3, "history is capped at max depth");
-	while (history.Undo()) {}
+	while (history.Undo()) {
+	}
 	Require(value == 3, "only the newest commands can be undone (1 + 2 stay applied)");
 }
 
@@ -126,7 +136,9 @@ float SequenceRandom(float min, float max) {
 	return min + t * (max - min);
 }
 
-float Length(const Engine::Vector3& v) { return std::sqrt(v.x * v.x + v.y * v.y + v.z * v.z); }
+float Length(const Engine::Vector3& v) {
+	return std::sqrt(v.x * v.x + v.y * v.y + v.z * v.z);
+}
 
 void TestEmissionShapes() {
 	using Engine::EmissionShape;
@@ -137,11 +149,14 @@ void TestEmissionShapes() {
 	Engine::Vector3 position{1, 2, 3}, velocity{0, 4, 0};
 	cursor = 0;
 	Engine::EmissionShapeFor(EmissionShape::Point).Shape(params, &SequenceRandom, position, velocity);
-	Require(position.x == 1 && position.y == 2 && position.z == 3 && velocity.y == 4 && cursor == 0, "point keeps base values and draws no random numbers");
+	Require(
+	    position.x == 1 && position.y == 2 && position.z == 3 && velocity.y == 4 && cursor == 0,
+	    "point keeps base values and draws no random numbers");
 
 	// 球: 中心から半径以内、乱数は 3 回
 	for (int trial = 0; trial < 50; ++trial) {
-		sequence = {std::fmod(trial * 0.137f, 1.0f), std::fmod(trial * 0.291f, 1.0f), std::fmod(trial * 0.613f + 0.01f, 1.0f)};
+		sequence = {
+		    std::fmod(trial * 0.137f, 1.0f), std::fmod(trial * 0.291f, 1.0f), std::fmod(trial * 0.613f + 0.01f, 1.0f)};
 		position = {0, 0, 0};
 		velocity = {0, 0, 0};
 		cursor = 0;
@@ -160,7 +175,9 @@ void TestEmissionShapes() {
 		Engine::EmissionShapeFor(EmissionShape::Cone).Shape(params, &SequenceRandom, position, velocity);
 		Require(std::abs(Length(velocity) - 5.0f) < 1e-4f, "cone keeps speed");
 		Require(velocity.y > 0, "cone points upward");
-		Require(position.y == 5 && std::hypot(position.x, position.z) <= params.radius + 1e-4f, "cone emits from its base disc");
+		Require(
+		    position.y == 5 && std::hypot(position.x, position.z) <= params.radius + 1e-4f,
+		    "cone emits from its base disc");
 		Require(cursor == 3, "cone draws three random numbers");
 	}
 
@@ -169,7 +186,9 @@ void TestEmissionShapes() {
 	velocity = {1, 1, 1};
 	Engine::EmissionShapeFor(static_cast<EmissionShape>(42)).Shape(params, &SequenceRandom, position, velocity);
 	Require(position.x == 7 && velocity.x == 1, "unknown shape falls back to point");
-	Require(&Engine::EmissionShapeFor(EmissionShape::Cone) == &Engine::EmissionShapeFor(EmissionShape::Cone), "shape strategies are shared instances");
+	Require(
+	    &Engine::EmissionShapeFor(EmissionShape::Cone) == &Engine::EmissionShapeFor(EmissionShape::Cone),
+	    "shape strategies are shared instances");
 }
 } // namespace
 

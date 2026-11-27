@@ -1,11 +1,11 @@
-// GTAO cosine-weighted horizon integration (Jimenez et al., 2016).
-// Independent implementation; four slices with six samples per side.
+// GTAO のコサイン重み付きの地平線積分 (Jimenez ら, 2016)。
+// 独自の実装。4 スライスで、片側 6 サンプルずつ。
 Texture2D<float> depthTexture : register(t0);
 Texture2D<float> fluidDepth : register(t1);
 SamplerState linearClamp : register(s0);
 cbuffer Gtao : register(b0) { float nearPlane,farPlane,projX,projY;float2 texel;float includeFluid,radius; };
-// Reconstruct the position of the depth sample, not the output pixel. DLSS
-// input and post-processing targets can have different resolutions.
+// 出力ピクセルではなく、深度のサンプルの位置を再構成する。DLSS の
+// 入力とポスト処理の描画先は解像度が違うことがある。
 float2 depthUv(float2 uv) {
     uint w,h;depthTexture.GetDimensions(w,h);
     int2 pixel=clamp(int2(uv*float2(w,h)),int2(0,0),int2(w-1,h-1));
@@ -31,7 +31,7 @@ float4 main(float4 position:SV_POSITION,float2 uv:TEXCOORD0):SV_TARGET {
     float3 p=positionAt(uv,z),v=normalize(-p);
     float2 dx=float2(depthTexel.x,0),dy=float2(0,depthTexel.y);
     float zl=depthAt(uv-dx),zr=depthAt(uv+dx),zt=depthAt(uv-dy),zb=depthAt(uv+dy);
-    // Select the less discontinuous neighbour at silhouettes.
+    // 輪郭では、不連続の少ない方の隣を選ぶ。
     float3 x=abs(zl-z)<abs(zr-z)?p-positionAt(uv-dx,zl):positionAt(uv+dx,zr)-p;
     float3 y=abs(zt-z)<abs(zb-z)?p-positionAt(uv-dy,zt):positionAt(uv+dy,zb)-p;
     float3 crossNormal=cross(x,y);float3 normal=dot(crossNormal,crossNormal)>.0000001?normalize(crossNormal):v;
@@ -39,8 +39,8 @@ float4 main(float4 position:SV_POSITION,float2 uv:TEXCOORD0):SV_TARGET {
     float visibility=0,unoccludedVisibility=0;
     [unroll] for(int slice=0;slice<4;++slice){
         float angle=(slice+.5)*.785398163;float2 screen=float2(cos(angle),sin(angle));
-        // uvRadius below applies projection scaling, so the view-space slice
-        // direction is screen itself (do not divide by projection twice).
+        // 下の uvRadius が投影の倍率をかけるので、視点空間のスライスの
+        // 向きは画面そのもの (投影で 2 回割らない)。
         float3 axis=normalize(float3(screen.x,-screen.y,0));
         float3 tangent=normalize(axis-v*dot(axis,v));float3 binormal=normalize(cross(v,tangent));
         float3 projected=normal-binormal*dot(normal,binormal);float weight=length(projected);
@@ -54,13 +54,13 @@ float4 main(float4 position:SV_POSITION,float2 uv:TEXCOORD0):SV_TARGET {
             float sampleDepth=depthAt(at);if(sampleDepth>farPlane*.95)continue;
             float3 delta=positionAt(at,sampleDepth)-p;float distance=length(delta);
             if(distance<.001)continue;
-            // Coplanar/below-surface samples cannot occlude the hemisphere.
-            // A small world-space tolerance also covers depth quantization.
+            // 同一平面上 / 面より下のサンプルは半球を遮蔽できない。
+            // 世界空間の小さな許容幅で、深度の量子化も覆う。
             if(dot(delta,normal)<=.01)continue;
             float falloff=1-smoothstep(radius*.3,radius,distance);
-            // Texel rounding can move a sample sideways from this slice.
-            // Integrate its projection into the slice, otherwise a tilted
-            // unoccluded plane spuriously raises the horizon.
+            // テクセルの丸めで、サンプルがこのスライスから横にずれることがある。
+            // スライスへの射影を積分しないと、傾いた
+            // 遮蔽の無い平面が誤って地平線を持ち上げる。
             float3 sliceDelta=delta-binormal*dot(delta,binormal);
             float sliceDistance=length(sliceDelta);if(sliceDistance<.001)continue;
             float candidate=dot(sliceDelta/sliceDistance,v)-.02;

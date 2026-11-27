@@ -48,9 +48,9 @@ ZIP内の画像222枚を集計した。Textures配下のライセンス2ファ�
 
 ## 維持すべき大きいファイル
 
-- `kloppenheim_06_puresky_8k_cube.dds`（ZIP内26.956 MiB）は `Engine/Renderer.cpp:313` と `Game/Scenes/GameScene.cpp:185` の空・環境用参照があり、未使用候補から外した。
+- `kloppenheim_06_puresky_8k_cube.dds`（ZIP内26.956 MiB）は `Engine/Graphics/Renderer.cpp:313` と `Game/Scenes/GameScene.cpp:185` の空・環境用参照があり、未使用候補から外した。
 - 街の色・法線・粗さ・AOは `CityStage.cpp:93-105` で材質IDからパスを組み立てる。完全なファイル名の文字列検索だけでは未使用と誤判定するため、surfaceIds・小物配列・place/modelのIDも展開して照合した。
-- `PBR/NeutralNormal.png` は `Engine/HdrBloom.inl:3,12` の共通フォールバック用。PBRフォルダー全体を旧素材として除外してはいけない。
+- `PBR/NeutralNormal.png` は `Engine/Graphics/HdrBloom.inl:3,12` の共通フォールバック用。PBRフォルダー全体を旧素材として除外してはいけない。
 
 ## 照合方法と限界
 

@@ -20,7 +20,7 @@ float4 main(PSIn i):SV_TARGET {
     }else if(kind==3){
         alpha=exp(-pow((r-(.15+age*.75))/.035,2))*(1-age)*.7;
     }else if(kind==5){
-        // The quad is a 3m-radius capsule covering the committed 9.52m dash.
+        // 四角形は、確定した 9.52m のダッシュを覆う半径 3m のカプセル。
         float2 q=float2(p.x*3,p.y*7.76);q.y-=clamp(q.y,-4.76,4.76);
         float distance=length(q)/3;float edge=max(.015,fwidth(distance));
         alpha=(1-smoothstep(.93,.99,distance))*(.12+.15*age);

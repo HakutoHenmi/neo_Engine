@@ -7,7 +7,7 @@ float4 main(VSOutput input) : SV_TARGET {
     float3 V = normalize(cameraPos - input.worldpos.xyz);
     float facing = abs(dot(N, V));
     if (dot(N, V) < 0) N = -N;
-    // Dielectric Fresnel for an approximate glass IOR of 1.5.
+    // ガラスの屈折率をおよそ 1.5 とした誘電体のフレネル。
     float fresnel = .04 + .96 * pow(1 - saturate(facing), 5);
     float3 R = reflect(-V, N);
     float3 reflection = lerp(float3(.12, .18, .24), float3(.7, .85, 1), saturate(R.y * .5 + .5));

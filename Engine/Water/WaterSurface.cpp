@@ -1,7 +1,7 @@
 // Engine/Water/WaterSurface.cpp
 #include "WaterSurface.h"
-#include "Camera.h"
-#include "WindowDX.h"
+#include "Camera/Camera.h"
+#include "Core/WindowDX.h"
 
 #include <cassert>
 #include <d3dcompiler.h>
@@ -14,16 +14,16 @@ using namespace DirectX;
 using Microsoft::WRL::ComPtr;
 
 #ifndef HR_CHECK
-#define HR_CHECK(x)                                                                                                                                                                                    \
-	do {                                                                                                                                                                                               \
-		HRESULT __hr__ = (x);                                                                                                                                                                          \
-		if (FAILED(__hr__)) {                                                                                                                                                                          \
-			char buf[256];                                                                                                                                                                             \
-			sprintf_s(buf, "HR failed 0x%08X at %s(%d)\n", (unsigned)__hr__, __FILE__, __LINE__);                                                                                                      \
-			OutputDebugStringA(buf);                                                                                                                                                                   \
-			assert(false && "D3D12 call failed");                                                                                                                                                      \
-			std::abort();                                                                                                                                                                              \
-		}                                                                                                                                                                                              \
+#define HR_CHECK(x)                                                                                                    \
+	do {                                                                                                               \
+		HRESULT __hr__ = (x);                                                                                          \
+		if (FAILED(__hr__)) {                                                                                          \
+			char buf[256];                                                                                             \
+			sprintf_s(buf, "HR failed 0x%08X at %s(%d)\n", (unsigned)__hr__, __FILE__, __LINE__);                      \
+			OutputDebugStringA(buf);                                                                                   \
+			assert(false && "D3D12 call failed");                                                                      \
+			std::abort();                                                                                              \
+		}                                                                                                              \
 	} while (0)
 #endif
 
@@ -64,9 +64,9 @@ cbuffer CBCommon : register(b0)
 
 cbuffer CBWave : register(b1)
 {
-    float4 g_wave1; // dirX, dirZ, amplitude, frequency
-    float4 g_wave2; // dirX, dirZ, amplitude, frequency
-    float4 g_misc;  // time, waterHeight, _, _
+    float4 g_wave1; // 向きX, 向きZ, 振幅, 周波数
+    float4 g_wave2; // 向きX, 向きZ, 振幅, 周波数
+    float4 g_misc;  // 時間, 水面の高さ, 未使用, 未使用
 };
 
 struct VSIn {
@@ -179,14 +179,14 @@ cbuffer CBCommon : register(b0)
 {
     float4x4 g_mvp;
     float4   g_color;
-    float4   g_camPos; // xyz: camera pos
+    float4   g_camPos; // xyz: カメラの位置
 };
 
 cbuffer CBWave : register(b1)
 {
-    float4 g_wave1; // dirX, dirZ, amplitude, frequency
-    float4 g_wave2; // dirX, dirZ, amplitude, frequency
-    float4 g_misc;  // time, waterHeight, _, _
+    float4 g_wave1; // 向きX, 向きZ, 振幅, 周波数
+    float4 g_wave2; // 向きX, 向きZ, 振幅, 周波数
+    float4 g_misc;  // 時間, 水面の高さ, 未使用, 未使用
 };
 
 struct PSIn {
@@ -304,7 +304,7 @@ float4 main(PSIn i) : SV_Target
 
 )";
 
-} // anonymous namespace
+} // namespace
 
 namespace Engine {
 
@@ -447,7 +447,8 @@ bool WaterSurface::createMesh_(WindowDX& dx) {
 	{
 		UINT64 sizeVB = sizeof(Vertex) * verts.size();
 		auto rd = CD3DX12_RESOURCE_DESC::Buffer(sizeVB);
-		HR_CHECK(dx.Dev()->CreateCommittedResource(&hpU, D3D12_HEAP_FLAG_NONE, &rd, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&vb_)));
+		HR_CHECK(dx.Dev()->CreateCommittedResource(
+		    &hpU, D3D12_HEAP_FLAG_NONE, &rd, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&vb_)));
 
 		void* p = nullptr;
 		if (SUCCEEDED(vb_->Map(0, nullptr, &p)) && p) {
@@ -464,7 +465,8 @@ bool WaterSurface::createMesh_(WindowDX& dx) {
 	{
 		UINT64 sizeIB = sizeof(uint32_t) * indices.size();
 		auto rd = CD3DX12_RESOURCE_DESC::Buffer(sizeIB);
-		HR_CHECK(dx.Dev()->CreateCommittedResource(&hpU, D3D12_HEAP_FLAG_NONE, &rd, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&ib_)));
+		HR_CHECK(dx.Dev()->CreateCommittedResource(
+		    &hpU, D3D12_HEAP_FLAG_NONE, &rd, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&ib_)));
 
 		void* p = nullptr;
 		if (SUCCEEDED(ib_->Map(0, nullptr, &p)) && p) {
@@ -480,10 +482,12 @@ bool WaterSurface::createMesh_(WindowDX& dx) {
 	// CB (b0, b1)
 	{
 		auto rd = CD3DX12_RESOURCE_DESC::Buffer(256);
-		HR_CHECK(dx.Dev()->CreateCommittedResource(&hpU, D3D12_HEAP_FLAG_NONE, &rd, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&cbCommon_)));
+		HR_CHECK(dx.Dev()->CreateCommittedResource(
+		    &hpU, D3D12_HEAP_FLAG_NONE, &rd, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&cbCommon_)));
 
 		auto rd2 = CD3DX12_RESOURCE_DESC::Buffer(256);
-		HR_CHECK(dx.Dev()->CreateCommittedResource(&hpU, D3D12_HEAP_FLAG_NONE, &rd2, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&cbWave_)));
+		HR_CHECK(dx.Dev()->CreateCommittedResource(
+		    &hpU, D3D12_HEAP_FLAG_NONE, &rd2, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&cbWave_)));
 	}
 
 	return true;
@@ -509,11 +513,11 @@ bool WaterSurface::createPipeline_(WindowDX& dx) {
 
 	// 入力レイアウト
 	D3D12_INPUT_ELEMENT_DESC il[] = {
-	    {"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0,  D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
-	    {"TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT,    0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+	    {"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+	    {"TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
 	};
 
-	// PSO
+	// パイプラインステート (PSO)
 	D3D12_GRAPHICS_PIPELINE_STATE_DESC d{};
 	d.pRootSignature = rs_.Get();
 	d.VS = {vs->GetBufferPointer(), vs->GetBufferSize()};

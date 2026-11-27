@@ -1,5 +1,5 @@
-// Light and camera views read the same, current reconstructed liquid surface.
-// No particle discs: a particle's support radius is not an opaque silhouette.
+// ライトとカメラの視点は、同じ現在の再構成した液体の表面を読む。
+// 粒子の円盤は使わない: 粒子の影響半径は不透明な輪郭ではない。
 #include "FluidVolumeCommon.hlsli"
 cbuffer LightCamera : register(b0) {
     row_major float4x4 lightViewProjection;
@@ -12,13 +12,13 @@ SamplerState linearClamp : register(s0);
 struct ShadowVertex {float4 position:SV_POSITION;float2 ndc:TEXCOORD0;};
 ShadowVertex ShadowVS(uint vertex:SV_VertexID) {
     const float2 corners[6]={float2(0,0),float2(0,1),float2(1,0),float2(1,0),float2(0,1),float2(1,1)};
-    ShadowVertex o;o.ndc=lerp(clipBounds.xy,clipBounds.zw,corners[vertex]);o.position=float4(o.ndc,0,1);return o;
+    ShadowVertex output;output.ndc=lerp(clipBounds.xy,clipBounds.zw,corners[vertex]);output.position=float4(output.ndc,0,1);return output;
 }
 float ShadowDensity(float3 world) {
     float3 uv=(world-volumeOrigin)/(voxelSize*volumeSize);
     if(any(uv<0)||any(uv>1))return 0;
     float2 d=shadowDensity.SampleLevel(linearClamp,uv,0).xy;
-    return max(d.x,d.y); // Preserve the slime/decoy shadow policy; water is transparent.
+    return max(d.x,d.y); // スライム / 分身の影の決まりを保つ。水は透明。
 }
 float ShadowPS(ShadowVertex input):SV_DEPTH {
     float4 start=mul(float4(input.ndc,0,1),inverseLightViewProjection);

@@ -59,15 +59,15 @@ float3 SlimeEyeGuide(uint eye) {
 float3 SlimeBubblePosition(uint id,out float radius,out float visibility) {
     float3 random=SlimeHash(float(id));
     if(SlimeMorphActive()){
-        // Stable, unsorted simulation identities distribute cavities throughout
-        // the real liquid, including a weapon's head, handle and moving edges.
+        // 並べ替えていない決まったシミュレーションの番号で、武器の頭・柄・動く縁を含む
+        // 実際の液体の中全体に空洞を散らす。
         uint count=max(1,(uint)playerMorph.z);
         uint anchor=min(count-1,(uint)((float(id)+.5f)*float(count)/float(slimeInteriorBubbles)));
         VolumeParticle particle=originalParticles[anchor];
         radius=min(.13f,lerp(.04f,.09f,random.y)*sqrt(SlimeDecorationScale()));
         float3 position=particle.position+float3(sin(time*.55f+id)*.035f,sin(time*.7f+id)*.06f,cos(time*.55f+id)*.035f);
-        // A cavity fades before touching the skin; it never carves a moving
-        // crater or becomes a row of spheres on the top of the hammer.
+        // 空洞は外側の膜に触れる前に消える: 動くくぼみを彫ったり、
+        // ハンマーの上面に球の列になったりはしない。
         float margin=radius*1.4f;
         float density=Density(position).x;
         density=min(density,min(Density(position+float3(margin,0,0)).x,Density(position-float3(margin,0,0)).x));
@@ -80,7 +80,7 @@ float3 SlimeBubblePosition(uint id,out float radius,out float visibility) {
     float angle=float(id)*2.39996323f+time*.22f;
     float radial=sqrt(random.z)*.78f;
     float2 spread=float2(cos(angle),sin(angle))*radial;
-    // Three uneven rising plumes, with a minority of freely dispersed cavities.
+    // ふぞろいな 3 本の立ち上る泡の流れと、自由に散らばる少数の空洞。
     if(id%4!=0){float cluster=float(id%3)*2.094395f;
         spread=spread*.32f+float2(cos(cluster),sin(cluster))*.33f;}
     float height=lerp(-.62f,.08f,1-playerAir)+age*(playerAir>.5f?1.42f:.76f);
@@ -90,8 +90,8 @@ float3 SlimeBubblePosition(uint id,out float radius,out float visibility) {
     visibility=smoothstep(0,.08f,age)*(1-smoothstep(.88f,1,age));
     return SlimeFieldPosition(field);
 }
-// Eye/cavity geometry uses rigid world-space radii. Body deformation moves
-// centers only; it never scales, shears or projects a surface texture onto them.
+// 目 / 空洞の形は世界空間の固い半径を使う。体の変形は中心を動かすだけで、
+// 拡大・ゆがみ・面のテクスチャの投影は決して行わない。
 bool SlimeEllipsoidHit(float3 origin,float3 ray,float3 center,float3 radii,float3 forward,out float distance,out float3 normal) {
     float3 right=float3(forward.z,0,-forward.x),delta=origin-center;
     float3 local=float3(dot(delta,right),delta.y,dot(delta,forward))/radii;

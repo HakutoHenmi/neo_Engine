@@ -21,14 +21,14 @@ struct VSOut {
 };
 
 VSOut main(uint vId : SV_VertexID, uint instanceID : SV_InstanceID) {
-    VSOut o;
+    VSOut output;
     Particle p = Particles[instanceID];
     
     // ★追加: 非アクティブなパーティクルは頂点を縮退させてデバッグ描画を完全スキップ
     if (p.color.a < 0.01f || p.position.y < -500.0f) {
-        o.svpos = float4(0, 0, 0, 0);
-        o.color = float4(0, 0, 0, 0);
-        return o;
+        output.svpos = float4(0, 0, 0, 0);
+        output.color = float4(0, 0, 0, 0);
+        return output;
     }
     
     float3 pos = p.position;
@@ -68,8 +68,8 @@ VSOut main(uint vId : SV_VertexID, uint instanceID : SV_InstanceID) {
     else if (vId == 4) { currentPos = tip; c = tipColor; }
     else if (vId == 5) { currentPos = tip - dir * headLen - right * headWidth; c = tipColor; }
     
-    o.svpos = mul(float4(currentPos, 1.0f), gViewProj);
-    o.color = c;
+    output.svpos = mul(float4(currentPos, 1.0f), gViewProj);
+    output.color = c;
     
-    return o;
+    return output;
 }

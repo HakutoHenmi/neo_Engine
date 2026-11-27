@@ -1,47 +1,45 @@
 #include "Obj.hlsli"
 
-float4 main(VSOutput input) : SV_TARGET
-{
-    // ãŒü‚«i‰~’Œ‚Ìƒtƒ^j‚ğŠ®‘S‚É•`‚©‚È‚¢
-    if (input.normal.y > 0.8f)
-    {
+float4 main(VSOutput input) : SV_TARGET {
+    // ä¸Šå‘ãï¼ˆå††æŸ±ã®ãƒ•ã‚¿ï¼‰ã‚’å®Œå…¨ã«æã‹ãªã„
+    if (input.normal.y > 0.8f) {
         discard;
     }
     
     // -------------------------
-    // ‚‚³iƒ[ƒ‹ƒhYŠî€j
+    // é«˜ã•ï¼ˆãƒ¯ãƒ¼ãƒ«ãƒ‰YåŸºæº–ï¼‰
     // -------------------------
     float h = input.worldpos.y;
 
-    // ‰º‚©‚çã‚Ö—¬‚ê‚é
+    // ä¸‹ã‹ã‚‰ä¸Šã¸æµã‚Œã‚‹
     float flow = sin(h * 8.0f - time * 6.0f);
     flow = flow * 0.5f + 0.5f;
     flow = pow(flow, 3.0f);
 
     // -------------------------
-    // ’†S‚©‚ç‚Ì‹——£i”¼Œaj
+    // ä¸­å¿ƒã‹ã‚‰ã®è·é›¢ï¼ˆåŠå¾„ï¼‰
     // -------------------------
     float3 center = float3(world._41, world._42, world._43);
     float dist = length(input.worldpos.xz - center.xz);
 
-    // ’†S‚Ù‚Ç‹­‚¢i’Œ‚Ìgchj
+    // ä¸­å¿ƒã»ã©å¼·ã„ï¼ˆï¼æŸ±ã®â€œèŠ¯â€ï¼‰
     float radial = saturate(1.0f - dist * 3.0f);
     radial = pow(radial, 2.0f);
 
     // -------------------------
-    // ªŒ³ƒu[ƒXƒgiƒLƒ…[ƒuÚG•”j
+    // æ ¹å…ƒãƒ–ãƒ¼ã‚¹ãƒˆï¼ˆã‚­ãƒ¥ãƒ¼ãƒ–æ¥è§¦éƒ¨ï¼‰
     // -------------------------
     float base = saturate(1.0f - abs(h - center.y) * 4.0f);
 
     // -------------------------
-    // ƒtƒŒƒlƒ‹‚Å‰‚ğ‚¿‚å‚¢‹­’²
+    // ãƒ•ãƒ¬ãƒãƒ«ã§ç¸ã‚’ã¡ã‚‡ã„å¼·èª¿
     // -------------------------
     float3 N = normalize(input.normal);
     float3 V = normalize(cameraPos - input.worldpos.xyz);
     float fresnel = pow(1.0f - saturate(dot(N, V)), 2.5f);
 
     // -------------------------
-    // ƒGƒlƒ‹ƒM[‡¬
+    // ã‚¨ãƒãƒ«ã‚®ãƒ¼åˆæˆ
     // -------------------------
     float energy =
         flow * 0.8f +
@@ -49,7 +47,7 @@ float4 main(VSOutput input) : SV_TARGET
         base * 1.2f +
         fresnel * 0.4f;
 
-    // –¬“®
+    // è„ˆå‹•
     energy *= (0.8f + 0.2f * sin(time * 5.0f));
 
 

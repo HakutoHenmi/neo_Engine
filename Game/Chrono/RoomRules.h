@@ -8,50 +8,89 @@
 namespace Game::Chrono {
 // 面: 床の範囲・高さ (x0 の側・反対側)・物を置く区画 (3 ベッド・4 机。0 は決まった物だけ)
 // 丘の縁の幅・縁の高さ・この高さより下にいるときは無い物とする高さ (ベッドと机の下を通る)
-struct RoomSurface {CityRect foot{};float h0=0,h1=0;int area=0;float hill=0,base=0,minY=0;};
+struct RoomSurface {
+	CityRect foot{};
+	float h0 = 0, h1 = 0;
+	int area = 0;
+	float hill = 0, base = 0, minY = 0;
+};
 // 本の階段のいちばん上の段の高さ (ベッドへ乗り移る所) と、1 段の高さと奥行き
-inline constexpr float RoomBedTop=56,RoomStairRise=7,RoomStairDepth=12;
+inline constexpr float RoomBedTop = 56, RoomStairRise = 7, RoomStairDepth = 12;
 // ベッドのマットレスと掛け布団の上の面の高さ (モデルに合わせる)
-inline constexpr float RoomMattressTop=54.8f,RoomQuiltTop=58.6f;
+inline constexpr float RoomMattressTop = 54.8f, RoomQuiltTop = 58.6f;
 // ベッドの下を囲む収納ケースの高さ (開始の大きさでは跳び越えられず、8cm で跳び越えられる)
-inline constexpr float RoomCaseHeight=8.4f;
+inline constexpr float RoomCaseHeight = 8.4f;
 // 部屋の外に敷く床の幅。カメラは壁の外のこの範囲まで出られる (間の壁は透かす)
-inline constexpr float RoomOutsideFloor=200;
+inline constexpr float RoomOutsideFloor = 200;
 // 出口の収納ケースの左の端 (x)。ケースは x がこれから -60 まで、z が -192 から -180 まで
-inline constexpr float RoomExitX0=-108;
+inline constexpr float RoomExitX0 = -108;
 // ベッドの下 (収納ケースの内側の床。ステージの最初のチュートリアルの場所)。ケースの上やベッドの上は含まない
-inline bool RoomUnderBed(Vec p){return p.x<-72&&p.z<-192&&p.y<20;}
+inline bool RoomUnderBed(Vec p) {
+	return p.x < -72 && p.z < -192 && p.y < 20;
+}
 // 本棚とおもちゃ箱・机・こたつ・将棋盤の上の高さ (モデルの上の面に合わせる。tests の --slime-life-room-surfaces で確かめる)
-inline constexpr float RoomShelfTop=141.05f,RoomToyboxTop=43.2f,RoomDeskTop=87.f,RoomDeskBackTop=118.3f,RoomKotatsuTop=42.5f,RoomShogiTop=23.f;
-inline constexpr std::array<RoomSurface,26> RoomSurfaces{{
-    // ベッド: マットレス・掛け布団・枕・頭の板。範囲と高さはモデル (bed.obj を実寸で置いた形) の上の面に合わせる
-    // (以前は高さが約 2 低く、ベッドの上に置いた物が掛け布団と枕に埋もれて見えなかった)
-    {{-300,-300,-60,-180},RoomMattressTop,RoomMattressTop,3,0,0,20},{{-234.5f,-298.1f,-67.9f,-180},RoomQuiltTop,RoomQuiltTop,0,1.5f,RoomMattressTop,20},
-    {{-297.6f,-288,-235.2f,-192},63.2f,63.2f,0,12,RoomQuiltTop,20},{{-300,-300,-291.5f,-180},88.5f,88.5f,0,0,0,20},
-    // ベッドの下の出口の収納ケース (ベッドの下から見て前の列の右端だけ。ほかは跳び越えられない本の壁 RoomBookWalls)
-    {{RoomExitX0,-192,-60,-180},RoomCaseHeight,RoomCaseHeight},
-    // ベッドへ登る本の階段 (高い段から順に)
-    {{-230,-180,-130,-168},56,56},{{-230,-168,-130,-156},49,49},{{-230,-156,-130,-144},42,42},{{-230,-144,-130,-132},35,35},
-    {{-230,-132,-130,-120},28,28},{{-230,-120,-130,-108},21,21},{{-230,-108,-130,-96},14,14},{{-230,-96,-130,-84},7,7},
-    // 机と背の板 (ベッド側へこぼれた蜂蜜をつたって登る)
-    {{170,-300,300,-228},RoomDeskTop,RoomDeskTop,4,0,0,40},{{170,-300,300,-296},RoomDeskBackTop,RoomDeskBackTop,0,0,0,40},
-    // こたつ: 布団の裾からそのまま天板まで登れる
-    {{-238,58,-2,294},RoomKotatsuTop,RoomKotatsuTop,0,74},
-    // 座布団: 周りがなだらかなので乗り越えられる
-    {{-299,139,-225,213},6,6,0,11},{{0,83,74,157},6,6,0,11},{{0,195,74,269},6,6,0,11},{{133,93,207,167},6,6,0,11},{{209,153,283,227},6,6,0,11},
-    // 将棋盤と、積んだ本の段
-    {{148.4f,166.6f,191.6f,213.4f},RoomShogiTop,RoomShogiTop},{{136.4f,179,148.4f,201},15.3f,15.3f},{{124.4f,179,136.4f,201},7.65f,7.65f},
-    // 本棚とおもちゃ箱の上 (こぼれた液体をつたって登る。下にいる間は無い物とする)
-    {{264,-110,300,-10},RoomShelfTop,RoomShelfTop,0,0,0,100},{{-268,-44,-196,4},RoomToyboxTop,RoomToyboxTop,0,0,0,30}}};
+inline constexpr float RoomShelfTop = 141.05f, RoomToyboxTop = 43.2f, RoomDeskTop = 87.f, RoomDeskBackTop = 118.3f,
+                       RoomKotatsuTop = 42.5f, RoomShogiTop = 23.f;
+inline constexpr std::array<RoomSurface, 26> RoomSurfaces{
+    {// ベッド: マットレス・掛け布団・枕・頭の板。範囲と高さはモデル (bed.obj を実寸で置いた形) の上の面に合わせる
+     // (以前は高さが約 2 低く、ベッドの上に置いた物が掛け布団と枕に埋もれて見えなかった)
+     {{-300, -300, -60, -180}, RoomMattressTop, RoomMattressTop, 3, 0, 0, 20},
+     {{-234.5f, -298.1f, -67.9f, -180}, RoomQuiltTop, RoomQuiltTop, 0, 1.5f, RoomMattressTop, 20},
+     {{-297.6f, -288, -235.2f, -192}, 63.2f, 63.2f, 0, 12, RoomQuiltTop, 20},
+     {{-300, -300, -291.5f, -180}, 88.5f, 88.5f, 0, 0, 0, 20},
+     // ベッドの下の出口の収納ケース (ベッドの下から見て前の列の右端だけ。ほかは跳び越えられない本の壁 RoomBookWalls)
+     {{RoomExitX0, -192, -60, -180}, RoomCaseHeight, RoomCaseHeight},
+     // ベッドへ登る本の階段 (高い段から順に)
+     {{-230, -180, -130, -168}, 56, 56},
+     {{-230, -168, -130, -156}, 49, 49},
+     {{-230, -156, -130, -144}, 42, 42},
+     {{-230, -144, -130, -132}, 35, 35},
+     {{-230, -132, -130, -120}, 28, 28},
+     {{-230, -120, -130, -108}, 21, 21},
+     {{-230, -108, -130, -96}, 14, 14},
+     {{-230, -96, -130, -84}, 7, 7},
+     // 机と背の板 (ベッド側へこぼれた蜂蜜をつたって登る)
+     {{170, -300, 300, -228}, RoomDeskTop, RoomDeskTop, 4, 0, 0, 40},
+     {{170, -300, 300, -296}, RoomDeskBackTop, RoomDeskBackTop, 0, 0, 0, 40},
+     // こたつ: 布団の裾からそのまま天板まで登れる
+     {{-238, 58, -2, 294}, RoomKotatsuTop, RoomKotatsuTop, 0, 74},
+     // 座布団: 周りがなだらかなので乗り越えられる
+     {{-299, 139, -225, 213}, 6, 6, 0, 11},
+     {{0, 83, 74, 157}, 6, 6, 0, 11},
+     {{0, 195, 74, 269}, 6, 6, 0, 11},
+     {{133, 93, 207, 167}, 6, 6, 0, 11},
+     {{209, 153, 283, 227}, 6, 6, 0, 11},
+     // 将棋盤と、積んだ本の段
+     {{148.4f, 166.6f, 191.6f, 213.4f}, RoomShogiTop, RoomShogiTop},
+     {{136.4f, 179, 148.4f, 201}, 15.3f, 15.3f},
+     {{124.4f, 179, 136.4f, 201}, 7.65f, 7.65f},
+     // 本棚とおもちゃ箱の上 (こぼれた液体をつたって登る。下にいる間は無い物とする)
+     {{264, -110, 300, -10}, RoomShelfTop, RoomShelfTop, 0, 0, 0, 100},
+     {{-268, -44, -196, 4}, RoomToyboxTop, RoomToyboxTop, 0, 0, 0, 30}}};
 // 面の中のその点の高さ
-inline float RoomSurfaceHeight(const RoomSurface& s,Vec p){
-    const auto& f=s.foot;
-    if(s.hill>0){float edge=std::min(std::min(p.x-f.x0,f.x1-p.x),std::min(p.z-f.z0,f.z1-p.z));return s.base+(s.h0-s.base)*std::min(1.f,std::max(0.f,edge)/s.hill);}
-    float u=(p.x-f.x0)/(f.x1-f.x0);return s.h0+(s.h1-s.h0)*u;
+inline float RoomSurfaceHeight(const RoomSurface& s, Vec p) {
+	const auto& f = s.foot;
+	if (s.hill > 0) {
+		float edge = std::min(std::min(p.x - f.x0, f.x1 - p.x), std::min(p.z - f.z0, f.z1 - p.z));
+		return s.base + (s.h0 - s.base) * std::min(1.f, std::max(0.f, edge) / s.hill);
+	}
+	float u = (p.x - f.x0) / (f.x1 - f.x0);
+	return s.h0 + (s.h1 - s.h0) * u;
 }
-inline bool RoomOnSurface(const RoomSurface& s,Vec p){return p.y>=s.minY&&p.x>=s.foot.x0&&p.x<=s.foot.x1&&p.z>=s.foot.z0&&p.z<=s.foot.z1;}
+inline bool RoomOnSurface(const RoomSurface& s, Vec p) {
+	return p.y >= s.minY && p.x >= s.foot.x0 && p.x <= s.foot.x1 && p.z >= s.foot.z0 && p.z <= s.foot.z1;
+}
 // その点の一番高い面の高さ (面が無ければ床の 0)。p.y より上の面だけが対象なので、ベッドの下では床になる
-inline float RoomGround(Vec p){float height=0;for(const auto& s:RoomSurfaces)if(RoomOnSurface(s,p))height=std::max(height,RoomSurfaceHeight(s,p));return height;}
-// 高い所も含めた一番上の面の高さ (物を置くときに使う)
-inline float RoomTop(Vec p){p.y=1e6f;return RoomGround(p);}
+inline float RoomGround(Vec p) {
+	float height = 0;
+	for (const auto& s : RoomSurfaces)
+		if (RoomOnSurface(s, p))
+			height = std::max(height, RoomSurfaceHeight(s, p));
+	return height;
 }
+// 高い所も含めた一番上の面の高さ (物を置くときに使う)
+inline float RoomTop(Vec p) {
+	p.y = 1e6f;
+	return RoomGround(p);
+}
+} // namespace Game::Chrono

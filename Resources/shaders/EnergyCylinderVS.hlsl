@@ -1,7 +1,6 @@
 #include "Obj.hlsli"
 
-VSOutput main(float4 pos : POSITION, float3 normal : NORMAL, float2 uv : TEXCOORD)
-{
+VSOutput main(float4 pos : POSITION, float3 normal : NORMAL, float2 uv : TEXCOORD) {
     VSOutput output;
 
     // UVのV値(y)を用いて長手方向の位置を取得

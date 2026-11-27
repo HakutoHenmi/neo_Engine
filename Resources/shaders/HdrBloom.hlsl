@@ -1,4 +1,4 @@
-// Linear FP16 radiance throughout; threshold once before the downsample chain.
+// 最初から最後まで線形の FP16 の放射輝度。縮小の連鎖の前に 1 回だけしきい値をかける。
 Texture2D<float4> source : register(t0);
 Texture2D<float4> lowResolution : register(t1);
 SamplerState linearClamp : register(s0);
@@ -11,7 +11,7 @@ float3 extract(float3 c) {
 }
 float4 Downsample(float4 position:SV_POSITION,float2 uv:TEXCOORD0):SV_TARGET {
     float3 sum=0;
-    // Box integration at source texel centres avoids bright-point flicker.
+    // 元のテクセルの中心での箱型の積分で、明るい点のちらつきを防ぐ。
     [unroll] for(int y=-1;y<=2;++y) [unroll] for(int x=-1;x<=2;++x) {
         float3 c=source.SampleLevel(linearClamp,saturate(uv+(float2(x,y)-.5)*texel),0).rgb;
         sum+=firstLevel>.5?extract(c):c;
@@ -24,6 +24,6 @@ float4 Upsample(float4 position:SV_POSITION,float2 uv:TEXCOORD0):SV_TARGET {
         float weight=(x==0?2:1)*(y==0?2:1);
         sum+=lowResolution.SampleLevel(linearClamp,saturate(uv+float2(x,y)*texel),0).rgb*weight;
     }
-    // Normalized pyramid reconstruction: intensity does not grow with mip count.
+    // 正規化したピラミッドの再構成: ミップの数が増えても強さは増えない。
     return float4(lerp(source.SampleLevel(linearClamp,uv,0).rgb,sum/16,.65),1);
 }

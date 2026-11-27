@@ -1,5 +1,5 @@
-// Pre-DLSS occlusion: multiplied into the jittered HDR scene (blend: dest*src)
-// so DLSS antialiases and stabilizes AO / RT shadow contact darkening.
+// DLSS の前の遮蔽: ジッター付きの HDR シーンに掛け合わせ (合成: dest*src)、
+// DLSS が AO / RT 影の接地の暗さのアンチエイリアスと安定化を行えるようにする。
 #define RT_LIGHTING_COMPOSITE
 #include "ChronoFocusPost.hlsl"
 float4 main(float4 position:SV_POSITION,float2 uv:TEXCOORD0):SV_TARGET {

@@ -49,9 +49,9 @@ float4 RenderPhase(float4 svpos, float2 uv, float viewZ, float4 color,
     float frontDepth = DecodeSurfaceDepth(surfaceKey);
     uint frontPhase = DecodeSurfacePhase(surfaceKey);
 
-    // Accumulate the thickness behind the resolved front surface.  The old
-    // symmetric 0.14 band kept only a thin shell, exposing every individual
-    // particle and leaving water below its visibility threshold.
+    // 決まった手前の面の奥の厚みを積み上げる。以前の左右対称の
+    // 0.14 の帯では薄い殻しか残らず、粒子が 1 つずつ見え、
+    // 水が見えるしきい値を下回っていた。
     float layerThickness = (frontPhase == 2U) ? 1.6f : 2.3f;
     float depthBehindFront = fragmentDepth - frontDepth;
     if (surfaceKey >= 1.0e19f || frontPhase != GetFluidPhase(type) ||
@@ -84,8 +84,8 @@ float4 RenderPhase(float4 svpos, float2 uv, float viewZ, float4 color,
     } else {
         // カエルの卵のように黒く濁らないよう、元の明るい色をそのまま使う
         outColor.rgb = color.rgb;
-        // The larger reconstruction footprint closes gaps; keep each sample
-        // light so the accumulated surface does not saturate into white balls.
+        // 大きな再構成の広がりが隙間を閉じる。積み上げた面が白い玉に
+        // 飽和しないよう、サンプルごとは軽くしておく。
         // 完全に1枚の水たまりだけが残るようになります。
         outColor.a = alpha * 0.055f * color.a;
     }

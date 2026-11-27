@@ -2,7 +2,7 @@
 
 This is a review aid, not a reachability analyzer or an automatic deletion tool.
 The meadow-before-city branch was manually traced in ChronoInk.cpp. FBX base-color
-references can be supplied from the same ufbx API used by Engine/Model.cpp.
+references can be supplied from the same ufbx API used by Engine/Graphics/Model.cpp.
 """
 from collections import defaultdict
 import csv
@@ -102,7 +102,7 @@ def main():
                   fbxBaseColorReferencesInspected=len(deps),
                   sourceSha256={p: hashlib.sha256((ROOT/p).read_bytes()).hexdigest() for p in [
                       "Game/Systems/ChronoInk.cpp", "Game/Systems/CityStage.cpp", "Game/Systems/ChronoSystem.cpp",
-                      "Engine/Model.cpp", "Engine/PathUtils.h", "Resources/Data/game.json", "scripts/SlimeResources.json"]},
+                      "Engine/Graphics/Model.cpp", "Engine/Core/PathUtils.h", "Resources/Data/game.json", "scripts/SlimeResources.json"]},
                   groups=dict(groups), textures=rows)
     (DEST/"inventory.json").write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
     stream = io.StringIO(newline="")

@@ -1,4 +1,4 @@
-// Match the visible grass cutout in both regular and instanced shadow passes.
+// 通常とインスタンス描画の両方の影のパスで、見えている草の切り抜きに合わせる。
 Texture2D albedo : register(t0);
 SamplerState materialSampler : register(s0);
 cbuffer Frame : register(b0) {row_major float4x4 view,proj,lightVP;float3 camera;float time;};

@@ -14,17 +14,17 @@ RWTexture3D<float4> outputDensity : register(u3);
 RWTexture3D<float4> outputVelocity : register(u4);
 SamplerState linearClamp : register(s0);
 
-// This entry point shares t0 with BuildShapes/SplatDensity. Each PSO only uses
-// one of the two declarations, with its own structured-buffer stride.
+// この入口は t0 を BuildShapes / SplatDensity と共有する。各 PSO は 2 つの宣言の
+// どちらか一方だけを、それぞれの構造化バッファの間隔で使う。
 struct FluidTendril { float3 start;float radius;float3 end;float endRadius; };
 StructuredBuffer<FluidTendril> tendrils : register(t0);
 [numthreads(64,1,1)]
 void SplatTendrils(uint3 id : SV_DispatchThreadID) {
     if(id.x>=particleCount)return;
     FluidTendril arm=tendrils[id.x];
-    // A negative end radius marks a box skin: start is the centre, end the half
-    // size, radius the yaw and -endRadius the skin thickness. Swallowed objects
-    // push the body surface out in their own shape.
+    // 終わりの半径が負なら箱の外皮の印: start が中心、end が半分の
+    // 大きさ、radius が向き、-endRadius が外皮の厚み。飲み込んだ物は
+    // 自分の形で体の表面を押し出す。
     if(arm.endRadius<0){
         float pad=max(-arm.endRadius*1.5f,voxelSize*1.65f),reach=length(arm.end)+pad,c=cos(arm.radius),s=sin(arm.radius);
         int3 low=max(int3(0,0,0),(int3)floor((arm.start-reach-volumeOrigin)/voxelSize-.5f));
@@ -48,8 +48,8 @@ void SplatTendrils(uint3 id : SV_DispatchThreadID) {
         float radius=max(lerp(arm.radius,arm.endRadius,along)*1.5f,voxelSize*1.65f);
         float3 delta=world-lerp(arm.start,arm.end,along);
         float w=saturate(1-dot(delta,delta)/(radius*radius));
-        // Union, rather than summation, keeps joints and overlapping arms from
-        // swelling. The common filtering, raymarch, shadows and refraction follow.
+        // 合計ではなく和集合にすることで、関節や重なった腕が膨らまない。
+        // 共通のフィルター・レイマーチ・影・屈折がこの後に続く。
         uint value=(uint)round(1.4f*w*w*4096.f);
         InterlockedMax(densityAccum[VolumeIndex(cell)].x,value);
     }
@@ -95,22 +95,22 @@ void BuildShapes(uint3 id : SV_DispatchThreadID) {
         shape.info=float4(0,.5f,0,1);shapes[i]=shape;return;
     }
     if(p.type>=8.0f){
-        // Overlapping anisotropic kernels form one continuous liquid density
-        // surface; the player raymarch supplies the same normals and optics.
+        // 重なった異方性のカーネルが 1 つの連続した液体の密度の面になる。
+        // プレイヤーのレイマーチが同じ法線と光学的な性質を与える。
         float width=max(.35f,p.pad.x),height=max(.28f,p.pad.y);
         shape.row0=float4(1/width,0,0,p.position.x);shape.row1=float4(0,1/height,0,p.position.y);shape.row2=float4(0,0,1/width,p.position.z);
         shape.info=float4(3.2f*p.color.a,width,0,1);shapes[i]=shape;return;
     }
     if(p.type>=4.0f&&p.type<8.0f&&p.pad.y>0){
-        // Sized ballistic slime: a grown body coarsens the voxels, so a fixed
-        // sub-voxel droplet would vanish. Its kernel follows the body's scale.
-        // Drops thin out over the end of their life.
+        // 大きさ指定の放物線を描くスライム: 体が大きくなるとボクセルが粗くなるので、
+        // ボクセルより小さい決まった大きさのしずくは消えてしまう。カーネルは体の倍率に従う。
+        // しずくは寿命の終わりにかけて薄くなる。
         float life=max(.02f,(p.type-4)*10),fade=1-.6f*smoothstep(.5f,1.f,p.pad.x/life);
         float radius=max(.6f*p.pad.y*fade,voxelSize*1.05f);
         float3 axes=radius,along=float3(0,0,1),across=float3(1,0,0),up=float3(0,1,0);
-        if(p.pad.z>.5f)axes=float3(radius*1.7f,radius*.35f,radius*1.7f); // landed: a flat splat
+        if(p.pad.z>.5f)axes=float3(radius*1.7f,radius*.35f,radius*1.7f); // 着地済み: 平たい跡
         else{float speed=length(p.velocity);
-            // Airborne drops stretch along their motion like real droplets.
+            // 空中のしずくは本物のしずくのように動きの向きに伸びる。
             if(speed>.5f){along=p.velocity/speed;across=normalize(cross(along,abs(along.y)<.9f?float3(0,1,0):float3(1,0,0)));up=cross(along,across);
                 axes=float3(radius*.9f,radius*.9f,radius*(1+clamp(speed*.035f,0,.8f)));}}
         shape.row0=float4(across/axes.x,p.position.x);
@@ -121,8 +121,8 @@ void BuildShapes(uint3 id : SV_DispatchThreadID) {
     bool water=VolumePhase(p.type)==2;
     bool morph=p.type<.5f&&p.pad.x>=1000&&p.pad.x<1016&&p.pad.y>0;
     if(morph){
-        // Fixed work per particle at every size. A coherent isotropic kernel
-        // avoids rotating PCA ridges as neighbours enter/leave a grown body.
+        // どの大きさでも粒子あたりの作業量は一定。まとまった等方的なカーネルで、
+        // 大きな体に隣が出入りしても PCA の稜線が回らないようにする。
         float spacing=pow(275.f/max(p.pad.y,1e-6f),1.f/3.f);
         float radius=max(.8f*spacing,voxelSize*1.25f);
         shape.row0=float4(1/radius,0,0,p.position.x);
@@ -135,9 +135,9 @@ void BuildShapes(uint3 id : SV_DispatchThreadID) {
         abs(p.position.y-p.pad.y)<0.35f && abs(p.velocity.y)<2.5f;
     // (速い筋は、ふつうの水の描き方でも筋の形を使う。まわりの粒から形を決めると、まばらな空中の水が霧だけになって消え、重くもなる)
     if(hydrant&&!supported&&p.pad.x<.12f&&dot(p.velocity,p.velocity)>16){
-        // Fast jets must not toggle between a sub-voxel PCA surface and a tiny
-        // isolated spray. Overlapping velocity-aligned kernels reconstruct the
-        // actual simulated stream, including sparse tips and the near-volume LOD.
+        // 速い噴流が、ボクセルより小さい PCA の面と小さな孤立したしぶきの間で
+        // 切り替わってはいけない。速度に沿って重なったカーネルが、まばらな先端や
+        // 近いボリュームの LOD を含め、実際にシミュレーションした流れを再構成する。
         float speed=length(p.velocity);float3 along=p.velocity/speed;
         float3 across=normalize(cross(along,abs(along.y)<.9f?float3(0,1,0):float3(1,0,0)));
         // pad.y はまだ何にも当たっていない水だけがノズルの幅。当たった後は地面の高さ (坂の町では 100 を超える) なので使わない
@@ -153,14 +153,14 @@ void BuildShapes(uint3 id : SV_DispatchThreadID) {
     float3 mean=0;
     float3x3 moment=(float3x3)0;
     uint neighbours=0;
-    const float gridCell=.4f; // Matches the solver's SMOOTHING_RADIUS cell (filterAxis carries the bucket count).
+    const float gridCell=.4f; // ソルバーの SMOOTHING_RADIUS のセルに合わせる (filterAxis がバケット数を運ぶ)。
     int3 cell=(int3)floor(p.position/gridCell);
     const float searchRadius=1.1f;
     float nearestDistance=searchRadius;
     float3 localPosition=p.position-(float3)cell*gridCell;
     [loop] for(int z=-3;z<=3;++z) [loop] for(int y=-3;y<=3;++y) [loop] for(int x=-3;x<=3;++x) {
-        // A cell whose nearest point is outside the kernel cannot contribute.
-        // Reject it before the hashed-grid reads, including for distant LODs.
+        // 一番近い点がカーネルの外にあるセルは寄与できない。
+        // ハッシュの格子を読む前に捨てる (遠い LOD でも)。
         float3 relativeMin=float3(x,y,z)*gridCell-localPosition;
         float3 outside=max(max(relativeMin,-relativeMin-gridCell),0.0f);
         if(dot(outside,outside)>=searchRadius*searchRadius) continue;
@@ -186,19 +186,19 @@ void BuildShapes(uint3 id : SV_DispatchThreadID) {
     }
     float3 variance=max(float3(covariance[0][0],covariance[1][1],covariance[2][2]),1e-5f);
     float maxVariance=max(variance.x,max(variance.y,variance.z));
-    // Bound anisotropy to 4:1 before voxel-resolution clamping.
+    // ボクセル解像度での制限の前に、異方性を 4:1 までに抑える。
     float3 axes=sqrt(max(variance,maxVariance*0.0625f));
     axes/=pow(axes.x*axes.y*axes.z,1.0f/3.0f);
     bool spray=water && !supported && neighbours==0;
     axes=clamp(axes*.65f,max(voxelSize*1.25f,0.28f),1.1f);
     float3 center=p.position+mean*0.2f;
-    // Column eigenvectors become rows of the inverse ellipsoid transform.
+    // 列の固有ベクトルが、逆の楕円体の変換の行になる。
     float3x3 transform=transpose(vectors);
-    // Contact water is a sheet, not an airborne droplet. Preserve its volume.
+    // 接触した水は膜であり、空中のしずくではない。体積を保つ。
     if (supported) {
         float radius=neighbours>0 ? clamp(nearestDistance*1.8f,0.65f,1.1f) : 0.5f;
-        // A spreading hydrant sheet is a thin continuous film: wider, flatter
-        // kernels merge it, and sparse outskirts thin away instead of beading.
+        // 広がる消火栓の膜は薄く連続した膜: 広く平たいカーネルでつなげ、
+        // まばらな外れは玉にならずに薄くなっていく。
         if(hydrant&&!hosePlain)radius=neighbours>0?clamp(nearestDistance*3.f,1.2f,2.f):.7f;
         axes=float3(radius,max(voxelSize,0.25f),radius);
         transform=float3x3(1,0,0,0,1,0,0,0,1);
@@ -213,16 +213,16 @@ void BuildShapes(uint3 id : SV_DispatchThreadID) {
     shape.row1=float4(transform[1]/axes.y,center.y);
     shape.row2=float4(transform[2]/axes.z,center.z);
     float volume=FluidReconstructionVolume(p.type,p.density);
-    // Sub-voxel films otherwise vanish during sampling. Give supported sheets
-    // a one-voxel reconstruction footprint; this does not change simulation mass.
-    // Hydrant films must retain their actual water volume. Inferring volume
-    // from neighbour distance made a sparse splash grow as it spread apart.
+    // ボクセルより薄い膜はサンプリングで消えてしまう。支えのある膜には
+    // ボクセル 1 個分の再構成の広がりを与える。シミュレーションの質量は変えない。
+    // 消火栓の膜は実際の水の体積を保たなければならない。隣との距離から体積を
+    // 推定すると、まばらなしぶきが広がるにつれて大きくなった。
     if (supported && neighbours>0 && !(hydrant&&!hosePlain))
         volume=max(volume,min(nearestDistance,0.65f)*min(nearestDistance,0.65f)*voxelSize);
     float amplitude=(315.0f/(64.0f*3.14159265f))*volume/(axes.x*axes.y*axes.z);
-    // A tiny detached slime group still represents visible gameplay mass.
+    // 離れた小さなスライムの群れも、ゲーム上は見える質量を表す。
     if (!water && neighbours<3) amplitude=max(amplitude,0.7f);
-    // Drained street water fades out over its last seconds rather than popping.
+    // 排水された通りの水は、急に消えずに最後の数秒で薄くなっていく。
     if (supported && p.type>1.05f&&p.type<1.25f) amplitude*=1-smoothstep(1.5f,4.5f,p.pad.x);
     shape.info=float4(spray ? 0 : amplitude*saturate(p.color.a), max(axes.x,max(axes.y,axes.z)),
                       spray ? 0.045f : 0.0f, 1);
@@ -237,8 +237,8 @@ void SplatDensity(uint3 id : SV_DispatchThreadID) {
     if (s.info.w==0 || s.info.x<=0) return;
     VolumeParticle particle=particles[i];
     float3 center=ShapeCenter(s);
-    // Rows are orthogonal inverse axes. Recover the exact world AABB instead
-    // of visiting a maximum-radius cube around a thin film.
+    // 各行は直交する逆の軸。薄い膜のまわりの最大半径の立方体を調べる代わりに、
+    // 正確な世界の AABB を求め直す。
     float3 axis0=s.row0.xyz/max(dot(s.row0.xyz,s.row0.xyz),1e-8f);
     float3 axis1=s.row1.xyz/max(dot(s.row1.xyz,s.row1.xyz),1e-8f);
     float3 axis2=s.row2.xyz/max(dot(s.row2.xyz,s.row2.xyz),1e-8f);
@@ -250,11 +250,11 @@ void SplatDensity(uint3 id : SV_DispatchThreadID) {
         uint3 cell=uint3(x,y,z);
         float3 d=ShapePoint(s, volumeOrigin+(cell+0.5f)*voxelSize-center);
         float w=saturate(1-dot(d,d));
-        if (w<=0) continue; // Exact zero contribution, including momentum.
+        if (w<=0) continue; // 勢いを含めて、寄与を正確に 0 にする。
         float density=s.info.x*w*w*w;
         uint value=(uint)round(min(density,16.0f)*4096.0f);
         uint index=VolumeIndex(cell);
-        // Explicit components compile on SM5 and never race on other channels.
+        // 成分を明示すれば SM5 でコンパイルでき、他のチャンネルと競合しない。
         if(phase==0) InterlockedAdd(densityAccum[index].x,value);
         else if(phase==1) InterlockedAdd(densityAccum[index].y,value);
         else InterlockedAdd(densityAccum[index].z,value);
@@ -279,7 +279,7 @@ void ResolveDensity(uint3 p : SV_DispatchThreadID) {
 }
 
 float4 ReadDensity(int3 p) {
-    // Zero border, NOT clamp: a clipped domain must not grow a wall of liquid.
+    // 端は 0 にする (端の値で延ばさない): 切り取った領域に液体の壁が育ってはいけない。
     if(any(p<0) || any(p>=(int3)volumeSize)) return 0;
     return inputDensity.Load(int4(p,0));
 }
@@ -287,7 +287,7 @@ float4 ReadDensity(int3 p) {
 void SmoothDensity(uint3 p : SV_DispatchThreadID) {
     if(any(p>=volumeSize)) return;
     int3 step=filterAxis<0.5f ? int3(1,0,0) : (filterAxis<1.5f ? int3(0,1,0) : int3(0,0,1));
-    // Small mass-preserving 3D filter; broad shape comes from PCA, not blur.
+    // 質量を保つ小さな 3D フィルター。大まかな形はぼかしではなく PCA から得る。
     outputDensity[p]=ReadDensity((int3)p)*0.75f+(ReadDensity((int3)p-step)+ReadDensity((int3)p+step))*0.125f;
 }
 [numthreads(4,4,4)]
@@ -299,8 +299,8 @@ void TemporalDensity(uint3 p : SV_DispatchThreadID) {
     float3 uv=(previousWorld-previousOrigin)/(voxelSize*volumeSize);
     if(historyValid>0.5f && all(uv>0) && all(uv<1)) {
         float4 history=historyDensity.SampleLevel(linearClamp,uv,0);
-        // Reject topology changes per material, clamp history to fresh support.
-        // Vanished fluid is always zero; no history-only ghosts or thick trails.
+        // 材質ごとに形のつながりの変化を捨て、履歴を新しい支えの範囲に抑える。
+        // 消えた流体は常に 0: 履歴だけの幽霊や太い軌跡は残さない。
         float4 lo=current, hi=current;
         [unroll] for(int axis=0;axis<3;++axis) {
             int3 d=axis==0 ? int3(1,0,0) : (axis==1 ? int3(0,1,0) : int3(0,0,1));
@@ -318,13 +318,13 @@ void TemporalDensity(uint3 p : SV_DispatchThreadID) {
 void BuildOccupancy(uint3 block : SV_DispatchThreadID) {
     if(any(block>=(volumeSize+3)/4)) return;
     float4 maximum=0;
-    // Halo covers trilinear filtering at all block faces.
+    // 周囲の余白で、ブロックのすべての面での 3 線形補間を覆う。
     [loop] for(int z=-1;z<=4;++z) [loop] for(int y=-1;y<=4;++y) [loop] for(int x=-1;x<=4;++x)
         maximum=max(maximum,ReadDensity((int3)block*4+int3(x,y,z)));
     outputDensity[block]=maximum;
 }
 
-// Coarse water-only reconstruction. Isolated spray stays in the droplet pass.
+// 水だけの粗い再構成。孤立したしぶきはしずくのパスに残す。
 [numthreads(64,1,1)]
 void SplatFarWater(uint3 id:SV_DispatchThreadID){
     uint i=id.x;if(i>=particleCount)return;
@@ -336,16 +336,16 @@ void SplatFarWater(uint3 id:SV_DispatchThreadID){
     float3 axes=max(lengths,sheet?float3(voxelSize*1.35f,spacing.y,voxelSize*1.35f):voxelSize*.9f);
     float amplitude;
     if(sheet){
-        // A coarse cell is a larger reconstruction footprint, not extra water.
-        // A per-particle density floor turns a handful of landed spray samples
-        // into a metre-wide puddle disconnected from the actual runoff.
+        // 粗いセルは再構成の広がりが大きいだけで、水が増えるわけではない。
+        // 粒子ごとに密度の下限を設けると、着地したしぶきの数サンプルが
+        // 実際の流れから離れた 1 m 幅の水たまりになってしまう。
         float volume=FluidReconstructionVolume(p.type,p.density);
         amplitude=(315.f/(64.f*3.14159265f))*volume*saturate(p.color.a)/(axes.x*axes.y*axes.z);
     }else{
-        // The fast airborne jet still needs sub-voxel coverage between samples.
+        // 速い空中の噴流には、サンプルの間をボクセル未満で覆う範囲がまだ要る。
         amplitude=max(s.info.x*(lengths.x*lengths.y*lengths.z)/(axes.x*axes.y*axes.z),.7f*saturate(p.color.a));
     }
-    // Respect the same drainage fade as the fine volume.
+    // 細かいボリュームと同じ排水の薄れ方に従う。
     if(sheet&&p.type>1.05f&&p.type<1.25f)amplitude*=1-smoothstep(1.5f,4.5f,p.pad.x);
     s.row0.xyz=normalize(s.row0.xyz)/axes.x;s.row1.xyz=normalize(s.row1.xyz)/axes.y;s.row2.xyz=normalize(s.row2.xyz)/axes.z;
     float3 a0=s.row0.xyz*axes.x*axes.x,a1=s.row1.xyz*axes.y*axes.y,a2=s.row2.xyz*axes.z*axes.z;

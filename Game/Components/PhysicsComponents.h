@@ -11,7 +11,9 @@ struct BoxColliderComponent : public Component {
 	DirectX::XMFLOAT3 center = {0, 0, 0};
 	DirectX::XMFLOAT3 size = {1, 1, 1};
 	bool isTrigger = false;
-	BoxColliderComponent() { type = ComponentType::BoxCollider; }
+	BoxColliderComponent() {
+		type = ComponentType::BoxCollider;
+	}
 };
 
 // GPU メッシュコライダーの判定方式
@@ -27,7 +29,9 @@ struct GpuMeshColliderComponent : public Component {
 	MeshCollisionType collisionType = MeshCollisionType::Mesh; // 判定方式 (全ポリゴンか凸包近似か)
 	bool isTrigger = false;
 	bool isIntersecting = false; // 最新の判定結果 (重なっていれば true)
-	GpuMeshColliderComponent() { type = ComponentType::GpuMeshCollider; }
+	GpuMeshColliderComponent() {
+		type = ComponentType::GpuMeshCollider;
+	}
 };
 
 // 物理挙動。速度・重力の有無・キネマティック (外部からだけ動かす) か
@@ -35,7 +39,9 @@ struct RigidbodyComponent : public Component {
 	DirectX::XMFLOAT3 velocity = {0.0f, 0.0f, 0.0f};
 	bool useGravity = true;
 	bool isKinematic = false;
-	RigidbodyComponent() { type = ComponentType::Rigidbody; }
+	RigidbodyComponent() {
+		type = ComponentType::Rigidbody;
+	}
 };
 
 } // namespace Game

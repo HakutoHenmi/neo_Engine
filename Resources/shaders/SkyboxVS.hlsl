@@ -18,9 +18,9 @@ struct VSOut {
 };
 
 VSOut main(VSIn v) {
-    VSOut o;
+    VSOut output;
     // キューブマップのサンプリング方向 = 頂点のローカル座標そのもの
-    o.texCoord = v.pos;
+    output.texCoord = v.pos;
 
     // View行列から平行移動成分を除去（カメラ位置を無視して天球を常に中心に表示）
     matrix viewNoTranslate = gView;
@@ -30,7 +30,7 @@ VSOut main(VSIn v) {
 
     float4 clipPos = mul(float4(v.pos, 1.0f), mul(viewNoTranslate, gProj));
     // 深度を最遠に固定 (z = w → NDC z = 1.0)
-    o.svpos = clipPos.xyww;
+    output.svpos = clipPos.xyww;
 
-    return o;
+    return output;
 }

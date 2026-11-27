@@ -18,7 +18,7 @@ float rawDepth(uint2 p){
 float3 position(uint2 p,float d){
     uint w,h;opaqueDepth.GetDimensions(w,h);
     uint2 at=min(uint2((float2(p)+.5)/dimensions*float2(w,h)),uint2(w-1,h-1));
-    // The inverse projection must use the same input texel as rawDepth().
+    // 逆投影は rawDepth() と同じ入力のテクセルを使わなければならない。
     float2 uv=(float2(at)+.5)/float2(w,h);
     float4 v=mul(float4(uv*float2(2,-2)+float2(-1,1),d,1),inverseVP);return v.xyz/v.w;
 }

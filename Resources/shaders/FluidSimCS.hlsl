@@ -49,10 +49,10 @@ float hash(uint n) {
     return float(n & uint(0x7fffffffU)) / float(0x7fffffff);
 }
 
-// Hydrant water striking a surface. Impingement turns the normal momentum
-// into a thin sheet that fans out along the surface (a narrow forward fan
-// for grazing hits, a full circle head-on) and throws a crown of droplets.
-// Water already lying in a sheet only slides, with thin-film drag.
+// 消火栓の水が面に当たったとき。衝突で法線方向の勢いが、面に沿って扇形に
+// 広がる薄い膜になり (かすめるときは狭い前向きの扇、正面からは円全体)、
+// しずくの冠を跳ね上げる。
+// すでに膜になっている水は、薄膜の抵抗を受けて滑るだけ。
 float3 HydrantImpact(float3 velocity,float3 normal,uint seed,float step){
     float normalSpeed=-dot(velocity,normal);
     float3 tangent=velocity+normal*normalSpeed;
@@ -111,12 +111,12 @@ void Emit(uint3 DTid : SV_DispatchThreadID) {
             // ★位置をばらけさせる (超重要: 同一座標に重なると圧力が爆発する)
             float3 randVec = float3(rx, ry, rz);
             if (isSlime && length(randVec) > 0.01f) {
-                // Spread slime through a sphere before density projection.
+                // 密度の射影の前に、スライムを球の中に広げる。
                 float rDist = pow(hash(i * 999), 0.3333f);
                 randVec = normalize(randVec) * rDist;
                 if (emitType<0.5f) {
-                    // Uniform solid angle: normalizing a random cube biases
-                    // the rest distribution toward diagonal directions.
+                    // 立体角を一様にする: ランダムな立方体の点を正規化すると、
+                    // 静止時の分布が対角方向に偏る。
                     float polar=1.0f-2.0f*hash(i*456U+19U);
                     float azimuth=6.283185307f*hash(i*123U+71U);
                     float ring=sqrt(max(0.0f,1-polar*polar));
@@ -124,7 +124,7 @@ void Emit(uint3 DTid : SV_DispatchThreadID) {
                 }
             }
             
-            // 1.5x player particle count with approximately 1.5x rest volume.
+            // プレイヤーの粒子数の 1.5 倍で、静止時の体積もおよそ 1.5 倍。
             float offsetScale = emitType<0.5f ? PLAYER_REST_RADIUS : (isSlime ? 1.5f : 0.4f);
             float3 localOffset = randVec * offsetScale;
             p.position = emitPos + localOffset;
@@ -133,8 +133,8 @@ void Emit(uint3 DTid : SV_DispatchThreadID) {
             float velScale = isSlime ? 5.0f : 2.0f;
             p.velocity = emitDir * 5.0f + randVec * velScale;
             if (!isSlime) {
-                // Emit a resolved stream slab, not a dense random ball. Increasing
-                // count widens the nozzle instead of increasing overlap/pressure.
+                // 密集したランダムな球ではなく、粒子を並べた流れの板を放出する。個数を増やすと
+                // 重なりや圧力が増えるのではなく、ノズルが広がる。
                 float3 flow=emitDir*5.0f;
                 float speed=length(flow);
                 float3 along=speed>0.01f ? flow/speed : float3(0,-1,0);
@@ -144,38 +144,38 @@ void Emit(uint3 DTid : SV_DispatchThreadID) {
                 uint side=max(1U,(uint)ceil(sqrt((float)emitCount*0.20f/slabLength)));
                 uint perLayer=side*side;
                 uint slot=emitCursor-emitStartIndex+localIndex,lane=slot%perLayer;
-                // Sunflower lanes fill a disc at the same area per particle as
-                // the former square grid, so the stream has a round section.
-                // Each layer is rotated to avoid visible spiral arms along the jet.
+                // ひまわり状の並びで、以前の正方形の格子と同じ粒子あたりの面積で円盤を埋めるので、
+                // 流れの断面が丸くなる。
+                // 層ごとに回転させ、噴流に沿って渦巻きの腕が見えないようにする。
                 float discRadius=(float)side*0.20f*0.5641896f;
                 if(emitType>1.05f&&emitType<1.15f&&pad6.y>0)discRadius=pad6.y;
                 float angle=(float)lane*2.399963f+(float)(slot/perLayer)*1.618034f;
                 float2 plane=float2(cos(angle),sin(angle))*discRadius*sqrt(((float)lane+0.5f)/(float)perLayer);
                 float travel=(emitCount-localIndex-0.5f)*slabLength/emitCount;
-                // Hydrant batches are emitted before this frame's integration.
-                // Backdate them so the newest water finishes at the nozzle,
-                // rather than leaving a whole frame of empty space in front.
+                // 消火栓のまとまりは、このフレームの積分より前に放出する。
+                // 時刻を前にずらし、最新の水がノズルで終わるようにする
+                // (手前に 1 フレーム分の空白を残さない)。
                 if(emitType>1.05f&&emitType<1.25f)travel-=slabLength;
                 p.position=emitPos+across*plane.x+tangent*plane.y+along*travel;
                 p.velocity=flow;
             }
             p.color = emitColor;
-            // Ink jets occupy the effect pool but share the player's material.
-            // A resolved 3x3 ribbon overlaps the body before detaching.
+            // インクの噴流は効果用のプールを使うが、材質はプレイヤーと共有する。
+            // 粒子を 3x3 に並べたリボンは、離れる前に体と重なる。
             if(emitType>=4.0f){
                 float3 along=normalize(emitDir+float3(0,0,1e-6f));
                 float3 across=normalize(cross(along,abs(along.y)<.9f?float3(0,1,0):float3(1,0,0)));
                 float3 up=cross(along,across);
                 float axial=1-2*(localIndex+.5f)/emitCount,angle=localIndex*2.399963f;
-                // pad6.y > 0 is the droplet size (a grown slime throws proportionally larger liquid).
-                // pad6.y < 0 is an exact droplet of size -pad6.y: no speed spread, so it lands where the
-                // CPU predicted (slime territory ink stamps the floor at that place and time).
+                // pad6.y > 0 はしずくの大きさ (大きくなったスライムは比例して大きな液体を投げる)。
+                // pad6.y < 0 は大きさ -pad6.y のしずくを正確に投げる: 速さのばらつきが無いので、CPU が
+                // 予測した場所に落ちる (スライムの縄張りのインクがその場所と時刻に床へ印を付ける)。
                 float size=pad6.y!=0?abs(pad6.y):1;
                 float radius=sqrt(max(0,1-axial*axial))*.32f*size;
                 p.position=emitPos+along*(axial*.8f*size)+across*(cos(angle)*radius)+up*(sin(angle)*radius);
                 p.velocity=emitDir*5.0f;
-                // Sized droplets get a per-particle speed spread so a stream breaks
-                // up into separate drops instead of flying as one rigid capsule.
+                // 大きさ指定のしずくには粒子ごとに速さのばらつきを付け、流れが 1 つの固いカプセルとして
+                // 飛ばずに、別々のしずくに分かれるようにする。
                 if(pad6.y>0)p.velocity+=float3(rx,ry*.6f,rz)*(length(emitDir)*5.0f*.24f);
             }
             p.type = emitType;
@@ -187,19 +187,19 @@ void Emit(uint3 DTid : SV_DispatchThreadID) {
             if (emitType < 0.5f || isLostSlime) {
                 p.pad = float3(0, 0, 0);
             } else if (isSlime) {
-                // Decoys retain their rest positions for their own shape matching.
+                // 分身は自分の形合わせのために静止時の位置を保つ。
                 p.pad = localOffset; 
             } else {
                 // 水飛沫の場合: タイマー初期化
                 p.pad = float3(pad6.x>0.5f ? -1.0f : 0.0f, 0, 0);
-                // Ballistic slime keeps its droplet size for reconstruction (0 = legacy fixed size).
+                // 放物線を描くスライムは再構成のためにしずくの大きさを保つ (0 = 従来の決まった大きさ)。
                 if(emitType>=4.0f&&emitType<8.0f)p.pad.y=abs(pad6.y);
-                // Airborne hydrant water stores its nozzle width until contact
-                // replaces this channel with the supporting surface height.
+                // 空中の消火栓の水は、接触でこの欄が支える面の高さに置き換わるまで
+                // ノズルの幅を入れておく。
                 if(emitType>1.05f&&emitType<1.25f){
                     p.pad.y=pad6.y;
-                    // Render-only seed for mist puffs in the thousandths of red;
-                    // water colour comes from the phase colour, not this channel.
+                    // 霧のもや用の描画専用の種を、赤の 1000 分の 1 の桁に入れる。
+                    // 水の色はこの欄ではなく相 (phase) の色から決まる。
                     p.color.r=floor(emitColor.r*1000.0f)/1000.0f+hash(i*313U+7U)*0.00099f;
                 }
             }
@@ -210,12 +210,12 @@ void Emit(uint3 DTid : SV_DispatchThreadID) {
 }
 
 // ==========================================
-// PBF base-kernel calibration (unit particle mass). Morph owners scale world
-// distances into these coordinates; legacy fluids use world units directly.
+// PBF の基本カーネルの調整 (粒子の質量 1)。変形の持ち主は世界の距離を
+// この座標に換算する。従来の流体は世界の単位をそのまま使う。
 // ==========================================
 static const float SMOOTHING_RADIUS = 0.4f; // ★1.0fから0.4fへ最適化: グリッドセルサイズが縮小され、O(N)の真価を発揮する
 static const float PARTICLE_MASS = 1.0f;
-// Unit particle mass: a 0.2 lattice has density ~= 125, not 3 (self ~= 24.48).
+// 粒子の質量 1: 0.2 間隔の格子の密度は 3 ではなく約 125 (自分の分は約 24.48)。
 static const float REST_DENSITY = 125.0f;
 static const float SLIME_SURFACE_TENSION = 18.0f;
 static const float WATER_SURFACE_TENSION = 4.0f;
@@ -231,12 +231,12 @@ static const float POLY6_COEFF = 315.0f / (64.0f * PI * H_POWER_9);
 static const float SPIKY_COEFF = 45.0f / (PI * H_POWER_6);
 
 float RestDensity(float type,uint original) {
-    // Morph density/pressure are solved in particle-spacing coordinates. A
-    // world-space rest density can fall below one particle's self contribution.
+    // 変形の密度 / 圧力は粒子間隔の座標で解く。世界空間の静止密度だと、
+    // 粒子 1 個の自分の寄与を下回ることがある。
     if(type<.5f&&pad8>.5f)return 275.f;
-    // Assault mass changes the active particle count, not each particle's mass.
+    // 突撃の質量で変わるのは動いている粒子の数で、粒子 1 つの質量ではない。
     if(type<0.5f && coreMode>=4.0f) return FluidRestDensity(type);
-    // Above baseline mass, keep the same particle budget and increase volume.
+    // 基準の質量を超えたら、粒子の予算は同じまま体積を大きくする。
     float volume = (type < 0.5f && coreMode >= 2.0f) ? (coreMode>=4.0f?clamp(coreFlowSpeed/100.0f,.05f,2.0f):max(1.0f, coreFlowSpeed / 100.0f)) : 1.0f;
     return FluidRestDensity(type) / volume;
 }
@@ -245,30 +245,30 @@ float ParticleSpacing(float type,uint original){
 }
 float3 ChronoTransportVelocity() {
     if(coreMode>=4.0f) return pad3*float3(.9f,lerp(.9f,.65f,saturate(coreScale.y)),.9f);
-    // Ordinary walking uses exactly the legacy velocity-follow force.
-    // Carry only the high-speed part that the 30-unit solver cannot follow.
+    // 通常の歩きでは、従来の速度追従の力をそのまま使う。
+    // 毎秒 30 単位のソルバーが追いつけない高速の分だけを運ぶ。
     return pad3 * saturate((length(pad3) - 20.0f) / 45.0f);
 }
 bool IsTetherParticle(uint index) {
-    // Stable identities: gaining/losing mass must not reassign the whole arm.
+    // 決まった割り当て: 質量が増減しても腕全体を割り当て直してはいけない。
     return coreMode >= 2.0f && index % 20U >= 13U && index < (uint)pad6.y;
 }
-// A soft containment field acts on simulated positions. No particle is assigned
-// a surface slot: pressure, viscosity and collisions remain free to redistribute it.
+// 柔らかい閉じ込め場はシミュレーション上の位置に働く。粒子に表面の枠は割り当てない:
+// 圧力・粘性・衝突が自由に配り直せるようにしておく。
 float3 SlimeSupportOrigin() {
     return corePos+float3(0,-1.25f+.8f*saturate(coreScale.y),0);
 }
 float3 SlimeFieldRadii() {
     float scale=pow(clamp(coreFlowSpeed/100.0f,.05f,2.0f),1.0f/3.0f);
-    // Same volume in both poses; 6600 particles / rest density 275 ~= 24.
+    // どちらの姿勢でも体積は同じ。6600 粒子 / 静止密度 275 ≒ 24。
     float3 radii=lerp(coreMode>=5.0f?float3(4.2f,.66f,4.2f):float3(2.55f,1.8f,2.55f),float3(1.8f,1.8f,1.8f),saturate(coreScale.y));
     float aspect=coreScale.x>.1f?clamp(coreScale.x,.55f,1.6f):1.f;
     return radii*float3(rsqrt(aspect),aspect,rsqrt(aspect))*scale;
 }
 float3 SlimeMotionAxis(){return normalize(float3(coreForward.x,0,coreForward.z)+float3(0,0,1e-6f));}
 float SlimeGroundHeight(float3 position){return emitDir.y+dot(position.xz-corePos.xz,emitDir.xz);}
-// Legacy safety floor for slime particles (y=0.2). The player slime (coreMode>=4) may stand below y=0,
-// so its floor never rises above its own ground (SlimeGroundHeight); on ground at or above 0 it is unchanged.
+// スライムの粒子の従来の安全な床 (y=0.2)。プレイヤーのスライム (coreMode>=4) は y=0 より下に立てるので、
+// その床が自分の地面 (SlimeGroundHeight) より上に来ることはない。地面が 0 以上なら変わらない。
 float SlimeFloor(float3 position,float particleType){
     if(coreMode>=4&&particleType<.5f&&emitStartIndex!=0)return min(.2f,SlimeGroundHeight(position)+.18f);
     return .2f;}
@@ -279,8 +279,8 @@ float3 SlimeToField(float3 local){
     float motion=SlimeMotionAmount(),stretch=1+.55f*motion;
     float along=dot(local,forward)/stretch;
     float width=1+motion*.26f*clamp(along/max(SlimeFieldRadii().z,.1f),-1.f,1.f);
-    // Broad advancing front and a trailing tapered rear. The transverse squeeze
-    // compensates axial stretch, while particles can flow across the field.
+    // 進む前面は広く、後ろは細くすぼめて引きずる。横方向に絞って
+    // 軸方向の伸びを打ち消しつつ、粒子は場の中を流れられる。
     return float3(dot(local,side)*sqrt(stretch)/width,local.y*sqrt(stretch)/width,along);
 }
 float3 SlimeFromField(float3 local){
@@ -312,8 +312,8 @@ float3 TetherGoal(uint index, float3 rest) {
     float massScale = pow(max(0.1f, coreFlowSpeed / 100.0f), 1.0f / 3.0f);
     float radius = lerp(0.70f, 0.32f, t) * massScale * sqrt(hash(index * 999U + 3U));
     float3 section = (across * cos(angle) + cross(axis, across) * sin(angle)) * radius;
-    // Absolute material goal, never an inverse stretch of the solver's output.
-    // Shortening the hand blends the same liquid back into its captured body shape.
+    // 材質の目標は絶対的なもの。ソルバーの出力を逆に伸ばしたものでは決してない。
+    // 手を縮めると、同じ液体が取り込んだ体の形へ混ざって戻る。
     return corePos + lerp(rest, TetherGuide(index) + section, smoothstep(0.0f, 6.0f, distance));
 }
 float3 ConstrainTether(float3 position, uint index, float3 rest) {
@@ -334,9 +334,9 @@ float Kernel(float3 d) {
 }
 
 uint GetFluidPhase(float type) {
-    // Player and its detached mass are the same material.  Decoys and water
-    // are separate phases and must not share density, pressure or viscosity.
-    if(type>=4.0f)return 3U; // Independent projectile physics.
+    // プレイヤーと、そこから離れた塊は同じ材質。分身と水は
+    // 別の相 (phase) なので、密度・圧力・粘性を共有してはいけない。
+    if(type>=4.0f)return 3U; // 独立した投射物の物理。
     if (type < 0.5f || (type > 2.5f && type < 3.5f)) return 0U;
     if (type > 1.5f && type < 2.5f) return 1U;
     return 2U;
@@ -467,7 +467,7 @@ uint GetGridHash(int3 cell,uint salt) {
 }
 
 // ==========================================
-// Pass Init: Initialize Particles (Run Once)
+// 初期化パス: 粒子を初期化する (1 回だけ)
 // ==========================================
 [numthreads(64, 1, 1)]
 void InitParticles(uint3 DTid : SV_DispatchThreadID) {
@@ -487,7 +487,7 @@ void InitParticles(uint3 DTid : SV_DispatchThreadID) {
 }
 
 // ==========================================
-// Pass 0.0: Clear Original Indices
+// パス 0.0: 元の番号を消す
 // ==========================================
 [numthreads(64, 1, 1)]
 void ClearOriginalIndices(uint3 DTid : SV_DispatchThreadID) {
@@ -497,7 +497,7 @@ void ClearOriginalIndices(uint3 DTid : SV_DispatchThreadID) {
 }
 
 // ==========================================
-// Pass 0.1: Clear Grid Count
+// パス 0.1: 格子ごとの個数を消す
 // ==========================================
 [numthreads(64, 1, 1)]
 void ClearGridCount(uint3 DTid : SV_DispatchThreadID) {
@@ -507,7 +507,7 @@ void ClearGridCount(uint3 DTid : SV_DispatchThreadID) {
 }
 
 // ==========================================
-// Pass 0.2: Count Particles
+// パス 0.2: 粒子を数える
 // ==========================================
 [numthreads(64, 1, 1)]
 void CountParticles(uint3 DTid : SV_DispatchThreadID) {
@@ -523,16 +523,16 @@ void CountParticles(uint3 DTid : SV_DispatchThreadID) {
 }
 
 // ==========================================
-// Pass 0.3: Prefix Sum
+// パス 0.3: 累積和
 // ==========================================
 groupshared uint sharedTotal[256];
 
 [numthreads(256, 1, 1)]
 void PrefixSum(uint3 DTid : SV_DispatchThreadID, uint GI : SV_GroupIndex) {
-    // The morph path has a fixed 6600-particle budget. A compact table avoids
-    // scanning 65536 mostly empty buckets on every PBF iteration/substep.
-    // (Measured with 15k hose particles: a 32768-bucket table is slower overall;
-    //  this single-group scan runs ~10x per frame and outweighs the extra collisions.)
+    // 変形の経路は粒子の予算が 6600 に決まっている。詰めたテーブルにすれば、
+    // PBF の反復 / サブステップのたびに、ほとんど空の 65536 個のバケットを調べずに済む。
+    // (ホースの粒子 15k で計測: 32768 バケットのテーブルは全体では遅かった。
+    //  この 1 グループでの走査は毎フレーム約 10 回走り、衝突が増える分より重い。)
     uint elementsPerThread = (pad8>.5f?8192U:NUM_GRID_CELLS) / 256;
     uint startIdx = GI * elementsPerThread;
     
@@ -570,7 +570,7 @@ void PrefixSum(uint3 DTid : SV_DispatchThreadID, uint GI : SV_GroupIndex) {
 }
 
 // ==========================================
-// Pass 0.4: Sort Particles
+// パス 0.4: 粒子を並べ替える
 // ==========================================
 void SortParticle(uint i, bool prepareVelocity) {
     if (i >= maxParticles) return;
@@ -651,9 +651,9 @@ void CalcDensity(uint3 DTid : SV_DispatchThreadID) {
                         float3 diff = (pos_i - SortedParticles[j].position)/spacing;
                         float r2 = dot(diff, diff);
                         if (r2 < H2) {
-                            // The query cube is much larger than the kernel
-                            // sphere. Reject distant candidates before the
-                            // floor/division needed to disambiguate hash hits.
+                            // 調べる立方体はカーネルの球よりずっと大きい。
+                            // ハッシュの当たりを見分けるための floor / 割り算より前に、
+                            // 遠い候補を捨てる。
                             if (!CanParticlePairInteract(i,j,type_i, SortedParticles[j].type)) continue;
                             if (any(GetCell(SortedParticles[j].position,spacing) != cell + int3(x,y,z))) continue;
                             float w = H2 - r2;
@@ -662,8 +662,8 @@ void CalcDensity(uint3 DTid : SV_DispatchThreadID) {
                             gradientSum += gradient;
                             gradientSquaredSum += dot(gradient, gradient);
                             if (i != j) {
-                                // CalcForce used to walk the same 27 cells just
-                                // to sum this gradient for surface tension.
+                                // 以前の CalcForce は、表面張力のためにこの勾配を足すだけで
+                                // 同じ 27 セルを調べ直していた。
                                 if (r2 < 0.000001f) {
                                     float3 separated = float3(hash(i) - 0.5f,
                                         hash(j) - 0.5f, hash(i ^ j) - 0.5f) * 0.01f;
@@ -687,8 +687,8 @@ void CalcDensity(uint3 DTid : SV_DispatchThreadID) {
     SortedParticles[i].density = density;
     
     // 圧力計算 (マイナスにならないようにmaxを取る)
-    // PBF lambda. Compression-only at free surfaces; do not pull isolated
-    // particles into artificial clumps to satisfy a missing-neighbour density.
+    // PBF の λ。自由表面では圧縮だけにする: 隣が足りない分の密度を満たすために、
+    // 孤立した粒子を引き寄せて不自然な塊にしない。
     float constraint = max(density / rest - 1.0f, 0.0f);
     SortedParticles[i].pressure = -constraint / (gradientSquaredSum + dot(gradientSum,gradientSum) + 1e-4f);
     SolverOutput[i].position = surfaceGradientSum;
@@ -710,22 +710,22 @@ void CalcForce(uint3 DTid : SV_DispatchThreadID) {
     if(pad7>.5f && OriginalIndices[i]>=uint(pad6.z)){SolverOutput[i]=pi;return;}
     if (pi.position.y < -500.0f) return;
     
-    if(pi.type>=8.0f){SolverOutput[i]=pi;return;} // Adhesive ink anchors, not ballistic spray.
+    if(pi.type>=8.0f){SolverOutput[i]=pi;return;} // 床に貼り付いたインクは動かさない (放物線を描くしぶきではない)。
     if(pi.type>=4.0f){
-        // Coherent independent ink volume, matching the authoritative ballistic path.
+        // まとまった独立のインクの体積。CPU 側で計算した放物線の経路に合わせる。
         pi.position+=pi.velocity*dt+float3(0,-9*dt*dt,0);
         pi.velocity.y-=18*dt;pi.pad.x+=dt;
         float life=max(.02f,(pi.type-4)*10);
-        // Sized slime droplets land: they stop on the morph ground, spread flat
-        // (pad.z marks the landed splat) and fade out shortly afterwards.
+        // 大きさ指定のスライムのしずくが着地する: 変形の地面で止まり、平たく広がり
+        // (pad.z が着地した印)、少し後に消えていく。
         if(pi.pad.y>0&&pad8>.5f){float ground=MorphTargets[0].material.w+.12f*pi.pad.y;
             if(pi.position.y<ground&&pi.velocity.y<0){pi.position.y=ground;pi.velocity=float3(pi.velocity.x*.15f,0,pi.velocity.z*.15f);
                 if(pi.pad.z<.5f){pi.pad.z=1;pi.pad.x=max(pi.pad.x,life-.18f);}}}
         if(pi.pad.x>=life){pi.color.a=0;pi.position.y=-1000;}
         SolverOutput[i]=pi;return;
     }
-    // The density pass already collected the same spiky gradients. Its sum
-    // converts exactly to the former cohesion force (including overlap jitter).
+    // 密度のパスで同じ spiky の勾配をすでに集めている。その合計は
+    // 以前の凝集力 (重なりのゆらぎを含む) にそのまま換算できる。
     bool isSlimeType = (pi.type < 0.5f || (pi.type > 1.5f && pi.type < 3.5f));
     float surfaceTension = pi.type < 0.5f ? 50.0f :
         (isSlimeType ? SLIME_SURFACE_TENSION : WATER_SURFACE_TENSION);
@@ -768,8 +768,8 @@ void CalcForce(uint3 DTid : SV_DispatchThreadID) {
         }
     }
     
-    // The controller moves the core; player particles keep their own positions.
-    // Density projection and collisions determine the occupied volume and base.
+    // コントローラーは中心を動かす。プレイヤーの粒子は自分の位置を保つ。
+    // 密度の射影と衝突が、占める体積と底を決める。
     bool isCurrentLiquefiedPlayer = pi.type < 0.5f && coreMode > 0.5f && coreMode < 1.5f;
     if (pi.type < 0.5f && coreAttraction > 0.0f && pad8<.5f) {
         if(coreMode>=4.0f){
@@ -780,8 +780,8 @@ void CalcForce(uint3 DTid : SV_DispatchThreadID) {
             float3 normal=normalize(SlimeFromField(field/(radii*radii))+float3(0,1e-6f,0));
             float air=saturate(coreScale.y);
             float3 confinement=-normal*min(100.0f,lerp(65.f,24.f,air)*max(extent-.86f,0.0f));
-            // Counter most gravity to support the crown; residual gravity wets
-            // the base. Relative damping preserves small ripples after motion.
+            // 重力の大半を打ち消して頭頂を支える。残った重力で底を
+            // 濡らす。相対的な減衰で、動いた後の小さな波を残す。
             confinement.y+=lerp(18.f,20.f,air);
             float3 follow=pad3-ChronoTransportVelocity();
             force+=(confinement+(follow-pi.velocity)*lerp(5.f,2.8f,air))*pi.density;
@@ -794,44 +794,44 @@ void CalcForce(uint3 DTid : SV_DispatchThreadID) {
             float3 radialDir = distanceToCore > 1e-4f ? fromCore / distanceToCore : float3(0.0f, 1.0f, 0.0f);
             float fieldDistance = distanceToCore;
             if (coreMode >= 2.0f) fieldDistance /= pow(max(1.0f, coreFlowSpeed / 100.0f), 1.0f/3.0f);
-            // An attack opens the field in front without assigning particle
-            // identities or rotating the body when the controller turns.
+            // 攻撃は前方の場を開くだけ。粒子の割り当てはせず、コントローラーが
+            // 向きを変えても体を回さない。
             if (coreScale.z > 2.0f) {
                 float3 forwardDir = normalize(float3(coreForward.x, 0.0f, coreForward.z) + float3(0.0f, 0.0f, 1e-5f));
                 float front = max(dot(fromCore, forwardDir), 0.0f);
                 fieldDistance = length(fromCore - forwardDir * front * (1.0f - 1.0f / coreScale.z));
             }
 
-            // --- Pressure: only when genuinely compressed ---
-            // PBF handles most outward push; this extra term reinforces it
-            // under heavy compression without producing a permanent repulsion
-            // that would hollow the crown.
+            // --- 圧力: 本当に圧縮されたときだけ ---
+            // 外へ押す力の大半は PBF が受け持つ。この項は強く圧縮されたときにそれを補うが、
+            // 頭頂をくぼませるような常時の反発は
+            // 生まない。
             float compression = max(pi.density / RestDensity(pi.type,OriginalIndices[i]) - 1.0f, 0.0f);
             float outwardPressure = min(coreAttraction * 0.5f * compression, 12.0f);
 
-            // --- Cohesion: always-on with no dead zone ---
-            // A gentle pull exists at every distance so that no layer can
-            // separate even when vertical support lifts particles upward.
-            // Beyond 1.55 the stiffness ramps sharply to keep the body compact.
+            // --- 凝集: 不感帯なしで常に働く ---
+            // どの距離でも弱い引き寄せがあるので、縦の支えで粒子が
+            // 持ち上がっても層が分かれない。
+            // 1.55 を超えると硬さを急に上げて、体をまとまったままにする。
             float cohesionMag = min(3.0f * fieldDistance
                                   + 15.0f * max(fieldDistance - 1.55f, 0.0f), 45.0f);
             float3 coreForce = radialDir * (outwardPressure - cohesionMag);
             if (tether) {
-                // The extended liquid keeps pressure and neighbour interaction;
-                // a soft field holds its centreline without drawing a rigid mesh.
+                // 伸ばした液体は圧力と隣との相互作用を保つ。
+                // 柔らかい場が中心線を保ち、固いメッシュは描かない。
                 float pull = min(90.0f * max(distanceToCore - 0.35f, 0.0f), 120.0f);
                 coreForce = radialDir * (outwardPressure - pull);
             }
 
-            // --- Vertical support: dome shaping ---
+            // --- 縦の支え: ドーム形に整える ---
             // Moderate baseline keeps floor particles grounded (net −6).
-            // Crown gets enough lift to form a dome (net +4).
-            // The always-on cohesion prevents the separation that a dead zone
-            // would allow.
+            // 頭頂にはドームができるだけの持ち上げを与える (差し引き +4)。
+            // 常に働く凝集が、不感帯があると起きる分離を
+            // 防ぐ。
             float aboveCore = saturate(fromCore.y / 2.1f);
             coreForce.y += tether ? 20.0f : 14.0f + 10.0f * aboveCore;
-            // Chrono landing/airborne deformation changes forces, never teleports
-            // particles through the floor. Unit aspect leaves normal SPH intact.
+            // 本編の着地 / 空中の変形は力を変えるだけで、粒子を床の向こうへ
+            // 瞬間移動させない。縦横比 1 なら通常の SPH のまま。
             if(coreMode>=2.0f && !tether && emitType<0.05f){
                 float massScale=pow(clamp(coreFlowSpeed,1.0f,200.0f)/100.0f,1.0f/3.0f);
                 float aspect=clamp(coreScale.y/max(massScale,0.01f),coreMode>=5.0f?.08f:.62f,1.18f);
@@ -839,8 +839,8 @@ void CalcForce(uint3 DTid : SV_DispatchThreadID) {
                 coreForce.xz+=fromCore.xz*clamp((rsqrt(aspect)-1.0f)*25.0f,-4.0f,9.0f);
             }
 
-            // Follow equally on every side. Front/rear gain differences pile
-            // fluid into a wall when the controller reverses direction.
+            // どの面にも等しく追従させる。前後で強さが違うと、コントローラーが
+            // 向きを反転したときに流体が壁のように積み上がる。
             float3 followVelocity = coreMode >= 2.0f ? pad3 - ChronoTransportVelocity() : pad3;
             float coreSpeed = length(followVelocity);
             float baseFollow = 1.2f;
@@ -851,14 +851,14 @@ void CalcForce(uint3 DTid : SV_DispatchThreadID) {
                 ? max(-dot(pi.velocity.xz, followVelocity.xz) / planarCoreSpeed, 0.0f) : 0.0f;
             float follow = baseFollow + distanceFollow + speedFollow + 0.35f * min(opposingSpeed, 20.0f);
             float3 velocityFollow = (followVelocity - pi.velocity) * follow;
-            // Vertical coupling must be at least as strong as horizontal so that
-            // the body does not smear vertically during fast movement.
+            // 速く動いたときに体が縦に流れないよう、縦の結び付きは
+            // 少なくとも横と同じ強さにする。
             velocityFollow.y *= max(1.0f, 2.0f * aboveCore);
 
             force += (coreForce + velocityFollow) * pi.density;
         } else {
-            // Entry momentum briefly spreads the puddle. The controller stays
-            // at its anchor, so retain a soft perimeter and dissipate motion.
+            // 入るときの勢いで水たまりが一瞬広がる。コントローラーは固定点に
+            // 留まるので、柔らかい外周を残して動きを消していく。
             float3 forwardDir = normalize(float3(coreForward.x, 0.0f, coreForward.z) + float3(0.0f, 0.0f, 1e-5f));
             float3 planarVelocity = float3(pi.velocity.x, 0.0f, pi.velocity.z);
             float3 planarOffset = float3(pi.position.x - corePos.x, 0.0f, pi.position.z - corePos.z);
@@ -872,7 +872,7 @@ void CalcForce(uint3 DTid : SV_DispatchThreadID) {
             force += (returnForce - planarVelocity * 3.0f - float3(0.0f, pi.velocity.y, 0.0f)) * pi.density;
         }
     } else if (pi.type > 1.5f && pi.type < 2.5f && decoyAttraction > 0.0f) {
-        // The decoy still uses its own rest shape.
+        // 分身は自分の静止時の形を使い続ける。
         float3 forwardDir = normalize(decoyForward);
         float3 upDir = abs(forwardDir.y) > 0.99f ? float3(0, 0, 1) : float3(0, 1, 0);
         float3 rightDir = normalize(cross(upDir, forwardDir));
@@ -898,8 +898,8 @@ void CalcForce(uint3 DTid : SV_DispatchThreadID) {
         pi.velocity=MorphIntegrate(OriginalIndices[i],pi.position,pi.velocity,acceleration,dt);
         MorphTarget visual=MorphTargets[MorphData[8192+OriginalIndices[i]].target];
         pi.color=visual.color;
-        // Render-only ownership, sample volume and form. Ordinary player/water
-        // retain their existing pad layout; the morph solver never tethers it.
+        // 描画専用の持ち主・サンプル体積・形。通常のプレイヤー / 水は
+        // 既存の pad の並びを保ち、変形のソルバーがそれを縛ることはない。
         pi.pad=float3(1000+visual.forward.y,visual.density,visual.shape.w);
     }else pi.velocity += acceleration * dt;
     
@@ -913,7 +913,7 @@ void CalcForce(uint3 DTid : SV_DispatchThreadID) {
     pi.position += pi.velocity * dt;
     pi.position = (pad8>.5f?pi.position:ConstrainTether(pi.position, OriginalIndices[i], pi.pad));
     
-    // Only the decoy retains a rest-shape safety boundary.
+    // 静止時の形の安全な境界を持つのは分身だけ。
     if (pi.type > 1.5f && pi.type < 2.5f && decoyAttraction > 0.0f) {
         float3 offset = pi.position - decoyPos;
         float distanceToCore = length(offset);
@@ -924,15 +924,15 @@ void CalcForce(uint3 DTid : SV_DispatchThreadID) {
     }
     // 床や壁に触れた時の摩擦（水は滑りやすく、スライムは滑りにくく）
     bool isSlimeTypeForFriction = (pi.type < 0.5f || (pi.type > 1.5f && pi.type < 2.5f) || (pi.type > 2.5f && pi.type < 3.5f));
-    // The player must be able to follow its moving core while touching ground.
-    // Keep the existing friction for decoys, detached slime, and water.
+    // プレイヤーは地面に触れたまま、動く中心について行けなければならない。
+    // 分身・離れたスライム・水は既存の摩擦のままにする。
     float friction = pow(isCurrentLiquefiedPlayer ? 0.92f :
         (pi.type < 0.5f ? 0.97f : (isSlimeTypeForFriction ? 0.6f : 0.98f)), dt * 60.0f);
     bool groundContact=false;
     bool hydrantWater=pi.type>1.05f&&pi.type<1.25f;
     float3 incoming=pi.velocity,hitNormal=0;
-    // Hydrant water belongs to the flat city street, including PBF projection.
-    // Other water keeps scene-collider support and can fall from ledges.
+    // 消火栓の水は平らな街の通りに属する (PBF の射影も含む)。
+    // 他の水はシーンの当たり判定に支えられ、段差から落ちられる。
     // (坂の町の放水: emitColor.w が 1 のとき、AABBs の箱と球の後ろにゲームが町の地面の高さの表を置く
     //  (建物と、まだ飲めない大きな物の高さも入れてある)。水はその上に落ちて坂を流れ下り、高い段や建物の壁で止まって跳ね返る。
     //  表の外へ出た水は消える。表が無ければ今まで通り高さ 0.22 の平らな床)
@@ -950,16 +950,15 @@ void CalcForce(uint3 DTid : SV_DispatchThreadID) {
                 float into=dot(pi.velocity,hitNormal);if(into<0)pi.velocity-=hitNormal*into;pi.velocity*=friction;
             }
         }
-    }
-    else if(hydrantWater&&pi.position.y<.22f&&pi.position.y>-500&&pi.color.a>0){
+    } else if(hydrantWater&&pi.position.y<.22f&&pi.position.y>-500&&pi.color.a>0){
         groundContact=true;pi.position.y=.22f;pi.velocity.y=abs(pi.velocity.y)*.12f;pi.velocity.xz*=friction;hitNormal=float3(0,1,0);
     }
     
-    // Slime retains the legacy safety floor. Water must use scene colliders so
-    // it can leave a ledge and fall under gravity.
-    // The player slime's floor follows its own ground (SlimeFloor): below y=0 (river and
-    // pits of the slope town) the fixed 0.2 floor fought the body every step and made frames
-    // 2.5x slower.
+    // スライムは従来の安全な床を保つ。水はシーンの当たり判定を使い、
+    // 段差から離れて重力で落ちられるようにする。
+    // プレイヤーのスライムの床は自分の地面 (SlimeFloor) に従う: y=0 より下 (坂の街の川と
+    // くぼみ) では、決まった 0.2 の床がサブステップごとに体とぶつかり合い、フレームが
+    // 2.5 倍遅くなっていた。
     float safetyFloor=SlimeFloor(pi.position,pi.type);
     if (!FluidIsWater(pi.type) && pi.position.y < safetyFloor) {
         groundContact=true;
@@ -976,15 +975,15 @@ void CalcForce(uint3 DTid : SV_DispatchThreadID) {
         float3 bmin = AABBs[k].min;
         float3 bmax = AABBs[k].max;
         if(AABBs[k].pad0>.5f){
-            // Sphere entries (enemies) only obstruct hydrant water.
+            // 球の項目 (敵) がさえぎるのは消火栓の水だけ。
             if(!hydrantWater)continue;
             float3 centre=(bmin+bmax)*.5f,offset=pi.position-centre;
             float radius=(bmax.x-bmin.x)*.5f+.25f,distance=length(offset);
             if(distance<radius&&distance>1e-4f){hitNormal=offset/distance;pi.position=centre+hitNormal*radius;pi.pad.x=max(pi.pad.x,1e-3f);}
             continue;
         }
-        // The continuous support plane owns top contacts. An expanded tower
-        // front face must not repeatedly kick climbing particles backwards.
+        // 上面の接触は連続した支えの平面が受け持つ。広げた塔の
+        // 正面が、登っている粒子を何度も後ろへ蹴ってはいけない。
         if(coreMode>=4&&pi.type<.5f&&emitStartIndex!=0&&bmax.y<=SlimeGroundHeight(pi.position)+.4f)continue;
         
         // 余裕を持たせたAABBの少し外側で判定（めり込み防止）
@@ -1006,8 +1005,7 @@ void CalcForce(uint3 DTid : SV_DispatchThreadID) {
         if (!liquefiedFloorHit &&
             pi.position.x > bmin.x - pRadius && pi.position.x < bmax.x + pRadius &&
             pi.position.y > bmin.y - pRadius && pi.position.y < bmax.y + pRadius &&
-            pi.position.z > bmin.z - pRadius && pi.position.z < bmax.z + pRadius) 
-        {
+            pi.position.z > bmin.z - pRadius && pi.position.z < bmax.z + pRadius) {
             // どの面に最も近いかを計算して押し出す
             float dLeft = pi.position.x - (bmin.x - pRadius);
             float dRight = (bmax.x + pRadius) - pi.position.x;
@@ -1059,22 +1057,22 @@ void CalcForce(uint3 DTid : SV_DispatchThreadID) {
         }
     }
     
-    // Position-based velocity is re-derived from the step's displacement, so a
-    // velocity change alone would be discarded. Rewrite the start of the step
-    // so the derived velocity is the impact response.
+    // 位置ベースの速度はサブステップの変位から求め直すので、速度を変えるだけでは
+    // 捨てられてしまう。サブステップの始点を書き換え、求めた速度が
+    // 衝突の反応になるようにする。
     if(hydrantWater&&dot(hitNormal,hitNormal)>0){
         uint seed=uint(frac(pi.color.r*1000)*1048576)*7U+(asuint(pi.position.x+pi.position.z)&1023U);
         pi.velocity=HydrantImpact(incoming,hitNormal,seed,dt);
         PreviousPositions[OriginalIndices[i]].xyz=pi.position-pi.velocity*dt;
     }
 
-    // Water metadata: age since contact, support height, recent-contact grace.
-    // Advance age once, even when both the floor and an AABB were touched.
+    // 水のメタデータ: 接触してからの時間・支えの高さ・最近の接触の猶予。
+    // 床と AABB の両方に触れても、時間は 1 回だけ進める。
     if (FluidIsWater(pi.type)) {
         pi.pad.z=max(0,pi.pad.z-dt);
         if (groundContact) { pi.pad.y=pi.position.y; pi.pad.z=0.08f; }
-        // A negative contact age opts a preview particle out of expiry.
-        // Support height and contact grace still update for surface reconstruction.
+        // 接触してからの時間が負なら、プレビューの粒子は寿命で消えない。
+        // 支えの高さと接触の猶予は、表面の再構成のために更新を続ける。
         if (pi.pad.x>=0) {
             if (groundContact || pi.pad.x>0) pi.pad.x+=dt;
             if (pi.pad.x>WATER_GROUND_LIFETIME) { pi.color.a=0; pi.position.y=-1000; }
@@ -1093,13 +1091,13 @@ void CalcForce(uint3 DTid : SV_DispatchThreadID) {
         pi.pad.x += dt;
     }
 
-    // All neighbours and the original group positions remain immutable during
-    // this dispatch. A separate writeback pass publishes the prediction.
+    // この実行の間、すべての隣と元のグループの位置は変えない。
+    // 予測は別の書き戻しのパスで反映する。
     SolverOutput[i] = pi;
 }
 
 // ==========================================
-// Pass 3: WriteBack
+// パス 3: 書き戻し
 // ==========================================
 [numthreads(64, 1, 1)]
 void WriteBack(uint3 DTid : SV_DispatchThreadID) {
@@ -1136,13 +1134,13 @@ void SavePrevious(uint3 id : SV_DispatchThreadID) {
             if (TetherControlled(id.x)) {
                 if (dot(p.pad,p.pad) < 1e-10f) {
                     float3 rest = p.position - corePos;
-                    // Do not capture a remote remnant after a fast chain as a rest position.
+                    // 速い連鎖の後に残った遠くの切れ端を、静止時の位置として取り込まない。
                     float limit = PLAYER_REST_RADIUS * pow(max(0.1f,coreFlowSpeed/100.0f),1.0f/3.0f);
                     p.pad = rest * min(1.0f, limit / max(length(rest),1e-5f)) + float3(0,0.0001f,0);
                 }
-                // Once the arm rejoins the body, let PBF redistribute it. Pinning
-                // captured positions inside the moving body repeatedly compressed
-                // neighbours and launched them outward on release.
+                // 腕が体に戻ったら、PBF に配り直させる。動いている体の中に
+                // 取り込んだ位置を固定すると、隣を何度も圧縮し、
+                // 離したときに外へ打ち出していた。
                 p.position = lerp(p.position, TetherGoal(id.x, p.pad), TetherShapeWeight());
                 p.velocity *= exp(-24.0f * dt);
             } else p.pad = 0;
@@ -1153,7 +1151,7 @@ void SavePrevious(uint3 id : SV_DispatchThreadID) {
     PreviousPositions[id.x] = float4(Particles[id.x].position, 1);
 }
 
-// Jacobi: lambdas and predicted positions are read-only for this dispatch.
+// ヤコビ法: この実行の間、λ と予測位置は読むだけ。
 [numthreads(64, 1, 1)]
 void CalcDeltaP(uint3 id : SV_DispatchThreadID) {
     uint i = id.x;
@@ -1173,8 +1171,8 @@ void CalcDeltaP(uint3 id : SV_DispatchThreadID) {
             float3 d = (p.position-q.position)/spacing;
             if (dot(d,d)>=H2) continue;
             if (!CanParticlePairInteract(i,j,p.type,q.type)||any(GetCell(q.position,spacing)!=query)) continue;
-            // A small artificial pressure discourages tensile pairing without
-            // turning dilute particles into large repulsive bubbles.
+            // 小さな人工的な圧力で引っ張りによる粒子の対を防ぎつつ、
+            // 薄い所の粒子を大きな反発の泡にしない。
             float ratio = Kernel(d) / Kernel(float3(0.12f,0,0));
             float scorr = -0.0001f * ratio*ratio*ratio*ratio;
             correction += (p.pressure+q.pressure+scorr) * KernelGradient(d) / rest;
@@ -1225,19 +1223,19 @@ void ApplyDeltaP(uint3 id : SV_DispatchThreadID) {
             if(extent>1)field=lerp(field,field/extent,lerp(.10f,.025f,body.motion.w));
             p.position=MorphWorld(MorphFromField(field,body),body);
         }
-        // The actual ground stays below a jumping body; never clamp to its moving origin.
+        // 跳んでいる体の下にも実際の地面はある。動く原点に合わせて押さえつけてはいけない。
         // (坂では傾いた地面。平らな所では今まで通りの高さ)
         p.position.y=max(p.position.y,MorphGround(p.position,body)+.15f);
     }
     if(coreMode>=4.0f&&p.type<.5f&&pad8<.5f){
         float3 origin=SlimeSupportOrigin(),local=p.position-origin;
         float3 field=SlimeToField(local);float extent=length(field/SlimeFieldRadii());
-        // Compliant PBF containment leaves a soft moving surface rather than
-        // snapping particles to an exact ellipsoid. Collisions have final say.
+        // 柔らかい PBF の閉じ込めは、粒子を正確な楕円体に吸着させず、柔らかく動く
+        // 表面を残す。最終的には衝突が決める。
         float air=saturate(coreScale.y);
         if(extent>1)local=lerp(local,SlimeFromField(field/extent),lerp(.14f,.025f,air));
-        // The supporting plane disappears in flight, so the underside rounds
-        // off and individual particles can lag/stretch before landing.
+        // 空中では支えの平面が無くなるので、下側が丸くなり、
+        // 個々の粒子は着地まで遅れたり伸びたりできる。
         local.y=max(local.y,dot(local.xz,emitDir.xz)*(1-air)-SlimeFieldRadii().y*air);
         p.position=ProjectCollisions(origin+local,p.type);
     }

@@ -9,14 +9,14 @@
 #include <type_traits>
 #include <cmath>
 #include <algorithm>
-#include "Transform.h"
+#include "Math/Transform.h"
 #include <DirectXMath.h>
 #include <cstdint>
 #include <vector>
 #include <string>
-#include "../../Engine/ParticleEmitter.h"
+#include "../../Engine/Particle/ParticleEmitter.h"
 #include <map>
-#include <memory> 
+#include <memory>
 // ECS ライブラリ (entt)。エンティティとコンポーネントの登録に使う
 #include "../../externals/entt/entt.hpp"
 
@@ -41,31 +41,43 @@ struct CollisionMeshData {
 
 // 衝突情報 (GPU から読み戻す。並びとオフセットはシェーダー側の構造体と一致させる)
 struct ContactInfo {
-	DirectX::XMFLOAT3 normal;   // offset 0
-	float depth;                // offset 12
-	DirectX::XMFLOAT3 position; // offset 16
-	uint32_t intersected;     // offset 28
+	DirectX::XMFLOAT3 normal;   // 先頭から 0 バイト
+	float depth;                // 先頭から 12 バイト
+	DirectX::XMFLOAT3 position; // 先頭から 16 バイト
+	uint32_t intersected;       // 先頭から 28 バイト
 };
 
 // コンポーネントの種類。エディタで種類を判別するために Component 基底が持つ
 // (列挙に無い実行時専用のコンポーネントは 999 を入れて区別している)
-enum class ComponentType { 
-	MeshRenderer, BoxCollider, Tag, Animator, Rigidbody, ParticleEmitter, 
+enum class ComponentType {
+	MeshRenderer,
+	BoxCollider,
+	Tag,
+	Animator,
+	Rigidbody,
+	ParticleEmitter,
 	GpuMeshCollider,
-	DirectionalLight, PointLight, SpotLight,
-	AudioSource, AudioListener, Health, // 音響・ステータス
+	DirectionalLight,
+	PointLight,
+	SpotLight,
+	AudioSource,
+	AudioListener,
+	Health, // 音響・ステータス
 	Script, // スクリプト
-	RectTransform, UIImage, UIText, UIButton, // UI
-	River, // 川 (スプラインに沿った水面)
-	Variable, // 汎用の変数置き場
-	Motion, // モーションエディタ用キーフレーム
-	FluidEmitter  // 流体エミッター (水など)
+	RectTransform,
+	UIImage,
+	UIText,
+	UIButton,    // UI
+	River,       // 川 (スプラインに沿った水面)
+	Variable,    // 汎用の変数置き場
+	Motion,      // モーションエディタ用キーフレーム
+	FluidEmitter // 流体エミッター (水など)
 };
 
 // 全コンポーネント共通の基底。種類と有効/無効だけを持つ
-struct Component { 
-	ComponentType type = ComponentType::MeshRenderer; 
-	bool enabled = true; 
+struct Component {
+	ComponentType type = ComponentType::MeshRenderer;
+	bool enabled = true;
 	Component() = default;
 	Component(ComponentType t) : type(t), enabled(true) {}
 };

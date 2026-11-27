@@ -3,8 +3,7 @@
 Texture2D gScene : register(t0);
 SamplerState gSmp : register(s0);
 
-cbuffer CBPost : register(b0)
-{
+cbuffer CBPost : register(b0) {
     float gTime;
     float gNoiseStrength;
     float gDistortion;
@@ -15,15 +14,13 @@ cbuffer CBPost : register(b0)
     float pad0;
 };
 
-struct PSIn
-{
+struct PSIn {
     float4 svpos : SV_POSITION;
     float2 uv : TEXCOORD0;
 };
 
-// ACES Tone Mapping
-float3 ACESFilm(float3 x)
-{
+// ACES のトーンマッピング
+float3 ACESFilm(float3 x) {
     float a = 2.51f;
     float b = 0.03f;
     float c = 2.43f;
@@ -32,9 +29,8 @@ float3 ACESFilm(float3 x)
     return saturate((x * (a * x + b)) / (x * (c * x + d) + e));
 }
 
-// Pseudo Bloom (1 pass simple box blur + threshold)
-float3 PseudoBloom(float2 uv)
-{
+// 簡易ブルーム (1 パスの単純な箱型ぼかし + しきい値)
+float3 PseudoBloom(float2 uv) {
     float3 bloom = float3(0,0,0);
     float2 texSize = float2(1920.0f, 1080.0f); // 仮の解像度
     float2 texel = 1.0f / texSize;
@@ -61,9 +57,8 @@ float3 PseudoBloom(float2 uv)
     return bloom;
 }
 
-// Color Grading (Wuthering Waves style)
-float3 ColorGrade(float3 color)
-{
+// カラーグレーディング (Wuthering Waves 風)
+float3 ColorGrade(float3 color) {
     // 輝度計算
     float luminance = dot(color, float3(0.299, 0.587, 0.114));
     
@@ -83,11 +78,10 @@ float3 ColorGrade(float3 color)
     return max(color, 0.0f);
 }
 
-float4 main(PSIn i) : SV_TARGET
-{
+float4 main(PSIn i) : SV_TARGET {
     float2 uv = i.uv;
     
-    // 1. Base Scene Color
+    // 1. シーンの元の色
     float3 col = gScene.Sample(gSmp, uv).rgb;
     
     // 2. Simple Bloom (高輝度部分の抽出と加算)

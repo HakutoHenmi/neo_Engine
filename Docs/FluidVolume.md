@@ -60,11 +60,11 @@ FLIPへ移行したわけではない。シミュレーションはPBF、描画�
 
 ### 主な実装箇所
 
-- `Engine/FluidVolume.cpp`: リソース、パイプライン、各パスの接続。
+- `Engine/Fluid/FluidVolume.cpp`: リソース、パイプライン、各パスの接続。
 - `Resources/shaders/FluidVolumeCS.hlsl`: PCA、スプラット、平滑化、履歴補正、空領域スキップ用グリッド。
 - `Resources/shaders/FluidRaymarch.hlsl`: レイマーチ、合成、小さな飛沫。
 - `Resources/shaders/FluidSimCS.hlsl`: PBF、粘性、既存操作・衝突との接続。
-- `Engine/Renderer.cpp`: 実時間刻み、サブステップ、Jacobi用バッファとバリア、旧描画との排他。
+- `Engine/Graphics/Renderer.cpp`: 実時間刻み、サブステップ、Jacobi用バッファとバリア、旧描画との排他。
 
 ## 設定と設計上の注意
 

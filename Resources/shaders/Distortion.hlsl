@@ -25,7 +25,7 @@ struct VSOut {
 };
 
 VSOut main(VSIn v, uint instanceID : SV_InstanceID) {
-    VSOut o;
+    VSOut output;
     
     // インスタンスデータまたは定数バッファからワールド行列と色を取得
     float4x4 world = gWorld;
@@ -43,19 +43,19 @@ VSOut main(VSIn v, uint instanceID : SV_InstanceID) {
 
     float4 wp = mul(v.pos, world);
     float4 vp = mul(wp, gView);
-    o.svpos = mul(vp, gProj);
-    o.clipPos = o.svpos;
-    o.uv = v.uv;
-    o.color = color;
-    return o;
+    output.svpos = mul(vp, gProj);
+    output.clipPos = output.svpos;
+    output.uv = v.uv;
+    output.color = color;
+    return output;
 }
 
-Texture2D gBackdropTex : register(t0); // Current scene color
-Texture2D gDistortionMap : register(t1); // Normal map for distortion
+Texture2D gBackdropTex : register(t0); // 現在のシーンの色
+Texture2D gDistortionMap : register(t1); // 歪みに使う法線マップ
 SamplerState gSmp : register(s0);
 
 float4 ps_main(VSOut i) : SV_TARGET {
-    // Convert clip space to screen UV
+    // クリップ空間を画面の UV に変換する
     float2 screenUV = i.clipPos.xy / i.clipPos.w;
     screenUV.x = screenUV.x * 0.5f + 0.5f;
     screenUV.y = -screenUV.y * 0.5f + 0.5f;

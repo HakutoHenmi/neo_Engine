@@ -3,10 +3,10 @@
 // メニュー・ツールバー・Hierarchy・Inspector・Scene/Game ビュー・Project・Console などの描画と、
 // シーンの保存・読み込み、Undo/Redo、ゲーム固有の拡張 (EditorExtension) の登録を扱う。
 #pragma once
-#include "Renderer.h"
-#include "Audio.h"
-#include "CommandHistory.h"
-#include "IScene.h"
+#include "Graphics/Renderer.h"
+#include "Core/Audio.h"
+#include "Core/CommandHistory.h"
+#include "Scene/IScene.h"
 #include "../ObjectTypes.h"
 #include "../SceneComponents.h"
 #include <vector>
@@ -50,9 +50,9 @@ struct LogEntry {
 // ゲーム固有のエディタ拡張。エディタ本体はこの型だけを知り、ゲーム側が登録する。
 // (例: Game/Editor/SlimeDevTools.cpp。ファイルをプロジェクトから外せば拡張ごと消える)
 struct EditorExtension {
-	std::string windowName;                         // Tools メニューとウィンドウのタイトル
+	std::string windowName; // Tools メニューとウィンドウのタイトル
 	bool open = true;
-	std::function<void(GameScene*)> drawWindow;     // ImGui::Begin/End の内側を描画する
+	std::function<void(GameScene*)> drawWindow; // ImGui::Begin/End の内側を描画する
 	// Hierarchy の Category 表示で使う分類名。空文字なら標準の分類 (コンポーネント構成) を使う
 	std::function<std::string(SceneComponents&, entt::entity)> classify;
 	// Game ビューポート上のオーバーレイ (画像の左上/右下のスクリーン座標)
@@ -77,31 +77,43 @@ public:
 	static void PushUndo(const UndoCommand& cmd);
 	static void Undo();
 	static void Redo();
-	static const Engine::CommandHistory& History() { return history_; }
+	static const Engine::CommandHistory& History() {
+		return history_;
+	}
 
 	// レンダリングサポート用
-	static void ScreenToWorldRay(float screenX, float screenY, float imageW, float imageH, const DirectX::XMMATRIX& view, const DirectX::XMMATRIX& proj, DirectX::XMVECTOR& outOrig, DirectX::XMVECTOR& outDir);
+	static void ScreenToWorldRay(
+	    float screenX, float screenY, float imageW, float imageH, const DirectX::XMMATRIX& view,
+	    const DirectX::XMMATRIX& proj, DirectX::XMVECTOR& outOrig, DirectX::XMVECTOR& outDir);
 
 	// Console へのログ出力
 	static void Log(const std::string& msg);
 	static void LogWarning(const std::string& msg);
 	static void LogError(const std::string& msg);
-	
+
 	static ImVec2 GetGameImageMin();
 	static ImVec2 GetGameImageMax();
 
 	// 現在のシーンファイルのパスと、変形ツールの状態
-	static const std::string& GetCurrentScenePath() { return currentScenePath; }
-    static GizmoMode GetGizmoMode() { return gizmo_.Mode(); }
-    static bool IsGizmoDragging() { return gizmo_.Dragging(); }
-    static int GetGizmoDragAxis() { return gizmo_.Axis(); }
+	static const std::string& GetCurrentScenePath() {
+		return currentScenePath;
+	}
+	static GizmoMode GetGizmoMode() {
+		return gizmo_.Mode();
+	}
+	static bool IsGizmoDragging() {
+		return gizmo_.Dragging();
+	}
+	static int GetGizmoDragAxis() {
+		return gizmo_.Axis();
+	}
 	// シーンの保存 (ファイル / 文字列) と読み込み (ファイル / 文字列)
 	static void SaveScene(GameScene* scene, const std::string& path = "");
 	static std::string SaveToMemory(GameScene* scene);
 	static std::string SavePlaySnapshot(GameScene* scene);
 	static void LoadScene(GameScene* scene, const std::string& path);
 	static void LoadFromMemory(GameScene* scene, const std::string& data);
-	
+
 	// 実行ファイルの場所に関係なく、プロジェクト内を指す絶対パスにする
 	static std::string GetUnifiedProjectPath(const std::string& path);
 	// シーンを追加で読み込む / プレハブを読み込んで配置する
@@ -114,23 +126,38 @@ public:
 	static void OpenFluidSandbox();
 
 private:
-    // 変形ツールの状態 (移動・回転・拡大のどれか、ドラッグ中か、どの軸か)
-    class GizmoState {
-    public:
-        GizmoMode Mode() const { return mode_; }
-        bool Dragging() const { return dragging_; }
-        int Axis() const { return axis_; }
-        void SetMode(GizmoMode mode) { mode_ = mode; }
-        void BeginDrag(int axis) { dragging_ = true; axis_ = axis; }
-        void EndDrag() { dragging_ = false; axis_ = -1; }
-    private:
-        GizmoMode mode_ = GizmoMode::Translate;
-        bool dragging_ = false;
-        int axis_ = -1;
-    };
-    // 変形ツールの状態と、現在のシーンファイルのパス
-    static GizmoState gizmo_;
-    static std::string currentScenePath;
+	// 変形ツールの状態 (移動・回転・拡大のどれか、ドラッグ中か、どの軸か)
+	class GizmoState {
+	public:
+		GizmoMode Mode() const {
+			return mode_;
+		}
+		bool Dragging() const {
+			return dragging_;
+		}
+		int Axis() const {
+			return axis_;
+		}
+		void SetMode(GizmoMode mode) {
+			mode_ = mode;
+		}
+		void BeginDrag(int axis) {
+			dragging_ = true;
+			axis_ = axis;
+		}
+		void EndDrag() {
+			dragging_ = false;
+			axis_ = -1;
+		}
+
+	private:
+		GizmoMode mode_ = GizmoMode::Translate;
+		bool dragging_ = false;
+		int axis_ = -1;
+	};
+	// 変形ツールの状態と、現在のシーンファイルのパス
+	static GizmoState gizmo_;
+	static std::string currentScenePath;
 	// 取り消し・やり直しの履歴 (最大 100 件)
 	static Engine::CommandHistory history_;
 	// アイコン用テクスチャハンドル

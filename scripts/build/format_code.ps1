@@ -25,7 +25,10 @@ try {
     $failed = $false
     foreach ($file in $sourceFiles) {
         & $formatter @formatArguments $file
-        if ($LASTEXITCODE -ne 0) { $failed = $true }
+        if ($LASTEXITCODE -ne 0) {
+            Write-Warning "Formatting failed: $file"
+            $failed = $true
+        }
     }
     if ($failed) { throw 'Formatting check or formatting failed. See diagnostics above.' }
     Write-Host "Completed: $($sourceFiles.Count) file(s)."

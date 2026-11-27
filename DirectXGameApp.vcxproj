@@ -177,6 +177,9 @@ exit /b %ERRORLEVEL%</Command>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="Game\main.cpp" />
+    <ClCompile Include="Game\Boot\LaunchSettings.cpp" />
+    <ClCompile Include="Game\Boot\SceneRegistry.cpp" />
+    <ClCompile Include="Game\Boot\StartupLog.cpp" />
     <ClCompile Include="Game\Scenes\AssignmentScene.cpp" />
     <ClCompile Include="Game\Scenes\AssignmentSceneCombat.cpp" />
     <ClCompile Include="Game\Scenes\AssignmentSceneDraw.cpp" />
@@ -185,6 +188,9 @@ exit /b %ERRORLEVEL%</Command>
     <ClCompile Include="Game\Scenes\GameSceneDraw.cpp" />
     <ClCompile Include="Game\Scenes\GameSceneEntities.cpp" />
     <ClCompile Include="Game\Scenes\GameSceneGizmos.cpp" />
+    <ClCompile Include="Game\Scenes\GameSceneSetup.cpp" />
+    <ClCompile Include="Game\Scenes\GameSceneUpdate.cpp" />
+    <ClCompile Include="Game\Scenes\GameScenePlay.cpp" />
     <ClCompile Include="Game\Scenes\SelectScene.cpp" />
     <ClCompile Include="Game\Scenes\TitleScene.cpp" />
     <ClCompile Include="Game\Systems\ChronoInk.cpp" />
@@ -233,6 +239,9 @@ exit /b %ERRORLEVEL%</Command>
     <ClCompile Include="Game\Editor\DevourAnimEditor.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="Game\Boot\LaunchSettings.h" />
+    <ClInclude Include="Game\Boot\SceneRegistry.h" />
+    <ClInclude Include="Game\Boot\StartupLog.h" />
     <ClInclude Include="Game\ObjectTypes.h" />
     <ClInclude Include="Game\SceneComponents.h" />
     <ClInclude Include="Game\Components\AudioComponents.h" />
@@ -253,6 +262,7 @@ exit /b %ERRORLEVEL%</Command>
     <ClInclude Include="Game\Scenes\SlimePlayerDemoScene.h" />
     <ClInclude Include="Game\Scenes\WaterDioramaDemoScene.h" />
     <ClInclude Include="Game\Scenes\GameScene.h" />
+    <ClInclude Include="Game\Scenes\GameSceneConstants.h" />
     <ClInclude Include="Game\Scenes\SelectScene.h" />
     <ClInclude Include="Game\Scenes\TitleScene.h" />
     <ClInclude Include="Game\Systems\ChronoSystem.h" />

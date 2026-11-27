@@ -5,8 +5,7 @@
 Texture2D gScene : register(t0);
 SamplerState gSmp : register(s0);
 
-cbuffer CBPost : register(b0)
-{
+cbuffer CBPost : register(b0) {
     float gTime;
     float gNoiseStrength;
     float gDistortion;
@@ -17,14 +16,12 @@ cbuffer CBPost : register(b0)
     float pad0;
 };
 
-struct PSIn
-{
+struct PSIn {
     float4 svpos : SV_POSITION;
     float2 uv : TEXCOORD0;
 };
 
-float4 main(PSIn i) : SV_TARGET
-{
+float4 main(PSIn i) : SV_TARGET {
     float3 sceneColor = gScene.Sample(gSmp, i.uv).rgb;
     float intensity = saturate(gSan);
     // ブラーの中心（画面中心）
@@ -44,8 +41,7 @@ float4 main(PSIn i) : SV_TARGET
     float totalWeight = 0;
 
     [unroll]
-    for (int s = 0; s < SAMPLES; ++s)
-    {
+    for (int s = 0; s < SAMPLES; ++s) {
         float t = (float)s / (float)(SAMPLES - 1); // 0..1
         // 中心方向に向かってサンプリング
         float2 offset = dir * t * blurStrength;
@@ -58,7 +54,7 @@ float4 main(PSIn i) : SV_TARGET
     }
     col /= totalWeight;
 
-    // Vignette
+    // 周辺減光
     float2 d = i.uv - 0.5;
     col *= saturate(1.0 - dot(d, d) * gVignette * intensity);
     col = lerp(sceneColor, col, intensity);

@@ -2,12 +2,25 @@
 <Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <PropertyGroup>
     <EnableClangTidyCodeAnalysis>true</EnableClangTidyCodeAnalysis>
-    <!-- Analysis is explicit; ordinary builds keep their current speed. -->
+    <!-- Native analysis stays explicit; quality logging is queued in the background. -->
     <RunCodeAnalysis Condition="'$(RunCodeAnalysis)' == ''">false</RunCodeAnalysis>
     <!-- Leave checks empty here so .clang-tidy is the single source of rules. -->
     <ClangTidyChecks />
     <ClangTidyToolPath Condition="Exists('$(ProgramW6432)\LLVM\bin\clang-tidy.exe') And ('$(ClangTidyToolPath)' == '' Or '$(ClangTidyToolPath)' == '$(ClangTidyLLVMInstallDir)\bin')">$(ProgramW6432)\LLVM\bin</ClangTidyToolPath>
+    <EnableCodeQualityLogging Condition="'$(EnableCodeQualityLogging)' == ''">true</EnableCodeQualityLogging>
+    <CodeQualityAutoStartWatcher Condition="'$(CodeQualityAutoStartWatcher)' == ''">true</CodeQualityAutoStartWatcher>
+    <CodeQualityLogDirectory Condition="'$(CodeQualityLogDirectory)' == ''">$(MSBuildThisFileDirectory)..\..\artifacts\code-quality\logs</CodeQualityLogDirectory>
+    <_NeoQualityScript>$(MSBuildThisFileDirectory)quality_log.ps1</_NeoQualityScript>
+    <_NeoQualityProject Condition="'$(MSBuildProjectName)' == 'DirectXGameEngine'">Engine</_NeoQualityProject>
+    <_NeoQualityProject Condition="'$(MSBuildProjectName)' == 'DirectXGameApp'">Game</_NeoQualityProject>
+    <_NeoQualityWatcherOption Condition="'$(CodeQualityAutoStartWatcher)' == 'false'">-NoStartWatcher</_NeoQualityWatcherOption>
   </PropertyGroup>
+
+  <Target Name="QueueNeoQualityLog" BeforeTargets="PrepareForBuild"
+          Condition="'$(EnableCodeQualityLogging)' == 'true' And '$(DesignTimeBuild)' != 'true' And '$(_NeoQualityProject)' != ''">
+    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(_NeoQualityScript)&quot; -Action Build -Project $(_NeoQualityProject) -Configuration &quot;$(Configuration)&quot; -LogDirectory &quot;$(CodeQualityLogDirectory)&quot; $(_NeoQualityWatcherOption)"
+          ContinueOnError="WarnAndContinue" />
+  </Target>
 
   <!-- Filter only the compile database used by clang-tidy, then restore build items. -->
   <Target Name="SelectNeoClangTidySources" BeforeTargets="GetCompileCommands">

@@ -18,7 +18,7 @@ $shaderFiles = @(Get-ChildItem -LiteralPath (Join-Path $sourceRoot 'shaders') -F
 $manifest = @(($manifest + $shaderFiles) | Sort-Object -Unique)
 if ($manifest.Count -lt 20) { throw 'Resource manifest is unexpectedly empty.' }
 
-# Model textures: Engine/Model.cpp reads only the colour image each FBX names, so the other maps
+# Model textures: Engine/Graphics/Model.cpp reads only the colour image each FBX names, so the other maps
 # beside the models (normal, roughness, metal, AO, ...) are left out. Colour PNGs are packaged as
 # BCn DDS with mips (Model.cpp prefers a .dds next to the named image). Converted files are cached.
 $modelTextures = 'Models/PolyHaven/textures/'

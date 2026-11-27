@@ -1,20 +1,19 @@
 #include "Obj.hlsli"
 
-float4 main(VSOutput i) : SV_TARGET
-{
+float4 main(VSOutput i) : SV_TARGET {
     float3 n = normalize(i.normal);
 
     float up = saturate(n.y);
     up = smoothstep(0.2, 0.95, up);
 
-// ‚¢‚Ü‚ÌF‚ğ low ‚Æ‚·‚é
-    float3 low = float3(0.12, 0.06, 0.30); // ¡‚Ì‡Šñ‚è
-    float3 high = float3(0.22, 0.28, 0.50); // ­‚µÂ‚ğ‘«‚·
+// ã„ã¾ã®è‰²ã‚’ low ã¨ã™ã‚‹
+    float3 low = float3(0.12, 0.06, 0.30); // ä»Šã®ç´«å¯„ã‚Š
+    float3 high = float3(0.22, 0.28, 0.50); // å°‘ã—é’ã‚’è¶³ã™
 
     float3 col = lerp(low, high, up);
 
 
-    // Inspector color ‚Å‘S‘Ìƒg[ƒ“’²®‚Å‚«‚é—]’n‚ğc‚·
+    // Inspector color ã§å…¨ä½“ãƒˆãƒ¼ãƒ³èª¿æ•´ã§ãã‚‹ä½™åœ°ã‚’æ®‹ã™
     col *= color.rgb;
 
     return float4(col, 1.0);

@@ -1,5 +1,5 @@
-// UV change per world unit on the hit triangle. This works for arbitrary
-// mesh scale and skew, unlike a fixed mip level for every ray intersection.
+// 当たった三角形での、ワールド単位あたりの UV の変化。どのレイの交差にも
+// 決まったミップレベルを使うのと違い、メッシュの任意の拡大やゆがみに対応できる。
 float2 RayConeUVDensity(float3 edge1,float3 edge2,float2 uv1,float2 uv2){
     float3 normal=cross(edge1,edge2);float area2=dot(normal,normal);
     if(area2<1e-16)return 0;

@@ -1,5 +1,5 @@
 // CollisionCompute.hlsl
-// GPU-based batched OBB-vs-Mesh (BVH) collision detection
+// GPU でまとめて行う OBB 対メッシュ (BVH) の当たり判定
 
 struct CollisionRequest {
     float4x4 worldA;
@@ -31,7 +31,7 @@ struct ContactInfo {
     uint intersected;
 };
 
-// BVH Node structure (Matching Model.h exactly: 48 bytes)
+// BVH のノードの構造 (Model.h と完全に一致させる: 48 バイト)
 struct BvhNode {
     float3 bmin;
     float3 bmax;
@@ -39,40 +39,40 @@ struct BvhNode {
     int right;
     uint firstTri;
     uint triCount;
-    float2 _pad0; // Padding to 48 bytes
+    float2 _pad0; // 48 バイトにするための詰め物
 };
 
-// Root Parameters
+// ルートパラメータ
 cbuffer cbConstants : register(b0) {
     uint g_NumRequests;
 };
 
 StructuredBuffer<CollisionRequest> g_Requests : register(t0);
-ByteAddressBuffer g_BvhNodes : register(t1);      // StructuredBuffer -> ByteAddressBuffer
+ByteAddressBuffer g_BvhNodes : register(t1);      // StructuredBuffer の代わりに ByteAddressBuffer を使う
 ByteAddressBuffer g_BvhIndices : register(t2); 
 ByteAddressBuffer g_ModelVertices : register(t3); 
 ByteAddressBuffer g_ModelIndices : register(t4);   
 RWStructuredBuffer<ContactInfo> g_Results : register(u0);
 
-// Node stride in C++ (float3+float3+int+int+uint+uint+float2 = 12+12+4+4+4+4+8 = 48 bytes)
+// C++ 側のノードの大きさ (float3+float3+int+int+uint+uint+float2 = 12+12+4+4+4+4+8 = 48 バイト)
 static const uint kNodeStride = 48;
-// Vertex stride in C++ (float4+float2+float3+float4+uint4 = 16+8+12+16+16 = 68 bytes)
+// C++ 側の頂点の大きさ (float4+float2+float3+float4+uint4 = 16+8+12+16+16 = 68 バイト)
 static const uint kVertexStride = 68;
 
-// Helper: Get Vertex Position
+// 補助: 頂点の位置を読む
 float3 GetVertexPos(uint vertexIdx) {
     uint addr = vertexIdx * kVertexStride;
     return asfloat(g_ModelVertices.Load3(addr));
 }
 
-// Helper: Fast AABB-AABB intersection test
+// 補助: AABB 同士の高速な交差判定
 bool IntersectAabbAabb(float3 min1, float3 max1, float3 min2, float3 max2) {
     return (min1.x <= max2.x && max1.x >= min2.x) &&
            (min1.y <= max2.y && max1.y >= min2.y) &&
            (min1.z <= max2.z && max1.z >= min2.z);
 }
 
-// OBB vs Triangle SAT
+// OBB 対 三角形の分離軸判定 (SAT)
 bool IntersectObbTriangle(float3 center, float3 extents, float3 axes[3], float3 v0, float3 v1, float3 v2, out float3 outNormal, out float outDepth) {
     float3 edges[3] = { v1 - v0, v2 - v1, v0 - v2 };
     float3 triNormalVec = cross(edges[0], edges[1]);
@@ -83,7 +83,7 @@ bool IntersectObbTriangle(float3 center, float3 extents, float3 axes[3], float3 
     float minOverlap = 1e30;
     float3 bestAxis = float3(0, 1, 0);
 
-    // 1. Triangle Normal
+    // 1. 三角形の法線
     float3 axis = triNormal;
     float rA = extents.x * abs(dot(axis, axes[0])) + extents.y * abs(dot(axis, axes[1])) + extents.z * abs(dot(axis, axes[2]));
     float p0 = dot(v0 - center, axis);
@@ -91,7 +91,7 @@ bool IntersectObbTriangle(float3 center, float3 extents, float3 axes[3], float3 
     if (overlap < 0) return false;
     if (overlap < minOverlap) { minOverlap = overlap; bestAxis = axis; }
 
-    // 2. Box Axes (3)
+    // 2. 箱の軸 (3 本)
     for (int iBox = 0; iBox < 3; ++iBox) {
         float3 bAxis = axes[iBox];
         float rA = extents[iBox];
@@ -104,7 +104,7 @@ bool IntersectObbTriangle(float3 center, float3 extents, float3 axes[3], float3 
         if (overlap < minOverlap) { minOverlap = overlap; bestAxis = bAxis; }
     }
 
-    // 3. Cross Products (9)
+    // 3. 外積の軸 (9 本)
     for (int i = 0; i < 3; ++i) {
         for (int j = 0; j < 3; ++j) {
             float3 cAxis = cross(axes[i], edges[j]);
@@ -153,7 +153,7 @@ void main(uint3 dtid : SV_DispatchThreadID) {
         int nodeIdx = stack[--stackPtr];
         if (nodeIdx < 0 || (uint)nodeIdx >= req.numBvhNodes) continue;
         
-        // Manual loading from ByteAddressBuffer
+        // ByteAddressBuffer から手で読み込む
         uint nodeAddr = nodeIdx * kNodeStride;
         float3 bmin = asfloat(g_BvhNodes.Load3(nodeAddr + 0));
         float3 bmax = asfloat(g_BvhNodes.Load3(nodeAddr + 12));
@@ -163,7 +163,7 @@ void main(uint3 dtid : SV_DispatchThreadID) {
             if (left < 0) {
                 uint firstTri = g_BvhNodes.Load(nodeAddr + 32);
                 uint triCount = g_BvhNodes.Load(nodeAddr + 36);
-                // Leaf: Iterate triangles
+                // 葉: 三角形を順に調べる
                 for (uint i = 0; i < triCount; ++i) {
                     if (firstTri + i >= req.bvhIndexCount) break;
                     uint triIdx = g_BvhIndices.Load((firstTri + i) * 4);

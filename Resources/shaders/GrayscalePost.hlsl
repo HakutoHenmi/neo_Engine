@@ -5,8 +5,7 @@
 Texture2D gScene : register(t0);
 SamplerState gSmp : register(s0);
 
-cbuffer CBPost : register(b0)
-{
+cbuffer CBPost : register(b0) {
     float gTime;
     float gNoiseStrength;
     float gDistortion;
@@ -17,17 +16,15 @@ cbuffer CBPost : register(b0)
     float pad0;
 };
 
-struct PSIn
-{
+struct PSIn {
     float4 svpos : SV_POSITION;
     float2 uv : TEXCOORD0;
 };
 
-float4 main(PSIn i) : SV_TARGET
-{
+float4 main(PSIn i) : SV_TARGET {
     float3 sceneColor = gScene.Sample(gSmp, i.uv).rgb;
-    // In this effect gChromaShift controls the perfect-dodge radial blur.
-    // Keep the aim point sharp, and leave other grayscale effects unchanged at zero.
+    // この効果では gChromaShift で、ちょうど避けたときの放射状のぼかしを制御する。
+    // 狙う点はくっきり保ち、他のグレースケールの効果は 0 のとき変えない。
     float2 radial=i.uv-.5;
     float blur=saturate(gChromaShift)*smoothstep(.12,.55,length(radial));
     if(blur>0){
@@ -44,7 +41,7 @@ float4 main(PSIn i) : SV_TARGET
     float strength = saturate(gSan);
     float3 col = lerp(sceneColor, gray.xxx, strength);
 
-    // Vignette
+    // 周辺減光
     float2 d = i.uv - 0.5;
     col *= saturate(1.0 - dot(d, d) * gVignette * strength);
 

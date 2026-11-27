@@ -5,8 +5,7 @@
 Texture2D gScene : register(t0);
 SamplerState gSmp : register(s0);
 
-cbuffer CBPost : register(b0)
-{
+cbuffer CBPost : register(b0) {
     float gTime;
     float gNoiseStrength;
     float gDistortion;
@@ -17,14 +16,12 @@ cbuffer CBPost : register(b0)
     float pad0;
 };
 
-struct PSIn
-{
+struct PSIn {
     float4 svpos : SV_POSITION;
     float2 uv : TEXCOORD0;
 };
 
-float4 main(PSIn i) : SV_TARGET
-{
+float4 main(PSIn i) : SV_TARGET {
     float intensity = saturate(gSan);
     float2 texelSize = float2(1.0 / 1280.0, 1.0 / 720.0);
 
@@ -60,7 +57,7 @@ float4 main(PSIn i) : SV_TARGET
     // 元の画像にアウトラインを重ねる（墨絵風）
     float3 col = sceneColor * (1.0 - edge);
 
-    // Vignette
+    // 周辺減光
     float2 d = i.uv - 0.5;
     col *= saturate(1.0 - dot(d, d) * gVignette * intensity);
     col = lerp(sceneColor, col, intensity);

@@ -3,13 +3,13 @@ Texture2D<float4> paint : register(t0);
 SamplerState smp : register(s0);
 float4 main(VSOutput input) : SV_TARGET {
     float wet=paint.Sample(smp,input.uv).r;
-    // Horizontal decks and vertical sides expose the original Quaternius
-    // material when dry. Only the continuous ramp needs its own dry surface.
+    // 水平な床と縦の側面は、乾いているときは元の Quaternius の
+    // 材質を見せる。独自の乾いた面が要るのは連続した坂だけ。
     bool ramp=abs(input.normal.y)>.1 && abs(input.normal.y)<.99;
     if(!ramp) clip(wet-.30);
     float3 n=normalize(input.normal);
     float3 v=normalize(cameraPos-input.worldpos.xyz);
-    // Coverage gradient gives the dried edge a small meniscus without displaced geometry.
+    // 覆う割合の勾配で、形を動かさずに乾いた縁に小さなメニスカスを付ける。
     float left=paint.Sample(smp,input.uv-float2(1.0/1024,0)).r;
     float right=paint.Sample(smp,input.uv+float2(1.0/1024,0)).r;
     float back=paint.Sample(smp,input.uv-float2(0,1.0/1024)).r;
@@ -23,8 +23,8 @@ float4 main(VSOutput input) : SV_TARGET {
     float diffuse=.5+.5*saturate(dot(n,light));
     float spec=pow(saturate(dot(n,normalize(v+light))),90)*wet*1.4;
     float3 dry=float3(.33,.40,.16);
-    // The body and jets use the same green absorption colour. A shallow opaque
-    // film keeps the floor solid, with a raised wet edge and grazing reflection.
+    // 体と噴流は同じ緑の吸収色を使う。浅い不透明な膜で床を固く見せ、
+    // 盛り上がった濡れた縁とかすめる反射を付ける。
     float fresnel=.04+.96*pow(1-saturate(dot(n,v)),5);
     float3 ink=lerp(float3(.025,.075,.008),float3(.16,.38,.035),.35+.45*wet);
     float coverage=smoothstep(.30,.65,wet);

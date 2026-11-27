@@ -5,8 +5,7 @@
 Texture2D gScene : register(t0);
 SamplerState gSmp : register(s0);
 
-cbuffer CBPost : register(b0)
-{
+cbuffer CBPost : register(b0) {
     float gTime;
     float gNoiseStrength;
     float gDistortion;
@@ -17,8 +16,7 @@ cbuffer CBPost : register(b0)
     float pad0;
 };
 
-struct PSIn
-{
+struct PSIn {
     float4 svpos : SV_POSITION;
     float2 uv : TEXCOORD0;
 };
@@ -27,8 +25,7 @@ struct PSIn
 static const float BLOOM_THRESHOLD = 0.8;
 static const float BLOOM_INTENSITY = 1.2;
 
-float4 main(PSIn i) : SV_TARGET
-{
+float4 main(PSIn i) : SV_TARGET {
     float2 texelSize = float2(1.0 / 1280.0, 1.0 / 720.0);
     
     // サンプリング範囲 (gDistortion でブラー半径を可変にする)
@@ -39,11 +36,9 @@ float4 main(PSIn i) : SV_TARGET
 
     // 簡易的な 5x5 ガウシアン的なサンプリングで高輝度部分だけを抽出
     [unroll]
-    for (int y = -2; y <= 2; ++y)
-    {
+    for (int y = -2; y <= 2; ++y) {
         [unroll]
-        for (int x = -2; x <= 2; ++x)
-        {
+        for (int x = -2; x <= 2; ++x) {
             float2 offset = float2(x, y) * texelSize * radius;
             float3 sampleCol = gScene.Sample(gSmp, i.uv + offset).rgb;
             
@@ -69,7 +64,7 @@ float4 main(PSIn i) : SV_TARGET
     // 加算合成（スクリーン合成）
     float3 finalColor = baseColor + bloomColor;
     
-    // Vignette
+    // 周辺減光
     float2 d = i.uv - 0.5;
     finalColor *= saturate(1.0 - dot(d, d) * gVignette);
 

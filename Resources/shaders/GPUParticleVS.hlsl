@@ -27,11 +27,11 @@ struct VSOut {
 };
 
 VSOut main(uint vId : SV_VertexID, uint instId : SV_InstanceID) {
-    VSOut o;
+    VSOut output;
     
     Particle p = g_ParticlePool[instId];
     
-    // Quad vertices (-0.5 to 0.5)
+    // 四角形の頂点 (-0.5 〜 0.5)
     float2 uvs[6] = { float2(0,0), float2(1,0), float2(0,1), float2(0,1), float2(1,0), float2(1,1) };
     float2 offsets[6] = { float2(-0.5,0.5), float2(0.5,0.5), float2(-0.5,-0.5), float2(-0.5,-0.5), float2(0.5,0.5), float2(0.5,-0.5) };
     
@@ -46,16 +46,16 @@ VSOut main(uint vId : SV_VertexID, uint instId : SV_InstanceID) {
         float3 right = float3(1, 0, 0);
         
         if (p.particleType == 1 && dot(p.velocity, p.velocity) > 0.001f) {
-            // Trail: Stretch along velocity
+            // 軌跡: 速度の向きに伸ばす
             float3 velNorm = normalize(p.velocity);
             up = velNorm;
             right = normalize(cross(up, toCam));
             
-            // Stretch the offset Y based on speed
+            // 速さに応じてずらし量の Y を伸ばす
             float speed = length(p.velocity);
-            offset.y *= (1.0f + speed * 0.1f); // Stretch multiplier
+            offset.y *= (1.0f + speed * 0.1f); // 伸ばす倍率
         } else {
-            // Normal Billboard
+            // 通常のビルボード
             right = normalize(cross(up, toCam));
             up = cross(toCam, right);
         }
@@ -63,20 +63,20 @@ VSOut main(uint vId : SV_VertexID, uint instId : SV_InstanceID) {
         worldPos += right * offset.x + up * offset.y;
         normal = toCam;
     } else {
-        // Flat (X-Y plane)
+        // 平面 (X-Y 平面)
         worldPos.x += offset.x;
         worldPos.y += offset.y;
     }
     
-    o.pos = mul(float4(worldPos, 1.0), viewProj);
+    output.pos = mul(float4(worldPos, 1.0), viewProj);
     
     float t = saturate(p.age / p.life);
-    o.color = lerp(p.colorStart, p.colorEnd, t);
+    output.color = lerp(p.colorStart, p.colorEnd, t);
     
-    o.uv = uvs[vId];
-    o.worldPos = worldPos;
-    o.normal = normal;
-    o.particleType = p.particleType;
+    output.uv = uvs[vId];
+    output.worldPos = worldPos;
+    output.normal = normal;
+    output.particleType = p.particleType;
     
-    return o;
+    return output;
 }

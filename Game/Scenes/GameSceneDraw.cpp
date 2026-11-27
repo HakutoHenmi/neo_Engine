@@ -9,18 +9,19 @@
 #define NOMINMAX
 #endif
 #include "./GameScene.h"
+#include "./GameSceneConstants.h"
 // プレイヤー向けの UI (共通部品・強化カード・グラフィック設定)
 #include "../UI/GameUI.h"
 #include "../UI/RogueliteUI.h"
 #include "../UI/GraphicsUI.h"
 // 流体の放出と時間の管理 (エンジン側)
-#include "../../Engine/FluidEmission.h"
+#include "../../Engine/Fluid/FluidEmission.h"
 #include "../../Engine/Time/TimeManager.h"
 #include "../ObjectTypes.h"
 // 音・パス・シーン管理 (エンジン側)
-#include "../../Engine/Audio.h"
-#include "../../Engine/PathUtils.h"
-#include "../../Engine/SceneManager.h"
+#include "../../Engine/Core/Audio.h"
+#include "../../Engine/Core/PathUtils.h"
+#include "../../Engine/Scene/SceneManager.h"
 // エディタとスクリプト
 #include "../Editor/EditorUI.h"
 #include "../Scripts/ScriptEngine.h"
@@ -29,7 +30,7 @@
 #include "../Systems/AudioSystem.h"
 #include "../Systems/CleanupSystem.h"
 #include "../Systems/FluidSystem.h"
-#include "../../Engine/Input.h"      // キーボード・マウス入力
+#include "../../Engine/Core/Input.h" // キーボード・マウス入力
 
 #include "../Systems/MotionSystem.h" // キーフレームのモーション
 #include "../Systems/PhysicsSystem.h"
@@ -38,16 +39,18 @@
 #include "../Systems/ScriptSystem.h"
 #include "../Systems/UISystem.h"
 // Web プロファイラ (外部ツールから値を見たり変えたりする)
-#include "../../Engine/NetworkProfiler.h"
+#include "../../Engine/Core/NetworkProfiler.h"
 // JSON の読み書き
 #include "../../externals/nlohmann/json.hpp"
 #include "../../externals/imgui/imgui.h" // ImGui (エディタの画面)
-#include <Windows.h> // デバッグ出力 (OutputDebugStringA) を使うため
+#include <Windows.h>                     // デバッグ出力 (OutputDebugStringA) を使うため
 #include <algorithm>
 #include <cmath>
 #include <filesystem> // 空のテクスチャ検索などのファイル操作
 
 namespace Game {
+
+using namespace GameSceneConstants;
 
 namespace {
 // Scene ビュー表示中は、描画の間だけ camera_ にエディタカメラを入れる。
@@ -56,17 +59,22 @@ namespace {
 class ViewCameraScope {
 public:
 	ViewCameraScope(Engine::Camera& gameCamera, const Engine::Camera& editorCamera, bool active)
-		: camera_(gameCamera), active_(active) {
+	    : camera_(gameCamera), active_(active) {
 		// 有効なときだけ、ゲームのカメラを覚えてエディタのカメラに差し替える
-		if (!active_) return;
+		if (!active_)
+			return;
 		saved_ = gameCamera;
 		gameCamera = editorCamera;
 	}
 	// 終わったらゲームのカメラに戻す
-	~ViewCameraScope() { if (active_) camera_ = saved_; }
+	~ViewCameraScope() {
+		if (active_)
+			camera_ = saved_;
+	}
 	// コピーはできない
 	ViewCameraScope(const ViewCameraScope&) = delete;
 	ViewCameraScope& operator=(const ViewCameraScope&) = delete;
+
 private:
 	// 差し替えたカメラ・元のカメラ・有効か
 	Engine::Camera& camera_;
@@ -139,46 +147,68 @@ void GameScene::Draw() {
 	// 旧: CPU 計算のスライム描画 (軽量なスライム用シェーダーに置き換えたので無効)
 	renderer_->SetCustomDrawJob(nullptr);
 
-    // Scene ビューは Unity と同様にゲーム内 UI (ポーズ画面・HUD) を重ねず、空間だけを見せる
-    const bool sceneView = editorView_ == EditorView::Scene;
-    // ポーズ中: グラフィック設定画面またはポーズメニューを描く
-    if (isPlaying_ && isPaused_) {
-        // Scene ビューでは何も重ねない
-        if (sceneView) return;
-        // UI の描画先 (エディタの Game ビューならマウス座標を上書きする)
-        UI::Canvas ui(renderer_,ctx_.viewportSize.x,ctx_.viewportSize.y);if(ctx_.useOverrideMouse)ui.SetPointer(ctx_.overrideMouseX,ctx_.overrideMouseY);
-        // グラフィック設定画面 (保存に失敗したら注意を出す)
-        if(graphicsOpen_){UI::DrawGraphics(ui,*renderer_);if(graphicsSaveFailed_)ui.Text(UI::Str("pause.saveFailed"),380,510,18,UI::Scale::Red,UI::Scale::Jp);return;}
-        // 吸収モードのポーズ: 止まったゲームの上に物差しのメニューを出す
-        if(chronoSystem_&&chronoSystem_->DevourMode()){
-            const auto view=UI::Scale::MakePauseView(chronoSystem_->DevourStageInfo(),chronoSystem_->LifeState().bodies[0].mass,chronoSystem_->DevourClockState().left);
-            UI::Scale::Pause(ui,view,pauseMenu_,UI::Seconds()-pauseOpenedAt_);return;
-        }
-        // スライム本編は強化パレット、旧アクションゲームはポーズメニュー
-        if(chronoMode_&&!registry_.view<Chrono::InkPlayer>().empty()){auto view=registry_.view<Chrono::InkPlayer>();UI::RoguePalette(ui,view.get<Chrono::InkPlayer>(*view.begin()).rogue);}else ui.Pause();
-        // 右上のグラフィック設定ボタン
-        ui.Button(UI::GraphicsButton,UI::Str(UI::UsingPad()?"pause.graphics":"pause.graphicsKey"),false,"xbox_button_view");
-        return;
-    }
-    // 各システムの描画
-    for (auto& system : systems_) {
-        system->Draw(registry_, ctx_);
+	// Scene ビューは Unity と同様にゲーム内 UI (ポーズ画面・HUD) を重ねず、空間だけを見せる
+	const bool sceneView = editorView_ == EditorView::Scene;
+	// ポーズ中: グラフィック設定画面またはポーズメニューを描く
+	if (isPlaying_ && isPaused_) {
+		// Scene ビューでは何も重ねない
+		if (sceneView)
+			return;
+		// UI の描画先 (エディタの Game ビューならマウス座標を上書きする)
+		UI::Canvas ui(renderer_, ctx_.viewportSize.x, ctx_.viewportSize.y);
+		if (ctx_.useOverrideMouse)
+			ui.SetPointer(ctx_.overrideMouseX, ctx_.overrideMouseY);
+		// グラフィック設定画面 (保存に失敗したら注意を出す)
+		if (graphicsOpen_) {
+			UI::DrawGraphics(ui, *renderer_);
+			if (graphicsSaveFailed_)
+				ui.Text(
+				    UI::Str("pause.saveFailed"), kSaveFailedTextX, kSaveFailedTextY, kSaveFailedTextSize,
+				    UI::Scale::Red, UI::Scale::Jp);
+			return;
+		}
+		// 吸収モードのポーズ: 止まったゲームの上に物差しのメニューを出す
+		if (chronoSystem_ && chronoSystem_->DevourMode()) {
+			const auto view = UI::Scale::MakePauseView(
+			    chronoSystem_->DevourStageInfo(), chronoSystem_->LifeState().bodies[0].mass,
+			    chronoSystem_->DevourClockState().left);
+			UI::Scale::Pause(ui, view, pauseMenu_, UI::Seconds() - pauseOpenedAt_);
+			return;
+		}
+		// スライム本編は強化パレット、旧アクションゲームはポーズメニュー
+		if (chronoMode_ && !registry_.view<Chrono::InkPlayer>().empty()) {
+			auto view = registry_.view<Chrono::InkPlayer>();
+			UI::RoguePalette(ui, view.get<Chrono::InkPlayer>(*view.begin()).rogue);
+		} else
+			ui.Pause();
+		// 右上のグラフィック設定ボタン
+		ui.Button(
+		    UI::GraphicsButton, UI::Str(UI::UsingPad() ? "pause.graphics" : "pause.graphicsKey"), false,
+		    "xbox_button_view");
+		return;
+	}
+	// 各システムの描画
+	for (auto& system : systems_) {
+		system->Draw(registry_, ctx_);
 		// スライム本編の HUD は Renderer::EndFrame でまとめて描かれる前に登録する
-		if (chronoMode_ && isPlaying_ && !sceneView) system->DrawUI(registry_, ctx_);
+		if (chronoMode_ && isPlaying_ && !sceneView)
+			system->DrawUI(registry_, ctx_);
 	}
 }
 
 // ゲーム内 UI の描画 (旧アクションゲームのシステムが使う)
 void GameScene::DrawUI() {
 	// 描画の窓口が無ければ何もしない
-	if (!renderer_) return;
+	if (!renderer_)
+		return;
 
 	// Scene ビューではゲームの HUD を描かない (Draw と同じ扱い)
 	if (!isPlaying_ || editorView_ == EditorView::Scene)
 		return;
 	// 本編以外 (エディタで開いたシーン) では、各システムの UI を描く
 	for (auto& sys : systems_) {
-		if (!chronoMode_) sys->DrawUI(registry_, ctx_);
+		if (!chronoMode_)
+			sys->DrawUI(registry_, ctx_);
 	}
 }
 
@@ -190,8 +220,8 @@ bool GameScene::IsStageClear() const {
 // プレイヤーを探し、流体の描画に使う位置・大きさ・死亡の状態をまとめて返す
 GameScene::PlayerDrawState GameScene::GatherPlayerDrawState() {
 	// プレイヤーの位置・大きさ (流体の描画に使う)
-	DirectX::XMFLOAT3 corePos = { 0.0f, 1.0f, 0.0f };
-	DirectX::XMFLOAT3 blobRadii = { 1.2f, 0.85f, 1.2f };
+	DirectX::XMFLOAT3 corePos = PlayerFluid::kDefaultCore;
+	DirectX::XMFLOAT3 blobRadii = PlayerFluid::kDefaultRadii;
 	bool hasPlayerSlime = false;
 	bool isPlayerDead = false;
 
@@ -204,8 +234,8 @@ GameScene::PlayerDrawState GameScene::GatherPlayerDrawState() {
 		// 位置と大きさ
 		if (registry_.all_of<TransformComponent>(playerEntity)) {
 			auto& tc = registry_.get<TransformComponent>(playerEntity);
-			corePos = { tc.translate.x, tc.translate.y, tc.translate.z };
-			blobRadii = { tc.scale.x, tc.scale.y, tc.scale.z };
+			corePos = {tc.translate.x, tc.translate.y, tc.translate.z};
+			blobRadii = {tc.scale.x, tc.scale.y, tc.scale.z};
 		}
 		// 死んでいるか
 		if (registry_.all_of<HealthComponent>(playerEntity)) {
@@ -224,10 +254,12 @@ void GameScene::UploadFluidColliders() {
 	auto aabbView = registry_.view<TransformComponent, BoxColliderComponent>();
 	aabbView.each([&](entt::entity entity, TransformComponent&, BoxColliderComponent& bc) {
 		// 無効なものとすり抜けるものは除く
-		if (!bc.enabled || bc.isTrigger) return;
+		if (!bc.enabled || bc.isTrigger)
+			return;
 		// 壁と既定のタグだけ
 		const auto* tag = registry_.try_get<TagComponent>(entity);
-		if (!tag || (tag->tag != TagType::Wall && tag->tag != TagType::Default)) return;
+		if (!tag || (tag->tag != TagType::Wall && tag->tag != TagType::Default))
+			return;
 		// ワールド行列
 		const auto matrix = GetWorldMatrix(static_cast<int>(entity));
 		const auto world = DirectX::XMLoadFloat4x4(reinterpret_cast<const DirectX::XMFLOAT4X4*>(&matrix));
@@ -235,13 +267,14 @@ void GameScene::UploadFluidColliders() {
 		DirectX::XMVECTOR lo = DirectX::XMVectorReplicate(FLT_MAX);
 		DirectX::XMVECTOR hi = DirectX::XMVectorReplicate(-FLT_MAX);
 		// 箱の 8 つの角をワールド座標にして、最小・最大を広げる
-		for (int corner = 0; corner < 8; ++corner) {
+		for (int corner = 0; corner < kBoxCornerCount; ++corner) {
 			const auto local = DirectX::XMVectorSet(
-				bc.center.x + ((corner & 1) ? .5f : -.5f) * bc.size.x,
-				bc.center.y + ((corner & 2) ? .5f : -.5f) * bc.size.y,
-				bc.center.z + ((corner & 4) ? .5f : -.5f) * bc.size.z, 1);
+			    bc.center.x + ((corner & 1) ? .5f : -.5f) * bc.size.x,
+			    bc.center.y + ((corner & 2) ? .5f : -.5f) * bc.size.y,
+			    bc.center.z + ((corner & 4) ? .5f : -.5f) * bc.size.z, 1);
 			const auto point = DirectX::XMVector3TransformCoord(local, world);
-			lo = DirectX::XMVectorMin(lo, point); hi = DirectX::XMVectorMax(hi, point);
+			lo = DirectX::XMVectorMin(lo, point);
+			hi = DirectX::XMVectorMax(hi, point);
 		}
 		// AABB にして一覧へ追加する
 		Engine::Renderer::FluidAABB box{};
@@ -266,11 +299,11 @@ void GameScene::UpdateFluidPreviewCore(PlayerDrawState& player) {
 			// 最初のエミッターの少し下を中心にする
 			const auto source = *sources.begin();
 			const auto matrix = GetWorldMatrix(static_cast<int>(source));
-			corePos = {matrix.m[3][0], matrix.m[3][1] - 3, matrix.m[3][2]};
+			corePos = {matrix.m[3][0], matrix.m[3][1] - PlayerFluid::kPreviewCoreDrop, matrix.m[3][2]};
 		}
 		// 中心だけ渡し、引き寄せ・分身・糸は無効にする
 		renderer_->SetGPUFluidCore({corePos.x, corePos.y, corePos.z}, 0);
-		renderer_->SetGPUFluidDecoy({0,-1000,0}, 0, {1,1,1}, {0,0,1});
+		renderer_->SetGPUFluidDecoy({0, kHiddenDecoyY, 0}, 0, {1, 1, 1}, {0, 0, 1});
 		renderer_->SetGPUFluidTether({}, false);
 		renderer_->SetChronoFluidPresentation(1, 0, false);
 	}
@@ -286,32 +319,36 @@ void GameScene::UpdateFluidEmitters(const PlayerDrawState& player) {
 		auto emitterView = registry_.view<TransformComponent, FluidEmitterComponent>();
 		emitterView.each([&](entt::entity e, TransformComponent&, FluidEmitterComponent& fec) {
 			// 無効か、出す数が 0 なら何もしない
-			if (!fec.enabled || fec.emitCountPerFrame <= 0) return;
+			if (!fec.enabled || fec.emitCountPerFrame <= 0)
+				return;
 
 			// ワールド座標での位置・初速・色
 			const auto world = GetWorldMatrix(static_cast<int>(e));
 			Engine::Vector3 pos = {world.m[3][0], world.m[3][1], world.m[3][2]};
-			Engine::Vector3 vel = { fec.velocity.x, fec.velocity.y, fec.velocity.z };
-			Engine::Vector4 col = { fec.color.x, fec.color.y, fec.color.z, fec.color.w };
+			Engine::Vector3 vel = {fec.velocity.x, fec.velocity.y, fec.velocity.z};
+			Engine::Vector4 col = {fec.color.x, fec.color.y, fec.color.z, fec.color.w};
 
 			// 毎フレーム粒子を出す
-			const int emitCount=Engine::LimitFluidEmission(Engine::AccumulateFluidEmission(fec.emitCountPerFrame,
-				Engine::TimeManager::GetInstance().GetDeltaTime(),fec.emissionRemainder), fec.particleLimit, fec.emittedParticles);
+			const int emitCount = Engine::LimitFluidEmission(
+			    Engine::AccumulateFluidEmission(
+			        fec.emitCountPerFrame, Engine::TimeManager::GetInstance().GetDeltaTime(), fec.emissionRemainder),
+			    fec.particleLimit, fec.emittedParticles);
 			// GPU 流体へ追加する
 			renderer_->EmitGPUFluid(pos, vel, col, emitCount, fec.fluidType, fec.retainWater);
 
 			// 水 (fluidType >= 0.5) の真下 (半径 1.5 以内) にプレイヤーがいれば HP を回復する
-			if (isPlaying_ && !isPaused_ && fec.fluidType >= 0.5f && registry_.valid(playerEntity)) {
+			if (isPlaying_ && !isPaused_ && fec.fluidType >= WaterHeal::kWaterTypeThreshold &&
+			    registry_.valid(playerEntity)) {
 				// エミッターとプレイヤーの水平の差
 				float dx = corePos.x - pos.x;
 				float dz = corePos.z - pos.z;
-				if (dx * dx + dz * dz < 1.5f * 1.5f) {
+				if (dx * dx + dz * dz < WaterHeal::kRadius * WaterHeal::kRadius) {
 					if (registry_.all_of<HealthComponent>(playerEntity)) {
 						auto& hc = registry_.get<HealthComponent>(playerEntity);
 						// 回復の間隔を数える (関数をまたいで覚えておく)
 						static float healTimer = 0.0f;
 						healTimer += ctx_.dt;
-						if (healTimer > 0.05f) { // 0.05 秒ごとに 1 回復 (1 秒で 20)
+						if (healTimer > WaterHeal::kInterval) {
 							healTimer = 0.0f;
 							hc.RecoverHp(1);
 						}
@@ -333,78 +370,114 @@ void GameScene::UpdatePlayerSlimeFluid(PlayerDrawState& player) {
 	if (registry_.valid(playerEntity) && registry_.all_of<MeshRendererComponent>(playerEntity)) {
 		// プレイヤーの見た目
 		auto& mr = registry_.get<MeshRendererComponent>(playerEntity);
-			
-			// 元のモデルが読めたら、GPU 流体のスライムで描く準備ができたとみなす
-			if (!playerSlimeReady_) playerSlimeReady_ = renderer_->GetModel(mr.modelHandle) != nullptr;
 
-			if (playerSlimeReady_ && registry_.all_of<TransformComponent>(playerEntity)) {
-				// 元のメッシュは描かず、GPU 流体のスライムで描く
-				mr.enabled = false;
-				
-				if (!gpuSlimeEmitted_) {
-					// 最初の1回だけ、大量の GPU 流体粒子を体の中心に放出する
-					// スライムの色 (変形の見本があればその色)
-					Engine::Vector4 pColor = {Chrono::SlimeRed, Chrono::SlimeGreen, Chrono::SlimeBlue, 1.0f};
-                    if(!renderer_->fluidMorphTargets_.empty())pColor=renderer_->fluidMorphTargets_.front().color;
-					// プレイヤーの粒子数だけ出す
-					renderer_->EmitGPUFluid({corePos.x, corePos.y, corePos.z}, {0, -2, 0}, pColor, Engine::Renderer::kPlayerFluidParticles);
-					gpuSlimeEmitted_ = true;
+		// 元のモデルが読めたら、GPU 流体のスライムで描く準備ができたとみなす
+		if (!playerSlimeReady_)
+			playerSlimeReady_ = renderer_->GetModel(mr.modelHandle) != nullptr;
+
+		if (playerSlimeReady_ && registry_.all_of<TransformComponent>(playerEntity)) {
+			// 元のメッシュは描かず、GPU 流体のスライムで描く
+			mr.enabled = false;
+
+			if (!gpuSlimeEmitted_) {
+				// 最初の1回だけ、大量の GPU 流体粒子を体の中心に放出する
+				// スライムの色 (変形の見本があればその色)
+				Engine::Vector4 pColor = {Chrono::SlimeRed, Chrono::SlimeGreen, Chrono::SlimeBlue, 1.0f};
+				if (!renderer_->fluidMorphTargets_.empty())
+					pColor = renderer_->fluidMorphTargets_.front().color;
+				// プレイヤーの粒子数だけ出す
+				renderer_->EmitGPUFluid(
+				    {corePos.x, corePos.y, corePos.z}, {0, -PlayerFluid::kSpawnFallSpeed, 0}, pColor,
+				    Engine::Renderer::kPlayerFluidParticles);
+				gpuSlimeEmitted_ = true;
+			}
+
+			// 状態で引き寄せる力を変える (死亡中は 0、通常は強く)
+			float attraction = isPlayerDead ? 0.0f : PlayerFluid::kAttraction;
+
+			// 流体の中心 (圧力の源) を体の少し上に置く
+			Engine::Vector3 targetCore = {corePos.x, corePos.y + PlayerFluid::kCoreLift, corePos.z};
+			// 向き (回転行列の Z 軸)
+			auto& playerTc = registry_.get<TransformComponent>(playerEntity);
+			Engine::Matrix4x4 mat = playerTc.GetTransform().ToMatrix();
+			Engine::Vector3 forward = {mat.m[2][0], mat.m[2][1], mat.m[2][2]};
+			// 大きさ
+			Engine::Vector3 scaleVec = {blobRadii.x, blobRadii.y, blobRadii.z};
+			// スライム本編: 地面の傾き・顔の向き・体の形 (伸び・空中・動き)・質量を流体へ渡す
+			if (chronoMode_) {
+				// 地面の傾き・高さを渡す
+				if (auto* ink = registry_.try_get<Chrono::InkPlayer>(playerEntity)) {
+					renderer_->SetSlimeGround(
+					    {ink->groundSlope.x, ink->groundHeight, ink->groundSlope.z},
+					    registry_.get<Chrono::Player>(playerEntity).grounded);
+					renderer_->SetSlimeFaceCamera(
+					    std::max(ink->rogue.MenuEase(), chronoSystem_ ? chronoSystem_->DevourResultFace() : 0.f));
+					scaleVec = {ink->fluidAspect, ink->airBlend, ink->fluidMotion};
+					forward = {ink->fluidDirection.x, 0, ink->fluidDirection.z};
 				}
-				
-				// 状態で引き寄せる力を変える (死亡中は 0、通常は強く)
-				float attraction = isPlayerDead ? 0.0f : 32.0f;
-				
-				// 流体の中心 (圧力の源) を体の少し上に置く
-				Engine::Vector3 targetCore = {corePos.x, corePos.y + 0.18f, corePos.z};
-				// 向き (回転行列の Z 軸)
-				auto& playerTc = registry_.get<TransformComponent>(playerEntity);
-				Engine::Matrix4x4 mat = playerTc.GetTransform().ToMatrix();
-				Engine::Vector3 forward = {mat.m[2][0], mat.m[2][1], mat.m[2][2]};
-				// 大きさ
-				Engine::Vector3 scaleVec = {blobRadii.x, blobRadii.y, blobRadii.z};
-				// スライム本編: 地面の傾き・顔の向き・体の形 (伸び・空中・動き)・質量を流体へ渡す
-				if (chronoMode_) {
-					// 地面の傾き・高さを渡す
-					if(auto* ink=registry_.try_get<Chrono::InkPlayer>(playerEntity)){renderer_->SetSlimeGround({ink->groundSlope.x,ink->groundHeight,ink->groundSlope.z},registry_.get<Chrono::Player>(playerEntity).grounded);renderer_->SetSlimeFaceCamera(std::max(ink->rogue.MenuEase(),chronoSystem_?chronoSystem_->DevourResultFace():0.f));scaleVec={ink->fluidAspect,ink->airBlend,ink->fluidMotion};forward={ink->fluidDirection.x,0,ink->fluidDirection.z};}
-					// 質量 (体力)。変形の見本があれば最大にする
-					float mass = registry_.get<HealthComponent>(playerEntity).Hp();
-                    if(!renderer_->fluidMorphTargets_.empty())mass=Chrono::SlimeMaximumMass;
-                    if(auto* ink=registry_.try_get<Chrono::InkPlayer>(playerEntity);ink&&ink->perfectAge>=0&&ink->perfectAge<.16f)
-                        mass*=.18f; // 一瞬だけ見た目を縮める (ゲーム上の質量は変えない)
-					// 流体の大きさの基準 (100) に換算する
-					if(registry_.all_of<Chrono::InkPlayer>(playerEntity))mass*=100.f/Chrono::SlimeMaximumMass;
-					// 中心・引き寄せ・大きさ・向き・状態を渡す
-					renderer_->SetGPUFluidCore(targetCore, attraction, scaleVec, forward, (registry_.all_of<Chrono::InkPlayer>(playerEntity) && registry_.get<Chrono::InkPlayer>(playerEntity).dodgeLiquid) ? 5.0f : (registry_.all_of<Chrono::InkPlayer>(playerEntity) ? 4.0f : 2.0f), mass);
-					// 被弾時の点滅・不安定時の明滅、ヒットストップ中の停止、触手を伸ばしている間の糸
-					if (auto* action = registry_.try_get<Chrono::Player>(playerEntity)) {
-						// 強化の選択画面を開いているか
-						bool upgradeOpenForFluid=false;if(auto* ink=registry_.try_get<Chrono::InkPlayer>(playerEntity))upgradeOpenForFluid=ink->rogue.menu;
-						// 被弾から 0.6 秒は激しく点滅する
-						float flash=action->damageAge<.6f?(std::sin(action->damageAge*70)>0?.75f:0):0;
-						// 不安定さが 75 を超えたらゆっくり明滅する
-						if(action->instability>75)flash=std::max(flash,.35f*(.5f+.5f*std::sin(action->stats.seconds*10)));
-						// カメラ用の透明度・点滅・止めるか (ポーズ中かヒットストップ中) を渡す
-						renderer_->SetChronoFluidPresentation(action->cameraOpacity,flash,isPaused_||(action->hitStop>0&&!upgradeOpenForFluid)||(chronoSystem_&&chronoSystem_->DevourResultFrozen()));
-						// 触手を伸ばしている・引き寄せている間は手まで糸を張る
-						bool tether = action->action == Chrono::Action::Extending || action->action == Chrono::Action::Pulling || action->action == Chrono::Action::Retracting;
-						renderer_->SetGPUFluidTether({action->hand.x, action->hand.y, action->hand.z}, tether);
+				// 質量 (体力)。変形の見本があれば最大にする
+				float mass = registry_.get<HealthComponent>(playerEntity).Hp();
+				if (!renderer_->fluidMorphTargets_.empty())
+					mass = Chrono::SlimeMaximumMass;
+				if (auto* ink = registry_.try_get<Chrono::InkPlayer>(playerEntity);
+				    ink && ink->perfectAge >= 0 && ink->perfectAge < PlayerFluid::kPerfectShrinkSeconds) {
+					mass *= PlayerFluid::kPerfectShrinkScale; // 一瞬だけ見た目を縮める (ゲーム上の質量は変えない)
+				}
+				// 流体の大きさの基準 (100) に換算する
+				if (registry_.all_of<Chrono::InkPlayer>(playerEntity)) {
+					mass *= PlayerFluid::kMassScale / Chrono::SlimeMaximumMass;
+				}
+				// 中心・引き寄せ・大きさ・向き・状態を渡す
+				const auto* inkPlayer = registry_.try_get<Chrono::InkPlayer>(playerEntity);
+				float fluidMode = PlayerFluid::kModeDefault;
+				if (inkPlayer) {
+					fluidMode = inkPlayer->dodgeLiquid ? PlayerFluid::kModeDodgeLiquid : PlayerFluid::kModeInkPlayer;
+				}
+				renderer_->SetGPUFluidCore(targetCore, attraction, scaleVec, forward, fluidMode, mass);
+				// 被弾時の点滅・不安定時の明滅、ヒットストップ中の停止、触手を伸ばしている間の糸
+				if (auto* action = registry_.try_get<Chrono::Player>(playerEntity)) {
+					// 強化の選択画面を開いているか
+					bool upgradeOpenForFluid = false;
+					if (auto* ink = registry_.try_get<Chrono::InkPlayer>(playerEntity))
+						upgradeOpenForFluid = ink->rogue.menu;
+					// 被弾直後は激しく点滅する
+					float flash = 0.0f;
+					if (action->damageAge < PlayerFluid::kDamageFlashSeconds &&
+					    std::sin(action->damageAge * PlayerFluid::kDamageFlashFrequency) > 0) {
+						flash = PlayerFluid::kDamageFlashIntensity;
 					}
-				// 本編以外のシーン: 糸と点滅は無し
-				} else {
-					renderer_->SetGPUFluidTether({}, false);
-					renderer_->SetChronoFluidPresentation(1,0,false);
-					renderer_->SetGPUFluidCore(targetCore, attraction, scaleVec, forward, 0.0f, 0.0f);
+					// 不安定さがしきい値を超えたらゆっくり明滅する
+					if (action->instability > PlayerFluid::kUnstableThreshold) {
+						const float wave =
+						    0.5f + 0.5f * std::sin(action->stats.seconds * PlayerFluid::kUnstablePulseFrequency);
+						flash = std::max(flash, PlayerFluid::kUnstablePulseIntensity * wave);
+					}
+					// カメラ用の透明度・点滅・止めるか (ポーズ中かヒットストップ中) を渡す
+					renderer_->SetChronoFluidPresentation(
+					    action->cameraOpacity, flash,
+					    isPaused_ || (action->hitStop > 0 && !upgradeOpenForFluid) ||
+					        (chronoSystem_ && chronoSystem_->DevourResultFrozen()));
+					// 触手を伸ばしている・引き寄せている間は手まで糸を張る
+					bool tether = action->action == Chrono::Action::Extending ||
+					              action->action == Chrono::Action::Pulling ||
+					              action->action == Chrono::Action::Retracting;
+					renderer_->SetGPUFluidTether({action->hand.x, action->hand.y, action->hand.z}, tether);
 				}
+				// 本編以外のシーン: 糸と点滅は無し
+			} else {
+				renderer_->SetGPUFluidTether({}, false);
+				renderer_->SetChronoFluidPresentation(1, 0, false);
+				renderer_->SetGPUFluidCore(targetCore, attraction, scaleVec, forward, 0.0f, 0.0f);
+			}
 
-				// 分身の流体は使わない (引き寄せる力を 0 にしておく)
-				renderer_->SetGPUFluidDecoy({0,-1000,0}, 0.0f, {1,1,1}, {0,0,1});
-
-}
-			// ----------------------------------------
-			
-			// プレイヤーがスライムのシェーダーで描かれているか
-			hasPlayerSlime = mr.shaderName == "Slime";
+			// 分身の流体は使わない (引き寄せる力を 0 にしておく)
+			renderer_->SetGPUFluidDecoy({0, kHiddenDecoyY, 0}, 0.0f, {1, 1, 1}, {0, 0, 1});
 		}
+		// ----------------------------------------
+
+		// プレイヤーがスライムのシェーダーで描かれているか
+		hasPlayerSlime = mr.shaderName == "Slime";
+	}
 }
 
 // メッシュの描画: 色の上書き・カメラを遮る物の透明化・アニメーション・シェーダーごとの描き分け、
@@ -423,10 +496,14 @@ void GameScene::DrawSceneMeshes() {
 		// メッシュで描いたか
 		bool hasMeshRenderer = false;
 		// ほぼ透明になった物は描かない (網目が画面全体にかからないように)
-		bool occludedAway=false;
-		if(chronoMode_&&isPlaying_)if(auto* occluder=registry_.try_get<Chrono::CameraOccluder>(entity)){
-			if(occluder->opacity<.995f)color.w=-occluder->opacity; // カメラを遮る物は網目状に透かす (影と当たり判定はそのまま)
-			if(occluder->opacity<.03f)hasMeshRenderer=occludedAway=true;}
+		bool occludedAway = false;
+		if (chronoMode_ && isPlaying_)
+			if (auto* occluder = registry_.try_get<Chrono::CameraOccluder>(entity)) {
+				if (occluder->opacity < .995f)
+					color.w = -occluder->opacity; // カメラを遮る物は網目状に透かす (影と当たり判定はそのまま)
+				if (occluder->opacity < .03f)
+					hasMeshRenderer = occludedAway = true;
+			}
 		if (registry_.all_of<MeshRendererComponent>(entity)) {
 			// 見た目を持ち、有効でモデルがあるものを描く
 			const auto& mr = registry_.get<MeshRendererComponent>(entity);
@@ -472,18 +549,24 @@ void GameScene::DrawSceneMeshes() {
 
 								// 骨の行列を計算する
 								std::vector<Engine::Model::DebugBone> debugBones;
-								m->UpdateSkeleton(data.rootNode, Engine::Matrix4x4::Identity(), *currAnim, anim.time, prevAnim, anim.prevTime, blendFactor, bonePalette, anim.drawSkeleton ? &debugBones : nullptr);
+								m->UpdateSkeleton(
+								    data.rootNode, Engine::Matrix4x4::Identity(), *currAnim, anim.time, prevAnim,
+								    anim.prevTime, blendFactor, bonePalette, anim.drawSkeleton ? &debugBones : nullptr);
 								hasAnim = true;
 
 								// 骨の表示が有効なら、親の骨から各骨へ線を引く
 								if (anim.drawSkeleton) {
 									// このエンティティのワールド行列
 									Engine::Matrix4x4 world = this->GetWorldMatrix(static_cast<int>(entity));
-									DirectX::XMMATRIX w = DirectX::XMLoadFloat4x4(reinterpret_cast<const DirectX::XMFLOAT4X4*>(&world));
+									DirectX::XMMATRIX w =
+									    DirectX::XMLoadFloat4x4(reinterpret_cast<const DirectX::XMFLOAT4X4*>(&world));
 									for (const auto& bone : debugBones) {
 										// 親の骨の位置と、この骨の位置
-										DirectX::XMVECTOR p1 = DirectX::XMVectorSet(bone.parentPos.x, bone.parentPos.y, bone.parentPos.z, 1.0f);
-										Engine::Vector3 bPos = {bone.globalMatrix.m[3][0], bone.globalMatrix.m[3][1], bone.globalMatrix.m[3][2]};
+										DirectX::XMVECTOR p1 = DirectX::XMVectorSet(
+										    bone.parentPos.x, bone.parentPos.y, bone.parentPos.z, 1.0f);
+										Engine::Vector3 bPos = {
+										    bone.globalMatrix.m[3][0], bone.globalMatrix.m[3][1],
+										    bone.globalMatrix.m[3][2]};
 										DirectX::XMVECTOR p2 = DirectX::XMVectorSet(bPos.x, bPos.y, bPos.z, 1.0f);
 										// ワールド座標へ変換する
 										p1 = DirectX::XMVector3TransformCoord(p1, w);
@@ -492,7 +575,8 @@ void GameScene::DrawSceneMeshes() {
 										Engine::Vector3 wp1, wp2;
 										DirectX::XMStoreFloat3(reinterpret_cast<DirectX::XMFLOAT3*>(&wp1), p1);
 										DirectX::XMStoreFloat3(reinterpret_cast<DirectX::XMFLOAT3*>(&wp2), p2);
-										renderer_->DrawLine3D(wp1, wp2, {0.0f, 1.0f, 0.0f, 1.0f}, true); // 手前の物に隠れずに描く
+										renderer_->DrawLine3D(
+										    wp1, wp2, {0.0f, 1.0f, 0.0f, 1.0f}, true); // 手前の物に隠れずに描く
 									}
 								}
 							}
@@ -505,21 +589,32 @@ void GameScene::DrawSceneMeshes() {
 				// アニメーションありはスキニング描画、半透明は後回し、特殊シェーダーは個別描画、それ以外はインスタンシング描画
 				if (hasAnim) {
 					// 骨の行列を使って描く
-					renderer_->DrawSkinnedMesh(mr.modelHandle, mr.textureHandle, world, bonePalette, {color.x * mr.color.x, color.y * mr.color.y, color.z * mr.color.z, color.w * mr.color.w});
+					renderer_->DrawSkinnedMesh(
+					    mr.modelHandle, mr.textureHandle, world, bonePalette,
+					    {color.x * mr.color.x, color.y * mr.color.y, color.z * mr.color.z, color.w * mr.color.w});
 				} else {
 					// スライム系・ビームなどの半透明のシェーダー
-					if (mr.shaderName == "Slime" || mr.shaderName == "SlimeNoFace" || mr.shaderName == "SlimeNoFaceNoDepth" || mr.shaderName == "EnergyBeam" || mr.shaderName == "EnergyCylinder") {
+					if (mr.shaderName == "Slime" || mr.shaderName == "SlimeNoFace" ||
+					    mr.shaderName == "SlimeNoFaceNoDepth" || mr.shaderName == "EnergyBeam" ||
+					    mr.shaderName == "EnergyCylinder") {
 						// 半透明なので、不透明な物の後でまとめて描く
 						continue;
 					}
 					// 特殊なシェーダーは 1 つずつ描く
-					if (mr.shaderName == "Toon" || mr.shaderName == "ToonSkinning" || mr.shaderName == "Hologram" || mr.shaderName == "EmissiveGlow" || mr.shaderName == "ForceField" ||
-					    mr.shaderName == "Dissolve" || mr.shaderName == "Distortion" || mr.shaderName == "Reflection" || mr.shaderName == "Glass") {
-						renderer_->DrawMesh(mr.modelHandle, mr.textureHandle, world, {color.x * mr.color.x, color.y * mr.color.y, color.z * mr.color.z, color.w * mr.color.w}, mr.shaderName, mr.reflectivity, mr.useCubemap);
+					if (mr.shaderName == "Toon" || mr.shaderName == "ToonSkinning" || mr.shaderName == "Hologram" ||
+					    mr.shaderName == "EmissiveGlow" || mr.shaderName == "ForceField" ||
+					    mr.shaderName == "Dissolve" || mr.shaderName == "Distortion" || mr.shaderName == "Reflection" ||
+					    mr.shaderName == "Glass") {
+						renderer_->DrawMesh(
+						    mr.modelHandle, mr.textureHandle, world,
+						    {color.x * mr.color.x, color.y * mr.color.y, color.z * mr.color.z, color.w * mr.color.w},
+						    mr.shaderName, mr.reflectivity, mr.useCubemap);
 					} else {
 						// それ以外は同じモデルをまとめて描く
 						renderer_->DrawMeshInstanced(
-						    mr.modelHandle, mr.textureHandle, world, {color.x * mr.color.x, color.y * mr.color.y, color.z * mr.color.z, color.w * mr.color.w}, mr.shaderName, mr.extraTextureHandles,uint64_t(entt::to_integral(entity))+1);
+						    mr.modelHandle, mr.textureHandle, world,
+						    {color.x * mr.color.x, color.y * mr.color.y, color.z * mr.color.z, color.w * mr.color.w},
+						    mr.shaderName, mr.extraTextureHandles, uint64_t(entt::to_integral(entity)) + 1);
 					}
 				}
 			}
@@ -554,20 +649,23 @@ void GameScene::DrawSceneMeshes() {
 		if (registry_.all_of<MeshRendererComponent>(entity)) {
 			auto& mr = registry_.get<MeshRendererComponent>(entity);
 			// 無効なら飛ばす
-			if (!mr.enabled) continue;
+			if (!mr.enabled)
+				continue;
 			// 半透明のシェーダーのものだけ描く
-			if (mr.shaderName == "Slime" || mr.shaderName == "SlimeNoFace" || mr.shaderName == "SlimeNoFaceNoDepth" || mr.shaderName == "EnergyBeam" || mr.shaderName == "EnergyCylinder") {
+			if (mr.shaderName == "Slime" || mr.shaderName == "SlimeNoFace" || mr.shaderName == "SlimeNoFaceNoDepth" ||
+			    mr.shaderName == "EnergyBeam" || mr.shaderName == "EnergyCylinder") {
 				Engine::Matrix4x4 world = this->GetWorldMatrix(static_cast<int>(entity));
 				// 色 (ColorComponent があればその色)
-				Engine::Vector4 color = { 1.0f, 1.0f, 1.0f, 1.0f };
+				Engine::Vector4 color = {1.0f, 1.0f, 1.0f, 1.0f};
 				if (registry_.all_of<ColorComponent>(entity)) {
 					const auto& cc = registry_.get<ColorComponent>(entity);
-					color = { cc.color.x, cc.color.y, cc.color.z, cc.color.w };
+					color = {cc.color.x, cc.color.y, cc.color.z, cc.color.w};
 				}
 				// 半透明として描く
-				renderer_->DrawMesh(mr.modelHandle, mr.textureHandle, world,
-					{ color.x * mr.color.x, color.y * mr.color.y, color.z * mr.color.z, color.w * mr.color.w },
-					mr.shaderName, mr.reflectivity > 0 ? mr.reflectivity : 1.0f, true);
+				renderer_->DrawMesh(
+				    mr.modelHandle, mr.textureHandle, world,
+				    {color.x * mr.color.x, color.y * mr.color.y, color.z * mr.color.z, color.w * mr.color.w},
+				    mr.shaderName, mr.reflectivity > 0 ? mr.reflectivity : 1.0f, true);
 			}
 		}
 	}

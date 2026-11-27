@@ -7,7 +7,7 @@ struct PSIn {
     float3 normal : TEXCOORD1; float2 uv : TEXCOORD2; float4 color : COLOR0;
 };
 float4 main(PSIn i) : SV_TARGET {
-    // Thin additive trails keep the boss's floor warnings visible through them.
+    // 細い加算の軌跡にして、ボスの床の警告が透けて見えるようにする。
     float nearPlayer = smoothstep(3, 9, distance(cameraPos, i.worldPos));
     return float4(i.color.rgb * (1.1 + .15 * sin(time * 8 + i.uv.y * 12)), i.color.a * nearPlayer);
 }

@@ -1,17 +1,16 @@
 #include "Obj.hlsli"
 
-// Å¬: •W€‚ÌÀ•W•ÏŠ· + •K—v‚Èî•ñ‚ğVSOutput‚Ö‹l‚ß‚é
-VSOutput main(float4 pos : POSITION, float3 normal : NORMAL, float2 uv : TEXCOORD)
-{
-    VSOutput o;
+// æœ€å°: æ¨™æº–ã®åº§æ¨™å¤‰æ› + å¿…è¦ãªæƒ…å ±ã‚’VSOutputã¸è©°ã‚ã‚‹
+VSOutput main(float4 pos : POSITION, float3 normal : NORMAL, float2 uv : TEXCOORD) {
+    VSOutput output;
 
     float4 worldPos = mul(pos, world);
     float4 worldN = normalize(mul(float4(normal, 0), world));
 
-    o.svpos = mul(pos, mul(world, mul(view, projection)));
-    o.worldpos = worldPos;
-    o.normal = worldN.xyz;
-    o.uv = uv;
+    output.svpos = mul(pos, mul(world, mul(view, projection)));
+    output.worldpos = worldPos;
+    output.normal = worldN.xyz;
+    output.uv = uv;
 
-    return o;
+    return output;
 }

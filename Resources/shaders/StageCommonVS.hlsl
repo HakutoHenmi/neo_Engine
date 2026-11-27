@@ -1,21 +1,20 @@
 //======================================================
 // StageCommonVS.hlsl
-// ƒXƒe[ƒW—p ‹¤’ÊVSiObj.hlsli€‹’j
+// ã‚¹ãƒ†ãƒ¼ã‚¸ç”¨ å…±é€šVSï¼ˆObj.hlsliæº–æ‹ ï¼‰
 //======================================================
 #include "Obj.hlsli"
 
-VSOutput main(float4 pos : POSITION, float3 normal : NORMAL, float2 uv : TEXCOORD)
-{
-    // •W€“I‚ÈÀ•W•ÏŠ·iƒKƒCƒh‚Ìì–@j
+VSOutput main(float4 pos : POSITION, float3 normal : NORMAL, float2 uv : TEXCOORD) {
+    // æ¨™æº–çš„ãªåº§æ¨™å¤‰æ›ï¼ˆã‚¬ã‚¤ãƒ‰ã®ä½œæ³•ï¼‰
     float4 worldPos = mul(pos, world);
     float4 worldNormal = normalize(mul(float4(normal, 0), world));
 
-    VSOutput o;
-    // ¦ svpos / worldpos / normal / uv ‚Í Obj.hlsli ‚Ì VSOutput ‚É‡‚í‚¹‚é
-    o.svpos = mul(pos, mul(world, mul(view, projection)));
-    o.worldpos = worldPos;
-    o.normal = worldNormal.xyz;
-    o.uv = uv;
+    VSOutput output;
+    // â€» svpos / worldpos / normal / uv ã¯ Obj.hlsli ã® VSOutput ã«åˆã‚ã›ã‚‹
+    output.svpos = mul(pos, mul(world, mul(view, projection)));
+    output.worldpos = worldPos;
+    output.normal = worldNormal.xyz;
+    output.uv = uv;
 
-    return o;
+    return output;
 }

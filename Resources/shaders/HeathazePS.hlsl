@@ -4,13 +4,11 @@ Texture2D<float4> tex : register(t0);
 SamplerState smp : register(s0);
 
 // 距離減衰計算
-float AttenDist(float3 atten, float d)
-{
+float AttenDist(float3 atten, float d) {
     return 1.0 / (atten.x + atten.y * d + atten.z * d * d);
 }
 
-float4 main(VSOutput input) : SV_TARGET
-{
+float4 main(VSOutput input) : SV_TARGET {
     // 時間でUVを揺らす（ヒートヘイズ処理）
     float2 distUV = input.uv;
     float strength = 0.02f; // 歪みの強さ
@@ -30,12 +28,10 @@ float4 main(VSOutput input) : SV_TARGET
     float3 finalColor = albedo * ambientColor; // 環境光
 
     // ----------------------------------------------------
-    // Directional Lights
+    // 平行光源
     // ----------------------------------------------------
-    for (int i = 0; i < MAX_DIR_LIGHTS; ++i)
-    {
-        if (dirLights[i].enabled != 0)
-        {
+    for (int i = 0; i < MAX_DIR_LIGHTS; ++i) {
+        if (dirLights[i].enabled != 0) {
             float3 L = normalize(-dirLights[i].direction);
             float NdotL = saturate(dot(N, L));
             
@@ -50,16 +46,13 @@ float4 main(VSOutput input) : SV_TARGET
     }
 
     // ----------------------------------------------------
-    // Point Lights
+    // 点光源
     // ----------------------------------------------------
-    for (int j = 0; j < MAX_POINT_LIGHTS; ++j)
-    {
-        if (pointLights[j].enabled != 0)
-        {
+    for (int j = 0; j < MAX_POINT_LIGHTS; ++j) {
+        if (pointLights[j].enabled != 0) {
             float3 Lvec = pointLights[j].position - input.worldpos.xyz;
             float d = length(Lvec);
-            if (d < pointLights[j].range)
-            {
+            if (d < pointLights[j].range) {
                 float3 L = Lvec / max(d, 1e-5);
                 float att = AttenDist(pointLights[j].atten, d);
 
@@ -76,16 +69,13 @@ float4 main(VSOutput input) : SV_TARGET
     }
 
     // ----------------------------------------------------
-    // Spot Lights
+    // スポットライト
     // ----------------------------------------------------
-    for (int k = 0; k < MAX_SPOT_LIGHTS; ++k)
-    {
-        if (spotLights[k].enabled != 0)
-        {
+    for (int k = 0; k < MAX_SPOT_LIGHTS; ++k) {
+        if (spotLights[k].enabled != 0) {
             float3 Lvec = spotLights[k].position - input.worldpos.xyz;
             float d = length(Lvec);
-            if (d < spotLights[k].range)
-            {
+            if (d < spotLights[k].range) {
                 float3 L = Lvec / max(d, 1e-5);
                 float cosAng = dot(L, normalize(spotLights[k].direction));
                 float ang = smoothstep(spotLights[k].outerCos, spotLights[k].innerCos, cosAng);

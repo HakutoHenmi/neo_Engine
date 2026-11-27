@@ -1,7 +1,5 @@
 #include "Quaternion.h"
 
-
-
 Engine::Quaternion Engine::Multiply(const Quaternion& lhs, const Quaternion& rhs) {
 
 	Quaternion result;
@@ -14,9 +12,10 @@ Engine::Quaternion Engine::Multiply(const Quaternion& lhs, const Quaternion& rhs
 	return result;
 }
 
-
 float Engine::Norm(const Engine::Quaternion& quaternion) {
-	return std::sqrt(quaternion.w * quaternion.w + quaternion.x * quaternion.x + quaternion.y * quaternion.y + quaternion.z * quaternion.z); 
+	return std::sqrt(
+	    quaternion.w * quaternion.w + quaternion.x * quaternion.x + quaternion.y * quaternion.y +
+	    quaternion.z * quaternion.z);
 }
 
 Engine::Quaternion Engine::IdentityQuaternion() {
@@ -49,7 +48,6 @@ Engine::Quaternion Engine::Normalize(const Engine::Quaternion& quaternion) {
 
 Engine::Quaternion Engine::MakeRotateAxisIngleQuaternion(const Engine::Vector3& axis, float angle) {
 
-	
 	Engine::Quaternion q;
 
 	// 軸がゼロに近いときは回転なし
@@ -118,4 +116,3 @@ Engine::Vector3 Engine::QuaternionToEuler(const Engine::Quaternion& q) {
 
 	return euler;
 }
-

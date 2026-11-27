@@ -43,7 +43,7 @@ float4 main(float4 svpos:SV_POSITION, float2 uv:TEXCOORD0) : SV_TARGET {
     // 和紙テクスチャ表現は削除。そのままのUVを使用。
     float2 distortedUV = uv;
     
-    // Scene Sampling
+    // シーンのサンプリング
     float3 sceneCol = gScene.Sample(gSmp, distortedUV).rgb;
     
     // -----------------------------------------------------------------
@@ -77,7 +77,7 @@ float4 main(float4 svpos:SV_POSITION, float2 uv:TEXCOORD0) : SV_TARGET {
     float edge = max(normalEdge, depthEdge);
     
     // -----------------------------------------------------------------
-    // Edge Coloring & Integration
+    // 縁の色付けと合成
     // -----------------------------------------------------------------
     float lum = luminance(sceneCol);
     float edgePower = lerp(0.1, 0.4, lum);
@@ -87,7 +87,7 @@ float4 main(float4 svpos:SV_POSITION, float2 uv:TEXCOORD0) : SV_TARGET {
     sceneCol = lerp(sceneCol, finalEdgeColor, edge * gChromaShift);
 
     // -----------------------------------------------------------------
-    // Overall Aesthetic (Color Grading)
+    // 全体の雰囲気 (カラーグレーディング)
     // -----------------------------------------------------------------
     sceneCol = lerp(float3(lum, lum, lum), sceneCol, 0.65);
     sceneCol += float3(0.02, 0.02, 0.05) * (1.0 - lum);
@@ -95,7 +95,7 @@ float4 main(float4 svpos:SV_POSITION, float2 uv:TEXCOORD0) : SV_TARGET {
     // 和紙オーバーレイ処理は削除
 
     // -----------------------------------------------------------------
-    // Action Effects & Polish
+    // アクションの効果と仕上げ
     // -----------------------------------------------------------------
     if (gDistortion > 0.001) {
         float blurStrength = gDistortion * 0.15;

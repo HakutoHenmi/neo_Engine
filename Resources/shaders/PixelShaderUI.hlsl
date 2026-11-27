@@ -4,15 +4,14 @@
 // 画面空間(px)で処理 / グロー付 / 加算ブレンド推奨
 // ================================================
 
-cbuffer CBUI : register(b0)
-{
+cbuffer CBUI : register(b0) {
     float2  uCenterPx;     // 画面上の中心位置(px)
     float2  uSizePx;       // 図形サイズ(px) … 四角は幅高、円は半径を uSizePx.x に入れる
     float2  uViewportPx;   // 画面解像度(px)（ViewportのWidth/Height）
     float   uLineWidth;    // 線の太さ(px)
     float   uGlow;         // グローの厚み(px)（外側のにじみ範囲）
     float4  uColor;        // ベース色（線色）
-    int     uShape;        // 0:Square 1:Circle 2:Crescent
+    int     uShape;        // 0:四角 1:円 2:三日月
     float   uRound;        // 角丸半径(px)（四角用）
     float   uInner;        // 三日月の内側半径（円との差分用）
     float   uRotateRad;    // 回転（ラジアン） 2D図形を回転したい時
@@ -55,8 +54,7 @@ float sdCrescent(float2 p, float rOuter, float rInner) {
 //  width : 線の半分厚み（px）に近いイメージ → uLineWidthをそのまま使用
 //  glow  : グロー厚（px）
 //  col   : ベース色
-float4 drawLineGlow(float d, float width, float glow, float4 col, float innerMask)
-{
+float4 drawLineGlow(float d, float width, float glow, float4 col, float innerMask) {
     // 線のα（-width..+width を1→0へ）
     float lineAlpha = 1.0 - smoothstep(width-1.0, width+1.0, abs(d)); // 線の内側を強めに
     // グロー（線の外側からglow範囲で0→1→0のフェード）
@@ -81,8 +79,7 @@ float innerMaskByInnerCircle(float2 p, float rInner) {
     return step(0.0, din);
 }
 
-float4 mainPS(PSIn i) : SV_TARGET
-{
+float4 mainPS(PSIn i) : SV_TARGET {
     // 画面UV→px座標へ（左上(0,0)）
     float2 uv = i.uv;
     float2 fragPx = uv * uViewportPx;
@@ -102,7 +99,7 @@ float4 mainPS(PSIn i) : SV_TARGET
     } else if (uShape == 1) {
         // 円：uSizePx.x を半径として使用
         d = sdCircle(p, uSizePx.x);
-    } else { // 2: Crescent
+    } else { // 2: 三日月
         d = sdCrescent(p, uSizePx.x, uInner);
         innerMask = innerMaskByInnerCircle(p, uInner);
     }

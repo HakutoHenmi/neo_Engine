@@ -1,0 +1,22 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Quality: Watch saves",
+      "type": "process",
+      "command": "powershell",
+      "args": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "${workspaceFolder}/scripts/build/quality_log.ps1", "-Action", "Watch"],
+      "isBackground": true,
+      "runOptions": { "runOn": "folderOpen", "instanceLimit": 1 },
+      "presentation": { "reveal": "silent", "panel": "dedicated" },
+      "problemMatcher": []
+    },
+    {
+      "label": "Quality: Collect logs now",
+      "type": "process",
+      "command": "powershell",
+      "args": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "${workspaceFolder}/scripts/build/quality_log.ps1"],
+      "problemMatcher": []
+    }
+  ]
+}

@@ -15,20 +15,20 @@ struct VSOut {
 };
 
 VSOut main(VSIn v) { 
-    VSOut o; 
+    VSOut output; 
     float4 wp = mul(v.pos, gWorld); 
-    o.worldPos = wp.xyz; 
+    output.worldPos = wp.xyz; 
     float3 wn = mul(float4(v.nrm, 0), gWorld).xyz; 
-    o.normal = normalize(wn); 
+    output.normal = normalize(wn); 
     float4 vp = mul(wp, gView); 
-    o.svpos = mul(vp, gProj); 
+    output.svpos = mul(vp, gProj); 
     
     // UVスクロール (Y方向に時間でスクロールさせる)
-    // gColor.x = flowSpeed, gColor.y = uvScale
-    o.uv = (v.uv * gColor.y) + float2(0, -gTime * gColor.x);
+    // gColor.x = 流れの速さ, gColor.y = UV の倍率
+    output.uv = (v.uv * gColor.y) + float2(0, -gTime * gColor.x);
     
     // Y方向に微小な波打ち
-    o.svpos.y -= sin(gTime * 2.0f + o.worldPos.x + o.worldPos.z) * 0.05f;
+    output.svpos.y -= sin(gTime * 2.0f + output.worldPos.x + output.worldPos.z) * 0.05f;
 
-    return o; 
+    return output; 
 }

@@ -34,14 +34,14 @@ float Shadow(float3 worldPos) {
     return lerp(1,coverage/9.0f,ShadowFrustumWeight(p));
 }
 #ifdef CITY_SURFACE
-// Smooth value noise (no seams) for large-scale weathering across merged city meshes.
+// 結合した街のメッシュ全体に大きな風化を付けるための、なめらかな値ノイズ (継ぎ目なし)。
 float CityHash(float2 p){return frac(sin(dot(p,float2(127.1,311.7)))*43758.5453);}
 float CityNoise(float2 p){float2 i=floor(p),f=frac(p);f=f*f*(3-2*f);
     return lerp(lerp(CityHash(i),CityHash(i+float2(1,0)),f.x),lerp(CityHash(i+float2(0,1)),CityHash(i+float2(1,1)),f.x),f.y);}
-// Aerial perspective: distant blocks fade into the sky haze, which gives the city depth.
+// 空気遠近法: 遠くの街区は空のかすみに溶け込み、街に奥行きが出る。
 float3 CityFog(float3 colour,float3 worldPos,float3 daylight){
-    // The haze begins beyond the player and thins as the camera pulls back with a
-    // growing slime, so a giant still sees the city around it.
+    // かすみはプレイヤーより遠くから始まり、スライムが大きくなってカメラが引くと
+    // 薄くなるので、巨大になっても周りの街が見える。
     float distance=length(worldPos-gCamPos),follow=length(gPlayerPos-gCamPos);
     float amount=(1-exp(-max(distance-110-follow,0)*.0009*220/(220+follow)))*lerp(1,.75,saturate(worldPos.y/(600+follow)));
     float3 haze=float3(.6,.65,.72)*saturate(length(daylight)*.6+.25);
@@ -50,15 +50,15 @@ float3 CityFog(float3 colour,float3 worldPos,float3 daylight){
 #endif
 float4 main(float4 svpos:SV_POSITION,float3 worldPos:TEXCOORD0,float3 normal:TEXCOORD1,float2 uv:TEXCOORD2,float4 color:COLOR0):SV_TARGET {
 #ifdef CITY_ARMOR
-    // Enemy armour meshes have no UVs: project the worn paint texture from the dominant
-    // world axis. Opacity and hit/arming light come packed in alpha (2*light+opacity).
+    // 敵の装甲のメッシュには UV が無い: 主な世界の軸から使い古しの塗装のテクスチャを
+    // 投影する。不透明度と被弾 / 構えの光はアルファに詰めて渡す (2*光+不透明度)。
     {float3 an=abs(normalize(normal));uv=(an.x>an.y&&an.x>an.z?worldPos.zy:an.y>an.z?worldPos.xz:worldPos.xy)*.22;}
     float armorLight=floor(color.a*.5),armorOpacity=saturate(color.a-armorLight*2);
     armorOpacity*=smoothstep(.8,2.8,distance(gCamPos,worldPos));clip(armorOpacity-.001);
     if(armorOpacity<.999){float dither=frac(52.9829189*frac(dot(floor(svpos.xy),float2(.06711056,.00583715))));clip(armorOpacity-dither);}
     color.a=1;
 #else
-    // Negative alpha: an object between the camera and the player is screen-door faded (shadows stay).
+    // アルファが負: カメラとプレイヤーの間の物は網戸状にフェードする (影は残す)。
     if(color.a<0){clip(-color.a-frac(52.9829189*frac(dot(floor(svpos.xy),float2(.06711056,.00583715)))));color.a=1;}
 #endif
     float4 texel=gTex.Sample(gSmp,uv);
@@ -67,13 +67,13 @@ float4 main(float4 svpos:SV_POSITION,float3 worldPos:TEXCOORD0,float3 normal:TEX
 #endif
     float3 albedo=texel.rgb*color.rgb;
 #ifdef VEGETATION_CUTOUT
-    // Albedo is already linear; do not apply the old compensation for a dark display.
+    // アルベドはすでに線形。暗い画面向けの古い補正はかけない。
     albedo*=float3(.95f,1.f,.9f);
 #endif
     float3 n=normalize(normal);
 #if defined(CITY_SURFACE)&&!defined(CITY_GLASS)&&!defined(CITY_ARMOR)&&!defined(LOWPOLY_SURFACE)
-    // Weathering: broad tint/brightness drift between blocks, darker grime near street
-    // level and faint rain streaks on walls. Driven by world position so merged meshes vary.
+    // 風化: 街区ごとの広い色味 / 明るさのずれ、通りの高さ付近の汚れ、
+    // 壁のかすかな雨だれ。世界の位置で決めるので、結合したメッシュでも変化が出る。
     albedo*=lerp(.84,1.12,CityNoise(worldPos.xz*.011))*lerp(float3(1.05,1,.95),float3(.95,1,1.06),CityNoise(worldPos.xz*.006+17));
     if(abs(n.y)<.5){float street=saturate(1-worldPos.y/34);
         float streak=CityNoise(float2(dot(worldPos.xz,float2(.7,.7))*.32,worldPos.y*.01));
@@ -85,7 +85,7 @@ float4 main(float4 svpos:SV_POSITION,float3 worldPos:TEXCOORD0,float3 normal:TEX
         float3 tangent=normalize((px*ty.y-py*tx.y)/determinant);
         tangent=normalize(tangent-n*dot(n,tangent));
         float3 bitangent=normalize(cross(n,tangent))*sign(determinant);
-        // DirectX normal maps. Z is rebuilt from XY so two-channel BC5 maps work like RGB ones.
+        // DirectX 形式の法線マップ。Z は XY から作り直すので、2 チャンネルの BC5 も RGB と同じように使える。
         float3 map;map.xy=normalMap.Sample(gSmp,uv).xy*2-1;map.y=-map.y;map.z=sqrt(saturate(1-dot(map.xy,map.xy)));
         n=normalize(tangent*map.x+bitangent*map.y+n*map.z);
     }
@@ -93,24 +93,24 @@ float4 main(float4 svpos:SV_POSITION,float3 worldPos:TEXCOORD0,float3 normal:TEX
     float3 daylight=gDir[0].enabled?gDir[0].color:float3(1,.9f,.8f);
     float3 view=normalize(gCamPos-worldPos);
 #ifdef VEGETATION_CUTOUT
-    // Grass cards are two sided: use the visible leaf side for diffuse lighting.
+    // 草のカードは両面: 拡散光には見えている葉の面を使う。
     if(dot(n,view)<0)n=-n;
 #endif
     float rough=clamp(roughnessMap.Sample(gSmp,uv).r,.12,1),ao=materialAO.Sample(gSmp,uv).r;
     float3 halfVector=normalize(light+view);float nl=saturate(dot(n,light)),nv=max(.001,saturate(dot(n,view))),nh=saturate(dot(n,halfVector)),vh=saturate(dot(view,halfVector));
 #ifdef CITY_ARMOR
-    // Painted steel: glossier than the street surfaces.
+    // 塗装した鋼: 通りの面よりつやがある。
     rough=clamp(rough*.55,.18,.6);
 #endif
 #ifdef MEADOW_GROUND
-    // Dry turf must not behave like wet, polished microfacets.
+    // 乾いた芝が、濡れて磨かれた微小面のようにふるまってはいけない。
     rough=max(rough,.78);
 #endif
 #ifdef VEGETATION_CUTOUT
     rough=max(rough,.85);
 #endif
-    // Widen subpixel highlights using the footprint's normal variance.
-    // Mipmapped normals remove minification aliasing; this also handles silhouettes.
+    // サンプル範囲内の法線のばらつきで、ピクセルより小さいハイライトを広げる。
+    // ミップマップした法線で縮小時のエイリアスを消す。輪郭にも効く。
     float3 normalDx=ddx(n),normalDy=ddy(n);
     float variance=.5*(dot(normalDx,normalDx)+dot(normalDy,normalDy));
     float alpha=min(1,sqrt(pow(rough,4)+min(variance,.5))),a2=alpha*alpha;
@@ -122,15 +122,15 @@ float4 main(float4 svpos:SV_POSITION,float3 worldPos:TEXCOORD0,float3 normal:TEX
     float3 direct=(diffuse+specular)*daylight*nl*Shadow(worldPos)*3.14159265;
     float3 ambient=albedo*gAmbientColor*.32*ao;
 #ifdef VEGETATION_CUTOUT
-    // Thin leaves receive diffuse sky light on both sides and transmit sunlight.
-    // A view-facing normal alone made backlit tufts look like black wire shapes.
+    // 薄い葉は両面で空の拡散光を受け、日光を透かす。
+    // 視線向きの法線だけだと、逆光の草むらが黒い針金のように見えた。
     ambient=albedo*(gAmbientColor*.32+daylight*.16)*lerp(.6,1,ao);
     direct+=albedo*daylight*(saturate(dot(-n,light))*.22+pow(saturate(dot(-light,view)),3)*.08)*Shadow(worldPos);
 #endif
 #ifdef CITY_SURFACE
-    // Tall blocks shade most of the street. Open sky and light bounced off sunlit
-    // facades still reach it: a hemisphere fill (brighter facing up, cooler from the
-    // sky) keeps shaded streets readable instead of falling to the bare ambient term.
+    // 高い街区が通りの大半を陰にする。それでも開けた空や、日の当たる正面から
+    // 跳ね返った光は届く: 半球の補助光 (上向きほど明るく、空からは寒色) で
+    // 陰の通りが環境光だけに落ちず、見やすいままにする。
     float skyward=saturate(n.y*.5+.5);
     float3 sky=daylight*lerp(float3(.17,.16,.15),float3(.3,.33,.39),skyward);
     ambient=albedo*(gAmbientColor*.32+sky)*lerp(.55,1,ao);
@@ -140,12 +140,12 @@ float4 main(float4 svpos:SV_POSITION,float3 worldPos:TEXCOORD0,float3 normal:TEX
     ambient*=variation;direct*=variation;
 #endif
 #ifdef CITY_GLASS
-    {   // Glazing: Fresnel mix of a dim interior (some windows lit or blinded) and a
-        // reflection of the sky above / surrounding blocks below the horizon, plus sun glint.
+    {   // ガラス: 暗い室内 (明かりやブラインドのある窓もある) と、地平線より上は空 / 下は周りの街区の
+        // 映り込みをフレネルで混ぜ、太陽のきらめきを足す。
         float3 flat=normalize(normal),side=abs(flat.y)>.9?float3(1,0,0):normalize(cross(float3(0,1,0),flat));
         float2 cell=floor(float2(dot(worldPos,side)/7.,worldPos.y/19.));float h=CityHash(cell+floor(worldPos.xz/400.)*13.);
         float3 interior=h>.84?float3(1,.78,.52)*(.32+.25*CityHash(cell+3.1)):h>.6?float3(.1,.1,.095):float3(.025,.03,.035);
-        // Each pane sits at a slightly different angle, so reflections break up pane by pane.
+        // ガラス板ごとに少しずつ角度が違うので、映り込みが板ごとに途切れる。
         float3 r=reflect(-view,n);r=normalize(r+side*(CityHash(cell+7.3)-.5)*.12+float3(0,(CityHash(cell+1.7)-.5)*.1,0));float up=r.y;
         float3 skyColour=lerp(float3(.78,.82,.88),float3(.36,.5,.74),pow(saturate(up),.55));
         float3 below=lerp(float3(.42,.43,.45),float3(.11,.11,.12),saturate(-up*2.5));
@@ -157,7 +157,7 @@ float4 main(float4 svpos:SV_POSITION,float3 worldPos:TEXCOORD0,float3 normal:TEX
     }
 #endif
 #ifdef CITY_ARMOR
-    // Metallic sheen tinted by the role colour, rim light, and the hit/wind-up glow.
+    // 役割の色で色付けした金属のつや、縁の光、被弾 / 振りかぶりの光。
     float3 armorRim=pow(1-nv,3)*float3(.12,.16,.2)*saturate(length(daylight));
     direct+=specular*albedo*daylight*nl*Shadow(worldPos)*2;
     float3 armorColour=ambient+direct+armorRim;
@@ -165,7 +165,7 @@ float4 main(float4 svpos:SV_POSITION,float3 worldPos:TEXCOORD0,float3 normal:TEX
     return float4(CityFog(armorColour,worldPos,daylight),1);
 #endif
 #ifdef LOWPOLY_SURFACE
-    // Room lamps. The room is lit from inside, so the soft falloff matters more than the sun.
+    // 部屋の照明。部屋は内側から照らすので、太陽より柔らかい減衰の方が大事。
     [unroll] for(int lamp=0;lamp<4;++lamp)if(gPoint[lamp].enabled){
         float3 toLamp=gPoint[lamp].pos-worldPos;float d=length(toLamp),fall=saturate(1-d/gPoint[lamp].range);
         direct+=albedo*gPoint[lamp].color*(saturate(dot(n,toLamp/max(d,.001)))*.8+.2)*fall*fall;}

@@ -197,14 +197,14 @@ BGM・戦闘音・スライム音の音量を分ける。試し場ではBGMを�
 
 | 現行要素・場所 | 新企画での扱い |
 | --- | --- |
-| `Engine/FluidVolume.cpp`、`Resources/shaders/FluidSimCS.hlsl`、`Resources/shaders/FluidRaymarch.hlsl` | 流体・表面・光学表現を活用。個体ID、複数コア、変形目標、配合別の制御は追加検証 |
+| `Engine/Fluid/FluidVolume.cpp`、`Resources/shaders/FluidSimCS.hlsl`、`Resources/shaders/FluidRaymarch.hlsl` | 流体・表面・光学表現を活用。個体ID、複数コア、変形目標、配合別の制御は追加検証 |
 | `Game/Scenes/GameScene.cpp` | 流体とプレイヤー状態の接続を変更。単体コア・HP連動の前提を見直す |
 | `Game/Systems/GameControls.h`、既存カメラ、ジャンプ・接地処理 | 行動単位と入力対応を組み直して活用 |
 | `Game/Systems/SlimeAssault.inl`、`Game/Systems/ChronoInk.inl` | 軌跡やビームと、新ルールで活用可能な移動・地形・カメラを切り分ける |
 | `Game/Chrono/DomainRules.h`、`Game/Systems/HomingDomains.inl` | 線・囲い・捕獲・追尾弾の本編呼び出しを終了 |
 | `Game/Systems/RogueliteCombat.inl`、`Game/Chrono/RogueliteRules.h`、`Game/UI/RogueliteUI.h` | 本編のカード、経験値、シナジー、付随倍率、戦闘停止処理を外す |
 | `Game/Systems/HordeCombat.inl`、既存ボス・敵モデル | 予告や素材は候補。近接・踏みつけ・吸収向けに数、間合い、HP、攻撃周期を再調整 |
-| `Engine/Audio.h`、`tests/GenerateSlimeAudio.ps1` | 再生の基礎と素材生成の足場に活用。分裂同期・音の優先度・音量グループは追加 |
+| `Engine/Core/Audio.h`、`tests/GenerateSlimeAudio.ps1` | 再生の基礎と素材生成の足場に活用。分裂同期・音の優先度・音量グループは追加 |
 | タイトル、HUD、ロード説明、操作案内、結果画面 | 囲い数・弾数・カードの説明を外し、調合・本体質量・仲間・吸収可否へ変更 |
 
 新ルールは、質量管理、吸収判定、子AI、変形状態、配合データを分離して持つ。GPU粒子は見た目を担当し、命中・吸収・成長の正本はCPU側の軽い判定形状に置く。粒子の揺れやGPU読み戻しで吸収の成功が変わらないようにする。

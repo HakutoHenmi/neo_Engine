@@ -1,4 +1,4 @@
-// GPUParticle Compute Shader
+// GPU パーティクルのコンピュートシェーダー
 // ルートディスクリプタ方式: u0 のみ使用
 
 struct Particle {
@@ -24,15 +24,15 @@ cbuffer cbSystem : register(b0) {
     float3 emitVel;
     float emitLife;
 
-    uint emitterShape; // 0: Point, 1: Sphere, 2: Box, 3: Mesh
-    float3 emitterExtents; // Mesh uses x:vertexCount bits, y:stride bits, z:scale
+    uint emitterShape; // 0: 点, 1: 球, 2: 箱, 3: メッシュ
+    float3 emitterExtents; // メッシュでは x に頂点数のビット、y に間隔のビット、z に倍率を入れる
     
     float4 colorStart;
     float4 colorEnd;
     
-    uint param24; // fieldType (Update) / particleType (Emit)
-    float3 param25_27; // fieldPos (Update) / randomOffset (Emit)
-    float4 fieldParams; // fieldParams (Update)
+    uint param24; // fieldType (更新) / particleType (放出)
+    float3 param25_27; // fieldPos (更新) / randomOffset (放出)
+    float4 fieldParams; // fieldParams (更新)
 };
 
 #define CB_FieldType param24
@@ -86,12 +86,12 @@ void EmitCS(uint3 dtid : SV_DispatchThreadID) {
             float r3 = hash(seed + i * 13u + 3u) * 2.0 - 1.0;
             
             float3 offset = float3(0, 0, 0);
-            if (emitterShape == 1) { // Sphere
+            if (emitterShape == 1) { // 球
                 float3 dir = normalize(float3(r1, r2, r3));
                 offset = dir * hash(seed + i * 23u) * emitterExtents.x;
-            } else if (emitterShape == 2) { // Box
+            } else if (emitterShape == 2) { // 箱
                 offset = float3(r1, r2, r3) * emitterExtents;
-            } else if (emitterShape == 3) { // Mesh
+            } else if (emitterShape == 3) { // メッシュ
                 uint meshVertexCount = asuint(emitterExtents.x);
                 uint meshVertexStride = asuint(emitterExtents.y);
                 float meshScale = max(emitterExtents.z, 0.001);
@@ -115,7 +115,7 @@ void EmitCS(uint3 dtid : SV_DispatchThreadID) {
                 } else {
                     offset = float3(r1, r2, r3) * 0.1;
                 }
-            } else { // Point
+            } else { // 点
                 offset = float3(r1, r2, r3) * 0.1;
             }
             
@@ -150,23 +150,21 @@ void UpdateCS(uint3 dtid : SV_DispatchThreadID) {
         p.age += dt;
         
         // フィールドの影響 (Gravity/Wind/Tornado)
-        if (CB_FieldType == 1) { // Gravity
+        if (CB_FieldType == 1) { // 重力
             p.velocity.y -= fieldParams.x * dt;
-        } 
-        else if (CB_FieldType == 2) { // Wind
+        } else if (CB_FieldType == 2) { // 風
             p.velocity += fieldParams.xyz * dt;
-        }
-        else if (CB_FieldType == 3) { // Tornado
+        } else if (CB_FieldType == 3) { // 竜巻
             float3 toCenter = CB_FieldPos - p.position;
             toCenter.y = 0;
             float dist = length(toCenter);
             if (dist > 0.01) {
                 float3 dir = toCenter / dist;
-                float3 tangent = cross(float3(0, 1, 0), dir); // counter-clockwise
+                float3 tangent = cross(float3(0, 1, 0), dir); // 反時計回り
                 p.velocity += tangent * fieldParams.x * dt;
-                p.velocity += dir * fieldParams.y * dt; // suck inward
+                p.velocity += dir * fieldParams.y * dt; // 内側へ吸い込む
             }
-            p.velocity.y += fieldParams.z * dt; // updraft
+            p.velocity.y += fieldParams.z * dt; // 上昇気流
         }
         
         p.position += p.velocity * dt;

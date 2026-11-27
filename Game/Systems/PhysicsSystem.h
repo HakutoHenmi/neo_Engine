@@ -8,7 +8,7 @@
 #include <vector>
 #include <array>
 #include <algorithm>
-#include "../Engine/QuadTree.h"
+#include "Collision/QuadTree.h"
 
 namespace Game {
 
@@ -21,7 +21,8 @@ public:
 	// PLAY 開始時: GPU の依頼と速度を消す
 	void Reset(entt::registry& registry) override {
 		// フレーム枠ごとの依頼を消す
-		for (auto& requests : m_pendingGpuRequests) requests.clear();
+		for (auto& requests : m_pendingGpuRequests)
+			requests.clear();
 		// すべての剛体の速度を 0 にする
 		auto view = registry.view<RigidbodyComponent>();
 		for (auto entity : view) {
@@ -41,8 +42,8 @@ private:
 	struct CollidableMesh {
 		entt::entity entity = entt::null;
 		uint32_t meshHandle = 0;
-		::Engine::Vector3 aabbMin = { 0.0f, 0.0f, 0.0f };
-		::Engine::Vector3 aabbMax = { 0.0f, 0.0f, 0.0f };
+		::Engine::Vector3 aabbMin = {0.0f, 0.0f, 0.0f};
+		::Engine::Vector3 aabbMax = {0.0f, 0.0f, 0.0f};
 		::Engine::Matrix4x4 world = ::Engine::Matrix4x4::Identity();
 	};
 	// GPU に依頼した衝突判定 (対象と結果の番号)
@@ -58,18 +59,22 @@ private:
 	std::vector<uint32_t> m_nearbyEntities;
 
 	// ワールド行列と箱コライダーから OBB の中心・軸・半分の大きさを求める
-	static void GetObbAxes(const ::Engine::Matrix4x4& mat, const BoxColliderComponent& cb,
-		::Engine::Vector3 axes[3], ::Engine::Vector3& center, ::Engine::Vector3& extents) {
+	static void GetObbAxes(
+	    const ::Engine::Matrix4x4& mat, const BoxColliderComponent& cb, ::Engine::Vector3 axes[3],
+	    ::Engine::Vector3& center, ::Engine::Vector3& extents) {
 		// 箱の中心をワールドへ変換する
 		DirectX::XMMATRIX worldMat = DirectX::XMLoadFloat4x4(reinterpret_cast<const DirectX::XMFLOAT4X4*>(&mat));
 		DirectX::XMVECTOR c = DirectX::XMVector3TransformCoord(
-			DirectX::XMVectorSet(cb.center.x, cb.center.y, cb.center.z, 1.0f), worldMat);
+		    DirectX::XMVectorSet(cb.center.x, cb.center.y, cb.center.z, 1.0f), worldMat);
 		DirectX::XMStoreFloat3(reinterpret_cast<DirectX::XMFLOAT3*>(&center), c);
 
 		// 行列の各行を正規化したものが OBB の 3 本の軸
-		DirectX::XMStoreFloat3(reinterpret_cast<DirectX::XMFLOAT3*>(&axes[0]), DirectX::XMVector3Normalize(worldMat.r[0]));
-		DirectX::XMStoreFloat3(reinterpret_cast<DirectX::XMFLOAT3*>(&axes[1]), DirectX::XMVector3Normalize(worldMat.r[1]));
-		DirectX::XMStoreFloat3(reinterpret_cast<DirectX::XMFLOAT3*>(&axes[2]), DirectX::XMVector3Normalize(worldMat.r[2]));
+		DirectX::XMStoreFloat3(
+		    reinterpret_cast<DirectX::XMFLOAT3*>(&axes[0]), DirectX::XMVector3Normalize(worldMat.r[0]));
+		DirectX::XMStoreFloat3(
+		    reinterpret_cast<DirectX::XMFLOAT3*>(&axes[1]), DirectX::XMVector3Normalize(worldMat.r[1]));
+		DirectX::XMStoreFloat3(
+		    reinterpret_cast<DirectX::XMFLOAT3*>(&axes[2]), DirectX::XMVector3Normalize(worldMat.r[2]));
 
 		// 行列を分解して拡大率を取り出し、箱の半分の大きさに掛ける
 		DirectX::XMVECTOR aScale, aRot, aTrans;

@@ -1,22 +1,21 @@
 #include "Obj.hlsli"
 
-VSOutput main(float4 pos : POSITION, float3 normal : NORMAL, float2 uv : TEXCOORD)
-{
+VSOutput main(float4 pos : POSITION, float3 normal : NORMAL, float2 uv : TEXCOORD) {
     VSOutput output;
 
-    // À•W•ÏŠ· (ƒ[ƒ‹ƒh -> ƒrƒ…[ -> ƒvƒƒWƒFƒNƒVƒ‡ƒ“)
-    // ’¸“_ˆÊ’u‚ð‰æ–Êã‚ÌÀ•W‚É•ÏŠ·‚µ‚Ü‚·
+    // åº§æ¨™å¤‰æ› (ãƒ¯ãƒ¼ãƒ«ãƒ‰ -> ãƒ“ãƒ¥ãƒ¼ -> ãƒ—ãƒ­ã‚¸ã‚§ã‚¯ã‚·ãƒ§ãƒ³)
+    // é ‚ç‚¹ä½ç½®ã‚’ç”»é¢ä¸Šã®åº§æ¨™ã«å¤‰æ›ã—ã¾ã™
     output.svpos = mul(pos, mul(world, mul(view, projection)));
     
-    // ƒ[ƒ‹ƒhÀ•W (ƒ‰ƒCƒeƒBƒ“ƒOŒvŽZ—p)
+    // ãƒ¯ãƒ¼ãƒ«ãƒ‰åº§æ¨™ (ãƒ©ã‚¤ãƒ†ã‚£ãƒ³ã‚°è¨ˆç®—ç”¨)
     float4 worldPos = mul(pos, world);
     output.worldpos = worldPos;
 
-    // –@üƒxƒNƒgƒ‹‚Ì•ÏŠ·
-    // •¨‘Ì‚ª‰ñ“]‚µ‚Ä‚à³‚µ‚­Œõ‚ðŒvŽZ‚Å‚«‚é‚æ‚¤‚É‚µ‚Ü‚·
+    // æ³•ç·šãƒ™ã‚¯ãƒˆãƒ«ã®å¤‰æ›
+    // ç‰©ä½“ãŒå›žè»¢ã—ã¦ã‚‚æ­£ã—ãå…‰ã‚’è¨ˆç®—ã§ãã‚‹ã‚ˆã†ã«ã—ã¾ã™
     output.normal = normalize(mul(float4(normal, 0), world).xyz);
 
-    // UVÀ•W (ƒeƒNƒXƒ`ƒƒ—p)
+    // UVåº§æ¨™ (ãƒ†ã‚¯ã‚¹ãƒãƒ£ç”¨)
     output.uv = uv;
 
     return output;

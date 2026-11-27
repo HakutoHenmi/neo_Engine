@@ -2,7 +2,7 @@
 // C++ スクリプトの登録と生成を行うシングルトン。
 // クラス名 (文字列) からスクリプトの実体を作れるようにし、シーンファイルに名前で保存できるようにする。
 #pragma once
-#include "../Engine/Input.h"
+#include "Core/Input.h"
 #include "IScript.h"
 #include "ObjectTypes.h"
 #include "../../externals/entt/entt.hpp"
@@ -35,7 +35,8 @@ public:
 	std::shared_ptr<IScript> CreateScript(const std::string& className);
 	std::vector<std::string> GetRegisteredScriptNames() const {
 		std::vector<std::string> names;
-		for (auto const& [name, _] : scriptFactory_) names.push_back(name);
+		for (auto const& [name, _] : scriptFactory_)
+			names.push_back(name);
 		return names;
 	}
 
@@ -55,11 +56,12 @@ private:
 // C++ スクリプトを自動登録するマクロ
 // スクリプトの .cpp の最後に REGISTER_SCRIPT(クラス名); と書くだけで登録される
 // ==============================================================
-#define REGISTER_SCRIPT(ClassName)                                                                                                                                                                     \
-	namespace {                                                                                                                                                                                        \
-	struct ClassName##_Register {                                                                                                                                                                      \
-		ClassName##_Register() {                                                                                                                                                                       \
-			Game::ScriptEngine::GetInstance()->RegisterScript(#ClassName, []() { return std::make_shared<ClassName>(); });                                                                             \
-		}                                                                                                                                                                                              \
-	} ClassName##_register_instance;                                                                                                                                                                   \
+#define REGISTER_SCRIPT(ClassName)                                                                                     \
+	namespace {                                                                                                        \
+	struct ClassName##_Register {                                                                                      \
+		ClassName##_Register() {                                                                                       \
+			Game::ScriptEngine::GetInstance()->RegisterScript(                                                         \
+			    #ClassName, []() { return std::make_shared<ClassName>(); });                                           \
+		}                                                                                                              \
+	} ClassName##_register_instance;                                                                                   \
 	}

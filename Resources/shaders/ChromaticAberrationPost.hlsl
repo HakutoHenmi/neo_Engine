@@ -5,8 +5,7 @@
 Texture2D gScene : register(t0);
 SamplerState gSmp : register(s0);
 
-cbuffer CBPost : register(b0)
-{
+cbuffer CBPost : register(b0) {
     float gTime;
     float gNoiseStrength;
     float gDistortion;
@@ -17,15 +16,13 @@ cbuffer CBPost : register(b0)
     float pad0;
 };
 
-struct PSIn
-{
+struct PSIn {
     float4 svpos : SV_POSITION;
     float2 uv : TEXCOORD0;
 };
 
 // レンズ歪み（樽型歪曲）
-float2 LensDistortion(float2 uv, float strength)
-{
+float2 LensDistortion(float2 uv, float strength) {
     float2 centerOffset = uv - 0.5;
     float r2 = dot(centerOffset, centerOffset);
     // 距離の2乗に比例してUVをずらす
@@ -33,8 +30,7 @@ float2 LensDistortion(float2 uv, float strength)
     return centerOffset * f + 0.5;
 }
 
-float4 main(PSIn i) : SV_TARGET
-{
+float4 main(PSIn i) : SV_TARGET {
     // 中心からの距離
     float2 centerOffset = i.uv - 0.5;
     float dist = length(centerOffset);
@@ -55,7 +51,7 @@ float4 main(PSIn i) : SV_TARGET
     float b = gScene.Sample(gSmp, uvB).b;
     float3 col = float3(r, g, b);
 
-    // Vignette
+    // 周辺減光
     float2 d = i.uv - 0.5;
     col *= saturate(1.0 - dot(d, d) * gVignette);
 

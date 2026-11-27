@@ -7,7 +7,7 @@ cbuffer CBFrame : register(b0) {
     row_major float4x4 gViewProj;
     float3 gCamPos;
     float gTime;
-    float4 gWindParams; // x,y: direction, z: speed, w: strength
+    float4 gWindParams; // x,y: 向き, z: 速さ, w: 強さ
     float3 gPlayerPos;
     float pad;
 };

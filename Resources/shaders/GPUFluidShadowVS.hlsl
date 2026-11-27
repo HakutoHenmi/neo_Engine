@@ -29,14 +29,14 @@ struct VSOut {
 };
 
 VSOut main(VSIn v, uint instanceID : SV_InstanceID) {
-    VSOut o;
+    VSOut output;
     Particle p = Particles[instanceID];
     
     if (p.type>=8.0f || FluidRenderSupport(p.density) <= 0 || p.color.a < 0.01f || p.position.y < -500.0f) {
-        o.svpos = float4(0, 0, 0, 0);
-        o.uv = float2(0, 0);
-        o.type = 0.0f;
-        return o;
+        output.svpos = float4(0, 0, 0, 0);
+        output.uv = float2(0, 0);
+        output.type = 0.0f;
+        return output;
     }
     
     float2 quad[6] = {
@@ -56,9 +56,9 @@ VSOut main(VSIn v, uint instanceID : SV_InstanceID) {
     // 影の隙間を埋めるため少し大きめに設定
     size *= 1.4f;
     
-    // gView still contains the gameplay camera during the shadow pass.
-    // Columns of the orthographic light VP give the light's right/up axes;
-    // normalize away projection scale so camera rotation cannot deform shadows.
+    // 影のパスの間も、gView にはゲームのカメラが入っている。
+    // 平行投影のライトの VP の列から、ライトの右 / 上の軸が得られる。
+    // 投影の倍率を正規化で取り除き、カメラを回しても影が変形しないようにする。
     float3 right = normalize(float3(gViewProj[0][0], gViewProj[1][0], gViewProj[2][0]));
     float3 up = normalize(float3(gViewProj[0][1], gViewProj[1][1], gViewProj[2][1]));
 
@@ -66,9 +66,9 @@ VSOut main(VSIn v, uint instanceID : SV_InstanceID) {
     float3 worldPos = p.position + localPos;
     
     // シャドウ投影行列(gViewProjにはライトのVPがセットされている)
-    o.svpos = mul(float4(worldPos, 1.0f), gViewProj);
+    output.svpos = mul(float4(worldPos, 1.0f), gViewProj);
     
-    o.uv = localXY * 0.5f + 0.5f;
-    o.type = p.type;
-    return o;
+    output.uv = localXY * 0.5f + 0.5f;
+    output.type = p.type;
+    return output;
 }

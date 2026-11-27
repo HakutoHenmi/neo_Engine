@@ -2,19 +2,19 @@
 // EnhancedTerrainPS.hlsl
 #include "EnhancedTerrain.hlsli"
 
-// Texture Slots
-Texture2D gSplatMap : register(t0); // RGBA weights for textures
-Texture2D gLayer0   : register(t1); // e.g., Grass
-Texture2D gLayer1   : register(t2); // e.g., Rock
-Texture2D gLayer2   : register(t3); // e.g., Dirt
-Texture2D gLayer3   : register(t4); // e.g., Sand
-Texture2D gDetail   : register(t5); // Micro detail noise
+// テクスチャの枠
+Texture2D gSplatMap : register(t0); // 各テクスチャの RGBA の重み
+Texture2D gLayer0   : register(t1); // 例: 草
+Texture2D gLayer1   : register(t2); // 例: 岩
+Texture2D gLayer2   : register(t3); // 例: 土
+Texture2D gLayer3   : register(t4); // 例: 砂
+Texture2D gDetail   : register(t5); // 細かい細部のノイズ
 Texture2D gShadowMap : register(t6);
 
 SamplerState gSmp : register(s0);
 SamplerComparisonState gShadowSmp : register(s1);
 
-// Light structures
+// ライトの構造体
 struct DirLight { float3 dir; float pad0; float3 color; float pad1; uint enabled; float3 pad2; };
 struct PointLight { float3 pos; float pad0; float3 color; float range; float3 atten; float pad1; uint enabled; float3 pad2; };
 struct SpotLight { float3 pos; float pad0; float3 dir; float range; float3 color; float inner; float3 atten; float outer; uint enabled; float3 pad2; };
@@ -35,7 +35,7 @@ cbuffer CBLight : register(b2) {
     row_major float4x4 gShadowMatrix;
 };
 
-// --- Utilities ---
+// --- 便利関数 ---
 float GetAttenuation(float3 atten, float d) { return 1.0 / (atten.x + atten.y * d + atten.z * d * d); }
 float3 BlinnPhong(float3 L, float3 V, float3 N, float3 C, float3 A) {
     float NdotL = max(dot(N, L), 0.0); float3 diff = A * C * NdotL;
@@ -65,7 +65,7 @@ float4 main(VSOutput input) : SV_TARGET {
     float3 V = normalize(gCamPos - input.worldPos);
     float dist = length(gCamPos - input.worldPos);
 
-    // 1. Splatting & Tiling Reduction
+    // 1. 塗り分けと、タイルの繰り返し感を減らす処理
     // 遠くのタイリングを目立たなくするために、距離に応じてUVスケールを変えてブレンドする
     float2 uvNear = input.uv * 10.0f;
     float2 uvFar  = input.uv * 2.0f;
@@ -96,18 +96,18 @@ float4 main(VSOutput input) : SV_TARGET {
     float totalW = w0 + w1 + w2 + w3;
     float4 albedo = (c0 * w0 + c1 * w1 + c2 * w2 + c3 * w3) / totalW;
 
-    // 3. Detail Texture
+    // 3. 細部のテクスチャ
     float detail = gDetail.Sample(gSmp, input.uv * 50.0f).r;
     albedo.rgb *= lerp(0.8f, 1.2f, detail);
 
-    // 4. Lighting
+    // 4. ライティング
     float3 N = normalize(input.normal);
     float3 finalColor = albedo.rgb * gAmbientColor;
     float shadowFactor = CalcShadow(input.worldPos);
 
     for(int i=0; i<MAX_DIR; ++i) if(gDir[i].enabled) finalColor += BlinnPhong(normalize(-gDir[i].dir), V, N, gDir[i].color, albedo.rgb) * shadowFactor;
     for(int i=0; i<MAX_POINT; ++i) if(gPoint[i].enabled) { float3 Lv = gPoint[i].pos - input.worldPos; float d = length(Lv); if(d < gPoint[i].range) finalColor += BlinnPhong(normalize(Lv), V, N, gPoint[i].color, albedo.rgb) * GetAttenuation(gPoint[i].atten, d); }
-    // (SpotLight/AreaLight also supported as per Renderer logic if needed)
+    // (必要ならレンダラーの処理に合わせてスポットライト / 面光源にも対応できる)
 
     return float4(finalColor, input.color.a);
 }

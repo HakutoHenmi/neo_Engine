@@ -31,12 +31,15 @@ void EditorUI::ShowProject([[maybe_unused]] Engine::Renderer* renderer, [[maybe_
 	// 右端に検索欄と Clear ボタンを置く
 	const float searchWidth = 180.0f;
 	const float clearWidth = ImGui::CalcTextSize("Clear").x + ImGui::GetStyle().FramePadding.x * 2.0f;
-	ImGui::SameLine((std::max)(ImGui::GetCursorPosX() + 8.0f, ImGui::GetWindowContentRegionMax().x - searchWidth - clearWidth - ImGui::GetStyle().ItemSpacing.x));
+	ImGui::SameLine((std::max)(ImGui::GetCursorPosX() + 8.0f, ImGui::GetWindowContentRegionMax().x - searchWidth -
+	                                                              clearWidth - ImGui::GetStyle().ItemSpacing.x));
 	ImGui::SetNextItemWidth(searchWidth);
 	ImGui::InputTextWithHint("##Search", "Search Assets...", searchBuf, sizeof(searchBuf));
-	if (ImGui::IsItemHovered()) ImGui::SetTooltip("Filter files in current directory");
+	if (ImGui::IsItemHovered())
+		ImGui::SetTooltip("Filter files in current directory");
 	ImGui::SameLine();
-	if (ImGui::Button("Clear##ProjectSearch")) searchBuf[0] = '\0';
+	if (ImGui::Button("Clear##ProjectSearch"))
+		searchBuf[0] = '\0';
 
 	ImGui::Separator();
 
@@ -47,10 +50,14 @@ void EditorUI::ShowProject([[maybe_unused]] Engine::Renderer* renderer, [[maybe_
 	float cellSize = thumbnailSize + padding;
 	float panelWidth = ImGui::GetContentRegionAvail().x;
 	int columnCount = (int)(panelWidth / cellSize);
-	if (columnCount < 1) columnCount = 1;
+	if (columnCount < 1)
+		columnCount = 1;
 
 	// フォルダーの中身 (名前とフォルダーか)
-	struct Entry { std::string name; bool directory; };
+	struct Entry {
+		std::string name;
+		bool directory;
+	};
 	std::vector<Entry> entries;
 	std::error_code ec;
 	// 今のフォルダーの中を列挙する (例外を出さない版)
@@ -62,11 +69,13 @@ void EditorUI::ShowProject([[maybe_unused]] Engine::Renderer* renderer, [[maybe_
 	// 開けなければ、その旨と Resources へ戻るボタンを出す
 	if (ec && entries.empty()) {
 		ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.4f, 1.0f), "Cannot open %s", currentDir.c_str());
-		if (ImGui::Button("Return to Resources")) currentDir = "Resources";
+		if (ImGui::Button("Return to Resources"))
+			currentDir = "Resources";
 	}
 	// フォルダを先に、名前順に並べる
 	std::sort(entries.begin(), entries.end(), [](const Entry& a, const Entry& b) {
-		if (a.directory != b.directory) return a.directory;
+		if (a.directory != b.directory)
+			return a.directory;
 		return ToLower(a.name) < ToLower(b.name);
 	});
 
@@ -86,29 +95,41 @@ void EditorUI::ShowProject([[maybe_unused]] Engine::Renderer* renderer, [[maybe_
 		ImGui::PushID(i++);
 		// プロジェクト相対のパスと拡張子
 		const std::string relPath = currentDir + "/" + entry.name;
-		const std::string ext = entry.directory ? std::string() : ToLower(Engine::PathUtils::ToUTF8(fs::path(Engine::PathUtils::FromUTF8(entry.name)).extension().wstring()));
+		const std::string ext = entry.directory
+		                            ? std::string()
+		                            : ToLower(
+		                                  Engine::PathUtils::ToUTF8(
+		                                      fs::path(Engine::PathUtils::FromUTF8(entry.name)).extension().wstring()));
 
 		// アイコンを種類で選ぶ (フォルダー・モデル・プレハブ・音・スクリプト)
 		uint32_t icon = s_icons.file;
 		if (entry.directory) {
 			icon = s_icons.folder;
-		} else if (ext == ".obj" || ext == ".fbx" || ext == ".gltf") icon = s_icons.model;
-		else if (ext == ".prefab") icon = s_icons.prefab;
-		else if (ext == ".wav" || ext == ".mp3") icon = s_icons.audio;
-		else if (ext == ".h" || ext == ".cpp" || ext == ".json") icon = s_icons.script;
+		} else if (ext == ".obj" || ext == ".fbx" || ext == ".gltf")
+			icon = s_icons.model;
+		else if (ext == ".prefab")
+			icon = s_icons.prefab;
+		else if (ext == ".wav" || ext == ".mp3")
+			icon = s_icons.audio;
+		else if (ext == ".h" || ext == ".cpp" || ext == ".json")
+			icon = s_icons.script;
 		else if (ext == ".png" || ext == ".jpg") {
 			// 画像はサムネイルを表示する
 			auto found = s_thumbnails.find(relPath);
-			if (found == s_thumbnails.end()) found = s_thumbnails.emplace(relPath, Engine::Renderer::GetInstance()->LoadTexture2D(relPath, false)).first;
+			if (found == s_thumbnails.end())
+				found =
+				    s_thumbnails.emplace(relPath, Engine::Renderer::GetInstance()->LoadTexture2D(relPath, false)).first;
 			icon = found->second;
 		}
 
 		// 背景の無いアイコンのボタン
 		ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
-		const bool clicked = ImGui::ImageButton("##asset", (ImTextureID)renderer->GetTextureSrvGpu(icon).ptr, ImVec2(thumbnailSize, thumbnailSize));
+		const bool clicked = ImGui::ImageButton(
+		    "##asset", (ImTextureID)renderer->GetTextureSrvGpu(icon).ptr, ImVec2(thumbnailSize, thumbnailSize));
 		ImGui::PopStyleColor();
 		// フォルダーをクリックしたら、描き終わってから開く
-		if (clicked && entry.directory) nextDir = relPath;
+		if (clicked && entry.directory)
+			nextDir = relPath;
 		// パスと操作の案内をツールチップで出す
 		if (ImGui::IsItemHovered()) {
 			const char* hint = (ext == ".json" || ext == ".prefab") ? "\n(double-click to open / instantiate)" : "";
@@ -120,7 +141,8 @@ void EditorUI::ShowProject([[maybe_unused]] Engine::Renderer* renderer, [[maybe_
 				LoadScene(scene, relPath);
 			} else if (ext == ".prefab" && scene && !scene->GetIsPlaying()) {
 				auto created = LoadPrefab(scene, relPath);
-				if (!created.empty()) scene->SelectEntity(created.front());
+				if (!created.empty())
+					scene->SelectEntity(created.front());
 			}
 		}
 
@@ -140,7 +162,8 @@ void EditorUI::ShowProject([[maybe_unused]] Engine::Renderer* renderer, [[maybe_
 	ImGui::Columns(1);
 	ImGui::EndChild();
 	// 次のフォルダーへ移る
-	if (!nextDir.empty()) currentDir = nextDir;
+	if (!nextDir.empty())
+		currentDir = nextDir;
 	ImGui::End();
 }
 
@@ -152,11 +175,14 @@ void EditorUI::ShowSceneSettings(Engine::Renderer* renderer) {
 	bool ch = false;
 
 	// ポストエフェクトの種類 (常に表示)
-	static const char* ppTypes[] = { "None", "Default(CRT)", "Rich", "Anime", "Grayscale", "Smoothing", "GaussianFilter", "OutlinePost", "RadialBlur", "Random", "PaperFrame" };
+	static const char* ppTypes[] = {"None",           "Default(CRT)", "Rich",       "Anime",  "Grayscale", "Smoothing",
+	                                "GaussianFilter", "OutlinePost",  "RadialBlur", "Random", "PaperFrame"};
 	static int currentPP = 1; // デフォルトはCRT
 	// シーン読み込みで無効化された場合などに表示が食い違わないよう、実際の状態へ合わせる
-	if (!renderer->GetPostProcessEnabled()) currentPP = 0;
-	else if (currentPP == 0) currentPP = 1;
+	if (!renderer->GetPostProcessEnabled())
+		currentPP = 0;
+	else if (currentPP == 0)
+		currentPP = 1;
 	// 種類の選択 (None は無効、Default は CRT、それ以外は名前で設定する)
 	if (ImGui::BeginCombo("PostEffect", ppTypes[currentPP])) {
 		for (int n = 0; n < IM_ARRAYSIZE(ppTypes); n++) {
@@ -172,7 +198,8 @@ void EditorUI::ShowSceneSettings(Engine::Renderer* renderer) {
 					renderer->SetPostEffect(ppTypes[currentPP]);
 				}
 			}
-			if (isSelected) ImGui::SetItemDefaultFocus();
+			if (isSelected)
+				ImGui::SetItemDefaultFocus();
 		}
 		ImGui::EndCombo();
 	}
@@ -189,7 +216,8 @@ void EditorUI::ShowSceneSettings(Engine::Renderer* renderer) {
 		ch |= ImGui::DragFloat("SAN", &pp.san, 0.01f, 0.0f, 1.0f);
 	}
 	// 変わったら反映する
-	if (ch) renderer->SetPostProcessParams(pp);
+	if (ch)
+		renderer->SetPostProcessParams(pp);
 
 	// 背景にキューブマップを使うか
 	bool useCubemapBg = renderer->GetUseCubemapBackground();
@@ -206,11 +234,13 @@ void EditorUI::ShowConsole() {
 	static bool showInfo = true, showWarning = true, showError = true, autoScroll = true, collapse = false;
 	static char filter[128] = "";
 	// Clear: ログを消す / Copy: すべてのログをクリップボードへ
-	if (ImGui::Button("Clear##Console")) consoleLog.clear();
+	if (ImGui::Button("Clear##Console"))
+		consoleLog.clear();
 	ImGui::SameLine();
 	if (ImGui::Button("Copy")) {
 		std::string all;
-		for (const auto& log : consoleLog) all += log.message + "\n";
+		for (const auto& log : consoleLog)
+			all += log.message + "\n";
 		ImGui::SetClipboardText(all.c_str());
 	}
 	ImGui::SameLine();
@@ -233,21 +263,28 @@ void EditorUI::ShowConsole() {
 	ImGui::BeginChild("ConsoleLines", ImVec2(0, 0), ImGuiChildFlags_None, ImGuiWindowFlags_HorizontalScrollbar);
 	// Collapse: 同じ内容のログを1行にまとめて件数を表示する (Unity と同じ)
 	std::map<std::string, int> repeats;
-	if (collapse) for (const auto& log : consoleLog) ++repeats[log.message];
+	if (collapse)
+		for (const auto& log : consoleLog)
+			++repeats[log.message];
 	std::map<std::string, bool> shown;
 	// ログを順に表示する
 	for (const auto& log : consoleLog) {
 		// 表示しない種類と、絞り込みに合わないものは飛ばす
-		if ((log.level == LogLevel::Info && !showInfo) || (log.level == LogLevel::Warning && !showWarning) || (log.level == LogLevel::Error && !showError)) continue;
-		if (!needle.empty() && ToLower(log.message).find(needle) == std::string::npos) continue;
+		if ((log.level == LogLevel::Info && !showInfo) || (log.level == LogLevel::Warning && !showWarning) ||
+		    (log.level == LogLevel::Error && !showError))
+			continue;
+		if (!needle.empty() && ToLower(log.message).find(needle) == std::string::npos)
+			continue;
 		// まとめ表示なら、同じ内容は最初の 1 回だけ出す
 		if (collapse) {
-			if (shown[log.message]) continue;
+			if (shown[log.message])
+				continue;
 			shown[log.message] = true;
 		}
 		// エラーは赤、警告は黄
-		ImVec4 color = log.level == LogLevel::Error ? ImVec4(1.0f, 0.45f, 0.4f, 1.0f) :
-			log.level == LogLevel::Warning ? ImVec4(1.0f, 0.8f, 0.35f, 1.0f) : ImGui::GetStyleColorVec4(ImGuiCol_Text);
+		ImVec4 color = log.level == LogLevel::Error     ? ImVec4(1.0f, 0.45f, 0.4f, 1.0f)
+		               : log.level == LogLevel::Warning ? ImVec4(1.0f, 0.8f, 0.35f, 1.0f)
+		                                                : ImGui::GetStyleColorVec4(ImGuiCol_Text);
 		// 時刻と内容
 		ImGui::TextDisabled("%7.2f", log.time);
 		ImGui::SameLine();
@@ -260,7 +297,8 @@ void EditorUI::ShowConsole() {
 		}
 	}
 	// 一番下にいれば、新しいログに合わせてスクロールする
-	if (autoScroll && ImGui::GetScrollY() >= ImGui::GetScrollMaxY() - 4.0f) ImGui::SetScrollHereY(1.0f);
+	if (autoScroll && ImGui::GetScrollY() >= ImGui::GetScrollMaxY() - 4.0f)
+		ImGui::SetScrollHereY(1.0f);
 	ImGui::EndChild();
 	ImGui::End();
 }
@@ -268,23 +306,29 @@ void EditorUI::ShowConsole() {
 // シーン内のアニメーション (スキニング Animator / キーフレーム Motion) を一覧し、まとめて再生・停止・選択する
 void EditorUI::ShowAnimationWindow(Engine::Renderer* renderer, GameScene* scene) {
 	// シーンが無ければ何もしない
-	if (!scene) return;
+	if (!scene)
+		return;
 	// このシーンの ECS と、表示した数
 	auto& reg = scene->GetComponents();
 	int count = 0;
 	// すべて再生 / すべて停止
 	if (ImGui::Button("Play all")) {
-		for (auto e : reg.view<AnimatorComponent>()) reg.get<AnimatorComponent>(e).isPlaying = true;
-		for (auto e : reg.view<MotionComponent>()) reg.get<MotionComponent>(e).isPlaying = true;
+		for (auto e : reg.view<AnimatorComponent>())
+			reg.get<AnimatorComponent>(e).isPlaying = true;
+		for (auto e : reg.view<MotionComponent>())
+			reg.get<MotionComponent>(e).isPlaying = true;
 	}
 	ImGui::SameLine();
 	if (ImGui::Button("Stop all")) {
-		for (auto e : reg.view<AnimatorComponent>()) reg.get<AnimatorComponent>(e).isPlaying = false;
-		for (auto e : reg.view<MotionComponent>()) reg.get<MotionComponent>(e).isPlaying = false;
+		for (auto e : reg.view<AnimatorComponent>())
+			reg.get<AnimatorComponent>(e).isPlaying = false;
+		for (auto e : reg.view<MotionComponent>())
+			reg.get<MotionComponent>(e).isPlaying = false;
 	}
 	ImGui::Separator();
 	// 表の列: 物・クリップ・再生・速さ
-	if (ImGui::BeginTable("AnimationList", 4, ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_ScrollY)) {
+	if (ImGui::BeginTable(
+	        "AnimationList", 4, ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_ScrollY)) {
 		ImGui::TableSetupColumn("Object");
 		ImGui::TableSetupColumn("Clip");
 		ImGui::TableSetupColumn("Play", ImGuiTableColumnFlags_WidthFixed, 40.0f);
@@ -294,7 +338,10 @@ void EditorUI::ShowAnimationWindow(Engine::Renderer* renderer, GameScene* scene)
 		auto drawName = [&](entt::entity e) {
 			ImGui::TableNextColumn();
 			const char* name = reg.all_of<NameComponent>(e) ? reg.get<NameComponent>(e).name.c_str() : "Object";
-			if (ImGui::Selectable(name, scene->GetSelectedEntity() == e, ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowOverlap)) scene->SelectEntity(e);
+			if (ImGui::Selectable(
+			        name, scene->GetSelectedEntity() == e,
+			        ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowOverlap))
+				scene->SelectEntity(e);
 		};
 		// アニメーター: モデルのクリップから選ぶ
 		for (auto e : reg.view<AnimatorComponent>()) {
@@ -305,7 +352,8 @@ void EditorUI::ShowAnimationWindow(Engine::Renderer* renderer, GameScene* scene)
 			ImGui::TableNextColumn();
 			// メッシュのモデル
 			const Engine::Model* model = nullptr;
-			if (auto* mr = reg.try_get<MeshRendererComponent>(e); mr && mr->modelHandle != 0 && renderer) model = renderer->GetModel(mr->modelHandle);
+			if (auto* mr = reg.try_get<MeshRendererComponent>(e); mr && mr->modelHandle != 0 && renderer)
+				model = renderer->GetModel(mr->modelHandle);
 			ImGui::SetNextItemWidth(-FLT_MIN);
 			if (model && !model->GetData().animations.empty()) {
 				if (ImGui::BeginCombo("##Clip", anim.currentAnimation.c_str())) {
@@ -357,7 +405,8 @@ void EditorUI::ShowAnimationWindow(Engine::Renderer* renderer, GameScene* scene)
 		}
 		ImGui::EndTable();
 	}
-	if (count == 0) ImGui::TextDisabled("No Animator or Motion components in the scene.");
+	if (count == 0)
+		ImGui::TextDisabled("No Animator or Motion components in the scene.");
 }
 
 } // namespace Game

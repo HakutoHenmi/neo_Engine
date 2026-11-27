@@ -1,5 +1,5 @@
-// Single-bounce diffuse transport and glossy reflections of opaque scenery.
-// Closest hits use real mesh UVs, albedo/normal/roughness maps and sun visibility.
+// 不透明な景色の、1 回反射の拡散光の伝達と光沢のある反射。
+// 最も近い当たりでは、実際のメッシュの UV・アルベド / 法線 / 粗さのマップ・日光の可視性を使う。
 #include "RayConeTextureLod.hlsli"
 #include "ReceiverDepthTolerance.hlsli"
 RaytracingAccelerationStructure geometry : register(t0);
@@ -61,7 +61,7 @@ bool TraceSurface(float3 origin,float3 direction,float maximum,float footprint,o
     if(abs(determinant)>1e-7){
         float3 tangent=mul(toWorld,((tri.p[1].xyz-tri.p[0].xyz)*uvB.y-(tri.p[2].xyz-tri.p[0].xyz)*uvA.y)/determinant);
         tangent=SafeNormal(tangent-n*dot(n,tangent),float3(1,0,0));float3 bitangent=SafeNormal(cross(n,tangent),float3(0,0,1))*sign(determinant);
-        // Z is rebuilt from XY so two-channel BC5 normal maps work like RGB ones.
+        // Z は XY から作り直すので、2 チャンネルの BC5 の法線マップも RGB と同じように使える。
         float3 map;map.xy=MaterialSample(material.normal,uv,density,surface.footprint).xy*2-1;map.y=-map.y;map.z=sqrt(saturate(1-dot(map.xy,map.xy)));
         map.xy*=material.ground!=0?.35:1;
         n=SafeNormal(tangent*map.x+bitangent*map.y+n*map.z,n);
@@ -81,7 +81,7 @@ float SunVisibility(float3 p,float3 n){
 float3 Incoming(float3 origin,float3 direction,float roughness,float footprint,out bool hit){
     Surface surface;float distance;hit=TraceSurface(origin,direction,1600,footprint,surface,distance);
     if(!hit)return Sky(direction,roughness);
-    // Radiance from one diffuse bounce; its direct sun term has its own shadow ray.
+    // 1 回の拡散反射からの放射輝度。その直接の日光の項は自分の影のレイを持つ。
     float3 illumination=sunColor*saturate(dot(surface.n,towardSun))*SunVisibility(surface.p,surface.n);
     illumination+=Sky(surface.n,1)*.22;
     return max(0,surface.albedo*illumination);
@@ -121,8 +121,8 @@ void main(uint3 id:SV_DispatchThreadID){
     if(fluid){receiver.p=world;receiver.n=DepthNormal(p,raw,world);receiver.roughness=.16;receiver.albedo=0;receiver.footprint=length(world-cameraPosition)*pixelSpread;}
     else if(!TraceSurface(cameraPosition,-view,ReceiverTraceMaximum(length(world-cameraPosition),z),0,receiver,distance)||abs(distance-length(world-cameraPosition))>ReceiverDepthTolerance(z))return;
     float3 origin=receiver.p+receiver.n*.06;
-    // A camera-invariant low-discrepancy sequence avoids random rotations at
-    // every half-meter boundary. The radiance filter supplies spatial smoothing.
+    // カメラに依らない低食い違い列で、50cm の境界ごとのランダムな回転を
+    // 避ける。空間的ななめらかさは放射輝度のフィルターが担う。
     float rotation=.381966;
     if(reflectionEnabled>.5){
         float3 reflected=reflect(-view,receiver.n),radiance=0;float f0=fluid?.02:.04;
@@ -131,7 +131,7 @@ void main(uint3 id:SV_DispatchThreadID){
             float3 direction=reflect(-view,micro);if(dot(direction,receiver.n)<=0)direction=reflected;
             bool hit;float3 light=Incoming(origin,direction,receiver.roughness,receiver.footprint,hit);
             if(recordDiagnostics!=0&&hit)InterlockedAdd(diagnostics[0],1);
-            // Fluid already has cubemap reflection: replace only rays that hit scenery.
+            // 流体はすでにキューブマップの反射を持つ: 景色に当たったレイだけを置き換える。
             if(fluid)light=hit?light-Sky(direction,receiver.roughness):0;
             radiance+=light;
         }
@@ -141,7 +141,7 @@ void main(uint3 id:SV_DispatchThreadID){
     if(indirectEnabled>.5&&!fluid){
         float3 irradiance=0;
         [unroll]for(uint i=0;i<8;++i){bool hit;irradiance+=Incoming(origin,Hemisphere(receiver.n,Sequence(i,8,rotation)),1,receiver.footprint,hit);if(recordDiagnostics!=0&&hit)InterlockedAdd(diagnostics[1],1);}
-        // Replace the existing constant ambient term partially, preserving direct lighting.
+        // 既存の一定の環境光の項を一部だけ置き換え、直接光は保つ。
         float3 bounce=receiver.albedo*(irradiance/8-ambientColor*.32)*.45;
         indirectLight[p]=float4(clamp(bounce,-.4,2),z);
     }

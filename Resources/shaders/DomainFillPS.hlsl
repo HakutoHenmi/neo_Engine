@@ -7,6 +7,6 @@ float4 main(PSIn i):SV_TARGET {
     float2 p=i.worldPos.xz;
     float wave=.5+.5*sin(length(p)*.32-time*1.7);
     float glints=pow(saturate(sin(p.x*.65+time*.6)*sin(p.y*.71-time*.4)),16);
-    // Low-opacity additive color leaves terrain and attack telegraphs legible.
+    // 不透明度の低い加算の色にして、地形と攻撃の予告が見えるようにする。
     return float4(i.color.rgb*(.85+.15*wave)+glints*.12,i.color.a);
 }

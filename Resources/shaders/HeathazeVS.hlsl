@@ -1,7 +1,6 @@
 #include "Obj.hlsli"
 
-VSOutput main(float4 pos : POSITION, float3 normal : NORMAL, float2 uv : TEXCOORD)
-{
+VSOutput main(float4 pos : POSITION, float3 normal : NORMAL, float2 uv : TEXCOORD) {
     // 揺れパラメータ
     float amp = 0.5f; // 揺れ幅
     float freq = 2.0f; // 揺れの速さ

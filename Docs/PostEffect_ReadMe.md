@@ -7,8 +7,8 @@
 
 | 役割 | ファイル |
 | --- | --- |
-| ポストエフェクト用レンダーターゲット、Depth SRV、PSO 登録 | `Engine/Renderer.cpp` |
-| ポストエフェクト切り替え API とパラメータ | `Engine/Renderer.h` |
+| ポストエフェクト用レンダーターゲット、Depth SRV、PSO 登録 | `Engine/Graphics/Renderer.cpp` |
+| ポストエフェクト切り替え API とパラメータ | `Engine/Graphics/Renderer.h` |
 | PlayGame 側の状態連動ポストエフェクト | `Game/Systems/PostProcessSystem.h` |
 | 評価課題 scene 側の手動確認・戦闘イベント連動 | `Game/Scenes/AssignmentScene.cpp` |
 | 共通関数、ノイズ、輝度計算 | `Resources/shaders/PostProcessCommon.hlsli` |
@@ -106,7 +106,7 @@ PlayGame 側では `Game/Systems/PostProcessSystem.h` を `GameScene` の system
 新しいポストエフェクトを増やす場合は、基本的に次の流れです。
 
 1. `Resources/shaders/PostProcessCommon.hlsli` の共通関数を使って Pixel Shader を追加する。
-2. `Engine/Renderer.cpp` の `Renderer::InitPostProcess_()` で shader を compile し、`pipelines_["登録名"]` に PSO を登録する。
+2. `Engine/Graphics/Renderer.cpp` の `Renderer::InitPostProcess_()` で shader を compile し、`pipelines_["登録名"]` に PSO を登録する。
 3. scene または system から `renderer->SetPostEffect("登録名")` を呼ぶ。
 4. 必要に応じて `Renderer::PostProcessParams` を設定する。
 5. `AssignmentScene` や `GameScene::DrawUI()` にデバッグ切り替えを足す。
