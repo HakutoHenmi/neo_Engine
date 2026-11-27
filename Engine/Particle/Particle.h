@@ -27,9 +27,9 @@ struct Particle {
 	float life = 1.0f;
 	float age = 0.0f;
 
-	float damping = 0.0f; // ★追加: 摩擦・空気抵抗
+	float damping = 0.0f; // 摩擦・空気抵抗
 
-	// ★追加: 回転制御用
+	// 回転制御用
 	Vector3 rotation{}; // 現在の回転角 (ラジアン)
 	Vector3 angVel{};   // 回転速度
 };
@@ -37,7 +37,7 @@ struct Particle {
 class ParticleSystem {
 public:
 	// texturePath は任意。存在する png を指定してください（例: "Resources/Textures/uvChecker.png"）
-	// ★変更: useBillboard 引数を追加（デフォルトtrue）
+	// useBillboard が true ならパーティクルをカメラへ向ける。
 	void Initialize(
 	    Renderer& renderer, size_t maxCount = 1000, const std::string& meshPath = "Resources/Models/plane.obj",
 	    const std::string& texturePath = "Resources/Textures/uvChecker.png", bool sRGB = true,
@@ -54,7 +54,7 @@ public:
 		return particles_.ActiveCount();
 	}
 
-	// ★変更: 回転速度(angVel)引数と摩擦(damping)引数を追加
+	// angVel は回転速度、damping は速度の減衰率。
 	void Emit(
 	    const Vector3& pos, const Vector3& vel, const Vector3& acceleration, const Vector3& startScale,
 	    const Vector3& endScale, const Vector4& startColor, const Vector4& endColor, float life,
@@ -67,10 +67,9 @@ private:
 	Renderer::TextureHandle tex_ = 0;
 
 	// 生存中の粒だけを走査し、放出は空きを O(1) で取り出す (Object Pool)。
-	// 以前は放出のたびに全要素から未使用を線形探索していた
 	ObjectPool<Particle> particles_;
 
-	// ★追加: ビルボードを使用するかどうか
+	// ビルボードを使用するかどうか
 	bool useBillboard_ = true;
 };
 

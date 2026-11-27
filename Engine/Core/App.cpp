@@ -8,10 +8,11 @@
 #include "../../tests/StartupValidation.h"
 #include "JobSystem.h"
 #include "../Scene/LoadingScreen.h"
-#include "../Time/TimeManager.h" // ★追加
+#include "../Time/TimeManager.h"
 #include "NetworkProfiler.h"
-#include <psapi.h> // ★追加: メモリ使用量取得用
+#include <psapi.h> // メモリ使用量取得用
 #pragma comment(lib, "psapi.lib")
+#pragma comment(lib, "dxguid.lib")
 
 namespace Engine {
 
@@ -154,7 +155,7 @@ void App::Run() {
 			throw;
 		}
 
-		// ★追加: 動的パラメータ制御（出来による加点枠のアピール）
+		// Web プロファイラからの描画パラメータ変更
 		// スペースキーでダメージ（またはアクション）演出を発動し、時間経過で減衰させる
 		static float effectIntensity = 0.0f;
 		if (input_.Trigger(DIK_SPACE)) {
@@ -178,7 +179,7 @@ void App::Run() {
 		params.time += 1.0f / 60.0f; // ノイズ等の時間経過用
 		renderer_.SetPostProcessParams(params);
 
-		// ★追加: フルスクリーン切り替え (F11 or Alt+Enter)
+		// フルスクリーン切り替え (F11 or Alt+Enter)
 		if (input_.Trigger(DIK_F11) || (input_.Down(DIK_LALT) && input_.Trigger(DIK_RETURN))) {
 			dx_.ToggleFullscreen();
 		}
@@ -206,14 +207,14 @@ void App::Run() {
 			timeElapsed = 0.0f;
 		}
 
-		// ★追加: TimeManagerの更新
+		// TimeManagerの更新
 		TimeManager::GetInstance().Update(dt);
 		audio_.UpdateBGM(dt);
 
 		// プロファイラにフレームタイムをセット
 		NetworkProfiler::GetInstance().SetDeltaTime(dt);
 
-		// ★追加: シーン切り替えをBeginFrame前に処理（GPUフェンス不整合を防ぐ）
+		// シーン切り替えをBeginFrame前に処理（GPUフェンス不整合を防ぐ）
 		sceneManager_.ProcessPendingChange();
 		auto* presentedBackBuffer = dx_.GetCurrentBackBufferResource();
 
@@ -278,7 +279,7 @@ void App::Run() {
 #ifdef USE_IMGUI
 		imgui_.NewFrame(dx_);
 #endif
-		// ★追加: CPU Logic Timeの計測開始
+		// CPU Logic Timeの計測開始
 		auto logicStart = std::chrono::high_resolution_clock::now();
 
 		try {
@@ -297,7 +298,7 @@ void App::Run() {
 		float logicTimeMs = std::chrono::duration<float, std::milli>(logicEnd - logicStart).count();
 		NetworkProfiler::GetInstance().SetCpuLogicTime(logicTimeMs);
 
-		// ★追加: GPU Render Time (CPU側のコマンド構築〜Present完了まで) の計測開始
+		// GPU Render Time (CPU側のコマンド構築〜Present完了まで) の計測開始
 		auto renderStart = std::chrono::high_resolution_clock::now();
 
 		try {
@@ -371,14 +372,14 @@ void App::Run() {
 		float renderTimeMs = std::chrono::duration<float, std::milli>(renderEnd - renderStart).count();
 		NetworkProfiler::GetInstance().SetGpuRenderTime(renderTimeMs);
 
-		// ★追加: RAM使用量の取得
+		// RAM使用量の取得
 		PROCESS_MEMORY_COUNTERS pmc;
 		if (GetProcessMemoryInfo(GetCurrentProcess(), &pmc, sizeof(pmc))) {
 			float ramMB = (float)pmc.WorkingSetSize / (1024.0f * 1024.0f);
 			NetworkProfiler::GetInstance().SetSystemRamUsage(ramMB);
 		}
 
-		// ★追加: 詳細な統計データをプロファイラへ送る
+		// 詳細な統計データをプロファイラへ送る
 		auto* renderer = Renderer::GetInstance();
 		if (renderer) {
 			NetworkProfiler::GetInstance().SetDrawCalls(renderer->GetDrawCallCount());
@@ -411,7 +412,7 @@ void App::Run() {
 }
 
 void App::Shutdown() {
-	// ★修正: 先にSceneManagerをクリアして、すべてのシーンオブジェクト・コンポーネントを安全に破棄する
+	// 先にSceneManagerをクリアして、すべてのシーンオブジェクト・コンポーネントを安全に破棄する
 	// これにより、コンポーネント破棄時にオーディオやジョブシステムなどのサブシステムへ安全にアクセスできます
 	sceneManager_.Clear();
 

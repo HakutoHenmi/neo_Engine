@@ -21,7 +21,7 @@ struct EmitterParams {
 	float emitRate = 10.0f; // 1 秒あたりの粒子数
 	int burstCount = 0;
 
-	// Shape (★追加)
+	// Shape
 	EmissionShape shape = EmissionShape::Point;
 	float shapeRadius = 1.0f; // SphereやConeの底面半径
 	float shapeAngle = 0.5f;  // Coneの広がり角 (ラジアン)
@@ -39,7 +39,7 @@ struct EmitterParams {
 
 	// 加速度と物理
 	Vector3 acceleration{0, -9.8f, 0};
-	float damping = 0.0f; // ★追加: 速度の減衰(空気抵抗など)
+	float damping = 0.0f; // 速度の減衰(空気抵抗など)
 
 	// 大きさ
 	Vector3 startSize{1, 1, 1};
@@ -57,13 +57,13 @@ struct EmitterParams {
 	Vector3 angularVelocityVariance{0, 0, 0};
 
 	// 描画
-	std::string meshPath = "Resources/Models/plane.obj"; // ★追加: 放出するメッシュ
+	std::string meshPath = "Resources/Models/plane.obj"; // 放出するメッシュ
 	std::string texturePath = "Resources/Textures/uvChecker.png";
 	std::string shaderName = ""; // 空なら既定のもの
 	bool useBillboard = true;
 	bool isAdditive = false; // 加算合成
 
-	// ★追加: UVアニメーション
+	// UVアニメーション
 	bool useUvAnim = false;
 	int uvAnimCols = 1;
 	int uvAnimRows = 1;

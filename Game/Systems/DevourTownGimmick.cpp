@@ -222,7 +222,6 @@ public:
 		if (ride.edge >= 0) {
 			ride.s += Chrono::WireSpeed * dt;
 			// 柱に着いたら、そのまま次の電線へ (倒していなければまっすぐ)。そのコマで柱を越えた分は次の電線で進む
-			// (以前は越えた分を捨てて柱の上に止めていたので、柱を通るたび (折り返しも) 1 コマだけ止まって、重くなったように見えた)
 			while (ride.edge >= 0 && ride.s >= ride.length) {
 				const auto& edge = edges[size_t(ride.edge)];
 				const int to = edge.a == ride.edgeFrom ? edge.b : edge.a;

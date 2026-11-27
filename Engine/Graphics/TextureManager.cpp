@@ -135,7 +135,7 @@ TextureHandle TextureManager::Load(const std::wstring& relPath) {
 	// 登録
 	TexData td;
 	td.texture = tex;
-	td.upload = up; // ★保持して device removed を避ける
+	td.upload = up; // 保持して device removed を避ける
 	td.srvIndex = srvIndex;
 	td.gpu = gpu;
 

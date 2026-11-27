@@ -233,7 +233,7 @@ void WindowDX::PresentList(ID3D12GraphicsCommandList* list) {
 	que_->ExecuteCommandLists(1, lists);
 	DumpD3D12InfoQueue(dev_.Get(), "After ExecuteCommandLists");
 
-	// ★修正: VSyncをOFFにし、GPU限界のフレームレートを計測できるようにする
+	// VSync を使わず、垂直同期待ちによる描画間隔の制限を避ける。
 	HRESULT hrPresent = swap_->Present(0, 0);
 	if (FAILED(hrPresent)) {
 		DumpD3D12InfoQueue(dev_.Get(), "Present failed");
@@ -394,7 +394,7 @@ void WindowDX::Shutdown() {
 		b.Reset();
 
 	srvH_.Reset();
-	srvH_CPU_.Reset(); // ★追加
+	srvH_CPU_.Reset();
 	dsvH_.Reset();
 	rtvH_.Reset();
 
@@ -571,7 +571,7 @@ bool WindowDX::CreateRTVDSV_() {
 	{
 		D3D12_DESCRIPTOR_HEAP_DESC d{};
 		d.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
-		d.NumDescriptors = kBackBufferCount + 64; // ★拡張: カスタムRTV用に余裕を持たせる
+		d.NumDescriptors = kBackBufferCount + 64; // カスタムRTV用に余裕を持たせる
 		if (FAILED(dev_->CreateDescriptorHeap(&d, IID_PPV_ARGS(&rtvH_))))
 			return false;
 		rtvInc_ = dev_->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
@@ -587,7 +587,7 @@ bool WindowDX::CreateRTVDSV_() {
 	{
 		D3D12_DESCRIPTOR_HEAP_DESC d{};
 		d.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
-		d.NumDescriptors = 1 + 64; // ★拡張: カスタムDSV用に余裕を持たせる
+		d.NumDescriptors = 1 + 64; // カスタムDSV用に余裕を持たせる
 		if (FAILED(dev_->CreateDescriptorHeap(&d, IID_PPV_ARGS(&dsvH_))))
 			return false;
 		dsvInc_ = dev_->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_DSV);
@@ -616,7 +616,7 @@ bool WindowDX::CreateRTVDSV_() {
 		if (FAILED(dev_->CreateDescriptorHeap(&d, IID_PPV_ARGS(&srvH_))))
 			return false;
 
-		// ★追加: 非ShaderVisibleなマスターヒープを作成 (CopyDescriptorsのソース用)
+		// 非ShaderVisibleなマスターヒープを作成 (CopyDescriptorsのソース用)
 		d.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
 		if (FAILED(dev_->CreateDescriptorHeap(&d, IID_PPV_ARGS(&srvH_CPU_))))
 			return false;
@@ -672,7 +672,7 @@ D3D12_CPU_DESCRIPTOR_HANDLE WindowDX::SRV_CPU(int offset) const {
 	h.ptr += (SIZE_T)offset * srvInc_;
 	return h;
 }
-// ★追加: CPUマスターハンドル取得
+// CPUマスターハンドル取得
 D3D12_CPU_DESCRIPTOR_HANDLE WindowDX::SRV_CPU_Master(int offset) const {
 	auto h = srvH_CPU_->GetCPUDescriptorHandleForHeapStart();
 	h.ptr += (SIZE_T)offset * srvInc_;

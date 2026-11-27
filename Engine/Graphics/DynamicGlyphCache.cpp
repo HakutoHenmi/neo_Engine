@@ -48,13 +48,7 @@ bool DynamicGlyphCache::Initialize(
 	if (FAILED(hr))
 		return false;
 
-	// SRV の作成 (Renderer の AllocateSrvIndex に相当する処理)
-	// Renderer は WindowDX 経由でヒープ管理しているのでその仕組みに乗る
-	// ここでは Renderer::LoadTexture2D と同様のパターンを使う
-	// → Renderer に友好メソッドを追加するか、直接ハンドルを取得する
-
-	// Renderer からSRVインデックスを割り当てる
-	// Renderer の public メソッドを通じてアクセス
+	// Renderer が管理する SRV ヒープから、文字アトラス用の番号を確保する。
 	auto srvIdx = renderer_->AllocateTextSrvIndex();
 
 	auto* window = renderer_->GetWindow();

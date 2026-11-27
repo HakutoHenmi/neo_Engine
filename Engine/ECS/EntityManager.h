@@ -26,13 +26,13 @@ public:
 
 private:
 	// 使われていないエンティティ ID の待ち行列
-	std::queue<Entity> m_availableEntities{};
+	std::queue<Entity> availableEntities_{};
 
 	// 番号がエンティティ ID に対応するシグネチャの配列
-	std::array<Signature, MAX_ENTITIES> m_signatures{};
+	std::array<Signature, MAX_ENTITIES> signatures_{};
 
 	// 生きているエンティティの総数
-	uint32_t m_livingEntityCount{};
+	uint32_t livingEntityCount_{};
 };
 
 } // namespace ECS

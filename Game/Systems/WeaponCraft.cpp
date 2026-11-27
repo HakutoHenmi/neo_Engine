@@ -11,6 +11,8 @@
 #include "../Data/Collection.h"
 #include "../Chrono/WeaponShapeSdf.h"
 #include "../Chrono/WeaponShapeGrammar.h"
+#include "../Chrono/MotifShape.h"
+#include "../Chrono/WeaponShapeMetrics.h"
 #include <filesystem>
 #include <tuple>
 #include <fstream>
@@ -420,11 +422,12 @@ int ChronoSystem::BuildWeaponShape(const BattleWeapon& w) {
 		key += w.ids[size_t(i)] + "|";
 	// (比べる用: --craft-shape-legacy なら F1 までの作り方、--craft-shape-f2 なら F2 の作り方 (物の形をそのまま本体・前・左右に))
 	static const bool legacy = wcsstr(GetCommandLineW(), L"--craft-shape-legacy") != nullptr,
-	                  f2 = wcsstr(GetCommandLineW(), L"--craft-shape-f2") != nullptr;
+	                  f2 = wcsstr(GetCommandLineW(), L"--craft-shape-f2") != nullptr,
+	                  f3 = wcsstr(GetCommandLineW(), L"--craft-shape-f3") != nullptr;
 	if (legacy)
 		key = "voxel|" + key.substr(4);
 	else if (!f2)
-		key = "grammar|" + key.substr(4);
+		key = (f3 ? "grammar|" : "motif|") + key.substr(4);
 	auto& grids = WeaponShapeGrids();
 	for (size_t i = 0; i < grids.size(); ++i)
 		if (grids[i].key == key)
@@ -457,20 +460,84 @@ int ChronoSystem::BuildWeaponShape(const BattleWeapon& w) {
 			for (FuseTrait t : FuseTraitsOf(w.actions[size_t(i)]))
 				if (t != FuseTrait::Count)
 					in.owner[size_t(t)] = i + 1;
+		// (H3) 3 つの物を姿の型紙に当てはめる。当てはまる型紙が無ければ (と --craft-shape-f3 のとき)、性質から型と部品を組み立てる (F3)
+		const Motif* motif = nullptr;
+		MotifChoice choice;
+		std::array<const ItemProfile*, 3> profiles{};
+		if (!f3 && w.filled == 3) {
+			std::array<MotifItem, 3> items;
+			bool ok = true;
+			uint32_t seed = 0;
+			for (int i = 0; i < 3 && ok; ++i) {
+				profiles[size_t(i)] = ItemProfileOf(w.ids[size_t(i)]);
+				ok = profiles[size_t(i)] != nullptr;
+				if (ok)
+					items[size_t(i)] =
+					    PrepareMotifItem(Motifs(), *profiles[size_t(i)], FuseTraitsOf(w.actions[size_t(i)]));
+				for (char ch : w.ids[size_t(i)])
+					seed = seed * 31 + uint8_t(ch);
+			}
+			if (ok) {
+				choice = ChooseMotif(Motifs(), {&items[0], &items[1], &items[2]}, MotifHash(seed, 7));
+				if (choice.motif >= 0)
+					motif = &Motifs()[size_t(choice.motif)];
+			}
+		}
 		float minHalf = 0, k = 1;
 		std::vector<SdfPart> parts;
 		WeaponShapeGrid g;
-		for (int pass = 0; pass < 4; ++pass) {
-			parts = DesignWeaponShape(in, minHalf);
-			int count = 0;
-			g = RasterizeParts(parts, key, count);
-			const float longest = float(std::max({g.nx, g.ny, g.nz})) * g.cell;
-			const float volume = std::max(1e-4f, float(count) * g.cell * g.cell * g.cell);
-			k = std::min(std::cbrt(CraftShapeVolume / volume), 9.5f / std::max(longest, 1e-3f));
-			const float want = CraftMinThick * .5f / k;
-			if (std::abs(want - minHalf) < .01f * want)
-				break;
-			minHalf = want;
+		std::array<const ItemProfile*, 3> use = profiles;
+		auto build = [&] {
+			minHalf = 0;
+			k = 1;
+			for (int pass = 0; pass < 4; ++pass) {
+				parts = motif ? BuildMotifParts(*motif, choice, use, minHalf) : DesignWeaponShape(in, minHalf);
+				int count = 0;
+				g = RasterizeParts(parts, key, count);
+				const float longest = float(std::max({g.nx, g.ny, g.nz})) * g.cell;
+				const float volume = std::max(1e-4f, float(count) * g.cell * g.cell * g.cell);
+				k = std::min(std::cbrt(CraftShapeVolume / volume), 9.5f / std::max(longest, 1e-3f));
+				const float want = CraftMinThick * .5f / k;
+				if (std::abs(want - minHalf) < .01f * want)
+					break;
+				minHalf = want;
+			}
+		};
+		build();
+		// (H3) 形の決まりの確かめ: 物の形そのものには細い所 (急須の注ぎ口・竹とんぼの軸) があるので、作ったあとで測り、
+		// 細い柱が突き出していたら、後ろの物から順に、その枠をスライムだけの形にして作り直す。それでも残れば型紙を使わない (F3 の作り方)
+		if (motif) {
+			auto pillar = [&] {
+				WeaponShapeVoxels v{g.nx, g.ny, g.nz, g.cell * k, &g.fill, nullptr};
+				return MeasureWeaponShape(v).Has(WeaponShapeIssue::Pillar);
+			};
+			int drops = 0;
+			for (int i = 3; i-- > 0 && pillar();) {
+				if (!use[size_t(i)] || choice.slotOf[size_t(i)] < 0)
+					continue;
+				use[size_t(i)] = nullptr;
+				++drops;
+				build();
+			}
+			if (pillar()) {
+				motif = nullptr;
+				build();
+			} else {
+				g.motif = motif->name;
+				g.motifDrops = drops;
+			}
+			// (確認用: --motif-debug で部品の並びを tests/out/motifs/parts.txt に足す)
+			if (wcsstr(GetCommandLineW(), L"--motif-debug")) {
+				std::ofstream dbg("tests/out/motifs/parts.txt", std::ios::app);
+				dbg << key << " motif=" << (motif ? motif->name : std::string("-")) << " k=" << k
+				    << " minHalf=" << minHalf << " slots=" << choice.slotOf[0] << "," << choice.slotOf[1] << ","
+				    << choice.slotOf[2] << '\n';
+				for (const auto& s : parts)
+					dbg << "  kind=" << int(s.kind) << " part=" << s.part << " field=" << s.field
+					    << " scale=" << s.scale << " c=" << s.center.x << "," << s.center.y << "," << s.center.z
+					    << " half=" << s.half.x << "," << s.half.y << "," << s.half.z << " stretch=" << s.stretch.x
+					    << "," << s.stretch.y << "," << s.stretch.z << " mirror=" << s.mirror << '\n';
+			}
 		}
 		g.lo = g.lo * k;
 		g.cell *= k;
@@ -490,6 +557,19 @@ int ChronoSystem::BuildWeaponShape(const BattleWeapon& w) {
 		for (int i = 0; i < w.filled; ++i) {
 			const int owner = i + 1;
 			const SdfPart* own = nullptr;
+			// (型紙のときは、その物がなった部品 (どの枠でも)。枠に入らなかった物は体の中に小さく)
+			if (motif) {
+				for (const auto& s : parts)
+					if (s.part == owner) {
+						own = &s;
+						break;
+					}
+				const Vec off = i == 1 ? Vec{0, e.y * .4f, e.z * .35f} : Vec{0, -e.y * .35f, -e.z * .35f};
+				const Vec oe = own ? SdfExtent(*own) : Vec{};
+				g.anchor[size_t(i)] = own ? own->center * k : (b.center + (i == 0 ? Vec{} : off)) * k;
+				g.anchorFit[size_t(i)] = own ? std::min({oe.x, oe.y, oe.z}) * k * .8f : bodyFit * k * .4f;
+				continue;
+			}
 			if (i > 0)
 				for (size_t p = 1; p < parts.size(); ++p)
 					if (parts[p].part == owner) {
@@ -871,6 +951,27 @@ void ChronoSystem::UpdateWeaponCraft(GameContext& ctx, float dt) {
 			PostQuitMessage(0);
 		}
 	}
+	// 確認用 (--motif-stats): 186 万通りの当てはめを数えて書き、終わる。(--motif-shape-check): 型紙から作った形を測って書き、終わる
+	{
+		static bool written = false;
+		if (!written && c.age > .5f && (HasArg(L"--motif-stats") || HasArg(L"--motif-shape-check"))) {
+			written = true;
+			if (HasArg(L"--motif-stats"))
+				WriteMotifStats();
+			else
+				WriteMotifShapeCheck();
+			PostQuitMessage(0);
+		}
+	}
+	// 確認用 (--item-profile-sheet): 図鑑の物を全部プロフィールにして書き、終わる
+	{
+		static bool written = false;
+		if (!written && c.age > .5f && HasArg(L"--item-profile-sheet")) {
+			written = true;
+			WriteItemProfileSheet();
+			PostQuitMessage(0);
+		}
+	}
 	if (c.hold >= 0) {
 		if (c.age >= c.hold)
 			FinishWeaponCraft();
@@ -1104,7 +1205,7 @@ void ChronoSystem::DrawWeaponCraftPreview(UI::Canvas& ui, const BattleWeapon& we
 void ChronoSystem::DrawWeaponCraftTraits(UI::Canvas& ui, const BattleWeapon& weapon) const {
 	using namespace UI::Scale;
 	const int filled = weapon.filled;
-	// 性質の印 (レベルの数だけ★)
+	// 性質名と、レベルが2以上の場合の倍率を表示する。
 	float x = kCard.x + 16, y = kCard.y + 176;
 	ui.Text("性質", x, y, 18, Black, Jp);
 	y += 28;

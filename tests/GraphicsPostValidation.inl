@@ -5,10 +5,10 @@ void TestVegetationShadow(Gpu& g) {
 		Require(!Engine::CastsOpaqueShadow(shader), "transparent effect casts an opaque shadow");
 	for (auto shader : {"Default", "HordeArmor", "EnvironmentSurface", "MeadowGrass", "MeadowGround", "Slime"})
 		Require(Engine::CastsOpaqueShadow(shader), "solid caster lost its shadow");
-	g.Compile(L"Resources/shaders/VegetationShadow.hlsl", "VSMain", "vs_5_0");
-	g.Compile(L"Resources/shaders/VegetationShadow.hlsl", "VSInstanced", "vs_5_0");
-	auto vsCode = g.Compile(L"Resources/shaders/FluidCompositeVS.hlsl", "main", "vs_5_0");
-	auto psCode = g.Compile(L"Resources/shaders/VegetationShadow.hlsl", "PSMain", "ps_5_0");
+	g.Compile(L"Resources/Shaders/VegetationShadow.hlsl", "VSMain", "vs_5_0");
+	g.Compile(L"Resources/Shaders/VegetationShadow.hlsl", "VSInstanced", "vs_5_0");
+	auto vsCode = g.Compile(L"Resources/Shaders/FluidCompositeVS.hlsl", "main", "vs_5_0");
+	auto psCode = g.Compile(L"Resources/Shaders/VegetationShadow.hlsl", "PSMain", "ps_5_0");
 	ComPtr<ID3D11VertexShader> vs;
 	ComPtr<ID3D11PixelShader> ps;
 	Check(g.device->CreateVertexShader(vsCode->GetBufferPointer(), vsCode->GetBufferSize(), nullptr, &vs));
@@ -78,7 +78,7 @@ void TestVegetationShadow(Gpu& g) {
 }
 
 void TestFluidShadowCamera(Gpu& g) {
-	auto code = g.Compile(L"Resources/shaders/GPUFluidShadowVS.hlsl", "main", "vs_5_0");
+	auto code = g.Compile(L"Resources/Shaders/GPUFluidShadowVS.hlsl", "main", "vs_5_0");
 	ComPtr<ID3D11VertexShader> vs;
 	Check(g.device->CreateVertexShader(code->GetBufferPointer(), code->GetBufferSize(), nullptr, &vs));
 	const char* pixel =
@@ -180,13 +180,13 @@ void TestGraphicsPost(Gpu& g) {
 	TestVegetationShadow(g);
 	TestFluidShadowCamera(g);
 	for (auto path :
-	     {L"Resources/shaders/DefaultPS.hlsl", L"Resources/shaders/InstancedObjPS.hlsl",
-	      L"Resources/shaders/EnhancedTerrainPS.hlsl"})
+	     {L"Resources/Shaders/DefaultPS.hlsl", L"Resources/Shaders/InstancedObjPS.hlsl",
+	      L"Resources/Shaders/EnhancedTerrainPS.hlsl"})
 		g.Compile(path, "main", "ps_5_0");
-	g.Compile(L"Resources/shaders/TemporalPrepare.hlsl", "main", "ps_5_0");
-	g.Compile(L"Resources/shaders/TemporalObject.hlsl", "VSMain", "vs_5_0");
-	g.Compile(L"Resources/shaders/TemporalObject.hlsl", "PSMain", "ps_5_0");
-	g.Compile(L"Resources/shaders/EnvironmentSurfacePS.hlsl", "main", "ps_5_0");
+	g.Compile(L"Resources/Shaders/TemporalPrepare.hlsl", "main", "ps_5_0");
+	g.Compile(L"Resources/Shaders/TemporalObject.hlsl", "VSMain", "vs_5_0");
+	g.Compile(L"Resources/Shaders/TemporalObject.hlsl", "PSMain", "ps_5_0");
+	g.Compile(L"Resources/Shaders/EnvironmentSurfacePS.hlsl", "main", "ps_5_0");
 	constexpr UINT w = 128, h = 96;
 	struct Post {
 		float data[28]{};
@@ -255,8 +255,8 @@ void TestGraphicsPost(Gpu& g) {
 	std::vector<BYTE> pixels(lutW * lutH * 4);
 	Check(converter->CopyPixels(nullptr, lutW * 4, UINT(pixels.size()), pixels.data()));
 	auto lut = texture(lutW, lutH, DXGI_FORMAT_R8G8B8A8_UNORM, pixels.data(), lutW * 4);
-	auto vsCode = g.Compile(L"Resources/shaders/FluidCompositeVS.hlsl", "main", "vs_5_0"),
-	     psCode = g.Compile(L"Resources/shaders/ChronoFocusPost.hlsl", "main", "ps_5_0");
+	auto vsCode = g.Compile(L"Resources/Shaders/FluidCompositeVS.hlsl", "main", "vs_5_0"),
+	     psCode = g.Compile(L"Resources/Shaders/ChronoFocusPost.hlsl", "main", "ps_5_0");
 	ComPtr<ID3D11VertexShader> vs;
 	ComPtr<ID3D11PixelShader> ps;
 	Check(g.device->CreateVertexShader(vsCode->GetBufferPointer(), vsCode->GetBufferSize(), nullptr, &vs));
@@ -313,9 +313,9 @@ void TestGraphicsPost(Gpu& g) {
 		Check(g.device->CreatePixelShader(code->GetBufferPointer(), code->GetBufferSize(), nullptr, &shader));
 		return shader;
 	};
-	auto downPs = pixelShader(L"Resources/shaders/HdrBloom.hlsl", "Downsample"),
-	     upPs = pixelShader(L"Resources/shaders/HdrBloom.hlsl", "Upsample"),
-	     aoPs = pixelShader(L"Resources/shaders/Gtao.hlsl", "main");
+	auto downPs = pixelShader(L"Resources/Shaders/HdrBloom.hlsl", "Downsample"),
+	     upPs = pixelShader(L"Resources/Shaders/HdrBloom.hlsl", "Upsample"),
+	     aoPs = pixelShader(L"Resources/Shaders/Gtao.hlsl", "main");
 	auto passConstants = g.Constant(32);
 	auto renderPass = [&](Target& target, ID3D11PixelShader* shader, ID3D11ShaderResourceView* source,
 	                      ID3D11ShaderResourceView* low, const float* data) {
@@ -588,7 +588,7 @@ void TestGraphicsPost(Gpu& g) {
 	cb.data[12] = 1000;
 	cb.data[24] = cb.data[27] = 0;
 	cb.data[26] = 1;
-	auto compositePs = pixelShader(L"Resources/shaders/RtLightingComposite.hlsl", "main");
+	auto compositePs = pixelShader(L"Resources/Shaders/RtLightingComposite.hlsl", "main");
 	g.Unbind();
 	g.context->UpdateSubresource(constants.Get(), 0, nullptr, &cb, 0, 0);
 	auto buffer = constants.Get();

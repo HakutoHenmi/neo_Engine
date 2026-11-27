@@ -10,7 +10,7 @@
 #include <string>
 #include <wrl.h>
 
-// ★追加: 時間計測用
+// 時間計測用
 #include <chrono>
 #include <thread>
 
@@ -58,7 +58,7 @@ public:
 	}
 	ID3D12DescriptorHeap* SRV_CPU_Heap() const {
 		return srvH_CPU_.Get();
-	} // ★追加
+	}
 	UINT SrvInc() const {
 		return srvInc_;
 	}
@@ -72,7 +72,7 @@ public:
 	D3D12_CPU_DESCRIPTOR_HANDLE RTV_CPU(int offset) const;
 	D3D12_CPU_DESCRIPTOR_HANDLE DSV_CPU(int offset) const;
 	D3D12_CPU_DESCRIPTOR_HANDLE SRV_CPU(int offset) const;
-	D3D12_CPU_DESCRIPTOR_HANDLE SRV_CPU_Master(int offset) const; // ★追加
+	D3D12_CPU_DESCRIPTOR_HANDLE SRV_CPU_Master(int offset) const;
 	D3D12_GPU_DESCRIPTOR_HANDLE SRV_GPU(int offset) const;
 
 	HWND GetHwnd() const {
@@ -115,7 +115,7 @@ private:
 	Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> rtvH_;
 	Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> dsvH_;
 	Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> srvH_;
-	Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> srvH_CPU_; // ★追加: 非ShaderVisible
+	Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> srvH_CPU_; // 非ShaderVisible
 
 	Microsoft::WRL::ComPtr<ID3D12Resource> back_[kBackBufferCount];
 	Microsoft::WRL::ComPtr<ID3D12Resource> depth_;
@@ -133,7 +133,7 @@ private:
 	D3D12_VIEWPORT vp_{};
 	D3D12_RECT sc_{};
 
-	// ★追加: FPS制御用の変数
+	// ウィンドウの初期化時刻
 	std::chrono::steady_clock::time_point lastFrameTime_;
 };
 

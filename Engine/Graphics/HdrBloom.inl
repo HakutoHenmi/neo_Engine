@@ -46,7 +46,7 @@ bool Renderer::InitHdrBloom_() {
 		dev_->CreateShaderResourceView(target.resource.Get(), nullptr, window_->SRV_CPU(index));
 		dev_->CreateShaderResourceView(target.resource.Get(), nullptr, window_->SRV_CPU_Master(index));
 	}
-	auto vs = CompileShaderFromFile(L"Resources/shaders/FluidCompositeVS.hlsl", "main", "vs_5_0");
+	auto vs = CompileShaderFromFile(L"Resources/Shaders/FluidCompositeVS.hlsl", "main", "vs_5_0");
 	if (!vs)
 		return false;
 	D3D12_GRAPHICS_PIPELINE_STATE_DESC pso{};
@@ -64,7 +64,7 @@ bool Renderer::InitHdrBloom_() {
 	pso.DepthStencilState.DepthEnable = FALSE;
 	for (int i = 0; i < 3; ++i) {
 		auto ps = CompileShaderFromFile(
-		    i == 2 ? L"Resources/shaders/Gtao.hlsl" : L"Resources/shaders/HdrBloom.hlsl",
+		    i == 2 ? L"Resources/Shaders/Gtao.hlsl" : L"Resources/Shaders/HdrBloom.hlsl",
 		    i == 2 ? "main" : (i ? "Upsample" : "Downsample"), "ps_5_0");
 		if (!ps)
 			return false;
@@ -74,7 +74,7 @@ bool Renderer::InitHdrBloom_() {
 			return false;
 	}
 	// DLSS の前に、AO / RT 影の見え方を HDR のシーンへ掛け合わせる (dest*src)。
-	auto occlusion = CompileShaderFromFile(L"Resources/shaders/OcclusionComposite.hlsl", "main", "ps_5_0");
+	auto occlusion = CompileShaderFromFile(L"Resources/Shaders/OcclusionComposite.hlsl", "main", "ps_5_0");
 	if (!occlusion)
 		return false;
 	pso.PS = {occlusion->GetBufferPointer(), occlusion->GetBufferSize()};

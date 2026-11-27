@@ -18,9 +18,9 @@ void ChronoSystem::BuildSwarm(entt::registry& r) {
 	auto* renderer = Engine::Renderer::GetInstance();
 	// 鎧と床のエフェクトのシェーダー
 	renderer->CreateShaderPipeline(
-	    "HordeArmor", L"Resources/shaders/InstancedObjVS.hlsl", L"Resources/shaders/HordeArmorPS.hlsl");
+	    "HordeArmor", L"Resources/Shaders/InstancedObjVS.hlsl", L"Resources/Shaders/HordeArmorPS.hlsl");
 	renderer->CreateShaderPipelineTransparent(
-	    "HordeEffect", L"Resources/shaders/InstancedObjVS.hlsl", L"Resources/shaders/HordeEffectPS.hlsl", true, true);
+	    "HordeEffect", L"Resources/Shaders/InstancedObjVS.hlsl", L"Resources/Shaders/HordeEffectPS.hlsl", true, true);
 	// 鎧・くちばし・角のメッシュ
 	const char* paths[] = {
 	    "Resources/Models/Chrono/armor.obj", "Resources/Models/Chrono/beak.obj", "Resources/Models/Chrono/horn.obj"};

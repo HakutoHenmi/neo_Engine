@@ -38,7 +38,7 @@ bool SceneManager::Has(const std::string& name) const {
 std::string SceneManager::FirstRegisteredName() const {
 	if (factories_.empty())
 		return {};
-	// unordered_map は順序不定だが「何も無いよりマシ」な自動起動用
+	// 自動起動用の候補を返す。unordered_map のため登録順は保証しない。
 	return factories_.begin()->first;
 }
 
@@ -62,8 +62,8 @@ bool SceneManager::Change(const std::string& name, const SceneParameters& params
 	LogFileSM(changeLog.c_str());
 
 	if (dx_) {
-		// ★修正: dx_->WaitIdle() は WindowDX の fence_ を直接進めてしまい、描画フレームの同期を破壊するため、
-		// 代わりに一時フェンスで安全に待機する Renderer::WaitGPU() を使用します。
+		// 描画フレームのフェンス番号を進めず、一時フェンスで GPU の完了を待つ。
+		// シーンのリソースは、使用中の描画が終わってから解放する。
 		if (auto* renderer = Renderer::GetInstance()) {
 			renderer->WaitGPU();
 		}
@@ -176,8 +176,6 @@ void SceneManager::ProcessPendingChange() {
 }
 
 void SceneManager::Update() {
-	// ★修正: シーン切り替えはProcessPendingChange()に移動済み（BeginFrame前に呼ばれる）
-
 	if (current_) {
 		LogFileSM("  SceneManager: Update current scene");
 		current_->Update();
@@ -186,7 +184,7 @@ void SceneManager::Update() {
 		if (current_->IsEnd()) {
 			const std::string next = current_->Next();
 			if (!next.empty()) {
-				// ★修正: 即時切り替えではなくリクエストにして次フレームのProcessPendingChangeで処理する
+				// 使用中の描画リソースを保つため、切り替えはフレーム開始前に処理する。
 				RequestChange(next);
 			}
 		}

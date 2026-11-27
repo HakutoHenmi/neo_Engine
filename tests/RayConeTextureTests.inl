@@ -32,7 +32,7 @@ void TestRayConeTextures(Gpu& g) {
 	d.Usage = D3D11_USAGE_STAGING;
 	d.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
 	Check(g.device->CreateTexture2D(&d, nullptr, &staging));
-	auto vsCode = g.Compile(L"Resources/shaders/FluidCompositeVS.hlsl", "main", "vs_5_0"),
+	auto vsCode = g.Compile(L"Resources/Shaders/FluidCompositeVS.hlsl", "main", "vs_5_0"),
 	     psCode = g.Compile(L"tests/RayConeTextureTests.hlsl", "main", "ps_5_0");
 	ComPtr<ID3D11VertexShader> vs;
 	ComPtr<ID3D11PixelShader> ps;

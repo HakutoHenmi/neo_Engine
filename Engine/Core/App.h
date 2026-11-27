@@ -11,9 +11,6 @@
 #include "../Graphics/TextureManager.h"
 #include "WindowDX.h"
 
-// GameSceneの中身を知るためにインクルードが必要な場合がありますが、
-// ここでは前方宣言でも大丈夫です。メンバ変数としては削除します。
-
 #include <Windows.h>
 #include <chrono>
 #include <dxgidebug.h>
@@ -21,7 +18,6 @@
 #include <string>
 #include <vector>
 #include <wrl.h>
-#pragma comment(lib, "dxguid.lib")
 
 namespace Engine {
 
@@ -83,8 +79,6 @@ private:
 	bool startFullscreen_ = false;
 	std::string startupMusicScene_, startupMusicPath_;
 
-	// ★修正: App自身がWorldを持つのはやめる (GameSceneが持つため)
-	// Game::World world_;  <-- 削除済み
 };
 
 } // namespace Engine

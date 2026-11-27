@@ -37,7 +37,7 @@ void ParticleEmitter::Update(float dt) {
 		ApplySystemSettings();
 	}
 
-	// ★追加: burstCountがある場合、一気に放出して0に戻す
+	// burstCountがある場合、一気に放出して0に戻す
 	if (params.burstCount > 0 && isPlaying) {
 		EmitBurst(params.burstCount);
 		params.burstCount = 0;

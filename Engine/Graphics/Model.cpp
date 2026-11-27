@@ -81,7 +81,7 @@ static Matrix4x4 XMToM4(const DirectX::XMMATRIX& xm) {
 	return out;
 }
 
-// ★修正: Assimp(Column) -> DirectX(Row) 転置 + X軸反転
+// Assimp(Column) -> DirectX(Row) 転置 + X軸反転
 static Matrix4x4 AiToMat4(const aiMatrix4x4& m) {
 	Matrix4x4 out;
 	// 転置しつつ、0列目と0行目（0,0以外）を反転させてX軸ミラーリングを行う
@@ -331,7 +331,7 @@ bool Model::Load(ID3D12Device* device, ID3D12GraphicsCommandList* cmd, const std
 
 		for (unsigned int i = 0; i < mesh->mNumVertices; ++i) {
 			VertexData v{};
-			// ★修正: 手動X反転 (World.cppと一致させる)
+			// 手動X反転 (World.cppと一致させる)
 			v.position = {mesh->mVertices[i].x * -1.0f, mesh->mVertices[i].y, mesh->mVertices[i].z, 1.0f};
 			if (mesh->HasNormals())
 				v.normal = {mesh->mNormals[i].x * -1.0f, mesh->mNormals[i].y, mesh->mNormals[i].z};
@@ -396,7 +396,7 @@ bool Model::Load(ID3D12Device* device, ID3D12GraphicsCommandList* cmd, const std
 		}
 	}
 
-	// ★★★ 修正箇所: テクスチャ読み込み部分 ★★★
+	// マテリアルごとのテクスチャを読み込み、描画用の番号へ対応付ける。
 	std::vector<int> materialToTexIdx(scene->mNumMaterials, -1);
 
 	for (unsigned int i = 0; i < scene->mNumMaterials; ++i) {
@@ -453,7 +453,6 @@ bool Model::Load(ID3D12Device* device, ID3D12GraphicsCommandList* cmd, const std
 		}
 		// -1 にしない (SRV を後から手で差し込めるようにする)
 	}
-	// ★★★ 修正終わり ★★★
 
 	bool hasBones = !data_.bones.empty();
 	NormalizeSkinWeights(data_);
@@ -1197,7 +1196,7 @@ void Model::BuildBVH() {
 	UpdateNodeBounds(0);
 	SubdivideBVH(0);
 
-	// ★追加: GPU用バッファの構築と転送
+	// GPU用バッファの構築と転送
 	if (!data_.bvhNodes.empty()) {
 		// ※本来は専用のUPLOAD→DEFAULT遷移が必要だが、このエンジンのCreateBufferResourceは
 		// UPLOADヒープで作られているため、そのままMapしてコピーする。

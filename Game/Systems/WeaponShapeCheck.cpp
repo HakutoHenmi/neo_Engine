@@ -135,6 +135,10 @@ void ChronoSystem::WriteWeaponShapeSheet() {
 		const auto* g = WeaponShapeOf(BuildWeaponShape(w));
 		if (!g)
 			continue;
+		// (H3) 姿の型紙を使った形は、型紙の名前 (部品にしなかった物があれば、その数)
+		if (!g->motif.empty())
+			w.name = "<" + g->motif + (g->motifDrops ? "-" + std::to_string(g->motifDrops) : std::string()) + "> " +
+			         FuseWeaponName(w.lv, NameOf(w.ids[0]));
 		WeaponShapeVoxels v{g->nx, g->ny, g->nz, g->cell, &g->fill, &g->part};
 		const WeaponShapeReport r = MeasureWeaponShape(v, limits);
 		scoreSum += r.score;

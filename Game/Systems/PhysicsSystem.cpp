@@ -5,6 +5,41 @@
 
 namespace Game {
 
+void PhysicsSystem::Reset(entt::registry& registry) {
+	// フレーム枠ごとの依頼を消す
+	for (auto& requests : pendingGpuRequests_)
+		requests.clear();
+	// すべての剛体の速度を 0 にする
+	auto view = registry.view<RigidbodyComponent>();
+	for (auto entity : view) {
+		auto& rb = registry.get<RigidbodyComponent>(entity);
+		rb.velocity = {0, 0, 0};
+	}
+}
+
+void PhysicsSystem::GetObbAxes(
+    const ::Engine::Matrix4x4& mat, const BoxColliderComponent& cb, ::Engine::Vector3 axes[3],
+    ::Engine::Vector3& center, ::Engine::Vector3& extents) {
+	// 箱の中心をワールドへ変換する
+	DirectX::XMMATRIX worldMat = DirectX::XMLoadFloat4x4(reinterpret_cast<const DirectX::XMFLOAT4X4*>(&mat));
+	DirectX::XMVECTOR c =
+	    DirectX::XMVector3TransformCoord(DirectX::XMVectorSet(cb.center.x, cb.center.y, cb.center.z, 1.0f), worldMat);
+	DirectX::XMStoreFloat3(reinterpret_cast<DirectX::XMFLOAT3*>(&center), c);
+
+	// 行列の各行を正規化したものが OBB の 3 本の軸
+	DirectX::XMStoreFloat3(reinterpret_cast<DirectX::XMFLOAT3*>(&axes[0]), DirectX::XMVector3Normalize(worldMat.r[0]));
+	DirectX::XMStoreFloat3(reinterpret_cast<DirectX::XMFLOAT3*>(&axes[1]), DirectX::XMVector3Normalize(worldMat.r[1]));
+	DirectX::XMStoreFloat3(reinterpret_cast<DirectX::XMFLOAT3*>(&axes[2]), DirectX::XMVector3Normalize(worldMat.r[2]));
+
+	// 行列を分解して拡大率を取り出し、箱の半分の大きさに掛ける
+	DirectX::XMVECTOR aScale, aRot, aTrans;
+	DirectX::XMMatrixDecompose(&aScale, &aRot, &aTrans, worldMat);
+
+	extents.x = cb.size.x * 0.5f * std::abs(DirectX::XMVectorGetX(aScale));
+	extents.y = cb.size.y * 0.5f * std::abs(DirectX::XMVectorGetY(aScale));
+	extents.z = cb.size.z * 0.5f * std::abs(DirectX::XMVectorGetZ(aScale));
+}
+
 void PhysicsSystem::Update(entt::registry& registry, GameContext& ctx) {
 	// PLAY 中でなければ何もしない
 	if (!ctx.isPlaying)
@@ -13,7 +48,7 @@ void PhysicsSystem::Update(entt::registry& registry, GameContext& ctx) {
 	// 剛体を動かす前に反映し、その後で下の処理がこの枠を再利用する
 	// 今のフレーム枠 (2 つを交互に使う) の GPU への依頼の一覧
 	auto& frameRequests =
-	    m_pendingGpuRequests[ctx.renderer ? ctx.renderer->CurrentFrameIndex() % m_pendingGpuRequests.size() : 0];
+	    pendingGpuRequests_[ctx.renderer ? ctx.renderer->CurrentFrameIndex() % pendingGpuRequests_.size() : 0];
 	// 前回この枠で依頼した GPU の接触結果を 1 件ずつ反映する
 	if (ctx.renderer)
 		for (const auto& req : frameRequests) {
@@ -76,8 +111,8 @@ void PhysicsSystem::Update(entt::registry& registry, GameContext& ctx) {
 
 	// 剛体を持たない固い箱は静的な障害物。無効やトリガーのコライダーは
 	// 重力を止めず、接触の応答も作らない
-	m_dynamics.clear();
-	m_statics.clear();
+	dynamics_.clear();
+	statics_.clear();
 	auto boxes = registry.view<BoxColliderComponent, TransformComponent>();
 	for (auto entity : boxes) {
 		auto& bc = boxes.get<BoxColliderComponent>(entity);
@@ -111,10 +146,10 @@ void PhysicsSystem::Update(entt::registry& registry, GameContext& ctx) {
 			cb.aabbMax.z = std::max(cb.aabbMax.z, p.z);
 		}
 		// 衝突判定用の箱の一覧へ加える
-		m_dynamics.push_back(cb);
+		dynamics_.push_back(cb);
 	}
 	// 動く箱が一つも無ければ衝突判定は不要
-	const bool hasDynamicBox = std::any_of(m_dynamics.begin(), m_dynamics.end(), [&](const CollidableBox& box) {
+	const bool hasDynamicBox = std::any_of(dynamics_.begin(), dynamics_.end(), [&](const CollidableBox& box) {
 		const auto* body = registry.try_get<RigidbodyComponent>(box.entity);
 		return body && body->enabled && !body->isKinematic;
 	});
@@ -162,7 +197,7 @@ void PhysicsSystem::Update(entt::registry& registry, GameContext& ctx) {
 			cm.aabbMax.y = std::max(cm.aabbMax.y, p.y);
 			cm.aabbMax.z = std::max(cm.aabbMax.z, p.z);
 		}
-		m_statics.push_back(cm);
+		statics_.push_back(cm);
 	}
 
 	// 四分木の構築 (XZ 平面で近いものだけを調べるため)
@@ -171,31 +206,30 @@ void PhysicsSystem::Update(entt::registry& registry, GameContext& ctx) {
 	::Engine::PhysicsQuadTree staticQT(-4000.0f, -4000.0f, 4000.0f, 4000.0f, 6, 10);
 
 	// 動く箱と静的メッシュをそれぞれの四分木へ登録する
-	for (size_t i = 0; i < m_dynamics.size(); ++i) {
+	for (size_t i = 0; i < dynamics_.size(); ++i) {
 		dynamicQT.Insert(
-		    (uint32_t)i, m_dynamics[i].aabbMin.x, m_dynamics[i].aabbMin.z, m_dynamics[i].aabbMax.x,
-		    m_dynamics[i].aabbMax.z);
+		    (uint32_t)i, dynamics_[i].aabbMin.x, dynamics_[i].aabbMin.z, dynamics_[i].aabbMax.x,
+		    dynamics_[i].aabbMax.z);
 	}
-	for (size_t i = 0; i < m_statics.size(); ++i) {
+	for (size_t i = 0; i < statics_.size(); ++i) {
 		staticQT.Insert(
-		    (uint32_t)i, m_statics[i].aabbMin.x, m_statics[i].aabbMin.z, m_statics[i].aabbMax.x,
-		    m_statics[i].aabbMax.z);
+		    (uint32_t)i, statics_[i].aabbMin.x, statics_[i].aabbMin.z, statics_[i].aabbMax.x, statics_[i].aabbMax.z);
 	}
 
 	// パス1: 箱同士の衝突 (CPU / OBB の分離軸判定)
 	// 押し出しを 4 回繰り返して、多数の重なりを安定させる
 	for (int iteration = 0; iteration < 4; ++iteration) {
-		for (size_t i = 0; i < m_dynamics.size(); ++i) {
-			auto& d1 = m_dynamics[i];
+		for (size_t i = 0; i < dynamics_.size(); ++i) {
+			auto& d1 = dynamics_[i];
 			// 近くにある箱だけを四分木で探す
-			m_nearbyEntities.clear();
-			dynamicQT.Query(d1.aabbMin.x, d1.aabbMin.z, d1.aabbMax.x, d1.aabbMax.z, m_nearbyEntities);
+			nearbyEntities_.clear();
+			dynamicQT.Query(d1.aabbMin.x, d1.aabbMin.z, d1.aabbMax.x, d1.aabbMax.z, nearbyEntities_);
 
-			for (uint32_t j : m_nearbyEntities) {
+			for (uint32_t j : nearbyEntities_) {
 				// 同じ組を 2 回調べないよう、後ろの番号とだけ比べる
 				if (j <= i)
 					continue;
-				auto& d2 = m_dynamics[j];
+				auto& d2 = dynamics_[j];
 				// 両方とも動かない箱なら調べない
 				auto* rb1 = registry.try_get<RigidbodyComponent>(d1.entity);
 				auto* rb2 = registry.try_get<RigidbodyComponent>(d2.entity);
@@ -359,10 +393,10 @@ void PhysicsSystem::Update(entt::registry& registry, GameContext& ctx) {
 	uint32_t nextResultIdx = 0;
 
 	// 動く箱と静的メッシュの両方があるときだけ GPU に依頼する
-	if (ctx.renderer && !m_dynamics.empty() && !m_statics.empty()) {
+	if (ctx.renderer && !dynamics_.empty() && !statics_.empty()) {
 		ctx.renderer->BeginCollisionCheck(1024);
 
-		for (auto& d : m_dynamics) {
+		for (auto& d : dynamics_) {
 			// キネマティックな剛体は GPU の接触結果を使わない
 			const auto* body = registry.try_get<RigidbodyComponent>(d.entity);
 			if (!body || !body->enabled || body->isKinematic)
@@ -377,11 +411,11 @@ void PhysicsSystem::Update(entt::registry& registry, GameContext& ctx) {
 			dynTransform.scale = {tc.scale.x, tc.scale.y, tc.scale.z};
 
 			// 近くの静的メッシュを四分木で探す
-			m_nearbyEntities.clear();
-			staticQT.Query(d.aabbMin.x, d.aabbMin.z, d.aabbMax.x, d.aabbMax.z, m_nearbyEntities);
+			nearbyEntities_.clear();
+			staticQT.Query(d.aabbMin.x, d.aabbMin.z, d.aabbMax.x, d.aabbMax.z, nearbyEntities_);
 
-			for (uint32_t sIdx : m_nearbyEntities) {
-				auto& s = m_statics[sIdx];
+			for (uint32_t sIdx : nearbyEntities_) {
+				auto& s = statics_[sIdx];
 				// AABB が重ならなければとばす
 				if (d.aabbMax.y < s.aabbMin.y || d.aabbMin.y > s.aabbMax.y || d.aabbMax.x < s.aabbMin.x ||
 				    d.aabbMin.x > s.aabbMax.x || d.aabbMax.z < s.aabbMin.z || d.aabbMin.z > s.aabbMax.z)

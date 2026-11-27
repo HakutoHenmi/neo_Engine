@@ -45,7 +45,7 @@ namespace EngineProfiler
         private Label lblStatus;
         private Label lblRealtimeData;
         private TextBox txtLog;
-        private ScottPlot.WinForms.FormsPlot formsPlot; // ★追加: グラフ描画用コントロール
+        private ScottPlot.WinForms.FormsPlot formsPlot; // グラフ描画用コントロール
         private ScottPlot.Plottables.DataStreamer streamerFps;
         private ScottPlot.Plottables.DataStreamer streamerDrawCalls;
         
@@ -339,8 +339,7 @@ namespace EngineProfiler
                 return;
             }
 
-            // ★追加: 毎フレームの全データ（約600件）をそのまま送るとトークン数が30000を超えて
-            // 無料枠の制限（6000 TPM）に引っかかるため、約15件に間引く（ダウンサンプリング）
+            // 分析へ送るデータ量を抑えるため、ログの件数から抽出間隔を決めてフレームを間引く。
             var downsampledLogs = new List<SharedEngineData>();
             int step = Math.Max(1, logs.Count / 15);
             for (int i = 0; i < logs.Count; i += step)
@@ -362,7 +361,7 @@ namespace EngineProfiler
             var options = new JsonSerializerOptions { IncludeFields = true, WriteIndented = true };
             string jsonLog = JsonSerializer.Serialize(formattedLogs, options);
 
-            // ★追加: ログをファイルに保存する
+            // 分析に使ったログを、時刻付きのファイル名で保存する。
             string logDir = "Logs";
             if (!System.IO.Directory.Exists(logDir)) System.IO.Directory.CreateDirectory(logDir);
             string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
@@ -413,7 +412,7 @@ namespace EngineProfiler
                     Log(text ?? "");
                     Log("=====================================\n");
 
-                    // ★追加: AIの回答もテキストファイルとして保存する
+                    // 入力ログと同じ時刻を付けて分析結果を保存する。
                     string reportFilePath = System.IO.Path.Combine(logDir, $"ai_report_{timestamp}.txt");
                     System.IO.File.WriteAllText(reportFilePath, text ?? "");
                     Log($"※ログと分析結果を '{logDir}' フォルダに保存しました。");
@@ -571,7 +570,7 @@ namespace EngineProfiler
         [STAThread]
         static void Main()
         {
-            Application.SetHighDpiMode(HighDpiMode.PerMonitorV2); // ★追加: 高DPI（4K等の高解像度）環境での文字のぼやけを解消
+            Application.SetHighDpiMode(HighDpiMode.PerMonitorV2); // モニターごとの DPI に合わせて文字を表示する。
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
             Application.Run(new ProfilerForm());

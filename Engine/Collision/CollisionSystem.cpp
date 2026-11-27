@@ -9,11 +9,11 @@ namespace TDEngine {
 namespace ECS {
 
 void CollisionSystem::Init(Coordinator* coordinator) {
-	m_coordinator = coordinator;
+	coordinator_ = coordinator;
 }
 
 void CollisionSystem::Update(float /*dt*/) {
-	if (!m_coordinator)
+	if (!coordinator_)
 		return;
 
 	auto* renderer = Engine::Renderer::GetInstance();
@@ -26,7 +26,7 @@ void CollisionSystem::Update(float /*dt*/) {
 
 	// 1. 全エンティティをQuadTreeに登録
 	for (auto const& entity : Entities()) {
-		auto& transform = m_coordinator->GetComponent<TransformComponent>(entity);
+		auto& transform = coordinator_->GetComponent<TransformComponent>(entity);
 		tree.Insert(entity, transform.translate);
 	}
 
@@ -37,7 +37,7 @@ void CollisionSystem::Update(float /*dt*/) {
 	std::set<std::pair<Entity, Entity>> processedPairs;
 
 	for (auto const& entityA : Entities()) {
-		auto& transformA = m_coordinator->GetComponent<TransformComponent>(entityA);
+		auto& transformA = coordinator_->GetComponent<TransformComponent>(entityA);
 
 		// クエリ範囲（AABBの大きさに合わせる）
 		Engine::Rect queryRange = {transformA.translate.x - 5.0f, transformA.translate.z - 5.0f, 10.0f, 10.0f};
@@ -56,26 +56,19 @@ void CollisionSystem::Update(float /*dt*/) {
 				continue;
 			processedPairs.insert({first, second});
 
-			/*
-                auto& renderA = m_coordinator->GetComponent<RenderComponent>(entityA);
-                auto& transformB = m_coordinator->GetComponent<TransformComponent>(entityB);
-                auto& renderB = m_coordinator->GetComponent<RenderComponent>(entityB);
+			auto& renderA = coordinator_->GetComponent<RenderComponent>(entityA);
+			auto& transformB = coordinator_->GetComponent<TransformComponent>(entityB);
+			auto& renderB = coordinator_->GetComponent<RenderComponent>(entityB);
 
-                Engine::Transform engTrA, engTrB;
-                engTrA.scale = transformA.scale;
-                engTrA.rotate = transformA.rotate;
-                engTrA.translate = transformA.translate;
-                
-                engTrB.scale = transformB.scale;
-                engTrB.rotate = transformB.rotate;
-                engTrB.translate = transformB.translate;
+			Engine::Transform engTrA, engTrB;
+			engTrA.scale = transformA.scale;
+			engTrA.rotate = transformA.rotate;
+			engTrA.translate = transformA.translate;
+			engTrB.scale = transformB.scale;
+			engTrB.rotate = transformB.rotate;
+			engTrB.translate = transformB.translate;
 
-                renderer->DispatchCollision(
-                    renderA.meshHandle, engTrA,
-                    renderB.meshHandle, engTrB,
-                    pairIndex++
-                );
-                */
+			renderer->DispatchCollision(renderA.meshHandle, engTrA, renderB.meshHandle, engTrB, pairIndex++);
 
 			if (pairIndex >= 1024)
 				break;

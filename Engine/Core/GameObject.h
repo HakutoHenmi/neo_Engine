@@ -46,7 +46,7 @@ struct GameObject {
 	// メッシュ衝突判定を使用するかどうかのフラグ
 	bool useMeshCollision = true;
 
-	// ★追加: 3Dモデルのファイル名 (リネームしてもモデルを見失わないようにするため)
+	// 3Dモデルのファイル名 (リネームしてもモデルを見失わないようにするため)
 	std::string modelFileName = "";
 };
 

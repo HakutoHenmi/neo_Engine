@@ -1,4 +1,4 @@
-#include "../Resources/shaders/RayConeTextureLod.hlsli"
+#include "../Resources/Shaders/RayConeTextureLod.hlsli"
 Texture2D<float4> material : register(t0);
 SamplerState linearClamp : register(s0);
 cbuffer Test : register(b0){float phase,cosine,coneWidth,pad;}

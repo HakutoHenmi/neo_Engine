@@ -45,9 +45,8 @@ private:
 	struct TexData {
 		Microsoft::WRL::ComPtr<ID3D12Resource> texture;
 
-		// ★安全最優先：upload を保持して device removed を避ける（WindowDX が毎フレーム WaitGPU するので本来は後で解放可能）
-		// ただし TextureManager はフレーム境界を知らないので、ここでは保持し続ける。
-		// 将来的に最適化するなら「フレーム終端でGC」関数を追加して解放する。
+		// TextureManager は GPU の転送完了を追跡しないため、
+		// 転送元バッファをテクスチャと同じ寿命で保持する。
 		Microsoft::WRL::ComPtr<ID3D12Resource> upload;
 
 		int srvIndex = -1; // WindowDX SRVヒープのオフセット

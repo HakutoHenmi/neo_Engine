@@ -80,6 +80,9 @@ void EditorUI::Undo() {
 void EditorUI::Redo() {
 	history_.Redo();
 }
+void EditorUI::ClearHistory() {
+	history_.Clear();
+}
 
 // Console (ログの表示)
 // Console にログを追加する (情報・警告・エラー)
@@ -114,17 +117,24 @@ static entt::entity RestoreEntitySnapshot(GameScene* scene, const std::string& s
 	return entt::null;
 }
 
-// 生成・削除のコマンド: 今のエンティティを破棄予約し、選択中なら選択を外す
+// エディタの走査終了後に削除する。子のローカル変形は保ち、親への参照だけを外す。
 void EntityLifetimeCommand::Destroy() {
-	if (live_ != entt::null)
-		scene_->DestroyObject(static_cast<uint32_t>(live_));
-	if (scene_->GetSelectedEntity() == live_)
-		scene_->SelectEntity(entt::null);
-	live_ = entt::null;
+	auto& registry = scene_->GetComponents();
+	const auto entity = live_.Get();
+	if (!registry.valid(entity))
+		return;
+	relationships_.Detach(registry, entity);
+	scene_->DestroyEditorEntity(entity);
 }
-// 保存した JSON から作り直し、新しいエンティティを覚える
+// 単体の JSON には含まれないシーン内の親と子を、共有された参照から接続し直す。
 void EntityLifetimeCommand::Restore() {
-	live_ = RestoreEntitySnapshot(scene_, snapshot_);
+	const auto entity = RestoreEntitySnapshot(scene_, snapshot_);
+	if (entity == entt::null)
+		return;
+	live_.Rebind(entity);
+	auto& registry = scene_->GetComponents();
+	relationships_.Restore(registry, entity);
+	scene_->InvalidateWorldMatrices();
 }
 
 // 選択中のエンティティをコピーする

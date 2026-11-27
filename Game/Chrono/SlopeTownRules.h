@@ -530,7 +530,6 @@ inline const SlopeTownData& SlopeData() {
 			out.stairs.push_back(st);
 		}
 		// 石段の箱の広さ: 段ごとに、その段の範囲にかかる石段のマス (この石段の近くのもの) の角を軸へ写し、左右の一番外まで広げる。
-		// (以前は全部の段を石段の幅 + 2.25m に広げていたので、石段の横を通る道の上に段の板がはみ出していた)
 		for (auto& st : out.stairs) {
 			const float ax = st.to.x - st.from.x, az = st.to.z - st.from.z, length = std::sqrt(ax * ax + az * az);
 			if (length < 1e-3f)
@@ -591,8 +590,6 @@ inline const SlopeTownData& SlopeData() {
 				throw std::runtime_error(std::string(file) + ": trail on unknown road " + tr.road);
 		// 角の高さ: 格子の点ごとに、点を囲む 4 マス (石段のマスを除く) を「高さの近いまとまり」に分ける (高さの順に並べて、隣との差が
 		// SlopeSmoothStep 未満ならつなぐ)。まとまりの平均を、そのまとまりのマスの角の高さにする。坂はなめらかにつながり、段差は縦の面になる。
-		// (以前はマスごとに「自分と近い高さ」の平均にしていたので、3〜4 種類の高さが集まる点では隣のマスと角の高さが食い違い、
-		//  面が折れて斜めの三角形ができたり、縦の面がねじれて穴が開いたりしていた)
 		// 石段のマスは段の上の面より少し下の平らな面 (上に石段の箱が重なる。石段の横の地面との間にも縦の面を作り、下が見えないようにする)
 		out.corner.resize(cells);
 		const float close = SlopeSmoothStep * u, drop = SlopeStairsDrop * u;

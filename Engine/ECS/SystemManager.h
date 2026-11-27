@@ -14,33 +14,33 @@ public:
 	template<typename T> std::shared_ptr<T> RegisterSystem() {
 		const char* typeName = typeid(T).name();
 
-		assert(m_systems.find(typeName) == m_systems.end() && "Registering system more than once.");
+		assert(systems_.find(typeName) == systems_.end() && "Registering system more than once.");
 
 		auto system = std::make_shared<T>();
-		m_systems.insert({typeName, system});
+		systems_.insert({typeName, system});
 		return system;
 	}
 
 	template<typename T> void SetSignature(Signature signature) {
 		const char* typeName = typeid(T).name();
 
-		assert(m_systems.find(typeName) != m_systems.end() && "System used before registered.");
+		assert(systems_.find(typeName) != systems_.end() && "System used before registered.");
 
-		m_signatures.insert({typeName, signature});
+		signatures_.insert({typeName, signature});
 	}
 
 	void EntityDestroyed(Entity entity) {
-		for (auto const& pair : m_systems) {
+		for (auto const& pair : systems_) {
 			auto const& system = pair.second;
 			system->RemoveEntity(entity);
 		}
 	}
 
 	void EntitySignatureChanged(Entity entity, Signature entitySignature) {
-		for (auto const& pair : m_systems) {
+		for (auto const& pair : systems_) {
 			auto const& type = pair.first;
 			auto const& system = pair.second;
-			auto const& systemSignature = m_signatures[type];
+			auto const& systemSignature = signatures_[type];
 
 			// エンティティのシグネチャがシステムのシグネチャに合えば一覧に入れる
 			if ((entitySignature & systemSignature) == systemSignature) {
@@ -54,8 +54,8 @@ public:
 	}
 
 private:
-	std::unordered_map<const char*, Signature> m_signatures{};
-	std::unordered_map<const char*, std::shared_ptr<System>> m_systems{};
+	std::unordered_map<const char*, Signature> signatures_{};
+	std::unordered_map<const char*, std::shared_ptr<System>> systems_{};
 };
 
 } // namespace ECS

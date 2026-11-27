@@ -2,7 +2,7 @@
 void TestPlayerFace(Gpu& g) {
 	struct Includes : ID3DInclude {
 		HRESULT __stdcall Open(D3D_INCLUDE_TYPE, LPCSTR name, LPCVOID, LPCVOID* data, UINT* bytes) override {
-			for (auto root : {"tests/", "Resources/shaders/"}) {
+			for (auto root : {"tests/", "Resources/Shaders/"}) {
 				std::ifstream file(std::string(root) + name, std::ios::binary | std::ios::ate);
 				if (!file)
 					continue;
@@ -100,9 +100,9 @@ void TestPlayerFace(Gpu& g) {
 			Require(movement > .05f, "visual-time advance did not move interior bubbles in a fixed player pose");
 		}
 	}
-	g.Compile(L"Resources/shaders/FluidRaymarch.hlsl", "RaymarchPS", "ps_5_0");
-	g.Compile(L"Resources/shaders/FluidRaymarch.hlsl", "SprayVS", "vs_5_0");
-	g.Compile(L"Resources/shaders/FluidRaymarch.hlsl", "SprayPS", "ps_5_0");
+	g.Compile(L"Resources/Shaders/FluidRaymarch.hlsl", "RaymarchPS", "ps_5_0");
+	g.Compile(L"Resources/Shaders/FluidRaymarch.hlsl", "SprayVS", "vs_5_0");
+	g.Compile(L"Resources/Shaders/FluidRaymarch.hlsl", "SprayPS", "ps_5_0");
 	auto faceCode = g.Compile(L"tests/SlimeFaceTests.hlsl", "TestGameplayFace", "cs_5_0", &includes);
 	Check(g.device->CreateComputeShader(
 	    faceCode->GetBufferPointer(), faceCode->GetBufferSize(), nullptr, &g.kernels["TestGameplayFace"]));

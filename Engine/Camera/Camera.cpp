@@ -18,13 +18,13 @@ void Camera::Initialize() {
 	shakeAmpPos_ = shakeAmpRot_ = 0.0f;
 	shakeOfs_ = {0, 0, 0};
 	shakeRot_ = {0, 0, 0};
-	// ★追加: デフォルトのプロジェクション設定 (FOV 45度, 16:9, 近面0.1, 遠面1000)
+	// デフォルトのプロジェクション設定 (FOV 45度, 16:9, 近面0.1, 遠面1000)
 	SetProjection(0.7854f, 16.0f / 9.0f, 0.1f, 1000.0f);
 	UpdateView();
 }
 
 // ===============================
-// デバッグ更新（既存APIは維持）
+// デバッグ更新
 // ===============================
 void Camera::Update(const Input& in) {
 	// Shiftキーで加速
@@ -144,7 +144,7 @@ void Camera::SetProjection(float fovY, float aspect, float nearZ, float farZ) {
 }
 
 // ===============================
-// 位置セット（追加）
+// 位置セット
 // ===============================
 void Camera::SetPosition(const XMFLOAT3& p) {
 	pos_ = p;

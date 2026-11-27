@@ -1007,7 +1007,6 @@ void ChronoSystem::SyncSlimeBodies(GameContext& ctx) {
 			common.reserved = {
 			    b.flowShape.x, b.flowShape.z, b.coreLead.x - b.fluidOffset.x, b.coreLead.z - b.fluidOffset.z};
 		// 斜面に沿わせる (吸収モード・液体の体と飛びかかりの形): 体の前後と左右で地面の高さを比べて傾きを求める。
-		// 以前は体の中心の高さの水平な面を地面としていたので、坂では上の側が地面に埋まり、下の側が浮いて見えた。
 		// 片側だけ高い所 (段差の縁) は傾きにしない。
 		//   普段の液体の体: GPU は点の行き先を使わず、体を包む楕円体と床で形を作るので、傾きを blend にまとめて渡し、
 		//     GPU 側 (FluidMorph.hlsli の MorphLocal / MorphGround) で楕円体と床を坂に沿って傾ける

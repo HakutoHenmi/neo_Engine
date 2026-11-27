@@ -21,9 +21,8 @@ inline constexpr float LifeChildHuntRange = 48, LifeChildSight = 36, LifeChildLe
 enum class LifeAction { Idle, Engulf, Hammer, Sword, Plane, Tire, Hydrant, Restore, Signal, Vacuum, Spring };
 enum class LifeMorphItem { None, Tire, Hydrant, Signal, Vacuum, Spring };
 // ---- 体の行動ごとのデータテーブル (データドリブン) ----
-// 以前は「変形に必要な量」「攻撃の長さ」「ダメージ」「形の番号」「表示名」「アイコン」「未解放・変形時の案内」が
-// それぞれ LifeAction の三項演算子の連鎖として 6 ファイルに散らばっていた。行動 1 つ分のデータをここに集める。
-// 行動を足すときは enum とこの表に 1 行足すだけで、各処理は表を引くだけで分岐しない。
+// 必要量・攻撃時間・ダメージ・形・表示名・アイコン・案内を行動ごとにまとめる。
+// 各処理は LifeAction をキーにこの表を参照する。行動を増やすときは enum と表を更新する。
 struct LifeActionDefinition {
 	const char* name;            // 表示名 (HUD・デバッグ表示)
 	float requiredMass;          // 変形に必要な量 (0 なら変形ではない)

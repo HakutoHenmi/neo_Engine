@@ -50,7 +50,7 @@
 - `Game/Chrono/InkRules.h`: 質量収支、段階、モノクロ曲線。
 - `Game/Systems/SlimeAssault.inl`: 入力、軌跡、回収、ビーム判定、描画、HUD。
 - `Game/Systems/ChronoInk.inl`: 地形、塗膜アトラス、カメラ、ボス。
-- `Resources/shaders/SlimeBeamPS.hlsl`: 色付き液柱。
+- `Resources/Shaders/SlimeBeamPS.hlsl`: 色付き液柱。
 - `tests/GenerateSlimeMeshes.ps1` / `GenerateSlimeAudio.ps1`: 同梱のオリジナル素材の再生成。
 - `tests/Run-ChronoTests.ps1`: 質量保存、被弾損失、キャンセル、再利用防止、段階、時間曲線など。
 - `tests/Run-SlimeAssetTests.ps1`: エンジンと同じAssimp設定でビーム素材の読込を検証。

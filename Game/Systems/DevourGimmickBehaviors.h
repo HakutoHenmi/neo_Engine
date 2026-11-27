@@ -1,12 +1,10 @@
 // DevourGimmickBehaviors.h
 // 部屋のギミックの種類ごとの動き (Strategy Pattern)。ChronoSystem の内部向け (ChronoSystemInternal.h から読み込む)。
 //
-// 以前は「乗り始め」「乗っている間の動き」「乗っている間の入力」「仕掛けの毎フレームの動き」「操作の札」
-// 「カメラの構図」「照準」「物を置かない範囲」が、それぞれ別の関数の中で GimmickKind の switch / if 列になっており、
-// 種類を 1 つ足すたびに 8 か所を探して直す必要があった。
-// 種類ごとのクラス (DevourGimmick.cpp) にまとめ、ChronoSystem は GimmickBehaviorFor(kind) の共通の
+// 乗降・移動・入力・表示・カメラ・照準・配置制約を種類ごとのクラス (DevourGimmick.cpp) にまとめる。
+// ChronoSystem は GimmickBehaviorFor(kind) の共通の
 // インターフェースだけを呼ぶ。動きのオブジェクトはデータを持たない不変の共有インスタンスで、
-// 状態 (時間・狙い・倒れたピンなど) は今まで通り DevourGimmick / GimmickRide に置く。
+// 状態 (時間・狙い・倒れたピンなど) は DevourGimmick / GimmickRide に置く。
 #pragma once
 #include "ChronoSystem.h"
 

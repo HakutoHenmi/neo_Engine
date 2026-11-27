@@ -33,7 +33,6 @@ inline constexpr float RoomShelfTop = 141.05f, RoomToyboxTop = 43.2f, RoomDeskTo
                        RoomKotatsuTop = 42.5f, RoomShogiTop = 23.f;
 inline constexpr std::array<RoomSurface, 26> RoomSurfaces{
     {// ベッド: マットレス・掛け布団・枕・頭の板。範囲と高さはモデル (bed.obj を実寸で置いた形) の上の面に合わせる
-     // (以前は高さが約 2 低く、ベッドの上に置いた物が掛け布団と枕に埋もれて見えなかった)
      {{-300, -300, -60, -180}, RoomMattressTop, RoomMattressTop, 3, 0, 0, 20},
      {{-234.5f, -298.1f, -67.9f, -180}, RoomQuiltTop, RoomQuiltTop, 0, 1.5f, RoomMattressTop, 20},
      {{-297.6f, -288, -235.2f, -192}, 63.2f, 63.2f, 0, 12, RoomQuiltTop, 20},

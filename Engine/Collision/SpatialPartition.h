@@ -56,12 +56,7 @@ private:
 		node->children[3] = std::make_unique<Node>(Rect{x + hw, z + hh, hw, hh});
 		node->isLeaf = false;
 
-		for (auto entity : node->entities) {
-			(void)entity; // 警告回避
-			              // 本来はエンティティの座標を再取得して振り分けるべきだが、簡略化のため
-			              // ここではSplit直後のエンティティ再配置は呼び出し側で制御するか、
-			              // あるいは座標も保持するように拡張する。
-		}
+		// 分割前の要素は親に残す。検索時は親と子の両方を走査するため、再配置は不要。
 	}
 
 	void Insert(Node* node, TDEngine::ECS::Entity entity, const Vector3& pos, uint32_t depth) {

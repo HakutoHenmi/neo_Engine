@@ -56,7 +56,7 @@ public:
 	// 停止
 	void Stop(size_t voiceHandle);
 
-	// ★追加: ボイスの音量変更
+	// ボイスの音量変更
 	void SetVolume(size_t voiceHandle, float volume);
 
 	// 再生中のボイスの音程 (再生速度) を変える。0.5 ~ 2.0
@@ -65,7 +65,7 @@ public:
 	// BGM 以外の音を一時停止する (ポーズの間、掃除機などの連続音を止める)
 	void SetSEPaused(bool paused);
 
-	// ★追加: マスター音量管理
+	// マスター音量管理
 	float GetMasterBGMVolume() const {
 		return masterBGMVolume_;
 	}
@@ -79,7 +79,7 @@ public:
 		masterSEVolume_ = (std::max)(0.0f, (std::min)(1.0f, volume));
 	}
 
-	// ★追加: 全てのボイスを停止 (Playモード終了時用)
+	// 全てのボイスを停止 (Playモード終了時用)
 	void StopAll();
 
 	// 効果音とは別の、シーンの音楽用チャンネル。実時間で進める。
@@ -135,7 +135,7 @@ private:
 	float bgmPitch_ = 1, bgmPitchTarget_ = 1;
 	bool sePaused_ = false;
 
-	// ★追加: マスター音量
+	// マスター音量
 	float masterBGMVolume_ = 1.0f;
 	float masterSEVolume_ = 1.0f;
 };

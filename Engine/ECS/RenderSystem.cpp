@@ -6,18 +6,18 @@ namespace TDEngine {
 namespace ECS {
 
 void RenderSystem::Init(Coordinator* coordinator) {
-	m_coordinator = coordinator;
+	coordinator_ = coordinator;
 }
 
 void RenderSystem::Draw() {
-	if (!m_coordinator)
+	if (!coordinator_)
 		return;
 
 	// 各エンティティについて、TransformComponentとRenderComponentを取得し、
 	// 既存のRendererに描画命令を投げる
 	for (auto const& entity : Entities()) {
-		auto& transform = m_coordinator->GetComponent<TransformComponent>(entity);
-		auto& render = m_coordinator->GetComponent<RenderComponent>(entity);
+		auto& transform = coordinator_->GetComponent<TransformComponent>(entity);
+		auto& render = coordinator_->GetComponent<RenderComponent>(entity);
 
 		if (render.isVisible) {
 			// Engine::Transformに変換 (既存システムとのブリッジ)

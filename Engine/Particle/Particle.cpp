@@ -20,12 +20,12 @@ void ParticleSystem::Initialize(
 	// ※ mesh_ / tex_ が 0 の場合、Draw() が何も描かずにreturnするのでクラッシュしません
 }
 
-// ★変更: angVelとdampingを受け取ってセットする
+// angVelとdampingを受け取ってセットする
 void ParticleSystem::Emit(
     const Vector3& pos, const Vector3& vel, const Vector3& acceleration, const Vector3& startScale,
     const Vector3& endScale, const Vector4& startColor, const Vector4& endColor, float life, const Vector3& angVel,
     float damping) {
-	// 空きが無ければ放出しない (以前と同じく上限を超えた分は捨てる)
+	// 空きが無ければ放出せず、容量を超えた分を捨てる。
 	Particle* slot = particles_.Acquire();
 	if (!slot)
 		return;
@@ -59,9 +59,9 @@ void ParticleSystem::Update(float dt) {
 		if (p.age >= p.life)
 			return false;
 
-		// ★追加: 摩擦(減衰)の適用
+		// 摩擦(減衰)の適用
 		if (p.damping > 0.0f) {
-			float dampFactor = (std::max)(0.0f, 1.0f - p.damping * dt); // Windowsマクロ回避のためカッコ追加
+			float dampFactor = (std::max)(0.0f, 1.0f - p.damping * dt); // Windows の max マクロとの衝突を避ける
 			p.vel.x *= dampFactor;
 			p.vel.y *= dampFactor;
 			p.vel.z *= dampFactor;
@@ -70,7 +70,7 @@ void ParticleSystem::Update(float dt) {
 		p.vel += p.acceleration * dt;
 		p.pos += p.vel * dt;
 
-		// ★追加: 回転更新
+		// 回転更新
 		p.rotation += p.angVel * dt;
 
 		// 補間
@@ -128,7 +128,7 @@ void ParticleSystem::Draw(
 			// plane.obj は XZ 平面 (法線 +Y) なので、+Y がカメラを向くようにX軸で90度 (PI/2) 回転させる
 			tf.rotate = {pitch + 1.57079632679f, yaw, roll};
 		} else {
-			// ★追加: 自由回転（紙吹雪など）
+			// 自由回転（紙吹雪など）
 			tf.rotate = p.rotation;
 		}
 
@@ -147,7 +147,7 @@ void ParticleSystem::Draw(
 			uvScaleOffset.w = rowIdx * uvScaleOffset.y; // V のずらし量
 		}
 
-		// ★GPUインスタンシングを使用して描画予約
+		// GPUインスタンシングを使用して描画予約
 		renderer_->DrawParticleInstanced(mesh_, tex_, tf, p.color, uvScaleOffset, shaderName);
 	});
 }

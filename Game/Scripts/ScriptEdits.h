@@ -37,7 +37,7 @@ template<class Components> bool ApplyScriptEdit(Components& components, const Sc
 	auto* component = components.template try_get<ScriptComponent>(edit.entity);
 	if (!component)
 		return false;
-	// 追加: 空のスクリプト欄を末尾に増やす
+	// 空のスクリプト欄を末尾に増やす
 	if (edit.kind == ScriptEditKind::Add) {
 		component->scripts.emplace_back();
 		return true;

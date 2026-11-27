@@ -9,11 +9,11 @@ class CollisionSystem : public System {
 public:
 	void Init(Coordinator* coordinator);
 
-	// 毎フレームの衝突判定クエリを発行する
+	// TransformComponent と RenderComponent を持つエンティティの衝突判定クエリを発行する。
 	void Update(float dt = 0.0f) override;
 
 private:
-	Coordinator* m_coordinator = nullptr;
+	Coordinator* coordinator_ = nullptr;
 };
 
 } // namespace ECS

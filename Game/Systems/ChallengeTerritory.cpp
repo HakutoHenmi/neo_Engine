@@ -1373,7 +1373,7 @@ void ChronoSystem::DrawTerritory(GameContext& ctx) {
 		return;
 	if (!territoryInkPipeline_)
 		territoryInkPipeline_ = ctx.renderer->CreateShaderPipeline(
-		    "InkFloor", L"Resources/shaders/InstancedObjVS.hlsl", L"Resources/shaders/InkFloorPS.hlsl");
+		    "InkFloor", L"Resources/Shaders/InstancedObjVS.hlsl", L"Resources/Shaders/InkFloorPS.hlsl");
 	if (t.inkDirty || territoryInkTexture_ == 0) {
 		territoryInkPixels_.resize(size_t(W * W * 4));
 		for (size_t i = 0; i < t.ink.size(); ++i) {

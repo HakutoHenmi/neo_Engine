@@ -211,8 +211,8 @@ bool Renderer::Initialize(WindowDX* window) {
 	models_.clear();
 	sceneryLods_.clear();
 
-	// ★修正: Index 0 に「白い1x1テクスチャ」をプログラムで生成して登録する
-	// これにより、テクスチャがない場合のフォールバック描画でクラッシュしなくなります
+	// Index 0 に「白い1x1テクスチャ」をプログラムで生成して登録する
+	// テクスチャ未指定の描画では、この白いテクスチャを使用する。
 	{
 		// 1. 一時的なコマンドリスト作成 (WindowDXのlist_は閉じられているため)
 		ComPtr<ID3D12CommandAllocator> alloc;
@@ -258,7 +258,7 @@ bool Renderer::Initialize(WindowDX* window) {
 		// 6. SRV作成
 		const uint32_t srvIdx = AllocateSrvIndex();
 		t.srvCpu = window_->SRV_CPU((int)srvIdx);
-		t.srvCpuMaster = window_->SRV_CPU_Master((int)srvIdx); // ★追加
+		t.srvCpuMaster = window_->SRV_CPU_Master((int)srvIdx);
 		t.srvGpu = window_->SRV_GPU((int)srvIdx);
 
 		D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc{};
@@ -267,7 +267,7 @@ bool Renderer::Initialize(WindowDX* window) {
 		srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
 		srvDesc.Texture2D.MipLevels = 1;
 		dev_->CreateShaderResourceView(t.res.Get(), &srvDesc, t.srvCpu);
-		dev_->CreateShaderResourceView(t.res.Get(), &srvDesc, t.srvCpuMaster); // ★追加: 二重化
+		dev_->CreateShaderResourceView(t.res.Get(), &srvDesc, t.srvCpuMaster); // 二重化
 
 		// textures_[0] として登録
 		textures_.push_back(t);
@@ -298,7 +298,7 @@ bool Renderer::Initialize(WindowDX* window) {
 
 	lightCB_.ambientColor = Vector3{0.1f, 0.1f, 0.1f};
 
-	// ★追加: シャドウマップリソースの作成
+	// シャドウマップリソースの作成
 	{
 		D3D12_RESOURCE_DESC desc{};
 		desc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
@@ -321,7 +321,7 @@ bool Renderer::Initialize(WindowDX* window) {
 		    IID_PPV_ARGS(&shadowMap_));
 
 		D3D12_DESCRIPTOR_HEAP_DESC dsvHeapDesc{};
-		dsvHeapDesc.NumDescriptors = 16; // ★修正: カスタムレンダーターゲット用に増やす
+		dsvHeapDesc.NumDescriptors = 16; // カスタムレンダーターゲットの深度ビューも格納する
 		dsvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
 		dev_->CreateDescriptorHeap(&dsvHeapDesc, IID_PPV_ARGS(&shadowDsvHeap_));
 
@@ -338,7 +338,7 @@ bool Renderer::Initialize(WindowDX* window) {
 		srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
 		const uint32_t sIdx = AllocateSrvIndex();
 		dev_->CreateShaderResourceView(shadowMap_.Get(), &srvDesc, window_->SRV_CPU((int)sIdx));
-		dev_->CreateShaderResourceView(shadowMap_.Get(), &srvDesc, window_->SRV_CPU_Master((int)sIdx)); // ★追加
+		dev_->CreateShaderResourceView(shadowMap_.Get(), &srvDesc, window_->SRV_CPU_Master((int)sIdx));
 		shadowSrv_ = window_->SRV_GPU((int)sIdx);
 	}
 
@@ -359,7 +359,7 @@ bool Renderer::InitializeDeferred() {
 	if (!InitPostProcess_())
 		return false;
 
-	// ★追加: GPU流体初期化
+	// GPU流体初期化
 	InitGPUFluid();
 	fluidVolumeReady_ = InitFluidVolume();
 	if (dlssActive_ && !InitTemporalInputs_())
@@ -472,7 +472,7 @@ void Renderer::Shutdown() {
 	pipelines_.clear();
 	shaderNames_.clear();
 
-	// ★追加: Skyboxリソース解放
+	// Skyboxリソース解放
 	rootSigSkybox_.Reset();
 	psoSkybox_.Reset();
 	skyboxVB_.Reset();
@@ -540,7 +540,7 @@ void Renderer::Shutdown() {
 	ppDepthDsv_ = {};
 	ppDepthState_ = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
 
-	// ★追加: 最終描画先の解放
+	// 最終描画先の解放
 	finalSceneColor_.Reset();
 	finalRtvHeap_.Reset();
 	finalSrvGpu_ = {};
@@ -582,9 +582,8 @@ void Renderer::WaitGPU() {
 	if (!dev_ || !queue_)
 		return;
 
-	// ★修正: window_->WaitIdle() を呼ぶとメインループのフェンス番号が狂い、
-	// アセットの非同期ロードやUpdate中のコマンド実行時に Device Removed (0x887A0006) が発生するため、
-	// 一時的なフェンスを作成して待機するように変更します。
+	// メインループのフェンス番号と独立した一時フェンスで、キューの完了を待つ。
+	// アセットのロード中や Update 中でも描画フレームの同期を維持する。
 	Microsoft::WRL::ComPtr<ID3D12Fence> tempFence;
 	if (FAILED(dev_->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&tempFence))))
 		return;
@@ -619,9 +618,9 @@ void Renderer::BeginFrame(const float clearColorRGBA[4]) {
 	BeginFluidProfile(SceneRender);
 	upload_[fi].Reset();
 
-	drawCalls_.clear(); // ★追加: ドローコールをクリア
+	drawCalls_.clear(); // ドローコールをクリア
 
-	// ★追加: 毎フレーム最初にカウンタをリセット
+	// 毎フレーム最初にカウンタをリセット
 	frameDrawCalls_ = 0;
 	lastSceneryLodStats_ = sceneryLodStats_;
 	sceneryLodStats_ = {};
@@ -636,13 +635,13 @@ void Renderer::BeginFrame(const float clearColorRGBA[4]) {
 	rtInstances_.clear();
 	sceneCameraSet_ = false;
 	instancedParticleDrawCalls_.clear();
-	liquidParticleDrawCalls_.clear(); // ★追加
+	liquidParticleDrawCalls_.clear();
 	lastIDCIndex_ = -1;
 	// WindowDX はこの枠のフェンスを待ち終えている。他の枠はまだ実行中かもしれないので、
 	// それらの PBR / RT のディスクリプタテーブルを CPU から上書きしてはいけない。
 	srvDynamicCursor_ = kSrvStaticMax + fi * WindowDX::kSrvDynamicCountPerFrame;
 	srvDynamicEnd_ = srvDynamicCursor_ + WindowDX::kSrvDynamicCountPerFrame;
-	spriteDrawCalls_.clear(); // ★スプライトもクリア
+	spriteDrawCalls_.clear(); // スプライトもクリア
 	overlaySprites_.clear();
 	overlayText_.clear();
 	overlayQueue_ = false;
@@ -732,31 +731,31 @@ void Renderer::FlushDrawCalls() {
 
 	D3D12_GPU_DESCRIPTOR_HANDLE defaultSrv = textures_[0].srvGpu;
 
-	// ★追加: Skybox描画（最背面、全ドローコールの前）
+	// Skybox描画（最背面、全ドローコールの前）
 	DrawSkybox();
 
-	// ★RootSignatureを3D用に戻す（DrawSkyboxで変更されたため）
+	// RootSignatureを3D用に戻す（DrawSkyboxで変更されたため）
 	list_->SetGraphicsRootSignature(rootSig3D_.Get());
 	list_->SetGraphicsRootConstantBufferView(0, cbFrameAddr_);
 	list_->SetGraphicsRootConstantBufferView(2, cbLightAddr_);
 	if (shadowSrv_.ptr != 0)
 		list_->SetGraphicsRootDescriptorTable(5, shadowSrv_);
 
-	// ★追加: 環境マップ(t3)をバインド
+	// 環境マップ(t3)をバインド
 	if (envMapSrvGpu_.ptr != 0) {
 		list_->SetGraphicsRootDescriptorTable(7, envMapSrvGpu_);
 	} else {
 		list_->SetGraphicsRootDescriptorTable(7, textures_[0].srvGpu); // フォールバック (RootSig要件を満たすため)
 	}
 
-	// ★追加: Skybox描画後にオブジェクトがなければ早期リターン
+	// Skybox描画後にオブジェクトがなければ早期リターン
 	if (drawCalls_.empty() && instancedDrawCalls_.empty() && instancedParticleDrawCalls_.empty() &&
 	    liquidParticleDrawCalls_.empty() && !(isGPUFluidReady_ && gpuFluidActiveParticleCount_ > 0)) {
 		FlushLines();
 		return;
 	}
 
-	// ★追加: カウンタに加算 (Skyboxや通常ドローコールの数)
+	// カウンタに加算 (Skyboxや通常ドローコールの数)
 	frameDrawCalls_ += 1; // Skybox用
 	frameDrawCalls_ += static_cast<uint32_t>(drawCalls_.size());
 
@@ -874,12 +873,12 @@ void Renderer::FlushDrawCalls() {
 			auto gpuAddr = upload_[fi].buffer->GetGPUVirtualAddress() + oOff;
 			list_->SetGraphicsRootConstantBufferView(1, gpuAddr);
 
-			// ★重要: EnhancedTerrain の場合は StructuredBuffer<InstanceData> (Slot 5) にもバインド
+			// 重要: EnhancedTerrain の場合は StructuredBuffer<InstanceData> (Slot 5) にもバインド
 			if (dc.shaderName == "EnhancedTerrain") {
 				list_->SetGraphicsRootShaderResourceView(5, gpuAddr);
 			}
 
-			// ★追加: 通常の描画でも、InstanceData SRV (Slot 6) が未バインドにならないようダミーアドレスを設定
+			// 通常の描画でも、InstanceData SRV (Slot 6) が未バインドにならないようダミーアドレスを設定
 			if (dc.shaderName != "EnhancedTerrain") {
 				list_->SetGraphicsRootShaderResourceView(6, gpuAddr);
 			}
@@ -901,7 +900,7 @@ void Renderer::FlushDrawCalls() {
 			}
 		}
 
-		// ★トゥーン: アウトライン先行描画パス
+		// トゥーン: アウトライン先行描画パス
 		// Toon/ToonSkinning のドローコールに対して、アウトラインPSOで先に描画し、その後にモデル本体を描画する
 		if (dc.shaderName == "Toon" || dc.shaderName == "ToonSkinning") {
 			// アウトラインPSOを選択
@@ -921,7 +920,7 @@ void Renderer::FlushDrawCalls() {
 	auto flushInstanced = [&](std::vector<InstancedDrawCall>& calls, const std::string& defaultShaderName) {
 		if (calls.empty())
 			return;
-		frameDrawCalls_ += static_cast<uint32_t>(calls.size()); // ★追加
+		frameDrawCalls_ += static_cast<uint32_t>(calls.size());
 
 		for (auto& idc : calls) {
 			auto* model = GetModel(idc.mesh);
@@ -941,7 +940,7 @@ void Renderer::FlushDrawCalls() {
 			}
 
 			if (defaultShaderName == "ParticleInstanced") {
-				frameParticleCount_ += static_cast<uint32_t>(idc.instances.size()); // ★追加
+				frameParticleCount_ += static_cast<uint32_t>(idc.instances.size());
 			}
 
 			// シェーダー設定
@@ -962,7 +961,7 @@ void Renderer::FlushDrawCalls() {
 				else if (sName == "ProceduralSmokeAdditive")
 					sName = "ProceduralSmokeAdditiveInstanced";
 			}
-			// ★修正: Toon系や新しく追加したリッチシェーダーはインスタンス描画非対応のためデフォルトにフォールバック
+			// インスタンス描画に対応しないシェーダーは、既定のシェーダーへフォールバックする。
 			if (sName == "Toon" || sName == "ToonSkinning" || sName == "ToonOutline" ||
 			    sName == "ToonSkinningOutline" || sName == "Hologram" || sName == "EmissiveGlow" ||
 			    sName == "ForceField" || sName == "Dissolve" || sName == "Distortion" || sName == "Reflection" ||
@@ -985,7 +984,7 @@ void Renderer::FlushDrawCalls() {
 			if (offset != UINT32_MAX) {
 				std::memcpy(upload_[fi].mapped + offset, idc.instances.data(), dataSize);
 
-				// ★修正: EnhancedTerrainの場合のセットアップ (RootSignatureを先に設定してからバインドする)
+				// EnhancedTerrainの場合のセットアップ (RootSignatureを先に設定してからバインドする)
 				if (sName == "EnhancedTerrain") {
 					list_->SetGraphicsRootSignature(rootSigTerrain_.Get());
 					list_->SetGraphicsRootConstantBufferView(0, cbFrameAddr_);
@@ -1057,13 +1056,13 @@ void Renderer::FlushDrawCalls() {
 	// パーティクルのインスタンス描画
 	flushInstanced(instancedParticleDrawCalls_, "ParticleInstanced");
 
-	// ★追加: GPU流体更新
+	// GPU流体更新
 	const bool hasGpuFluidParticles = isGPUFluidReady_ && gpuFluidActiveParticleCount_ > 0;
 	if (hasGpuFluidParticles) {
 		PrepareGPUFluidFrame();
 	}
 
-	// ★追加: 液体パーティクルのパス (メタボール)
+	// 液体パーティクルのパス (メタボール)
 	if (!liquidParticleDrawCalls_.empty() || (hasGpuFluidParticles && !fluidVolumeReady_)) {
 		BeginLiquidPass();
 		if (!liquidParticleDrawCalls_.empty()) {
@@ -1321,7 +1320,7 @@ void Renderer::EndFrame() {
 	PrepareGPUFluidFrame();
 
 	// ====== 0. シャドウ行列の計算 ======
-	// ★追加: cbFrameAddr_ が 0 の場合、ダミーの CBFrame を割り当てる (Device Removed対策)
+	// cbFrameAddr_ が 0 の場合、ダミーの CBFrame を割り当てる (Device Removed対策)
 	if (cbFrameAddr_ == 0) {
 		CBFrame dummyCb{};
 		uint32_t dummyOff = upload_[fi].Allocate(sizeof(CBFrame), 256);
@@ -1423,7 +1422,7 @@ void Renderer::EndFrame() {
 			std::memcpy(upload_[fi].mapped + oOff, &objCb, sizeof(CBObj));
 			list_->SetGraphicsRootConstantBufferView(1, upload_[fi].buffer->GetGPUVirtualAddress() + oOff);
 
-			// ★追加: 未バインドによるDevice Removed防止 (InstanceData SRV)
+			// 未バインドによるDevice Removed防止 (InstanceData SRV)
 			list_->SetGraphicsRootShaderResourceView(6, upload_[fi].buffer->GetGPUVirtualAddress() + oOff);
 
 			if (dc.isSkinned) {
@@ -1486,7 +1485,7 @@ void Renderer::EndFrame() {
 		}
 
 		EndFluidProfile(SceneryShadow);
-		// ★追加: 流体の影を落とす
+		// 流体の影を落とす
 		if (isGPUFluidReady_ && gpuFluidActiveParticleCount_ > 0) {
 			BeginFluidProfile(FluidShadow);
 			if (volumeFrameSettings_)
@@ -1561,13 +1560,13 @@ void Renderer::EndFrame() {
 
 	FlushDrawCalls();
 
-	// ★追加: FlushDrawCalls 直後（通常の不透明/透過描画が終わった後）にカスタム描画ジョブを実行する
+	// FlushDrawCalls 直後（通常の不透明/透過描画が終わった後）にカスタム描画ジョブを実行する
 	if (customDrawJob_) {
 		customDrawJob_(list_);
 		customDrawJob_ = nullptr;
 	}
 
-	// ★完全最適化: 空間のゆがみ (Distortion) パス (一括インスタンス描画)
+	// 空間のゆがみ (Distortion) パス (一括インスタンス描画)
 	if (!aggregatedJobs.empty()) {
 		if (ppSceneColor_ && backdropColor_) {
 			auto b1 = CD3DX12_RESOURCE_BARRIER::Transition(
@@ -1615,7 +1614,7 @@ void Renderer::EndFrame() {
 				uint32_t sIdx = AllocateDynamicSrvIndex(1);
 				if (sIdx != UINT32_MAX) {
 					D3D12_CPU_DESCRIPTOR_HANDLE dest = window_->SRV_CPU((int)sIdx);
-					// ★修正: マスター記述子をソースにする
+					// マスター記述子をソースにする
 					D3D12_CPU_DESCRIPTOR_HANDLE src = (key.tex < textures_.size() && textures_[key.tex].res)
 					                                      ? textures_[key.tex].srvCpuMaster
 					                                      : textures_[0].srvCpuMaster;
@@ -1790,7 +1789,7 @@ void Renderer::EndFrame() {
 			const D3D12_GPU_VIRTUAL_ADDRESS cbAddr = upload_[fi].buffer->GetGPUVirtualAddress() + off;
 			list_->SetGraphicsRootConstantBufferView(0, cbAddr);
 		} else {
-			// ★修正: アロケーション失敗時は cbFrameAddr_ を代用してバインド漏れ（Device Removed）を防ぐ
+			// アロケーション失敗時は cbFrameAddr_ を代用してバインド漏れ（Device Removed）を防ぐ
 			list_->SetGraphicsRootConstantBufferView(0, cbFrameAddr_);
 		}
 	} else {
@@ -1799,14 +1798,14 @@ void Renderer::EndFrame() {
 	}
 
 	list_->SetGraphicsRootDescriptorTable(1, postColorSrv_);
-	// ★修正: 未初期化(0)の場合はダミーとして ppSrvGpu_ をバインドし、無効なSRVやTextureCubeがバインドされてDevice Hung(0x887A0006)になるのを防ぐ
+	// 未初期化(0)の場合はダミーとして ppSrvGpu_ をバインドし、無効なSRVやTextureCubeがバインドされてDevice Hung(0x887A0006)になるのを防ぐ
 	const bool cinematicPost = psoPP_.Get() == pipelines_["ChronoFocus"].Get();
 	list_->SetGraphicsRootDescriptorTable(
 	    2, cinematicPost && cinematicLut_ ? GetTextureSrvGpu(cinematicLut_)
 	                                      : (sumiEPaperTex_ ? GetTextureSrvGpu(sumiEPaperTex_) : ppSrvGpu_));
 	list_->SetGraphicsRootDescriptorTable(
 	    3, cinematicPost ? gtaoTarget_.srv : (sumiEVignetteTex_ ? GetTextureSrvGpu(sumiEVignetteTex_) : ppSrvGpu_));
-	// ★修正: 深度バッファを t3 にバインド (法線バッファは廃止)
+	// ポストプロセスの深度テクスチャを t3 にバインドする。
 	list_->SetGraphicsRootDescriptorTable(4, ppDepthSrvGpu_);
 	list_->SetGraphicsRootDescriptorTable(5, cinematicPost ? bloomUp_[0].srv : ppSrvGpu_);
 	list_->SetGraphicsRootDescriptorTable(
@@ -1825,7 +1824,7 @@ void Renderer::EndFrame() {
 	previousTemporalViewProjection_ = unjitteredViewProjection_;
 	++temporalFrame_;
 
-	// ★UI描画順序の変更: ポストプロセス適用後のGameビュー用テクスチャにUIを直接描画することで、エディタ上でもUIが表示されるようにします。
+	// エディタの Game ビューにも UI が映るよう、ポストプロセス適用後のテクスチャに UI を描く。
 	FlushSprites();
 	FlushText();
 	FlushOverlayQueue();
@@ -1854,11 +1853,11 @@ void Renderer::EndFrame() {
 
 	list_->SetPipelineState(psoCopy_.Get());
 	list_->SetGraphicsRootSignature(rootSigPP_.Get());
-	// ★修正: cbFrameAddr_ は上で必ず有効な値になっているはずなのでそのままバインド
+	// cbFrameAddr_ は上で必ず有効な値になっているはずなのでそのままバインド
 	list_->SetGraphicsRootConstantBufferView(0, cbFrameAddr_);
 	list_->SetGraphicsRootDescriptorTable(1, finalSrvGpu_);
 
-	// ★追加: 未バインドによるDevice Removed防止 (t1 ... t5)
+	// 未バインドによるDevice Removed防止 (t1 ... t5)
 	list_->SetGraphicsRootDescriptorTable(2, textures_[0].srvGpu);
 	list_->SetGraphicsRootDescriptorTable(3, textures_[0].srvGpu);
 	list_->SetGraphicsRootDescriptorTable(4, textures_[0].srvGpu);
@@ -2202,7 +2201,7 @@ bool Renderer::CreateShaderPipeline(
 	return CreatePSO(shaderName, vs.Get(), ps.Get());
 }
 
-// ★追加：透明/加算 用 PSO作成
+// 透明/加算 用 PSO作成
 // additive=false: 通常αブレンド
 // additive=true : 加算（エネルギー向き）
 bool Renderer::CreatePSO_Transparent(
@@ -2234,7 +2233,7 @@ bool Renderer::CreatePSO_Transparent(
 	rast.FrontCounterClockwise = FALSE;
 	pso.RasterizerState = rast;
 
-	// ★ブレンドを有効化
+	// ブレンドを有効化
 	pso.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
 	{
 		auto& rt = pso.BlendState.RenderTarget[0];
@@ -2282,7 +2281,7 @@ bool Renderer::CreatePSO_Transparent(
 	return true;
 }
 
-// 追加：透明/加算 シェーダー登録
+// 透明/加算 シェーダー登録
 bool Renderer::CreateShaderPipelineTransparent(
     const std::string& shaderName, const std::wstring& vsPath, const std::wstring& psPath, bool additive,
     bool depthTest) {
@@ -2342,7 +2341,7 @@ bool Renderer::InitSpritePipeline_() {
 	blend.RenderTarget[0].SrcBlend = D3D12_BLEND_SRC_ALPHA;
 	blend.RenderTarget[0].DestBlend = D3D12_BLEND_INV_SRC_ALPHA;
 	blend.RenderTarget[0].BlendOp = D3D12_BLEND_OP_ADD;
-	// ★修正: アルファチャネルは常に最大値を維持し、スプライトのアルファ値でRTのアルファを破壊しない
+	// アルファチャネルは常に最大値を維持し、スプライトのアルファ値でRTのアルファを破壊しない
 	blend.RenderTarget[0].SrcBlendAlpha = D3D12_BLEND_ZERO;
 	blend.RenderTarget[0].DestBlendAlpha = D3D12_BLEND_ONE;
 	blend.RenderTarget[0].BlendOpAlpha = D3D12_BLEND_OP_ADD;
@@ -2359,7 +2358,7 @@ bool Renderer::InitSpritePipeline_() {
 bool Renderer::InitPipelines() {
 	ComPtr<ID3DBlob> shaderBlob, shaderError;
 
-	// ★共通 RootSignature (3D用)
+	// 共通 RootSignature (3D用)
 	{
 		CD3DX12_DESCRIPTOR_RANGE rangeSRV;
 		rangeSRV.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0); // t0
@@ -2370,7 +2369,7 @@ bool Renderer::InitPipelines() {
 		CD3DX12_DESCRIPTOR_RANGE rangeInstanceSRV;
 		rangeInstanceSRV.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 2); // t2 (インスタンスのデータ)
 
-		// ★追加: 環境マップ用
+		// 環境マップ用
 		CD3DX12_DESCRIPTOR_RANGE rangeEnvMapSRV;
 		rangeEnvMapSRV.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 3); // t3 (環境のキューブマップ)
 
@@ -2384,7 +2383,7 @@ bool Renderer::InitPipelines() {
 		params[4].InitAsConstantBufferView(3);                                              // b3: CBBone (スキニング用)
 		params[5].InitAsDescriptorTable(1, &rangeShadowSRV, D3D12_SHADER_VISIBILITY_PIXEL); // t1: シャドウマップ
 		params[6].InitAsShaderResourceView(2, 0, D3D12_SHADER_VISIBILITY_VERTEX); // t2: インスタンスのデータ (SRV)
-		params[7].InitAsDescriptorTable(1, &rangeEnvMapSRV, D3D12_SHADER_VISIBILITY_PIXEL); // t3: EnvMap (★追加)
+		params[7].InitAsDescriptorTable(1, &rangeEnvMapSRV, D3D12_SHADER_VISIBILITY_PIXEL); // t3: EnvMap
 		params[8].InitAsDescriptorTable(1, &rangePbr, D3D12_SHADER_VISIBILITY_PIXEL);
 
 		// s0: 通常のテクスチャサンプラー, s1: 影比較用サンプラー
@@ -2410,7 +2409,7 @@ bool Renderer::InitPipelines() {
 			return false;
 	}
 
-	// ★追加: 地形用 RootSignature (複数テクスチャ対応)
+	// 地形用 RootSignature (複数テクスチャ対応)
 	{
 		CD3DX12_DESCRIPTOR_RANGE rangeSRVs;
 		rangeSRVs.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 6, 0); // t0-t5: スプラットマップ, レイヤー0-3, 細部
@@ -2448,7 +2447,7 @@ bool Renderer::InitPipelines() {
 		}
 	}
 
-	// ★追加: 空間のゆがみ用 RootSignature (t0:Backdrop, t1:DistortionMap)
+	// 空間のゆがみ用 RootSignature (t0:Backdrop, t1:DistortionMap)
 	{
 		CD3DX12_DESCRIPTOR_RANGE rangeBackdrop;
 		rangeBackdrop.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0); // t0: 背景
@@ -2478,7 +2477,7 @@ bool Renderer::InitPipelines() {
 		}
 	}
 
-	// ★追加: コンピュート RootSignature
+	// コンピュート RootSignature
 	{
 		CD3DX12_ROOT_PARAMETER computeParams[7]{};
 		computeParams[0].InitAsConstants(1, 0);        // b0: { 要求の数 }
@@ -2503,9 +2502,9 @@ bool Renderer::InitPipelines() {
 	// ---------------------------------------------------------
 	// 既定のシェーダー
 	// ---------------------------------------------------------
-	auto vs3d = CompileShaderFromFile(L"Resources/shaders/DefaultVS.hlsl", "main", "vs_5_0");
-	auto ps3d = CompileShaderFromFile(L"Resources/shaders/DefaultPS.hlsl", "main", "ps_5_0");
-	auto vsSkin = CompileShaderFromFile(L"Resources/shaders/SkinningVS.hlsl", "main", "vs_5_0");
+	auto vs3d = CompileShaderFromFile(L"Resources/Shaders/DefaultVS.hlsl", "main", "vs_5_0");
+	auto ps3d = CompileShaderFromFile(L"Resources/Shaders/DefaultPS.hlsl", "main", "ps_5_0");
+	auto vsSkin = CompileShaderFromFile(L"Resources/Shaders/SkinningVS.hlsl", "main", "vs_5_0");
 
 	if (!vs3d || !ps3d || !vsSkin)
 		return false;
@@ -2514,14 +2513,14 @@ bool Renderer::InitPipelines() {
 		return false;
 
 	// 通常オブジェクト インスタンス描画 (インラインコンパイルで環境非依存にする)
-	auto vsInst = CompileShaderFromFile(L"Resources/shaders/InstancedObjVS.hlsl", "main", "vs_5_0");
-	auto psInst = CompileShaderFromFile(L"Resources/shaders/InstancedObjPS.hlsl", "main", "ps_5_0");
+	auto vsInst = CompileShaderFromFile(L"Resources/Shaders/InstancedObjVS.hlsl", "main", "vs_5_0");
+	auto psInst = CompileShaderFromFile(L"Resources/Shaders/InstancedObjPS.hlsl", "main", "ps_5_0");
 	if (!vsInst || !psInst || !CreatePSO("Instanced", vsInst.Get(), psInst.Get()))
 		return false;
 
 	// パーティクル インスタンス描画 (インラインコンパイルで環境非依存にする)
-	auto vsPartInst = CompileShaderFromFile(L"Resources/shaders/ParticleInstancedVS.hlsl", "main", "vs_5_0");
-	auto psPart = CompileShaderFromFile(L"Resources/shaders/ParticlePS.hlsl", "main", "ps_5_0");
+	auto vsPartInst = CompileShaderFromFile(L"Resources/Shaders/ParticleInstancedVS.hlsl", "main", "vs_5_0");
+	auto psPart = CompileShaderFromFile(L"Resources/Shaders/ParticlePS.hlsl", "main", "ps_5_0");
 	if (!vsPartInst || !psPart || !CreatePSO("ParticleInstanced", vsPartInst.Get(), psPart.Get()))
 		return false;
 
@@ -2531,13 +2530,13 @@ bool Renderer::InitPipelines() {
 	}
 
 	// ソフトパーティクル 加算 インスタンス描画
-	auto psSoftPart = CompileShaderFromFile(L"Resources/shaders/SoftParticlePS.hlsl", "main", "ps_5_0");
+	auto psSoftPart = CompileShaderFromFile(L"Resources/Shaders/SoftParticlePS.hlsl", "main", "ps_5_0");
 	if (vsPartInst && psSoftPart) {
 		CreatePSO_Transparent("SoftParticleAdditiveInstanced", vsPartInst.Get(), psSoftPart.Get(), true);
 	}
 
-	// ★追加: プロシージャル煙パーティクル (FBMノイズベース)
-	auto psProceduralSmoke = CompileShaderFromFile(L"Resources/shaders/ProceduralSmokePS.hlsl", "main", "ps_5_0");
+	// プロシージャル煙パーティクル (FBMノイズベース)
+	auto psProceduralSmoke = CompileShaderFromFile(L"Resources/Shaders/ProceduralSmokePS.hlsl", "main", "ps_5_0");
 	if (vsPartInst && psProceduralSmoke) {
 		CreatePSO_Transparent("ProceduralSmokeInstanced", vsPartInst.Get(), psProceduralSmoke.Get(), false);
 		CreatePSO_Transparent("ProceduralSmokeAdditiveInstanced", vsPartInst.Get(), psProceduralSmoke.Get(), true);
@@ -2558,7 +2557,7 @@ bool Renderer::InitPipelines() {
 		return false;
 
 	// ---------------------------------------------------------
-	// ★追加: Shadow Depth Shaders
+	// Shadow Depth Shaders
 	// ---------------------------------------------------------
 	static const char* kVSShadow = R"(
 cbuffer CBFrame : register(b0) { row_major float4x4 gView; row_major float4x4 gProj; row_major float4x4 gViewProj; float3 gCamPos; float gTime; };
@@ -2654,9 +2653,9 @@ float4 main(VSIn v, uint instanceID : SV_InstanceID) : SV_POSITION {
 		};
 		psoDesc.InputLayout = {instLayout, _countof(instLayout)};
 		dev_->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&shadowInstancedPso_));
-		auto cutVs = CompileShaderFromFile(L"Resources/shaders/VegetationShadow.hlsl", "VSMain", "vs_5_0");
-		auto cutInstVs = CompileShaderFromFile(L"Resources/shaders/VegetationShadow.hlsl", "VSInstanced", "vs_5_0");
-		auto cutPs = CompileShaderFromFile(L"Resources/shaders/VegetationShadow.hlsl", "PSMain", "ps_5_0");
+		auto cutVs = CompileShaderFromFile(L"Resources/Shaders/VegetationShadow.hlsl", "VSMain", "vs_5_0");
+		auto cutInstVs = CompileShaderFromFile(L"Resources/Shaders/VegetationShadow.hlsl", "VSInstanced", "vs_5_0");
+		auto cutPs = CompileShaderFromFile(L"Resources/Shaders/VegetationShadow.hlsl", "PSMain", "ps_5_0");
 		if (!cutVs || !cutInstVs || !cutPs)
 			return false;
 		D3D12_INPUT_ELEMENT_DESC cutLayout[] = {
@@ -2678,7 +2677,7 @@ float4 main(VSIn v, uint instanceID : SV_InstanceID) : SV_POSITION {
 		return false;
 
 	// ---------------------------------------------------------
-	// ★追加: 3Dライン描画用パイプライン (Position + Color)
+	// 3Dライン描画用パイプライン (Position + Color)
 	// ---------------------------------------------------------
 	{
 		static const char* kVSLine = R"(
@@ -2743,8 +2742,8 @@ float4 main(PSIn i) : SV_TARGET { return i.color; }
 			return false;
 	}
 
-	// ★追加: コンピュート PSOの作成
-	auto csBlob = CompileShaderFromFile(L"Resources/shaders/CollisionCompute.hlsl", "main", "cs_5_0");
+	// コンピュート PSOの作成
+	auto csBlob = CompileShaderFromFile(L"Resources/Shaders/CollisionCompute.hlsl", "main", "cs_5_0");
 	if (csBlob) {
 		D3D12_COMPUTE_PIPELINE_STATE_DESC computePsoDesc{};
 		computePsoDesc.pRootSignature = rootSigCompute_.Get();
@@ -2752,10 +2751,10 @@ float4 main(PSIn i) : SV_TARGET { return i.color; }
 		dev_->CreateComputePipelineState(&computePsoDesc, IID_PPV_ARGS(&psoCollision_)); // 失敗しても続行
 	}
 
-	// ★追加: 高品位地形シェーダーの登録
+	// 高品位地形シェーダーの登録
 	{
-		auto vs = CompileShaderFromFile(L"Resources/shaders/EnhancedTerrainVS.hlsl", "main", "vs_5_0");
-		auto ps = CompileShaderFromFile(L"Resources/shaders/EnhancedTerrainPS.hlsl", "main", "ps_5_0");
+		auto vs = CompileShaderFromFile(L"Resources/Shaders/EnhancedTerrainVS.hlsl", "main", "vs_5_0");
+		auto ps = CompileShaderFromFile(L"Resources/Shaders/EnhancedTerrainPS.hlsl", "main", "ps_5_0");
 		if (vs && ps) {
 			D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc{};
 			psoDesc.pRootSignature = rootSigTerrain_.Get();
@@ -2780,10 +2779,10 @@ float4 main(PSIn i) : SV_TARGET { return i.color; }
 		}
 	}
 
-	// ★追加: 鳴潮風スタイライズド草シェーダーの登録
+	// 鳴潮風スタイライズド草シェーダーの登録
 	{
-		auto vs = CompileShaderFromFile(L"Resources/shaders/StylizedGrassVS.hlsl", "main", "vs_5_0");
-		auto ps = CompileShaderFromFile(L"Resources/shaders/StylizedGrassPS.hlsl", "main", "ps_5_0");
+		auto vs = CompileShaderFromFile(L"Resources/Shaders/StylizedGrassVS.hlsl", "main", "vs_5_0");
+		auto ps = CompileShaderFromFile(L"Resources/Shaders/StylizedGrassPS.hlsl", "main", "ps_5_0");
 		if (vs && ps) {
 			D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc{};
 			psoDesc.pRootSignature = rootSig3D_.Get();
@@ -2810,19 +2809,19 @@ float4 main(PSIn i) : SV_TARGET { return i.color; }
 	}
 
 	// ---------------------------------------------------------
-	// ★追加: トゥーンシェーダー・アウトライン用パイプライン
+	// トゥーンシェーダー・アウトライン用パイプライン
 	// ---------------------------------------------------------
 	{
 		// --- Toon (通常メッシュ) ---
-		auto vsToon = CompileShaderFromFile(L"Resources/shaders/ToonVS.hlsl", "main", "vs_5_0");
-		auto psToon = CompileShaderFromFile(L"Resources/shaders/ToonPS.hlsl", "main", "ps_5_0");
+		auto vsToon = CompileShaderFromFile(L"Resources/Shaders/ToonVS.hlsl", "main", "vs_5_0");
+		auto psToon = CompileShaderFromFile(L"Resources/Shaders/ToonPS.hlsl", "main", "ps_5_0");
 		if (vsToon && psToon) {
 			CreatePSO("Toon", vsToon.Get(), psToon.Get());
 		}
 
 		// --- ToonOutline (アウトライン用: 前面カリング) ---
-		auto vsOutline = CompileShaderFromFile(L"Resources/shaders/ToonOutlineVS.hlsl", "main", "vs_5_0");
-		auto psOutline = CompileShaderFromFile(L"Resources/shaders/ToonOutlinePS.hlsl", "main", "ps_5_0");
+		auto vsOutline = CompileShaderFromFile(L"Resources/Shaders/ToonOutlineVS.hlsl", "main", "vs_5_0");
+		auto psOutline = CompileShaderFromFile(L"Resources/Shaders/ToonOutlinePS.hlsl", "main", "ps_5_0");
 		if (vsOutline && psOutline) {
 			// アウトラインPSOは前面カリング（裏面を描画 = 膨張した部分が見える）
 			D3D12_INPUT_ELEMENT_DESC outlineLayout[] = {
@@ -2845,7 +2844,7 @@ float4 main(PSIn i) : SV_TARGET { return i.color; }
 			psoDesc.SampleMask = UINT_MAX;
 
 			auto rast = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
-			rast.CullMode = D3D12_CULL_MODE_FRONT; // ★前面カリング（輪郭のみ見える）
+			rast.CullMode = D3D12_CULL_MODE_FRONT; // 前面カリング（輪郭のみ見える）
 			psoDesc.RasterizerState = rast;
 
 			psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
@@ -2859,13 +2858,13 @@ float4 main(PSIn i) : SV_TARGET { return i.color; }
 		}
 
 		// --- ToonSkinning (スキニング対応トゥーン) ---
-		auto vsToonSkin = CompileShaderFromFile(L"Resources/shaders/ToonSkinningVS.hlsl", "main", "vs_5_0");
+		auto vsToonSkin = CompileShaderFromFile(L"Resources/Shaders/ToonSkinningVS.hlsl", "main", "vs_5_0");
 		if (vsToonSkin && psToon) {
 			CreatePSO("ToonSkinning", vsToonSkin.Get(), psToon.Get(), skinLayout, _countof(skinLayout));
 		}
 
 		// --- ToonSkinningOutline (スキニング対応アウトライン) ---
-		auto vsSkinOutline = CompileShaderFromFile(L"Resources/shaders/ToonSkinningOutlineVS.hlsl", "main", "vs_5_0");
+		auto vsSkinOutline = CompileShaderFromFile(L"Resources/Shaders/ToonSkinningOutlineVS.hlsl", "main", "vs_5_0");
 		if (vsSkinOutline && psOutline) {
 			D3D12_INPUT_ELEMENT_DESC outlineSkinLayout[] = {
 			    {"POSITION", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
@@ -2903,42 +2902,42 @@ float4 main(PSIn i) : SV_TARGET { return i.color; }
 		// シェーダー名リストに追加 (エディタのドロップダウンに表示される)
 		// ※CreatePSO や CreatePSO_Transparent 内部で重複チェック付きで push_back されるため、明示的な処理は不要です。
 
-		// ★追加: 反射(映り込み)用シェーダー
-		auto vsReflection = CompileShaderFromFile(L"Resources/shaders/ObjVS.hlsl", "main", "vs_5_0");
-		auto psReflection = CompileShaderFromFile(L"Resources/shaders/Object3d.PS.hlsl", "main", "ps_5_0");
+		// 反射(映り込み)用シェーダー
+		auto vsReflection = CompileShaderFromFile(L"Resources/Shaders/ObjVS.hlsl", "main", "vs_5_0");
+		auto psReflection = CompileShaderFromFile(L"Resources/Shaders/Object3d.PS.hlsl", "main", "ps_5_0");
 		if (vsReflection && psReflection) {
 			CreatePSO("Reflection", vsReflection.Get(), psReflection.Get());
 		}
 
-		// ★追加: リッチシェーダー
-		auto vsEmissive = CompileShaderFromFile(L"Resources/shaders/EmissiveGlowVS.hlsl", "main", "vs_5_0");
-		auto psEmissive = CompileShaderFromFile(L"Resources/shaders/EmissiveGlowPS.hlsl", "main", "ps_5_0");
+		// リッチシェーダー
+		auto vsEmissive = CompileShaderFromFile(L"Resources/Shaders/EmissiveGlowVS.hlsl", "main", "vs_5_0");
+		auto psEmissive = CompileShaderFromFile(L"Resources/Shaders/EmissiveGlowPS.hlsl", "main", "ps_5_0");
 		if (vsEmissive && psEmissive) {
 			CreatePSO("EmissiveGlow", vsEmissive.Get(), psEmissive.Get());
 		}
 
-		auto vsHologram = CompileShaderFromFile(L"Resources/shaders/HologramVS.hlsl", "main", "vs_5_0");
-		auto psHologram = CompileShaderFromFile(L"Resources/shaders/HologramPS.hlsl", "main", "ps_5_0");
+		auto vsHologram = CompileShaderFromFile(L"Resources/Shaders/HologramVS.hlsl", "main", "vs_5_0");
+		auto psHologram = CompileShaderFromFile(L"Resources/Shaders/HologramPS.hlsl", "main", "ps_5_0");
 		if (vsHologram && psHologram) {
 			CreatePSO_Transparent("Hologram", vsHologram.Get(), psHologram.Get(), false);
 		}
 
-		auto vsForceField = CompileShaderFromFile(L"Resources/shaders/ForceFieldVS.hlsl", "main", "vs_5_0");
-		auto psForceField = CompileShaderFromFile(L"Resources/shaders/ForceFieldPS.hlsl", "main", "ps_5_0");
+		auto vsForceField = CompileShaderFromFile(L"Resources/Shaders/ForceFieldVS.hlsl", "main", "vs_5_0");
+		auto psForceField = CompileShaderFromFile(L"Resources/Shaders/ForceFieldPS.hlsl", "main", "ps_5_0");
 		if (vsForceField && psForceField) {
 			CreatePSO_Transparent("ForceField", vsForceField.Get(), psForceField.Get(), true);
 		}
 
-		auto vsDissolve = CompileShaderFromFile(L"Resources/shaders/DissolveVS.hlsl", "main", "vs_5_0");
-		auto psDissolve = CompileShaderFromFile(L"Resources/shaders/DissolvePS.hlsl", "main", "ps_5_0");
+		auto vsDissolve = CompileShaderFromFile(L"Resources/Shaders/DissolveVS.hlsl", "main", "vs_5_0");
+		auto psDissolve = CompileShaderFromFile(L"Resources/Shaders/DissolvePS.hlsl", "main", "ps_5_0");
 		if (vsDissolve && psDissolve) {
 			CreatePSO("Dissolve", vsDissolve.Get(), psDissolve.Get());
 		}
 
-		// ★追加: スライムシェーダー
-		auto vsSlime = CompileShaderFromFile(L"Resources/shaders/SlimeVS.hlsl", "main", "vs_5_0");
-		auto psSlime = CompileShaderFromFile(L"Resources/shaders/SlimePS.hlsl", "main", "ps_5_0");
-		auto psSlimeNoFace = CompileShaderFromFile(L"Resources/shaders/SlimeNoFacePS.hlsl", "main", "ps_5_0");
+		// スライムシェーダー
+		auto vsSlime = CompileShaderFromFile(L"Resources/Shaders/SlimeVS.hlsl", "main", "vs_5_0");
+		auto psSlime = CompileShaderFromFile(L"Resources/Shaders/SlimePS.hlsl", "main", "ps_5_0");
+		auto psSlimeNoFace = CompileShaderFromFile(L"Resources/Shaders/SlimeNoFacePS.hlsl", "main", "ps_5_0");
 		if (vsSlime && psSlime) {
 			CreatePSO_Transparent("Slime", vsSlime.Get(), psSlime.Get(), false);
 		}
@@ -2948,10 +2947,10 @@ float4 main(PSIn i) : SV_TARGET { return i.color; }
 		}
 	}
 
-	// ★追加: 川用シェーダー
+	// 川用シェーダー
 	{
-		auto vsRiver = CompileShaderFromFile(L"Resources/shaders/RiverVS.hlsl", "main", "vs_5_0");
-		auto psRiver = CompileShaderFromFile(L"Resources/shaders/RiverPS.hlsl", "main", "ps_5_0");
+		auto vsRiver = CompileShaderFromFile(L"Resources/Shaders/RiverVS.hlsl", "main", "vs_5_0");
+		auto psRiver = CompileShaderFromFile(L"Resources/Shaders/RiverPS.hlsl", "main", "ps_5_0");
 		if (vsRiver && psRiver) {
 			D3D12_INPUT_ELEMENT_DESC layout[] = {
 			    {"POSITION", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
@@ -2984,10 +2983,10 @@ float4 main(PSIn i) : SV_TARGET { return i.color; }
 		}
 	}
 
-	// ★追加: 空間のゆがみ (Distortion) シェーダーの登録
+	// 空間のゆがみ (Distortion) シェーダーの登録
 	{
-		auto vs = CompileShaderFromFile(L"Resources/shaders/Distortion.hlsl", "main", "vs_5_0");
-		auto ps = CompileShaderFromFile(L"Resources/shaders/Distortion.hlsl", "ps_main", "ps_5_0");
+		auto vs = CompileShaderFromFile(L"Resources/Shaders/Distortion.hlsl", "main", "vs_5_0");
+		auto ps = CompileShaderFromFile(L"Resources/Shaders/Distortion.hlsl", "ps_main", "ps_5_0");
 		if (vs && ps) {
 			D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc{};
 			psoDesc.pRootSignature = rootSigDistortion_.Get();
@@ -3016,29 +3015,29 @@ float4 main(PSIn i) : SV_TARGET { return i.color; }
 		}
 	}
 
-	// ★追加: Skybox メッシュ＆パイプライン初期化
+	// Skybox メッシュ＆パイプライン初期化
 	InitSkyboxMesh();
 	InitSkyboxPipeline();
 
-	// ★追加: リング、シリンダー用シェーダー
+	// リング、シリンダー用シェーダー
 	CreateShaderPipelineTransparent(
-	    "BoostRing", L"Resources/shaders/BoostRingVS.hlsl", L"Resources/shaders/BoostRingPS.hlsl", true);
+	    "BoostRing", L"Resources/Shaders/BoostRingVS.hlsl", L"Resources/Shaders/BoostRingPS.hlsl", true);
 	CreateShaderPipelineTransparent(
-	    "EnergyCylinder", L"Resources/shaders/EnergyCylinderVS.hlsl", L"Resources/shaders/EnergyCylinderPS.hlsl", true,
+	    "EnergyCylinder", L"Resources/Shaders/EnergyCylinderVS.hlsl", L"Resources/Shaders/EnergyCylinderPS.hlsl", true,
 	    false);
 	CreateShaderPipelineTransparent(
-	    "EnergyBeam", L"Resources/shaders/EnergyCylinderVS.hlsl", L"Resources/shaders/EnergyBeamPS.hlsl", true, false);
+	    "EnergyBeam", L"Resources/Shaders/EnergyCylinderVS.hlsl", L"Resources/Shaders/EnergyBeamPS.hlsl", true, false);
 
-	// ★さらに未登録だったエフェクト群も追加登録 (JumpPadEnergyは加算、他は通常アルファブレンド)
+	// エフェクト用シェーダーを登録 (JumpPadEnergyは加算、他は通常アルファブレンド)
 	CreateShaderPipelineTransparent(
-	    "JumpPadEnergy", L"Resources/shaders/JumpPadEnergyVS.hlsl", L"Resources/shaders/JumpPadEnergyPS.hlsl", true);
+	    "JumpPadEnergy", L"Resources/Shaders/JumpPadEnergyVS.hlsl", L"Resources/Shaders/JumpPadEnergyPS.hlsl", true);
 	CreateShaderPipelineTransparent(
-	    "Heathaze", L"Resources/shaders/HeathazeVS.hlsl", L"Resources/shaders/HeathazePS.hlsl", false);
-	CreateShaderPipelineTransparent("Lift", L"Resources/shaders/LiftVS.hlsl", L"Resources/shaders/LiftPS.hlsl", false);
+	    "Heathaze", L"Resources/Shaders/HeathazeVS.hlsl", L"Resources/Shaders/HeathazePS.hlsl", false);
+	CreateShaderPipelineTransparent("Lift", L"Resources/Shaders/LiftVS.hlsl", L"Resources/Shaders/LiftPS.hlsl", false);
 	CreateShaderPipelineTransparent(
-	    "TimedBlock", L"Resources/shaders/TimedBlockVS.hlsl", L"Resources/shaders/TimedBlockPS.hlsl", false);
+	    "TimedBlock", L"Resources/Shaders/TimedBlockVS.hlsl", L"Resources/Shaders/TimedBlockPS.hlsl", false);
 	CreateShaderPipelineTransparent(
-	    "Glass", L"Resources/shaders/GlassVS.hlsl", L"Resources/shaders/GlassPS.hlsl", false);
+	    "Glass", L"Resources/Shaders/GlassVS.hlsl", L"Resources/Shaders/GlassPS.hlsl", false);
 
 	return true;
 }
@@ -3239,7 +3238,7 @@ bool Renderer::EnsureMipPipeline_() {
 	if (FAILED(D3D12SerializeRootSignature(&desc, D3D_ROOT_SIGNATURE_VERSION_1, &blob, &errors)) ||
 	    FAILED(dev_->CreateRootSignature(0, blob->GetBufferPointer(), blob->GetBufferSize(), IID_PPV_ARGS(&mipRoot_))))
 		return false;
-	auto cs = CompileShaderFromFile(L"Resources/shaders/GenerateMipsCS.hlsl", "main", "cs_5_0");
+	auto cs = CompileShaderFromFile(L"Resources/Shaders/GenerateMipsCS.hlsl", "main", "cs_5_0");
 	if (!cs)
 		return false;
 	D3D12_COMPUTE_PIPELINE_STATE_DESC pso{};
@@ -3416,7 +3415,7 @@ Renderer::TextureHandle Renderer::ReserveTexture_(const std::string& cacheKey) {
 	const uint32_t idx = AllocateSrvIndex();
 	Texture t{};
 	t.srvCpu = window_->SRV_CPU((int)idx);
-	t.srvCpuMaster = window_->SRV_CPU_Master((int)idx); // ★追加
+	t.srvCpuMaster = window_->SRV_CPU_Master((int)idx);
 	t.srvGpu = window_->SRV_GPU((int)idx);
 	const TextureHandle handle = (TextureHandle)textures_.size();
 	textures_.push_back(t);
@@ -3433,7 +3432,7 @@ void Renderer::SetTextureResource_(
 	srv.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
 	srv.Texture2D.MipLevels = mipCount;
 	dev_->CreateShaderResourceView(tex.Get(), &srv, t.srvCpu);
-	dev_->CreateShaderResourceView(tex.Get(), &srv, t.srvCpuMaster); // ★追加
+	dev_->CreateShaderResourceView(tex.Get(), &srv, t.srvCpuMaster);
 	t.res = tex;
 }
 
@@ -3536,7 +3535,7 @@ void Renderer::UploadTextures_(std::vector<TextureUpload>& uploads) {
 	cl->Close();
 	ID3D12CommandList* lists[] = {cl.Get()};
 	queue_->ExecuteCommandLists(1, lists);
-	// 1 回の待ちでまとめて送る (以前は 1 枚ごとに待っていた)
+	// 複数のテクスチャ転送の完了を、一度の GPU 待機で確認する。
 	WaitGPU();
 	for (size_t i = 0; i < uploads.size(); ++i) {
 		auto& u = uploads[i];
@@ -3729,7 +3728,7 @@ Renderer::MeshHandle Renderer::LoadObjMesh(const std::string& objFilePath) {
 	if (it != meshCache_.end())
 		return (MeshHandle)it->second;
 
-	// ★修正: 一時的なコマンドリストを作成して使用する
+	// 一時的なコマンドリストを作成して使用する
 	ComPtr<ID3D12CommandAllocator> alloc;
 	ComPtr<ID3D12GraphicsCommandList> cmd;
 	if (FAILED(dev_->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&alloc)))) {
@@ -3977,7 +3976,7 @@ void Renderer::DrawMesh(
 	drawCalls_.push_back(dc);
 }
 
-// ★追加: UVスケール・オフセット付きパーティクル描画
+// UVスケール・オフセット付きパーティクル描画
 void Renderer::DrawParticle(
     MeshHandle meshH, TextureHandle texH, const Transform& tr, const Vector4& mulColor, const Vector4& uvScaleOffset,
     const std::string& shaderName) {
@@ -4060,7 +4059,7 @@ void Renderer::DrawSprite9Slice(TextureHandle texH, const Sprite9SliceDesc& s) {
 			sd.color = s.color;
 			sd.rotationRad = s.rotationRad;
 			sd.uvScaleOffset = {u[col + 1] - u[col], v[row + 1] - v[row], u[col], v[row]};
-			sd.layer = s.layer; // ★追加: レイヤー引き継ぎ
+			sd.layer = s.layer; // レイヤー引き継ぎ
 			DrawSprite(texH, sd);
 		}
 	}
@@ -4081,7 +4080,7 @@ void Renderer::FlushOverlayQueue() {
 bool Renderer::InitFinalTarget_() {
 	if (finalSceneColor_)
 		return true;
-	// ★追加: 最終描画用テクスチャの作成
+	// 最終描画用テクスチャの作成
 	{
 		const UINT W = Engine::WindowDX::kW;
 		const UINT H = Engine::WindowDX::kH;
@@ -4117,7 +4116,7 @@ bool Renderer::InitFinalTarget_() {
 
 		const uint32_t idx = AllocateSrvIndex();
 		D3D12_CPU_DESCRIPTOR_HANDLE cpu = window_->SRV_CPU((int)idx);
-		D3D12_CPU_DESCRIPTOR_HANDLE cpuMaster = window_->SRV_CPU_Master((int)idx); // ★追加
+		D3D12_CPU_DESCRIPTOR_HANDLE cpuMaster = window_->SRV_CPU_Master((int)idx);
 		finalSrvGpu_ = window_->SRV_GPU((int)idx);
 		D3D12_SHADER_RESOURCE_VIEW_DESC srv{};
 		srv.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
@@ -4125,7 +4124,7 @@ bool Renderer::InitFinalTarget_() {
 		srv.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
 		srv.Texture2D.MipLevels = 1;
 		dev_->CreateShaderResourceView(finalSceneColor_.Get(), &srv, cpu);
-		dev_->CreateShaderResourceView(finalSceneColor_.Get(), &srv, cpuMaster); // ★追加
+		dev_->CreateShaderResourceView(finalSceneColor_.Get(), &srv, cpuMaster);
 	}
 
 	return true;
@@ -4302,7 +4301,7 @@ void Renderer::FlushSprites() {
 	if (spriteDrawCalls_.empty())
 		return;
 
-	// ★追加: レイヤー値で安定ソート（小さい値が先 = 奥に描画）
+	// レイヤー値で安定ソート（小さい値が先 = 奥に描画）
 	std::stable_sort(
 	    spriteDrawCalls_.begin(), spriteDrawCalls_.end(),
 	    [](const SpriteDrawCall& a, const SpriteDrawCall& b) { return a.desc.layer < b.desc.layer; });
@@ -4406,7 +4405,7 @@ void Renderer::FlushSprites() {
 	}
 }
 
-// ★追加: テキスト描画システム
+// テキスト描画システム
 
 bool Renderer::InitTextSystem(const std::string& fontPath, float pixelHeight) {
 	std::lock_guard<std::recursive_mutex> lock(textMutex_);
@@ -4694,7 +4693,7 @@ float Renderer::GetTextLineHeight(float scale, const std::string& fontPath) cons
 	return it->second->GetLineHeight() * scale;
 }
 
-// ★追加: 3Dライン描画（蓄積API）
+// 3Dライン描画（蓄積API）
 void Renderer::DrawLine3D(const Vector3& p0, const Vector3& p1, const Vector4& color, bool xray) {
 	if (xray) {
 		if (lineVerticesXRay_.size() + 2 > kMaxLineVertices)
@@ -4709,7 +4708,7 @@ void Renderer::DrawLine3D(const Vector3& p0, const Vector3& p1, const Vector4& c
 	}
 }
 
-// ★追加: 蓄積した3Dラインを一括描画
+// 蓄積した3Dラインを一括描画
 void Renderer::FlushLines() {
 	auto drawBuffer = [&](const std::vector<LineVertex>& vertices, ID3D12PipelineState* pipeline) {
 		if (vertices.empty())
@@ -4732,7 +4731,7 @@ void Renderer::FlushLines() {
 		list_->SetGraphicsRootSignature(rootSig3D_.Get());
 		list_->SetGraphicsRootConstantBufferView(0, cbFrameAddr_);
 
-		// ★追加: 未バインドによるDevice Removed防止 (b1, b2, t0, b3, t1, t2, t3)
+		// 未バインドによるDevice Removed防止 (b1, b2, t0, b3, t1, t2, t3)
 		list_->SetGraphicsRootConstantBufferView(1, cbFrameAddr_);
 		list_->SetGraphicsRootConstantBufferView(2, cbFrameAddr_);
 		list_->SetGraphicsRootDescriptorTable(3, textures_[0].srvGpu);
@@ -4858,7 +4857,7 @@ float4 main(float4 svpos:SV_POSITION, float2 uv:TEXCOORD0) : SV_TARGET {
     return float4(col, 1);
 })";
 		auto vs = CompileShader(kVSPP, "main", "vs_5_0");
-		auto ps = CompileShaderFromFile(L"Resources/shaders/CRTPost.hlsl", "main", "ps_5_0");
+		auto ps = CompileShaderFromFile(L"Resources/Shaders/CRTPost.hlsl", "main", "ps_5_0");
 		if (!ps)
 			ps = CompileShader(kPSPP, "main", "ps_5_0");
 		if (!vs || !ps)
@@ -4917,10 +4916,10 @@ float4 main(float4 svpos:SV_POSITION, float2 uv:TEXCOORD0) : SV_TARGET {
 		pso.DSVFormat = DXGI_FORMAT_UNKNOWN;
 		if (FAILED(dev_->CreateGraphicsPipelineState(&pso, IID_PPV_ARGS(&psoPP_))))
 			return false;
-		psoPPDefault_ = psoPP_; // ★追加: デフォルトPSOをバックアップ
+		psoPPDefault_ = psoPP_; // デフォルトPSOをバックアップ
 
-		// ★追加：PostProcessと同様、そのままテクスチャをコピーするだけのパイプライン
-		auto psChrono = CompileShaderFromFile(L"Resources/shaders/ChronoFocusPost.hlsl", "main", "ps_5_0");
+		// PostProcessと同様、そのままテクスチャをコピーするだけのパイプライン
+		auto psChrono = CompileShaderFromFile(L"Resources/Shaders/ChronoFocusPost.hlsl", "main", "ps_5_0");
 		if (!psChrono)
 			return false;
 		pso.PS = {psChrono->GetBufferPointer(), psChrono->GetBufferSize()};
@@ -4931,14 +4930,14 @@ float4 main(float4 svpos:SV_POSITION, float2 uv:TEXCOORD0) : SV_TARGET {
 			return false;
 		if (!InitHdrBloom_())
 			return false;
-		auto psCopy = CompileShaderFromFile(L"Resources/shaders/CopyPS.hlsl", "main", "ps_5_0");
+		auto psCopy = CompileShaderFromFile(L"Resources/Shaders/CopyPS.hlsl", "main", "ps_5_0");
 		if (psCopy) {
 			pso.PS = {psCopy->GetBufferPointer(), psCopy->GetBufferSize()};
 			dev_->CreateGraphicsPipelineState(&pso, IID_PPV_ARGS(&psoCopy_));
 		}
 
-		// ★追加: Rich PostProcess パイプライン
-		auto psRich = CompileShaderFromFile(L"Resources/shaders/RichPostProcess.hlsl", "main", "ps_5_0");
+		// Rich PostProcess パイプライン
+		auto psRich = CompileShaderFromFile(L"Resources/Shaders/RichPostProcess.hlsl", "main", "ps_5_0");
 		if (psRich) {
 			pso.PS = {psRich->GetBufferPointer(), psRich->GetBufferSize()};
 			Microsoft::WRL::ComPtr<ID3D12PipelineState> psoRich;
@@ -4947,8 +4946,8 @@ float4 main(float4 svpos:SV_POSITION, float2 uv:TEXCOORD0) : SV_TARGET {
 			}
 		}
 
-		// ★追加: Anime PostProcess パイプライン
-		auto psAnime = CompileShaderFromFile(L"Resources/shaders/AnimePostProcess.hlsl", "main", "ps_5_0");
+		// Anime PostProcess パイプライン
+		auto psAnime = CompileShaderFromFile(L"Resources/Shaders/AnimePostProcess.hlsl", "main", "ps_5_0");
 		if (psAnime) {
 			pso.PS = {psAnime->GetBufferPointer(), psAnime->GetBufferSize()};
 			Microsoft::WRL::ComPtr<ID3D12PipelineState> psoAnime;
@@ -4957,8 +4956,8 @@ float4 main(float4 svpos:SV_POSITION, float2 uv:TEXCOORD0) : SV_TARGET {
 			}
 		}
 
-		// ★追加: Grayscale ポストエフェクト
-		auto psGray = CompileShaderFromFile(L"Resources/shaders/GrayscalePost.hlsl", "main", "ps_5_0");
+		// Grayscale ポストエフェクト
+		auto psGray = CompileShaderFromFile(L"Resources/Shaders/GrayscalePost.hlsl", "main", "ps_5_0");
 		if (psGray) {
 			pso.PS = {psGray->GetBufferPointer(), psGray->GetBufferSize()};
 			Microsoft::WRL::ComPtr<ID3D12PipelineState> psoGray;
@@ -4967,8 +4966,8 @@ float4 main(float4 svpos:SV_POSITION, float2 uv:TEXCOORD0) : SV_TARGET {
 			}
 		}
 
-		// ★追加: Smoothing ポストエフェクト（平滑化 / ボックスフィルタ）
-		auto psSmooth = CompileShaderFromFile(L"Resources/shaders/SmoothingPost.hlsl", "main", "ps_5_0");
+		// Smoothing ポストエフェクト（平滑化 / ボックスフィルタ）
+		auto psSmooth = CompileShaderFromFile(L"Resources/Shaders/SmoothingPost.hlsl", "main", "ps_5_0");
 		if (psSmooth) {
 			pso.PS = {psSmooth->GetBufferPointer(), psSmooth->GetBufferSize()};
 			Microsoft::WRL::ComPtr<ID3D12PipelineState> psoSmooth;
@@ -4977,8 +4976,8 @@ float4 main(float4 svpos:SV_POSITION, float2 uv:TEXCOORD0) : SV_TARGET {
 			}
 		}
 
-		// ★追加: GaussianFilter ポストエフェクト（ガウシアンぼかし）
-		auto psGauss = CompileShaderFromFile(L"Resources/shaders/GaussianPost.hlsl", "main", "ps_5_0");
+		// GaussianFilter ポストエフェクト（ガウシアンぼかし）
+		auto psGauss = CompileShaderFromFile(L"Resources/Shaders/GaussianPost.hlsl", "main", "ps_5_0");
 		if (psGauss) {
 			pso.PS = {psGauss->GetBufferPointer(), psGauss->GetBufferSize()};
 			Microsoft::WRL::ComPtr<ID3D12PipelineState> psoGauss;
@@ -4987,8 +4986,8 @@ float4 main(float4 svpos:SV_POSITION, float2 uv:TEXCOORD0) : SV_TARGET {
 			}
 		}
 
-		// ★追加: OutlinePost ポストエフェクト（エッジ検出アウトライン）
-		auto psOutlinePost = CompileShaderFromFile(L"Resources/shaders/OutlinePost.hlsl", "main", "ps_5_0");
+		// OutlinePost ポストエフェクト（エッジ検出アウトライン）
+		auto psOutlinePost = CompileShaderFromFile(L"Resources/Shaders/OutlinePost.hlsl", "main", "ps_5_0");
 		if (psOutlinePost) {
 			pso.PS = {psOutlinePost->GetBufferPointer(), psOutlinePost->GetBufferSize()};
 			Microsoft::WRL::ComPtr<ID3D12PipelineState> psoOutlinePost;
@@ -4997,8 +4996,8 @@ float4 main(float4 svpos:SV_POSITION, float2 uv:TEXCOORD0) : SV_TARGET {
 			}
 		}
 
-		// ★追加: DepthBasedOutline ポストエフェクト
-		auto psDepthOutline = CompileShaderFromFile(L"Resources/shaders/DepthBasedOutline.hlsl", "main", "ps_5_0");
+		// DepthBasedOutline ポストエフェクト
+		auto psDepthOutline = CompileShaderFromFile(L"Resources/Shaders/DepthBasedOutline.hlsl", "main", "ps_5_0");
 		if (psDepthOutline) {
 			pso.PS = {psDepthOutline->GetBufferPointer(), psDepthOutline->GetBufferSize()};
 			Microsoft::WRL::ComPtr<ID3D12PipelineState> psoDepthOutline;
@@ -5007,8 +5006,8 @@ float4 main(float4 svpos:SV_POSITION, float2 uv:TEXCOORD0) : SV_TARGET {
 			}
 		}
 
-		// ★追加: Vignetting ポストエフェクト
-		auto psVignetting = CompileShaderFromFile(L"Resources/shaders/Vignetting.hlsl", "main", "ps_5_0");
+		// Vignetting ポストエフェクト
+		auto psVignetting = CompileShaderFromFile(L"Resources/Shaders/Vignetting.hlsl", "main", "ps_5_0");
 		if (psVignetting) {
 			pso.PS = {psVignetting->GetBufferPointer(), psVignetting->GetBufferSize()};
 			Microsoft::WRL::ComPtr<ID3D12PipelineState> psoVignetting;
@@ -5017,8 +5016,8 @@ float4 main(float4 svpos:SV_POSITION, float2 uv:TEXCOORD0) : SV_TARGET {
 			}
 		}
 
-		// ★追加: BoxFilter ポストエフェクト
-		auto psBoxFilter = CompileShaderFromFile(L"Resources/shaders/BoxFilter.hlsl", "main", "ps_5_0");
+		// BoxFilter ポストエフェクト
+		auto psBoxFilter = CompileShaderFromFile(L"Resources/Shaders/BoxFilter.hlsl", "main", "ps_5_0");
 		if (psBoxFilter) {
 			pso.PS = {psBoxFilter->GetBufferPointer(), psBoxFilter->GetBufferSize()};
 			Microsoft::WRL::ComPtr<ID3D12PipelineState> psoBoxFilter;
@@ -5027,8 +5026,8 @@ float4 main(float4 svpos:SV_POSITION, float2 uv:TEXCOORD0) : SV_TARGET {
 			}
 		}
 
-		// ★追加: Dissolve ポストエフェクト
-		auto psDissolve = CompileShaderFromFile(L"Resources/shaders/Dissolve.hlsl", "main", "ps_5_0");
+		// Dissolve ポストエフェクト
+		auto psDissolve = CompileShaderFromFile(L"Resources/Shaders/Dissolve.hlsl", "main", "ps_5_0");
 		if (psDissolve) {
 			pso.PS = {psDissolve->GetBufferPointer(), psDissolve->GetBufferSize()};
 			Microsoft::WRL::ComPtr<ID3D12PipelineState> psoDissolve;
@@ -5037,8 +5036,8 @@ float4 main(float4 svpos:SV_POSITION, float2 uv:TEXCOORD0) : SV_TARGET {
 			}
 		}
 
-		// ★追加: RadialBlur ポストエフェクト（放射状ぼかし）
-		auto psRadial = CompileShaderFromFile(L"Resources/shaders/RadialBlurPost.hlsl", "main", "ps_5_0");
+		// RadialBlur ポストエフェクト（放射状ぼかし）
+		auto psRadial = CompileShaderFromFile(L"Resources/Shaders/RadialBlurPost.hlsl", "main", "ps_5_0");
 		if (psRadial) {
 			pso.PS = {psRadial->GetBufferPointer(), psRadial->GetBufferSize()};
 			Microsoft::WRL::ComPtr<ID3D12PipelineState> psoRadial;
@@ -5047,8 +5046,8 @@ float4 main(float4 svpos:SV_POSITION, float2 uv:TEXCOORD0) : SV_TARGET {
 			}
 		}
 
-		// ★追加: Random ポストエフェクト（ランダムノイズ）
-		auto psRandom = CompileShaderFromFile(L"Resources/shaders/RandomPost.hlsl", "main", "ps_5_0");
+		// Random ポストエフェクト（ランダムノイズ）
+		auto psRandom = CompileShaderFromFile(L"Resources/Shaders/RandomPost.hlsl", "main", "ps_5_0");
 		if (psRandom) {
 			pso.PS = {psRandom->GetBufferPointer(), psRandom->GetBufferSize()};
 			Microsoft::WRL::ComPtr<ID3D12PipelineState> psoRandom;
@@ -5057,8 +5056,8 @@ float4 main(float4 svpos:SV_POSITION, float2 uv:TEXCOORD0) : SV_TARGET {
 			}
 		}
 
-		// ★追加: PaperFrame ポストエフェクト（和紙ビネットブレンド）
-		auto psFlowingWater = CompileShaderFromFile(L"Resources/shaders/FlowingWaterPost.hlsl", "main", "ps_5_0");
+		// PaperFrame ポストエフェクト（和紙ビネットブレンド）
+		auto psFlowingWater = CompileShaderFromFile(L"Resources/Shaders/FlowingWaterPost.hlsl", "main", "ps_5_0");
 		if (psFlowingWater) {
 			pso.PS = {psFlowingWater->GetBufferPointer(), psFlowingWater->GetBufferSize()};
 			Microsoft::WRL::ComPtr<ID3D12PipelineState> psoFlowingWater;
@@ -5067,7 +5066,7 @@ float4 main(float4 svpos:SV_POSITION, float2 uv:TEXCOORD0) : SV_TARGET {
 			}
 		}
 
-		auto psPaperFrame = CompileShaderFromFile(L"Resources/shaders/PaperFramePost.hlsl", "main", "ps_5_0");
+		auto psPaperFrame = CompileShaderFromFile(L"Resources/Shaders/PaperFramePost.hlsl", "main", "ps_5_0");
 		if (psPaperFrame) {
 			pso.PS = {psPaperFrame->GetBufferPointer(), psPaperFrame->GetBufferSize()};
 			Microsoft::WRL::ComPtr<ID3D12PipelineState> psoPaperFrame;
@@ -5096,7 +5095,7 @@ float4 main(float4 svpos:SV_POSITION, float2 uv:TEXCOORD0) : SV_TARGET {
 		if (FAILED(dev_->CreateRootSignature(
 		        0, fluidSig->GetBufferPointer(), fluidSig->GetBufferSize(), IID_PPV_ARGS(&rootSigLiquid_))))
 			return false;
-		auto psSurface = CompileShaderFromFile(L"Resources/shaders/FluidSurfacePS.hlsl", "main", "ps_5_0");
+		auto psSurface = CompileShaderFromFile(L"Resources/Shaders/FluidSurfacePS.hlsl", "main", "ps_5_0");
 		if (!psSurface)
 			return false;
 		D3D12_GRAPHICS_PIPELINE_STATE_DESC surfacePSO = pso;
@@ -5108,7 +5107,7 @@ float4 main(float4 svpos:SV_POSITION, float2 uv:TEXCOORD0) : SV_TARGET {
 			return false;
 
 		// 屈折の合成は、ピクセルごとの並べ替えの後でシーン全体を書き込む。
-		auto psMetaball = CompileShaderFromFile(L"Resources/shaders/MetaballPS.hlsl", "main", "ps_5_0");
+		auto psMetaball = CompileShaderFromFile(L"Resources/Shaders/MetaballPS.hlsl", "main", "ps_5_0");
 		if (psMetaball) {
 			// 背景の透過とすべての流体のレイヤーは PS で合成する。
 			D3D12_GRAPHICS_PIPELINE_STATE_DESC psoMeta = pso;
@@ -5131,7 +5130,7 @@ float4 main(float4 svpos:SV_POSITION, float2 uv:TEXCOORD0) : SV_TARGET {
 	if (!InitFinalTarget_())
 		return false;
 
-	// ★追加: Distortion用バックドロップテクスチャの作成
+	// Distortion用バックドロップテクスチャの作成
 	{
 		const UINT W = sceneWidth_;
 		const UINT H = sceneHeight_;
@@ -5150,20 +5149,20 @@ float4 main(float4 svpos:SV_POSITION, float2 uv:TEXCOORD0) : SV_TARGET {
 		uint32_t sIdx = AllocateSrvIndex();
 		backdropSrv_ = window_->SRV_GPU((int)sIdx);
 		backdropSrvCpu_ = window_->SRV_CPU((int)sIdx);
-		backdropSrvCpuMaster_ = window_->SRV_CPU_Master((int)sIdx); // ★追加
+		backdropSrvCpuMaster_ = window_->SRV_CPU_Master((int)sIdx);
 		D3D12_SHADER_RESOURCE_VIEW_DESC srv{};
 		srv.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
 		srv.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
 		srv.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
 		srv.Texture2D.MipLevels = 1;
 		dev_->CreateShaderResourceView(backdropColor_.Get(), &srv, backdropSrvCpu_);
-		dev_->CreateShaderResourceView(backdropColor_.Get(), &srv, backdropSrvCpuMaster_); // ★追加
+		dev_->CreateShaderResourceView(backdropColor_.Get(), &srv, backdropSrvCpuMaster_);
 	}
 
-	// ★追加: Distortion PSOの作成
+	// Distortion PSOの作成
 	{
-		auto vs = CompileShaderFromFile(L"Resources/shaders/Distortion.hlsl", "main", "vs_5_0");
-		auto ps = CompileShaderFromFile(L"Resources/shaders/Distortion.hlsl", "ps_main", "ps_5_0");
+		auto vs = CompileShaderFromFile(L"Resources/Shaders/Distortion.hlsl", "main", "vs_5_0");
+		auto ps = CompileShaderFromFile(L"Resources/Shaders/Distortion.hlsl", "ps_main", "ps_5_0");
 		if (vs && ps) {
 			D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc{};
 			psoDesc.pRootSignature = rootSigDistortion_.Get(); // 専用RootSig
@@ -5209,7 +5208,7 @@ float4 main(float4 svpos:SV_POSITION, float2 uv:TEXCOORD0) : SV_TARGET {
 		}
 	}
 
-	// ★追加: 液体メタボール用の専用レンダーターゲット作成
+	// 液体メタボール用の専用レンダーターゲット作成
 	{
 		const UINT W = sceneWidth_;
 		const UINT H = sceneHeight_;
@@ -5313,7 +5312,7 @@ void Renderer::SetPostEffect(const std::string& name) {
 		postHistoryValid_ = dlssHistoryValid_ = false;
 		if (psoCopy_) {
 			psoPP_ = psoCopy_;
-			ppEnabled_ = false; // ★修正: メモリ不足によるバインド漏れ（Device Removed）を防ぐため false に
+			ppEnabled_ = false; // メモリ不足によるバインド漏れ（Device Removed）を防ぐため false に
 		}
 		return;
 	}
@@ -5328,7 +5327,7 @@ void Renderer::SetPostEffect(const std::string& name) {
 	}
 }
 
-// ★追加: 外部用のカスタムレンダーターゲット生成
+// 外部用のカスタムレンダーターゲット生成
 Renderer::CustomRenderTarget Renderer::CreateRenderTarget(uint32_t width, uint32_t height) {
 	CustomRenderTarget target{};
 	target.width = width;
@@ -5385,7 +5384,7 @@ Renderer::CustomRenderTarget Renderer::CreateRenderTarget(uint32_t width, uint32
 	srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
 	srvDesc.Texture2D.MipLevels = 1;
 	dev_->CreateShaderResourceView(target.texture.Get(), &srvDesc, window_->SRV_CPU((int)srvIdx));
-	dev_->CreateShaderResourceView(target.texture.Get(), &srvDesc, window_->SRV_CPU_Master((int)srvIdx)); // ★追加
+	dev_->CreateShaderResourceView(target.texture.Get(), &srvDesc, window_->SRV_CPU_Master((int)srvIdx));
 
 	return target;
 }
@@ -5482,7 +5481,7 @@ void Renderer::BeginCollisionCheck(uint32_t maxPairs) {
 		}
 	}
 
-	// 以前のクリア処理は EndCollisionCheck へ統合
+	// 衝突要求のクリアは EndCollisionCheck が行う。
 }
 
 void Renderer::DispatchCollision(
@@ -5839,7 +5838,7 @@ Renderer::MeshHandle Renderer::CreateCylinderMesh(float radius, float height, ui
 }
 
 // ====================================================================
-// ★★★ Skybox / 環境マップ 実装 (CG4 00. 環境マップ) ★★★
+// Skybox / 環境マップ
 // ====================================================================
 
 Renderer::TextureHandle Renderer::LoadCubeMap(const std::string& ddsPath) {
@@ -6072,8 +6071,8 @@ bool Renderer::InitSkyboxPipeline() {
 	}
 
 	// シェーダーコンパイル
-	auto vs = CompileShaderFromFile(L"Resources/shaders/SkyboxVS.hlsl", "main", "vs_5_0");
-	auto ps = CompileShaderFromFile(L"Resources/shaders/SkyboxPS.hlsl", "main", "ps_5_0");
+	auto vs = CompileShaderFromFile(L"Resources/Shaders/SkyboxVS.hlsl", "main", "vs_5_0");
+	auto ps = CompileShaderFromFile(L"Resources/Shaders/SkyboxPS.hlsl", "main", "ps_5_0");
 	if (!vs || !ps) {
 		OutputDebugStringA("[Renderer] Skybox shader compile failed\n");
 		return false;
@@ -6133,7 +6132,7 @@ void Renderer::DrawSkybox() {
 	list_->DrawIndexedInstanced(skyboxIndexCount_, 1, 0, 0, 0);
 }
 
-// ★追加: 液体描画パス開始
+// 液体描画パス開始
 void Renderer::BeginLiquidPass() {
 	if (!liquidRT_[0] || !liquidDepthRT_[0])
 		return;
@@ -6163,7 +6162,7 @@ void Renderer::BeginLiquidPass() {
 	}
 }
 
-// ★追加: 液体描画パス終了
+// 液体描画パス終了
 void Renderer::EndLiquidPass() {
 	if (!liquidRT_[0] || !liquidDepthRT_[0] || !psoLiquidFilter_ || !liquidSurface_[2][1])
 		return;
@@ -6241,7 +6240,7 @@ void Renderer::EndLiquidPass() {
 	ppDepthState_ = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
 	list_->OMSetRenderTargets(1, &ppRtv_, FALSE, nullptr);
 
-	// ★追加（ステップ3）: Metaballシェーダーを使ってメイン画面に合成（コンポジット）
+	// Metaball シェーダーでメイン画面へ合成する。
 	if (pipelines_.count("Metaball")) {
 		list_->SetPipelineState(pipelines_["Metaball"].Get());
 		list_->SetGraphicsRootSignature(rootSigLiquid_.Get());
@@ -6278,10 +6277,10 @@ void Renderer::EndLiquidPass() {
 	ppDepthState_ = D3D12_RESOURCE_STATE_DEPTH_WRITE;
 	list_->OMSetRenderTargets(1, &ppRtv_, FALSE, &ppDepthDsv_);
 }
-// ★追加: GPU流体パーティクルシステム
+// GPU流体パーティクルシステム
 void Renderer::InitGPUFluid() {
 	CD3DX12_ROOT_PARAMETER computeParams[9]{};
-	// ★追加: 48 DWordsに変更 (デコイ情報など含め12x4=48)
+	// ルート定数はデコイ情報を含む 12 x 4 = 48 DWORDs。
 	computeParams[0].InitAsConstants(48, 0);
 	computeParams[1].InitAsUnorderedAccessView(0); // u0 (粒子)
 	computeParams[2].InitAsUnorderedAccessView(1); // u1 (格子ごとの個数)
@@ -6303,23 +6302,23 @@ void Renderer::InitGPUFluid() {
 	dev_->CreateRootSignature(
 	    0, sigCompute->GetBufferPointer(), sigCompute->GetBufferSize(), IID_PPV_ARGS(&rootSigFluid_));
 
-	auto csEmit = CompileShaderFromFile(L"Resources/shaders/FluidSimCS.hlsl", "Emit", "cs_5_0");
-	auto csExtract = CompileShaderFromFile(L"Resources/shaders/FluidSimCS.hlsl", "ExtractLostFluid", "cs_5_0");
-	auto csSyncLostGroup = CompileShaderFromFile(L"Resources/shaders/FluidSimCS.hlsl", "SyncLostFluidGroup", "cs_5_0");
+	auto csEmit = CompileShaderFromFile(L"Resources/Shaders/FluidSimCS.hlsl", "Emit", "cs_5_0");
+	auto csExtract = CompileShaderFromFile(L"Resources/Shaders/FluidSimCS.hlsl", "ExtractLostFluid", "cs_5_0");
+	auto csSyncLostGroup = CompileShaderFromFile(L"Resources/Shaders/FluidSimCS.hlsl", "SyncLostFluidGroup", "cs_5_0");
 	auto csAbsorbLostGroup =
-	    CompileShaderFromFile(L"Resources/shaders/FluidSimCS.hlsl", "AbsorbLostFluidGroup", "cs_5_0");
-	auto csInit = CompileShaderFromFile(L"Resources/shaders/FluidSimCS.hlsl", "InitParticles", "cs_5_0");
+	    CompileShaderFromFile(L"Resources/Shaders/FluidSimCS.hlsl", "AbsorbLostFluidGroup", "cs_5_0");
+	auto csInit = CompileShaderFromFile(L"Resources/Shaders/FluidSimCS.hlsl", "InitParticles", "cs_5_0");
 	auto csClearOriginal =
-	    CompileShaderFromFile(L"Resources/shaders/FluidSimCS.hlsl", "ClearOriginalIndices", "cs_5_0");
-	auto csClearCount = CompileShaderFromFile(L"Resources/shaders/FluidSimCS.hlsl", "ClearGridCount", "cs_5_0");
-	auto csCount = CompileShaderFromFile(L"Resources/shaders/FluidSimCS.hlsl", "CountParticles", "cs_5_0");
-	auto csPrefixSum = CompileShaderFromFile(L"Resources/shaders/FluidSimCS.hlsl", "PrefixSum", "cs_5_0");
-	auto csSort = CompileShaderFromFile(L"Resources/shaders/FluidSimCS.hlsl", "SortParticles", "cs_5_0");
+	    CompileShaderFromFile(L"Resources/Shaders/FluidSimCS.hlsl", "ClearOriginalIndices", "cs_5_0");
+	auto csClearCount = CompileShaderFromFile(L"Resources/Shaders/FluidSimCS.hlsl", "ClearGridCount", "cs_5_0");
+	auto csCount = CompileShaderFromFile(L"Resources/Shaders/FluidSimCS.hlsl", "CountParticles", "cs_5_0");
+	auto csPrefixSum = CompileShaderFromFile(L"Resources/Shaders/FluidSimCS.hlsl", "PrefixSum", "cs_5_0");
+	auto csSort = CompileShaderFromFile(L"Resources/Shaders/FluidSimCS.hlsl", "SortParticles", "cs_5_0");
 	auto csSortVelocity =
-	    CompileShaderFromFile(L"Resources/shaders/FluidSimCS.hlsl", "SortParticlesVelocity", "cs_5_0");
-	auto csDensity = CompileShaderFromFile(L"Resources/shaders/FluidSimCS.hlsl", "CalcDensity", "cs_5_0");
-	auto csForce = CompileShaderFromFile(L"Resources/shaders/FluidSimCS.hlsl", "CalcForce", "cs_5_0");
-	auto csWriteBack = CompileShaderFromFile(L"Resources/shaders/FluidSimCS.hlsl", "WriteBack", "cs_5_0");
+	    CompileShaderFromFile(L"Resources/Shaders/FluidSimCS.hlsl", "SortParticlesVelocity", "cs_5_0");
+	auto csDensity = CompileShaderFromFile(L"Resources/Shaders/FluidSimCS.hlsl", "CalcDensity", "cs_5_0");
+	auto csForce = CompileShaderFromFile(L"Resources/Shaders/FluidSimCS.hlsl", "CalcForce", "cs_5_0");
+	auto csWriteBack = CompileShaderFromFile(L"Resources/Shaders/FluidSimCS.hlsl", "WriteBack", "cs_5_0");
 
 	if (csEmit && csExtract && csSyncLostGroup && csAbsorbLostGroup && csInit && csClearOriginal && csClearCount &&
 	    csCount && csPrefixSum && csSort && csSortVelocity && csDensity && csForce && csWriteBack) {
@@ -6367,7 +6366,7 @@ void Renderer::InitGPUFluid() {
 		psoDesc.CS = {csWriteBack->GetBufferPointer(), csWriteBack->GetBufferSize()};
 		dev_->CreateComputePipelineState(&psoDesc, IID_PPV_ARGS(&psoFluidWriteBack_));
 		auto makePbf = [&](const char* entry, ComPtr<ID3D12PipelineState>& target) {
-			auto cs = CompileShaderFromFile(L"Resources/shaders/FluidSimCS.hlsl", entry, "cs_5_0");
+			auto cs = CompileShaderFromFile(L"Resources/Shaders/FluidSimCS.hlsl", entry, "cs_5_0");
 			if (!cs)
 				return;
 			psoDesc.CS = {cs->GetBufferPointer(), cs->GetBufferSize()};
@@ -6385,10 +6384,10 @@ void Renderer::InitGPUFluid() {
 	Microsoft::WRL::ComPtr<ID3DBlob> psDepthBlobs[3];
 	bool fluidShadersReady = true;
 	for (uint32_t phase = 0; phase < 3; ++phase) {
-		vsBlobs[phase] = CompileShaderFromFile(L"Resources/shaders/GPUFluidVS.hlsl", phaseEntries[phase], "vs_5_0");
-		psBlobs[phase] = CompileShaderFromFile(L"Resources/shaders/GPUFluidPS.hlsl", phaseEntries[phase], "ps_5_0");
+		vsBlobs[phase] = CompileShaderFromFile(L"Resources/Shaders/GPUFluidVS.hlsl", phaseEntries[phase], "vs_5_0");
+		psBlobs[phase] = CompileShaderFromFile(L"Resources/Shaders/GPUFluidPS.hlsl", phaseEntries[phase], "ps_5_0");
 		psDepthBlobs[phase] =
-		    CompileShaderFromFile(L"Resources/shaders/GPUFluidDepthPS.hlsl", phaseEntries[phase], "ps_5_0");
+		    CompileShaderFromFile(L"Resources/Shaders/GPUFluidDepthPS.hlsl", phaseEntries[phase], "ps_5_0");
 		fluidShadersReady = fluidShadersReady && vsBlobs[phase] && psBlobs[phase] && psDepthBlobs[phase];
 	}
 	if (fluidShadersReady) {
@@ -6415,7 +6414,7 @@ void Renderer::InitGPUFluid() {
 		rt0.SrcBlend = D3D12_BLEND_ONE;
 		rt0.DestBlend = D3D12_BLEND_ONE;
 		rt0.BlendOp = D3D12_BLEND_OP_ADD;
-		// ★変更: アルファ成分を加算合成にしてメタボールの密度を蓄積する
+		// アルファ成分を加算合成にしてメタボールの密度を蓄積する
 		rt0.SrcBlendAlpha = D3D12_BLEND_ONE;
 		rt0.DestBlendAlpha = D3D12_BLEND_ONE;
 		rt0.BlendOpAlpha = D3D12_BLEND_OP_ADD;
@@ -6447,8 +6446,8 @@ void Renderer::InitGPUFluid() {
 		}
 	}
 
-	auto vsShadow = CompileShaderFromFile(L"Resources/shaders/GPUFluidShadowVS.hlsl", "main", "vs_5_0");
-	auto psShadow = CompileShaderFromFile(L"Resources/shaders/GPUFluidShadowPS.hlsl", "main", "ps_5_0");
+	auto vsShadow = CompileShaderFromFile(L"Resources/Shaders/GPUFluidShadowVS.hlsl", "main", "vs_5_0");
+	auto psShadow = CompileShaderFromFile(L"Resources/Shaders/GPUFluidShadowPS.hlsl", "main", "ps_5_0");
 	if (vsShadow && psShadow) {
 		D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc{};
 		psoDesc.pRootSignature = rootSig3D_.Get();
@@ -6471,8 +6470,8 @@ void Renderer::InitGPUFluid() {
 		dev_->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&psoGPUFluidShadow_));
 	}
 
-	auto vsDebug = CompileShaderFromFile(L"Resources/shaders/GPUFluidDebugVS.hlsl", "main", "vs_5_0");
-	auto psDebug = CompileShaderFromFile(L"Resources/shaders/GPUFluidDebugPS.hlsl", "main", "ps_5_0");
+	auto vsDebug = CompileShaderFromFile(L"Resources/Shaders/GPUFluidDebugVS.hlsl", "main", "vs_5_0");
+	auto psDebug = CompileShaderFromFile(L"Resources/Shaders/GPUFluidDebugPS.hlsl", "main", "ps_5_0");
 	if (vsDebug && psDebug) {
 		D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc{};
 		psoDesc.pRootSignature = rootSig3D_.Get();
@@ -6542,7 +6541,7 @@ void Renderer::InitGPUFluid() {
 	    &heapProps, D3D12_HEAP_FLAG_NONE, &sortedDesc, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr,
 	    IID_PPV_ARGS(&gpuFluidScratchBuffer_));
 
-	// ★追加: AABB用バッファ
+	// AABB用バッファ
 	auto hpAABB = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
 	auto aabbDesc = CD3DX12_RESOURCE_DESC::Buffer(sizeof(FluidAABB) * (kFluidBoxCapacity + kFluidSphereCapacity));
 	dev_->CreateCommittedResource(
@@ -6578,7 +6577,7 @@ void Renderer::SetGPUFluidCore(
 	gpuFluidCoreFlowSpeed_ = flowSpeed;
 }
 
-// ★追加: デコイ用コア情報の設定
+// デコイ用コア情報の設定
 void Renderer::SetGPUFluidDecoy(const Vector3& pos, float attraction, const Vector3& scale, const Vector3& forward) {
 	gpuFluidDecoyPos_ = pos;
 	gpuFluidDecoyAttraction_ = attraction;
@@ -6726,7 +6725,7 @@ void Renderer::UpdateGPUFluid(float dt) {
 		uint32_t aabbCount;
 		Vector3 pad6;
 
-		// ★追加: デコイ用
+		// デコイ用
 		Vector3 decoyPos;
 		float decoyAttraction;
 		Vector3 decoyScale;
@@ -6738,21 +6737,15 @@ void Renderer::UpdateGPUFluid(float dt) {
 	if (simulationCount == 0 && isGPUFluidInitialized_)
 		return;
 
-	// 従来の流体は 1/30 の上限を保つ。変形はコントローラーの区切られたフレーム間隔を
-	// そのまま使い、1/100 未満に分けて PBF を 3 回反復する。
-	// ここで時間を捨てて目標速度を掛けていたため、33 ms をわずかに超えるフレームで
-	// カメラに対して速さが脈打っていた。
+	// 通常の流体は 1/30 秒を上限とする。変形はコントローラーの経過時間を使い、
+	// 体の移動とシミュレーションの時間をそろえる。PBF は各サブステップで 3 回反復する。
 	const bool controllerClock = fluidMorphTargets_.size() == kPlayerFluidParticles && fluidMorphDt_ >= 0;
 	if (controllerClock)
 		dt = fluidMorphDt_;
 	fluidSimulatedDt_ = (std::isfinite(dt) ? (std::clamp)(dt, 0.0f, controllerClock ? .05f : 1.0f / 30.0f) : 0.0f);
-	// 100 Hz なら通常の液体の毎秒 30 単位の上限でも進むのは 0.3 単位以下で、
-	// 0.4 単位以上の近傍半径より小さい。これで以前の、33 ms で 4〜5 サブステップに増える
-	// 負荷の跳ね上がりが、すでに遅いフレームをさらに遅くすることも避けられる。
-	// 変形用の時計は 1 段 12 ms (83 Hz) まで許す: 毎秒 30 単位でも進むのは
-	// 0.36 単位で、まだ 0.4 単位の近傍半径より小さい。100 Hz の上限では
-	// 20 ms をわずかに超えるフレームがすべて 3 サブステップ目 (GPU 約 2.7 ms) を払い、次のフレームも
-	// 20 ms を超えてしまっていた。いまは 20〜24 ms のフレームは 2 サブステップのまま。
+	// 通常の流体は 120 Hz、変形は 1 段 12 ms を上限に分割する。
+	// 変形は毎秒 30 単位でも 1 段の移動が 0.36 単位となり、0.4 単位の近傍半径に収まる。
+	// 20〜24 ms のフレームを 2 段に収め、サブステップ数による負荷の急増を抑える。
 	const float stepRate = controllerClock ? 1.f / .012f : 120.f;
 	const uint32_t substeps = (std::max)(1u, static_cast<uint32_t>(std::ceil(fluidSimulatedDt_ * stepRate - 0.0001f)));
 	if (fluidProfilerEnabled_) {
@@ -6832,7 +6825,7 @@ void Renderer::UpdateGPUFluid(float dt) {
 	}
 
 	list_->SetComputeRootSignature(rootSigFluid_.Get());
-	// ★追加: CBサイズを 48 DWords に更新
+	// 定数バッファの 48 DWORDs をルート定数へ渡す。
 	list_->SetComputeRoot32BitConstants(0, 48, &cb, 0);
 	list_->SetComputeRootUnorderedAccessView(1, gpuFluidBuffer_->GetGPUVirtualAddress());
 	list_->SetComputeRootUnorderedAccessView(2, gpuFluidGridCountBuffer_->GetGPUVirtualAddress());
@@ -6846,7 +6839,7 @@ void Renderer::UpdateGPUFluid(float dt) {
 	uint32_t threadGroups = ((simulationCount > 0 ? simulationCount : gpuFluidMaxParticles_) + 63) / 64;
 	uint32_t gridGroups = (65536 + 63) / 64;
 
-	// ★追加: 最初のフレームでバッファを確実にクリアする
+	// 最初のフレームでバッファを確実にクリアする
 	if (!isGPUFluidInitialized_ && psoFluidInit_) {
 		list_->SetPipelineState(psoFluidInit_.Get());
 		list_->Dispatch(threadGroups, 1, 1);
@@ -7172,7 +7165,7 @@ void Renderer::EmitGPUFluid(
 		uint32_t aabbCount;
 		Vector3 pad6;
 
-		// ★追加: デコイ用
+		// デコイ用
 		Vector3 decoyPos;
 		float decoyAttraction;
 		Vector3 decoyScale;
@@ -7250,7 +7243,7 @@ void Renderer::EmitGPUFluid(
 	cb.decoyForward = gpuFluidDecoyForward_;
 	cb.pad8 = 0.0f;
 
-	// ★追加: CBサイズを変更したので48DWordsに変更
+	// 定数バッファの 48 DWORDs をルート定数へ渡す。
 	list_->SetComputeRoot32BitConstants(0, 48, &cb, 0);
 	list_->SetComputeRootUnorderedAccessView(1, gpuFluidBuffer_->GetGPUVirtualAddress());
 	list_->SetComputeRootUnorderedAccessView(2, gpuFluidGridCountBuffer_->GetGPUVirtualAddress());
@@ -7543,7 +7536,7 @@ void Renderer::DrawGPUFluid(TextureHandle texture) {
 	list_->SetGraphicsRootSignature(rootSig3D_.Get());
 	list_->SetGraphicsRootConstantBufferView(0, cbFrameAddr_);
 
-	// ★追加: 未バインドによるDevice Removed防止 (CBV)
+	// 未バインドによるDevice Removed防止 (CBV)
 	list_->SetGraphicsRootConstantBufferView(1, cbLightAddr_);
 	list_->SetGraphicsRootConstantBufferView(2, cbLightAddr_);
 	list_->SetGraphicsRootConstantBufferView(4, cbLightAddr_);
@@ -7555,7 +7548,7 @@ void Renderer::DrawGPUFluid(TextureHandle texture) {
 	list_->ResourceBarrier(1, &b1);
 	list_->SetGraphicsRootShaderResourceView(6, gpuFluidBuffer_->GetGPUVirtualAddress());
 
-	// ★追加: 未バインドによるDevice Removed防止 (EnvMap)
+	// 未バインドによるDevice Removed防止 (EnvMap)
 	if (envMapSrvGpu_.ptr != 0)
 		list_->SetGraphicsRootDescriptorTable(7, envMapSrvGpu_);
 	else
@@ -7600,12 +7593,12 @@ void Renderer::DrawGPUFluidDebug() {
 	list_->SetGraphicsRootSignature(rootSig3D_.Get());
 	list_->SetGraphicsRootConstantBufferView(0, cbFrameAddr_);
 
-	// ★追加: 未バインドによるDevice Removed防止 (CBV)
+	// 未バインドによるDevice Removed防止 (CBV)
 	list_->SetGraphicsRootConstantBufferView(1, cbLightAddr_);
 	list_->SetGraphicsRootConstantBufferView(2, cbLightAddr_);
 	list_->SetGraphicsRootConstantBufferView(4, cbLightAddr_);
 
-	// ★追加: 未バインドによるDevice Removed防止 (Texture, ShadowMap, EnvMap)
+	// 未バインドによるDevice Removed防止 (Texture, ShadowMap, EnvMap)
 	list_->SetGraphicsRootDescriptorTable(3, textures_[0].srvGpu);
 	if (shadowSrv_.ptr != 0)
 		list_->SetGraphicsRootDescriptorTable(5, shadowSrv_);

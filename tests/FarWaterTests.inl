@@ -143,7 +143,7 @@ void TestFarWater(Gpu& g) {
 	     results = g.MakeBuffer(UINT(points.size()), 16);
 	struct Includes : ID3DInclude {
 		HRESULT __stdcall Open(D3D_INCLUDE_TYPE, LPCSTR name, LPCVOID, LPCVOID* data, UINT* bytes) override {
-			for (auto root : {"tests/", "Resources/shaders/"}) {
+			for (auto root : {"tests/", "Resources/Shaders/"}) {
 				std::ifstream file(std::string(root) + name, std::ios::binary | std::ios::ate);
 				if (!file)
 					continue;

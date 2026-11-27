@@ -18,6 +18,7 @@
 #include "../Chrono/DevourBattleRules.h"
 #include "../Chrono/ChallengeRules.h"
 #include "../Chrono/WeaponCraftRules.h"
+#include "../Chrono/MotifRules.h"
 #include "../Chrono/DevourGimmickRules.h"
 #include "../Chrono/DevourSpillRules.h"
 #include <filesystem>
@@ -1022,8 +1023,17 @@ private:
 	void FinishWeaponCraft();
 	BattleWeapon CraftedWeapon() const;
 	int BuildWeaponShape(const BattleWeapon&);
-	// 形の確かめ (--craft-shape-sheet。WeaponShapeCheck.cpp)
+	// 形の確かめ (--craft-shape-sheet。WeaponShapeCheck.cpp)・物のプロフィールの確かめ (--item-profile-sheet。ItemProfileCheck.cpp)
 	void WriteWeaponShapeSheet();
+	void WriteItemProfileSheet();
+	// 図鑑の物を全部プロフィールにする (ItemProfileCheck.cpp)・姿の型紙を読む・186 万通りの当てはめを数える (--motif-stats。MotifCheck.cpp)
+	std::vector<Chrono::ItemProfile> BuildItemProfiles(std::vector<Chrono::ItemProfileDetail::Grid>* grids = nullptr);
+	static std::vector<Chrono::Motif> LoadMotifs();
+	// (H3) 物 1 つのプロフィール (初めて使うときに作って取っておく。図鑑に無い物は nullptr) と、読んだ型紙 (一度だけ読む)
+	static const Chrono::ItemProfile* ItemProfileOf(const std::string& id);
+	static const std::vector<Chrono::Motif>& Motifs();
+	void WriteMotifStats();
+	void WriteMotifShapeCheck();
 	void UseBattleWeapon(GameContext&);
 	void TickBattleWeapons(GameContext&, float dt);
 	void DrawWeaponStickers(GameContext&);

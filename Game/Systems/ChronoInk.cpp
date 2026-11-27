@@ -70,22 +70,22 @@ void ChronoSystem::BuildInk(entt::registry& r) {
 		}
 	// 子分の縁取り: 見えている所と、壁越し (深度を見ない) の 2 種類
 	render->CreateShaderPipelineTransparent(
-	    "SlimeChildGlow", L"Resources/shaders/InstancedObjVS.hlsl", L"Resources/shaders/SlimeChildHighlightPS.hlsl",
+	    "SlimeChildGlow", L"Resources/Shaders/InstancedObjVS.hlsl", L"Resources/Shaders/SlimeChildHighlightPS.hlsl",
 	    true, true);
 	render->CreateShaderPipelineTransparent(
-	    "SlimeChildXRay", L"Resources/shaders/InstancedObjVS.hlsl", L"Resources/shaders/SlimeChildHighlightPS.hlsl",
+	    "SlimeChildXRay", L"Resources/Shaders/InstancedObjVS.hlsl", L"Resources/Shaders/SlimeChildHighlightPS.hlsl",
 	    true, false);
 	// 育ったときの水しぶき (しずくと霧。DevourGrowth.cpp)
 	render->CreateShaderPipelineTransparent(
-	    "SplashWater", L"Resources/shaders/InstancedObjVS.hlsl", L"Resources/shaders/SplashWaterPS.hlsl", false, true);
+	    "SplashWater", L"Resources/Shaders/InstancedObjVS.hlsl", L"Resources/Shaders/SplashWaterPS.hlsl", false, true);
 	render->CreateShaderPipelineTransparent(
-	    "SplashMist", L"Resources/shaders/InstancedObjVS.hlsl", L"Resources/shaders/SplashMistPS.hlsl", false, true);
+	    "SplashMist", L"Resources/Shaders/InstancedObjVS.hlsl", L"Resources/Shaders/SplashMistPS.hlsl", false, true);
 	// 消火栓の放水の霧にかかる虹 (DevourHose.cpp)
 	render->CreateShaderPipelineTransparent(
-	    "Rainbow", L"Resources/shaders/InstancedObjVS.hlsl", L"Resources/shaders/RainbowPS.hlsl", false, true);
+	    "Rainbow", L"Resources/Shaders/InstancedObjVS.hlsl", L"Resources/Shaders/RainbowPS.hlsl", false, true);
 	// スライムが通った所のぬれ跡
 	render->CreateShaderPipelineTransparent(
-	    "WetTrail", L"Resources/shaders/InstancedObjVS.hlsl", L"Resources/shaders/WetTrailPS.hlsl", false, true);
+	    "WetTrail", L"Resources/Shaders/InstancedObjVS.hlsl", L"Resources/Shaders/WetTrailPS.hlsl", false, true);
 	// 霧を描く四角 (XZ 面。法線 +Y をカメラへ向けて描く)
 	growQuad_ = render->CreateDynamicMesh(
 	    {{{-1, 0, -1, 1}, {0, 0}, {0, 1, 0}},
@@ -101,7 +101,7 @@ void ChronoSystem::BuildInk(entt::registry& r) {
 	slimeBeamMesh_ = render->LoadObjMesh("Resources/Models/Ink/slime-beam.obj");
 	// 敵の目や核などの光るシェーダー
 	render->CreateShaderPipelineTransparent(
-	    "DomainGlow", L"Resources/shaders/InstancedObjVS.hlsl", L"Resources/shaders/DomainGlowPS.hlsl", true, true);
+	    "DomainGlow", L"Resources/Shaders/InstancedObjVS.hlsl", L"Resources/Shaders/DomainGlowPS.hlsl", true, true);
 	// 誘導の液体の跡を消す
 	render->SetGuidedLiquidTrail({});
 	// 群れを作り、スライムの生活モードの準備をする

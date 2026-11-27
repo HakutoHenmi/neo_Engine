@@ -1,5 +1,6 @@
 #include "../Game/Scenes/GameScene.h"
 #include "../Game/Editor/EditorUI.h"
+#include "../Game/Editor/EditorEntityReference.h"
 #include "../Engine/ECS/System.h"
 #include "../Engine/Collision/CollisionSystem.h"
 #include "../Game/Scripts/ScriptLifecycle.h"
@@ -103,7 +104,7 @@ concept HasMutableContext = requires(T& value) { value.GetContext(); };
 template<class T>
 concept PublicHp = requires(T& value) { value.hp = 0.f; };
 template<class T>
-concept PublicMembership = requires(T& value) { value.m_entities.clear(); };
+concept PublicMembership = requires(T& value) { value.entities_.clear(); };
 static_assert(!CanClear<Game::SceneComponents> && !CanCreate<Game::SceneComponents>);
 static_assert(!HasMutableContext<Game::GameScene>);
 static_assert(!PublicHp<Game::HealthComponent>);
@@ -115,7 +116,71 @@ static_assert(
     std::is_same_v<
         decltype(std::declval<Engine::Renderer&>().GetGraphicsSettings()), const Engine::Renderer::GraphicsSettings&>);
 
+void TestEditorEntityUndo() {
+	entt::registry registry;
+	Game::SceneComponents components(registry);
+	const auto parent = registry.create();
+	const auto original = registry.create();
+	const auto child = registry.create();
+	const auto grandchild = registry.create();
+	registry.emplace<Game::HierarchyComponent>(original).parentId = parent;
+	registry.emplace<Game::HierarchyComponent>(child).parentId = original;
+	registry.emplace<Game::HierarchyComponent>(grandchild).parentId = child;
+	registry.emplace<Game::TransformComponent>(original).translate.x = 12;
+	registry.emplace<Game::TransformComponent>(child).translate.x = 3;
+	Game::EditorEntityReference target(&registry, original);
+	Game::EditorEntityReference earlierEdit(&registry, original);
+	Game::EditorEntityRelationships relationships(&registry, components, original);
+	Engine::CommandHistory history;
+	history.Record(std::make_unique<Engine::FunctionCommand>(
+	    "Move", [&] { components.get<Game::TransformComponent>(earlierEdit.Get()).translate.x = 5; },
+	    [&] { components.get<Game::TransformComponent>(earlierEdit.Get()).translate.x = 12; }));
+
+	// 削除後の番号が別の物に再利用されても、復元先とそれ以前の履歴を混同しない。
+	relationships.Detach(components, original);
+	registry.destroy(original);
+	assert(components.get<Game::HierarchyComponent>(child).parentId == entt::null);
+	const auto reused = registry.create();
+	registry.emplace<Game::TransformComponent>(reused).translate.x = 99;
+	assert(entt::to_entity(reused) == entt::to_entity(original));
+	for (int cycle = 0; cycle < 3; ++cycle) {
+		const auto restored = registry.create();
+		registry.emplace<Game::TransformComponent>(restored).translate.x = 12;
+		target.Rebind(restored);
+		relationships.Restore(components, restored);
+		Game::EditorEntityReference laterEdit(&registry, restored);
+		assert(earlierEdit.Get() == restored && laterEdit.Get() == restored);
+		assert(components.get<Game::HierarchyComponent>(restored).parentId == parent);
+		assert(components.get<Game::HierarchyComponent>(child).parentId == restored);
+		assert(components.get<Game::HierarchyComponent>(grandchild).parentId == child);
+		assert(components.get<Game::TransformComponent>(child).translate.x == 3);
+		assert(history.Undo() && components.get<Game::TransformComponent>(restored).translate.x == 5);
+		assert(history.Redo() && components.get<Game::TransformComponent>(restored).translate.x == 12);
+		assert(components.get<Game::TransformComponent>(reused).translate.x == 99);
+		relationships.Detach(components, restored);
+		registry.destroy(restored);
+	}
+
+	// 親自身が復元されて ID が変わった場合も、現在の親につなぐ。
+	Game::EditorEntityReference parentReference(&registry, parent);
+	registry.destroy(parent);
+	const auto restoredParent = registry.create();
+	parentReference.Rebind(restoredParent);
+	const auto restored = registry.create();
+	target.Rebind(restored);
+	relationships.Restore(components, restored);
+	assert(components.get<Game::HierarchyComponent>(restored).parentId == restoredParent);
+	assert(components.get<Game::HierarchyComponent>(child).parentId == restored);
+
+	// 別シーンで同じ ID を使っても履歴の参照は共有しない。
+	entt::registry otherRegistry;
+	Game::EditorEntityReference other(&otherRegistry, restored);
+	target.Rebind(registry.create());
+	assert(other.Get() == restored);
+}
+
 int main() {
+	TestEditorEntityUndo();
 	TestScriptLifecycle();
 	TestScriptEdits();
 	// Existing HP rules, including the delayed death flag and sandbag values.
