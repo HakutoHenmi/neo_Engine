@@ -5,8 +5,7 @@ SamplerState smp : register(s0);
 
 // アウトライン用ピクセルシェーダー
 // テクスチャの色を元にして、自然な暗い輪郭色（Colored Outline）を作る
-float4 main(VSOutput input) : SV_TARGET
-{
+float4 main(VSOutput input) : SV_TARGET {
     // テクスチャのサンプリング
     float4 texColor = tex.Sample(smp, input.uv);
     

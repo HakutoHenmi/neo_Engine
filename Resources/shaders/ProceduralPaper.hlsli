@@ -2,14 +2,14 @@
 #ifndef PROCEDURAL_PAPER_HLSLI
 #define PROCEDURAL_PAPER_HLSLI
 
-// 3D Hash
+// 3D のハッシュ
 float hash(float3 p) {
     p = frac(p * 0.3183099 + 0.1);
     p *= 17.0;
     return frac(p.x * p.y * p.z * (p.x + p.y + p.z));
 }
 
-// 3D Value Noise
+// 3D の値ノイズ
 float noise(float3 x) {
     float3 i = floor(x);
     float3 f = frac(x);
@@ -22,7 +22,7 @@ float noise(float3 x) {
                      lerp(hash(i + float3(0,1,1)), hash(i + float3(1,1,1)), f.x), f.y), f.z);
 }
 
-// FBM (Fractal Brownian Motion)
+// FBM (フラクタルブラウン運動)
 float fbm(float3 p) {
     float f = 0.0;
     float w = 0.5;

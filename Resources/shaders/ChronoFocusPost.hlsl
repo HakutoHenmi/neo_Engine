@@ -1,5 +1,5 @@
-// Chrono-only treatment. The aiming area stays sharp; temporal blur and cool
-// grading live at the periphery, with UI composited separately afterwards.
+// スライム本編専用の処理。狙う範囲はくっきりさせ、時間方向のぼかしと寒色の
+// 色調は周辺にだけかける。UI はその後で別に合成する。
 Texture2D scene : register(t0);
 Texture2D<float> sceneDepth : register(t3);
 Texture2D colorLut : register(t1);
@@ -29,7 +29,7 @@ float3 viewPosition(float2 uv,float z){return float3((uv*float2(2,-2)+float2(-1,
 float ambientShadow(float2 uv,float z){
     if(z>dofFar*.95)return 1;float sum=0,weights=0;
     uint w,h;gtao.GetDimensions(w,h);int2 center=int2(uv*float2(w,h));
-    // Bilateral spatial reconstruction keeps foreground AO off distant surfaces.
+    // 双方向フィルターによる空間的な再構成で、手前の AO が遠くの面ににじまないようにする。
     [unroll]for(int y=-1;y<=1;++y)[unroll]for(int x=-1;x<=1;++x){
         int2 at=clamp(center+int2(x,y),int2(0,0),int2(w-1,h-1));float2 sample=gtao.Load(int3(at,0)).rg;
         float weight=exp(-abs(sample.y-z)/max(.08,z*.005))*(x==0?2:1)*(y==0?2:1);
@@ -53,8 +53,8 @@ float3 rayLighting(Texture2D<float4> light,float2 uv,float z){
     float raw=dofFar/(dofFar-dofNear)-dofNear*dofFar/(dofFar-dofNear)/max(z,.001);
     uint dw,dh;sceneDepth.GetDimensions(dw,dh);int2 pixel=clamp(int2(uv*float2(dw,dh)),0,int2(dw,dh)-1);
     bool fluid=useFluidDepth>.5&&fluidSurfaceDepth.Load(int3(pixel,0))>0&&raw<sceneDepth.Load(int3(pixel,0))-.0000001;
-    // Reciprocal view depth is affine on a projected plane. Predict each tap's
-    // depth on that plane so steep distant ground does not alternate lit rows.
+    // 視点からの深度の逆数は、投影した平面上では線形になる。各サンプルの深度を
+    // その平面上で予測し、遠くの急な地面で明るい行が交互に出ないようにする。
     float centerInverse=1/max(z,.001);
     float2 gradient=inverseDepthGradient(uv,z,float2(dw,dh));
     [unroll]for(int y=-2;y<=2;++y)[unroll]for(int x=-2;x<=2;++x){
@@ -80,10 +80,10 @@ float rtShadowFactor(float2 uv,float centerZ){
         visibility+=saturate(tap.x)*weight;weights+=weight;}
     return lerp(1,weights>.0001?saturate(visibility/weights):1,rtStrength);
 }
-// Ambient occlusion and RT shadow darkening. Under DLSS this is multiplied into
-// the jittered HDR scene before upscaling (OcclusionComposite.hlsl) so DLSS
-// resolves its edges; applying it afterwards made contact shadows shimmer with
-// the jitter and stair-step at the render resolution.
+// 環境遮蔽と RT 影による暗さ。DLSS 時はアップスケール前のジッター付き HDR シーンに
+// 掛け合わせ (OcclusionComposite.hlsl)、DLSS に縁を解決させる。後からかけると
+// 接地の影がジッターでちらつき、描画解像度の階段状のギザギザが
+// 出ていた。
 float occlusionFactor(float2 uv,float centerZ){
     float factor=rtShadowFactor(uv,centerZ);
     if(ambientOcclusion>.001)factor*=ambientShadow(uv,centerZ);
@@ -108,7 +108,7 @@ float4 main(float4 position:SV_POSITION,float2 uv:TEXCOORD0):SV_TARGET {
                 [unroll]for(int sample=1;sample<6;++sample){float2 at=saturate(uv-velocity*(sample/5.0));float depth=viewDepth(at);
                     float w=saturate(1-abs(depth-centerZ)/max(.5,centerZ*.03));sum+=scene.SampleLevel(linearClamp,at,0).rgb*w;weight+=w;}color=sum/weight;}}
     }
-    // Normal gameplay skips the eight temporal-blur samples entirely.
+    // 通常のゲーム中は、時間方向のぼかしの 8 サンプルを丸ごと省く。
     [branch]if(amount>.001){float3 blurred=0;
         [unroll]for(int i=0;i<8;++i)blurred+=scene.Sample(linearClamp,saturate(uv-delta*(i/7.0)*.06*strength*amount)).rgb;
         color=lerp(original,blurred/8,amount*.8);
@@ -116,7 +116,7 @@ float4 main(float4 position:SV_POSITION,float2 uv:TEXCOORD0):SV_TARGET {
     [branch]if(dofStrength>.001){
         float z=viewDepth(uv);
         float coc=saturate((z-dofFocus-dofRange)/100)*dofStrength;
-        // Preserve the boss's depth band and bright attack/trail colors.
+        // ボスの深度の帯と、明るい攻撃 / 軌跡の色を残す。
         coc*=smoothstep(45,85,abs(z-dofBossDepth));
         float bright=max(original.r,max(original.g,original.b));
         float vivid=bright-min(original.r,min(original.g,original.b));
@@ -127,7 +127,7 @@ float4 main(float4 position:SV_POSITION,float2 uv:TEXCOORD0):SV_TARGET {
             float3 sum=color;float weight=1;
             [unroll]for(int sampleIndex=0;sampleIndex<8;++sampleIndex){float2 at=saturate(uv+taps[sampleIndex]*radius);
                 float sampleZ=viewDepth(at);float w=smoothstep(dofFocus+dofRange-8,dofFocus+dofRange,sampleZ);
-                // Keep separate depth surfaces from bleeding into silhouette edges.
+                // 別々の深度の面が輪郭の縁へにじまないようにする。
                 w*=saturate(1-abs(sampleZ-z)/max(8,z*.03));
                 sum+=scene.SampleLevel(linearClamp,at,0).rgb*w;weight+=w;}
             color=lerp(color,sum/weight,coc);
@@ -139,7 +139,7 @@ float4 main(float4 position:SV_POSITION,float2 uv:TEXCOORD0):SV_TARGET {
     color=max(0,color);
     [branch]if(bloom>.001)color+=hdrBloom.SampleLevel(linearClamp,uv,0).rgb*bloom;
     [branch]if(lensFlare>.001){float3 flare=0;
-        // Bright-source ghosts; dark areas contribute no flare.
+        // 明るい光源のゴースト。暗い所はフレアに寄与しない。
         [unroll]for(int ghost=1;ghost<=3;++ghost)flare+=highLight(.5-(uv-.5)*(ghost*.65));
         color+=flare/3*lensFlare*pow(saturate(1-length(uv-.5)),2);
     }
@@ -149,7 +149,7 @@ float4 main(float4 position:SV_POSITION,float2 uv:TEXCOORD0):SV_TARGET {
     color=lerp(color,float3(.8,.08,.06),edge*damage*.22);
     // 大きくなった: 飲んだ直後だけ、画面の縁がうっすら金色に光ってすっと消える (主役は体としずくなので控えめに)
     [branch]if(grow>.001){float rim=smoothstep(.3,.8,length(delta*float2(1,1.2)))*grow;color+=float3(1,.72,.28)*rim*.08;}
-    // Scene lighting is linear (sRGB albedo sampling); the UNORM display target needs explicit encoding.
+    // シーンのライティングは線形 (sRGB のアルベドを読む)。UNORM の表示先には明示的な変換が要る。
     color=max(0,color*exposure);
     color=saturate((color*(2.51*color+.03))/(color*(2.43*color+.59)+.14));
     color=lerp(color*12.92,1.055*pow(color,1/2.4)-.055,step(.0031308,color));

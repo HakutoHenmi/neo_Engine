@@ -91,11 +91,11 @@ Hierarchy は `Category`（部品構成とゲームの分類ごと）・`Name`�
 | 原因 | 修正内容 |
 | --- | --- |
 | 粒子の丸い輪郭がそのまま影になる | [液体の影](../Resources/shaders/FluidShadow.hlsl)を追加。本体と同じ密度場・同じ表面の閾値を光の方向から探索し、表面の深度を書く |
-| 影と本体の更新がずれる | [描画順序](../Engine/Renderer.cpp)を流体更新→密度再構成→影→本体へ変更。再構成はフレームに1回だけ行う |
+| 影と本体の更新がずれる | [描画順序](../Engine/Graphics/Renderer.cpp)を流体更新→密度再構成→影→本体へ変更。再構成はフレームに1回だけ行う |
 | 成長後のカメラ距離を毎フレーム設定し直して減衰させていた | [追従カメラ](../Game/Systems/ChronoInk.cpp)の目標距離に成長分を足し、距離を継続して補間する |
 | CPUとGPUの時間が違い、33ms超のフレームで追従速度を増幅していた | [ゲームの時計](../Game/Scenes/GameScene.cpp)をエンジンと共有。GPUへ実際の移動時間を渡し、同じ時間を1/100秒以下の刻みに分割して計算する。速度の倍率補償を撤去 |
 | 目標点6600個で同じ地面判定・密度・物性を毎回再計算 | [目標点の生成](../Game/Systems/SlimeLife.cpp)で個体共通の値を1回だけ計算。地面のレイ判定は粒子ごとから個体ごとへ削減 |
-| 大きい武器の描画グリッドがセル単位で切り替わる | [描画領域](../Engine/FluidVolumeDomain.h)を本体へ連続追従させ、移動時のサンプリング位置の飛びを除去。光源のシャドウマップはテクセル単位で安定化 |
+| 大きい武器の描画グリッドがセル単位で切り替わる | [描画領域](../Engine/Fluid/FluidVolumeDomain.h)を本体へ連続追従させ、移動時のサンプリング位置の飛びを除去。光源のシャドウマップはテクセル単位で安定化 |
 
 `tests/Run-SlimeLifeTests.ps1`で通常形状・3武器と最大サイズの表面／影を検証します。`tests/Run-SlimeLifeSmoke.ps1 -Executable build/growth/bin/DirectXGameApp.exe -MotionOnly`は成長3段階・ハンマー544／1200・剣1200・飛行機1200を移動させ、フレーム時間を変化させた状態のカメラ距離とGPUへ渡す時間を記録します。結果は`tests/out/slime-life-motion.txt`、移動中の影の画像は`tests/out/slime-life-shadow-moving.png`です。
 
@@ -120,7 +120,7 @@ RTX 4060 Laptop GPU・Developmentの同じサイズ別シナリオで、前回�
 | [流体ソルバー](../Resources/shaders/FluidSimCS.hlsl) | 個体の粒子間隔で距離を正規化し、密度・圧力・粘性を同じ基準で計算。大きくなっても近傍粒子を失わない |
 | [個体ごとの近傍探索](../Resources/shaders/FluidSimCS.hlsl) | 個体ごとのセル幅と所有者を含むハッシュを使い、大小の個体が混在しても他個体の粒を大量に探索しない。モーフ用テーブルは65536から8192バケットへ縮小 |
 | [表面再構成](../Resources/shaders/FluidVolumeCS.hlsl) | 近傍の入れ替わりで向きが変わるPCAをモーフ表面から外し、粒子間隔に比例した球状カーネルを使う |
-| [描画領域](../Engine/FluidVolume.cpp) | 粒の幅とセル幅を一緒に拡大。固定6600粒子のまま、1粒あたりの描画処理量を大きさに依存させない |
+| [描画領域](../Engine/Fluid/FluidVolume.cpp) | 粒の幅とセル幅を一緒に拡大。固定6600粒子のまま、1粒あたりの描画処理量を大きさに依存させない |
 
 ゲーム内の成長上限1200と粒子数6600は維持しています。GPU回帰テストはさらに長さ16倍まで密度・圧力補正・粘性の一致を確認し、異なる大きさの13個体を重ねても密度が混ざらないことを検証します。最大サイズの通常形状・3武器でも、表面描画の処理範囲は1軸10セル、代替粒の重ね描きは0でした。
 
@@ -137,7 +137,7 @@ Developmentビルドと上記検証が通過し、7条件すべてで粒子の�
 | ハンマーが横向きのまま振られる | 頭部の長い軸を振り下ろす面に沿う向きへ90度回転。縦の振り上げ・叩きつけを共通の描画・命中軌道で計算 |
 | 剣のコンボが不自然 | 斜め斬り・回転斬り・コンボ受付・追加命中区間を撤去。毎回0.64秒の横薙ぎだけを行う。次の横薙ぎの入力予約、変形維持、R／Bでの解除は継続 |
 
-主な変更先は [武器ルール](../Game/Chrono/SlimeWeaponRules.h)、[入力・GPU目標点・HUD](../Game/Systems/SlimeLife.cpp)、[GPUの目標位置](../Resources/shaders/FluidMorph.hlsli)、[サブステップの時刻](../Engine/Renderer.cpp)、[描画グリッド](../Engine/FluidVolumeDomain.h)、[目の配置](../Resources/shaders/SlimeDecoration.hlsli) です。
+主な変更先は [武器ルール](../Game/Chrono/SlimeWeaponRules.h)、[入力・GPU目標点・HUD](../Game/Systems/SlimeLife.cpp)、[GPUの目標位置](../Resources/shaders/FluidMorph.hlsli)、[サブステップの時刻](../Engine/Graphics/Renderer.cpp)、[描画グリッド](../Engine/Fluid/FluidVolumeDomain.h)、[目の配置](../Resources/shaders/SlimeDecoration.hlsli) です。
 
 一定速度12の移動を再現したGPU検証では、30fpsでの速度の標準偏差が0.49220から表示精度で0.00000へ減少し、60／120fpsも同じ精度で安定しました。これは目標位置の段差だけを調べるテストで、液体らしい揺れや命中時のカメラ演出は残しています。`tests/Run-SlimeLifeTests.ps1`でCPU・GPUの軌道、移動、ハンマー・剣・飛行機・大型スライムの表面と目を確認できます。`--face-only`ではカメラを回しても草原の顔の向きが変わらないことも確認します。
 
@@ -152,7 +152,7 @@ Developmentのビルド（警告0・エラー0）、CPU/GPUテスト、実ゲー
 | 武器が静止した形へ強く固定され、厚い液体の光が吸収されすぎる | [武器の共通姿勢](../Game/Chrono/SlimeWeaponRules.h)に体積を保つゆっくりした伸縮・せん断を追加。[追従処理](../Game/Systems/SlimeLife.cpp)は待機中のばねを弱め、攻撃時は従来の追従力を使う。[光学処理](../Resources/shaders/FluidRaymarch.hlsl)の吸収を成長倍率に合わせて調整 |
 | 泡が通常スライムの楕円形の範囲から生成され、ハンマーの頭部へ届かない | [泡の配置](../Resources/shaders/SlimeDecoration.hlsli)を本体の実際のGPU粒子に追従させ、頭部と柄の内部へ分散。皮膚に接する前に薄くし、外へ抜ける泡は12個・小さめ・ゆっくりに変更 |
 | 成長して粒が疎になっても表面の再構成幅が固定で、粒の密度や近傍の変化が凹凸になる | [表面再構成](../Resources/shaders/FluidVolumeCS.hlsl)で成長に合わせて粒の幅を広げ、細長いカーネルを球に近づける。描画の体積は目標密度から求め、物理密度の細かな変動で表面を膨縮させない |
-| 目と泡だけ旧来の小さい成長倍率を使い、目を液体内部のコアへ置いていた | [描画定数](../Engine/FluidVolume.cpp)を実際の成長倍率に合わせ、目を実際の液体表面へ配置。続く正面配置の修正で、草原は体の正面、調合室はカメラ側を使う |
+| 目と泡だけ旧来の小さい成長倍率を使い、目を液体内部のコアへ置いていた | [描画定数](../Engine/Fluid/FluidVolume.cpp)を実際の成長倍率に合わせ、目を実際の液体表面へ配置。続く正面配置の修正で、草原は体の正面、調合室はカメラ側を使う |
 
 通常スライムの自由な流動、着地の揺れ、変形維持・連打・手動解除は継続します。通常スライムの粒を個別の目標点へ固定する処理は追加していません。
 
@@ -168,7 +168,7 @@ Developmentのビルド（警告0・エラー0）、CPU/GPUテスト、実ゲー
 - 領域の余白に、粒の広がり・表面フィルター・境界のぼかし・グリッドへの丸めを含め、成長した武器の先端も一つの流体表面で描きます。
 - 遠方の代替描画でも、現在の素材色・透明度を参照するよう統一しました。
 
-変更先は [描画領域の余白](../Engine/FluidVolumeDomain.h)、[領域の組み立て](../Engine/FluidVolume.cpp)、[表面と代替描画の境界・色](../Resources/shaders/FluidRaymarch.hlsl) です。質量232の青いハンマーを使ったGPU再現テストでは、誤って代替描画へ切り替わる粒子が6021／6600個から0個になり、正面・上・下の3視点で粒の重ね描きも0ピクセルになりました。実行は`tests/Run-FluidTests.ps1 -Case '--surface-only'`。この検証は`Run-SlimeLifeTests.ps1`にも追加しました。
+変更先は [描画領域の余白](../Engine/Fluid/FluidVolumeDomain.h)、[領域の組み立て](../Engine/Fluid/FluidVolume.cpp)、[表面と代替描画の境界・色](../Resources/shaders/FluidRaymarch.hlsl) です。質量232の青いハンマーを使ったGPU再現テストでは、誤って代替描画へ切り替わる粒子が6021／6600個から0個になり、正面・上・下の3視点で粒の重ね描きも0ピクセルになりました。実行は`tests/Run-FluidTests.ps1 -Case '--surface-only'`。この検証は`Run-SlimeLifeTests.ps1`にも追加しました。
 
 Developmentビルド、CPU・GPUの武器／表面テスト、細かい解像度の水面・遠方表示・目と泡の描画、実ゲームの成長・変形維持・連打・手動解除が通過しました。実ゲームのハンマー画像でも頭部の粒の重なりが消え、粒子数6600を維持し、D3D12の検証エラーはありません。
 
@@ -237,7 +237,7 @@ DevelopmentビルドとCPU・GPUテストが通過しました。実ゲームで
 | 従来モードのボス（9状態） | `BossActionSystem::Update` のswitch内で行動・パターン選択・攻撃の後始末を処理 | [BossActionStates.inl](../Game/States/BossActionStates.inl) へ分割。攻撃パターンの選択を共通化し、攻撃中断時も後始末を実行 |
 | SlimeLifeなどで使用する群れ敵（6状態） | `TickSwarm` のif列で出現・追跡・予告・突進・回復・死亡を処理 | [SwarmStates.inl](../Game/Chrono/SwarmStates.inl) へ分割。各状態クラスが行動と次状態を決定 |
 
-共通の基底クラスは [Engine/IState.h](../Engine/IState.h) です。Systemは現在の状態の仮想関数を呼び、通常の遷移先は状態クラスが決めます。プレイヤー・通常敵・ボスの `ChangeState` は「旧状態のExit → 状態とタイマーの更新 → 新状態のEnter」の順で処理します。被弾・死亡を扱う [CombatSystem](../Game/Systems/CombatSystem.h) と [HealthSystem](../Game/Systems/HealthSystem.h) もこの経路を使います。
+共通の基底クラスは [Engine/Core/IState.h](../Engine/Core/IState.h) です。Systemは現在の状態の仮想関数を呼び、通常の遷移先は状態クラスが決めます。プレイヤー・通常敵・ボスの `ChangeState` は「旧状態のExit → 状態とタイマーの更新 → 新状態のEnter」の順で処理します。被弾・死亡を扱う [CombatSystem](../Game/Systems/CombatSystem.h) と [HealthSystem](../Game/Systems/HealthSystem.h) もこの経路を使います。
 
 状態クラスのインスタンスは共有し、タイマーや入力履歴は各エンティティのコンポーネントに保持します。既存の状態の列挙値、保存形式、Systemの更新順序、基本的なダメージ・行動時間は維持しています。
 
@@ -302,9 +302,9 @@ FBX/ufbx から skinning 情報を読み込み、モデルの頂点に bone weig
 実際の skinning 計算は `Resources/shaders/SkinningVS.hlsl` と `Resources/shaders/ToonSkinningVS.hlsl` の Vertex Shader 側で行っています。
 
 主な実装ファイル:
-- `Engine/Model.h`
-- `Engine/Model.cpp`
-- `Engine/Renderer.cpp`
+- `Engine/Graphics/Model.h`
+- `Engine/Graphics/Model.cpp`
+- `Engine/Graphics/Renderer.cpp`
 - `Resources/shaders/SkinningVS.hlsl`
 - `Resources/shaders/ToonSkinningVS.hlsl`
 - `Game/Scenes/AssignmentScene.cpp`
@@ -323,9 +323,9 @@ ufbx 読み込みでは `mesh->material_parts` を走査して `MeshSubset` を�
 `AssignmentScene` では Mutant model に対して `SetMaterialSrv()` で複数 material の SRV を差し替え、MultiMaterial の確認用にしています。
 
 主な実装ファイル:
-- `Engine/Model.h`
-- `Engine/Model.cpp`
-- `Engine/Renderer.cpp`
+- `Engine/Graphics/Model.h`
+- `Engine/Graphics/Model.cpp`
+- `Engine/Graphics/Renderer.cpp`
 - `Game/Scenes/AssignmentScene.cpp`
 
 ## Animation補間
@@ -337,7 +337,7 @@ ufbx 読み込みでは `mesh->material_parts` を走査して `MeshSubset` を�
 `Model::UpdateSkeleton()` では node ごとに translation と scale を `XMVectorLerp()`、rotation を `XMQuaternionSlerp()` で補間し、滑らかに姿勢を切り替えます。
 
 主な実装ファイル:
-- `Engine/Model.cpp`
+- `Engine/Graphics/Model.cpp`
 - `Game/Scenes/AssignmentScene.cpp`
 
 ## 骨のデバッグ表示
@@ -349,8 +349,8 @@ ufbx 読み込みでは `mesh->material_parts` を走査して `MeshSubset` を�
 RightHand / LeftHand などの bone 名も画面に出るため、武器追従や手からのパーティクル発生位置を確認しやすくしています。
 
 主な実装ファイル:
-- `Engine/Model.h`
-- `Engine/Model.cpp`
+- `Engine/Graphics/Model.h`
+- `Engine/Graphics/Model.cpp`
 - `Game/Scenes/AssignmentScene.cpp`
 
 ## 武器を手に持たせる
@@ -371,8 +371,8 @@ RightHand / LeftHand などの bone 名も画面に出るため、武器追従�
 
 主な実装ファイル:
 - `Game/Scenes/AssignmentScene.cpp`
-- `Engine/Particle.h`
-- `Engine/Particle.cpp`
+- `Engine/Particle/Particle.h`
+- `Engine/Particle/Particle.cpp`
 
 ## GPU Particle
 
@@ -399,8 +399,8 @@ Mesh emitter については、`GPUParticleSystem::SetEmitterMesh()` で mesh �
 これにより、単なる点や球ではなく、メッシュ形状に沿った発生ができます。
 
 主な実装ファイル:
-- `Engine/GPUParticle.h`
-- `Engine/GPUParticle.cpp`
+- `Engine/Particle/GPUParticle.h`
+- `Engine/Particle/GPUParticle.cpp`
 - `Resources/shaders/GPUParticleCS.hlsl`
 - `Resources/shaders/GPUParticleVS.hlsl`
 - `Resources/shaders/GPUParticlePS.hlsl`
@@ -446,8 +446,8 @@ AssignmentScene に追加した簡易ゲーム要素:
 - cube enemy の攻撃範囲を地面の線で表示
 
 主な実装ファイル:
-- `Engine/Renderer.cpp`
-- `Engine/Renderer.h`
+- `Engine/Graphics/Renderer.cpp`
+- `Engine/Graphics/Renderer.h`
 - `Game/Scenes/AssignmentScene.cpp`
 - `Game/Scenes/AssignmentScene.h`
 - `Resources/shaders/*Post*.hlsl`
@@ -477,8 +477,8 @@ PlayGame 側の player 表現として、GPU particle を使った流体シミ�
 player core への引力、decoy core、AABB collision、debug arrow 表示も用意しています。
 
 主な実装ファイル:
-- `Engine/Renderer.h`
-- `Engine/Renderer.cpp`
+- `Engine/Graphics/Renderer.h`
+- `Engine/Graphics/Renderer.cpp`
 - `Resources/shaders/FluidSimCS.hlsl`
 - `Resources/shaders/GPUFluidVS.hlsl`
 - `Resources/shaders/GPUFluidPS.hlsl`
@@ -494,8 +494,8 @@ PlayGame で GPU fluid player を出した時に device removed / freeze が起�
 主に、無効 particle の処理、active particle count、buffer state transition、UAV barrier、未初期化 particle の除外を見直しています。
 
 関連ファイル:
-- `Engine/Renderer.cpp`
-- `Engine/Renderer.h`
+- `Engine/Graphics/Renderer.cpp`
+- `Engine/Graphics/Renderer.h`
 - `Resources/shaders/FluidSimCS.hlsl`
 - `Resources/shaders/CollisionCompute.hlsl`
 - `Resources/shaders/GPUFluidVS.hlsl`

@@ -22,7 +22,7 @@ float hash(float2 p) {
 float noise(float2 p) {
     float2 i = floor(p);
     float2 f = frac(p);
-    f = f * f * (3.0 - 2.0 * f); // smoothstep
+    f = f * f * (3.0 - 2.0 * f); // smoothstep でなめらかにする
     float a = hash(i);
     float b = hash(i + float2(1.0, 0.0));
     float c = hash(i + float2(0.0, 1.0));

@@ -3,6 +3,7 @@ param(
     [ValidateSet('All', 'Engine', 'Game')][string]$Project = 'All',
     [ValidateSet('Debug', 'Development', 'Release')][string]$Configuration = 'Development',
     [string]$File,
+    [string]$OutputDirectory,
     [string]$ToolPath
 )
 
@@ -42,13 +43,16 @@ try {
     Push-Location $script:CodeQualityRoot
     try {
         foreach ($projectName in $projects) {
-            $outputDirectory = Join-Path $script:CodeQualityRoot "artifacts/code-quality/$Configuration/$projectName/"
+            $analysisRoot = if ($OutputDirectory) { [IO.Path]::GetFullPath($OutputDirectory) }
+                            else { Join-Path $script:CodeQualityRoot "artifacts/code-quality/$Configuration" }
+            $projectOutput = Join-Path $analysisRoot "$projectName/"
             $buildArguments = @(
                 "$projectName.vcxproj", '-nologo', '-verbosity:minimal', '-target:PrepareForBuild;ClangTidy',
                 "-property:Configuration=$Configuration", '-property:Platform=x64',
                 '-property:PreferredToolArchitecture=x64',
+                '-property:EnableCodeQualityLogging=false', '-nodeReuse:false',
                 "-property:SolutionDir=$script:CodeQualityRoot\",
-                "-property:IntDir=$outputDirectory", "-property:OutDir=$outputDirectory",
+                "-property:IntDir=$projectOutput", "-property:OutDir=$projectOutput",
                 "-property:ClangTidyToolPath=$(Split-Path $analyzer -Parent)",
                 '-property:EnableMicrosoftCodeAnalysis=false'
             )

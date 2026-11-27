@@ -1,5 +1,5 @@
-// Filter only ray radiance, never the terrain's albedo/detail. Reproject static
-// receivers, reject disocclusions and clamp history to the current neighborhood.
+// フィルターするのはレイの放射輝度だけで、地形のアルベド / 細部には決してかけない。静的な
+// 受け手は再投影し、遮蔽の変化は捨て、履歴を現在の近傍の範囲に抑える。
 Texture2D<float4> currentReflection : register(t0);
 Texture2D<float4> currentIndirect : register(t1);
 Texture2D<float4> historyReflection : register(t2);
@@ -25,7 +25,7 @@ float PredictedHistoryDepth(Texture2D<float4> history,int2 q,float4 center,float
 float4 FilterLight(Texture2D<float4> current,Texture2D<float4> history,uint2 p,float2 oldUV,float oldZ){
     float4 center=current[p];if(!ValidLight(center))return 0;
     float3 sum=0,lo=1e10,hi=-1e10;float weights=0;
-    // Reciprocal depth predicts steep ground across neighboring half-res texels.
+    // 深度の逆数で、隣り合う半分の解像度のテクセルにまたがる急な地面を予測する。
     float inv=1/abs(center.a);int2 limit=int2(dimensions)-1;
     float4 left=current[max(int2(p)-int2(1,0),0)],right=current[min(int2(p)+int2(1,0),limit)];
     float4 up=current[max(int2(p)-int2(0,1),0)],down=current[min(int2(p)+int2(0,1),limit)];
@@ -35,8 +35,8 @@ float4 FilterLight(Texture2D<float4> current,Texture2D<float4> history,uint2 p,f
     float dy=u>0&&d>0?(abs(1/u-inv)<abs(1/d-inv)?inv-1/u:1/d-inv):0;
     [unroll]for(int y=-2;y<=2;++y)[unroll]for(int x=-2;x<=2;++x){
         float4 tap=current[clamp(int2(p)+int2(x,y),0,limit)];
-        // Reject before arithmetic: multiplying NaN/Inf radiance by zero still
-        // contaminates the entire neighborhood and later DLSS/bloom history.
+        // 計算の前に捨てる: NaN / Inf の放射輝度に 0 を掛けても、近傍全体と
+        // 後の DLSS / ブルームの履歴を汚してしまう。
         if(!ValidLight(tap)||(tap.a<0)!=(center.a<0))continue;
         float predicted=1/max(1e-6,inv+dx*x+dy*y);
         float w=exp(-abs(abs(tap.a)-predicted)/max(.08,abs(center.a)*.004))*exp(-(x*x+y*y)*.35);
@@ -44,11 +44,11 @@ float4 FilterLight(Texture2D<float4> current,Texture2D<float4> history,uint2 p,f
         if(w>.1){lo=min(lo,tap.rgb);hi=max(hi,tap.rgb);}
     }
     float3 spatial=weights>1e-5?sum/weights:center.rgb;
-    // Fluid shape animates independently of the camera: spatial filtering only.
+    // 流体の形はカメラと関係なく動く: 空間的なフィルターだけにする。
     if(historyValid>.5&&center.a>0&&all(oldUV>0)&&all(oldUV<1)&&oldZ>0){
         uint dw,dh;depth.GetDimensions(dw,dh);float2 ratio=float2(dw,dh)/dimensions;
-        // Trace samples are source-depth pixel centers, not the centers of the
-        // half-resolution texture: for a 2:1 ratio their offset is .75, not .5.
+        // レイを飛ばしたサンプルは元の深度のピクセルの中心であり、半分の解像度の
+        // テクスチャの中心ではない: 2:1 の比ではずれは .5 ではなく .75。
         float2 sampleOffset=(floor(ratio*.5)+.5)/ratio;
         float2 at=oldUV*dimensions-sampleOffset;int2 base=int2(floor(at));float2 f=frac(at);
         float3 prior=0;float valid=0;
@@ -58,7 +58,7 @@ float4 FilterLight(Texture2D<float4> current,Texture2D<float4> history,uint2 p,f
             float predicted=PredictedHistoryDepth(history,q,h,at-float2(q),limit);
             if(abs(predicted-oldZ)>=max(.12,oldZ*.006))continue;
             float w=(i?f.x:1-f.x)*(j?f.y:1-f.y);
-            // Explicit view-depth test prevents lighting leaking across objects.
+            // 視点からの深度を明示的に比べ、光が物をまたいで漏れないようにする。
             prior+=h.rgb*w;valid+=w;
         }
         if(valid>.5){float3 margin=max(float3(.005,.005,.005),(hi-lo)*.1);

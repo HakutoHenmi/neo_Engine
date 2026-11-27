@@ -1,16 +1,14 @@
 #include "Obj.hlsli"
 
 // スキニング用定数バッファ
-cbuffer CBBone : register(b3)
-{
+cbuffer CBBone : register(b3) {
     matrix gBones[128];
 };
 
 static const float outlineWidth = 0.008f;
 static const uint kMaxSkinBones = 128;
 
-matrix IdentityMatrix()
-{
+matrix IdentityMatrix() {
     return matrix(
         1, 0, 0, 0,
         0, 1, 0, 0,
@@ -19,8 +17,7 @@ matrix IdentityMatrix()
     );
 }
 
-void AccumulateBone(inout matrix skinMat, inout float validWeight, uint index, float weight)
-{
+void AccumulateBone(inout matrix skinMat, inout float validWeight, uint index, float weight) {
     if (weight > 0.0001f && index < kMaxSkinBones) {
         skinMat += gBones[index] * weight;
         validWeight += weight;
@@ -29,8 +26,7 @@ void AccumulateBone(inout matrix skinMat, inout float validWeight, uint index, f
 
 // スキニング対応アウトライン頂点シェーダー
 VSOutput main(float4 pos : POSITION, float3 normal : NORMAL, float2 uv : TEXCOORD,
-              float4 weights : WEIGHTS, uint4 indices : BONES)
-{
+              float4 weights : WEIGHTS, uint4 indices : BONES) {
     VSOutput output;
 
     // スキニング行列の合成

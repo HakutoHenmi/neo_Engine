@@ -9,18 +9,19 @@
 #define NOMINMAX
 #endif
 #include "./GameScene.h"
+#include "./GameSceneConstants.h"
 // プレイヤー向けの UI (共通部品・強化カード・グラフィック設定)
 #include "../UI/GameUI.h"
 #include "../UI/RogueliteUI.h"
 #include "../UI/GraphicsUI.h"
 // 流体の放出と時間の管理 (エンジン側)
-#include "../../Engine/FluidEmission.h"
+#include "../../Engine/Fluid/FluidEmission.h"
 #include "../../Engine/Time/TimeManager.h"
 #include "../ObjectTypes.h"
 // 音・パス・シーン管理 (エンジン側)
-#include "../../Engine/Audio.h"
-#include "../../Engine/PathUtils.h"
-#include "../../Engine/SceneManager.h"
+#include "../../Engine/Core/Audio.h"
+#include "../../Engine/Core/PathUtils.h"
+#include "../../Engine/Scene/SceneManager.h"
 // エディタとスクリプト
 #include "../Editor/EditorUI.h"
 #include "../Scripts/ScriptEngine.h"
@@ -29,7 +30,7 @@
 #include "../Systems/AudioSystem.h"
 #include "../Systems/CleanupSystem.h"
 #include "../Systems/FluidSystem.h"
-#include "../../Engine/Input.h"      // キーボード・マウス入力
+#include "../../Engine/Core/Input.h" // キーボード・マウス入力
 
 #include "../Systems/MotionSystem.h" // キーフレームのモーション
 #include "../Systems/PhysicsSystem.h"
@@ -38,65 +39,69 @@
 #include "../Systems/ScriptSystem.h"
 #include "../Systems/UISystem.h"
 // Web プロファイラ (外部ツールから値を見たり変えたりする)
-#include "../../Engine/NetworkProfiler.h"
+#include "../../Engine/Core/NetworkProfiler.h"
 // JSON の読み書き
 #include "../../externals/nlohmann/json.hpp"
 #include "../../externals/imgui/imgui.h" // ImGui (エディタの画面)
-#include <Windows.h> // デバッグ出力 (OutputDebugStringA) を使うため
+#include <Windows.h>                     // デバッグ出力 (OutputDebugStringA) を使うため
 #include <algorithm>
 #include <cmath>
 #include <filesystem> // 空のテクスチャ検索などのファイル操作
 
 namespace Game {
 
+using namespace GameSceneConstants;
+
 // 選択を解除する
 void GameScene::ClearSelection() {
-    // 主な選択と、複数選択の一覧を空にする
-    selectedEntity_ = entt::null;
-    selectedEntities_.clear();
+	// 主な選択と、複数選択の一覧を空にする
+	selectedEntity_ = entt::null;
+	selectedEntities_.clear();
 }
 
 // 1つだけ選択する (無効なエンティティなら解除のみ)
 void GameScene::SelectEntity(entt::entity entity) {
-    ClearSelection();
-    // 存在すれば選ぶ
-    if (registry_.valid(entity)) {
-        selectedEntity_ = entity;
-        selectedEntities_.insert(entity);
-    }
+	ClearSelection();
+	// 存在すれば選ぶ
+	if (registry_.valid(entity)) {
+		selectedEntity_ = entity;
+		selectedEntities_.insert(entity);
+	}
 }
 
 // 名前もトランスフォームも付けない空のエンティティを作る
 entt::entity GameScene::CreateEmptyEntity() {
-    // 生成・破棄の予約と同時に触らないようロックする
-    std::lock_guard<std::mutex> lock(spawnMutex_);
-    return registry_.create();
+	// 生成・破棄の予約と同時に触らないようロックする
+	std::lock_guard<std::mutex> lock(spawnMutex_);
+	return registry_.create();
 }
 
 // エディタ用の一時エンティティ (プレビューなど) を即座に削除する
 void GameScene::DestroyEditorEntity(entt::entity entity) {
-    RemoveEntity(entity);
+	RemoveEntity(entity);
 }
 
 // 即座に削除する。選択中なら選択から外し、行列のキャッシュも捨てる
 void GameScene::RemoveEntity(entt::entity entity) {
-    // 存在しなければ何もしない
-    if (!registry_.valid(entity)) return;
-    // 選択から外し、主な選択が消えたら残りの先頭にする
-    selectedEntities_.erase(entity);
-    if (selectedEntity_ == entity) selectedEntity_ = selectedEntities_.empty() ? entt::null : *selectedEntities_.begin();
-    // ECS から消し、行列のキャッシュを捨てる
-    registry_.destroy(entity);
-    ClearMatrixCache();
+	// 存在しなければ何もしない
+	if (!registry_.valid(entity))
+		return;
+	// 選択から外し、主な選択が消えたら残りの先頭にする
+	selectedEntities_.erase(entity);
+	if (selectedEntity_ == entity)
+		selectedEntity_ = selectedEntities_.empty() ? entt::null : *selectedEntities_.begin();
+	// ECS から消し、行列のキャッシュを捨てる
+	registry_.destroy(entity);
+	ClearMatrixCache();
 }
 
 // エディタの Game ビューの位置・大きさと、内部解像度に換算したマウス座標を保存する
 void GameScene::SetEditorViewport(DirectX::XMFLOAT2 offset, DirectX::XMFLOAT2 size, float mouseX, float mouseY) {
-    ctx_.viewportOffset = offset;
-    ctx_.viewportSize = size;
-    ctx_.overrideMouseX = mouseX;
-    ctx_.overrideMouseY = mouseY;
-    ctx_.useOverrideMouse = true;
+	ctx_.viewportOffset = offset;
+	ctx_.viewportSize = size;
+	ctx_.overrideMouseX = mouseX;
+	ctx_.overrideMouseY = mouseY;
+	ctx_.useOverrideMouse = true;
 }
 
 // エンティティを生成する (名前とトランスフォームを付ける)
@@ -133,8 +138,8 @@ entt::entity GameScene::FindObjectByName(const std::string& name) {
 
 // 指定座標の真下にあるメッシュ表面の高さを求める
 float GameScene::GetHeightAt(float x, float z, float startY, uint32_t excludeId) {
-	// 当たった中で一番高い面の高さ。何にも当たらなければ -10000
-	float maxHeight = -1000.0f;
+	// 当たった中で一番高い面の高さ。何にも当たらなければ kNoGroundHeight
+	float maxHeight = kLowestSurfaceHeight;
 	bool hitAny = false;
 
 	// startY (既定 1000) から真下へレイを飛ばす
@@ -153,7 +158,8 @@ float GameScene::GetHeightAt(float x, float z, float startY, uint32_t excludeId)
 		if (registry_.all_of<TagComponent>(entity)) {
 			// タグを調べる
 			const auto tag = registry_.get<TagComponent>(entity).tag;
-			if (tag == TagType::Enemy || tag == TagType::Bullet || tag == TagType::Player || tag == TagType::Projectile || tag == TagType::VFX) {
+			if (tag == TagType::Enemy || tag == TagType::Bullet || tag == TagType::Player ||
+			    tag == TagType::Projectile || tag == TagType::VFX) {
 				isEnemyOrBullet = true;
 			}
 		}
@@ -196,12 +202,14 @@ float GameScene::GetHeightAt(float x, float z, float startY, uint32_t excludeId)
 		}
 	}
 
-	// 当たったものがあればその高さ、無ければ -10000
-	return hitAny ? maxHeight : -10000.0f;
+	// 当たったものがあればその高さ、無ければ kNoGroundHeight
+	return hitAny ? maxHeight : kNoGroundHeight;
 }
 
 // レイキャスト: 地形などのメッシュに当たった最も近い距離を返す (敵・弾・プレイヤーなどは無視)
-bool GameScene::RayCast(const Engine::Vector3& origin, const Engine::Vector3& direction, float maxDist, uint32_t excludeId, float& outDist) {
+bool GameScene::RayCast(
+    const Engine::Vector3& origin, const Engine::Vector3& direction, float maxDist, uint32_t excludeId,
+    float& outDist) {
 	// 当たったか・一番近い距離 (最初は最大距離)
 	bool hitAny = false;
 	float minDist = maxDist;
@@ -220,7 +228,8 @@ bool GameScene::RayCast(const Engine::Vector3& origin, const Engine::Vector3& di
 		// タグで対象外のものを除く
 		if (registry_.all_of<TagComponent>(entity)) {
 			const auto tag = registry_.get<TagComponent>(entity).tag;
-			if (tag == TagType::Enemy || tag == TagType::Bullet || tag == TagType::Player || tag == TagType::Projectile || tag == TagType::VFX)
+			if (tag == TagType::Enemy || tag == TagType::Bullet || tag == TagType::Player ||
+			    tag == TagType::Projectile || tag == TagType::VFX)
 				continue;
 		}
 
@@ -267,13 +276,16 @@ bool GameScene::RayCast(const Engine::Vector3& origin, const Engine::Vector3& di
 }
 
 // エンティティのワールド行列 (親子関係を含む)
-Engine::Matrix4x4 GameScene::GetWorldMatrix(int entityId) const { return GetWorldMatrixRecursive(static_cast<entt::entity>(entityId), 0); }
+Engine::Matrix4x4 GameScene::GetWorldMatrix(int entityId) const {
+	return GetWorldMatrixRecursive(static_cast<entt::entity>(entityId), 0);
+}
 
-// ワールド行列を親へたどって計算する (深さ 32 を超える循環は単位行列で打ち切り、結果はフレーム内でキャッシュする)
+// ワールド行列を親へたどって計算する (深さ kMaxHierarchyDepth を超える循環は単位行列で打ち切り、結果はフレーム内でキャッシュする)
 Engine::Matrix4x4 GameScene::GetWorldMatrixRecursive(entt::entity e, int depth) const {
 	// 深すぎるときは循環しているとみなして打ち切る
-	if (depth > 32)
+	if (depth > kMaxHierarchyDepth) {
 		return Engine::Matrix4x4::Identity();
+	}
 
 	// このフレームで計算済みならそれを返す
 	auto it = matrixCache_.find(e);
@@ -360,7 +372,7 @@ void GameScene::SyncTag(entt::entity entity) {
 
 	// 新しいタグの一覧に追加する (古い一覧からの削除は Update の最初にまとめて行う前提)
 	const TagType tag = registry_.get<TagComponent>(entity).tag;
-	
+
 	// 1件ずつ重複を調べると遅いので、Update 側の削除を信頼する
 	tagCache_[tag].push_back(entity);
 }
@@ -378,7 +390,8 @@ void GameScene::SetTag(entt::entity entity, const std::string& tagStr) {
 // 流体のプレビューを初期状態にする (GPU 流体を空にし、エミッターの放出数を 0 に戻す)
 void GameScene::ResetFluidPreview() {
 	// GPU 流体を空にする
-	if (renderer_) renderer_->ResetGPUFluid();
+	if (renderer_)
+		renderer_->ResetGPUFluid();
 	gpuSlimeEmitted_ = false;
 	// 流体エミッターの出した数と端数を 0 に戻す
 	auto emitters = registry_.view<FluidEmitterComponent>();
@@ -392,9 +405,10 @@ void GameScene::ResetFluidPreview() {
 // シーンを完全に空にする
 void GameScene::ClearScene() {
 	gpuSlimeEmitted_ = false;
-    // 選択を外し、止めていた世界を動かす
-    ClearSelection();
-    if(renderer_)renderer_->SetRogueWorldFrozen(false);
+	// 選択を外し、止めていた世界を動かす
+	ClearSelection();
+	if (renderer_)
+		renderer_->SetRogueWorldFrozen(false);
 	// すべてのスクリプトを止める
 	StopAllScripts(registry_, this);
 	// 1. 各システムの状態をリセットする

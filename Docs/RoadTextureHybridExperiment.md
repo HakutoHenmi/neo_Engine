@@ -67,7 +67,7 @@
 2026-10-27、要求12の候補を街ステージの道路材質として採用した。
 
 - 資産: `Resources/Textures/PolyHaven/asphalt_02_material.ntc`（色・粗さ・AO、`hybrid-12` と同一ハッシュ）と `asphalt_02_nor_dx_2k.dds`（元BC5法線）。提出パッケージからは道路のJPEG 4枚を外した。元JPEGは再学習用にリポジトリへ残す。
-- 実行時: [RendererNtc.cpp](../Engine/RendererNtc.cpp) の `Renderer::LoadNtcTextureSet` が、本実験と同じD3D12非CoopVec / GenericInt8経路でBCnへ復元する。BC5法線は `LoadTexture2D` のDDS経路でそのまま転送する。法線シェーダーはXYからZを再構成するので、BC5とRGB法線の両方を扱える。
+- 実行時: [RendererNtc.cpp](../Engine/Graphics/RendererNtc.cpp) の `Renderer::LoadNtcTextureSet` が、本実験と同じD3D12非CoopVec / GenericInt8経路でBCnへ復元する。BC5法線は `LoadTexture2D` のDDS経路でそのまま転送する。法線シェーダーはXYからZを再構成するので、BC5とRGB法線の両方を扱える。
 - `libntc.dll` はEXE隣の `NTC/` から読み込む。DLLが無い・GPUがINT8推論に非対応の場合は空を返し、DDS/JPEGへ戻る。提出パッケージには道路JPEGが無いため、その場合の道路は白い無地になる。
 - 検証: Release提出パッケージの `--package-smoke` で、ゲーム内で復元した色・粗さ・AOを全12 mip readbackし、本実験の `hybrid-12` readbackとBCnペイロードがバイト一致した。
 

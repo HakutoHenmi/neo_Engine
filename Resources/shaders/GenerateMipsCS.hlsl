@@ -1,5 +1,5 @@
-// Builds one mip level from the previous one with a 2x2 box filter.
-// Color maps are averaged in linear space and written back as sRGB values.
+// 前のミップレベルから、2x2 の箱型フィルターで 1 段のミップを作る。
+// 色のマップは線形空間で平均し、sRGB の値で書き戻す。
 Texture2D<float4> source : register(t0);
 RWTexture2D<float4> destination : register(u0);
 cbuffer MipConstants : register(b0) {

@@ -1,13 +1,12 @@
 // Resources/shaders/FlowingWaterPost.hlsl
-// Screen-space water-flow refraction and caustics for gameplay scenes.
+// ゲームのシーン向けの、画面空間での水の流れの屈折と集光模様。
 #include "PostProcessCommon.hlsli"
 
 Texture2D gScene : register(t0);
 Texture2D gDepth : register(t3);
 SamplerState gSmp : register(s0);
 
-cbuffer CBPost : register(b0)
-{
+cbuffer CBPost : register(b0) {
     float gTime;
     float gNoiseStrength;
     float gDistortion;
@@ -18,14 +17,12 @@ cbuffer CBPost : register(b0)
     float pad0;
 };
 
-struct PSIn
-{
+struct PSIn {
     float4 svpos : SV_POSITION;
     float2 uv : TEXCOORD0;
 };
 
-float FlowCaustic(float2 uv, float time)
-{
+float FlowCaustic(float2 uv, float time) {
     float a = sin((uv.x * 18.0 + uv.y * 7.0) - time * 1.8);
     float b = sin((uv.x * -9.0 + uv.y * 22.0) + time * 1.3);
     float c = sin((uv.x * 28.0 - uv.y * 16.0) + time * 0.9);
@@ -33,8 +30,7 @@ float FlowCaustic(float2 uv, float time)
     return smoothstep(0.58, 0.92, v);
 }
 
-float4 main(PSIn i) : SV_TARGET
-{
+float4 main(PSIn i) : SV_TARGET {
     float2 uv = i.uv;
     float3 sceneColor = gScene.Sample(gSmp, uv).rgb;
 

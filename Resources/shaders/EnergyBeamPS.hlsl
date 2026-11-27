@@ -1,13 +1,11 @@
 #include "Obj.hlsli"
 
 // 簡易ノイズ生成
-float random(float2 uv)
-{
+float random(float2 uv) {
     return frac(sin(dot(uv, float2(12.9898, 78.233))) * 43758.5453123);
 }
 
-float4 main(VSOutput input) : SV_TARGET
-{
+float4 main(VSOutput input) : SV_TARGET {
     float u = input.uv.x;
     float v = input.uv.y;
     

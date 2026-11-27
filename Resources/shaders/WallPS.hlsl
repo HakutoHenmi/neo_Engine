@@ -7,8 +7,7 @@
 //======================================================
 #include "Obj.hlsli"
 
-float4 main(VSOutput i) : SV_TARGET
-{
+float4 main(VSOutput i) : SV_TARGET {
     float3 n = normalize(i.normal);
 
     // ----------------------------------
@@ -16,7 +15,6 @@ float4 main(VSOutput i) : SV_TARGET
     // ----------------------------------
     float3 base = float3(0.42f, 0.42f, 0.42f);
     // さらに暗くするなら ↓
-    // float3 base = float3(0.38f, 0.38f, 0.38f);
 
     float3 col = base;
 

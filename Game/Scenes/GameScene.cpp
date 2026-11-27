@@ -1,92 +1,67 @@
-﻿// GameScene.cpp
+// GameScene.cpp
 // ゲーム本編のシーンの実装。
 // 初期化 (シーンファイルの読み込みとシステムの登録)、毎フレームの更新と描画、
 // エンティティの生成・破棄の予約処理、タグ検索のキャッシュ、PLAY の開始・停止を扱う。
 //
-// このファイル: 破棄・初期化・毎フレームの更新 (Update とその手順)・PLAY の開始と停止・ポーズ。
-// 描画は GameSceneDraw.cpp、エディタ用の線の表示は GameSceneGizmos.cpp、
-// エンティティの管理・探索・タグは GameSceneEntities.cpp にある。
-#include <cfloat>
-// シーンの BGM
-#include "../UI/SceneMusic.h"
+// このファイル: 破棄・初期化 (Initialize)・毎フレームの更新 (Update) の流れ。
+// 初期化の各手順は GameSceneSetup.cpp、更新の各手順は GameSceneUpdate.cpp、
+// PLAY の開始と停止・ポーズは GameScenePlay.cpp、描画は GameSceneDraw.cpp、
+// エディタ用の線の表示は GameSceneGizmos.cpp、エンティティの管理・探索・タグは GameSceneEntities.cpp にある。
 // Windows のヘッダーの min / max マクロを止める
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
 #include "./GameScene.h"
-// プレイヤー向けの UI (共通部品・強化カード・グラフィック設定)
-#include "../UI/GameUI.h"
-#include "../Chrono/WeaponCraftRules.h"
-#include "../UI/RogueliteUI.h"
-#include "../UI/GraphicsUI.h"
-// 流体の放出と時間の管理 (エンジン側)
-#include "../../Engine/FluidEmission.h"
+#include "../../Engine/Core/Audio.h"
+#include "../../Engine/Core/Input.h"
+#include "../../Engine/Core/LoadProfile.h"
+#include "../../Engine/Core/NetworkProfiler.h"
 #include "../../Engine/Time/TimeManager.h"
-#include "../ObjectTypes.h"
-// 音・パス・シーン管理 (エンジン側)
-#include "../../Engine/Audio.h"
-#include "../../Engine/PathUtils.h"
-#include "../../Engine/SceneManager.h"
-#include "../Systems/GameRumble.h"
-// エディタとスクリプト
 #include "../Editor/EditorUI.h"
 #include "../Scripts/ScriptEngine.h"
-#include "../Scripts/ScriptLifecycle.h"
-// ゲームの処理を分担するシステム群
-#include "../Systems/AudioSystem.h"
-#include "../Systems/CleanupSystem.h"
-#include "../Systems/FluidSystem.h"
-#include "../../Engine/Input.h"      // キーボード・マウス入力
-
-#include "../Systems/MotionSystem.h" // キーフレームのモーション
-#include "../Systems/PhysicsSystem.h"
 #include "../Systems/ChronoSystem.h"
-
-#include "../Systems/ScriptSystem.h"
-#include "../Systems/UISystem.h"
-// Web プロファイラ (外部ツールから値を見たり変えたりする)
-#include "../../Engine/NetworkProfiler.h"
-#include "../../Engine/LoadProfile.h"
-// JSON の読み書き
-#include "../../externals/nlohmann/json.hpp"
-#include "../../externals/imgui/imgui.h" // ImGui (エディタの画面)
-#include <Windows.h> // デバッグ出力 (OutputDebugStringA) を使うため
-#include <algorithm>
-#include <cmath>
-#include <filesystem> // 空のテクスチャ検索などのファイル操作
+#include "../Systems/FluidSystem.h"
+#include "../Systems/GameRumble.h"
+#include "../UI/SceneMusic.h"
+#include <chrono>
 
 namespace Game {
 
+using namespace GameSceneConstants;
+
 // 破棄: シグナルの接続を外し、シーンとシステムを片付ける
 GameScene::~GameScene() {
-    // 振動を止める
-    Rumble::Stop();
-    // ポーズから抜けても音が止まったままにならないようにする
-    if(chronoSystem_)chronoSystem_->StopLoopSounds();
-    if(auto* audio=Engine::Audio::GetInstance())audio->SetSEPaused(false);
-    // タグとスクリプトの追加・削除のコールバックを外す
-    registry_.on_construct<TagComponent>().disconnect<&GameScene::OnTagAdded>(this);
-    registry_.on_destroy<TagComponent>().disconnect<&GameScene::OnTagRemoved>(this);
-    registry_.on_destroy<ScriptComponent>().disconnect<&GameScene::OnScriptDestroyed>(this);
-    ClearScene(); // シーンを完全に空にする (共通の後片付け)
-    
-    // ClearScene 内で再接続されてしまうため、デストラクタの最後で確実に切断する
-    registry_.on_destroy<TagComponent>().disconnect<&GameScene::OnTagRemoved>(this);
-    registry_.on_destroy<ScriptComponent>().disconnect<&GameScene::OnScriptDestroyed>(this);
-    // システムの一覧と、その中の特別なシステムへのポインタを消す
-    systems_.clear();
-    chronoSystem_ = nullptr;
+	// 振動を止める
+	Rumble::Stop();
+	// ポーズから抜けても音が止まったままにならないようにする
+	if (chronoSystem_)
+		chronoSystem_->StopLoopSounds();
+	if (auto* audio = Engine::Audio::GetInstance())
+		audio->SetSEPaused(false);
+	// タグとスクリプトの追加・削除のコールバックを外す
+	registry_.on_construct<TagComponent>().disconnect<&GameScene::OnTagAdded>(this);
+	registry_.on_destroy<TagComponent>().disconnect<&GameScene::OnTagRemoved>(this);
+	registry_.on_destroy<ScriptComponent>().disconnect<&GameScene::OnScriptDestroyed>(this);
+	ClearScene(); // シーンを完全に空にする (共通の後片付け)
 
-    // プロファイラに登録したコールバックを外す (破棄後に呼ばれないように)
-    Engine::NetworkProfiler::GetInstance().SetParameterUpdateCallback(nullptr);
-    Engine::NetworkProfiler::GetInstance().SetParameterGetCallback(nullptr);
+	// ClearScene 内で再接続されてしまうため、デストラクタの最後で確実に切断する
+	registry_.on_destroy<TagComponent>().disconnect<&GameScene::OnTagRemoved>(this);
+	registry_.on_destroy<ScriptComponent>().disconnect<&GameScene::OnScriptDestroyed>(this);
+	// システムの一覧と、その中の特別なシステムへのポインタを消す
+	systems_.clear();
+	chronoSystem_ = nullptr;
+
+	// プロファイラに登録したコールバックを外す (破棄後に呼ばれないように)
+	Engine::NetworkProfiler::GetInstance().SetParameterUpdateCallback(nullptr);
+	Engine::NetworkProfiler::GetInstance().SetParameterGetCallback(nullptr);
 }
 
 // 初期化: シーンファイルを読み込み、カメラ・システム・タグのキャッシュなどを準備する
 void GameScene::Initialize(Engine::WindowDX* dx, const Engine::SceneParameters& params) {
 	Engine::LoadProfile::Scope profile("phase", "GameScene::Initialize");
-    // グラフィック設定画面を閉じた状態から始める
-    graphicsOpen_=false;graphicsSaveFailed_=false;
+	// グラフィック設定画面を閉じた状態から始める
+	graphicsOpen_ = false;
+	graphicsSaveFailed_ = false;
 	// ウィンドウを覚える
 	dx_ = dx;
 	// 描画の窓口
@@ -99,81 +74,23 @@ void GameScene::Initialize(Engine::WindowDX* dx, const Engine::SceneParameters& 
 	ctx_.scene = this;
 	ctx_.eventSystem = &eventSystem_;
 	ctx_.pendingSpawns = &pendingSpawns_;
-	ctx_.viewportSize = { (float)Engine::WindowDX::kW, (float)Engine::WindowDX::kH };
+	ctx_.viewportSize = {(float)Engine::WindowDX::kW, (float)Engine::WindowDX::kH};
 	// シーンファイルが空か本編のシーン (game.json の mainStage) ならスライム本編モード (ChronoSystem で動かす)
 	slimePlayerDemo_ = Data::IsSlimePlayerDemoStage(params.stagePath);
 	chronoMode_ = slimePlayerDemo_ || Data::IsMainStage(params.stagePath);
 	// 戦闘 BGM を流す (スライム本編は ChronoSystem::Reset がステージの曲を流すので、別の曲を展開しない)
-	if (!chronoMode_) Music::Play(Music::Battle);
+	if (!chronoMode_)
+		Music::Play(Music::Battle);
 	// 本編では GPU の流体を最初の状態に戻す
-	if (chronoMode_) renderer_->ResetGPUFluid();
+	if (chronoMode_)
+		renderer_->ResetGPUFluid();
 
-	// 前のシーンやテストで変えたポストエフェクトを初期状態に戻す
-	if (renderer_) {
-		// ノイズ・歪み・色ずれ・周辺減光・走査線・SAN 値の効果をすべて 0 にする
-		auto ppParams = renderer_->GetPostProcessParams();
-		ppParams.noiseStrength = 0.0f;
-		ppParams.distortion = 0.0f;
-		ppParams.chromaShift = 0.0f;
-		ppParams.vignette = 0.0f;
-		ppParams.scanline = 0.0f;
-		ppParams.san = 0.0f;
-		renderer_->SetPostProcessParams(ppParams);
-		renderer_->SetPostEffect("Default");
-	}
-
+	ResetPostEffects();
 	// イベント・計測時間・カメラを初期状態にする
-	eventSystem_.Clear();
-	playTime_ = 0.0f;
-	// ゲームのカメラ (視野角 45 度・画面の縦横比・描画範囲 0.1〜10000)
-	camera_.Initialize();
-	camera_.SetProjection(0.7854f, (float)Engine::WindowDX::kW / (float)Engine::WindowDX::kH, 0.1f, 10000.0f);
-	camera_.SetPosition(0, 2, -5);
-	camera_.SetRotation(0.2f, 0, 0);
-	
-	// エディタのカメラも同じ初期位置にする
-	editorCameraPos_ = {0, 2, -5};
-	editorCameraRot_ = {0.2f, 0, 0};
-	editorCamera_.Initialize();
-	editorCamera_.SetProjection(0.7854f, (float)Engine::WindowDX::kW / (float)Engine::WindowDX::kH, 0.1f, 10000.0f);
-	editorCamera_.SetPosition(0, 2, -5);
-	editorCamera_.SetRotation(0.2f, 0, 0);
+	InitializeCameras();
 
-	// 環境光
-	renderer_->SetAmbientColor({0.4f, 0.4f, 0.45f});
-
-	// シーンファイルを読み込めたか
-	bool loaded = false;
-	// シーンファイルを読み込む (指定が無ければ本編のシーン)
-	try {
-		// 読み込むパス
-		std::string scenePath = params.stagePath.empty() ? EditorUI::GetUnifiedProjectPath(Data::MainStagePath()) : params.stagePath;
-		// UTF-8 のパスを FromUTF8 で変換して日本語のパスにも対応する
-		if (std::filesystem::exists(Engine::PathUtils::FromUTF8(scenePath))) {
-			// 見つかったことをデバッグ出力に残し、読み込む
-			OutputDebugStringA(("[GameScene] " + scenePath + " found. Loading...\n").c_str());
-			{ Engine::LoadProfile::Scope loadSceneProfile("phase", "EditorUI::LoadScene"); EditorUI::LoadScene(this, scenePath); }
-			isPlaying_ = true; // 読み込めたら PLAY 状態から始める
-			loaded = true;
-		} else {
-			// 見つからなかったことを残す
-			OutputDebugStringA(("[GameScene] " + scenePath + " NOT found.\n").c_str());
-		}
-
-	} catch (const std::exception& e) {
-		// 読み込み中の例外は内容をデバッグ出力とメッセージボックスで知らせる
-		std::string msg = "[GameScene] EXCEPTION during scene load: " + std::string(e.what()) + "\n";
-		OutputDebugStringA(msg.c_str());
-		MessageBoxA(NULL, msg.c_str(), "Scene Load Error", MB_OK | MB_ICONERROR);
-	}
-
-	// 読み込みに失敗した、またはエンティティが空のときは、予備のシーン (game.json の fallbackStage:
-	// 太陽・地形・空・プレイヤー) を追加で読み込む
-	if (registry_.storage<entt::entity>().empty() || !loaded) {
-		const std::string fallback = EditorUI::GetUnifiedProjectPath(Data::Config().fallbackStage);
-		OutputDebugStringA(("[GameScene] Loading fallback scene: " + fallback + "\n").c_str());
-		EditorUI::AddScene(this, fallback);
-	}
+	// シーンファイルを読み込む (読み込めなければ予備のシーンを使う)
+	const bool loaded = LoadStageFile(params);
 
 	// GPU 流体の初期化
 	Game::FluidSystem::GetInstance()->Initialize(renderer_->GetDevice());
@@ -184,97 +101,35 @@ void GameScene::Initialize(Engine::WindowDX* dx, const Engine::SceneParameters& 
 #endif
 
 	// 空 (キューブマップ) の読み込み
-	if(auto sky=renderer_->LoadCubeMap("Resources/Textures/PolyHaven/kloppenheim_06_puresky_8k_cube.dds"))renderer_->SetSkyboxTexture(sky);
+	if (auto sky = renderer_->LoadCubeMap("Resources/Textures/PolyHaven/kloppenheim_06_puresky_8k_cube.dds"))
+		renderer_->SetSkyboxTexture(sky);
 
-// パーティクルエディターの初期化
+	// パーティクルエディターの初期化
 	particleEditor_.Initialize();
 
 	// スクリプトエンジンの初期化
 	ScriptEngine::GetInstance()->Initialize();
 
 	// システムの登録 (登録順に処理されるので順序が重要)
-	// 前のシステムをすべて消す
-	systems_.clear();
-	chronoSystem_ = nullptr;
-	// スライム本編: ChronoSystem と物理だけで動く
-	if (chronoMode_) {
-		// スライム本編のシステム
-		auto chrono = std::make_unique<ChronoSystem>(this);
-		chronoSystem_ = chrono.get();
-		systems_.push_back(std::move(chrono));
-		// エディタで追加した Rigidbody も本編シーンで物理演算する
-		systems_.push_back(std::make_unique<PhysicsSystem>());
-	// エディタで開いた本編以外のシーン: 物理・スクリプト・音・UI・モーション・後片付けだけを動かす
-	} else {
-	systems_.push_back(std::make_unique<PhysicsSystem>());
-	auto scriptSys = std::make_unique<ScriptSystem>();
-	scriptSys->SetScene(this);
-	systems_.push_back(std::move(scriptSys));
-	systems_.push_back(std::make_unique<AudioSystem>());
-	systems_.push_back(std::make_unique<UISystem>());
-	systems_.push_back(std::make_unique<MotionSystem>());
-	// 破棄の予約を処理するシステム
-	systems_.push_back(std::make_unique<CleanupSystem>());
-	}
-
-	// タグ・スクリプトの追加/削除を検知するコールバックを登録する (二重登録しないよう一度外す)
-	// リスナー登録
-	registry_.on_construct<TagComponent>().disconnect<&GameScene::OnTagAdded>(this);
-	registry_.on_construct<TagComponent>().connect<&GameScene::OnTagAdded>(this);
-	registry_.on_destroy<TagComponent>().disconnect<&GameScene::OnTagRemoved>(this);
-	registry_.on_destroy<TagComponent>().connect<&GameScene::OnTagRemoved>(this);
-	registry_.on_destroy<ScriptComponent>().disconnect<&GameScene::OnScriptDestroyed>(this);
-	registry_.on_destroy<ScriptComponent>().connect<&GameScene::OnScriptDestroyed>(this);
+	RegisterSystems();
+	ConnectRegistryCallbacks();
 
 	// 初期状態を保存する (読み込みで作った場合以外)
 	if (!loaded) {
 		initialSceneSnapshot_ = EditorUI::SaveToMemory(this);
 	}
 
-// 各システムを初期状態にする
-	// 各Systemのリセット
+	// 各システムを初期状態にする
 	for (auto& sys : systems_) {
 		sys->Reset(registry_);
 	}
 
-// タグ検索のキャッシュを作り直す
-	tagCache_.clear();
-	pendingTagSync_.clear();
-	pendingTagRemoved_.clear();
-	// タグを持つエンティティをタグごとの一覧に入れる
-	auto tagInitView = registry_.view<TagComponent>();
-	for (auto entity : tagInitView) {
-		const auto tag = tagInitView.get<TagComponent>(entity).tag;
-		tagCache_[tag].push_back(entity);
-	}
+	// タグ検索のキャッシュを作り直す
+	RebuildTagCache();
+	// Web プロファイラとの双方向のパラメータ通信を登録する
+	ConnectNetworkProfiler();
 
-// Web プロファイラとの双方向のパラメータ通信を登録する
-	// Web プロファイラから値を変更されたとき: 環境光の色
-	Engine::NetworkProfiler::GetInstance().SetParameterUpdateCallback([this](const std::string& target, const std::string& prop, float val) {
-		// 環境光の R / G / B のどれかを変える
-		if (target == "AmbientColor") {
-			auto current = renderer_->GetAmbientColor();
-			if (prop == "R") current.x = val;
-			else if (prop == "G") current.y = val;
-			else if (prop == "B") current.z = val;
-			renderer_->SetAmbientColor(current);
-		}
-	});
-
-	// Web プロファイラへ現在の値を返す
-	Engine::NetworkProfiler::GetInstance().SetParameterGetCallback([this]() -> std::string {
-		// 環境光の色
-		nlohmann::json j;
-		auto amb = renderer_->GetAmbientColor();
-		j["AmbientColor"]["R"] = amb.x;
-		j["AmbientColor"]["G"] = amb.y;
-		j["AmbientColor"]["B"] = amb.z;
-		
-		// JSON の文字列にして返す
-		return j.dump();
-	});
-
-	// The first automatic Play needs the same restore point as a toolbar Play.
+	// 最初の自動 PLAY も、ツールバーの PLAY と同じ「停止時に戻す地点」を持たせる
 	FrameStoppedGameCamera();
 	editorCameraPos_ = camera_.Position();
 	editorCameraRot_ = camera_.Rotation();
@@ -288,11 +143,14 @@ void GameScene::Initialize(Engine::WindowDX* dx, const Engine::SceneParameters& 
 // =====================================================
 // 更新: タグの同期 → 時間計算 → ポーズ/グラフィック設定の入力 → アニメーション → 各システム → 生成・破棄の反映 → ライト
 void GameScene::Update() {
-    Data::SlimeTuningData().Poll();
+	Data::SlimeTuningData().Poll();
 	// エディタの Pause 中は、Step で要求された分だけ進める
-	if (!renderer_) return;
+	if (!renderer_)
+		return;
 	// コントローラーの振動を進める (プレイ外・ポーズ中・エディタの一時停止中は止める)
-	Rumble::Update(std::clamp(Engine::TimeManager::GetInstance().GetUnscaledDeltaTime(),0.f,.1f),isPlaying_&&!editorPaused_&&!isPaused_);
+	Rumble::Update(
+	    std::clamp(Engine::TimeManager::GetInstance().GetUnscaledDeltaTime(), 0.f, .1f),
+	    isPlaying_ && !editorPaused_ && !isPaused_);
 	if (isPlaying_ && editorPaused_) {
 		// Step が要求された分だけ1フレームずつ進める。それ以外は描画のみ (GPU の流体も止める)
 		// Step の要求が無ければ世界を止めて何もしない
@@ -322,11 +180,14 @@ void GameScene::Update() {
 	float dt = std::chrono::duration<float>(now - last).count();
 	last = now;
 
-	if (dt > 1.0f / 10.0f)
-		dt = 1.0f / 60.0f; // 長く止まった後 (極端なラグ) は 1/60 秒として扱う
+	// 長く止まった後 (極端なラグ) は 1/60 秒として扱う
+	if (dt > kMaxDeltaTime) {
+		dt = kFallbackDeltaTime;
+	}
 	// スライム本編では、操作・カメラ・流体の目標値でエンジンの時計を共有する
 	// 別の時計を使うと BeginFrame やエディタの処理時間まで移動量に含まれてしまうため
-	if(chronoMode_)dt=std::clamp(Engine::TimeManager::GetInstance().GetUnscaledDeltaTime(),0.f,.05f);
+	if (chronoMode_)
+		dt = std::clamp(Engine::TimeManager::GetInstance().GetUnscaledDeltaTime(), 0.f, .05f);
 
 	// システムへ渡す共有データを更新する
 	// このフレームの経過時間
@@ -335,7 +196,8 @@ void GameScene::Update() {
 	const bool stageClear = IsStageClear();
 
 	// PLAY 中の入力 (グラフィック設定・ポーズメニュー・ポーズの切り替え)。画面を開いている間はここで終わる
-	if (HandlePlayInput(dt, stageClear)) return;
+	if (HandlePlayInput(dt, stageClear))
+		return;
 
 	// システムへ渡す共有データ (カメラ・描画・入力・シーン・イベント・生成予約)
 	ctx_.camera = &camera_;
@@ -348,8 +210,8 @@ void GameScene::Update() {
 	ctx_.pendingSpawns = &pendingSpawns_;
 
 	// ビューポートの初期値はウィンドウ全体 (エディタが無い構成で配置がずれないように)。エディタがあれば後で上書きする
-	ctx_.viewportOffset = { 0.0f, 0.0f };
-	ctx_.viewportSize = { (float)Engine::WindowDX::kW, (float)Engine::WindowDX::kH };
+	ctx_.viewportOffset = {0.0f, 0.0f};
+	ctx_.viewportSize = {(float)Engine::WindowDX::kW, (float)Engine::WindowDX::kH};
 
 	// GPU での当たり判定は PhysicsSystem に移したので、ここでは何もしない
 
@@ -366,7 +228,8 @@ void GameScene::Update() {
 #ifndef NDEBUG
 	// システムの前の時間を記録する
 	const auto profileSystems = std::chrono::steady_clock::now();
-	updateTimings_.push_back({"Before systems", std::chrono::duration<float, std::milli>(profileSystems - profileBegin).count()});
+	updateTimings_.push_back(
+	    {"Before systems", std::chrono::duration<float, std::milli>(profileSystems - profileBegin).count()});
 #endif
 	for (auto& system : systems_) {
 		// PLAY 停止中・ポーズ中はシステムを動かさない (結果画面への遷移中はエンティティが消えている可能性がある)
@@ -381,7 +244,9 @@ void GameScene::Update() {
 #endif
 		system->Update(registry_, ctx_);
 #ifndef NDEBUG
-		updateTimings_.push_back({typeid(*system).name(), std::chrono::duration<float, std::milli>(std::chrono::steady_clock::now() - profileSystemBegin).count()});
+		updateTimings_.push_back(
+		    {typeid(*system).name(),
+		     std::chrono::duration<float, std::milli>(std::chrono::steady_clock::now() - profileSystemBegin).count()});
 #endif
 	}
 #ifndef NDEBUG
@@ -395,12 +260,13 @@ void GameScene::Update() {
 		camera_.Update(*Engine::Input::GetInstance());
 	}
 #endif
-	// Stopped Game view follows editor changes to the player, without simulation.
-	if (!isPlaying_) FrameStoppedGameCamera();
+	// 停止中のゲーム画面は、シミュレーションを進めずにエディタでのプレイヤーの変更に追従する。
+	if (!isPlaying_)
+		FrameStoppedGameCamera();
 	// カメラの揺れなどを進める
 	camera_.Tick(dt);
 
-// 予約された生成と破棄を反映する
+	// 予約された生成と破棄を反映する
 	FlushPendingSpawnsAndDestroys();
 
 	// ライトをレンダラーへ渡す
@@ -411,481 +277,10 @@ void GameScene::Update() {
 
 #ifndef NDEBUG
 	// システムの後の処理時間を記録する
-	updateTimings_.push_back({"After systems", std::chrono::duration<float, std::milli>(std::chrono::steady_clock::now() - profileAfterSystems).count()});
+	updateTimings_.push_back(
+	    {"After systems",
+	     std::chrono::duration<float, std::milli>(std::chrono::steady_clock::now() - profileAfterSystems).count()});
 #endif
-}
-
-// タグのキャッシュを遅れて同期する (生成直後と破棄時に予約したもの)
-void GameScene::FlushPendingTags() {
-	// タグのキャッシュを遅れて同期する (生成直後と破棄時に予約したもの)
-	// 予約があるときだけ処理する
-	if (!pendingTagRemoved_.empty() || !pendingTagSync_.empty()) {
-		// 1. 削除・変更予定のエンティティを全タグの一覧から取り除く
-		std::vector<entt::entity> toRemove = std::move(pendingTagRemoved_);
-		// 同期待ちのエンティティはタグが変わった可能性があるので、古い一覧から一旦消しておく
-		for (auto e : pendingTagSync_) {
-			toRemove.push_back(e);
-		}
-
-		// それぞれをすべてのタグの一覧から消す
-		for (auto e : toRemove) {
-			for (auto& pair : tagCache_) {
-				auto& vec = pair.second;
-				// すべてのタグの一覧からそのエンティティを消す
-				vec.erase(std::remove(vec.begin(), vec.end(), e), vec.end());
-			}
-		}
-
-		// 2. 最新のタグで一覧に入れ直す
-		std::vector<entt::entity> toSync = std::move(pendingTagSync_);
-		// まだ存在するものだけ入れ直す
-		for (auto e : toSync) {
-			if (registry_.valid(e)) {
-				SyncTag(e);
-			}
-		}
-	}
-}
-
-// PLAY 中の入力: F7 でグラフィック設定、ポーズメニュー、Esc / START でポーズ。
-// グラフィック設定やポーズメニューを処理したフレームは true を返す (Update はそこで終わる)
-bool GameScene::HandlePlayInput(float dt, bool stageClear) {
-	// PLAY 中の入力: F7 でグラフィック設定、ポーズメニュー、Esc / START でポーズ
-	if (isPlaying_) {
-        // F7: グラフィック設定画面を開閉する (開いている間はポーズ)
-        if(!stageClear&&UI::Pressed(DIK_F7)){SetPaused(true);graphicsOpen_=!graphicsOpen_;return true;}
-        // グラフィック設定画面: 変更があれば設定ファイルへ保存する
-        if(!stageClear&&isPaused_&&graphicsOpen_){
-            // UI の描画先 (エディタの Game ビューならマウス座標を上書きする)
-            UI::Canvas ui(renderer_,ctx_.viewportSize.x,ctx_.viewportSize.y);if(ctx_.useOverrideMouse)ui.SetPointer(ctx_.overrideMouseX,ctx_.overrideMouseY);
-            // 変更前の設定
-            auto previous=renderer_->GetGraphicsSettings();
-            // 入力を処理し、戻る操作なら画面を閉じる
-            if(UI::UpdateGraphics(ui,*renderer_))graphicsOpen_=false;
-            // 変更後の設定
-            const auto& current=renderer_->GetGraphicsSettings();
-            // 効果のどれかが変わったら保存し、失敗したら覚えておく
-            if(previous.bloom!=current.bloom||previous.lensFlare!=current.lensFlare||previous.grading!=current.grading||previous.ambientOcclusion!=current.ambientOcclusion||previous.motionBlur!=current.motionBlur||previous.dof!=current.dof||previous.exposure!=current.exposure||previous.dlssQuality!=current.dlssQuality||previous.rtShadows!=current.rtShadows||previous.rtReflections!=current.rtReflections||previous.rtIndirect!=current.rtIndirect)
-                graphicsSaveFailed_=!renderer_->SaveGraphicsSettings();
-            return true;
-        }
-		// ポーズメニューのボタン入力 (グラフィック設定 / タイトルへ / 再開)
-        if (!stageClear && isPaused_ && chronoSystem_ && chronoSystem_->DevourMode()) {
-            // 吸収モードのポーズ: 上下で選び、Enter / クリック / A で決定する
-            UI::Canvas ui(renderer_,ctx_.viewportSize.x,ctx_.viewportSize.y);if(ctx_.useOverrideMouse)ui.SetPointer(ctx_.overrideMouseX,ctx_.overrideMouseY);
-            auto* input=Engine::Input::GetInstance();
-            int chosen=UI::Scale::UpdatePause(ui,pauseMenu_);
-            if(UI::Pressed(DIK_G)||UI::PadPressed(XINPUT_GAMEPAD_BACK))chosen=1;
-            if(input->Trigger(DIK_TAB))chosen=2;
-            if(input->Trigger(DIK_ESCAPE)||input->PadTrigger(XINPUT_GAMEPAD_B|XINPUT_GAMEPAD_START))chosen=0;
-            if(chosen==1){graphicsOpen_=true;return true;}
-            if(chosen==2){Engine::SceneManager::GetInstance()->RequestCoveredChange("Title");return true;}
-            if(chosen==0){UI::PlayUISound(UI::UISound::Confirm);SetPaused(false);input->LatchPad();return true;}
-        } else if (!stageClear && isPaused_) {
-            // UI の描画先 (エディタの Game ビューならマウス座標を上書きする)
-            UI::Canvas ui(renderer_,ctx_.viewportSize.x,ctx_.viewportSize.y);if(ctx_.useOverrideMouse)ui.SetPointer(ctx_.overrideMouseX,ctx_.overrideMouseY);
-            // グラフィック設定ボタン・G・パッドの BACK で設定画面を開く
-            if(ui.Click(UI::GraphicsButton)||UI::Pressed(DIK_G)||UI::PadPressed(XINPUT_GAMEPAD_BACK)){graphicsOpen_=true;return true;}
-            auto* input=Engine::Input::GetInstance();
-            // スライム本編の強化パレット画面かどうか (ボタンの位置が違う)
-            bool roguePause=chronoMode_&&!registry_.view<Chrono::InkPlayer>().empty();
-            // タイトルへ戻るボタンか Tab でタイトルへ
-            if (ui.Click(roguePause?UI::PaletteTitle:UI::Title) || input->Trigger(DIK_TAB)) {
-                Engine::SceneManager::GetInstance()->RequestCoveredChange("Title");return true;
-            }
-            // 再開ボタン・Enter・パッドの B でポーズを解く (同じ押下を他で使わないよう止める)
-            if (ui.Click(roguePause?UI::PaletteResume:UI::Resume) || input->Trigger(DIK_RETURN) || input->PadTrigger(XINPUT_GAMEPAD_B)) {
-                UI::PlayUISound(UI::UISound::Confirm);SetPaused(false);input->LatchPad();
-            }
-        }
-		// Esc (0x01 = DIK_ESCAPE) / START でポーズを切り替える
-		if (!stageClear && (Engine::Input::GetInstance()->Trigger(0x01) || Engine::Input::GetInstance()->PadTrigger(XINPUT_GAMEPAD_START))) {
-            SetPaused(!isPaused_);Engine::Input::GetInstance()->LatchPad();
-        }
-
-		// ステージクリア中はカーソルを出す。通常プレイ中はプレイ時間を計測する
-		if (stageClear) {
-			Engine::WindowDX::SetCursorVisible(true);
-		} else if (!isPaused_) {
-			// 強化の選択画面が開いているか
-			bool upgradeOpen=false;for(auto e:registry_.view<Chrono::InkPlayer>())upgradeOpen|=registry_.get<Chrono::InkPlayer>(e).rogue.menu;
-			// 開いていなければプレイ時間を進める
-			if(!upgradeOpen)playTime_ += dt;
-			
-			// PLAY 中はマウスカーソルを画面中央に固定する (メニューを開いていない場合)
-            // (変形武器を作る画面が開いている間は固定しない。マウスで材料を選ぶ)
-            if (!upgradeOpen && !Chrono::CraftScreenOpen() && dx_ && dx_->GetHwnd()) {
-				// 画面中央をスクリーン座標に直してカーソルを置く
-				POINT center = { (LONG)Engine::WindowDX::kW / 2, (LONG)Engine::WindowDX::kH / 2 };
-				ClientToScreen(dx_->GetHwnd(), &center);
-				SetCursorPos(center.x, center.y);
-			}
-		}
-	}
-	return false;
-}
-
-// アニメーション (エンジン側の処理なのでシーンに残している)
-void GameScene::UpdateAnimations(float dt) {
-	// アニメーション (エンジン側の処理なのでシーンに残している)
-	// アニメーションの再生時刻を進める (エンティティごとに並列で処理する)
-	auto animView = registry_.view<AnimatorComponent, MeshRendererComponent>();
-	// PLAY 中でポーズしていなければ、対象のエンティティを集める
-	if (isPlaying_ && !isPaused_) {
-		std::vector<entt::entity> animEntities;
-		animView.each([&](entt::entity entity, auto&, auto&) { animEntities.push_back(entity); });
-
-		// 64 件ずつ別のスレッドで処理する
-		if (!animEntities.empty()) {
-			Engine::JobSystem::Dispatch((uint32_t)animEntities.size(), 64, [&](uint32_t i) {
-				// このエンティティのアニメーションとモデル
-				auto entity = animEntities[i];
-				auto& anim = registry_.get<AnimatorComponent>(entity);
-				auto& meshWrapper = registry_.get<MeshRendererComponent>(entity);
-
-				// 有効で再生中のものだけ進める
-				if (anim.enabled && anim.isPlaying) {
-						const float animDt = dt;
-						// 1 秒 60 フレームとして、再生の速さを掛けて進める
-						anim.time += animDt * 60.0f * anim.speed;
-						// クロスフェード中は残り時間を減らし、直前のクリップも進める
-						if (anim.crossfadeTimer > 0.0f) {
-							anim.crossfadeTimer -= animDt;
-							if (anim.crossfadeTimer < 0.0f) anim.crossfadeTimer = 0.0f;
-							anim.prevTime += animDt * 60.0f * anim.speed;
-					}
-
-					// クリップの長さを超えたら、ループならはじめから・ループでなければ最後で止める
-					auto* m = renderer_->GetModel(meshWrapper.modelHandle);
-					if (m) {
-						// モデルのアニメーションの一覧から、再生中のクリップを探す
-						const auto& data = m->GetData();
-						for (const auto& a : data.animations) {
-							if (a.name == anim.currentAnimation) {
-								if (anim.time > a.duration) {
-									if (anim.loop)
-										anim.time = std::fmod(anim.time, a.duration);
-									else {
-										anim.time = a.duration;
-										anim.isPlaying = false;
-									}
-								}
-							}
-							// クロスフェード中の直前のクリップも同様に処理する
-							if (anim.crossfadeTimer > 0.0f && a.name == anim.prevAnimation) {
-								if (anim.prevTime > a.duration) {
-									if (anim.prevLoop) anim.prevTime = std::fmod(anim.prevTime, a.duration);
-									else anim.prevTime = a.duration;
-								}
-							}
-						}
-					}
-				}
-			});
-			// すべての処理が終わるまで待つ
-			Engine::JobSystem::Wait();
-		}
-	}
-}
-
-// 予約された生成 (弾など) と破棄を反映する
-void GameScene::FlushPendingSpawnsAndDestroys() {
-	// 予約された生成 (弾など) と破棄を反映する
-	// 生成・破棄の予約を取り出す (ロック中に取り出すだけにして、削除はロックの外で行う)
-	std::vector<entt::entity> destroysToProcess;
-	{
-		// 生成・破棄の予約を守るロック
-		std::lock_guard<std::mutex> lock(spawnMutex_);
-
-		if (!pendingSpawns_.storage<entt::entity>().empty()) {
-			// 生成は直接 registry_.create() で行うので、ここの予約は使っていない (空にするだけ)
-			pendingSpawns_.clear();
-		}
-
-		if (!pendingDestroys_.empty()) {
-			// 同じエンティティの重複を除いて二重に破棄しない
-			// 並べ替えて重複を消す
-			std::sort(pendingDestroys_.begin(), pendingDestroys_.end());
-			pendingDestroys_.erase(std::unique(pendingDestroys_.begin(), pendingDestroys_.end()), pendingDestroys_.end());
-			
-			// 処理する一覧へ移す
-			destroysToProcess = std::move(pendingDestroys_);
-			pendingDestroys_.clear();
-		}
-	}
-
-	// 破棄はロックの外で行う (OnDestroy の中から DestroyObject が呼ばれてもデッドロックしないように)
-	for (auto id : destroysToProcess) {
-		// まだ存在するものだけ削除する
-		if (registry_.valid(id)) {
-			RemoveEntity(id);
-		}
-	}
-}
-
-// ライト (描画の設定なのでシーンに残している)
-void GameScene::ApplyLights() {
-	// ライト (描画の設定なのでシーンに残している)
-	// ライトの反映: 平行光源1つ・点光源・スポットライトをレンダラーへ渡す
-	if (renderer_) {
-		// 使った点光源・スポットライトの数と、平行光源があったか
-		int plCount = 0;
-		int slCount = 0;
-		bool hasDirLight = false;
-
-		// 平行光源
-		auto dirLightView = registry_.view<DirectionalLightComponent, TransformComponent>();
-		// 平行光源は最初に見つかった1つだけ使う。向きは回転行列の Z 軸
-		dirLightView.each([&](auto, const DirectionalLightComponent& dl, const TransformComponent& tc) {
-			if (dl.enabled && !hasDirLight) {
-				// 回転から向きを求め、色に強さを掛ける
-				Engine::Matrix4x4 mat = tc.GetTransform().ToMatrix();
-				Engine::Vector3 dir = {mat.m[2][0], mat.m[2][1], mat.m[2][2]};
-				Engine::Vector3 color = {dl.color.x * dl.intensity, dl.color.y * dl.intensity, dl.color.z * dl.intensity};
-				renderer_->SetDirectionalLight(dir, color, true);
-				hasDirLight = true;
-			}
-		});
-
-		auto plView = registry_.view<PointLightComponent, TransformComponent>();
-		// 点光源は上限数まで
-		plView.each([&](auto, const PointLightComponent& pl, const TransformComponent& tc) {
-			if (pl.enabled && plCount < Engine::Renderer::kMaxPointLights) {
-				// 位置・色 (強さを掛ける)・減衰
-				Engine::Vector3 pos = {tc.translate.x, tc.translate.y, tc.translate.z};
-				Engine::Vector3 color = {pl.color.x * pl.intensity, pl.color.y * pl.intensity, pl.color.z * pl.intensity};
-				Engine::Vector3 atten = {pl.atten.x, pl.atten.y, pl.atten.z};
-				renderer_->SetPointLight(plCount, pos, color, pl.range, atten, true);
-				plCount++;
-			}
-		});
-
-		// スポットライトも上限数まで (向きは回転行列の Z 軸)
-		auto slView = registry_.view<SpotLightComponent, TransformComponent>();
-		slView.each([&](auto, const SpotLightComponent& sl, const TransformComponent& tc) {
-			if (sl.enabled && slCount < Engine::Renderer::kMaxSpotLights) {
-				// 回転から向きを求める
-				Engine::Matrix4x4 mat = tc.GetTransform().ToMatrix();
-				Engine::Vector3 dir = {mat.m[2][0], mat.m[2][1], mat.m[2][2]};
-				// 位置・色 (強さを掛ける)・減衰
-				Engine::Vector3 pos = {tc.translate.x, tc.translate.y, tc.translate.z};
-				Engine::Vector3 color = {sl.color.x * sl.intensity, sl.color.y * sl.intensity, sl.color.z * sl.intensity};
-				Engine::Vector3 atten = {sl.atten.x, sl.atten.y, sl.atten.z};
-				// 範囲と、内側・外側の角度 (cos) も渡す
-				renderer_->SetSpotLight(slCount, pos, dir, color, sl.range, sl.innerCos, sl.outerCos, atten, true);
-				slCount++;
-			}
-		});
-
-		// 使わなかった枠はライトを無効にしておく
-		if (!hasDirLight) {
-			renderer_->SetDirectionalLight({0, -1, 0}, {0, 0, 0}, false);
-		}
-		for (int i = plCount; i < Engine::Renderer::kMaxPointLights; ++i) {
-			renderer_->SetPointLight(i, {0, 0, 0}, {0, 0, 0}, 0, {1, 0, 0}, false);
-		}
-		for (int i = slCount; i < Engine::Renderer::kMaxSpotLights; ++i) {
-			renderer_->SetSpotLight(i, {0, 0, 0}, {0, -1, 0}, {0, 0, 0}, 0, 0.0f, 0.0f, {1, 0, 0}, false);
-		}
-	}
-}
-
-// パーティクルエミッターの更新
-void GameScene::UpdateParticleEmitters(float dt) {
-	// パーティクルエミッターの更新
-	auto peView = registry_.view<ParticleEmitterComponent, TransformComponent, NameComponent>();
-	// 初回にエミッターを初期化し (保存された設定ファイルがあれば読み込む)、位置を合わせて更新する
-	peView.each([&](auto, ParticleEmitterComponent& pe, const TransformComponent& tc, const NameComponent& nc) {
-		// 無効なら何もしない
-		if (!pe.enabled)
-			return;
-
-		// まだ初期化していなければ、名前を付けて作る
-		if (!pe.isInitialized && renderer_) {
-			pe.emitter.Initialize(*renderer_, nc.name + "_Emitter");
-			// 設定ファイルがあれば読み込む
-			if (!pe.assetPath.empty()) {
-				pe.emitter.LoadFromJson(pe.assetPath);
-			}
-			pe.isInitialized = true;
-		}
-
-		// エミッターをエンティティの位置へ動かし、時間を進める
-		pe.emitter.params.position = {tc.translate.x, tc.translate.y, tc.translate.z};
-		pe.emitter.Update(dt);
-	});
-}
-
-// ゲーム内のポーズの切り替え。BGM を小さくし、カーソルを出し、流体などを止めてメニューを出す
-void GameScene::SetPaused(bool paused) {
-    // 強化の選択画面が開いているか
-    if(paused&&!isPaused_){pauseOpenedAt_=UI::Seconds();pauseMenu_=0;}
-    isPaused_=paused;bool upgradeOpen=false;
-    for(auto e:registry_.view<Chrono::InkPlayer>())upgradeOpen|=registry_.get<Chrono::InkPlayer>(e).rogue.menu;
-    // BGM の音量を下げる
-    if(auto* audio=Engine::Audio::GetInstance()){audio->SetBGMDucked(paused||upgradeOpen);audio->SetSEPaused(paused||upgradeOpen);}
-    // カーソルを出す
-    Engine::WindowDX::SetCursorVisible(paused||upgradeOpen);
-    // 流体などの世界を止める
-    if(renderer_)renderer_->SetRogueWorldFrozen(paused||upgradeOpen);
-    // ポーズメニューを作る / 消す
-    if(paused)CreatePauseMenu();else DestroyPauseMenu();
-}
-// エディタの Pause: ゲームの更新だけを止める。止める前の流体の停止状態を覚えておき、再開時に戻す
-void GameScene::SetEditorPaused(bool paused) {
-	// 変わらなければ何もしない
-	if (editorPaused_ == paused) return;
-	if (renderer_) {
-		if (paused) worldFrozenBeforeEditorPause_ = renderer_->GetRogueWorldFrozen();
-		else renderer_->SetRogueWorldFrozen(worldFrozenBeforeEditorPause_);
-	}
-	editorPaused_ = paused;
-	// Step で進める残りのフレームを 0 に戻す
-	editorStepFrames_ = 0;
-}
-
-// A follow camera has no serialized Camera entity. Preview the restored player
-// without advancing gameplay, physics or input; Scene navigation stays independent.
-void GameScene::FrameStoppedGameCamera() {
-	if (!chronoMode_) return;
-	for (auto e : registry_.view<TransformComponent, NameComponent>()) {
-		if (registry_.get<NameComponent>(e).name != "Player") continue;
-		const auto& t = registry_.get<TransformComponent>(e);
-		const float distance = (std::max)(17.f, 8.f * t.scale.x);
-		camera_.StopShake(); camera_.SetHandheld(0);
-		camera_.SetRotation(.2f, 0, 0);
-		camera_.SetPosition(t.translate.x, t.translate.y + 1.5f + std::sin(.2f) * distance,
-			t.translate.z - std::cos(.2f) * distance);
-		break;
-	}
-}
-
-// PLAY の開始と停止
-void GameScene::SetIsPlaying(bool play) {
-	// 変わらなければ何もしない
-	if (isPlaying_ == play)
-		return;
-	// エディタの Pause は解く
-	SetEditorPaused(false);
-
-	// 流体のプレビューとスライム本編のポストエフェクトを初期状態にする
-	if (play || chronoMode_) ResetFluidPreview();
-	if (chronoMode_) {
-		gpuSlimeEmitted_ = false;
-		renderer_->SetPostEffect("Default");renderer_->SetPostProcessParams({});
-	}
-
-	if (play) {
-		// PLAY 開始時: インスペクターで変えたスクリプトの設定をコンポーネントへ確実に反映する
-		auto scView = registry_.view<ScriptComponent>();
-		// スクリプトを持つエンティティを順に処理する
-		for (auto entity : scView) {
-			auto& sc = scView.get<ScriptComponent>(entity);
-			for (auto& entry : sc.scripts) {
-				// 実体があれば、今のパラメータを書き出して保存し、変わったかをログに残す
-				if (entry.instance) {
-					std::string oldParam = entry.parameterData;
-					entry.parameterData = entry.instance->SerializeParameters();
-					if (entry.parameterData != oldParam) {
-						char logBuf[2048];
-						sprintf_s(logBuf, "[GameScene] Script synced: %s from %s to %s\n", entry.scriptPath.c_str(), oldParam.c_str(), entry.parameterData.c_str());
-						OutputDebugStringA(logBuf);
-					} else {
-						char logBuf[1024];
-						sprintf_s(logBuf, "[GameScene] Script already in sync: %s (%s)\n", entry.scriptPath.c_str(), entry.parameterData.c_str());
-						OutputDebugStringA(logBuf);
-					}
-				} else {
-					// 実体が無ければ反映できないことをログに残す
-					char logBuf[1024];
-					sprintf_s(logBuf, "[GameScene] Script instance NULL, skipping sync: %s (current param: %s)\n", entry.scriptPath.c_str(), entry.parameterData.c_str());
-					OutputDebugStringA(logBuf);
-				}
-			}
-		}
-
-		const std::string editSnapshot = EditorUI::SavePlaySnapshot(this);
-		// 各システムをリセットする (スクリプトの再初期化やインスタンスの破棄など) のを先に行う
-		for (auto& sys : systems_) {
-			sys->Reset(registry_);
-		}
-
-		// 停止時に戻すため、PLAY 開始時のシーンを保存する
-		sceneSnapshot_ = editSnapshot;
-		{
-			char logBuf[128];
-			sprintf_s(logBuf, "[GameScene] Saved snapshot for PLAY mode (size: %zu)\n", sceneSnapshot_.size());
-			OutputDebugStringA(logBuf);
-		}
-
-		// PLAY 前のゲームカメラの位置と回転を保存する
-		DirectX::XMFLOAT3 pos = camera_.Position();
-		editorCameraPos_ = {pos.x, pos.y, pos.z};
-		DirectX::XMFLOAT3 rot = camera_.Rotation();
-		editorCameraRot_ = {rot.x, rot.y, rot.z};
-
-		// PLAY 中にして、ポーズを解く
-		isPlaying_ = true;
-		isPaused_ = false;
-		Engine::WindowDX::SetCursorVisible(false); // カーソルを隠す
-	} else {
-		// PLAY 停止時: PLAY を押す直前の状態 (sceneSnapshot_) に戻す
-		// 選択中のエンティティの名前を覚えておく (復元後に名前で選び直す)
-		std::vector<std::string> selectedNames;
-		auto& reg = registry_;
-		for (auto entity : selectedEntities_) {
-			if (reg.valid(entity) && reg.all_of<NameComponent>(entity)) {
-				selectedNames.push_back(reg.get<NameComponent>(entity).name);
-			}
-		}
-
-		isPlaying_ = false;Rumble::Stop();
-		gpuSlimeEmitted_ = false; // GPU スライムの放出フラグを戻す
-		Engine::WindowDX::SetCursorVisible(true); // カーソルを表示する
-
-		// ゲームカメラを PLAY 前の位置に戻す
-		camera_.SetPosition(editorCameraPos_.x, editorCameraPos_.y, editorCameraPos_.z);
-		camera_.SetRotation(editorCameraRot_.x, editorCameraRot_.y, editorCameraRot_.z);
-		
-		// 保存したシーンがあれば戻す
-		if (!sceneSnapshot_.empty()) {
-			OutputDebugStringA(("[GameScene] Restoring from memory snapshot (size: " + std::to_string(sceneSnapshot_.size()) + ")...\n").c_str());
-			EditorUI::LoadFromMemory(this, sceneSnapshot_);
-
-			// 覚えておいた名前で選択を復元する
-			selectedEntities_.clear();
-			selectedEntity_ = entt::null;
-			// 名前が同じエンティティを選び直す (最初のものを主な選択にする)
-			auto view = reg.view<NameComponent>();
-			for (const auto& name : selectedNames) {
-				for (auto entity : view) {
-					if (view.get<NameComponent>(entity).name == name) {
-						selectedEntities_.insert(entity);
-						if (selectedEntity_ == entt::null)
-							selectedEntity_ = entity;
-						break;
-					}
-				}
-			}
-			if (!selectedNames.empty()) {
-				OutputDebugStringA(("[GameScene] Restored selection for " + std::to_string(selectedEntities_.size()) + " entities.\n").c_str());
-			}
-		} else {
-			OutputDebugStringA("[GameScene] ERROR: Memory snapshot is empty on STOP! Falling back to initial state.\n");
-			// 保存が無ければ最初の状態に戻す
-			if (!initialSceneSnapshot_.empty()) {
-				EditorUI::LoadFromMemory(this, initialSceneSnapshot_);
-			}
-		}
-		FrameStoppedGameCamera();
-		// 保存内容は PLAY 開始のたびに取り直すので、停止したら空にする
-		sceneSnapshot_ = "";
-
-// 残っている生成・破棄の予約を捨てる
-		std::lock_guard<std::mutex> lock(spawnMutex_);
-		pendingDestroys_.clear();
-		pendingSpawns_.clear();
-	}
 }
 
 } // namespace Game

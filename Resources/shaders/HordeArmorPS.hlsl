@@ -5,7 +5,7 @@ float4 main(PSIn i):SV_TARGET {
     float opacity=saturate(i.color.a-lightLevel*2);
     opacity*=smoothstep(.8,2.8,distance(cameraPos,i.worldPos));
     clip(opacity-.001);
-    // Screen-door fade preserves instancing, depth testing and the view of the slime.
+    // 網戸状のフェードなら、インスタンス描画・深度テスト・スライムの見え方を保てる。
     if(opacity<.999){float noise=frac(52.9829189*frac(dot(floor(i.pos.xy),float2(.06711056,.00583715))));clip(opacity-noise);}
     float3 n=normalize(i.normal),v=normalize(cameraPos-i.worldPos);
     float light=.28+.72*saturate(dot(n,normalize(float3(-.4,.8,-.35))));

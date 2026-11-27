@@ -1,6 +1,6 @@
 #include "Text.hlsli"
 
-Texture2D<float> tex : register(t0); // R8_UNORM texture
+Texture2D<float> tex : register(t0); // R8_UNORM のテクスチャ
 SamplerState smp : register(s0);
 
 float4 main(VSOutput input) : SV_TARGET {

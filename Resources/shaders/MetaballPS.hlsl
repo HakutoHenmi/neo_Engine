@@ -25,7 +25,7 @@ float3 ViewPosition(float2 uv, float z) {
 }
 
 float OpaqueViewDepth(float2 uv) {
-    // Point depth avoids fabricating an intermediate surface at object edges.
+    // 点の深度を使い、物の縁に中間の面を作り出さないようにする。
     uint width, height;
     sceneDepth.GetDimensions(width, height);
     int2 pixel = clamp(int2(uv * float2(width, height)), int2(0, 0), int2(width, height) - 1);
@@ -42,8 +42,8 @@ float2 LoadSurface(int2 pixel, uint phase) {
 float2 Surface(float2 uv, uint phase) {
     uint width, height;
     surfacePhase0.GetDimensions(width, height);
-    // Guide from the reconstructed surface, not the original particle sphere.
-    // Raw-depth rejection here reintroduced particle-shaped holes after blur.
+    // 元の粒子の球ではなく、再構成した面から導く。
+    // ここで生の深度で捨てると、ぼかした後に粒子の形の穴が戻ってきた。
     float referenceDepth = 0;
     float2 coordinate = uv * float2(width, height) - 0.5f;
     int2 origin = int2(floor(coordinate));
@@ -69,12 +69,12 @@ float2 Surface(float2 uv, uint phase) {
         density += samples[j].y * weights[j];
         densityWeight += weights[j];
     }
-    // Bilateral upsampling excludes other depth layers and zero-depth holes.
+    // 双方向フィルターの拡大で、他の深度の層と深度 0 の穴を除く。
     return depthWeight > 0.0001f ? float2(depthSum / depthWeight, density / max(densityWeight, 0.0001f)) : float2(0, 0);
 }
 
-// Derivatives use an already filtered depth field. At discontinuities use the
-// one-sided derivative on this surface, never the depth of the other body.
+// 微分はフィルター済みの深度の場で取る。不連続な所では、この面の
+// 片側の微分を使い、別の体の深度は決して使わない。
 float DepthDelta(float2 a, float2 b, float centerDepth) {
     bool validA = a.x > 0 && abs(a.x - centerDepth) < 0.85f;
     bool validB = b.x > 0 && abs(b.x - centerDepth) < 0.85f;
@@ -103,11 +103,11 @@ Layer ShadeLayer(float2 uv, uint phase, float2 texel) {
     float opaqueDepth = OpaqueViewDepth(uv);
     if (surface.x >= opaqueDepth) return layer;
     layer.depth = surface.x;
-    // Coverage is geometric; absorption is calculated separately below.
+    // 覆う割合は形で決まる。吸収は下で別に計算する。
     float edgeWidth = max(fwidth(surface.y) * 1.5f, threshold * 0.2f);
     layer.coverage = smoothstep(threshold, threshold + edgeWidth, surface.y);
-    // Measure slopes over a small world-space baseline. A two-pixel baseline
-    // magnifies half-resolution interpolation seams in reflection/refraction.
+    // 世界空間の小さな基準長で傾きを測る。2 ピクセルの基準だと、
+    // 半分の解像度の補間の継ぎ目が反射 / 屈折で拡大される。
     float normalStep = clamp(0.30f * abs(gProj[1][1]) /
                              (2.0f * texel.y * max(surface.x, 0.1f)), 3.0f, 16.0f);
     float2 dxUV = float2(texel.x * normalStep, 0);
@@ -122,8 +122,8 @@ Layer ShadeLayer(float2 uv, uint phase, float2 texel) {
     float3 viewDir = normalize(-p);
     if (dot(normal, viewDir) < 0) normal = -normal;
 
-    // Density is a local optical path proxy, not N dot V. Different particle
-    // strengths are accounted for so a thin water sheet stays transparent.
+    // 密度は局所的な光の道のりの代わりで、N・V ではない。粒子の強さの違いも
+    // 考慮するので、薄い水の膜は透明なまま。
     float thickness = min(surface.y * (phase == 2U ? 5.0f : 1.8f), 4.0f);
     thickness = min(thickness, max(opaqueDepth - surface.x, 0.0f));
     float3 absorption = phase == 0U ? float3(1.6f, 0.16f, 0.8f) :
@@ -139,8 +139,8 @@ Layer ShadeLayer(float2 uv, uint phase, float2 texel) {
     float3 transmittance = exp(-absorption * thickness);
     layer.transmission = transmittance * (1.0f - fresnel);
 
-    // Actual sky cubemap in world space, not a synthetic green sky derived
-    // from fluid colour. A null cubemap reads black until a sky is assigned.
+    // 流体の色から作った偽の緑の空ではなく、世界空間の実際の空のキューブマップ。
+    // 空のキューブマップが無い間は、空を割り当てるまで黒を読む。
     float3 reflectWorld = mul(reflect(-viewDir, normal), transpose((float3x3)gView));
     float3 reflected = environmentMap.SampleLevel(smp, reflectWorld, 0).rgb;
     float3 lightDir = normalize(mul(float3(-0.3f, 0.8f, -0.5f), (float3x3)gView));
@@ -149,8 +149,8 @@ Layer ShadeLayer(float2 uv, uint phase, float2 texel) {
     layer.radiance = reflected * fresnel + highlight * (0.15f + fresnel) +
                      tint * (1.0f - transmittance) * 0.18f;
 
-    // Refract a finite path through the surface. Opaque depth guards below
-    // stop foreground objects leaking into the displaced background sample.
+    // 面を通る有限の道のりで屈折させる。下の不透明な深度の確認で、
+    // 手前の物がずらした背景のサンプルに漏れ込まないようにする。
     float3 refracted = refract(-viewDir, normal, 1.0f / ior);
     float3 exitPoint = p + refracted * thickness;
     float4 clip = mul(float4(exitPoint, 1), gProj);
@@ -170,8 +170,8 @@ void CompositeLayer(Layer layer, float2 texel,
     float2 candidateUV = clamp(backgroundUV + layer.refractOffset, texel * 0.5f, 1.0f - texel * 0.5f);
     if (OpaqueViewDepth(candidateUV) < layer.depth) candidateUV = backgroundUV;
     float3 displacedBackground = sceneColor.SampleLevel(smp, candidateUV, 0).rgb;
-    // Displace only the surviving opaque background contribution. Previously
-    // composed fluid layers are never overwritten with a fresh scene sample.
+    // ずらすのは残った不透明な背景の寄与だけ。前に合成した
+    // 流体の層を、新しいシーンのサンプルで上書きすることはない。
     result += (displacedBackground - backgroundSample) * backgroundTransmission * layer.coverage;
     backgroundSample = lerp(backgroundSample, displacedBackground, layer.coverage);
     backgroundUV = lerp(backgroundUV, candidateUV, layer.coverage);
@@ -197,6 +197,6 @@ float4 main(PSIn input) : SV_TARGET {
     CompositeLayer(a, texel, result, transmission, backgroundUV, background);
     CompositeLayer(b, texel, result, transmission, backgroundUV, background);
     CompositeLayer(c, texel, result, transmission, backgroundUV, background);
-    // The shader has already composed the scene. Hardware blending is off.
+    // シェーダーがすでにシーンを合成している。ハードウェアの合成は使わない。
     return float4(result, 1);
 }

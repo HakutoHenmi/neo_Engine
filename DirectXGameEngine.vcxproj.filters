@@ -25,79 +25,79 @@
     <ClCompile Include="externals\ufbx\ufbx.c">
       <Filter>externals</Filter>
     </ClCompile>
-    <ClCompile Include="Engine\ImGuiLayer.cpp">
+    <ClCompile Include="Engine\ImGui\ImGuiLayer.cpp">
       <Filter>ImGui</Filter>
     </ClCompile>
-    <ClCompile Include="Engine\App.cpp">
+    <ClCompile Include="Engine\Core\App.cpp">
       <Filter>Core</Filter>
     </ClCompile>
-    <ClCompile Include="Engine\NetworkProfiler.cpp">
+    <ClCompile Include="Engine\Core\NetworkProfiler.cpp">
       <Filter>Core</Filter>
     </ClCompile>
-    <ClCompile Include="Engine\Audio.cpp">
+    <ClCompile Include="Engine\Core\Audio.cpp">
       <Filter>Core</Filter>
     </ClCompile>
-    <ClCompile Include="Engine\Input.cpp">
+    <ClCompile Include="Engine\Core\Input.cpp">
       <Filter>Core</Filter>
     </ClCompile>
-    <ClCompile Include="Engine\WindowDX.cpp">
+    <ClCompile Include="Engine\Core\WindowDX.cpp">
       <Filter>Core</Filter>
     </ClCompile>
-    <ClCompile Include="Engine\Renderer.cpp">
+    <ClCompile Include="Engine\Graphics\Renderer.cpp">
       <Filter>Graphics</Filter>
     </ClCompile>
-    <ClCompile Include="Engine\RendererNtc.cpp">
+    <ClCompile Include="Engine\Graphics\RendererNtc.cpp">
       <Filter>Graphics</Filter>
     </ClCompile>
-    <ClCompile Include="Engine\ShaderCache.cpp">
+    <ClCompile Include="Engine\Graphics\ShaderCache.cpp">
       <Filter>Graphics</Filter>
     </ClCompile>
-    <ClCompile Include="Engine\FluidVolume.cpp">
+    <ClCompile Include="Engine\Fluid\FluidVolume.cpp">
+      <Filter>Fluid</Filter>
+    </ClCompile>
+    <ClCompile Include="Engine\Camera\Camera.cpp">
+      <Filter>Camera</Filter>
+    </ClCompile>
+    <ClCompile Include="Engine\Graphics\Model.cpp">
       <Filter>Graphics</Filter>
     </ClCompile>
-    <ClCompile Include="Engine\Camera.cpp">
-      <Filter>Graphics</Filter>
-    </ClCompile>
-    <ClCompile Include="Engine\Model.cpp">
-      <Filter>Graphics</Filter>
-    </ClCompile>
-    <ClCompile Include="Engine\TextureManager.cpp">
+    <ClCompile Include="Engine\Graphics\TextureManager.cpp">
       <Filter>Graphics</Filter>
     </ClCompile>
     <ClCompile Include="Engine\Water\WaterSurface.cpp">
       <Filter>Graphics</Filter>
     </ClCompile>
-    <ClCompile Include="Engine\Particle.cpp">
+    <ClCompile Include="Engine\Particle\Particle.cpp">
       <Filter>Particle</Filter>
     </ClCompile>
-    <ClCompile Include="Engine\GPUParticle.cpp">
+    <ClCompile Include="Engine\Particle\GPUParticle.cpp">
       <Filter>Particle</Filter>
     </ClCompile>
-    <ClCompile Include="Engine\ParticleEditor.cpp">
+    <ClCompile Include="Engine\Particle\ParticleEditor.cpp">
       <Filter>Particle</Filter>
     </ClCompile>
-    <ClCompile Include="Engine\ParticleEmitter.cpp">
+    <ClCompile Include="Engine\Particle\ParticleEmitter.cpp">
       <Filter>Particle</Filter>
     </ClCompile>
-    <ClCompile Include="Engine\SceneManager.cpp">
+    <ClCompile Include="Engine\Scene\SceneManager.cpp">
       <Filter>Scene</Filter>
     </ClCompile>
-    <ClCompile Include="Engine\LoadingScreen.cpp">
+    <ClCompile Include="Engine\Scene\LoadingScreen.cpp">
       <Filter>Scene</Filter>
     </ClCompile>
-    <ClCompile Include="Engine\EntityManager.cpp">
+    <ClCompile Include="Engine\ECS\EntityManager.cpp">
       <Filter>ECS</Filter>
     </ClCompile>
-    <ClCompile Include="Engine\RenderSystem.cpp">
+    <ClCompile Include="Engine\ECS\RenderSystem.cpp">
       <Filter>ECS</Filter>
     </ClCompile>
-    <ClCompile Include="Engine\CollisionSystem.cpp">
-      <Filter>ECS</Filter>
+    <ClCompile Include="Engine\Collision\CollisionSystem.cpp">
+      <Filter>Collision</Filter>
     </ClCompile>
-    <ClCompile Include="Engine\JobSystem.cpp">
-      <Filter>ECS</Filter>
+    <ClCompile Include="Engine\Core\JobSystem.cpp">
+      <Filter>Core</Filter>
     </ClCompile>
-    <ClCompile Include="Engine\QuadTree.cpp" />
+    <ClCompile Include="Engine\Collision\QuadTree.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="externals\imgui\imgui.h">
@@ -112,76 +112,76 @@
     <ClInclude Include="externals\imgui\imgui_internal.h">
       <Filter>ImGui</Filter>
     </ClInclude>
-    <ClInclude Include="Engine\ImGuiLayer.h">
+    <ClInclude Include="Engine\ImGui\ImGuiLayer.h">
       <Filter>ImGui</Filter>
     </ClInclude>
-    <ClInclude Include="Engine\App.h">
+    <ClInclude Include="Engine\Core\App.h">
       <Filter>Core</Filter>
     </ClInclude>
-    <ClInclude Include="Engine\NetworkProfiler.h">
+    <ClInclude Include="Engine\Core\NetworkProfiler.h">
       <Filter>Core</Filter>
     </ClInclude>
-    <ClInclude Include="Engine\Audio.h">
+    <ClInclude Include="Engine\Core\Audio.h">
       <Filter>Core</Filter>
     </ClInclude>
-    <ClInclude Include="Engine\GameObject.h">
+    <ClInclude Include="Engine\Core\GameObject.h">
       <Filter>Core</Filter>
     </ClInclude>
-    <ClInclude Include="Engine\Input.h">
+    <ClInclude Include="Engine\Core\Input.h">
       <Filter>Core</Filter>
     </ClInclude>
-    <ClInclude Include="Engine\WindowDX.h">
+    <ClInclude Include="Engine\Core\WindowDX.h">
       <Filter>Core</Filter>
     </ClInclude>
-    <ClInclude Include="Engine\Matrix4x4.h">
+    <ClInclude Include="Engine\Math\Matrix4x4.h">
       <Filter>Math</Filter>
     </ClInclude>
-    <ClInclude Include="Engine\Transform.h">
+    <ClInclude Include="Engine\Math\Transform.h">
       <Filter>Math</Filter>
     </ClInclude>
-    <ClInclude Include="Engine\Renderer.h">
+    <ClInclude Include="Engine\Graphics\Renderer.h">
       <Filter>Graphics</Filter>
     </ClInclude>
-    <ClInclude Include="Engine\Camera.h">
+    <ClInclude Include="Engine\Camera\Camera.h">
+      <Filter>Camera</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\Graphics\Model.h">
       <Filter>Graphics</Filter>
     </ClInclude>
-    <ClInclude Include="Engine\Model.h">
-      <Filter>Graphics</Filter>
-    </ClInclude>
-    <ClInclude Include="Engine\TextureManager.h">
+    <ClInclude Include="Engine\Graphics\TextureManager.h">
       <Filter>Graphics</Filter>
     </ClInclude>
     <ClInclude Include="Engine\Water\WaterSurface.h">
       <Filter>Graphics</Filter>
     </ClInclude>
-    <ClInclude Include="Engine\Particle.h">
+    <ClInclude Include="Engine\Particle\Particle.h">
       <Filter>Particle</Filter>
     </ClInclude>
-    <ClInclude Include="Engine\ObjectPool.h">
+    <ClInclude Include="Engine\Core\ObjectPool.h">
       <Filter>Core</Filter>
     </ClInclude>
-    <ClInclude Include="Engine\EmissionShapes.h">
+    <ClInclude Include="Engine\Particle\EmissionShapes.h">
       <Filter>Particle</Filter>
     </ClInclude>
-    <ClInclude Include="Engine\CommandHistory.h">
+    <ClInclude Include="Engine\Core\CommandHistory.h">
       <Filter>Core</Filter>
     </ClInclude>
-    <ClInclude Include="Engine\GPUParticle.h">
+    <ClInclude Include="Engine\Particle\GPUParticle.h">
       <Filter>Particle</Filter>
     </ClInclude>
-    <ClInclude Include="Engine\ParticleEditor.h">
+    <ClInclude Include="Engine\Particle\ParticleEditor.h">
       <Filter>Particle</Filter>
     </ClInclude>
-    <ClInclude Include="Engine\ParticleEmitter.h">
+    <ClInclude Include="Engine\Particle\ParticleEmitter.h">
       <Filter>Particle</Filter>
     </ClInclude>
-    <ClInclude Include="Engine\SceneManager.h">
+    <ClInclude Include="Engine\Scene\SceneManager.h">
       <Filter>Scene</Filter>
     </ClInclude>
-    <ClInclude Include="Engine\LoadingScreen.h">
+    <ClInclude Include="Engine\Scene\LoadingScreen.h">
       <Filter>Scene</Filter>
     </ClInclude>
-    <ClInclude Include="Engine\IScene.h">
+    <ClInclude Include="Engine\Scene\IScene.h">
       <Filter>Scene</Filter>
     </ClInclude>
     <ClInclude Include="externals\imgui\imconfig.h">
@@ -199,48 +199,57 @@
     <ClInclude Include="externals\ufbx\ufbx.h">
       <Filter>externals</Filter>
     </ClInclude>
-    <ClInclude Include="Engine\Components.h">
+    <ClInclude Include="Engine\ECS\Components.h">
       <Filter>ECS</Filter>
     </ClInclude>
-    <ClInclude Include="Engine\ECS.h">
+    <ClInclude Include="Engine\ECS\ECS.h">
       <Filter>ECS</Filter>
     </ClInclude>
-    <ClInclude Include="Engine\RenderSystem.h">
+    <ClInclude Include="Engine\ECS\RenderSystem.h">
       <Filter>ECS</Filter>
     </ClInclude>
-    <ClInclude Include="Engine\CollisionSystem.h">
+    <ClInclude Include="Engine\Collision\CollisionSystem.h">
+      <Filter>Collision</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\ECS\ComponentArray.h">
       <Filter>ECS</Filter>
     </ClInclude>
-    <ClInclude Include="Engine\ComponentArray.h">
+    <ClInclude Include="Engine\ECS\ComponentManager.h">
       <Filter>ECS</Filter>
     </ClInclude>
-    <ClInclude Include="Engine\ComponentManager.h">
+    <ClInclude Include="Engine\ECS\System.h">
       <Filter>ECS</Filter>
     </ClInclude>
-    <ClInclude Include="Engine\System.h">
+    <ClInclude Include="Engine\ECS\SystemManager.h">
       <Filter>ECS</Filter>
     </ClInclude>
-    <ClInclude Include="Engine\SystemManager.h">
+    <ClInclude Include="Engine\ECS\Coordinator.h">
       <Filter>ECS</Filter>
     </ClInclude>
-    <ClInclude Include="Engine\Coordinator.h">
+    <ClInclude Include="Engine\Collision\SpatialPartition.h">
+      <Filter>Collision</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\ECS\EntityManager.h">
       <Filter>ECS</Filter>
     </ClInclude>
-    <ClInclude Include="Engine\SpatialPartition.h">
-      <Filter>ECS</Filter>
+    <ClInclude Include="Engine\Core\JobSystem.h">
+      <Filter>Core</Filter>
     </ClInclude>
-    <ClInclude Include="Engine\EntityManager.h">
-      <Filter>ECS</Filter>
-    </ClInclude>
-    <ClInclude Include="Engine\JobSystem.h">
-      <Filter>ECS</Filter>
-    </ClInclude>
-    <ClInclude Include="Engine\QuadTree.h" />
+    <ClInclude Include="Engine\Collision\QuadTree.h" />
   </ItemGroup>
   <ItemGroup>
     <Text Include="externals\imgui\LICENSE.txt" />
   </ItemGroup>
   <ItemGroup>
+    <Filter Include="Collision">
+      <UniqueIdentifier>{0d2779e2-4d85-409d-8555-71a1b3e982f9}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Camera">
+      <UniqueIdentifier>{88686cb5-b2c3-4239-8d8d-f9800af4db19}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Fluid">
+      <UniqueIdentifier>{a45864a0-f50a-41e1-be0d-40b5428d94de}</UniqueIdentifier>
+    </Filter>
     <Filter Include="ImGui">
       <UniqueIdentifier>{dc0eacd7-7097-43ab-8aee-562b48818bbd}</UniqueIdentifier>
     </Filter>
@@ -270,6 +279,6 @@
     <None Include="Docs\archive\assessment.md" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="Engine\IState.h" />
+    <ClInclude Include="Engine\Core\IState.h" />
   </ItemGroup>
 </Project>

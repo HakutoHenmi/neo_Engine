@@ -24,10 +24,14 @@ struct TransformComponent : public Component {
 	DirectX::XMFLOAT3 translate = {0, 0, 0};
 	DirectX::XMFLOAT3 rotate = {0, 0, 0};
 	DirectX::XMFLOAT3 scale = {1, 1, 1};
-	
-	TransformComponent() { type = ComponentType::RectTransform; }
+
+	TransformComponent() {
+		type = ComponentType::RectTransform;
+	}
 	TransformComponent(const DirectX::XMFLOAT3& t, const DirectX::XMFLOAT3& r, const DirectX::XMFLOAT3& s)
-		: translate(t), rotate(r), scale(s) { type = ComponentType::RectTransform; }
+	    : translate(t), rotate(r), scale(s) {
+		type = ComponentType::RectTransform;
+	}
 
 	// エンジン側の Transform 型へ変換する
 	Engine::Transform GetTransform() const {
@@ -74,7 +78,8 @@ enum class TagType : uint32_t {
 };
 
 // タグの名前のデータテーブル (TagType の順)。保存・読み込みの両方がこの表を引く
-inline constexpr const char* kTagNames[] = {"Untagged", "Player", "Enemy", "Bullet", "Projectile", "Wall", "Default", "VFX", "PauseUI"};
+inline constexpr const char* kTagNames[] = {"Untagged", "Player",  "Enemy", "Bullet", "Projectile",
+                                            "Wall",     "Default", "VFX",   "PauseUI"};
 
 // タグ → 文字列 (保存・表示用)
 inline const char* TagToString(TagType tag) {
@@ -85,92 +90,130 @@ inline const char* TagToString(TagType tag) {
 // 文字列 → タグ (読み込み用)。知らない文字列は Untagged
 inline TagType StringToTag(const std::string& s) {
 	for (size_t i = 0; i < std::size(kTagNames); ++i)
-		if (s == kTagNames[i]) return static_cast<TagType>(i);
+		if (s == kTagNames[i])
+			return static_cast<TagType>(i);
 	return TagType::Untagged;
 }
 
 // タグを持たせるコンポーネント
 struct TagComponent : public Component {
 	TagType tag = TagType::Untagged;
-	TagComponent() { type = ComponentType::Tag; }
-	TagComponent(TagType t) : tag(t) { type = ComponentType::Tag; }
+	TagComponent() {
+		type = ComponentType::Tag;
+	}
+	TagComponent(TagType t) : tag(t) {
+		type = ComponentType::Tag;
+	}
 };
 
 // HP・スタミナと被弾演出の状態。HP は直接書き換えず関数経由で操作する
 class HealthComponent : public Component {
 public:
-    // 現在値の取得
-    float Hp() const { return hp_; }
-    float MaxHp() const { return maxHp_; }
-    float Stamina() const { return stamina_; }
-    float MaxStamina() const { return maxStamina_; }
-    bool IsDead() const { return isDead_; }
+	// 現在値の取得
+	float Hp() const {
+		return hp_;
+	}
+	float MaxHp() const {
+		return maxHp_;
+	}
+	float Stamina() const {
+		return stamina_;
+	}
+	float MaxStamina() const {
+		return maxStamina_;
+	}
+	bool IsDead() const {
+		return isDead_;
+	}
 
-    // 初期化・エディタでの変更・保存データの復元用に値を直接設定する
-    // 既存のシーンファイルやサンドバッグの値を保つため、ここでは範囲に収めない
-    void SetHp(float value) { hp_ = value; }
-    void SetMaxHp(float value) { maxHp_ = value; }
-    void SetDead(bool dead) { isDead_ = dead; }
-    // ダメージ・回復 (0〜最大値に収める)
-    void ApplyDamage(float damage) { hp_ = (std::max)(0.0f, hp_ - damage); }
-    void RecoverHp(float amount) { hp_ = (std::min)(maxHp_, hp_ + amount); }
-    void RecoverStamina(float amount) { stamina_ = (std::min)(maxStamina_, stamina_ + amount); }
-    // HP を消費して技を使う (足りなければ false)
-    bool TryConsumeHp(float cost) {
-        if (hp_ >= cost) {
-            hp_ -= cost;
-            return true;
-        }
-        return false;
-    }
-    // HP が 0 以下なら最大値まで戻す (リスタート用)
-    void RestoreHpIfDepleted() { if (hp_ <= 0) hp_ = maxHp_; }
+	// 初期化・エディタでの変更・保存データの復元用に値を直接設定する
+	// 既存のシーンファイルやサンドバッグの値を保つため、ここでは範囲に収めない
+	void SetHp(float value) {
+		hp_ = value;
+	}
+	void SetMaxHp(float value) {
+		maxHp_ = value;
+	}
+	void SetDead(bool dead) {
+		isDead_ = dead;
+	}
+	// ダメージ・回復 (0〜最大値に収める)
+	void ApplyDamage(float damage) {
+		hp_ = (std::max)(0.0f, hp_ - damage);
+	}
+	void RecoverHp(float amount) {
+		hp_ = (std::min)(maxHp_, hp_ + amount);
+	}
+	void RecoverStamina(float amount) {
+		stamina_ = (std::min)(maxStamina_, stamina_ + amount);
+	}
+	// HP を消費して技を使う (足りなければ false)
+	bool TryConsumeHp(float cost) {
+		if (hp_ >= cost) {
+			hp_ -= cost;
+			return true;
+		}
+		return false;
+	}
+	// HP が 0 以下なら最大値まで戻す (リスタート用)
+	void RestoreHpIfDepleted() {
+		if (hp_ <= 0)
+			hp_ = maxHp_;
+	}
 
-	float recoverableFluid = 0.0f;   // 被弾で散った、回収可能な体液量
-	int damageTakenCount = 0;        // 被ダメージ回数（リザルト表示用）
-	float invincibleTime = 0.0f;     // 残り無敵時間（ゼロ以上なら無敵）
+	float recoverableFluid = 0.0f; // 被弾で散った、回収可能な体液量
+	int damageTakenCount = 0;      // 被ダメージ回数（リザルト表示用）
+	float invincibleTime = 0.0f;   // 残り無敵時間（ゼロ以上なら無敵）
 
 	// ヒット演出用 (白く光る時間・一時停止の時間・元の色)
-	float hitFlashTimer = 0.0f;      // ヒットフラッシュ（白く光る）
-	float hitStopTimer = 0.0f;       // ヒットストップ（一時停止）
-	DirectX::XMFLOAT4 baseColor = { 1, 1, 1, 1 }; // 元の色保存用
+	float hitFlashTimer = 0.0f;                 // ヒットフラッシュ（白く光る）
+	float hitStopTimer = 0.0f;                  // ヒットストップ（一時停止）
+	DirectX::XMFLOAT4 baseColor = {1, 1, 1, 1}; // 元の色保存用
 	bool baseColorSaved = false;
 
-	HealthComponent() { type = ComponentType::Health; }
-// HP・スタミナの実体 (外から直接書き換えさせない)
+	HealthComponent() {
+		type = ComponentType::Health;
+	}
+	// HP・スタミナの実体 (外から直接書き換えさせない)
 private:
-    float hp_ = 100.0f;
-    float maxHp_ = 100.0f;
-    float stamina_ = 100.0f;
-    float maxStamina_ = 100.0f;
-    bool isDead_ = false;
+	float hp_ = 100.0f;
+	float maxHp_ = 100.0f;
+	float stamina_ = 100.0f;
+	float maxStamina_ = 100.0f;
+	bool isDead_ = false;
 };
 
 // スクリプト1つ分の情報 (クラス名・保存パラメータ・実体)
 struct ScriptEntry {
-	std::string scriptPath = "";      // スクリプトのクラス名 (例: "PlayerScript")
-	std::string parameterData = "";   // 初期化用パラメータ(JSON)
+	std::string scriptPath = "";                 // スクリプトのクラス名 (例: "PlayerScript")
+	std::string parameterData = "";              // 初期化用パラメータ(JSON)
 	std::shared_ptr<IScript> instance = nullptr; // C++スクリプトのインスタンス
-	bool isStarted = false; // PlayモードでStart()が呼ばれたか
+	bool isStarted = false;                      // PlayモードでStart()が呼ばれたか
 };
 
 // スクリプトコンポーネント (1つのエンティティに複数のスクリプトを付けられる)
 struct ScriptComponent : public Component {
 	std::vector<ScriptEntry> scripts;
-	ScriptComponent() { type = ComponentType::Script; }
+	ScriptComponent() {
+		type = ComponentType::Script;
+	}
 };
 
 // 指定時間が経つと自動で削除される
 struct AutoDestroyComponent : public Component {
 	float timer = 1.0f;
-	AutoDestroyComponent() { type = static_cast<ComponentType>(999); }
+	AutoDestroyComponent() {
+		type = static_cast<ComponentType>(999);
+	}
 };
 
 // 汎用の変数置き場 (スクリプト間で数値・文字列を受け渡す)
 struct VariableComponent : public Component {
 	std::map<std::string, float> values;
 	std::map<std::string, std::string> strings; // 文字列の値
-	VariableComponent() { type = ComponentType::Variable; }
+	VariableComponent() {
+		type = ComponentType::Variable;
+	}
 
 	float GetValue(const std::string& key, float defaultVal = 0.0f) const {
 		auto it = values.find(key);
@@ -210,18 +253,18 @@ struct MotionComponent : public Component {
 	// 名前で引くモーション一覧と、再生中の状態
 	std::map<std::string, MotionClip> clips;
 	std::string activeClip = "Default";
-	
+
 	float currentTime = 0.0f;
 	bool isPlaying = false;
 	int selectedKeyframe = -1; // エディタで選択中のキーフレーム番号
 
-	MotionComponent() { 
-		type = ComponentType::Motion; 
+	MotionComponent() {
+		type = ComponentType::Motion;
 		// 最初から1つ「Default」クリップを用意しておく
 		MotionClip defaultClip;
 		defaultClip.name = "Default";
-		defaultClip.keyframes.push_back({0.0f, {0,0,0}, {0,0,0}, {1,1,1}});
-		defaultClip.keyframes.push_back({1.0f, {5,0,0}, {0,0,0}, {1,1,1}});
+		defaultClip.keyframes.push_back({0.0f, {0, 0, 0}, {0, 0, 0}, {1, 1, 1}});
+		defaultClip.keyframes.push_back({1.0f, {5, 0, 0}, {0, 0, 0}, {1, 1, 1}});
 		clips["Default"] = defaultClip;
 	}
 

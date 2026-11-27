@@ -1,15 +1,13 @@
 #include "Obj.hlsli"
 
-static float Hash11(float p)
-{
+static float Hash11(float p) {
     p = frac(p * 0.1031);
     p *= p + 33.33;
     p *= p + p;
     return frac(p);
 }
 
-static float Noise21(float2 p)
-{
+static float Noise21(float2 p) {
     float2 i = floor(p);
     float2 f = frac(p);
     float a = Hash11(dot(i, float2(127.1, 311.7)));
@@ -20,65 +18,64 @@ static float Noise21(float2 p)
     return lerp(lerp(a, b, u.x), lerp(c, d, u.x), u.y);
 }
 
-float4 main(VSOutput i) : SV_TARGET
-{
+float4 main(VSOutput i) : SV_TARGET {
     float3 n = normalize(i.normal);
     float3 v = normalize(cameraPos.xyz - i.worldpos.xyz);
 
-    // ”­ŒõFFInspector‚ÅƒVƒAƒ“/ÂŠñ‚è‚É‚·‚é‚Æu‰Á‘¬vŠ´‚ªo‚â‚·‚¢
+    // ç™ºå…‰è‰²ï¼šInspectorã§ã‚·ã‚¢ãƒ³/é’å¯„ã‚Šã«ã™ã‚‹ã¨ã€ŒåŠ é€Ÿã€æ„ŸãŒå‡ºã‚„ã™ã„
     float3 energyCol = color.rgb;
 
-    // Šp“x‚ÅŒõ‚éi‰‚ª‹­‚­‚È‚éj
+    // è§’åº¦ã§å…‰ã‚‹ï¼ˆç¸ãŒå¼·ããªã‚‹ï¼‰
     float rim = 1.0 - saturate(dot(n, v));
     rim = pow(rim, 3.0);
 
     float2 uv = i.uv;
 
     // -----------------------------
-    // 1) ƒx[ƒX‚Ìü•ûŒüƒtƒ[iƒŠƒ“ƒO‚É•½sj
+    // 1) ãƒ™ãƒ¼ã‚¹ã®å‘¨æ–¹å‘ãƒ•ãƒ­ãƒ¼ï¼ˆãƒªãƒ³ã‚°ã«å¹³è¡Œï¼‰
     // -----------------------------
-    float flowDir = 1.0; // ‹t‚È‚ç -1.0
-    float speed = 2.6; // ‰Á‘¬Š´=‘¬‚ß
-    float bands = 26.0; // —¬‚ê‚Ì×‚©‚³
+    float flowDir = 1.0; // é€†ãªã‚‰ -1.0
+    float speed = 2.6; // åŠ é€Ÿæ„Ÿ=é€Ÿã‚
+    float bands = 26.0; // æµã‚Œã®ç´°ã‹ã•
 
     float u = uv.x * bands + time * speed * flowDir;
 
     float stripe = abs(frac(u) - 0.5) * 2.0;
     stripe = 1.0 - stripe;
-    stripe = smoothstep(0.72, 1.0, stripe); // ×‚ß
+    stripe = smoothstep(0.72, 1.0, stripe); // ç´°ã‚
 
     // -----------------------------
-    // 2) g–îˆó‚Á‚Û‚¢hƒ`ƒbƒvi•ûŒüŠ´‚ğo‚·j
-    //    uv.x•ûŒü‚É•À‚×Atime‚Å—¬‚·Buv.y‚Åæ’[‚ğì‚é
+    // 2) â€œçŸ¢å°ã£ã½ã„â€ãƒãƒƒãƒ—ï¼ˆæ–¹å‘æ„Ÿã‚’å‡ºã™ï¼‰
+    //    uv.xæ–¹å‘ã«ä¸¦ã¹ã€timeã§æµã™ã€‚uv.yã§å…ˆç«¯ã‚’ä½œã‚‹
     // -----------------------------
     float chips = 10.0;
     float cell = uv.x * chips + time * (speed * 0.55) * flowDir;
     float id = floor(cell);
     float x = frac(cell); // 0..1
 
-    // Šeƒ`ƒbƒv‚Ì‹­“xiƒ‰ƒ“ƒ_ƒ€‚Å“_“”/Á“”j
+    // å„ãƒãƒƒãƒ—ã®å¼·åº¦ï¼ˆãƒ©ãƒ³ãƒ€ãƒ ã§ç‚¹ç¯/æ¶ˆç¯ï¼‰
     float on = step(0.55, Hash11(id * 19.0 + 3.0));
 
-    // OŠp‚Á‚Û‚¢Œ`iæ’[j: x‚ª‘O‚És‚­‚Ù‚Ç×‚­‚È‚é
+    // ä¸‰è§’ã£ã½ã„å½¢ï¼ˆå…ˆç«¯ï¼‰: xãŒå‰ã«è¡Œãã»ã©ç´°ããªã‚‹
     float tip = (1.0 - x);
-    tip = tip * tip; // æ’[‹­’²
+    tip = tip * tip; // å…ˆç«¯å¼·èª¿
 
-    // •iuv.y‚Å’†‰›Šñ‚è‚Ù‚Ç‹­‚­cƒ‚ƒfƒ‹‚É‚æ‚Á‚Ä‹t‚Ìê‡‚ ‚èj
-    float y = abs(uv.y - 0.5) * 2.0; // 0’†S
-    float chipWidth = smoothstep(0.9, 0.2, y); // ’†‰›‹­‚¢
+    // å¹…ï¼ˆuv.yã§ä¸­å¤®å¯„ã‚Šã»ã©å¼·ãâ€¦ãƒ¢ãƒ‡ãƒ«ã«ã‚ˆã£ã¦é€†ã®å ´åˆã‚ã‚Šï¼‰
+    float y = abs(uv.y - 0.5) * 2.0; // 0ä¸­å¿ƒ
+    float chipWidth = smoothstep(0.9, 0.2, y); // ä¸­å¤®å¼·ã„
 
     float arrow = on * tip * chipWidth;
     arrow = smoothstep(0.2, 0.9, arrow);
 
     // -----------------------------
-    // 3) “à‘¤ƒGƒbƒW‚ğ‹­‚­Œõ‚ç‚¹‚éiƒQ[ƒgŠ´j
-    //    uv.y ‚ğu“àŠOv‚Á‚Û‚­Œ©—§‚Ä‚Ä‹­’²i‡‚í‚È‚¯‚ê‚Î y ‚ğ”½“]j
+    // 3) å†…å´ã‚¨ãƒƒã‚¸ã‚’å¼·ãå…‰ã‚‰ã›ã‚‹ï¼ˆã‚²ãƒ¼ãƒˆæ„Ÿï¼‰
+    //    uv.y ã‚’ã€Œå†…å¤–ã€ã£ã½ãè¦‹ç«‹ã¦ã¦å¼·èª¿ï¼ˆåˆã‚ãªã‘ã‚Œã° y ã‚’åè»¢ï¼‰
     // -----------------------------
-    float inner = smoothstep(0.55, 0.98, uv.y); // “à‘¤Šñ‚è‚ª‹­‚¢‘z’è
-    // ‹t‚¾‚Á‚½‚ç‚±‚ê‚É•Ï‚¦‚éF float inner = smoothstep(0.55, 0.98, 1.0 - uv.y);
+    float inner = smoothstep(0.55, 0.98, uv.y); // å†…å´å¯„ã‚ŠãŒå¼·ã„æƒ³å®š
+    // é€†ã ã£ãŸã‚‰ã“ã‚Œã«å¤‰ãˆã‚‹ï¼š float inner = smoothstep(0.55, 0.98, 1.0 - uv.y);
 
     // -----------------------------
-    // 4) ‚ä‚ç‚¬ + –¬“®iƒGƒlƒ‹ƒM[Š´j
+    // 4) ã‚†ã‚‰ã + è„ˆå‹•ï¼ˆã‚¨ãƒãƒ«ã‚®ãƒ¼æ„Ÿï¼‰
     // -----------------------------
     float n1 = Noise21(uv * 8.0 + float2(time * 0.25, time * 0.15));
     float wobble = lerp(0.8, 1.2, n1);
@@ -86,16 +83,16 @@ float4 main(VSOutput i) : SV_TARGET
     float pulse = 0.8 + 0.2 * sin(time * 3.5);
 
     // -----------------------------
-    // 5) ‡¬F—¬‚ê + –îˆó + “à‘¤Œõ + ƒŠƒ€
+    // 5) åˆæˆï¼šæµã‚Œ + çŸ¢å° + å†…å´å…‰ + ãƒªãƒ 
     // -----------------------------
     float glow = 0.18;
     glow += rim * 1.0;
     glow += stripe * 1.3 * wobble;
-    glow += arrow * 1.6; // •ûŒüŠ´‚Ì–{‘Ì
-    glow += inner * 0.9; // ƒQ[ƒgŠ´
+    glow += arrow * 1.6; // æ–¹å‘æ„Ÿã®æœ¬ä½“
+    glow += inner * 0.9; // ã‚²ãƒ¼ãƒˆæ„Ÿ
     glow *= (0.9 + pulse * 0.35);
 
-    // ‹­‚ß‚Éo‚µ‚Äg”­Œõ‘Ìh‚Á‚Û‚­
+    // å¼·ã‚ã«å‡ºã—ã¦â€œç™ºå…‰ä½“â€ã£ã½ã
     float3 rgb = energyCol * glow * 4.5;
 
     return float4(rgb, 1.0);

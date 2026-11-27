@@ -5,7 +5,7 @@ struct Particle {
     float4 color;
     float type; float3 pad;
 };
-StructuredBuffer<Particle> Particles : register(t2); // In DrawGPUFluid it is mapped to t6 -> which is descriptor table? Wait, no, it's bound as SRV to root parameter 6. So register(t2) might be wrong if 6 is t0. Let's check rootSig3D_.
+StructuredBuffer<Particle> Particles : register(t2); // 粒子のバッファ (DrawGPUFluid でルートの SRV として結び付ける)
 
 cbuffer CBFrame : register(b0) { 
     row_major float4x4 gView; 
@@ -31,7 +31,7 @@ struct VSOut {
 };
 
 VSOut RenderPhase(VSIn v, uint instanceID, uint targetPhase) {
-    VSOut o = (VSOut)0;
+    VSOut output = (VSOut)0;
     Particle p = Particles[instanceID];
     
     // ★追加: 非アクティブなパーティクルは頂点を縮退させて描画とラスタライズを完全スキップ
@@ -53,9 +53,9 @@ VSOut RenderPhase(VSIn v, uint instanceID, uint targetPhase) {
     float2 localXY = quad[v.vertexID];
     
     // パーティクルの大きさを設定
-    // Screen-space fluids need a reconstruction footprint that overlaps the
-    // physical particle spacing.  A footprint close to the collision radius
-    // exposes every particle as a separate glass sphere.
+    // 画面空間の流体には、物理的な粒子の間隔と重なるだけの再構成の広がりが要る。
+    // 当たり判定の半径に近い広がりだと、粒子が 1 つずつ
+    // 別々のガラスの球に見えてしまう。
     float size = 0.90f;
     if (p.type > 2.5f && p.type < 3.5f) {
         size = 0.65f;
@@ -70,19 +70,19 @@ VSOut RenderPhase(VSIn v, uint instanceID, uint targetPhase) {
     float3 localPos = right * localXY.x * size + up * localXY.y * size;
     float3 worldPos = p.position + localPos;
     
-    o.svpos = mul(float4(worldPos, 1.0f), gViewProj);
-    o.viewZ = mul(float4(worldPos, 1.0f), gView).z;
+    output.svpos = mul(float4(worldPos, 1.0f), gViewProj);
+    output.viewZ = mul(float4(worldPos, 1.0f), gView).z;
     
     // UV座標の生成
-    o.uv = localXY * 0.5f + 0.5f;
-    o.uv.y = 1.0f - o.uv.y; // DirectX仕様に合わせてYを反転
-    o.color = p.color;
-    o.color.a *= support;
-    o.type = p.type;
-    // Reject before rasterization: the other phases incur no pixel shading.
-    if (rejected) o.svpos = float4(0, 0, -1, 1);
+    output.uv = localXY * 0.5f + 0.5f;
+    output.uv.y = 1.0f - output.uv.y; // DirectX仕様に合わせてYを反転
+    output.color = p.color;
+    output.color.a *= support;
+    output.type = p.type;
+    // ラスタライズの前に捨てる: 他の相はピクセルシェーディングの負荷を生まない。
+    if (rejected) output.svpos = float4(0, 0, -1, 1);
     
-    return o;
+    return output;
 }
 
 VSOut main(VSIn v, uint instanceID : SV_InstanceID) { return RenderPhase(v, instanceID, 3U); }

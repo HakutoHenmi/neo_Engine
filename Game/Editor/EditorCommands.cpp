@@ -32,7 +32,8 @@ static std::string GenerateCopyName(const std::string& baseName, SceneComponents
 		}
 	}
 	// 空になったら Object にする
-	if (base.empty()) base = "Object";
+	if (base.empty())
+		base = "Object";
 	// 同じ名前で "_数字" が付いたものの最大の番号を探す
 	int maxNum = 0;
 	auto view = registry.view<NameComponent>();
@@ -42,11 +43,16 @@ static std::string GenerateCopyName(const std::string& baseName, SceneComponents
 			// "_" より後ろが数字だけか
 			std::string numPart = name.substr(base.size() + 1);
 			bool allDigit = true;
-			for (char c : numPart) if (!isdigit((unsigned char)c)) { allDigit = false; break; }
+			for (char c : numPart)
+				if (!isdigit((unsigned char)c)) {
+					allDigit = false;
+					break;
+				}
 			// 10桁以上は int に収まらず std::stoi が例外を投げるので連番として扱わない
 			if (allDigit && !numPart.empty() && numPart.size() <= 9) {
 				int n = std::stoi(numPart);
-				if (n > maxNum) maxNum = n;
+				if (n > maxNum)
+					maxNum = n;
 			}
 		}
 	}
@@ -57,28 +63,41 @@ static std::string GenerateCopyName(const std::string& baseName, SceneComponents
 // 取り消しとやり直し (Command Pattern)。
 // 履歴 (Engine::CommandHistory) は操作の種類を知らず、ICommand の Execute / Undo を呼ぶだけ。
 // 新しい操作を記録すると Redo の履歴は消え、最大件数を超えたら古いものから捨てる
-void EditorUI::ExecuteCommand(std::unique_ptr<Engine::ICommand> command) { history_.Execute(std::move(command)); }
-void EditorUI::RecordCommand(std::unique_ptr<Engine::ICommand> command) { history_.Record(std::move(command)); }
+void EditorUI::ExecuteCommand(std::unique_ptr<Engine::ICommand> command) {
+	history_.Execute(std::move(command));
+}
+void EditorUI::RecordCommand(std::unique_ptr<Engine::ICommand> command) {
+	history_.Record(std::move(command));
+}
 // 関数の組で表した操作は FunctionCommand に包んで記録する (すでに実行済みの操作)
-void EditorUI::PushUndo(const UndoCommand& cmd) { history_.Record(std::make_unique<Engine::FunctionCommand>(cmd.description, cmd.undo, cmd.redo)); }
+void EditorUI::PushUndo(const UndoCommand& cmd) {
+	history_.Record(std::make_unique<Engine::FunctionCommand>(cmd.description, cmd.undo, cmd.redo));
+}
 // 最後の操作を取り消す / 取り消した操作をやり直す (履歴が無ければ何もしない)
-void EditorUI::Undo() { history_.Undo(); }
-void EditorUI::Redo() { history_.Redo(); }
+void EditorUI::Undo() {
+	history_.Undo();
+}
+void EditorUI::Redo() {
+	history_.Redo();
+}
 
 // Console (ログの表示)
 // Console にログを追加する (情報・警告・エラー)
 void EditorUI::Log(const std::string& msg) {
 	// 時刻付きで追加し、古いものから消して最大行数を保つ
 	consoleLog.push_back({LogLevel::Info, msg, globalTime});
-	if (consoleLog.size() > kMaxConsoleLines) consoleLog.pop_front();
+	if (consoleLog.size() > kMaxConsoleLines)
+		consoleLog.pop_front();
 }
 void EditorUI::LogWarning(const std::string& msg) {
 	consoleLog.push_back({LogLevel::Warning, msg, globalTime});
-	if (consoleLog.size() > kMaxConsoleLines) consoleLog.pop_front();
+	if (consoleLog.size() > kMaxConsoleLines)
+		consoleLog.pop_front();
 }
 void EditorUI::LogError(const std::string& msg) {
 	consoleLog.push_back({LogLevel::Error, msg, globalTime});
-	if (consoleLog.size() > kMaxConsoleLines) consoleLog.pop_front();
+	if (consoleLog.size() > kMaxConsoleLines)
+		consoleLog.pop_front();
 }
 
 // エンティティの JSON から1つ復元する
@@ -86,7 +105,8 @@ static entt::entity RestoreEntitySnapshot(GameScene* scene, const std::string& s
 	try {
 		// 1 つだけの objects 配列として読み込む (追加モード)
 		auto created = RestoreSceneFromJson(scene, json::parse("{\"objects\": [" + snapshot + "]}"), true);
-		if (!created.empty()) return created[0];
+		if (!created.empty())
+			return created[0];
 	} catch (const std::exception& e) {
 		// 失敗したらエラーを出す
 		EditorUI::LogError(std::string("Failed to restore entity: ") + e.what());
@@ -96,20 +116,26 @@ static entt::entity RestoreEntitySnapshot(GameScene* scene, const std::string& s
 
 // 生成・削除のコマンド: 今のエンティティを破棄予約し、選択中なら選択を外す
 void EntityLifetimeCommand::Destroy() {
-	if (live_ != entt::null) scene_->DestroyObject(static_cast<uint32_t>(live_));
-	if (scene_->GetSelectedEntity() == live_) scene_->SelectEntity(entt::null);
+	if (live_ != entt::null)
+		scene_->DestroyObject(static_cast<uint32_t>(live_));
+	if (scene_->GetSelectedEntity() == live_)
+		scene_->SelectEntity(entt::null);
 	live_ = entt::null;
 }
 // 保存した JSON から作り直し、新しいエンティティを覚える
-void EntityLifetimeCommand::Restore() { live_ = RestoreEntitySnapshot(scene_, snapshot_); }
+void EntityLifetimeCommand::Restore() {
+	live_ = RestoreEntitySnapshot(scene_, snapshot_);
+}
 
 // 選択中のエンティティをコピーする
 void EditorInternal::ExecuteCopy(GameScene* scene) {
 	// シーンが無ければ何もしない
-	if (!scene) return;
+	if (!scene)
+		return;
 	// 選択中のエンティティ (無いか消えていれば何もしない)
 	auto ent = scene->GetSelectedEntity();
-	if (ent == entt::null || !scene->GetComponents().valid(ent)) return;
+	if (ent == entt::null || !scene->GetComponents().valid(ent))
+		return;
 	// JSON にして覚える
 	s_clipboardJson = SerializeEntity(scene->GetComponents(), ent);
 	EditorUI::Log("Copied Entity to Clipboard.");
@@ -118,7 +144,8 @@ void EditorInternal::ExecuteCopy(GameScene* scene) {
 // コピーしたエンティティを貼り付ける (名前に番号を付け、少しずらして置く)
 void EditorInternal::ExecutePaste(GameScene* scene) {
 	// シーンかコピーした内容が無ければ何もしない
-	if (!scene || s_clipboardJson.empty()) return;
+	if (!scene || s_clipboardJson.empty())
+		return;
 	try {
 		// 1 つだけの objects 配列として読み込む (追加モード)
 		json j = json::parse("{\"objects\": [" + s_clipboardJson + "]}");
@@ -141,17 +168,22 @@ void EditorInternal::ExecutePaste(GameScene* scene) {
 			}
 			// 選択し、Undo を登録してログに残す
 			scene->SelectEntity(e);
-			
-			EditorUI::RecordCommand(std::make_unique<EntityLifetimeCommand>(scene, "Paste Entity", SerializeEntity(reg, e), e, true));
-			EditorUI::Log("Pasted Entity: " + (reg.all_of<NameComponent>(e) ? reg.get<NameComponent>(e).name : "Unknown"));
+
+			EditorUI::RecordCommand(
+			    std::make_unique<EntityLifetimeCommand>(scene, "Paste Entity", SerializeEntity(reg, e), e, true));
+			EditorUI::Log(
+			    "Pasted Entity: " + (reg.all_of<NameComponent>(e) ? reg.get<NameComponent>(e).name : "Unknown"));
 		}
-	// 失敗したらエラーを出す
-	} catch (...) { EditorUI::LogError("Failed to paste entity"); }
+		// 失敗したらエラーを出す
+	} catch (...) {
+		EditorUI::LogError("Failed to paste entity");
+	}
 }
 
 // 複製 (コピー → 貼り付け)
 void EditorInternal::ExecuteDuplicate(GameScene* scene) {
-	if (!scene) return;
+	if (!scene)
+		return;
 	ExecuteCopy(scene);
 	ExecutePaste(scene);
 }

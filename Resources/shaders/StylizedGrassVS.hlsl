@@ -7,7 +7,7 @@ VSOutput main(VSInput input) {
     
     float4 worldPos = mul(input.pos, instance.world);
     
-    // 1. Wind Animation
+    // 1. 風のアニメーション
     // 頂点の高さ(ローカル pos.y)に基づいて揺れを適用する
     // 草の根元(y=0)は動かさず、先端ほど大きく揺らす
     float heightWeight = saturate(input.pos.y); 
@@ -20,7 +20,7 @@ VSOutput main(VSInput input) {
     float sway = sin(gTime * windSpeed + (worldPos.x + worldPos.z) * 0.5f) * windStrength;
     worldPos.xyz += windDir * sway * heightWeight;
     
-    // 2. Player Interaction
+    // 2. プレイヤーとの相互作用
     // プレイヤーとの距離に応じて草を押し出す
     float3 toPlayer = worldPos.xyz - gPlayerPos;
     float distToPlayer = length(toPlayer);

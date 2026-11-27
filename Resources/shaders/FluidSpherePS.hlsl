@@ -13,7 +13,7 @@ cbuffer ViewProjection : register(b0) {
 };
 
 struct VSOutput {
-    float4 pos : SV_POSITION; // Screen pos
+    float4 pos : SV_POSITION; // 画面上の位置
     float2 uv : TEXCOORD;     // -1 to 1
     float3 viewPos : POSITION0;
     float3 worldPos : POSITION1;

@@ -1,5 +1,5 @@
 // Texture tool for the Release package (Package-SlimeResources.ps1 builds and runs it).
-//   refs <model.fbx>...    : print, one per line, the colour images each model reads (same choice as Engine/Model.cpp)
+//   refs <model.fbx>...    : print, one per line, the colour images each model reads (same choice as Engine/Graphics/Model.cpp)
 //   dds <in.png> <out.dds> : write a BCn sRGB DDS with a full mip chain (opaque: BC1, with alpha: BC7)
 #include <d3d11.h>
 #include <wrl/client.h>

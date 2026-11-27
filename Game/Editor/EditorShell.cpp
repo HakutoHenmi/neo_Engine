@@ -25,7 +25,8 @@ static std::string OpenFileDialog(const char* filter) {
 	ofn.nFilterIndex = 1;
 	ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST | OFN_NOCHANGEDIR;
 	// 選ばれたら UTF-8 のパスで返す
-	if (GetOpenFileNameW(&ofn) == TRUE) return Engine::PathUtils::ToUTF8(ofn.lpstrFile);
+	if (GetOpenFileNameW(&ofn) == TRUE)
+		return Engine::PathUtils::ToUTF8(ofn.lpstrFile);
 	return "";
 }
 
@@ -46,14 +47,16 @@ static std::string SaveFileDialog(const char* filter, const char* defExt) {
 	ofn.lpstrDefExt = wdefExt.c_str();
 	ofn.Flags = OFN_PATHMUSTEXIST | OFN_OVERWRITEPROMPT | OFN_NOCHANGEDIR;
 	// 選ばれたら UTF-8 のパスで返す
-	if (GetSaveFileNameW(&ofn) == TRUE) return Engine::PathUtils::ToUTF8(ofn.lpstrFile);
+	if (GetSaveFileNameW(&ofn) == TRUE)
+		return Engine::PathUtils::ToUTF8(ofn.lpstrFile);
 	return "";
 }
 
 // 初期化: Project ウィンドウのアイコンを読み込む
 void EditorUI::Initialize(Engine::Renderer* renderer) {
 	// 描画の窓口が無ければ何もしない
-	if (!renderer) return;
+	if (!renderer)
+		return;
 	// エディタのアイコンは色が変わらないよう sRGB 変換をせずに読み込む
 	s_icons.folder = renderer->LoadTexture2D("Resources/Editor/Icons/folder.png", false);
 	s_icons.file = renderer->LoadTexture2D("Resources/Editor/Icons/file.png", false);
@@ -74,14 +77,19 @@ struct SceneLaunch {
 	std::string note;
 };
 // editor.json の中身 (シーンランチャーの項目と、エディタで包んで表示するシーン)
-struct EditorData { std::vector<SceneLaunch> launches; std::vector<std::string> hostedScenes; };
+struct EditorData {
+	std::vector<SceneLaunch> launches;
+	std::vector<std::string> hostedScenes;
+};
 const EditorData& EditorConfig() {
 	static const EditorData data = [] {
 		const auto& json = Data::Load("editor.json");
 		EditorData out;
 		for (const auto& item : Data::Require(json, "sceneLauncher", "editor.json")) {
-			out.launches.push_back({item.at("group").get<std::string>(), item.at("label").get<std::string>(), item.at("scene").get<std::string>(),
-				item.at("stage").get<std::string>(), item.at("note").get<std::string>()});
+			out.launches.push_back(
+			    {item.at("group").get<std::string>(), item.at("label").get<std::string>(),
+			     item.at("scene").get<std::string>(), item.at("stage").get<std::string>(),
+			     item.at("note").get<std::string>()});
 		}
 		out.hostedScenes = Data::ReadStrings(Data::Require(json, "hostedScenes", "editor.json"));
 		return out;
@@ -93,10 +101,12 @@ const EditorData& EditorConfig() {
 bool IsCurrentLaunch(const SceneLaunch& launch) {
 	// シーン名が違えば違う
 	auto* manager = Engine::SceneManager::GetInstance();
-	if (!manager || manager->CurrentName() != launch.key) return false;
+	if (!manager || manager->CurrentName() != launch.key)
+		return false;
 	// シーンファイルを比べる (空の項目は本編のステージ)
 	const std::string& stage = manager->CurrentParameters().stagePath;
-	if (launch.stagePath.empty()) return Data::IsMainStage(stage);
+	if (launch.stagePath.empty())
+		return Data::IsMainStage(stage);
 	return stage.find(launch.stagePath) != std::string::npos;
 }
 
@@ -104,7 +114,8 @@ bool IsCurrentLaunch(const SceneLaunch& launch) {
 void LaunchScene(const std::string& key, const std::string& stagePath) {
 	// 未登録のシーンや切り替え中は何もしない
 	auto* manager = Engine::SceneManager::GetInstance();
-	if (!manager || !manager->Has(key) || manager->InTransition()) return;
+	if (!manager || !manager->Has(key) || manager->InTransition())
+		return;
 	// シーンファイルを渡して切り替え、ログに残す
 	Engine::SceneParameters params;
 	params.stagePath = stagePath;
@@ -116,14 +127,18 @@ void LaunchScene(const std::string& key, const std::string& stagePath) {
 std::string CurrentSceneLabel() {
 	// ランチャーの項目にあればその表示名
 	for (const auto& launch : EditorConfig().launches) {
-		if (IsCurrentLaunch(launch)) return launch.label;
+		if (IsCurrentLaunch(launch))
+			return launch.label;
 	}
 	// 無ければシーン名と、シーンファイルの名前
 	auto* manager = Engine::SceneManager::GetInstance();
-	if (!manager) return "Scene";
+	if (!manager)
+		return "Scene";
 	std::string label = manager->CurrentName();
 	const std::string& stage = manager->CurrentParameters().stagePath;
-	if (!stage.empty()) label += " (" + Engine::PathUtils::ToUTF8(fs::path(Engine::PathUtils::FromUTF8(stage)).filename().wstring()) + ")";
+	if (!stage.empty())
+		label +=
+		    " (" + Engine::PathUtils::ToUTF8(fs::path(Engine::PathUtils::FromUTF8(stage)).filename().wstring()) + ")";
 	return label;
 }
 
@@ -133,41 +148,51 @@ void DrawSceneLaunchItems() {
 	const char* group = nullptr;
 	for (const auto& launch : EditorConfig().launches) {
 		if (!group || std::string(group) != launch.group) {
-			if (group) ImGui::Spacing();
+			if (group)
+				ImGui::Spacing();
 			group = launch.group.c_str();
 			ImGui::TextDisabled("%s", group);
 		}
 		// 選んだらそのシーンを開く
-		if (ImGui::Selectable(launch.label.c_str(), IsCurrentLaunch(launch))) LaunchScene(launch.key, launch.stagePath);
-		if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", launch.note.c_str());
+		if (ImGui::Selectable(launch.label.c_str(), IsCurrentLaunch(launch)))
+			LaunchScene(launch.key, launch.stagePath);
+		if (ImGui::IsItemHovered())
+			ImGui::SetTooltip("%s", launch.note.c_str());
 	}
 	// Resources/Scenes の JSON はゲームシーンとして開く
 	ImGui::Spacing();
 	ImGui::TextDisabled("Scene Files");
 	// フォルダーが無くても例外を出さないためのエラーの受け取り先
 	std::error_code ec;
-	for (const auto& entry : fs::directory_iterator(Engine::PathUtils::FromUTF8(EditorUI::GetUnifiedProjectPath("Resources/Scenes")), ec)) {
+	for (const auto& entry :
+	     fs::directory_iterator(Engine::PathUtils::FromUTF8(EditorUI::GetUnifiedProjectPath("Resources/Scenes")), ec)) {
 		// JSON 以外は飛ばす
-		if (entry.path().extension() != L".json") continue;
+		if (entry.path().extension() != L".json")
+			continue;
 		const std::string fileName = Engine::PathUtils::ToUTF8(entry.path().filename().wstring());
 		const std::string path = "Resources/Scenes/" + fileName;
 		auto* manager = Engine::SceneManager::GetInstance();
 		// 今開いているシーンファイルか
-		const bool current = manager && manager->CurrentName() == "Game" && manager->CurrentParameters().stagePath.find(fileName) != std::string::npos;
-		if (ImGui::Selectable(fileName.c_str(), current)) LaunchScene("Game", path);
-		if (ImGui::IsItemHovered()) ImGui::SetTooltip("Open %s in the game scene", path.c_str());
+		const bool current = manager && manager->CurrentName() == "Game" &&
+		                     manager->CurrentParameters().stagePath.find(fileName) != std::string::npos;
+		if (ImGui::Selectable(fileName.c_str(), current))
+			LaunchScene("Game", path);
+		if (ImGui::IsItemHovered())
+			ImGui::SetTooltip("Open %s in the game scene", path.c_str());
 	}
 }
 
 // メインメニューの「Scenes」
 void DrawSceneLaunchMenu() {
 	// メニューを開いていなければ何もしない
-	if (!ImGui::BeginMenu("Scenes")) return;
+	if (!ImGui::BeginMenu("Scenes"))
+		return;
 	DrawSceneLaunchItems();
 	ImGui::Separator();
 	// 今のシーンを読み込み直す
 	auto* manager = Engine::SceneManager::GetInstance();
-	if (ImGui::MenuItem("Restart Current Scene", "Ctrl+R") && manager) LaunchScene(manager->CurrentName().c_str(), manager->CurrentParameters().stagePath);
+	if (ImGui::MenuItem("Restart Current Scene", "Ctrl+R") && manager)
+		LaunchScene(manager->CurrentName().c_str(), manager->CurrentParameters().stagePath);
 	ImGui::EndMenu();
 }
 
@@ -180,15 +205,18 @@ void DrawSceneLaunchCombo() {
 		DrawSceneLaunchItems();
 		ImGui::EndCombo();
 	}
-	if (ImGui::IsItemHovered()) ImGui::SetTooltip("Open another scene (Scenes menu)");
+	if (ImGui::IsItemHovered())
+		ImGui::SetTooltip("Open another scene (Scenes menu)");
 }
 
 // Ctrl+R: 今のシーンを読み込み直す
 void HandleSceneShortcuts() {
 	// 文字入力中・Ctrl が押されていない・R が押されていないなら何もしない
 	ImGuiIO& io = ImGui::GetIO();
-	if (io.WantTextInput || !io.KeyCtrl || !ImGui::IsKeyPressed(ImGuiKey_R, false)) return;
-	if (auto* manager = Engine::SceneManager::GetInstance()) LaunchScene(manager->CurrentName().c_str(), manager->CurrentParameters().stagePath);
+	if (io.WantTextInput || !io.KeyCtrl || !ImGui::IsKeyPressed(ImGuiKey_R, false))
+		return;
+	if (auto* manager = Engine::SceneManager::GetInstance())
+		LaunchScene(manager->CurrentName().c_str(), manager->CurrentParameters().stagePath);
 }
 
 // GameScene 以外 (タイトル・セレクト・デモ) で編集できない欄に出す説明
@@ -198,7 +226,8 @@ void DrawCodeSceneNotice(const char* what) {
 	ImGui::Spacing();
 	ImGui::TextDisabled("This scene is built in code (UI / demo). Use the Game view to try it, or open a game scene:");
 	// 街のステージを開くボタン
-	if (ImGui::Button("Open City Stage")) LaunchScene("Game", "");
+	if (ImGui::Button("Open City Stage"))
+		LaunchScene("Game", "");
 }
 } // namespace
 
@@ -206,7 +235,8 @@ void DrawCodeSceneNotice(const char* what) {
 int EditorInternal::CountLogs(LogLevel level) {
 	int count = 0;
 	// 指定の種類のものを数える
-	for (const auto& log : consoleLog) count += log.level == level ? 1 : 0;
+	for (const auto& log : consoleLog)
+		count += log.level == level ? 1 : 0;
 	return count;
 }
 
@@ -232,7 +262,10 @@ bool IconButton(const char* id, ToolbarIcon icon, bool active, const char* toolt
 	const bool hovered = ImGui::IsItemHovered();
 	// 背景 (押されている・乗っている・通常で色を変える)
 	ImDrawList* draw = ImGui::GetWindowDrawList();
-	const ImU32 bg = ImGui::GetColorU32(active ? ImGuiCol_ButtonActive : hovered ? ImGuiCol_ButtonHovered : ImGuiCol_Button);
+	const ImU32 bg = ImGui::GetColorU32(
+	    active    ? ImGuiCol_ButtonActive
+	    : hovered ? ImGuiCol_ButtonHovered
+	              : ImGuiCol_Button);
 	draw->AddRectFilled(pos, ImVec2(pos.x + size * 1.5f, pos.y + size), bg, 3.0f);
 	// 記号の色 (有効なら青)
 	const ImU32 fg = active ? IM_COL32(120, 200, 255, 255) : IM_COL32(225, 225, 225, 255);
@@ -242,7 +275,8 @@ bool IconButton(const char* id, ToolbarIcon icon, bool active, const char* toolt
 	switch (icon) {
 	case ToolbarIcon::Play:
 		// 右向きの三角
-		draw->AddTriangleFilled(ImVec2(c.x - r * 0.8f, c.y - r), ImVec2(c.x - r * 0.8f, c.y + r), ImVec2(c.x + r, c.y), fg);
+		draw->AddTriangleFilled(
+		    ImVec2(c.x - r * 0.8f, c.y - r), ImVec2(c.x - r * 0.8f, c.y + r), ImVec2(c.x + r, c.y), fg);
 		break;
 	case ToolbarIcon::Stop:
 		// 四角
@@ -259,31 +293,38 @@ bool IconButton(const char* id, ToolbarIcon icon, bool active, const char* toolt
 		draw->AddRectFilled(ImVec2(c.x + r * 0.5f, c.y - r), ImVec2(c.x + r * 0.9f, c.y + r), fg);
 		break;
 	}
-	if (hovered && tooltip) ImGui::SetTooltip("%s", tooltip);
+	if (hovered && tooltip)
+		ImGui::SetTooltip("%s", tooltip);
 	return pressed;
 }
 
 // 選択状態を持つテキストボタン (ツール切り替え・Scene/Game 切り替え用)
 bool ToggleButton(const char* label, bool active, const char* tooltip = nullptr) {
 	// 選択中は押された色にする
-	if (active) ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
+	if (active)
+		ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
 	const bool pressed = ImGui::Button(label);
-	if (active) ImGui::PopStyleColor();
-	if (tooltip && ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tooltip);
+	if (active)
+		ImGui::PopStyleColor();
+	if (tooltip && ImGui::IsItemHovered())
+		ImGui::SetTooltip("%s", tooltip);
 	return pressed;
 }
 
 // PLAY 中はエディタ全体を色付けして、編集が停止時に戻ることを分かりやすくする (Unity の Play Mode Tint)
 int PushPlayModeTint(bool playing, bool paused) {
-	if (!playing) return 0;
+	if (!playing)
+		return 0;
 	// 一時停止中は黄色っぽく、再生中は赤っぽくする
 	const ImVec4 tint = paused ? ImVec4(0.30f, 0.26f, 0.12f, 1.0f) : ImVec4(0.28f, 0.14f, 0.14f, 1.0f);
 	// 色を変える部分 (背景・メニュー・タイトル・タブ)
-	const ImGuiCol targets[] = {ImGuiCol_WindowBg, ImGuiCol_MenuBarBg, ImGuiCol_TitleBg, ImGuiCol_TitleBgActive, ImGuiCol_Tab, ImGuiCol_TabSelected};
+	const ImGuiCol targets[] = {ImGuiCol_WindowBg,      ImGuiCol_MenuBarBg, ImGuiCol_TitleBg,
+	                            ImGuiCol_TitleBgActive, ImGuiCol_Tab,       ImGuiCol_TabSelected};
 	for (ImGuiCol col : targets) {
 		ImVec4 c = ImGui::GetStyleColorVec4(col);
 		// 元の色に 25% だけ混ぜる
-		ImGui::PushStyleColor(col, ImVec4(c.x * 0.75f + tint.x * 0.25f, c.y * 0.75f + tint.y * 0.25f, c.z * 0.75f + tint.z * 0.25f, c.w));
+		ImGui::PushStyleColor(
+		    col, ImVec4(c.x * 0.75f + tint.x * 0.25f, c.y * 0.75f + tint.y * 0.25f, c.z * 0.75f + tint.z * 0.25f, c.w));
 	}
 	// 変えた色の数 (後で同じ数だけ戻す)
 	return IM_ARRAYSIZE(targets);
@@ -312,7 +353,8 @@ void BuildDefaultLayout(ImGuiID dockspace, const ImVec2& size, const std::vector
 	ImGui::DockBuilderDockWindow(kParticleWindow, right);
 	ImGui::DockBuilderDockWindow(kFluidSandboxWindow, right);
 	// 拡張のウィンドウも右側に置く
-	for (const auto& ext : extensions) ImGui::DockBuilderDockWindow(ext.windowName.c_str(), right);
+	for (const auto& ext : extensions)
+		ImGui::DockBuilderDockWindow(ext.windowName.c_str(), right);
 	// 配置を確定する
 	ImGui::DockBuilderFinish(dockspace);
 	// 右側は Inspector を前面にする (ウィンドウがまだ無いので次フレーム以降に適用)
@@ -347,11 +389,13 @@ void EditorUI::DrawMainMenu(Engine::Renderer* renderer, GameScene* gameScene) {
 		// シーンを開く / 追加で読み込む
 		if (ImGui::MenuItem("Open Scene...", "Ctrl+O")) {
 			std::string path = OpenFileDialog(kSceneFilter);
-			if (!path.empty()) LoadScene(gameScene, path);
+			if (!path.empty())
+				LoadScene(gameScene, path);
 		}
 		if (ImGui::MenuItem("Append Scene...", "Ctrl+Shift+O")) {
 			std::string path = OpenFileDialog(kSceneFilter);
-			if (!path.empty()) AddScene(gameScene, path);
+			if (!path.empty())
+				AddScene(gameScene, path);
 		}
 		// Resources/Scenes の JSON を一覧にして開く
 		if (ImGui::BeginMenu("Scenes")) {
@@ -359,27 +403,34 @@ void EditorUI::DrawMainMenu(Engine::Renderer* renderer, GameScene* gameScene) {
 			std::error_code ec;
 			bool any = false;
 			// 日本語名のファイルで path::string() が例外を投げるため、UTF-8 へ明示変換する
-			for (const auto& entry : fs::directory_iterator(Engine::PathUtils::FromUTF8(GetUnifiedProjectPath(sceneDir)), ec)) {
+			for (const auto& entry :
+			     fs::directory_iterator(Engine::PathUtils::FromUTF8(GetUnifiedProjectPath(sceneDir)), ec)) {
 				// JSON 以外は飛ばす
-				if (entry.path().extension() != L".json") continue;
+				if (entry.path().extension() != L".json")
+					continue;
 				std::string fileName = Engine::PathUtils::ToUTF8(entry.path().filename().wstring());
 				std::string fullPath = sceneDir + "/" + fileName;
-				if (ImGui::MenuItem(fileName.c_str(), nullptr, currentScenePath == fullPath)) LoadScene(gameScene, fullPath);
+				if (ImGui::MenuItem(fileName.c_str(), nullptr, currentScenePath == fullPath))
+					LoadScene(gameScene, fullPath);
 				any = true;
 			}
 			// 見つからなければその旨を出す
-			if (!any) ImGui::TextDisabled("No scenes in %s", sceneDir.c_str());
+			if (!any)
+				ImGui::TextDisabled("No scenes in %s", sceneDir.c_str());
 			ImGui::EndMenu();
 		}
 		ImGui::Separator();
 		// 上書き保存 / 名前を付けて保存
-		if (ImGui::MenuItem("Save Scene", "Ctrl+S")) SaveScene(gameScene);
+		if (ImGui::MenuItem("Save Scene", "Ctrl+S"))
+			SaveScene(gameScene);
 		if (ImGui::MenuItem("Save Scene As...", "Ctrl+Shift+S")) {
 			std::string path = SaveFileDialog(kSceneFilter, "json");
-			if (!path.empty()) SaveScene(gameScene, path);
+			if (!path.empty())
+				SaveScene(gameScene, path);
 		}
 		ImGui::EndDisabled();
-		if (playing) ImGui::TextDisabled("Stop play mode to save or load scenes");
+		if (playing)
+			ImGui::TextDisabled("Stop play mode to save or load scenes");
 		ImGui::EndMenu();
 	}
 	// Edit: Undo・コピー/貼り付け・Frame Selected・Play/Pause/Step
@@ -388,20 +439,28 @@ void EditorUI::DrawMainMenu(Engine::Renderer* renderer, GameScene* gameScene) {
 		// 次に取り消す / やり直す操作の名前を出す (履歴が無ければ押せない)
 		const std::string undoLabel = history_.CanUndo() ? "Undo " + history_.NextUndoName() : std::string("Undo");
 		const std::string redoLabel = history_.CanRedo() ? "Redo " + history_.NextRedoName() : std::string("Redo");
-		if (ImGui::MenuItem(undoLabel.c_str(), "Ctrl+Z", false, !playing && history_.CanUndo())) Undo();
-		if (ImGui::MenuItem(redoLabel.c_str(), "Ctrl+Y", false, !playing && history_.CanRedo())) Redo();
+		if (ImGui::MenuItem(undoLabel.c_str(), "Ctrl+Z", false, !playing && history_.CanUndo()))
+			Undo();
+		if (ImGui::MenuItem(redoLabel.c_str(), "Ctrl+Y", false, !playing && history_.CanRedo()))
+			Redo();
 		ImGui::Separator();
 		// コピー・貼り付け・複製
-		if (ImGui::MenuItem("Copy", "Ctrl+C")) ExecuteCopy(gameScene);
-		if (ImGui::MenuItem("Paste", "Ctrl+V", false, !s_clipboardJson.empty() && !playing)) ExecutePaste(gameScene);
-		if (ImGui::MenuItem("Duplicate", "Ctrl+D", false, !playing)) ExecuteDuplicate(gameScene);
+		if (ImGui::MenuItem("Copy", "Ctrl+C"))
+			ExecuteCopy(gameScene);
+		if (ImGui::MenuItem("Paste", "Ctrl+V", false, !s_clipboardJson.empty() && !playing))
+			ExecutePaste(gameScene);
+		if (ImGui::MenuItem("Duplicate", "Ctrl+D", false, !playing))
+			ExecuteDuplicate(gameScene);
 		ImGui::Separator();
 		// 選択中の物へカメラを寄せる
-		if (ImGui::MenuItem("Frame Selected", "F")) FrameSelectedInScene();
+		if (ImGui::MenuItem("Frame Selected", "F"))
+			FrameSelectedInScene();
 		ImGui::Separator();
 		// Play / Stop・Pause・Step
-		if (ImGui::MenuItem(playing ? "Stop" : "Play", "Ctrl+P")) gameScene->SetIsPlaying(!playing);
-		if (ImGui::MenuItem("Pause", "Ctrl+Shift+P", gameScene->IsEditorPaused(), playing)) gameScene->SetEditorPaused(!gameScene->IsEditorPaused());
+		if (ImGui::MenuItem(playing ? "Stop" : "Play", "Ctrl+P"))
+			gameScene->SetIsPlaying(!playing);
+		if (ImGui::MenuItem("Pause", "Ctrl+Shift+P", gameScene->IsEditorPaused(), playing))
+			gameScene->SetEditorPaused(!gameScene->IsEditorPaused());
 		if (ImGui::MenuItem("Step", "Ctrl+Alt+P", false, playing)) {
 			gameScene->SetEditorPaused(true);
 			gameScene->StepEditorFrame();
@@ -416,16 +475,20 @@ void EditorUI::DrawMainMenu(Engine::Renderer* renderer, GameScene* gameScene) {
 		ImGui::Separator();
 		// 選択中の物が位置を持っていれば、カメラの前へ移せる
 		const auto selected = gameScene->GetSelectedEntity();
-		const bool hasTransform = selected != entt::null && gameScene->GetComponents().valid(selected) && gameScene->GetComponents().all_of<TransformComponent>(selected);
-		if (ImGui::MenuItem("Move To View", "Ctrl+Alt+F", false, hasTransform)) MoveSelectedToView(gameScene);
+		const bool hasTransform = selected != entt::null && gameScene->GetComponents().valid(selected) &&
+		                          gameScene->GetComponents().all_of<TransformComponent>(selected);
+		if (ImGui::MenuItem("Move To View", "Ctrl+Alt+F", false, hasTransform))
+			MoveSelectedToView(gameScene);
 		ImGui::EndDisabled();
 		ImGui::EndMenu();
 	}
 	// Window: Scene/Game の切り替え、各ウィンドウの開閉、分析ツール、レイアウトのリセット
 	if (ImGui::BeginMenu("Window")) {
 		// Scene / Game タブの切り替え
-		if (ImGui::MenuItem("Scene", "Ctrl+1")) RequestView(GameScene::EditorView::Scene);
-		if (ImGui::MenuItem("Game", "Ctrl+2")) RequestView(GameScene::EditorView::Game);
+		if (ImGui::MenuItem("Scene", "Ctrl+1"))
+			RequestView(GameScene::EditorView::Scene);
+		if (ImGui::MenuItem("Game", "Ctrl+2"))
+			RequestView(GameScene::EditorView::Game);
 		ImGui::Separator();
 		// 各ウィンドウの開閉
 		ImGui::MenuItem(kHierarchyWindow, nullptr, &s_windows.hierarchy);
@@ -439,7 +502,8 @@ void EditorUI::DrawMainMenu(Engine::Renderer* renderer, GameScene* gameScene) {
 		// 拡張のウィンドウがあれば、その開閉も並べる
 		if (!Extensions().empty()) {
 			ImGui::Separator();
-			for (auto& ext : Extensions()) ImGui::MenuItem(ext.windowName.c_str(), nullptr, &ext.open);
+			for (auto& ext : Extensions())
+				ImGui::MenuItem(ext.windowName.c_str(), nullptr, &ext.open);
 		}
 		ImGui::Separator();
 		// 分析ツール: 流体のプロファイラと、流体の表示モードの切り替え
@@ -448,11 +512,14 @@ void EditorUI::DrawMainMenu(Engine::Renderer* renderer, GameScene* gameScene) {
 			if (ImGui::BeginMenu("Fluid Debug View")) {
 				if (renderer) {
 					// 流体のボリュームが使えるか
-					ImGui::TextDisabled("%s", renderer->IsFluidVolumeReady() ? "3D volume active" : "Fallback (volume init failed)");
+					ImGui::TextDisabled(
+					    "%s", renderer->IsFluidVolumeReady() ? "3D volume active" : "Fallback (volume init failed)");
 					// 表示モード (材質・材質の段階・法線・厚さ・計算範囲)
-					const char* modes[] = {"Material", "Material phases", "3D normals", "Thickness", "Domain / ray steps"};
+					const char* modes[] = {
+					    "Material", "Material phases", "3D normals", "Thickness", "Domain / ray steps"};
 					for (uint32_t mode = 0; mode < 5; ++mode) {
-						if (ImGui::MenuItem(modes[mode], nullptr, renderer->GetFluidVolumeDebugMode() == mode)) renderer->SetFluidVolumeDebugMode(mode);
+						if (ImGui::MenuItem(modes[mode], nullptr, renderer->GetFluidVolumeDebugMode() == mode))
+							renderer->SetFluidVolumeDebugMode(mode);
 					}
 				}
 				ImGui::EndMenu();
@@ -461,7 +528,8 @@ void EditorUI::DrawMainMenu(Engine::Renderer* renderer, GameScene* gameScene) {
 		}
 		ImGui::Separator();
 		// レイアウトを既定に戻す
-		if (ImGui::MenuItem("Reset Layout")) s_resetLayoutRequested = true;
+		if (ImGui::MenuItem("Reset Layout"))
+			s_resetLayoutRequested = true;
 		ImGui::EndMenu();
 	}
 }
@@ -470,23 +538,29 @@ void EditorUI::DrawMainMenu(Engine::Renderer* renderer, GameScene* gameScene) {
 void EditorUI::DrawToolbar(GameScene* gameScene, float height) {
 	// メインのビューポートの上端に、スクロールしない帯として置く
 	ImGuiViewport* viewport = ImGui::GetMainViewport();
-	const ImGuiWindowFlags flags = ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoScrollWithMouse;
+	const ImGuiWindowFlags flags =
+	    ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoScrollWithMouse;
 	ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(8.0f, 4.0f));
 	if (ImGui::BeginViewportSideBar("##MainToolbar", viewport, ImGuiDir_Up, height, flags)) {
 		// PLAY 中か
 		const bool playing = gameScene->GetIsPlaying();
 		// 左: 変形ツール (W/E/R) と Scene / Game の切り替え
-		if (ToggleButton("Move", gizmo_.Mode() == GizmoMode::Translate, "Move tool (W)")) gizmo_.SetMode(GizmoMode::Translate);
+		if (ToggleButton("Move", gizmo_.Mode() == GizmoMode::Translate, "Move tool (W)"))
+			gizmo_.SetMode(GizmoMode::Translate);
 		ImGui::SameLine(0, 2);
-		if (ToggleButton("Rotate", gizmo_.Mode() == GizmoMode::Rotate, "Rotate tool (E)")) gizmo_.SetMode(GizmoMode::Rotate);
+		if (ToggleButton("Rotate", gizmo_.Mode() == GizmoMode::Rotate, "Rotate tool (E)"))
+			gizmo_.SetMode(GizmoMode::Rotate);
 		ImGui::SameLine(0, 2);
-		if (ToggleButton("Scale", gizmo_.Mode() == GizmoMode::Scale, "Scale tool (R)")) gizmo_.SetMode(GizmoMode::Scale);
+		if (ToggleButton("Scale", gizmo_.Mode() == GizmoMode::Scale, "Scale tool (R)"))
+			gizmo_.SetMode(GizmoMode::Scale);
 		ImGui::SameLine(0, 16);
 		// Scene ビューを表示しているか
 		const bool sceneActive = gameScene->GetEditorView() == GameScene::EditorView::Scene;
-		if (ToggleButton("Scene", sceneActive, "Editor camera view (Ctrl+1)")) RequestView(GameScene::EditorView::Scene);
+		if (ToggleButton("Scene", sceneActive, "Editor camera view (Ctrl+1)"))
+			RequestView(GameScene::EditorView::Scene);
 		ImGui::SameLine(0, 2);
-		if (ToggleButton("Game", !sceneActive, "Player camera view (Ctrl+2)")) RequestView(GameScene::EditorView::Game);
+		if (ToggleButton("Game", !sceneActive, "Player camera view (Ctrl+2)"))
+			RequestView(GameScene::EditorView::Game);
 		ImGui::SameLine(0, 16);
 		// シーン切り替えのドロップダウン
 		DrawSceneLaunchCombo();
@@ -497,13 +571,16 @@ void EditorUI::DrawToolbar(GameScene* gameScene, float height) {
 		const float groupWidth = buttonWidth * 3.0f + ImGui::GetStyle().ItemSpacing.x * 2.0f;
 		ImGui::SameLine((std::max)(ImGui::GetCursorPosX() + 16.0f, (ImGui::GetWindowWidth() - groupWidth) * 0.5f));
 		// 再生 / 停止
-		if (IconButton("##Play", playing ? ToolbarIcon::Stop : ToolbarIcon::Play, playing, playing ? "Stop (Ctrl+P)" : "Play (Ctrl+P)")) {
+		if (IconButton(
+		        "##Play", playing ? ToolbarIcon::Stop : ToolbarIcon::Play, playing,
+		        playing ? "Stop (Ctrl+P)" : "Play (Ctrl+P)")) {
 			gameScene->SetIsPlaying(!playing);
 		}
 		ImGui::SameLine();
 		// 一時停止と 1 フレーム送りは PLAY 中だけ
 		ImGui::BeginDisabled(!playing);
-		if (IconButton("##Pause", ToolbarIcon::Pause, gameScene->IsEditorPaused(), "Pause (Ctrl+Shift+P)")) gameScene->SetEditorPaused(!gameScene->IsEditorPaused());
+		if (IconButton("##Pause", ToolbarIcon::Pause, gameScene->IsEditorPaused(), "Pause (Ctrl+Shift+P)"))
+			gameScene->SetEditorPaused(!gameScene->IsEditorPaused());
 		ImGui::SameLine();
 		if (IconButton("##Step", ToolbarIcon::Step, false, "Step one frame (Ctrl+Alt+P)")) {
 			gameScene->SetEditorPaused(true);
@@ -514,11 +591,13 @@ void EditorUI::DrawToolbar(GameScene* gameScene, float height) {
 		// 右: Maximize On Play とレイアウト
 		// 右端に置くための幅を求める
 		const char* layoutLabel = "Reset Layout";
-		const float rightWidth = ImGui::CalcTextSize("Maximize On Play").x + ImGui::CalcTextSize(layoutLabel).x + ImGui::GetFrameHeight() + 48.0f;
+		const float rightWidth = ImGui::CalcTextSize("Maximize On Play").x + ImGui::CalcTextSize(layoutLabel).x +
+		                         ImGui::GetFrameHeight() + 48.0f;
 		ImGui::SameLine((std::max)(ImGui::GetCursorPosX() + 16.0f, ImGui::GetWindowWidth() - rightWidth));
 		ImGui::Checkbox("Maximize On Play", &s_maximizeOnPlay);
 		ImGui::SameLine();
-		if (ImGui::Button(layoutLabel)) s_resetLayoutRequested = true;
+		if (ImGui::Button(layoutLabel))
+			s_resetLayoutRequested = true;
 	}
 	ImGui::End();
 	ImGui::PopStyleVar();
@@ -528,15 +607,17 @@ void EditorUI::DrawToolbar(GameScene* gameScene, float height) {
 void EditorUI::DrawStatusBar(GameScene* gameScene, float height) {
 	// メインのビューポートの下端に、スクロールしない帯として置く
 	ImGuiViewport* viewport = ImGui::GetMainViewport();
-	const ImGuiWindowFlags flags = ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoScrollWithMouse;
+	const ImGuiWindowFlags flags =
+	    ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoScrollWithMouse;
 	ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(8.0f, 2.0f));
 	if (ImGui::BeginViewportSideBar("##StatusBar", viewport, ImGuiDir_Down, height, flags)) {
 		// 左: 最新のログ (クリックで Console を開く)
 		if (!consoleLog.empty()) {
 			// 最新のログ (エラーは赤、警告は黄、それ以外は薄く)
 			const auto& last = consoleLog.back();
-			const ImVec4 color = last.level == LogLevel::Error ? ImVec4(1.0f, 0.45f, 0.4f, 1.0f) :
-				last.level == LogLevel::Warning ? ImVec4(1.0f, 0.8f, 0.35f, 1.0f) : ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled);
+			const ImVec4 color = last.level == LogLevel::Error     ? ImVec4(1.0f, 0.45f, 0.4f, 1.0f)
+			                     : last.level == LogLevel::Warning ? ImVec4(1.0f, 0.8f, 0.35f, 1.0f)
+			                                                       : ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled);
 			ImGui::PushStyleColor(ImGuiCol_Text, color);
 			if (ImGui::Selectable(last.message.c_str(), false, 0, ImVec2(ImGui::GetWindowWidth() * 0.55f, 0))) {
 				s_windows.console = true;
@@ -548,11 +629,13 @@ void EditorUI::DrawStatusBar(GameScene* gameScene, float height) {
 		// 右側の文字 (エラー数・警告数・状態・物の数・FPS)
 		char right[160];
 		const char* state = !gameScene->GetIsPlaying() ? "Edit" : gameScene->IsEditorPaused() ? "Paused" : "Playing";
-		snprintf(right, sizeof(right), "%d errors  %d warnings   |   %s   |   %d objects   |   %.0f FPS",
-			CountLogs(LogLevel::Error), CountLogs(LogLevel::Warning), state,
-			static_cast<int>(gameScene->GetComponents().view<NameComponent>().size()), ImGui::GetIO().Framerate);
+		snprintf(
+		    right, sizeof(right), "%d errors  %d warnings   |   %s   |   %d objects   |   %.0f FPS",
+		    CountLogs(LogLevel::Error), CountLogs(LogLevel::Warning), state,
+		    static_cast<int>(gameScene->GetComponents().view<NameComponent>().size()), ImGui::GetIO().Framerate);
 		// 右寄せで書く
-		ImGui::SameLine((std::max)(ImGui::GetCursorPosX() + 16.0f, ImGui::GetWindowWidth() - ImGui::CalcTextSize(right).x - 12.0f));
+		ImGui::SameLine(
+		    (std::max)(ImGui::GetCursorPosX() + 16.0f, ImGui::GetWindowWidth() - ImGui::CalcTextSize(right).x - 12.0f));
 		ImGui::TextDisabled("%s", right);
 	}
 	ImGui::End();
@@ -564,7 +647,8 @@ void EditorUI::MoveSelectedToView(GameScene* scene) {
 	// 選択中の物 (無いか位置が無ければ何もしない)
 	auto selected = scene->GetSelectedEntity();
 	auto& reg = scene->GetComponents();
-	if (selected == entt::null || !reg.valid(selected) || !reg.all_of<TransformComponent>(selected)) return;
+	if (selected == entt::null || !reg.valid(selected) || !reg.all_of<TransformComponent>(selected))
+		return;
 	// エディタのカメラのワールド行列 (ビュー行列の逆行列)
 	const auto& camera = scene->GetEditorCamera();
 	DirectX::XMMATRIX world = DirectX::XMMatrixInverse(nullptr, camera.View());
@@ -577,14 +661,16 @@ void EditorUI::MoveSelectedToView(GameScene* scene) {
 	TransformValues after = before;
 	after.translate = {position.x + forward.x * 10.0f, position.y + forward.y * 10.0f, position.z + forward.z * 10.0f};
 	// 位置の変更をコマンドとして実行・記録する
-	ExecuteCommand(std::make_unique<TransformCommand>(scene, selected, "Move To View", TransformTranslate, before, after));
+	ExecuteCommand(
+	    std::make_unique<TransformCommand>(scene, selected, "Move To View", TransformTranslate, before, after));
 }
 
 // キーボードショートカット (文字入力中は無効)
 void EditorUI::HandleShortcuts(GameScene* gameScene) {
 	ImGuiIO& io = ImGui::GetIO();
 	// 文字入力中は何もしない
-	if (io.WantTextInput) return;
+	if (io.WantTextInput)
+		return;
 	// ファイル選択の絞り込み
 	static const char* kSceneFilter = "JSON Files (*.json)\0*.json\0All Files (*.*)\0*.*\0";
 	// PLAY 中か
@@ -593,18 +679,25 @@ void EditorUI::HandleShortcuts(GameScene* gameScene) {
 	if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_P, false)) {
 		// Ctrl+Alt+P: 1 フレーム送り / Ctrl+Shift+P: 一時停止 / Ctrl+P: 再生と停止
 		if (io.KeyAlt) {
-			if (playing) { gameScene->SetEditorPaused(true); gameScene->StepEditorFrame(); }
+			if (playing) {
+				gameScene->SetEditorPaused(true);
+				gameScene->StepEditorFrame();
+			}
 		} else if (io.KeyShift) {
-			if (playing) gameScene->SetEditorPaused(!gameScene->IsEditorPaused());
+			if (playing)
+				gameScene->SetEditorPaused(!gameScene->IsEditorPaused());
 		} else {
 			gameScene->SetIsPlaying(!playing);
 		}
 		return;
 	}
 	// Ctrl+1 / Ctrl+2 で Scene / Game を切り替える
-	if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_1, false)) RequestView(GameScene::EditorView::Scene);
-	if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_2, false)) RequestView(GameScene::EditorView::Game);
-	if (playing) return; // ここから下は編集操作 (PLAY 中はゲームの入力と衝突する)
+	if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_1, false))
+		RequestView(GameScene::EditorView::Scene);
+	if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_2, false))
+		RequestView(GameScene::EditorView::Game);
+	if (playing)
+		return; // ここから下は編集操作 (PLAY 中はゲームの入力と衝突する)
 
 	// 編集用 (PLAY 中は効かない): 保存・Undo・新規・開く・コピー/貼り付け/複製・Move To View、W/E/R のツール切り替え
 	if (io.KeyCtrl) {
@@ -612,14 +705,17 @@ void EditorUI::HandleShortcuts(GameScene* gameScene) {
 		if (ImGui::IsKeyPressed(ImGuiKey_S, false)) {
 			if (io.KeyShift) {
 				std::string path = SaveFileDialog(kSceneFilter, "json");
-				if (!path.empty()) SaveScene(gameScene, path);
+				if (!path.empty())
+					SaveScene(gameScene, path);
 			} else {
 				SaveScene(gameScene, currentScenePath);
 			}
 		}
-		// Ctrl+Z / Ctrl+Y: Undo / Redo
-		if (ImGui::IsKeyPressed(ImGuiKey_Z)) Undo();
-		if (ImGui::IsKeyPressed(ImGuiKey_Y)) Redo();
+		// Ctrl+Z / Ctrl+Y: 元に戻す / やり直す
+		if (ImGui::IsKeyPressed(ImGuiKey_Z))
+			Undo();
+		if (ImGui::IsKeyPressed(ImGuiKey_Y))
+			Redo();
 		// Ctrl+N: 新しいシーン
 		if (ImGui::IsKeyPressed(ImGuiKey_N, false)) {
 			gameScene->ClearScene();
@@ -630,20 +726,29 @@ void EditorUI::HandleShortcuts(GameScene* gameScene) {
 		if (ImGui::IsKeyPressed(ImGuiKey_O, false)) {
 			std::string path = OpenFileDialog(kSceneFilter);
 			if (!path.empty()) {
-				if (io.KeyShift) AddScene(gameScene, path);
-				else LoadScene(gameScene, path);
+				if (io.KeyShift)
+					AddScene(gameScene, path);
+				else
+					LoadScene(gameScene, path);
 			}
 		}
 		// Ctrl+C / V / D: コピー・貼り付け・複製、Ctrl+Alt+F: カメラの前へ移す
-		if (ImGui::IsKeyPressed(ImGuiKey_C, false)) ExecuteCopy(gameScene);
-		if (ImGui::IsKeyPressed(ImGuiKey_V, false)) ExecutePaste(gameScene);
-		if (ImGui::IsKeyPressed(ImGuiKey_D, false)) ExecuteDuplicate(gameScene);
-		if (io.KeyAlt && ImGui::IsKeyPressed(ImGuiKey_F, false)) MoveSelectedToView(gameScene);
+		if (ImGui::IsKeyPressed(ImGuiKey_C, false))
+			ExecuteCopy(gameScene);
+		if (ImGui::IsKeyPressed(ImGuiKey_V, false))
+			ExecutePaste(gameScene);
+		if (ImGui::IsKeyPressed(ImGuiKey_D, false))
+			ExecuteDuplicate(gameScene);
+		if (io.KeyAlt && ImGui::IsKeyPressed(ImGuiKey_F, false))
+			MoveSelectedToView(gameScene);
 	} else if (!s_sceneCameraNavigating) {
 		// W / E / R: 移動・回転・拡大のツール (Scene カメラの操作中は除く)
-		if (ImGui::IsKeyPressed(ImGuiKey_W, false)) gizmo_.SetMode(GizmoMode::Translate);
-		if (ImGui::IsKeyPressed(ImGuiKey_E, false)) gizmo_.SetMode(GizmoMode::Rotate);
-		if (ImGui::IsKeyPressed(ImGuiKey_R, false)) gizmo_.SetMode(GizmoMode::Scale);
+		if (ImGui::IsKeyPressed(ImGuiKey_W, false))
+			gizmo_.SetMode(GizmoMode::Translate);
+		if (ImGui::IsKeyPressed(ImGuiKey_E, false))
+			gizmo_.SetMode(GizmoMode::Rotate);
+		if (ImGui::IsKeyPressed(ImGuiKey_R, false))
+			gizmo_.SetMode(GizmoMode::Scale);
 	}
 }
 
@@ -657,7 +762,7 @@ void EditorUI::Show(Engine::Renderer* renderer, GameScene* gameScene) {
 
 	// PLAY 中 (Game ビュー表示時) は ImGui のカーソルを消す
 	if (playing && !gameScene->IsPaused() && !gameScene->IsEditorPaused() && !gameScene->IsResultShowing() &&
-		gameScene->GetEditorView() == GameScene::EditorView::Game) {
+	    gameScene->GetEditorView() == GameScene::EditorView::Game) {
 		ImGui::SetMouseCursor(ImGuiMouseCursor_None);
 	} else {
 		ImGui::SetMouseCursor(ImGuiMouseCursor_Arrow);
@@ -667,7 +772,8 @@ void EditorUI::Show(Engine::Renderer* renderer, GameScene* gameScene) {
 	HandleShortcuts(gameScene);
 	HandleSceneShortcuts();
 	// GameScene は自前でマウス座標を Game ビューへ換算する (ctx の override) ため、Input の換算は使わない
-	if (auto* input = Engine::Input::GetInstance()) input->ClearPointerViewport();
+	if (auto* input = Engine::Input::GetInstance())
+		input->ClearPointerViewport();
 
 	// メインメニュー・ツールバー・ステータスバー
 	if (ImGui::BeginMainMenuBar()) {
@@ -685,8 +791,10 @@ void EditorUI::Show(Engine::Renderer* renderer, GameScene* gameScene) {
 	ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
 	ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
 	ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
-	const ImGuiWindowFlags mainFlags = ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse |
-		ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNavFocus;
+	const ImGuiWindowFlags mainFlags = ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_NoTitleBar |
+	                                   ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize |
+	                                   ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus |
+	                                   ImGuiWindowFlags_NoNavFocus;
 	ImGui::Begin("EditorMain", nullptr, mainFlags);
 	ImGui::PopStyleVar(3);
 
@@ -696,7 +804,8 @@ void EditorUI::Show(Engine::Renderer* renderer, GameScene* gameScene) {
 	if (s_resetLayoutRequested || ImGui::FindWindowSettingsByID(ImHashStr(kInspectorWindow)) == nullptr) {
 		// ウィンドウの表示状態を初期値に戻し、既定の配置を組む
 		s_windows = EditorWindows{};
-		for (auto& ext : Extensions()) ext.open = true;
+		for (auto& ext : Extensions())
+			ext.open = true;
 		BuildDefaultLayout(dockspaceId, viewport->WorkSize, Extensions());
 		s_resetLayoutRequested = false;
 	}
@@ -713,8 +822,10 @@ void EditorUI::Show(Engine::Renderer* renderer, GameScene* gameScene) {
 	// 最大化していないときだけ各ウィンドウを描く
 	if (!maximized) {
 		// Hierarchy と Console
-		if (s_windows.hierarchy) ShowHierarchy(gameScene);
-		if (s_windows.console) ShowConsole();
+		if (s_windows.hierarchy)
+			ShowHierarchy(gameScene);
+		if (s_windows.console)
+			ShowConsole();
 		// Inspector (PLAY 中は、停止すると元に戻ることを知らせる)
 		if (s_windows.inspector) {
 			if (ImGui::Begin(kInspectorWindow, &s_windows.inspector)) {
@@ -728,15 +839,18 @@ void EditorUI::Show(Engine::Renderer* renderer, GameScene* gameScene) {
 		}
 		// Animation・Lighting・Particle Editor
 		if (s_windows.animation) {
-			if (ImGui::Begin(kAnimationWindow, &s_windows.animation)) ShowAnimationWindow(renderer, gameScene);
+			if (ImGui::Begin(kAnimationWindow, &s_windows.animation))
+				ShowAnimationWindow(renderer, gameScene);
 			ImGui::End();
 		}
 		if (s_windows.lighting) {
-			if (ImGui::Begin(kLightingWindow, &s_windows.lighting)) ShowSceneSettings(renderer);
+			if (ImGui::Begin(kLightingWindow, &s_windows.lighting))
+				ShowSceneSettings(renderer);
 			ImGui::End();
 		}
 		if (s_windows.particleEditor) {
-			if (ImGui::Begin(kParticleWindow, &s_windows.particleEditor)) gameScene->GetParticleEditor().DrawUI();
+			if (ImGui::Begin(kParticleWindow, &s_windows.particleEditor))
+				gameScene->GetParticleEditor().DrawUI();
 			ImGui::End();
 		}
 		// Fluid Sandbox を開く要求があれば開いて前面に出す
@@ -746,26 +860,32 @@ void EditorUI::Show(Engine::Renderer* renderer, GameScene* gameScene) {
 			fluidSandboxOpen = false;
 		}
 		if (s_windows.fluidSandbox) {
-			if (ImGui::Begin(kFluidSandboxWindow, &s_windows.fluidSandbox)) ShowFluidSandbox(renderer, gameScene);
+			if (ImGui::Begin(kFluidSandboxWindow, &s_windows.fluidSandbox))
+				ShowFluidSandbox(renderer, gameScene);
 			ImGui::End();
 		}
-		// Project
-		if (s_windows.project) ShowProject(renderer, gameScene);
+		// プロジェクト
+		if (s_windows.project)
+			ShowProject(renderer, gameScene);
 		// 拡張のウィンドウ
 		for (auto& ext : Extensions()) {
-			if (!ext.open || !ext.drawWindow) continue;
-			if (ImGui::Begin(ext.windowName.c_str(), &ext.open)) ext.drawWindow(gameScene);
+			if (!ext.open || !ext.drawWindow)
+				continue;
+			if (ImGui::Begin(ext.windowName.c_str(), &ext.open))
+				ext.drawWindow(gameScene);
 			ImGui::End();
 		}
 	}
 	// Scene / Game のビュー
 	ShowViewports(renderer, gameScene, maximized);
 
-	ImGui::End(); // EditorMain
+	ImGui::End(); // EditorMain の終わり
 
 	// 流体のプロファイラ (開いていて一時停止していなければ計測する)
-	if (s_windows.fluidProfiler) ShowFluidProfiler(renderer);
-	if (renderer) renderer->SetFluidProfilerEnabled(s_windows.fluidProfiler && !s_fluidProfilerPaused);
+	if (s_windows.fluidProfiler)
+		ShowFluidProfiler(renderer);
+	if (renderer)
+		renderer->SetFluidProfilerEnabled(s_windows.fluidProfiler && !s_fluidProfilerPaused);
 	// PLAY 中の色付けを戻す
 	ImGui::PopStyleColor(tintColors);
 }
@@ -779,8 +899,9 @@ void EditorUI::ShowFluidProfiler(Engine::Renderer* renderer) {
 		ImGui::Checkbox("Pause capture", &s_fluidProfilerPaused);
 		// 流体の計測結果
 		const auto& profile = renderer->GetFluidProfileStats();
-		if (s_fluidProfilerPaused) ImGui::TextColored(ImVec4(1.0f, 0.72f, 0.32f, 1.0f),
-			"Capture paused: the values below are from an earlier frame.");
+		if (s_fluidProfilerPaused)
+			ImGui::TextColored(
+			    ImVec4(1.0f, 0.72f, 0.32f, 1.0f), "Capture paused: the values below are from an earlier frame.");
 		// 計測できない / まだ結果が無い / 結果の表示
 		if (!profile.available) {
 			ImGui::TextUnformatted("GPU timestamp queries are unavailable on this device.");
@@ -794,42 +915,59 @@ void EditorUI::ShowFluidProfiler(Engine::Renderer* renderer) {
 			// ゲームの描画全体と、それ以外の時間
 			if (profile.sampledStages[Engine::Renderer::SceneRender]) {
 				const float sceneMs = profile.lastMs[Engine::Renderer::SceneRender];
-				ImGui::Text("Game render GPU: %.3f ms   Other game passes: %.3f ms",
-					sceneMs, (std::max)(0.0f, sceneMs - profile.totalMs));
+				ImGui::Text(
+				    "Game render GPU: %.3f ms   Other game passes: %.3f ms", sceneMs,
+				    (std::max)(0.0f, sceneMs - profile.totalMs));
 			}
 			// 粒子数・分割数・時間刻み・格子の作り直しの回数・ボリュームの大きさ・FPS・CPU の時間
-			ImGui::Text("Particles: %u   Simulation substeps: %u   Simulated dt: %.2f ms",
-				profile.particleSlots, profile.substeps, profile.simulatedDtMs);
+			ImGui::Text(
+			    "Particles: %u   Simulation substeps: %u   Simulated dt: %.2f ms", profile.particleSlots,
+			    profile.substeps, profile.simulatedDtMs);
 			ImGui::Text("Spatial grid rebuilds: %u", profile.simulatedDtMs > 0.0f ? 1 + 4 * profile.substeps : 1);
 			ImGui::Text("Volume: 176 x 64 x 176 at 0.56 units   LOD: 46.0 - 48.5 units");
 			ImGui::Text("Frame rate: %.1f FPS (whole editor)", ImGui::GetIO().Framerate);
-			ImGui::Text("CPU command recording: simulation %.3f ms, volume %.3f ms",
-				profile.cpuSimulationMs, profile.cpuVolumeMs);
+			ImGui::Text(
+			    "CPU command recording: simulation %.3f ms, volume %.3f ms", profile.cpuSimulationMs,
+			    profile.cpuVolumeMs);
 			ImGui::Separator();
 			// 処理ごとの直近・平均・最大の時間
 			ImGui::TextUnformatted("GPU pass                                Last       Mean       Peak (ms)");
 			static const char* names[Engine::Renderer::kFluidProfileStageCount] = {
-				"Particle simulation", "Shape reconstruction", "Density splat + resolve",
-				"Filtering + occupancy", "Refraction + raymarch", "Distant impostors", "Fluid shadow", "Whole game render",
-				"Scenery shadow", "RT acceleration", "RT lighting rays", "RT radiance filter",
-				"DLSS depth + motion inputs", "DLSS super resolution", "RT HDR composite",
-				"Screen-space hose water"
-			};
+			    "Particle simulation",
+			    "Shape reconstruction",
+			    "Density splat + resolve",
+			    "Filtering + occupancy",
+			    "Refraction + raymarch",
+			    "Distant impostors",
+			    "Fluid shadow",
+			    "Whole game render",
+			    "Scenery shadow",
+			    "RT acceleration",
+			    "RT lighting rays",
+			    "RT radiance filter",
+			    "DLSS depth + motion inputs",
+			    "DLSS super resolution",
+			    "RT HDR composite",
+			    "Screen-space hose water"};
 			// 計測していない処理は inactive と出す
 			for (uint32_t i = 0; i < Engine::Renderer::kFluidProfileStageCount; ++i) {
 				if (!profile.sampledStages[i]) {
 					ImGui::Text("%-30s    (inactive)", names[i]);
 					continue;
 				}
-				ImGui::Text("%-30s %8.3f   %8.3f   %8.3f", names[i],
-					profile.lastMs[i], profile.averageMs[i], profile.peakMs[i]);
+				ImGui::Text(
+				    "%-30s %8.3f   %8.3f   %8.3f", names[i], profile.lastMs[i], profile.averageMs[i],
+				    profile.peakMs[i]);
 			}
 			ImGui::Separator();
 			// 合計時間の折れ線グラフ
-			ImGui::PlotLines("Fluid GPU total", profile.totalHistory.data(),
-				static_cast<int>(profile.historyCount), 0, nullptr, 0.0f, FLT_MAX, ImVec2(0, 100));
-			ImGui::TextDisabled("Mean / peak: last %u completed samples. GPU time excludes CPU waits and UI.", profile.historyCount);
-			ImGui::TextDisabled("Game render includes fluid; Other game passes is the difference. Editor UI and Present are excluded.");
+			ImGui::PlotLines(
+			    "Fluid GPU total", profile.totalHistory.data(), static_cast<int>(profile.historyCount), 0, nullptr,
+			    0.0f, FLT_MAX, ImVec2(0, 100));
+			ImGui::TextDisabled(
+			    "Mean / peak: last %u completed samples. GPU time excludes CPU waits and UI.", profile.historyCount);
+			ImGui::TextDisabled(
+			    "Game render includes fluid; Other game passes is the difference. Editor UI and Present are excluded.");
 		}
 	}
 	ImGui::End();
@@ -847,7 +985,8 @@ void EditorUI::PresentScene(Engine::IScene& scene, const std::string& sceneName)
 		}
 	}
 	// それ以外は入力の換算を外し、シーン自身のエディタ描画を呼ぶ
-	if (auto* input = Engine::Input::GetInstance()) input->ClearPointerViewport();
+	if (auto* input = Engine::Input::GetInstance())
+		input->ClearPointerViewport();
 	scene.DrawEditor();
 }
 
@@ -870,7 +1009,8 @@ void EditorUI::ShowSceneHost(Engine::IScene& scene, const std::string& sceneName
 			ImGui::MenuItem(kConsoleWindow, nullptr, &s_windows.console);
 			ImGui::MenuItem(kLightingWindow, nullptr, &s_windows.lighting);
 			ImGui::Separator();
-			if (ImGui::MenuItem("Reset Layout")) s_resetLayoutRequested = true;
+			if (ImGui::MenuItem("Reset Layout"))
+				s_resetLayoutRequested = true;
 			ImGui::EndMenu();
 		}
 		ImGui::EndMainMenuBar();
@@ -881,12 +1021,16 @@ void EditorUI::ShowSceneHost(Engine::IScene& scene, const std::string& sceneName
 	// ツールバーの高さ
 	const float toolbarHeight = ImGui::GetFrameHeight() + 8.0f;
 	ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(8.0f, 4.0f));
-	if (ImGui::BeginViewportSideBar("##MainToolbar", viewport, ImGuiDir_Up, toolbarHeight, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoSavedSettings)) {
+	if (ImGui::BeginViewportSideBar(
+	        "##MainToolbar", viewport, ImGuiDir_Up, toolbarHeight,
+	        ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoSavedSettings)) {
 		DrawSceneLaunchCombo();
 		ImGui::SameLine();
 		// 今のシーンを読み込み直すボタン
-		if (ImGui::Button("Restart")) LaunchScene(sceneName.c_str(), Engine::SceneManager::GetInstance()->CurrentParameters().stagePath);
-		if (ImGui::IsItemHovered()) ImGui::SetTooltip("Reload this scene (Ctrl+R)");
+		if (ImGui::Button("Restart"))
+			LaunchScene(sceneName.c_str(), Engine::SceneManager::GetInstance()->CurrentParameters().stagePath);
+		if (ImGui::IsItemHovered())
+			ImGui::SetTooltip("Reload this scene (Ctrl+R)");
 		ImGui::SameLine(0, 16);
 		// 動いているシーン名
 		ImGui::TextDisabled("Running: %s", sceneName.c_str());
@@ -901,12 +1045,17 @@ void EditorUI::ShowSceneHost(Engine::IScene& scene, const std::string& sceneName
 	// ステータスバー: 最新のログと、エラー数・警告数・シーン名・FPS
 	const float statusHeight = ImGui::GetFrameHeight() + 2.0f;
 	ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(8.0f, 2.0f));
-	if (ImGui::BeginViewportSideBar("##StatusBar", viewport, ImGuiDir_Down, statusHeight, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoSavedSettings)) {
-		if (!consoleLog.empty()) ImGui::TextDisabled("%s", consoleLog.back().message.c_str());
+	if (ImGui::BeginViewportSideBar(
+	        "##StatusBar", viewport, ImGuiDir_Down, statusHeight,
+	        ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoSavedSettings)) {
+		if (!consoleLog.empty())
+			ImGui::TextDisabled("%s", consoleLog.back().message.c_str());
 		char right[128];
-		snprintf(right, sizeof(right), "%d errors  %d warnings   |   %s   |   %.0f FPS",
-			CountLogs(LogLevel::Error), CountLogs(LogLevel::Warning), sceneName.c_str(), ImGui::GetIO().Framerate);
-		ImGui::SameLine((std::max)(ImGui::GetCursorPosX() + 16.0f, ImGui::GetWindowWidth() - ImGui::CalcTextSize(right).x - 12.0f));
+		snprintf(
+		    right, sizeof(right), "%d errors  %d warnings   |   %s   |   %.0f FPS", CountLogs(LogLevel::Error),
+		    CountLogs(LogLevel::Warning), sceneName.c_str(), ImGui::GetIO().Framerate);
+		ImGui::SameLine(
+		    (std::max)(ImGui::GetCursorPosX() + 16.0f, ImGui::GetWindowWidth() - ImGui::CalcTextSize(right).x - 12.0f));
 		ImGui::TextDisabled("%s", right);
 	}
 	ImGui::End();
@@ -919,14 +1068,18 @@ void EditorUI::ShowSceneHost(Engine::IScene& scene, const std::string& sceneName
 	ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
 	ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
 	ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
-	ImGui::Begin("EditorMain", nullptr, ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse |
-		ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNavFocus);
+	ImGui::Begin(
+	    "EditorMain", nullptr,
+	    ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse |
+	        ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus |
+	        ImGuiWindowFlags_NoNavFocus);
 	ImGui::PopStyleVar(3);
 	// ドックスペース (初回か Reset Layout のときは既定の配置を組む)
 	const ImGuiID dockspaceId = ImGui::GetID("MyDockSpace");
 	if (s_resetLayoutRequested || ImGui::FindWindowSettingsByID(ImHashStr(kInspectorWindow)) == nullptr) {
 		s_windows = EditorWindows{};
-		for (auto& ext : Extensions()) ext.open = true;
+		for (auto& ext : Extensions())
+			ext.open = true;
 		BuildDefaultLayout(dockspaceId, viewport->WorkSize, Extensions());
 		s_resetLayoutRequested = false;
 	}
@@ -947,31 +1100,40 @@ void EditorUI::ShowSceneHost(Engine::IScene& scene, const std::string& sceneName
 	// 最大化していないときだけ各ウィンドウを出す
 	if (!s_maximizeOnPlay) {
 		// 既定レイアウトのドックが空にならないよう、ゲームシーン専用の欄も説明付きで出しておく
-		if (ImGui::Begin(kSceneWindow)) DrawCodeSceneNotice("The Scene view");
+		if (ImGui::Begin(kSceneWindow))
+			DrawCodeSceneNotice("The Scene view");
 		ImGui::End();
 		if (s_windows.hierarchy) {
-			if (ImGui::Begin(kHierarchyWindow, &s_windows.hierarchy)) DrawCodeSceneNotice("The Hierarchy");
+			if (ImGui::Begin(kHierarchyWindow, &s_windows.hierarchy))
+				DrawCodeSceneNotice("The Hierarchy");
 			ImGui::End();
 		}
 		if (s_windows.inspector) {
-			if (ImGui::Begin(kInspectorWindow, &s_windows.inspector)) DrawCodeSceneNotice("The Inspector");
+			if (ImGui::Begin(kInspectorWindow, &s_windows.inspector))
+				DrawCodeSceneNotice("The Inspector");
 			ImGui::End();
 		}
 		if (s_windows.animation) {
-			if (ImGui::Begin(kAnimationWindow, &s_windows.animation)) DrawCodeSceneNotice("The Animation list");
+			if (ImGui::Begin(kAnimationWindow, &s_windows.animation))
+				DrawCodeSceneNotice("The Animation list");
 			ImGui::End();
 		}
 		if (s_windows.lighting && renderer) {
-			if (ImGui::Begin(kLightingWindow, &s_windows.lighting)) ShowSceneSettings(renderer);
+			if (ImGui::Begin(kLightingWindow, &s_windows.lighting))
+				ShowSceneSettings(renderer);
 			ImGui::End();
 		}
 		// Console と Project (Project はシーン無しで使う)
-		if (s_windows.console) ShowConsole();
-		if (s_windows.project) ShowProject(renderer, nullptr);
+		if (s_windows.console)
+			ShowConsole();
+		if (s_windows.project)
+			ShowProject(renderer, nullptr);
 		// 拡張のウィンドウ
 		for (auto& ext : Extensions()) {
-			if (!ext.open || !ext.drawWindow) continue;
-			if (ImGui::Begin(ext.windowName.c_str(), &ext.open)) ext.drawWindow(nullptr);
+			if (!ext.open || !ext.drawWindow)
+				continue;
+			if (ImGui::Begin(ext.windowName.c_str(), &ext.open))
+				ext.drawWindow(nullptr);
 			ImGui::End();
 		}
 	}
@@ -983,20 +1145,24 @@ void EditorUI::ShowSceneHost(Engine::IScene& scene, const std::string& sceneName
 	if (s_maximizeOnPlay) {
 		ImGui::SetNextWindowPos(viewport->WorkPos);
 		ImGui::SetNextWindowSize(viewport->WorkSize);
-		gameVisible = ImGui::Begin("##MaximizedHostGame", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoMove);
+		gameVisible = ImGui::Begin(
+		    "##MaximizedHostGame", nullptr,
+		    ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_NoSavedSettings |
+		        ImGuiWindowFlags_NoMove);
 	} else {
 		gameVisible = ImGui::Begin(kGameWindow);
 	}
 	// 見えていれば、縦横比と Stats の切り替えを上に並べる
 	if (gameVisible && renderer) {
-		// Begin() places the cursor below the title/docking tabs. Keep that
-		// content origin instead of positioning relative to the window border.
+		// Begin() はカーソルをタイトル / ドッキングのタブの下に置く。ウィンドウの枠からの
+		// 位置ではなく、その中身の原点を基準にする。
 		const ImVec2 contentStart = ImGui::GetCursorPos();
 		ImGui::SetCursorPos(ImVec2(contentStart.x + 6.0f, contentStart.y + 4.0f));
 		ImGui::SetNextItemWidth(90.0f);
 		if (ImGui::BeginCombo("##HostAspect", aspects[currentAspect])) {
 			for (int n = 0; n < IM_ARRAYSIZE(aspects); n++) {
-				if (ImGui::Selectable(aspects[n], currentAspect == n)) currentAspect = n;
+				if (ImGui::Selectable(aspects[n], currentAspect == n))
+					currentAspect = n;
 			}
 			ImGui::EndCombo();
 		}
@@ -1009,7 +1175,8 @@ void EditorUI::ShowSceneHost(Engine::IScene& scene, const std::string& sceneName
 		const float availW = (std::max)(avail.x, 1.0f), availH = (std::max)(avail.y, 1.0f);
 		// 縦横比 (既定は内部解像度の比)
 		float aspect = (float)Engine::WindowDX::kW / (float)Engine::WindowDX::kH;
-		if (currentAspect > 0 && aspectValues[currentAspect] > 0.0f) aspect = aspectValues[currentAspect];
+		if (currentAspect > 0 && aspectValues[currentAspect] > 0.0f)
+			aspect = aspectValues[currentAspect];
 		// 領域に収まる大きさ
 		const float w = availW / availH > aspect ? availH * aspect : availW;
 		const float h = availW / availH > aspect ? availH : availW / aspect;
@@ -1022,12 +1189,14 @@ void EditorUI::ShowSceneHost(Engine::IScene& scene, const std::string& sceneName
 		gameImageMax = ImGui::GetItemRectMax();
 		renderer->SetEditorLoadingViewport(gameImageMin.x, gameImageMin.y, w, h);
 		// ImGui の座標はクライアント座標なので、そのまま Input の換算範囲に使える
-		if (auto* input = Engine::Input::GetInstance()) input->SetPointerViewport(gameImageMin.x, gameImageMin.y, w, h);
+		if (auto* input = Engine::Input::GetInstance())
+			input->SetPointerViewport(gameImageMin.x, gameImageMin.y, w, h);
 		// Stats: FPS と表示の大きさを左上に重ねる
 		if (s_showStats) {
 			char stats[128];
-			snprintf(stats, sizeof(stats), "%.1f FPS (%.2f ms)\nView: %.0f x %.0f", ImGui::GetIO().Framerate,
-				1000.0f / (std::max)(ImGui::GetIO().Framerate, 1.0f), w, h);
+			snprintf(
+			    stats, sizeof(stats), "%.1f FPS (%.2f ms)\nView: %.0f x %.0f", ImGui::GetIO().Framerate,
+			    1000.0f / (std::max)(ImGui::GetIO().Framerate, 1.0f), w, h);
 			// 半透明の黒い板の上に文字を書く
 			ImDrawList* draw = ImGui::GetWindowDrawList();
 			const ImVec2 at(gameImageMin.x + 8.0f, gameImageMin.y + 8.0f), size = ImGui::CalcTextSize(stats);
@@ -1039,7 +1208,7 @@ void EditorUI::ShowSceneHost(Engine::IScene& scene, const std::string& sceneName
 	ImGui::End();
 	ImGui::PopStyleVar();
 
-	ImGui::End(); // EditorMain
+	ImGui::End(); // EditorMain の終わり
 
 	// シーン固有のツール (Assignment の GPU Particle Editor など)
 	scene.DrawEditor();

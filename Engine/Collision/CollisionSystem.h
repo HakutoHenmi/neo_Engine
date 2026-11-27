@@ -1,0 +1,20 @@
+#pragma once
+#include "../ECS/System.h"
+#include "../ECS/Coordinator.h"
+
+namespace TDEngine {
+namespace ECS {
+
+class CollisionSystem : public System {
+public:
+	void Init(Coordinator* coordinator);
+
+	// 毎フレームの衝突判定クエリを発行する
+	void Update(float dt = 0.0f) override;
+
+private:
+	Coordinator* m_coordinator = nullptr;
+};
+
+} // namespace ECS
+} // namespace TDEngine

@@ -1,7 +1,7 @@
 #include "ShadowFrustum.hlsli"
 #include "ProceduralPaper.hlsli"
 
-Texture2D gTex : register(t0); 
+Texture2D gTex : register(t0);
 Texture2D gShadowMap : register(t1);
 SamplerState gSmp : register(s0);
 SamplerComparisonState gShadowSmp : register(s1);
@@ -28,13 +28,13 @@ float3 BlinnPhong(float3 L, float3 V, float3 N, float3 C, float3 A) {
     float3 spec = C * pow(NdotH, 8.0) * 0.02; return diff + spec;
 }
 float3 CalcAreaLight(AreaLight L, float3 wPos, float3 N, float3 V, float3 A) {
-	float3 Lvec = L.pos - wPos; float distPlane = dot(Lvec, L.dir); float3 planePoint = wPos + L.dir * distPlane; float3 dirFromCenter = planePoint - L.pos;
-	float distRight = dot(dirFromCenter, L.right); float distUp = dot(dirFromCenter, L.up);
-	float clampedRight = clamp(distRight, -L.halfWidth, L.halfWidth); float clampedUp = clamp(distUp, -L.halfHeight, L.halfHeight);
-	float3 closest = L.pos + L.right * clampedRight + L.up * clampedUp;
-	float3 lightDirVec = closest - wPos; float d = length(lightDirVec); if(d >= L.range) return float3(0,0,0);
-	float3 lDir = normalize(lightDirVec); float att = GetAttenuation(L.atten, d);
-	return BlinnPhong(lDir, V, N, L.color, A) * att;
+    float3 Lvec = L.pos - wPos; float distPlane = dot(Lvec, L.dir); float3 planePoint = wPos + L.dir * distPlane; float3 dirFromCenter = planePoint - L.pos;
+    float distRight = dot(dirFromCenter, L.right); float distUp = dot(dirFromCenter, L.up);
+    float clampedRight = clamp(distRight, -L.halfWidth, L.halfWidth); float clampedUp = clamp(distUp, -L.halfHeight, L.halfHeight);
+    float3 closest = L.pos + L.right * clampedRight + L.up * clampedUp;
+    float3 lightDirVec = closest - wPos; float d = length(lightDirVec); if(d >= L.range) return float3(0,0,0);
+    float3 lDir = normalize(lightDirVec); float att = GetAttenuation(L.atten, d);
+    return BlinnPhong(lDir, V, N, L.color, A) * att;
 }
 
 float3 CalcIndirectLight(float3 albedo, float3 tint, float3 N, float3 V) {
@@ -69,13 +69,12 @@ float CalcShadow(float3 worldPos) {
 
 float4 main(float4 svpos:SV_POSITION, float3 worldPos:TEXCOORD0, float3 normal:TEXCOORD1, float2 uv:TEXCOORD2) : SV_TARGET {
     if(gColor.a<0)clip(-gColor.a-frac(52.9829189*frac(dot(floor(svpos.xy),float2(.06711056,.00583715)))));
-    float4 tex = gTex.Sample(gSmp, uv); 
+    float4 tex = gTex.Sample(gSmp, uv);
     clip(tex.a - 0.1f);
-    float3 albedo = tex.rgb * gColor.rgb; 
-    float3 N = normalize(normal); 
-    
+    float3 albedo = tex.rgb * gColor.rgb;
+    float3 N = normalize(normal);
+
     // プロシージャル和紙マテリアルを適用（床の模様が邪魔という要望により無効化）
-    // ApplyProceduralPaper(worldPos, albedo, N, 0.4, 0.8);
 
     float3 V = normalize(gCamPos - worldPos);
     float3 finalColor = albedo * gAmbientColor + CalcIndirectLight(albedo, gColor.rgb, N, V);

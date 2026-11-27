@@ -3,30 +3,26 @@
 Texture2D tex : register(t0);
 SamplerState smp : register(s0);
 
-float4 main(VSOutput input) : SV_TARGET
-{
+float4 main(VSOutput input) : SV_TARGET {
     float4 t = tex.Sample(smp, input.uv);
     float4 c = t * color;
 
     bool isOff = (color.a < 0.999f);
 
-    if (isOff)
-    {
+    if (isOff) {
         // --------------------
-        // OFFF”¼“§–¾{–³ŒøŠ´
+        // OFFï¼šåŠé€æ˜Žï¼‹ç„¡åŠ¹æ„Ÿ
         // --------------------
         float gray = dot(c.rgb, float3(0.299, 0.587, 0.114));
         c.rgb = lerp(c.rgb, float3(gray, gray, gray), 0.65);
 
         float blink = 0.85 + 0.15 * sin(time * 6.28318 * 1.5);
         c.rgb *= blink;
-    }
-    else
-    {
+    } else {
         // --------------------
-        // ONFF‚ð”Z‚­‚·‚é
+        // ONï¼šè‰²ã‚’æ¿ƒãã™ã‚‹
         // --------------------
-        float boost = 1.25; // ©‚±‚±‚Å”Z‚³’²®
+        float boost = 1.25; // â†ã“ã“ã§æ¿ƒã•èª¿æ•´
         c.rgb = saturate(c.rgb * boost);
     }
 

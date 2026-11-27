@@ -1,4 +1,4 @@
-// ------------- Resources/Shaders/Water.hlsl -------------
+// ------------- Resources/Shaders/Water.hlsli -------------
 
 // ===== テクスチャ & サンプラ =====
 Texture2D gNormalTex0 : register(t0); // 法線マップ1
@@ -6,16 +6,14 @@ Texture2D gNormalTex1 : register(t1); // 法線マップ2
 SamplerState gSampler : register(s0);
 
 // ===== カメラ共通 CB（普段使っているものに合わせて） =====
-cbuffer CameraCB : register(b0)
-{
+cbuffer CameraCB : register(b0) {
     float4x4 gViewProj; // 使わなくても OK（他と合わせるため）
     float3 gCameraPos;
     float _pad0;
 };
 
 // ===== 水専用 CB =====
-cbuffer WaterCB : register(b1)
-{
+cbuffer WaterCB : register(b1) {
     float gTime; // 経過時間
     float gWaveSpeed1; // 法線マップ1のスクロール速度
     float gWaveSpeed2; // 法線マップ2のスクロール速度
@@ -28,14 +26,12 @@ cbuffer WaterCB : register(b1)
 };
 
 // ===== 頂点シェーダ入力 / 出力 =====
-struct VSInput
-{
+struct VSInput {
     float3 position : POSITION;
     float2 uv : TEXCOORD0;
 };
 
-struct VSOutput
-{
+struct VSOutput {
     float4 position : SV_POSITION;
     float3 worldPos : POSITION;
     float2 uv : TEXCOORD0;
@@ -44,8 +40,7 @@ struct VSOutput
 // ===== 頂点シェーダ =====
 // ここでは「すでにワールド変換済みの頂点」を渡す前提にしています。
 // （あなたのエンジンで World * ViewProj をやるならそこに合わせてください）
-VSOutput VSMain(VSInput vin)
-{
+VSOutput VSMain(VSInput vin) {
     VSOutput vout;
     vout.worldPos = vin.position;
     vout.position = mul(float4(vin.position, 1.0f), gViewProj); // 必要なら
@@ -54,16 +49,14 @@ VSOutput VSMain(VSInput vin)
 }
 
 // ===== フレネル計算のヘルパー =====
-float FresnelTerm(float3 viewDir, float3 normal, float power, float scale)
-{
+float FresnelTerm(float3 viewDir, float3 normal, float power, float scale) {
     float cosTheta = saturate(dot(viewDir, normal));
     float f = pow(1.0f - cosTheta, power) * scale;
     return saturate(f);
 }
 
 // ===== ピクセルシェーダ =====
-float4 PSMain(VSOutput pin) : SV_TARGET
-{
+float4 PSMain(VSOutput pin) : SV_TARGET {
     // ---- 法線マップスクロール ----
     float2 uv1 = pin.uv + float2(gTime * gWaveSpeed1, 0.0f);
     float2 uv2 = pin.uv + float2(0.0f, gTime * gWaveSpeed2);

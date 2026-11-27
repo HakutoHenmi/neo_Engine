@@ -23,7 +23,7 @@ struct HierarchyState {
 	char search[128] = "";
 	HierarchyGrouping grouping = HierarchyGrouping::Category;
 	entt::entity lastSelected = entt::null;
-	bool revealSelected = false;   // ビューポート等で選択が変わったらフォルダを開いてスクロールする
+	bool revealSelected = false; // ビューポート等で選択が変わったらフォルダを開いてスクロールする
 	bool collapseAll = false;
 	entt::entity pendingDelete = entt::null;
 	entt::entity renameRequest = entt::null;
@@ -47,13 +47,17 @@ struct HierarchyFolder {
 // 名前の末尾の連番 ("_01", " (Copy)") を除いてグループ化キーにする
 std::string NameStem(std::string token) {
 	// 末尾の " (Copy)" をすべて外す
-	while (token.size() > 7 && token.compare(token.size() - 7, 7, " (Copy)") == 0) token.resize(token.size() - 7);
+	while (token.size() > 7 && token.compare(token.size() - 7, 7, " (Copy)") == 0)
+		token.resize(token.size() - 7);
 	// 末尾の数字を外し、その前の区切り (_ - .) も外す
 	size_t end = token.size();
-	while (end > 0 && std::isdigit(static_cast<unsigned char>(token[end - 1]))) --end;
-	if (end < token.size() && end > 0 && (token[end - 1] == '_' || token[end - 1] == '-' || token[end - 1] == '.')) --end;
+	while (end > 0 && std::isdigit(static_cast<unsigned char>(token[end - 1])))
+		--end;
+	if (end < token.size() && end > 0 && (token[end - 1] == '_' || token[end - 1] == '-' || token[end - 1] == '.'))
+		--end;
 	// 全部数字なら元のまま
-	if (end == 0) return token;
+	if (end == 0)
+		return token;
 	token.resize(end);
 	return token;
 }
@@ -65,28 +69,38 @@ std::vector<std::string> NameTokens(const std::string& name) {
 	// 空白ごとに区切る
 	for (char c : name) {
 		if (c == ' ') {
-			if (!current.empty()) tokens.push_back(current);
+			if (!current.empty())
+				tokens.push_back(current);
 			current.clear();
 		} else {
 			current += c;
 		}
 	}
 	// 最後の単語を足す (空なら Object)
-	if (!current.empty()) tokens.push_back(current);
-	if (tokens.empty()) tokens.push_back("Object");
+	if (!current.empty())
+		tokens.push_back(current);
+	if (tokens.empty())
+		tokens.push_back("Object");
 	tokens.back() = NameStem(tokens.back());
 	return tokens;
 }
 
 // 標準の分類: 持っているコンポーネントから UI・ライト・プレイヤー・敵・エフェクトなどに振り分ける
 const char* DefaultCategory(SceneComponents& reg, entt::entity e) {
-	if (reg.any_of<RectTransformComponent, UIImageComponent, UITextComponent, UIButtonComponent>(e)) return "UI";
-	if (reg.any_of<DirectionalLightComponent, PointLightComponent, SpotLightComponent>(e)) return "Lights";
-	if (reg.any_of<ParticleEmitterComponent, FluidEmitterComponent>(e)) return "Effects";
-	if (reg.any_of<AudioSourceComponent, AudioListenerComponent>(e)) return "Audio";
-	if (reg.any_of<ScriptComponent>(e)) return "Scripts";
-	if (reg.any_of<MeshRendererComponent>(e)) return "Meshes";
-	if (reg.any_of<BoxColliderComponent, GpuMeshColliderComponent>(e)) return "Colliders";
+	if (reg.any_of<RectTransformComponent, UIImageComponent, UITextComponent, UIButtonComponent>(e))
+		return "UI";
+	if (reg.any_of<DirectionalLightComponent, PointLightComponent, SpotLightComponent>(e))
+		return "Lights";
+	if (reg.any_of<ParticleEmitterComponent, FluidEmitterComponent>(e))
+		return "Effects";
+	if (reg.any_of<AudioSourceComponent, AudioListenerComponent>(e))
+		return "Audio";
+	if (reg.any_of<ScriptComponent>(e))
+		return "Scripts";
+	if (reg.any_of<MeshRendererComponent>(e))
+		return "Meshes";
+	if (reg.any_of<BoxColliderComponent, GpuMeshColliderComponent>(e))
+		return "Colliders";
 	return "Other";
 }
 
@@ -94,9 +108,11 @@ const char* DefaultCategory(SceneComponents& reg, entt::entity e) {
 bool IsAncestor(SceneComponents& reg, entt::entity ancestor, entt::entity e) {
 	// 親をたどって ancestor を探す
 	for (int depth = 0; depth < 256 && reg.valid(e); ++depth) {
-		if (e == ancestor) return true;
+		if (e == ancestor)
+			return true;
 		auto* hc = reg.try_get<HierarchyComponent>(e);
-		if (!hc) return false;
+		if (!hc)
+			return false;
 		e = hc->parentId;
 	}
 	return false;
@@ -106,7 +122,8 @@ bool IsAncestor(SceneComponents& reg, entt::entity ancestor, entt::entity e) {
 void FinalizeFolder(HierarchyFolder& folder, const std::function<bool(entt::entity)>& isSelectedOrAncestor) {
 	// このフォルダーの中の物の数と、選択中の物を含むか
 	folder.count = static_cast<int>(folder.leaves.size());
-	for (auto e : folder.leaves) folder.containsSelected |= isSelectedOrAncestor(e);
+	for (auto e : folder.leaves)
+		folder.containsSelected |= isSelectedOrAncestor(e);
 	// 子フォルダーの分も足す
 	for (auto& [key, child] : folder.folders) {
 		FinalizeFolder(child, isSelectedOrAncestor);
@@ -143,11 +160,18 @@ void EditorInternal::DrawCreateEntityMenu(GameScene* scene) {
 		scene->SelectEntity(e);
 	};
 	// 空・立方体・球・リング・円柱
-	if (ImGui::MenuItem("Create Empty")) scene->SelectEntity(scene->CreateEntity("Empty"));
-	if (ImGui::MenuItem("Create Cube")) createMesh("Cube", renderer->LoadObjMesh("Resources/Models/cube/cube.obj"), "Resources/Models/cube/cube.obj");
-	if (ImGui::MenuItem("Create Sphere")) createMesh("Sphere", renderer->LoadObjMesh("Resources/Models/player_ball/ball.obj"), "Resources/Models/player_ball/ball.obj");
-	if (ImGui::MenuItem("Create Ring")) createMesh("Ring", renderer->CreateRingMesh(2.0f, 1.0f, 32), "");
-	if (ImGui::MenuItem("Create Cylinder")) createMesh("Cylinder", renderer->CreateCylinderMesh(1.0f, 2.0f, 32), "");
+	if (ImGui::MenuItem("Create Empty"))
+		scene->SelectEntity(scene->CreateEntity("Empty"));
+	if (ImGui::MenuItem("Create Cube"))
+		createMesh("Cube", renderer->LoadObjMesh("Resources/Models/cube/cube.obj"), "Resources/Models/cube/cube.obj");
+	if (ImGui::MenuItem("Create Sphere"))
+		createMesh(
+		    "Sphere", renderer->LoadObjMesh("Resources/Models/player_ball/ball.obj"),
+		    "Resources/Models/player_ball/ball.obj");
+	if (ImGui::MenuItem("Create Ring"))
+		createMesh("Ring", renderer->CreateRingMesh(2.0f, 1.0f, 32), "");
+	if (ImGui::MenuItem("Create Cylinder"))
+		createMesh("Cylinder", renderer->CreateCylinderMesh(1.0f, 2.0f, 32), "");
 }
 
 // Hierarchy ウィンドウ
@@ -172,16 +196,23 @@ void EditorUI::ShowHierarchy(GameScene* scene) {
 	// 整理の仕方の選択
 	static const char* groupingNames[] = {"Category", "Name", "Flat"};
 	int grouping = static_cast<int>(st.grouping);
-	ImGui::SetNextItemWidth(ImGui::CalcTextSize("Category").x + ImGui::GetFrameHeight() + ImGui::GetStyle().FramePadding.x * 2.0f);
-	if (ImGui::Combo("##Grouping", &grouping, groupingNames, IM_ARRAYSIZE(groupingNames))) st.grouping = static_cast<HierarchyGrouping>(grouping);
-	if (ImGui::IsItemHovered()) ImGui::SetTooltip("Category: by components / game rules\nName: folders from shared name words\nFlat: registration order");
+	ImGui::SetNextItemWidth(
+	    ImGui::CalcTextSize("Category").x + ImGui::GetFrameHeight() + ImGui::GetStyle().FramePadding.x * 2.0f);
+	if (ImGui::Combo("##Grouping", &grouping, groupingNames, IM_ARRAYSIZE(groupingNames)))
+		st.grouping = static_cast<HierarchyGrouping>(grouping);
+	if (ImGui::IsItemHovered())
+		ImGui::SetTooltip(
+		    "Category: by components / game rules\nName: folders from shared name words\nFlat: registration order");
 	ImGui::SameLine();
 	// すべて閉じる
-	if (ImGui::Button("-")) st.collapseAll = true;
-	if (ImGui::IsItemHovered()) ImGui::SetTooltip("Collapse all folders");
+	if (ImGui::Button("-"))
+		st.collapseAll = true;
+	if (ImGui::IsItemHovered())
+		ImGui::SetTooltip("Collapse all folders");
 	ImGui::SameLine();
 	// 生成メニュー
-	if (ImGui::Button("+")) ImGui::OpenPopup("HierarchyCreate");
+	if (ImGui::Button("+"))
+		ImGui::OpenPopup("HierarchyCreate");
 	if (ImGui::BeginPopup("HierarchyCreate")) {
 		DrawCreateEntityMenu(scene);
 		ImGui::EndPopup();
@@ -195,15 +226,18 @@ void EditorUI::ShowHierarchy(GameScene* scene) {
 	// 名前を持つエンティティを集め、親子関係を整理する
 	std::vector<entt::entity> all;
 	std::unordered_map<entt::entity, std::vector<entt::entity>> children;
-	for (auto e : registry.view<NameComponent>()) all.push_back(e);
+	for (auto e : registry.view<NameComponent>())
+		all.push_back(e);
 	std::vector<entt::entity> roots;
 	roots.reserve(all.size());
 	// 親が有効ならその子に、そうでなければ一番上に入れる
 	for (auto e : all) {
 		auto* hc = registry.try_get<HierarchyComponent>(e);
 		entt::entity parent = hc ? hc->parentId : entt::null;
-		if (parent != entt::null && parent != e && registry.valid(parent) && registry.all_of<NameComponent>(parent)) children[parent].push_back(e);
-		else roots.push_back(e);
+		if (parent != entt::null && parent != e && registry.valid(parent) && registry.all_of<NameComponent>(parent))
+			children[parent].push_back(e);
+		else
+			roots.push_back(e);
 	}
 	// 物の数
 	ImGui::TextDisabled("%d objects", static_cast<int>(all.size()));
@@ -216,9 +250,11 @@ void EditorUI::ShowHierarchy(GameScene* scene) {
 	// 分類: 拡張の分類があればそれを使い、無ければ標準の分類
 	auto categoryOf = [&](entt::entity e) -> std::string {
 		for (const auto& ext : extensions) {
-			if (!ext.classify) continue;
+			if (!ext.classify)
+				continue;
 			std::string category = ext.classify(registry, e);
-			if (!category.empty()) return category;
+			if (!category.empty())
+				return category;
 		}
 		return DefaultCategory(registry, e);
 	};
@@ -226,25 +262,35 @@ void EditorUI::ShowHierarchy(GameScene* scene) {
 	// エンティティの行 (子があれば再帰的に描く)
 	std::function<void(entt::entity, int)> drawEntity = [&](entt::entity e, int depth) {
 		// 消えていれば何もしない
-		if (!registry.valid(e)) return;
+		if (!registry.valid(e))
+			return;
 		ImGui::PushID(static_cast<int>(entt::to_integral(e)));
 		// ロックの切り替えボタン (ロック中は L、それ以外は .)
 		auto& esc = registry.get_or_emplace<EditorStateComponent>(e);
-		ImGui::PushStyleColor(ImGuiCol_Text, esc.locked ? ImVec4(1.0f, 0.75f, 0.3f, 1.0f) : ImVec4(0.45f, 0.45f, 0.45f, 1.0f));
-		if (ImGui::SmallButton(esc.locked ? "L" : ".")) esc.locked = !esc.locked;
+		ImGui::PushStyleColor(
+		    ImGuiCol_Text, esc.locked ? ImVec4(1.0f, 0.75f, 0.3f, 1.0f) : ImVec4(0.45f, 0.45f, 0.45f, 1.0f));
+		if (ImGui::SmallButton(esc.locked ? "L" : "."))
+			esc.locked = !esc.locked;
 		ImGui::PopStyleColor();
-		if (ImGui::IsItemHovered()) ImGui::SetTooltip(esc.locked ? "Locked: cannot be picked in the viewport (click to unlock)" : "Click to lock (disable viewport picking)");
+		if (ImGui::IsItemHovered())
+			ImGui::SetTooltip(
+			    esc.locked ? "Locked: cannot be picked in the viewport (click to unlock)"
+			               : "Click to lock (disable viewport picking)");
 		ImGui::SameLine();
 
 		// 子があるか (深すぎる場合は打ち切る)
 		auto childIt = children.find(e);
 		const bool hasChildren = childIt != children.end() && depth < 64;
 		// 矢印かダブルクリックで開く、子が無ければ葉にする、選択中なら強調する
-		ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_OpenOnDoubleClick | ImGuiTreeNodeFlags_SpanAvailWidth;
-		if (!hasChildren) flags |= ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen;
-		if (selected == e) flags |= ImGuiTreeNodeFlags_Selected;
+		ImGuiTreeNodeFlags flags =
+		    ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_OpenOnDoubleClick | ImGuiTreeNodeFlags_SpanAvailWidth;
+		if (!hasChildren)
+			flags |= ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen;
+		if (selected == e)
+			flags |= ImGuiTreeNodeFlags_Selected;
 		// 選択中の物の祖先なら開いておく
-		if (st.revealSelected && hasChildren && selected != e && IsAncestor(registry, e, selected)) ImGui::SetNextItemOpen(true);
+		if (st.revealSelected && hasChildren && selected != e && IsAncestor(registry, e, selected))
+			ImGui::SetNextItemOpen(true);
 		const std::string& name = registry.get<NameComponent>(e).name;
 		// 名前の行
 		const bool open = ImGui::TreeNodeEx("##node", flags, "%s", name.c_str());
@@ -254,7 +300,8 @@ void EditorUI::ShowHierarchy(GameScene* scene) {
 			st.lastSelected = e; // Hierarchy 内のクリックではスクロールさせない
 		}
 		// Unity と同じくダブルクリックで Scene ビューの視点を合わせる
-		if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left) && !hasChildren) FrameSelectedInScene();
+		if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left) && !hasChildren)
+			FrameSelectedInScene();
 		// 選択中の物ならそこまでスクロールする
 		if (st.revealSelected && selected == e) {
 			ImGui::SetScrollHereY(0.4f);
@@ -285,33 +332,46 @@ void EditorUI::ShowHierarchy(GameScene* scene) {
 		// 右クリックのメニュー: 名前の変更・カメラを寄せる・削除・親子解除・コピー/貼り付け/複製
 		if (ImGui::BeginPopupContextItem("EntityContext")) {
 			scene->SelectEntity(e);
-			if (ImGui::MenuItem("Rename", "F2")) st.renameRequest = e;
-			if (ImGui::MenuItem("Frame in Scene", "F")) FrameSelectedInScene();
-			if (ImGui::MenuItem("Delete", "Del")) st.pendingDelete = e;
-			if (ImGui::MenuItem("Unparent", nullptr, false, registry.all_of<HierarchyComponent>(e) && registry.get<HierarchyComponent>(e).parentId != entt::null)) {
+			if (ImGui::MenuItem("Rename", "F2"))
+				st.renameRequest = e;
+			if (ImGui::MenuItem("Frame in Scene", "F"))
+				FrameSelectedInScene();
+			if (ImGui::MenuItem("Delete", "Del"))
+				st.pendingDelete = e;
+			if (ImGui::MenuItem(
+			        "Unparent", nullptr, false,
+			        registry.all_of<HierarchyComponent>(e) &&
+			            registry.get<HierarchyComponent>(e).parentId != entt::null)) {
 				st.reparentChild = e;
 				st.reparentTo = entt::null;
 				st.reparentRequested = true;
 			}
 			ImGui::Separator();
-			if (ImGui::MenuItem("Copy", "Ctrl+C")) ExecuteCopy(scene);
-			if (ImGui::MenuItem("Paste", "Ctrl+V", false, !s_clipboardJson.empty())) ExecutePaste(scene);
-			if (ImGui::MenuItem("Duplicate", "Ctrl+D")) ExecuteDuplicate(scene);
+			if (ImGui::MenuItem("Copy", "Ctrl+C"))
+				ExecuteCopy(scene);
+			if (ImGui::MenuItem("Paste", "Ctrl+V", false, !s_clipboardJson.empty()))
+				ExecutePaste(scene);
+			if (ImGui::MenuItem("Duplicate", "Ctrl+D"))
+				ExecuteDuplicate(scene);
 			ImGui::EndPopup();
 		}
 
 		// 開いていれば子を描く
 		if (open && hasChildren) {
-			for (auto child : childIt->second) drawEntity(child, depth + 1);
+			for (auto child : childIt->second)
+				drawEntity(child, depth + 1);
 			ImGui::TreePop();
 		}
 		ImGui::PopID();
 	};
 
 	// 選択中の物か、その祖先か
-	auto isSelectedOrAncestor = [&](entt::entity e) { return selected != entt::null && IsAncestor(registry, e, selected); };
+	auto isSelectedOrAncestor = [&](entt::entity e) {
+		return selected != entt::null && IsAncestor(registry, e, selected);
+	};
 
-	std::function<void(HierarchyFolder&, const std::string&)> drawFolder = [&](HierarchyFolder& folder, const std::string& id) {
+	std::function<void(HierarchyFolder&, const std::string&)> drawFolder = [&](HierarchyFolder& folder,
+	                                                                           const std::string& id) {
 		// 1件だけのフォルダは作らない / 子フォルダ1つだけのフォルダは名前を連結する ("Chrono" + "City")
 		// 子フォルダーを順に描く
 		for (auto& [key, child] : folder.folders) {
@@ -325,8 +385,10 @@ void EditorUI::ShowHierarchy(GameScene* scene) {
 			// 1 件だけなら、フォルダーを作らずにその物を直接描く
 			if (node->count == 1) {
 				std::function<void(HierarchyFolder&)> drawSingle = [&](HierarchyFolder& f) {
-					for (auto e : f.leaves) drawEntity(e, 0);
-					for (auto& [k, c] : f.folders) drawSingle(c);
+					for (auto e : f.leaves)
+						drawEntity(e, 0);
+					for (auto& [k, c] : f.folders)
+						drawSingle(c);
 				};
 				drawSingle(*node);
 				continue;
@@ -334,28 +396,36 @@ void EditorUI::ShowHierarchy(GameScene* scene) {
 			// フォルダーの ID と、開閉の状態
 			std::string nodeId = id + "/" + label;
 			ImGui::PushID(nodeId.c_str());
-			if (st.collapseAll) ImGui::SetNextItemOpen(false);
-			else if (st.revealSelected && node->containsSelected) ImGui::SetNextItemOpen(true);
+			if (st.collapseAll)
+				ImGui::SetNextItemOpen(false);
+			else if (st.revealSelected && node->containsSelected)
+				ImGui::SetNextItemOpen(true);
 			// フォルダーは金色の文字で、名前と件数を出す
 			ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.95f, 0.82f, 0.45f, 1.0f));
-			const bool open = ImGui::TreeNodeEx("##folder", ImGuiTreeNodeFlags_SpanAvailWidth, "%s  (%d)", label.c_str(), node->count);
+			const bool open = ImGui::TreeNodeEx(
+			    "##folder", ImGuiTreeNodeFlags_SpanAvailWidth, "%s  (%d)", label.c_str(), node->count);
 			ImGui::PopStyleColor();
 			if (open) {
 				drawFolder(*node, nodeId);
 				// 子を持たない大量の葉は可視範囲だけ描画する
 				bool uniformRows = true;
 				for (auto e : node->leaves) {
-					if (children.count(e)) { uniformRows = false; break; }
+					if (children.count(e)) {
+						uniformRows = false;
+						break;
+					}
 				}
 				if (uniformRows && node->leaves.size() > 64 && !st.revealSelected) {
 					ImGuiListClipper clipper;
 					clipper.Begin(static_cast<int>(node->leaves.size()));
 					while (clipper.Step()) {
-						for (int i = clipper.DisplayStart; i < clipper.DisplayEnd; ++i) drawEntity(node->leaves[i], 0);
+						for (int i = clipper.DisplayStart; i < clipper.DisplayEnd; ++i)
+							drawEntity(node->leaves[i], 0);
 					}
 				} else {
 					// 少なければすべて描く
-					for (auto e : node->leaves) drawEntity(e, 0);
+					for (auto e : node->leaves)
+						drawEntity(e, 0);
 				}
 				ImGui::TreePop();
 			}
@@ -363,7 +433,8 @@ void EditorUI::ShowHierarchy(GameScene* scene) {
 		}
 		// 一番上のフォルダーなら、そこの物も描く
 		if (id.empty()) {
-			for (auto e : folder.leaves) drawEntity(e, 0);
+			for (auto e : folder.leaves)
+				drawEntity(e, 0);
 		}
 	};
 
@@ -372,7 +443,8 @@ void EditorUI::ShowHierarchy(GameScene* scene) {
 		// 名前に検索文字を含むものを集める
 		std::vector<entt::entity> hits;
 		for (auto e : all) {
-			if (ToLower(registry.get<NameComponent>(e).name).find(search) != std::string::npos) hits.push_back(e);
+			if (ToLower(registry.get<NameComponent>(e).name).find(search) != std::string::npos)
+				hits.push_back(e);
 		}
 		ImGui::TextDisabled("%d match(es)", static_cast<int>(hits.size()));
 		// 見えている行だけ描く
@@ -389,13 +461,15 @@ void EditorUI::ShowHierarchy(GameScene* scene) {
 					st.lastSelected = e;
 				}
 				// 分類をツールチップで出す
-				if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", categoryOf(e).c_str());
+				if (ImGui::IsItemHovered())
+					ImGui::SetTooltip("%s", categoryOf(e).c_str());
 				ImGui::PopID();
 			}
 		}
 	} else if (st.grouping == HierarchyGrouping::Flat) {
 		// 一列: 一番上の物を順に描く
-		for (auto e : roots) drawEntity(e, 0);
+		for (auto e : roots)
+			drawEntity(e, 0);
 	} else {
 		// 分類・名前: フォルダーの木を作る
 		HierarchyFolder root;
@@ -406,12 +480,14 @@ void EditorUI::ShowHierarchy(GameScene* scene) {
 			if (st.grouping == HierarchyGrouping::Category) {
 				path.push_back(categoryOf(e));
 				// カテゴリ内でも 16 件を超える同名系統はさらに名前でまとめる
-				for (auto& token : NameTokens(name)) path.push_back(token);
+				for (auto& token : NameTokens(name))
+					path.push_back(token);
 			} else {
 				path = NameTokens(name);
 			}
 			// 道筋をたどってフォルダーを作り、物を入れる
-			for (const auto& key : path) folder = &folder->folders[key];
+			for (const auto& key : path)
+				folder = &folder->folders[key];
 			folder->leaves.push_back(e);
 		}
 		// 件数と選択中の物を集計する
@@ -420,18 +496,24 @@ void EditorUI::ShowHierarchy(GameScene* scene) {
 			// カテゴリは必ずフォルダとして表示し、中身だけ名前で畳む
 			for (auto& [category, folder] : root.folders) {
 				ImGui::PushID(category.c_str());
-				if (st.collapseAll) ImGui::SetNextItemOpen(false);
-				else if (st.revealSelected && folder.containsSelected) ImGui::SetNextItemOpen(true);
+				if (st.collapseAll)
+					ImGui::SetNextItemOpen(false);
+				else if (st.revealSelected && folder.containsSelected)
+					ImGui::SetNextItemOpen(true);
 				// 分類の見出しは水色の枠付き
 				ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.55f, 0.85f, 1.0f, 1.0f));
-				const bool open = ImGui::TreeNodeEx("##category", ImGuiTreeNodeFlags_SpanAvailWidth | ImGuiTreeNodeFlags_Framed, "%s  (%d)", category.c_str(), folder.count);
+				const bool open = ImGui::TreeNodeEx(
+				    "##category", ImGuiTreeNodeFlags_SpanAvailWidth | ImGuiTreeNodeFlags_Framed, "%s  (%d)",
+				    category.c_str(), folder.count);
 				ImGui::PopStyleColor();
 				if (open) {
 					// カテゴリ内の全員が同じ名前の系統 ("Chrono City prop ...") なら、その段は省いて中身を直接並べる
 					HierarchyFolder* content = &folder;
-					while (content->leaves.empty() && content->folders.size() == 1) content = &content->folders.begin()->second;
+					while (content->leaves.empty() && content->folders.size() == 1)
+						content = &content->folders.begin()->second;
 					drawFolder(*content, category);
-					for (auto e : content->leaves) drawEntity(e, 0);
+					for (auto e : content->leaves)
+						drawEntity(e, 0);
 					ImGui::TreePop();
 				}
 				ImGui::PopID();
@@ -466,11 +548,15 @@ void EditorUI::ShowHierarchy(GameScene* scene) {
 	ImGui::EndChild();
 
 	// Delete / F2 / F キー (Hierarchy にフォーカスがあるときのみ)
-	if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) && !ImGui::GetIO().WantTextInput && selected != entt::null) {
+	if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) && !ImGui::GetIO().WantTextInput &&
+	    selected != entt::null) {
 		// Delete: 削除 / F2: 名前の変更 / F: カメラを寄せる
-		if (ImGui::IsKeyPressed(ImGuiKey_Delete, false) && !scene->GetIsPlaying()) st.pendingDelete = selected;
-		if (ImGui::IsKeyPressed(ImGuiKey_F2, false)) st.renameRequest = selected;
-		if (ImGui::IsKeyPressed(ImGuiKey_F, false) && !ImGui::GetIO().KeyCtrl) FrameSelectedInScene();
+		if (ImGui::IsKeyPressed(ImGuiKey_Delete, false) && !scene->GetIsPlaying())
+			st.pendingDelete = selected;
+		if (ImGui::IsKeyPressed(ImGuiKey_F2, false))
+			st.renameRequest = selected;
+		if (ImGui::IsKeyPressed(ImGuiKey_F, false) && !ImGui::GetIO().KeyCtrl)
+			FrameSelectedInScene();
 	}
 	// 名前の変更の要求があれば、今の名前を入れて窓を開く
 	if (st.renameRequest != entt::null) {
@@ -483,9 +569,12 @@ void EditorUI::ShowHierarchy(GameScene* scene) {
 	}
 	// 名前の変更の窓
 	if (ImGui::BeginPopupModal("Rename Object", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
-		if (ImGui::IsWindowAppearing()) ImGui::SetKeyboardFocusHere();
+		if (ImGui::IsWindowAppearing())
+			ImGui::SetKeyboardFocusHere();
 		ImGui::SetNextItemWidth(320.0f);
-		const bool enter = ImGui::InputText("##RenameInput", st.renameBuffer, sizeof(st.renameBuffer), ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_AutoSelectAll);
+		const bool enter = ImGui::InputText(
+		    "##RenameInput", st.renameBuffer, sizeof(st.renameBuffer),
+		    ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_AutoSelectAll);
 		// Enter か OK で確定し、Undo を登録する
 		if (enter || ImGui::Button("OK")) {
 			if (registry.valid(st.renaming) && registry.all_of<NameComponent>(st.renaming)) {
@@ -498,7 +587,8 @@ void EditorUI::ShowHierarchy(GameScene* scene) {
 		}
 		ImGui::SameLine();
 		// Cancel か Esc で閉じる
-		if (ImGui::Button("Cancel") || ImGui::IsKeyPressed(ImGuiKey_Escape)) ImGui::CloseCurrentPopup();
+		if (ImGui::Button("Cancel") || ImGui::IsKeyPressed(ImGuiKey_Escape))
+			ImGui::CloseCurrentPopup();
 		ImGui::EndPopup();
 	}
 
@@ -521,7 +611,9 @@ void EditorUI::ShowHierarchy(GameScene* scene) {
 		entt::entity e = st.pendingDelete;
 		st.pendingDelete = entt::null;
 		if (registry.valid(e))
-			ExecuteCommand(std::make_unique<EntityLifetimeCommand>(scene, "Delete Entity", SerializeEntity(registry, e), e, false));
+			ExecuteCommand(
+			    std::make_unique<EntityLifetimeCommand>(
+			        scene, "Delete Entity", SerializeEntity(registry, e), e, false));
 	}
 	ImGui::End();
 }

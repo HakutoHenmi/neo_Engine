@@ -6,8 +6,7 @@ SamplerState smp : register(s0);
 // 枠の太さ（UV基準） 0.01〜0.05で調整
 static const float kLine = 0.02f;
 
-float4 main(VSOutput i) : SV_TARGET
-{
+float4 main(VSOutput i) : SV_TARGET {
     // alpha < 0.5 を「枠だけモード」にする（C++側で 0.15 など）
     bool outlineMode = (color.a < 0.5f);
 
@@ -15,8 +14,7 @@ float4 main(VSOutput i) : SV_TARGET
     // 通常（スイッチ＆実体ブロック）：赤/青ベタ（透過なし）
     // ※虹を消したいので tex.Sample は使わない
     // -----------------------------
-    if (!outlineMode)
-    {
+    if (!outlineMode) {
         return float4(color.rgb, 1.0f);
     }
 

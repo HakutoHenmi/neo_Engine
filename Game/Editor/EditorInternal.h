@@ -15,7 +15,7 @@
 #pragma once
 #include "EditorUI.h"
 // UTF-8 とワイド文字のパス変換、ImGui (内部 API はドック配置などに使う)
-#include "../../Engine/PathUtils.h"
+#include "../../Engine/Core/PathUtils.h"
 #include "../../externals/imgui/imgui.h"
 #include "../../externals/imgui/imgui_internal.h"
 #include "../Scripts/IScript.h" // 循環参照を避けるため先に読み込む
@@ -31,15 +31,15 @@
 #include "../Scripts/ScriptEngine.h"
 // MSVC の警告 4865 (列挙型の基になる型の変更) を抑止する
 #ifdef _MSC_VER
-#pragma warning(disable: 4865)
+#pragma warning(disable : 4865)
 #endif
 
-#include "Audio.h"
+#include "Core/Audio.h"
 #include <tuple>
-#include "../../Engine/FluidTank.h"
-#include "SceneManager.h"
-#include "Input.h"
-#include "WindowDX.h"
+#include "../../Engine/Fluid/FluidTank.h"
+#include "Scene/SceneManager.h"
+#include "Core/Input.h"
+#include "Core/WindowDX.h"
 #include <algorithm>
 #include <cctype>
 #include <cfloat>
@@ -72,8 +72,7 @@ inline std::string ToLower(std::string s) {
 }
 
 // strcpy_s は入力がバッファより長いと invalid parameter で即終了するため、切り詰めてコピーする
-template <size_t N>
-inline void CopyToBuffer(char (&buffer)[N], const std::string& text) {
+template<size_t N> inline void CopyToBuffer(char (&buffer)[N], const std::string& text) {
 	// 長すぎれば切り詰めてコピーする
 	strncpy_s(buffer, N, text.c_str(), _TRUNCATE);
 }
@@ -82,8 +81,12 @@ inline void CopyToBuffer(char (&buffer)[N], const std::string& text) {
 // 別コンポーネントにもあり、ID が衝突して片方しか操作できなかった
 struct ImGuiIdScope {
 	// 作ったときに ID を積み、消えるときに外す
-	explicit ImGuiIdScope(const char* id) { ImGui::PushID(id); }
-	~ImGuiIdScope() { ImGui::PopID(); }
+	explicit ImGuiIdScope(const char* id) {
+		ImGui::PushID(id);
+	}
+	~ImGuiIdScope() {
+		ImGui::PopID();
+	}
 	// コピーはできない
 	ImGuiIdScope(const ImGuiIdScope&) = delete;
 	ImGuiIdScope& operator=(const ImGuiIdScope&) = delete;
@@ -92,8 +95,8 @@ struct ImGuiIdScope {
 // ---- エディタ全体の状態 ----
 // Game ビューの縦横比の選択肢 (0 は自由、-1 は自動)
 inline int currentAspect = 0;
-inline const float aspectValues[] = { 0.0f, 16.0f/9.0f, 4.0f/3.0f, 1.0f/1.0f, -1.0f };
-inline const char* aspects[] = { "Free", "16:9", "4:3", "1:1", "Auto" };
+inline const float aspectValues[] = {0.0f, 16.0f / 9.0f, 4.0f / 3.0f, 1.0f / 1.0f, -1.0f};
+inline const char* aspects[] = {"Free", "16:9", "4:3", "1:1", "Auto"};
 
 // Console のログ (最大 500 行) と、エディタの経過時間
 inline std::deque<LogEntry> consoleLog;

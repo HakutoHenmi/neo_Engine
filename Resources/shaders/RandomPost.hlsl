@@ -1,12 +1,11 @@
 // Resources/shaders/RandomPost.hlsl
-// Damage glitch post effect. The original scene remains visible.
+// 被弾時のグリッチのポストエフェクト。元のシーンは見えたまま。
 #include "PostProcessCommon.hlsli"
 
 Texture2D gScene : register(t0);
 SamplerState gSmp : register(s0);
 
-cbuffer CBPost : register(b0)
-{
+cbuffer CBPost : register(b0) {
     float gTime;
     float gNoiseStrength;
     float gDistortion;
@@ -17,22 +16,19 @@ cbuffer CBPost : register(b0)
     float pad0;
 };
 
-struct PSIn
-{
+struct PSIn {
     float4 svpos : SV_POSITION;
     float2 texcoord : TEXCOORD0;
 };
 
-float rand2dTo1d(float2 value)
-{
+float rand2dTo1d(float2 value) {
     float2 smallValue = sin(value);
     float random = dot(smallValue, float2(12.9898, 78.233));
     random = frac(sin(random) * 143758.5453);
     return random;
 }
 
-float4 main(PSIn input) : SV_TARGET
-{
+float4 main(PSIn input) : SV_TARGET {
     float2 uv = input.texcoord;
     float3 sceneColor = gScene.Sample(gSmp, uv).rgb;
 

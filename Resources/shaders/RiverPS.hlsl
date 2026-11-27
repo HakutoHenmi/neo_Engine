@@ -17,7 +17,6 @@ float4 main(PSIn i) : SV_TARGET {
     float4 finalColor = texColor;
     
     // 透過度などを加味する場合
-    // finalColor.a = 0.8f; 
     
     return finalColor; 
 }

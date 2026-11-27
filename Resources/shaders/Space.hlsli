@@ -1,53 +1,53 @@
-// Extremely lightweight, high-performance procedural space environment
+// とても軽く高速な、手続き生成の宇宙の背景
 
-// Simple hash for stars (1 calculation, extremely fast)
+// 星用の簡単なハッシュ (計算 1 回で非常に速い)
 float hashFast(float3 p) {
     p = frac(p * 0.3183099 + 0.1);
     p *= 17.0;
     return frac(p.x * p.y * p.z * (p.x + p.y + p.z));
 }
 
-// Pseudo-3D noise based on trigonometric waves for Nebulas
-// This avoids expensive 3D value noise and FBM loops, preventing GPU TDR!
+// 星雲用の、三角関数の波による疑似 3D ノイズ
+// 重い 3D の値ノイズと FBM のループを避け、GPU のタイムアウト (TDR) を防ぐ
 float waveNoise(float3 p) {
     float n = 0.0;
     n += sin(p.x * 2.1 + p.y * 1.3 - p.z * 0.8);
     n += cos(p.y * 3.2 + p.z * 1.7 + p.x * 0.5) * 0.7;
     n += sin(p.z * 4.5 + p.x * 2.6 + p.y * 1.2) * 0.4;
-    return n * 0.47; // Normalize roughly to -1.0 ~ 1.0
+    return n * 0.47; // おおよそ -1.0 〜 1.0 に正規化する
 }
 
 float3 GetProceduralSpaceColor(float3 dir, float time) {
-    // 1. Deep Space Background
+    // 1. 深い宇宙の背景
     float3 color = float3(0.01, 0.015, 0.025) * 0.5;
 
-    // 2. High-performance Nebula (Using sine waves instead of heavy FBM)
+    // 2. 高速な星雲 (重い FBM の代わりに正弦波を使う)
     float3 nebDir = dir * 1.5;
     float w1 = waveNoise(nebDir + float3(time * 0.02, 0, 0));
     float w2 = waveNoise(nebDir * 1.8 - float3(0, time * 0.015, 0));
     
-    // Smooth and map sine waves to beautiful nebula colors
+    // 正弦波をなめらかにして、きれいな星雲の色に割り当てる
     float n1 = smoothstep(0.2, 0.9, w1 * 0.5 + 0.5);
     float n2 = smoothstep(0.3, 1.0, w2 * 0.5 + 0.5);
 
-    float3 nebColor1 = float3(0.15, 0.35, 0.7) * n1;   // Blue nebula
-    float3 nebColor2 = float3(0.6, 0.15, 0.45) * n2;   // Purple/Pink nebula
+    float3 nebColor1 = float3(0.15, 0.35, 0.7) * n1;   // 青い星雲
+    float3 nebColor2 = float3(0.6, 0.15, 0.45) * n2;   // 紫 / ピンクの星雲
     color += nebColor1;
     color += nebColor2;
 
-    // Milky Way Band
+    // 天の川の帯
     float mw = smoothstep(0.5, 0.9, waveNoise(dir * 2.5 + float3(n1, n2, 0)) * 0.5 + 0.5);
     color += float3(0.1, 0.2, 0.3) * mw * 0.8;
 
-    // 3. Ultra-fast Stars (No 3D Lerps!)
-    // We use a high-frequency grid trick to avoid banding and make sharp stars
-    // Added length() check to make stars round instead of blocky
+    // 3. 超高速の星 (3D の線形補間なし)
+    // 周波数の高い格子の工夫で、帯状のむらを避けて鋭い星を作る
+    // length() の判定を加え、星を角張らせずに丸くする
     float3 gridPos1 = dir * 250.0;
     float3 starGrid1 = floor(gridPos1);
     float3 starFrac1 = frac(gridPos1) - 0.5;
     float s1 = hashFast(starGrid1);
-    if (s1 > 0.99) { // 1% chance for a star in this grid cell
-        float intensity = smoothstep(0.4, 0.0, length(starFrac1)); // Make it a round dot
+    if (s1 > 0.99) { // この格子のセルに星がある確率は 1%
+        float intensity = smoothstep(0.4, 0.0, length(starFrac1)); // 丸い点にする
         float twinkle = sin(time * 3.0 + s1 * 10.0) * 0.5 + 0.5;
         color += float3(0.9, 0.9, 1.0) * intensity * ((s1 - 0.99) * 100.0) * twinkle;
     }
@@ -73,7 +73,7 @@ float3 GetProceduralSpaceColor(float3 dir, float time) {
         color += float3(1.0, 0.95, 0.9) * intensity * ((s3 - 0.994) * 160.0) * twinkle;
     }
 
-    // Gentle HDR tone mapping
+    // 穏やかな HDR のトーンマッピング
     color = color / (color + float3(1.0, 1.0, 1.0));
     color = pow(color, float3(1.0/2.2, 1.0/2.2, 1.0/2.2));
 
@@ -122,7 +122,7 @@ float3 GetReflectionEnvColor(float3 dir, float time) {
     float starBright = step(0.985, starHash) * starHash * 2.0 * starIntensity;
     color += float3(0.9, 0.95, 1.0) * starBright;
 
-    // HDR tone mapping (Reinhard)
+    // HDR のトーンマッピング (Reinhard)
     color = color / (color + float3(1.0, 1.0, 1.0));
     color = pow(color, float3(1.0/2.2, 1.0/2.2, 1.0/2.2));
 

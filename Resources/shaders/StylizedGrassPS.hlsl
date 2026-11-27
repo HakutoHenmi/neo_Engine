@@ -1,7 +1,7 @@
 // StylizedGrassPS.hlsl
 #include "Grass.hlsli"
 
-// Light structures (Same as EnhancedTerrain)
+// ライトの構造体 (EnhancedTerrain と同じ)
 struct DirLight { float3 dir; float pad0; float3 color; float pad1; uint enabled; float3 pad2; };
 cbuffer CBLight : register(b2) {
     float3 gAmbientColor;
@@ -11,7 +11,7 @@ cbuffer CBLight : register(b2) {
 };
 
 float4 main(VSOutput input) : SV_TARGET {
-    // 1. Gradation Color
+    // 1. グラデーションの色
     // 根本の色(暗め)から先端の色(明るめ)へ
     // input.uv.y を使用 (0:先端, 1:根本 の場合が多いので調整が必要)
     // 通常の板ポリゴン草なら uv.y=1 が底部、uv.y=0 が先端
@@ -20,7 +20,7 @@ float4 main(VSOutput input) : SV_TARGET {
     float3 tipColor = input.color.rgb;        // 先端
     float3 albedo = lerp(baseColor, tipColor, lerpVal);
     
-    // 2. Simple Lighting
+    // 2. 簡単なライティング
     float3 N = normalize(input.normal);
     float3 finalColor = albedo * gAmbientColor;
     

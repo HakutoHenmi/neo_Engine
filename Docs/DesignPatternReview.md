@@ -6,9 +6,9 @@
 
 | パターン | 層 | 対象 | 主なファイル |
 | --- | --- | --- | --- |
-| Object Pool | エンジン | CPU パーティクル | `Engine/ObjectPool.h`, `Engine/Particle.*` |
-| Strategy | エンジン | パーティクルの放出形状 | `Engine/EmissionShapes.h`, `Engine/ParticleEmitter.*` |
-| Command | エンジン + アプリ | エディタの Undo / Redo | `Engine/CommandHistory.h`, `Game/Editor/EditorCommandTypes.h`, `Game/Editor/Editor*.cpp` |
+| Object Pool | エンジン | CPU パーティクル | `Engine/Core/ObjectPool.h`, `Engine/Particle.*` |
+| Strategy | エンジン | パーティクルの放出形状 | `Engine/Particle/EmissionShapes.h`, `Engine/ParticleEmitter.*` |
+| Command | エンジン + アプリ | エディタの Undo / Redo | `Engine/Core/CommandHistory.h`, `Game/Editor/EditorCommandTypes.h`, `Game/Editor/Editor*.cpp` |
 | Strategy | アプリ | 吸収モードの部屋のギミック 6 種 | `Game/Systems/DevourGimmickBehaviors.h`, `Game/Systems/DevourGimmick.cpp`, `Game/Systems/RoomStage.cpp` |
 
 ゲームの数値・演出・保存形式 (パーティクルの JSON の `shape` の値、シーンファイル) は変更していない。
@@ -108,7 +108,7 @@ State Pattern との違い: ギミックの種類は乗っている間に変わ�
 
 - `ChronoSystem::GimmickBehavior` が上の 8 つの処理を仮想関数として持つ。既定の実装は「何もしない」なので、各ギミックは必要な処理だけを上書きする。
 - `ShootGimmick` / `DominoGimmick` / `BowlingGimmick` / `PaintGimmick` / `PathGimmick` (液体と紙飛行機。動きの大部分が同じなので、紙飛行機かどうかを持つ 1 つのクラスで扱う)。
-- 動きのオブジェクトはデータを持たない不変の共有インスタンスで、状態 (時間・狙い・倒れたピン) は今まで通り `DevourGimmick` / `GimmickRide` に置く。State Pattern の実装 (`Engine/IState.h`) と同じ考え方である。
+- 動きのオブジェクトはデータを持たない不変の共有インスタンスで、状態 (時間・狙い・倒れたピン) は今まで通り `DevourGimmick` / `GimmickRide` に置く。State Pattern の実装 (`Engine/Core/IState.h`) と同じ考え方である。
 - `ChronoSystem` の入れ子クラスにしているのは、システムの内部データ (小物・効果音・描き文字) を公開せずに使うため。宣言だけを `ChronoSystem.h` に、定義を `DevourGimmickBehaviors.h` と `DevourGimmick.cpp` に置く。
 - 乗っている間の 1 フレームの共通の情報は `GimmickRideStep` にまとめ、形を作りながら寄せる処理 (`Settle`) も共通化した。
 - `ChronoSystem` 側の 8 つの関数は、共通の処理と `GimmickBehaviorFor(kind)` の呼び出しだけになった。`GimmickKind` から動きを選ぶのは `GimmickBehaviorFor` の表 1 か所だけである。

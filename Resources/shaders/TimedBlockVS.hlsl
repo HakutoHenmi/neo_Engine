@@ -1,15 +1,14 @@
 #include "Obj.hlsli"
 
-VSOutput main(float4 pos : POSITION, float3 normal : NORMAL, float2 uv : TEXCOORD)
-{
-    VSOutput o;
+VSOutput main(float4 pos : POSITION, float3 normal : NORMAL, float2 uv : TEXCOORD) {
+    VSOutput output;
 
-    // •W€‚Ì•ÏŠ·iƒKƒCƒh‚ÌƒTƒ“ƒvƒ‹‚Æ“¯‚¶Œ`j
+    // æ¨™æº–ã®å¤‰æ›ï¼ˆã‚¬ã‚¤ãƒ‰ã®ã‚µãƒ³ãƒ—ãƒ«ã¨åŒã˜å½¢ï¼‰
     float4 worldPos = mul(pos, world);
-    o.svpos = mul(pos, mul(world, mul(view, projection)));
-    o.worldpos = worldPos;
-    o.normal = normalize(mul(float4(normal, 0), world)).xyz;
-    o.uv = uv;
+    output.svpos = mul(pos, mul(world, mul(view, projection)));
+    output.worldpos = worldPos;
+    output.normal = normalize(mul(float4(normal, 0), world)).xyz;
+    output.uv = uv;
 
-    return o;
+    return output;
 }

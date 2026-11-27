@@ -5,8 +5,7 @@
 Texture2D gScene : register(t0);
 SamplerState gSmp : register(s0);
 
-cbuffer CBPost : register(b0)
-{
+cbuffer CBPost : register(b0) {
     float gTime;
     float gNoiseStrength;
     float gDistortion;
@@ -17,14 +16,12 @@ cbuffer CBPost : register(b0)
     float pad0;
 };
 
-struct PSIn
-{
+struct PSIn {
     float4 svpos : SV_POSITION;
     float2 uv : TEXCOORD0;
 };
 
-float4 main(PSIn i) : SV_TARGET
-{
+float4 main(PSIn i) : SV_TARGET {
     float3 sceneColor = gScene.Sample(gSmp, i.uv).rgb;
     float3 col = sceneColor;
     float intensity = saturate(gSan);
@@ -40,19 +37,16 @@ float4 main(PSIn i) : SV_TARGET
 
     // エッジ部分（溶解しかけの部分）を赤熱っぽくする
     float edgeWidth = 0.08;
-    if (n < threshold)
-    {
+    if (n < threshold) {
         // 完全に溶解
         col = float3(0.0, 0.0, 0.0);
-    }
-    else if (n < threshold + edgeWidth)
-    {
+    } else if (n < threshold + edgeWidth) {
         // エッジ部分を赤やオレンジに光らせる
         float t = (n - threshold) / edgeWidth;
         col = lerp(float3(1.0, 0.2, 0.0), col, t);
     }
 
-    // Vignette
+    // 周辺減光
     float2 d = i.uv - 0.5;
     col *= saturate(1.0 - dot(d, d) * gVignette * intensity);
     col = lerp(sceneColor, col, intensity);

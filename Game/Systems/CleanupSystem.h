@@ -12,20 +12,21 @@ class CleanupSystem : public ISystem {
 public:
 	// PLAY 中、不要なエンティティを集めて破棄する
 	void Update(entt::registry& registry, GameContext& ctx) override {
-		if (!ctx.isPlaying) return;
+		if (!ctx.isPlaying)
+			return;
 
 		// 原点から 100 以上離れた弾は死亡扱いにする
 		auto bulletView = registry.view<TagComponent, TransformComponent, HealthComponent>();
 		for (auto entity : bulletView) {
 			// 弾のタグを持つものだけを調べる
 			auto& tag = bulletView.get<TagComponent>(entity);
-			if (tag.tag != TagType::Bullet) continue;
+			if (tag.tag != TagType::Bullet)
+				continue;
 
 			// 原点からの距離の 2 乗
 			auto& tc = bulletView.get<TransformComponent>(entity);
-			float distSq = tc.translate.x * tc.translate.x +
-			               tc.translate.y * tc.translate.y +
-			               tc.translate.z * tc.translate.z;
+			float distSq =
+			    tc.translate.x * tc.translate.x + tc.translate.y * tc.translate.y + tc.translate.z * tc.translate.z;
 			if (distSq > 10000.0f) {
 				auto& hc = bulletView.get<HealthComponent>(entity);
 				hc.SetDead(true);
@@ -34,7 +35,7 @@ public:
 
 		// 破棄するエンティティを集める
 		std::vector<entt::entity> toDestroy;
-		
+
 		// 自動削除コンポーネント: 残り時間を減らし、0 以下なら破棄する
 		auto autoView = registry.view<AutoDestroyComponent>();
 		for (auto entity : autoView) {
@@ -66,7 +67,8 @@ public:
 				// プレイヤーは破棄しない
 				if (registry.all_of<TagComponent>(entity)) {
 					auto& tag = registry.get<TagComponent>(entity);
-					if (tag.tag == TagType::Player) continue;
+					if (tag.tag == TagType::Player)
+						continue;
 				}
 				toDestroy.push_back(entity);
 			}

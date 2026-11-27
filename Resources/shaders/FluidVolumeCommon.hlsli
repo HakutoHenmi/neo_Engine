@@ -7,8 +7,8 @@ struct VolumeParticle {
     float4 color;
     float type; float3 pad;
 };
-// Rows of the world-to-kernel transform, center in w. Particle storage is
-// unchanged; this is a rendering-only reconstruction (never feeds physics).
+// 世界からカーネルへの変換の各行。w に中心。粒子の保存形式は
+// 変えない。描画専用の再構成で、物理には決して使わない。
 struct FluidShape { float4 row0; float4 row1; float4 row2; float4 info; };
 cbuffer VolumeSettings : register(b1) {
     float3 volumeOrigin; float voxelSize;
@@ -19,11 +19,11 @@ cbuffer VolumeSettings : register(b1) {
     float3 playerBodyCenter; float playerDecoration;
     float3 playerForward; float playerFaceCamera;
     float3 playerRadii; float playerMotion;
-    float3 playerSlope; float playerAir; // x/z: terrain slope; y: rigid decoration mass scale.
+    float3 playerSlope; float playerAir; // x/z: 地形の傾き。y: 固い飾りの質量の倍率。
 #ifdef FLUID_VOLUME_CORE
-    float4 playerLiquidCore; // Graphics-only; compute keeps its 44-DWORD layout.
-    float4 playerMorph; // Form tag, physical scale, main particle count, active.
-    float4 sunDirection; // xyz: direction sunlight travels; w: intensity (0 = none).
+    float4 playerLiquidCore; // 描画専用。コンピュートは 44 DWORD の並びを保つ。
+    float4 playerMorph; // 形の印・物理的な倍率・主な粒子数・有効かどうか。
+    float4 sunDirection; // xyz: 日光の進む向き。w: 強さ (0 = なし)。
 #endif
 };
 uint VolumePhase(float type) {
@@ -32,9 +32,9 @@ uint VolumePhase(float type) {
 }
 uint VolumeIndex(uint3 p) { return (p.z * volumeSize.y + p.y) * volumeSize.x + p.x; }
 uint VolumeHash(int3 c) {
-    // Non-morph/spray buckets match FluidSimCS.hlsl (owner salt zero).
-    // Morph shapes use their own isotropic reconstruction without this search.
-    // BuildShapes receives -(bucket count [+ .5 when hose water draws in screen space]).
+    // 変形 / しぶき以外のバケットは FluidSimCS.hlsl と一致させる (持ち主ごとのハッシュのずらし量は 0)。
+    // 変形の形はこの探索を使わず、独自の等方的な再構成を使う。
+    // BuildShapes は -(バケット数 [+ ホースの水を画面空間で描くときは .5]) を受け取る。
     return ((uint)c.x * 73856093U ^ (uint)c.y * 19349663U ^ (uint)c.z * 83492791U) & (filterAxis<0?uint(-filterAxis)-1U:65535U);
 }
 float3 ShapeCenter(FluidShape s) { return float3(s.row0.w,s.row1.w,s.row2.w); }

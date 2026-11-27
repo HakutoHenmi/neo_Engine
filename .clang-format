@@ -1,11 +1,12 @@
 BasedOnStyle: LLVM
 AccessModifierOffset: -4
 AlignAfterOpenBracket: AlwaysBreak
-AlignArrayOfStructures: Left
+AlignArrayOfStructures: None
 AlignConsecutiveMacros: AcrossComments
 AlignTrailingComments: true
 AllowShortFunctionsOnASingleLine: Empty
 BreakBeforeBraces: Attach
+BreakStringLiterals: false
 ColumnLimit: 120
 ConstructorInitializerIndentWidth: 4
 ContinuationIndentWidth: 4
@@ -16,10 +17,10 @@ IndentExternBlock: NoIndent
 IndentWidth: 4
 IndentWrappedFunctionNames: true
 KeepEmptyLinesAtTheStartOfBlocks: true
-Language: Cpp
 NamespaceIndentation: None
 PointerAlignment: Left
 ReferenceAlignment: Pointer
+ReflowComments: false
 SpaceAfterTemplateKeyword: false
 SortIncludes: Never
 Standard: Latest

@@ -58,28 +58,28 @@ struct SpriteOut {
     float3 velocity:TEXCOORD5;
 };
 SpriteOut WaterSpriteVS(uint vertex:SV_VertexID,uint instance:SV_InstanceID){
-    SpriteOut o=(SpriteOut)0;
+    SpriteOut output=(SpriteOut)0;
     float2 corners[6]={float2(-1,-1),float2(-1,1),float2(1,-1),float2(1,-1),float2(-1,1),float2(1,1)};
-    o.local=corners[vertex];
-    o.position=float4(2,2,2,1);
-    if(instance>=particleSlots)return o;
+    output.local=corners[vertex];
+    output.position=float4(2,2,2,1);
+    if(instance>=particleSlots)return output;
     VolumeParticle p=particles[firstParticle+instance];
-    if(!HoseWater(p)||!all(isfinite(p.position)))return o;
+    if(!HoseWater(p)||!all(isfinite(p.position)))return output;
     // 体積 (細かい升の窓) で描いている水は描かない。窓のふち (2 升) からはこちらへ受け渡す
     if(outsideOnly>.5f){float3 margin=min(p.position-volumeOrigin,volumeOrigin+voxelSize*volumeSize-p.position);
-        if(min(margin.x,min(margin.y,margin.z))>2*voxelSize)return o;}
+        if(min(margin.x,min(margin.y,margin.z))>2*voxelSize)return output;}
     bool sheet=WaterSheet(p);
     // 地面に落ちた水は、流れきる最後の数秒で薄く小さくなって消える (体積の時と同じ時間)
     float fade=sheet?1-smoothstep(1.5f,4.5f,p.pad.x):1;
-    if(fade<=.01f)return o;
-    o.radius=(sheet?kSheetSize*lerp(.45f,1,fade):kWaterSize)*sizeScale;
-    o.flat=sheet?kSheetFlat:1;
-    o.amount=fade*saturate(p.color.a);
-    o.velocity=p.velocity;
-    o.centerView=mul(float4(p.position,1),view).xyz;
-    if(o.centerView.z<.1f)return o;
-    o.position=mul(float4(o.centerView+float3(o.local*o.radius,0),1),projection);
-    return o;
+    if(fade<=.01f)return output;
+    output.radius=(sheet?kSheetSize*lerp(.45f,1,fade):kWaterSize)*sizeScale;
+    output.flat=sheet?kSheetFlat:1;
+    output.amount=fade*saturate(p.color.a);
+    output.velocity=p.velocity;
+    output.centerView=mul(float4(p.position,1),view).xyz;
+    if(output.centerView.z<.1f)return output;
+    output.position=mul(float4(output.centerView+float3(output.local*output.radius,0),1),projection);
+    return output;
 }
 struct SpriteTargets {float near:SV_Target0;float4 thick:SV_Target1;};
 SpriteTargets WaterSpritePS(SpriteOut input){
@@ -89,12 +89,12 @@ SpriteTargets WaterSpritePS(SpriteOut input){
     // 平たい粒は奥行きの膨らみも小さい (上から見た地面の水が板になる)
     float z=input.centerView.z-bulge*input.radius*input.flat;
     if(z<.05f||z>ViewDepth(int2(input.position.xy))+.05f)discard;
-    SpriteTargets o;
-    o.near=1/z;
+    SpriteTargets output;
+    output.near=1/z;
     // 厚み: 球を通る長さ。ふちほど薄い (ガウスに近い山)
     float thickness=2*bulge*input.radius*input.flat*input.amount;
-    o.thick=float4(input.velocity*thickness,thickness);
-    return o;
+    output.thick=float4(input.velocity*thickness,thickness);
+    return output;
 }
 
 // ---- 奥行きをなめらかにする (縦・横に分けた両側フィルタ) ----

@@ -1,4 +1,4 @@
-// A phase is reconstructed in isolation. x = view depth, y = optical density.
+// 相 (phase) ごとに単独で再構成する。x = 視点からの深度, y = 光学的な密度。
 Texture2D<float4> rawColor : register(t0);
 Texture2D<float> rawDepth : register(t1);
 Texture2D<float2> previousSurface : register(t2);
@@ -15,8 +15,8 @@ cbuffer FilterSettings : register(b1) {
 float2 ReadSurface(int2 pixel, int2 size) {
     if (any(pixel < 0) || any(pixel >= size)) return 0;
     if (initialize > 0.5f) {
-        // Reduce each 2x2 block coherently. Never average a foreground depth
-        // with a detached background surface or the cleared depth sentinel.
+        // 2x2 のまとまりごとに一貫して縮小する。手前の深度を、離れた奥の面や
+        // 消去した深度の目印と平均してはいけない。
         uint rawWidth, rawHeight;
         rawDepth.GetDimensions(rawWidth, rawHeight);
         float depths[4]; float densities[4];
@@ -51,8 +51,8 @@ float2 main(float4 position : SV_POSITION, float2 uv : TEXCOORD0) : SV_TARGET {
     int2 size = int2(width, height);
     int2 pixel = int2(position.xy);
     float2 center = ReadSurface(pixel, size);
-    // Close small interior gaps, but require support on both sides at the
-    // same depth. Never dilate an isolated droplet into unrelated empty space.
+    // 内側の小さな隙間は閉じるが、同じ深度で両側に支えがあることを条件にする。
+    // 孤立したしずくを、関係の無い空きへ膨らませてはいけない。
     if (center.x <= 0.0f) {
         float2 left = 0, right = 0;
         int leftDistance = 0, rightDistance = 0;
@@ -67,8 +67,8 @@ float2 main(float4 position : SV_POSITION, float2 uv : TEXCOORD0) : SV_TARGET {
         center = float2(lerp(left.x, right.x, float(leftDistance) / (leftDistance + rightDistance)), 0);
     }
     float radiusPixels = 0.95f * abs(gProj[1][1]) * height / (2.0f * max(center.x, 0.95f));
-    // Fixed integer offsets and continuous world-space weights: rounding a
-    // depth-dependent stride creates rings wherever the stride changes by 1.
+    // 整数の決まったずれと、世界空間の連続的な重み: 深度に応じた間隔を丸めると、
+    // 間隔が 1 変わる所ごとに輪ができる。
     int stepPixels = (int)stride;
     float depthSum = 0, depthWeights = 0, densitySum = 0, densityWeights = 0;
     [unroll] for (int tap = -4; tap <= 4; ++tap) {
@@ -78,15 +78,15 @@ float2 main(float4 position : SV_POSITION, float2 uv : TEXCOORD0) : SV_TARGET {
         float relativeOffset = tap * stride / max(radiusPixels, 1.0f);
         float spatial = exp(-float(tap * tap) / 8.0f - relativeOffset * relativeOffset * 0.5f);
         if (sampleValue.x <= 0) {
-            // Empty space lowers coverage rather than normalizing a single
-            // surviving particle into a full surface at the silhouette.
+            // 空きは覆う割合を下げる。1 個だけ残った粒子を正規化して、
+            // 輪郭で完全な面にしてはいけない。
             densityWeights += spatial;
             continue;
         }
         float delta = abs(sampleValue.x - center.x);
         if (delta > 0.85f) continue;
-        // Compact, continuous support: the old Gaussian still had 17% weight
-        // at the hard cutoff, leaving rings as particle depths crossed it.
+        // 範囲が限られた連続的な支え: 以前のガウス関数は打ち切りの所でも 17% の重みがあり、
+        // 粒子の深度がそこをまたぐたびに輪が残った。
         float range = saturate(1.0f - delta * delta / (0.85f * 0.85f));
         float weight = spatial * range * range;
         depthSum += sampleValue.x * weight;

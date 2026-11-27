@@ -1,40 +1,39 @@
 #include "Obj.hlsli"
 
-float4 main(VSOutput input) : SV_TARGET
-{
-    // --- Šî–{ ---
+float4 main(VSOutput input) : SV_TARGET {
+    // --- åŸºæœ¬ ---
     float2 uv = input.uv;
 
-    // UV’†S‚©‚ç‚Ì‹——£iƒŠƒ“ƒO—pj
+    // UVä¸­å¿ƒã‹ã‚‰ã®è·é›¢ï¼ˆãƒªãƒ³ã‚°ç”¨ï¼‰
     float2 p = uv - float2(0.5f, 0.5f);
     float r = length(p); // 0..~0.7
 
-    // --- ƒŠƒ“ƒO”giƒGƒlƒ‹ƒM[‚Ìu‚¤‚Ë‚èvj---
-    // r•ûŒü‚É—¬‚ê‚é”gFsin‚Å‹[—“I‚ÉƒGƒlƒ‹ƒM[‚ª‘–‚é
+    // --- ãƒªãƒ³ã‚°æ³¢ï¼ˆã‚¨ãƒãƒ«ã‚®ãƒ¼ã®ã€Œã†ã­ã‚Šã€ï¼‰---
+    // ræ–¹å‘ã«æµã‚Œã‚‹æ³¢ï¼šsinã§æ“¬ä¼¼çš„ã«ã‚¨ãƒãƒ«ã‚®ãƒ¼ãŒèµ°ã‚‹
     float wave = sin((r * 30.0f) - (time * 10.0f));
     wave = wave * 0.5f + 0.5f; // 0..1
-    wave = pow(wave, 3.0f); // ƒRƒ“ƒgƒ‰ƒXƒg‹­‚ß
+    wave = pow(wave, 3.0f); // ã‚³ãƒ³ãƒˆãƒ©ã‚¹ãƒˆå¼·ã‚
 
-    // --- –¬“®i”­Œõ‚ªŒÄ‹z‚·‚éj---
+    // --- è„ˆå‹•ï¼ˆç™ºå…‰ãŒå‘¼å¸ã™ã‚‹ï¼‰---
     float pulse = sin(time * 6.0f) * 0.5f + 0.5f; // 0..1
     pulse = 0.6f + 0.4f * pulse;
 
-    // --- ŠOü‚ğ‹­‚ß‚éiFresnel‚Á‚Û‚¢‰”­Œõj---
+    // --- å¤–å‘¨ã‚’å¼·ã‚ã‚‹ï¼ˆFresnelã£ã½ã„ç¸ç™ºå…‰ï¼‰---
     float3 N = normalize(input.normal);
-    float3 V = normalize(cameraPos - input.worldpos.xyz); // Obj.hlsli‚Ì cameraPos ‚ğ‘z’è
+    float3 V = normalize(cameraPos - input.worldpos.xyz); // Obj.hlsliã® cameraPos ã‚’æƒ³å®š
     float fresnel = pow(1.0f - saturate(dot(N, V)), 3.0f); // 0..1
 
-    // --- ’†S‚ğ‹­‚­iƒGƒlƒ‹ƒM[Šjj---
+    // --- ä¸­å¿ƒã‚’å¼·ãï¼ˆã‚¨ãƒãƒ«ã‚®ãƒ¼æ ¸ï¼‰---
     float core = saturate(1.0f - (r * 2.2f));
     core = pow(core, 2.0f);
 
-    // --- ‡¬ ---
-    // color ‚Í Inspector ‚ÌFib1j‚ğ‚»‚Ì‚Ü‚Üg”­ŒõFh‚Æ‚µ‚Äg‚¤
+    // --- åˆæˆ ---
+    // color ã¯ Inspector ã®è‰²ï¼ˆb1ï¼‰ã‚’ãã®ã¾ã¾â€œç™ºå…‰è‰²â€ã¨ã—ã¦ä½¿ã†
     float energy = (wave * 0.8f + core * 1.2f + fresnel * 1.0f) * pulse;
 
     float3 rgb = color.rgb * energy;
 
-    // “§–¾‚Á‚Û‚­‚µ‚½‚¢‚È‚ç alpha ‚ğ energy ‚ÉŠñ‚¹‚éi•s“§–¾‚Ì‚Ü‚Ü‚Å‚àOKj
+    // é€æ˜ã£ã½ãã—ãŸã„ãªã‚‰ alpha ã‚’ energy ã«å¯„ã›ã‚‹ï¼ˆä¸é€æ˜ã®ã¾ã¾ã§ã‚‚OKï¼‰
     float a = saturate(0.2f + energy);
 
     return float4(rgb, a);

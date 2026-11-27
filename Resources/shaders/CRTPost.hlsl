@@ -4,11 +4,10 @@
 Texture2D gScene : register(t0);
 SamplerState gSmp : register(s0);
 
-// Engine ‚©‚ç‘—‚é
-cbuffer CBPost : register(b0)
-{
+// Engine ã‹ã‚‰é€ã‚‹
+cbuffer CBPost : register(b0) {
     float gTime;
-    float gNoiseStrength; // Šî–{ƒmƒCƒYi¬‚³‚ß„§j
+    float gNoiseStrength; // åŸºæœ¬ãƒã‚¤ã‚ºï¼ˆå°ã•ã‚æ¨å¥¨ï¼‰
     float gDistortion;
     float gChromaShift;
     float gVignette;
@@ -18,77 +17,72 @@ cbuffer CBPost : register(b0)
     float pad0;
 };
 
-struct PSIn
-{
+struct PSIn {
     float4 svpos : SV_POSITION;
     float2 uv : TEXCOORD0;
 };
 
 // --------------------
-// ’²®‚µ‚â‚·‚¢‚æ‚¤‚É gŒW”h ‚ğ‚Ü‚Æ‚ß‚é
+// èª¿æ•´ã—ã‚„ã™ã„ã‚ˆã†ã« â€œä¿‚æ•°â€ ã‚’ã¾ã¨ã‚ã‚‹
 // --------------------
-struct FxParams
-{
-    float san; // 0..1 (®Œ`Ï‚İ)
+struct FxParams {
+    float san; // 0..1 (æ•´å½¢æ¸ˆã¿)
     float kDist;
-    float kNoiseAdd; // SAN‚Å’Ç‰Á‚·‚éƒmƒCƒY”{—¦
+    float kNoiseAdd; // SANã§è¿½åŠ ã™ã‚‹ãƒã‚¤ã‚ºå€ç‡
     float kChroma;
     float kVhs;
 };
 
-static FxParams MakeFxParams(float san01)
-{
+static FxParams MakeFxParams(float san01) {
     FxParams p;
-    // •Ï‰»‚ğ©‘R‚Éi0•t‹ß‚ğ—}‚¦AŒã”¼‚Å‹}‚ÉŒø‚­j
+    // å¤‰åŒ–ã‚’è‡ªç„¶ã«ï¼ˆ0ä»˜è¿‘ã‚’æŠ‘ãˆã€å¾ŒåŠã§æ€¥ã«åŠ¹ãï¼‰
     p.san = smoothstep(0.0, 1.0, saturate(san01));
 
-    // Šù‘¶‚Ì”{—¦i•K—v‚È‚ç‚±‚±‚Å’²®j
+    // æ—¢å­˜ã®å€ç‡ï¼ˆå¿…è¦ãªã‚‰ã“ã“ã§èª¿æ•´ï¼‰
     p.kDist = (1.0 + p.san * 2.6);
     p.kChroma = (1.0 + p.san * 2.3);
     p.kVhs = (0.25 + p.san * 1.00);
 
-    // šd—vF’ÊíƒmƒCƒY‚Í—}‚¦ASAN‚Å‹­‚­‘‚â‚·‚½‚ß‚Ì”{—¦
-    // ‚±‚±‚ğã‚°‚é‚Æ g‹ß‚¢‚Ù‚Çr‚ê‚éh ‚ª‹­‚­‚È‚é
-    p.kNoiseAdd = (p.san * p.san) * 6.0; // “ñæ‚ÅŒã”¼‚ÉŠñ‚¹‚é + Å‘å6”{
+    // â˜…é‡è¦ï¼šé€šå¸¸æ™‚ãƒã‚¤ã‚ºã¯æŠ‘ãˆã€SANã§å¼·ãå¢—ã‚„ã™ãŸã‚ã®å€ç‡
+    // ã“ã“ã‚’ä¸Šã’ã‚‹ã¨ â€œè¿‘ã„ã»ã©è’ã‚Œã‚‹â€ ãŒå¼·ããªã‚‹
+    p.kNoiseAdd = (p.san * p.san) * 6.0; // äºŒä¹—ã§å¾ŒåŠã«å¯„ã›ã‚‹ + æœ€å¤§6å€
     return p;
 }
 
 // --------------------
-// Grain + Tape ‚ğ g’Êíh ‚Æ gSAN’Ç‰Áh ‚É•ª‚¯‚Ä‡¬
+// Grain + Tape ã‚’ â€œé€šå¸¸â€ ã¨ â€œSANè¿½åŠ â€ ã«åˆ†ã‘ã¦åˆæˆ
 // --------------------
-static float3 ApplyNoise(float2 uv, float time, float baseStrength, float sanAddStrength)
-{
-    // —±óƒmƒCƒYi×‚©‚¢j
+static float3 ApplyNoise(float2 uv, float time, float baseStrength, float sanAddStrength) {
+    // ç²’çŠ¶ãƒã‚¤ã‚ºï¼ˆç´°ã‹ã„ï¼‰
     float g1 = Noise2D(uv * 900.0 + time * 12.0);
-    // ’áü”gƒmƒCƒYiƒ€ƒ‰j
+    // ä½å‘¨æ³¢ãƒã‚¤ã‚ºï¼ˆãƒ ãƒ©ï¼‰
     float g2 = FBM(uv * 60.0 + time * 0.8);
 
-    // centered
+    // ä¸­å¤®ã‚’åŸç‚¹ã«ã™ã‚‹
     float grainFine = (g1 - 0.5);
     float grainLow = (g2 - 0.5) * 0.6;
 
     float grain = grainFine + grainLow;
 
-    // ’Êíi‚©‚È‚èã‚ßj
+    // é€šå¸¸æ™‚ï¼ˆã‹ãªã‚Šå¼±ã‚ï¼‰
     float base = grain * baseStrength;
 
-    // SAN’Ç‰Ái‹­‚­j
+    // SANè¿½åŠ ï¼ˆå¼·ãï¼‰
     float san = grain * sanAddStrength;
 
     return (base + san).xxx;
 }
 
-float4 main(PSIn i) : SV_TARGET
-{
+float4 main(PSIn i) : SV_TARGET {
     float2 uv = i.uv;
 
     // --------------------
-    // SAN ‚ğì‚éi0..1j
+    // SAN ã‚’ä½œã‚‹ï¼ˆ0..1ï¼‰
     // --------------------
     FxParams fx = MakeFxParams(gSan);
 
     // --------------------
-    // VHS/CRT •ÏŒ`
+    // VHS/CRT å¤‰å½¢
     // --------------------
     uv.y += VHS_VerticalJump(gTime, fx.kVhs);
 
@@ -101,7 +95,7 @@ float4 main(PSIn i) : SV_TARGET
     float2 uvc = ClampUV(uv);
 
     // --------------------
-    // F‚É‚¶‚İ + RGB•ª—£
+    // è‰²ã«ã˜ã¿ + RGBåˆ†é›¢
     // --------------------
     float3 smear = VHS_ChromaSmear(gScene, gSmp, uvc, fx.kVhs);
     float2 shift = float2(gChromaShift * fx.kChroma, 0.0);
@@ -109,32 +103,32 @@ float4 main(PSIn i) : SV_TARGET
     float3 col = lerp(chroma, smear, 0.55);
 
     // --------------------
-    // Scanline
+    // èµ°æŸ»ç·š
     // --------------------
     col *= Scanline(i.uv, gScanline);
 
     // --------------------
-    // šƒmƒCƒYF’Êíã‚ß / SAN‚Å‹­‚ß
+    // â˜…ãƒã‚¤ã‚ºï¼šé€šå¸¸æ™‚å¼±ã‚ / SANã§å¼·ã‚
     // --------------------
-    // ’ÊíƒmƒCƒY‚ğ‚³‚ç‚É—}‚¦‚½‚¢‚È‚ç 0.25 ¨ 0.15 ‚Æ‚©‚É‰º‚°‚é
+    // é€šå¸¸æ™‚ãƒã‚¤ã‚ºã‚’ã•ã‚‰ã«æŠ‘ãˆãŸã„ãªã‚‰ 0.25 â†’ 0.15 ã¨ã‹ã«ä¸‹ã’ã‚‹
     float baseNoise = gNoiseStrength * 0.25;
 
-    // SAN‚Å‘‚¦‚é•ªFÅ‘å‚Å baseNoise + gNoiseStrength * (kNoiseAdd) ‚­‚ç‚¢‚É‚È‚é
+    // SANã§å¢—ãˆã‚‹åˆ†ï¼šæœ€å¤§ã§ baseNoise + gNoiseStrength * (kNoiseAdd) ãã‚‰ã„ã«ãªã‚‹
     float sanNoise = gNoiseStrength * fx.kNoiseAdd;
 
     col += ApplyNoise(i.uv, gTime, baseNoise, sanNoise);
 
-    // ƒe[ƒv‘ÑƒmƒCƒYiSAN‚Å‘•j
+    // ãƒ†ãƒ¼ãƒ—å¸¯ãƒã‚¤ã‚ºï¼ˆSANã§å¢—å¹…ï¼‰
     col += VHS_TapeBand(i.uv, gTime, fx.kVhs).xxx * (0.6 + fx.san * 1.2);
 
     // --------------------
-    // VignetteiSAN‚Å‹­‰»j
+    // Vignetteï¼ˆSANã§å¼·åŒ–ï¼‰
     // --------------------
     float v = Vignette(i.uv, gVignette + fx.san * 0.35);
     col *= v;
 
     // --------------------
-    // SAN: ’[‚ÅF—‚¿ + ”÷ˆÃ“]
+    // SAN: ç«¯ã§è‰²è½ã¡ + å¾®æš—è»¢
     // --------------------
     float edge = saturate((v - 0.2) / 0.8);
     float lum = Luminance(col);

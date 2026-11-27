@@ -2,7 +2,7 @@
 // 音の発信源 (AudioSource) の再生開始と、聞く位置からの距離による音量の減衰を行うシステム。
 #pragma once
 #include "ISystem.h"
-#include "../../Engine/Audio.h"
+#include "../../Engine/Core/Audio.h"
 #include <cmath>
 
 namespace Game {
@@ -12,7 +12,8 @@ class AudioSystem : public ISystem {
 public:
 	// PLAY 中だけ動かす
 	void Update(entt::registry& registry, GameContext& ctx) override {
-		if (!ctx.isPlaying) return;
+		if (!ctx.isPlaying)
+			return;
 
 		// 聞く位置: 有効な AudioListener があればその位置、無ければカメラの位置
 		DirectX::XMFLOAT3 listenerPos = ctx.camera ? ctx.camera->Position() : DirectX::XMFLOAT3{0, 0, 0};
@@ -29,14 +30,16 @@ public:
 
 		// 各発信源: 自動再生の開始と、距離減衰とマスター音量を掛けた音量の反映
 		auto* audio = Engine::Audio::GetInstance();
-		if (!audio) return;
+		if (!audio)
+			return;
 
 		// 音の発信源とトランスフォームを持つエンティティを処理する
 		auto sourceView = registry.view<AudioSourceComponent, TransformComponent>();
 		for (auto entity : sourceView) {
 			auto& as = sourceView.get<AudioSourceComponent>(entity);
 			auto& tc = sourceView.get<TransformComponent>(entity);
-			if (!as.enabled) continue;
+			if (!as.enabled)
+				continue;
 
 			// 開始時に再生する設定で、まだ再生していなければ再生を始める
 			if (as.playOnStart && !as.isPlaying && as.soundHandle != 0xFFFFFFFF) {
@@ -56,19 +59,20 @@ public:
 					float dist = std::sqrt(dx * dx + dy * dy + dz * dz);
 					if (as.maxDistance > 0.001f) {
 						float atten = 1.0f - (dist / as.maxDistance);
-						if (atten < 0.0f) atten = 0.0f;
+						if (atten < 0.0f)
+							atten = 0.0f;
 						atten = atten * atten;
 						finalVol *= atten;
 					}
 				}
-				
+
 				// カテゴリごとのマスター音量を掛ける
 				if (as.category == AudioCategory::BGM) {
 					finalVol *= audio->GetMasterBGMVolume();
 				} else {
 					finalVol *= audio->GetMasterSEVolume();
 				}
-				
+
 				// 計算した音量を設定する
 				audio->SetVolume(as.voiceHandle, finalVol);
 			}

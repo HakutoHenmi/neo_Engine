@@ -35,26 +35,28 @@ public:
 		Vec approach = context.delta;
 		if (!ready) {
 			// 攻撃できないときに保つ距離 (飛ぶ敵は遠く、自爆の敵は少し近く)
-			const float hold = (enemy.flying ? (enemy.bomber ? 22.f : 27.f) : 8.f)*enemy.scale;
+			const float hold = (enemy.flying ? (enemy.bomber ? 22.f : 27.f) : 8.f) * enemy.scale;
 			Vec planar = context.delta;
 			planar.y = 0;
 			// プレイヤーからの向きと横の向き
-			const Vec radial = context.distance > .01f ? Unit(planar) : Vec{std::cos(float(enemy.id)), 0, std::sin(float(enemy.id))};
+			const Vec radial =
+			    context.distance > .01f ? Unit(planar) : Vec{std::cos(float(enemy.id)), 0, std::sin(float(enemy.id))};
 			const Vec side{radial.z, 0, -radial.x};
 			// 保つ距離まで近づき、飛ぶ敵は左右に回り込む
 			approach = radial * (context.distance - hold) + side * (enemy.flying ? (enemy.id % 2 ? 5.f : -5.f) : 0.f);
 		}
 		// 飛ぶ敵は地面から一定の高さを揺れながら飛ぶ
 		if (enemy.flying)
-			approach.y = context.ground + 14 + float(enemy.id % 5) * 2 + std::sin(enemy.age * 2 + float(enemy.id)) * 1.5f - enemy.at.y;
+			approach.y = context.ground + 14 + float(enemy.id % 5) * 2 +
+			             std::sin(enemy.age * 2 + float(enemy.id)) * 1.5f - enemy.at.y;
 		// 向きをなめらかに合わせる
 		enemy.heading = Unit(Lerp(enemy.heading, Unit(approach), 1 - std::exp(-9 * dt)));
 		// 速さ (飛ぶ敵は速い。大きいほど速い)
-		const float speed = ((enemy.flying ? 10.f : 6.f) + SwarmVariation(enemy.id) * 2)*std::sqrt(enemy.scale);
+		const float speed = ((enemy.flying ? 10.f : 6.f) + SwarmVariation(enemy.id) * 2) * std::sqrt(enemy.scale);
 		// 近づく (行き過ぎないようにする)
 		enemy.at = enemy.at + Unit(approach) * std::min(Length(approach), speed * dt);
 		// 攻撃できて射程に入ったら、プレイヤーの今の位置を攻撃の地点にして予告へ
-		if (ready && context.distance < (enemy.flying ? (enemy.bomber ? 28.f : 32.f) : 9.f)*enemy.scale) {
+		if (ready && context.distance < (enemy.flying ? (enemy.bomber ? 28.f : 32.f) : 9.f) * enemy.scale) {
 			enemy.heading = Unit(context.delta);
 			enemy.attackAt = context.player;
 			if (!enemy.flying)
@@ -75,7 +77,10 @@ public:
 		if (enemy.bomber) {
 			enemy.heading = Unit(context.delta);
 			if (enemy.clock > .7f)
-				enemy.at = enemy.at + enemy.heading * std::min(std::max(0.f, Length(context.delta) - 1.5f), (12 + SwarmVariation(enemy.id, enemy.attacks) * 3) * context.dt);
+				enemy.at =
+				    enemy.at + enemy.heading * std::min(
+				                                   std::max(0.f, Length(context.delta) - 1.5f),
+				                                   (12 + SwarmVariation(enemy.id, enemy.attacks) * 3) * context.dt);
 			// 予告の時間が来たら爆発する
 			if (enemy.clock >= SwarmWindup(enemy)) {
 				ChangeSwarmPhase(enemy, SwarmPhase::Dead);

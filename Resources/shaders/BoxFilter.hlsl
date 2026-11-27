@@ -5,8 +5,7 @@
 Texture2D gScene : register(t0);
 SamplerState gSmp : register(s0);
 
-cbuffer CBPost : register(b0)
-{
+cbuffer CBPost : register(b0) {
     float gTime;
     float gNoiseStrength;
     float gDistortion;
@@ -17,14 +16,12 @@ cbuffer CBPost : register(b0)
     float pad0;
 };
 
-struct PSIn
-{
+struct PSIn {
     float4 svpos : SV_POSITION;
     float2 uv : TEXCOORD0;
 };
 
-float4 main(PSIn i) : SV_TARGET
-{
+float4 main(PSIn i) : SV_TARGET {
     float3 sceneColor = gScene.Sample(gSmp, i.uv).rgb;
     float intensity = saturate(gSan);
     // ブラーの広がり
@@ -34,16 +31,14 @@ float4 main(PSIn i) : SV_TARGET
     float3 col = float3(0, 0, 0);
 
     // 3x3 のサンプリング
-    for (int y = -1; y <= 1; y++)
-    {
-        for (int x = -1; x <= 1; x++)
-        {
+    for (int y = -1; y <= 1; y++) {
+        for (int x = -1; x <= 1; x++) {
             col += gScene.Sample(gSmp, i.uv + float2(x, y) * texelSize).rgb;
         }
     }
     col /= 9.0;
 
-    // Vignette
+    // 周辺減光
     float2 d = i.uv - 0.5;
     col *= saturate(1.0 - dot(d, d) * gVignette * intensity);
     col = lerp(sceneColor, col, intensity);

@@ -3,8 +3,7 @@
 Texture2D<float4> tex : register(t0);
 SamplerState smp : register(s0);
 
-float4 main(VSOutput input) : SV_TARGET
-{
+float4 main(VSOutput input) : SV_TARGET {
     float2 uv = float2(
         input.uv.x * m_uv_scale.x + m_uv_offset.x,
         input.uv.y * m_uv_scale.y + m_uv_offset.y

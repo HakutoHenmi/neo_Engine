@@ -1,12 +1,9 @@
 #include "Obj.hlsli"
 
-// Texture ‚Íg‚í‚È‚¢i°‚Íƒxƒ^F‚ÅMVŠñ‚¹j
-// Texture2D tex : register(t0);
-// SamplerState smp : register(s0);
+// Texture ã¯ä½¿ã‚ãªã„ï¼ˆåºŠã¯ãƒ™ã‚¿è‰²ã§MVå¯„ã›ï¼‰
 
-float3 Overlay(float3 baseC, float3 overC)
-{
-    // MV•—‚Ì_‚ç‚©‚¢æZ/ƒXƒNƒŠ[ƒ“
+float3 Overlay(float3 baseC, float3 overC) {
+    // MVé¢¨ã®æŸ”ã‚‰ã‹ã„ä¹—ç®—/ã‚¹ã‚¯ãƒªãƒ¼ãƒ³
     return lerp(
         2.0 * baseC * overC,
         1.0 - 2.0 * (1.0 - baseC) * (1.0 - overC),
@@ -14,27 +11,26 @@ float3 Overlay(float3 baseC, float3 overC)
     );
 }
 
-float4 main(VSOutput input) : SV_TARGET
-{
-    // --- Monument Valley ‚Á‚Û‚¢uƒpƒXƒeƒ‹‰»v ---
-    // 1) ƒx[ƒXF‚Í Inspector ‚Ì color ‚¾‚¯
+float4 main(VSOutput input) : SV_TARGET {
+    // --- Monument Valley ã£ã½ã„ã€Œãƒ‘ã‚¹ãƒ†ãƒ«åŒ–ã€ ---
+    // 1) ãƒ™ãƒ¼ã‚¹è‰²ã¯ Inspector ã® color ã ã‘
     float3 baseC = saturate(color.rgb);
 
-    // 2) Ê“x‚ğ—‚Æ‚µ‚Ä–¾“x‚ğã‚°‚éi‚Ó‚í‚Á‚Æj
+    // 2) å½©åº¦ã‚’è½ã¨ã—ã¦æ˜åº¦ã‚’ä¸Šã’ã‚‹ï¼ˆãµã‚ã£ã¨ï¼‰
     float luma = dot(baseC, float3(0.299, 0.587, 0.114));
-    float3 pastel = lerp(baseC, luma.xxx, 0.45); // Ê“x«
-    pastel = lerp(pastel, 1.0.xxx, 0.15); // –¾“xª
+    float3 pastel = lerp(baseC, luma.xxx, 0.45); // å½©åº¦â†“
+    pastel = lerp(pastel, 1.0.xxx, 0.15); // æ˜åº¦â†‘
 
-    // 3) ‚Ù‚ñ‚Ì‚èƒOƒ‰ƒfi‚‚³‚Å•Ï‰»j¨ Œ¶‘zŠ´
+    // 3) ã»ã‚“ã®ã‚Šã‚°ãƒ©ãƒ‡ï¼ˆé«˜ã•ã§å¤‰åŒ–ï¼‰â†’ å¹»æƒ³æ„Ÿ
     float h = saturate((input.worldpos.y + 5.0) / 20.0);
-    float3 gradA = float3(0.62, 0.84, 0.78); // ƒ~ƒ“ƒgŠñ‚è
-    float3 gradB = float3(0.78, 0.72, 0.89); // ƒ‰ƒxƒ“ƒ_[Šñ‚è
+    float3 gradA = float3(0.62, 0.84, 0.78); // ãƒŸãƒ³ãƒˆå¯„ã‚Š
+    float3 gradB = float3(0.78, 0.72, 0.89); // ãƒ©ãƒ™ãƒ³ãƒ€ãƒ¼å¯„ã‚Š
     float3 grad = lerp(gradA, gradB, h);
 
     float3 outC = Overlay(pastel, grad);
 
-    // --- ON/OFF‚Å”¼“§–¾‚É‚µ‚½‚¢ê‡ ---
-    // texture alpha ‚Í–³‚¢‚Ì‚Å color.a ‚Ì‚İ‚ğg‚¤
+    // --- ON/OFFã§åŠé€æ˜ã«ã—ãŸã„å ´åˆ ---
+    // texture alpha ã¯ç„¡ã„ã®ã§ color.a ã®ã¿ã‚’ä½¿ã†
     float alpha = saturate(color.a);
 
     return float4(outC, alpha);

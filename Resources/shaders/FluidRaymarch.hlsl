@@ -28,8 +28,8 @@ Texture3D<float4> farWaterVelocity:register(t11);
 Texture3D<float4> farWaterOccupancy:register(t12);
 SamplerState linearClamp : register(s0);
 
-// Morphing uses a fitted domain: its physical extent changes with the shape.
-// Share this exact border between raymarch and particle-LOD classification.
+// 変形では合わせた領域を使う: 物理的な広がりは形とともに変わる。
+// レイマーチと粒子の LOD 分類で、この境界をまったく同じに共有する。
 float NearVolumeBorder(){return 2*voxelSize;}
 float3 NearVolumeMargin(float3 world){return min(world-volumeOrigin,volumeOrigin+voxelSize*volumeSize-world);}
 float NearVolumeWeight(float3 world) {
@@ -55,9 +55,9 @@ float ViewDepth(float2 uv) {
     float z=sceneDepth.Load(int3(clamp(int2(uv*float2(w,h)),0,int2(w,h)-1),0));
     return projection[3][2]/(z-projection[2][2]);
 }
-// View-space ray through a pixel. projection[2].xy carries the DLSS/DLAA
-// sub-pixel jitter; dropping it leaves the slime unjittered while the rest of
-// the scene is jittered, so the temporal AA cannot resolve its edges (jaggies).
+// ピクセルを通る視点空間のレイ。projection[2].xy は DLSS / DLAA の
+// サブピクセルのジッターを持つ。これを捨てるとシーンの他の部分はジッターするのに
+// スライムだけしないので、時間方向の AA が縁を解決できない (ギザギザ)。
 float3 ViewRayFromUV(float2 uv) {
     float2 ndc=uv*float2(2,-2)+float2(-1,1)-float2(projection[2][0],projection[2][1]);
     return normalize(float3(ndc/float2(projection[0][0],projection[1][1]),1));
@@ -97,8 +97,8 @@ bool FarWaterRayBox(float3 origin,float3 ray,out float nearT,out float farT){
     float3 lo=min(a,b),hi=max(a,b);nearT=max(0,max(lo.x,max(lo.y,lo.z)));farT=min(hi.x,min(hi.y,hi.z));
     return farWaterEnabled!=0&&farT>nearT;
 }
-// A skip stops at either grid's next boundary, including entry into the fine
-// volume. Neither the narrow jet nor the overlap may be skipped by a coarse cell.
+// 飛ばしはどちらかの格子の次の境界で止まる (細かいボリュームへの入口も含む)。
+// 細い噴流も重なりも、粗いセルで飛ばしてはいけない。
 float GridAdvance(float3 world,float3 ray,float3 origin,float3 spacing,uint3 size,out int3 block){
     float3 local=(world-origin)/spacing;block=(int3)floor(local/4);
     float3 safe=float3(abs(ray.x)<1e-7f?1e-7f:ray.x,abs(ray.y)<1e-7f?1e-7f:ray.y,abs(ray.z)<1e-7f?1e-7f:ray.z);
@@ -112,14 +112,14 @@ float GridAdvance(float3 world,float3 ray,float3 origin,float3 spacing,uint3 siz
     return entry>0&&exit>entry?entry:1e20f;
 }
 float3 Reflection(float3 normal,float3 ray,float roughness) {
-    // Cubemap can be a typed null descriptor; retain a restrained sky fallback.
+    // キューブマップは型付きの空のディスクリプタのことがある。控えめな空の代わりを残す。
     float3 r=reflect(ray,normal);
     uint w,h,levels; environmentMap.GetDimensions(0,w,h,levels);
     float3 env=environmentMap.SampleLevel(linearClamp,r,roughness*max((float)levels-1,0)).rgb;
     float3 sky=lerp(float3(0.035f,0.055f,0.075f),float3(0.3f,0.43f,0.55f),saturate(r.y*0.5f+0.5f));
     return max(env,sky*0.3f);
 }
-// Direction sunlight travels. Offline tests leave the constant zero.
+// 日光の進む向き。オフラインのテストでは定数を 0 のままにする。
 float3 SunTravel(){return sunDirection.w>0?sunDirection.xyz:normalize(float3(.45f,-.8f,.35f));}
 float SunIntensity(){return sunDirection.w>0?sunDirection.w:1;}
 float3 FlowVelocity(float3 p){
@@ -145,26 +145,26 @@ float WaterNoise(float3 p){
     return lerp(lerp(a,b,f.y),lerp(c,d,f.y),f.z);
 }
 float WaterFbm(float3 p){return WaterNoise(p)*.55f+WaterNoise(p*2.03f+11.1f)*.3f+WaterNoise(p*4.11f+23.7f)*.15f;}
-// Fast water draws in air as it travels. x: broken white skin on the surface,
-// y: milky scattering inside. The streak field is advected by the resolved
-// fluid velocity with two half-cycle phases (a flow map), so it rides the jet
-// without stretching as the clock grows.
+// 速い水は進みながら空気を取り込む。x: 表面の崩れた白い膜、
+// y: 内側の乳白色の散乱。筋の場は求めた流体の速度で運び、
+// 半周期ずらした 2 つの位相 (フローマップ) を使うので、時計が進んでも
+// 伸びずに噴流に乗る。
 float2 WaterAeration(float3 world,float3 normal,float3 ray,float thickness){
     float3 velocity=FlowVelocity(world);
     float speed=length(velocity);
     float aerated=smoothstep(8,26,speed);
     if(aerated<=0.001f) return 0;
-    // The jet leaves the nozzle glassy and whitens as it breaks up downstream.
+    // 噴流はノズルを出た直後はガラスのようで、下流で砕けるにつれて白くなる。
     float amount=aerated*lerp(.2f,1,smoothstep(1.5f,14,length(world-playerBodyCenter)));
     // 坂の町の放水は箱庭のデモと同じ澄んだ水にする (filterAxis 3。FluidVolume.cpp)
     if(filterAxis>2.5f)amount*=.15f;
-    // A sheet sliding over the street keeps only a little white at its front.
+    // 通りを滑る膜は、先頭にだけ少し白を残す。
     // (街の道は高さ 0 なので高さで見分けていた。坂の町の地面は高い所にあるので、横へ流れている水も板として扱う:
     //  そうしないと、坂を流れる水がどこでも泡のように真っ白になる)
     float flowing=1-smoothstep(.2f,.6f,abs(velocity.y)/max(speed,1e-3f));
     float sheet=max(1-smoothstep(.5f,1.3f,world.y),flowing);
     amount*=lerp(1,.25f,sheet);
-    // Shear stretches entrained air into thin streaks along the flow.
+    // ずれの流れが、取り込んだ空気を流れに沿った細い筋に引き伸ばす。
     float3 along=velocity/speed;
     float3 across=normalize(cross(along,abs(along.y)<.9f?float3(0,1,0):float3(1,0,0)));
     float3x3 frame=float3x3(across*5.f,cross(along,across)*5.f,along*.9f);
@@ -174,14 +174,14 @@ float2 WaterAeration(float3 world,float3 normal,float3 ray,float thickness){
     float streak=WaterFbm(mul(frame,world-drift*phase))*blend+
                  WaterFbm(mul(frame,world-drift*frac(phase+.5f))+19.3f)*(1-blend);
     float grazing=pow(1-saturate(dot(normal,-ray)),1.5f);
-    // Sparse streaks first; more air lowers the threshold into a broken skin.
+    // 最初はまばらな筋。空気が増えるとしきい値が下がり、崩れた膜になる。
     float low=.6f-.28f*amount-.12f*grazing;
     float skin=smoothstep(low,low+.2f,streak)*amount;
     float milk=amount*(1-exp(-thickness*1.1f));
     return float2(skin,milk);
 }
 float3 RainbowColor(float t){
-    // t: 0 violet edge, 1 red edge of the band.
+    // t: 0 は帯の紫の縁、1 は赤の縁。
     float band=smoothstep(-.12f,.08f,t)*(1-smoothstep(.92f,1.12f,t));
     float hue=(1-saturate(t))*.78f;
     return band*saturate(abs(frac(hue+float3(1,2.f/3,1.f/3))*6-3)-1);
@@ -195,8 +195,8 @@ RayResult RaymarchCore(FullscreenIn input) {
     float2 uv=input.uv;
     float3 background=sceneColor.SampleLevel(linearClamp,uv,0).rgb;
     output.color=float4(background,1); output.depth=0;
-    // Interpolate UV, then normalize in the pixel shader. Perspective rays
-    // must NOT be normalized at fullscreen-triangle vertices.
+    // UV を補間し、ピクセルシェーダーで正規化する。透視のレイを
+    // 全画面三角形の頂点で正規化してはいけない。
     float3 viewRay=ViewRayFromUV(uv);
     float3 ray=normalize(mul(viewRay,transpose((float3x3)view)));
     float nearT,farT;
@@ -247,7 +247,7 @@ RayResult RaymarchCore(FullscreenIn input) {
             float3 rate=abs(ray)/FarWaterSpacing(farWaterCell);
             float coarseStep=.5f/max(rate.x,max(rate.y,rate.z));
             rayStep=lerp(coarseStep,rayStep,NearVolumeWeight(world));
-            // Bound steps at entry to the fine grid too.
+            // 細かい格子への入口でも歩みを区切る。
             float entry,exit;if(RayBox(cameraPosition,ray,entry,exit)&&entry>t)rayStep=min(rayStep,entry-t+voxelSize*.001f);
         }
         nextT=min(t+rayStep,farT);
@@ -287,14 +287,14 @@ RayResult RaymarchCore(FullscreenIn input) {
     if(debugMode>1.5f && debugMode<2.5f) { output.color=float4(normal*0.5f+0.5f,1); return output; }
     if(debugMode>2.5f && debugMode<3.5f) { output.color=float4(saturate(thickness/3),1); return output; }
     if(debugMode>3.5f) { output.color=steps>=640?float4(1,0,1,1):float4(float3(steps/640.0f,0.3f,0),1); return output; }
-    // Screen-space refraction is deliberately bounded and depth-tested to
-    // prevent foreground rocks leaking into the water. It is not ray tracing.
+    // 画面空間の屈折は、手前の岩が水に漏れ込まないよう、意図して範囲を
+    // 絞って深度テストしている。レイトレーシングではない。
     float3 viewNormal=mul(normal,(float3x3)view);
     float2 offset=viewNormal.xy*float2(1,-1)*min(thickness[nearestPhase],2.0f)*0.025f/max(output.depth,1.0f);
     float2 refractedUV=clamp(uv+offset,0.001f,0.999f);
     if(ViewDepth(refractedUV)<output.depth) refractedUV=uv;
     float3 result=sceneColor.SampleLevel(linearClamp,refractedUV,0).rgb;
-    // Back-to-front sort by actual surface distance; no phase always wins.
+    // 実際の表面までの距離で奥から手前へ並べる。常に手前になる相 (phase) は無い。
     bool used[3]={false,false,false};
     [unroll] for(uint layer=0;layer<3;++layer) {
         int selected=-1; float farthest=-1;
@@ -318,8 +318,8 @@ RayResult RaymarchCore(FullscreenIn input) {
         float opacity=saturate(phaseColor[selected].a);
         float3 surface=lerp(body,Reflection(n,ray,roughness),fresnel);
         if(selected==2){
-            // Entrained air scatters diffusely. Inside it only clouds the water;
-            // the broken skin is lit white with no glassy glare.
+            // 取り込んだ空気は拡散的に散乱する。内側では水を濁らせるだけで、
+            // 崩れた膜はガラスのようなぎらつき無しに白く照らす。
             float2 air=WaterAeration(cameraPosition+ray*farthest,n,ray,thickness[2]);
             float3 sky=Reflection(float3(0,1,0),float3(0,-1,0),.9f);
             float lit=.5f+.5f*saturate(dot(n,-SunTravel()));
@@ -351,9 +351,9 @@ struct SprayOut {
 FluidShape WaterFallbackShape(FluidShape shape,VolumeParticle p){
     bool sheet=p.type>1.05f&&p.type<1.25f&&p.pad.z>0&&abs(p.position.y-p.pad.y)<.35f&&abs(p.velocity.y)<2.5f;
     if(sheet){
-        // Outside both volumes this pass draws an entire ellipsoid, not a
-        // density isosurface. Its bounds must represent one sample's real
-        // volume, rather than the much wider sheet reconstruction kernel.
+        // 両方のボリュームの外では、このパスは密度の等値面ではなく楕円体を
+        // 丸ごと描く。その範囲は、ずっと広い膜の再構成カーネルではなく、
+        // 1 サンプルの実際の体積を表さなければならない。
         float radius=pow(FluidReconstructionVolume(p.type,p.density)/(4.f*3.14159265f*.3f/3.f),1.f/3.f);
         shape.row0=float4(1/radius,0,0,p.position.x);
         shape.row1=float4(0,1/(radius*.3f),0,p.position.y);
@@ -363,24 +363,24 @@ FluidShape WaterFallbackShape(FluidShape shape,VolumeParticle p){
     return shape;
 }
 SprayOut SprayVS(uint vertex:SV_VertexID, uint instance:SV_InstanceID) {
-    SprayOut o=(SprayOut)0;
+    SprayOut spray=(SprayOut)0;
     float2 corners[6]={float2(-1,-1),float2(-1,1),float2(1,-1),float2(1,-1),float2(-1,1),float2(1,1)};
-    o.local=corners[vertex];
+    spray.local=corners[vertex];
     if(instance>=particleCount) {
         uint id=instance-particleCount;
         float3 world;float visibility=1;
         if(id<slimeInteriorBubbles){
-            world=SlimeBubblePosition(id,o.radius,visibility);o.distantBulk=2;
+            world=SlimeBubblePosition(id,spray.radius,visibility);spray.distantBulk=2;
             if(Density(world).x<isoValue*.55f)visibility=0;
         }else if(id<slimeInteriorBubbles+slimeEscapedBubbles){
             float3 random=SlimeHash(float(id));bool morph=SlimeMorphActive();
             float age=frac(time*(morph?.18f+.08f*random.y:.32f+.14f*random.y)+random.x);
             float angle=float(id)*2.39996323f;
             float3 field=float3(cos(angle)*playerRadii.x*.48f,0,sin(angle)*playerRadii.z*.48f);
-            world=SlimeFieldPosition(field);o.radius=(.13f+.10f*random.y)*SlimeDecorationScale();
-            if(morph)o.radius=min(.18f,(.065f+.045f*random.y)*sqrt(SlimeDecorationScale()));
-            // Start above the reconstructed surface, including landing squash and sliding.
-            // An assumed ellipsoid can keep the entire plume buried inside the SPH body.
+            world=SlimeFieldPosition(field);spray.radius=(.13f+.10f*random.y)*SlimeDecorationScale();
+            if(morph)spray.radius=min(.18f,(.065f+.045f*random.y)*sqrt(SlimeDecorationScale()));
+            // 着地のつぶれや滑りを含め、再構成した表面より上から始める。
+            // 仮定した楕円体だと、煙全体が SPH の体の中に埋もれたままになりうる。
             float extent=playerRadii.y*1.7f;float previous=extent;bool found=false;
             [loop] for(uint step=0;step<=24;++step){
                 float height=extent*(1-float(step)/12);
@@ -388,11 +388,11 @@ SprayOut SprayVS(uint vertex:SV_VertexID, uint instance:SV_InstanceID) {
                     float outside=previous,inside=height;
                     [unroll] for(uint refine=0;refine<4;++refine){float middle=(outside+inside)*.5f;
                         if(Density(world+float3(0,middle,0)).x>=isoValue)inside=middle;else outside=middle;}
-                    world.y+=(outside+inside)*.5f+o.radius+age*(morph?.8f*sqrt(SlimeDecorationScale()):2.8f*SlimeDecorationScale());found=true;break;
+                    world.y+=(outside+inside)*.5f+spray.radius+age*(morph?.8f*sqrt(SlimeDecorationScale()):2.8f*SlimeDecorationScale());found=true;break;
                 }previous=height;
             }
             world.xz+=float2(sin(time*1.6f+angle),cos(time*1.3f+angle))*.13f*age*SlimeDecorationScale();
-            visibility=found?smoothstep(0,.07f,age)*(1-smoothstep(.72f,1,age)):0;o.distantBulk=4;
+            visibility=found?smoothstep(0,.07f,age)*(1-smoothstep(.72f,1,age)):0;spray.distantBulk=4;
             if(morph&&id>=slimeInteriorBubbles+12)visibility=0;
         }else{
             uint eye=id-slimeInteriorBubbles-slimeEscapedBubbles;
@@ -400,8 +400,8 @@ SprayOut SprayVS(uint vertex:SV_VertexID, uint instance:SV_InstanceID) {
             float extent=max(playerRadii.x,playerRadii.z)*(1+.55f*playerMotion)*1.45f;
             bool found=false;float previous=extent;
             world=guide;
-            // Anchor each rigid eye to the actual reconstructed SPH boundary.
-            // This follows lagging/flapping fluid instead of an assumed ellipse.
+            // 固い目を、実際に再構成した SPH の境界に固定する。
+            // 仮定した楕円ではなく、遅れたりはためいたりする流体に追従する。
             [loop] for(uint step=0;step<40&&(!SlimeCoreActive()||SlimeMorphActive());++step){
                 float distance=extent*(1-float(step)/20);
                 if(Density(guide+front*distance).x>=isoValue){
@@ -412,31 +412,31 @@ SprayOut SprayVS(uint vertex:SV_VertexID, uint instance:SV_InstanceID) {
                 }previous=distance;
             }
             if(SlimeCoreActive()&&!SlimeMorphActive()){world=guide;found=Density(SlimeCorePosition()).x>isoValue*.25f;}
-            visibility=found?1:0;o.radius=SlimeEyeRadii().y*1.2f;o.distantBulk=3;
+            visibility=found?1:0;spray.radius=SlimeEyeRadii().y*1.2f;spray.distantBulk=3;
         }
-        if(visibility<=0){o.position=float4(2,2,2,1);return o;}
-        o.color.a=visibility;o.centerWorld=world;
-        o.centerView=mul(float4(world,1),view).xyz;
-        o.position=mul(float4(o.centerView+float3(o.local*o.radius,0),1),projection);
-        return o;
+        if(visibility<=0){spray.position=float4(2,2,2,1);return spray;}
+        spray.color.a=visibility;spray.centerWorld=world;
+        spray.centerView=mul(float4(world,1),view).xyz;
+        spray.position=mul(float4(spray.centerView+float3(spray.local*spray.radius,0),1),projection);
+        return spray;
     }
     FluidShape s=particleShapes[instance];
     VolumeParticle p=renderParticles[instance];
     float3 margin=NearVolumeMargin(ShapeCenter(s));
     bool distant=s.info.x>0 && min(margin.x,min(margin.y,margin.z))<NearVolumeBorder()+s.info.y;
     if(distant&&VolumePhase(p.type)==2&&s.info.x>0&&farWaterEnabled!=0&&FarWaterWeight(ShapeCenter(s))>.999f){
-        o.position=float4(2,2,2,1);return o;
+        spray.position=float4(2,2,2,1);return spray;
     }
     if(s.info.w!=0 && s.info.z<0.005f && !distant && p.type>1.05f && p.type<1.25f) {
-        // Hydrant mist: a seeded subset of resolved droplets also sheds a soft
-        // puff. Airborne water shreds into a widening sheath as it travels;
-        // water that has just hit something throws up a rising cloud.
-        // A further seeded subset becomes loose glassy droplets: torn off the
-        // jet's skin in flight, or thrown up ballistically from an impact.
+        // 消火栓の霧: シミュレーションしたしずくの一部 (乱数で選ぶ) が柔らかいもやも出す。
+        // 空中の水は進みながら広がる鞘状に裂け、
+        // 何かに当たったばかりの水は立ち上る雲を上げる。
+        // さらに一部はガラスのようなばらばらのしずくになる: 飛んでいる噴流の
+        // 膜から引きちぎられるか、衝突から放物線を描いて跳ね上がる。
         float seed=frac(p.color.r*1000);
         float age=p.pad.x;bool airborne=age<=0;
         float keep=airborne?.3f:.12f,drops=keep+(airborne?.06f:.06f);
-        if(seed>=drops || age>=1.1f) { o.position=float4(2,2,2,1); return o; }
+        if(seed>=drops || age>=1.1f) { spray.position=float4(2,2,2,1); return spray; }
         bool droplet=seed>=keep;
         float random=droplet?(seed-keep)/(drops-keep):seed/keep;
         float speed=length(p.velocity);
@@ -451,42 +451,42 @@ SprayOut SprayVS(uint vertex:SV_VertexID, uint instance:SV_InstanceID) {
         if(droplet){
             if(airborne){
                 world=p.position+radial*(.25f+1.5f*spread)*reach;
-                o.color.a=smoothstep(.02f,.15f,spread);
+                spray.color.a=smoothstep(.02f,.15f,spread);
             }else{
-                if(age>.7f) { o.position=float4(2,2,2,1); return o; }
+                if(age>.7f) { spray.position=float4(2,2,2,1); return spray; }
                 float lift=(3.5f+3*frac(random*5.3f))*age-10*age*age;
                 world=p.position+radial*(.3f+4*age)*reach+float3(0,max(0,lift),0);
-                o.color.a=1-smoothstep(.4f,.7f,age);
+                spray.color.a=1-smoothstep(.4f,.7f,age);
             }
-            o.radius=.04f+.05f*frac(random*13.7f);
-            o.distantBulk=0;o.shapeIndex=instance;o.phase=2;
-            o.centerView=mul(float4(world,1),view).xyz;
-            o.position=mul(float4(o.centerView+float3(o.local*o.radius,0),1),projection);
-            return o;
+            spray.radius=.04f+.05f*frac(random*13.7f);
+            spray.distantBulk=0;spray.shapeIndex=instance;spray.phase=2;
+            spray.centerView=mul(float4(world,1),view).xyz;
+            spray.position=mul(float4(spray.centerView+float3(spray.local*spray.radius,0),1),projection);
+            return spray;
         }
         if(airborne){
             world=p.position+radial*(.35f+1.7f*spread)*reach+swirl*spread;
-            o.radius=.8f+2.f*spread;
-            o.color.a=.05f*smoothstep(.05f,.4f,spread);
+            spray.radius=.8f+2.f*spread;
+            spray.color.a=.05f*smoothstep(.05f,.4f,spread);
         }else{
             world=p.position+radial*(.2f+1.4f*age)*reach+float3(0,.3f+1.5f*age,0)+swirl;
-            o.radius=1.f+2.5f*age;
-            o.color.a=.06f*smoothstep(0,.12f,age)*(1-smoothstep(.4f,1.1f,age));
+            spray.radius=1.f+2.5f*age;
+            spray.color.a=.06f*smoothstep(0,.12f,age)*(1-smoothstep(.4f,1.1f,age));
         }
-        o.color.r=random;o.distantBulk=5;o.centerWorld=world;
-        o.centerView=mul(float4(world,1),view).xyz;
-        o.position=mul(float4(o.centerView+float3(o.local*o.radius,0),1),projection);
-        return o;
+        spray.color.r=random;spray.distantBulk=5;spray.centerWorld=world;
+        spray.centerView=mul(float4(world,1),view).xyz;
+        spray.position=mul(float4(spray.centerView+float3(spray.local*spray.radius,0),1),projection);
+        return spray;
     }
-    if(s.info.w==0 || (s.info.z<0.005f && !distant)) { o.position=float4(2,2,2,1); return o; }
+    if(s.info.w==0 || (s.info.z<0.005f && !distant)) { spray.position=float4(2,2,2,1); return spray; }
     if(distant)s=WaterFallbackShape(s,p);
-    o.shapeIndex=instance; o.distantBulk=distant ? 1 : 0;
-    o.phase=VolumePhase(p.type);
-    o.centerView=mul(float4(distant ? ShapeCenter(s) : p.position,1),view).xyz;
-    o.radius=distant ? s.info.y : s.info.z;
-    o.position=mul(float4(o.centerView+float3(o.local*o.radius,0),1),projection);
-    o.color=p.color;
-    return o;
+    spray.shapeIndex=instance; spray.distantBulk=distant ? 1 : 0;
+    spray.phase=VolumePhase(p.type);
+    spray.centerView=mul(float4(distant ? ShapeCenter(s) : p.position,1),view).xyz;
+    spray.radius=distant ? s.info.y : s.info.z;
+    spray.position=mul(float4(spray.centerView+float3(spray.local*spray.radius,0),1),projection);
+    spray.color=p.color;
+    return spray;
 }
 float4 SprayPS(SprayOut input):SV_Target {
     if(input.distantBulk==5) {
@@ -495,32 +495,32 @@ float4 SprayPS(SprayOut input):SV_Target {
         uint width,height; sceneDepth.GetDimensions(width,height);
         float2 uv=input.position.xy/float2(width,height);
         float z=input.centerView.z;
-        // Soft particle: fade into geometry, the camera and the liquid surface.
+        // ソフトパーティクル: 形状・カメラ・液体の表面に溶け込ませる。
         float soft=saturate((ViewDepth(uv)-z)/max(input.radius,.1f))*saturate((z-.3f)/1.5f);
         float bulkDepth=fluidDepth.Load(int3((int2)input.position.xy,0));
         if(bulkDepth>0) soft*=saturate((bulkDepth-z)/input.radius+1);
-        // Wisps: the billboard is only a bound. Density comes from a rising,
-        // drifting noise field at the pixel's world position on the puff plane.
+        // 細い煙: ビルボードは範囲でしかない。密度は、もやの平面上のピクセルの世界位置での
+        // 上昇して流れるノイズの場から得る。
         float3 right=float3(view[0][0],view[1][0],view[2][0]),up=float3(view[0][1],view[1][1],view[2][1]);
         float3 at=input.centerWorld+(right*input.local.x+up*input.local.y)*input.radius;
         float wisp=WaterFbm(at*.8f+float3(0,-time*.5f,0)+input.color.r*31.7f);
         float density=(1-r2)*(1-r2)*smoothstep(.3f,.75f,wisp)*1.8f*soft*input.color.a;
         if(density<=1e-4f) discard;
-        // Per-pixel ray: a puff spans more than the 1.8-degree bow band.
+        // ピクセルごとのレイ: もやは 1.8 度の虹の帯より広い。
         float3 viewRay=ViewRayFromUV(uv);
         float3 pixelRay=normalize(mul(viewRay,transpose((float3x3)view)));
         float3 travel=SunTravel();float sun=SunIntensity();
-        // Henyey-Greenstein forward scattering: mist glows against the sun.
+        // Henyey-Greenstein の前方散乱: 霧が太陽に向かって光る。
         float g=.6f,mie=(1-g*g)/(12.566371f*pow(1+g*g+2*g*dot(pixelRay,travel),1.5f));
         float3 sky=Reflection(float3(0,1,0),float3(0,-1,0),.9f);
         float3 mist=sky*.7f+float3(1,.98f,.94f)*sun*(.25f+mie*1.6f);
-        // Primary and fainter, reversed secondary bows around the antisolar
-        // point; only with the sun behind the viewer. Fine hose droplets widen
-        // and wash out the bands, so they stay soft and pastel.
+        // 太陽と反対の点のまわりの主虹と、より淡く色が逆の副虹。太陽が
+        // 見る人の後ろにあるときだけ出る。ホースの細かいしずくは帯を広げて
+        // 色を薄めるので、柔らかいパステル調のままにする。
         float angle=degrees(acos(clamp(dot(pixelRay,travel),-1,1)));
         float3 bow=RainbowColor((angle-39.8f)/2.8f)+RainbowColor((53.8f-angle)/3.6f)*.35f;
         bow=lerp(dot(bow,1.f/3),bow,.7f);
-        // Dispersion redistributes the scattered light rather than adding a glow.
+        // 分散は光を足すのではなく、散乱した光を配り直す。
         float3 colour=bow*sun*1.1f*saturate(-travel.y*4);
         mist=mist*(1-.3f*saturate(dot(colour,1.f/3)))+colour;
         return float4(mist,density);

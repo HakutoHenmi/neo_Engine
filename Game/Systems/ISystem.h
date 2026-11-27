@@ -2,10 +2,10 @@
 // ゲームのシステム (ECS の処理単位) の基底クラスと、システムへ渡す共有データ。
 #pragma once
 #include "../ObjectTypes.h"
-#include "../../Engine/Camera.h"
-#include "../../Engine/Renderer.h"
-#include "../../Engine/Input.h"
-#include "../../Engine/EventSystem.h" // スクリプト間のイベント通知
+#include "../../Engine/Camera/Camera.h"
+#include "../../Engine/Graphics/Renderer.h"
+#include "../../Engine/Core/Input.h"
+#include "../../Engine/Core/EventSystem.h" // スクリプト間のイベント通知
 #include <vector>
 #include <algorithm>
 #include "../../externals/entt/entt.hpp"
@@ -31,8 +31,8 @@ struct GameContext {
 	bool useOverrideMouse = false;
 	float overrideMouseX = 0.0f;
 	float overrideMouseY = 0.0f;
-	DirectX::XMFLOAT2 viewportOffset = { 0, 0 };
-	DirectX::XMFLOAT2 viewportSize = { 0, 0 };
+	DirectX::XMFLOAT2 viewportOffset = {0, 0};
+	DirectX::XMFLOAT2 viewportSize = {0, 0};
 };
 
 // System基底インターフェース
@@ -41,15 +41,20 @@ class ISystem {
 public:
 	// updateAfterStageClear が true なら、ステージクリア後も更新を続ける
 	explicit ISystem(bool updateAfterStageClear = false) : updateAfterStageClear_(updateAfterStageClear) {}
-	bool UpdatesAfterStageClear() const { return updateAfterStageClear_; }
+	bool UpdatesAfterStageClear() const {
+		return updateAfterStageClear_;
+	}
 	virtual ~ISystem() = default;
 	// 毎フレームの更新 (必須)
 	virtual void Update(entt::registry& registry, GameContext& ctx) = 0;
-	virtual void Draw(entt::registry& /*registry*/, GameContext& /*ctx*/) {} // 描画処理用
+	virtual void Draw(entt::registry& /*registry*/, GameContext& /*ctx*/) {}   // 描画処理用
 	virtual void DrawUI(entt::registry& /*registry*/, GameContext& /*ctx*/) {} // ImGui等のUI処理用
-	virtual void Reset(entt::registry& /*registry*/) {} // Play開始時のリセット
+	virtual void Reset(entt::registry& /*registry*/) {}                        // Play開始時のリセット
 	// シーンを空にするときの後片付け (既定はリセットと同じ)
-	virtual void Clear(entt::registry& registry) { Reset(registry); }
+	virtual void Clear(entt::registry& registry) {
+		Reset(registry);
+	}
+
 private:
 	// ステージクリア後も更新するか
 	bool updateAfterStageClear_;

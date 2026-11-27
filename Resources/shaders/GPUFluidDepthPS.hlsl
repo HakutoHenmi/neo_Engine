@@ -9,8 +9,8 @@ uint GetFluidPhase(float type) {
 }
 
 float EncodeSurfaceKey(float viewDepth, float type) {
-    // Quantized view depth is the major key and material phase is the minor
-    // key. MIN blending therefore resolves one coherent front material.
+    // 量子化した視点からの深度を主のキー、材質の相 (phase) を従のキーにする。
+    // そのため MIN の合成で、手前の材質が 1 つにまとまって決まる。
     float quantizedDepth = floor(max(viewDepth, 0.0f) * 1024.0f);
     return quantizedDepth * 4.0f + float(GetFluidPhase(type));
 }
@@ -30,18 +30,18 @@ PSOut RenderPhase(float4 svpos,
         discard;
     }
 
-    // Do not let the visually transparent fringe of a billboard become an
-    // occluder.  That fringe used to win the MIN depth test and erase water
-    // around the player even though the player contributed almost no density.
+    // 見た目は透明なビルボードの縁を、遮蔽物にしてはいけない。
+    // 以前はその縁が MIN の深度テストに勝ち、プレイヤーがほとんど密度を
+    // 足していないのに、まわりの水を消していた。
     float radial = saturate(1.0f - sqrt(distSq) * 2.0f);
     float kernel = radial * radial * (3.0f - 2.0f * radial);
     if (kernel * color.a < 0.035f) {
         discard;
     }
 
-    // This pass stores the nearest view-space surface.  Keeping this separate
-    // from thickness/density accumulation prevents unrelated particles at a
-    // different depth from contributing to the same reconstructed surface.
+    // このパスは一番近い視点空間の面を保存する。厚み / 密度の積み上げと
+    // 分けておくことで、別の深度にある無関係な粒子が
+    // 同じ再構成した面に寄与しないようにする。
     float sphereRadius = 0.90f;
     if (type > 2.5f && type < 3.5f) {
         sphereRadius = 0.65f;

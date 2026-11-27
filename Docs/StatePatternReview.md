@@ -23,7 +23,7 @@
 
 ## 実装の構成
 
-- `Engine/IState.h`: `Enter` / `Update` / `Exit` の共通インターフェース。
+- `Engine/Core/IState.h`: `Enter` / `Update` / `Exit` の共通インターフェース。
 - `Game/States/PlayerActionStates.inl`: 11状態。攻撃判定の更新、攻撃から回避できる条件も状態側に置く。
 - `Game/States/EnemyAIStates.inl`: 6状態。攻撃予告、攻撃開始・終了、スタン色の設定を状態のライフサイクルで実行する。
 - `Game/States/BossActionStates.inl`: 9状態。パターン選択、攻撃、ダウン、死亡などを分離する。

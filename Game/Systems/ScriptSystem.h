@@ -4,7 +4,7 @@
 #include "../Scripts/ScriptEngine.h"
 #include "../Scripts/ScriptLifecycle.h"
 #include "ISystem.h"
-#include "../../Engine/JobSystem.h"
+#include "../../Engine/Core/JobSystem.h"
 
 namespace Game {
 
@@ -15,7 +15,9 @@ class GameScene; // 前方宣言
 class ScriptSystem : public ISystem {
 public:
 	// スクリプトへ渡すシーンを設定する
-	void SetScene(GameScene* scene) { scene_ = scene; }
+	void SetScene(GameScene* scene) {
+		scene_ = scene;
+	}
 
 	// 更新: 実行中にエンティティが増減しても安全なよう、一覧を複製してから順に実行する
 	void Update(entt::registry& registry, GameContext& ctx) override {
@@ -29,11 +31,13 @@ public:
 		// スクリプトを持つエンティティの一覧を複製する
 		auto view = registry.view<ScriptComponent>();
 		std::vector<entt::entity> entities(view.begin(), view.end());
-		if (entities.empty()) return;
+		if (entities.empty())
+			return;
 
 		// まだ有効で、スクリプトが有効なものだけを実行する
 		for (auto entity : entities) {
-			if (!registry.valid(entity)) continue;
+			if (!registry.valid(entity))
+				continue;
 			auto& sc = registry.get<ScriptComponent>(entity);
 			if (sc.enabled && !sc.scripts.empty()) {
 				scriptEngine->Execute(entity, scene_, ctx.dt);

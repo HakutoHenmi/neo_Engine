@@ -10,8 +10,8 @@ struct VSOut {
     float2 uv  : TEXCOORD0;
 };
 VSOut mainVS(VSIn i) {
-    VSOut o;
-    o.pos = float4(i.pos, 0.0, 1.0);
-    o.uv  = i.uv;
-    return o;
+    VSOut output;
+    output.pos = float4(i.pos, 0.0, 1.0);
+    output.uv  = i.uv;
+    return output;
 }

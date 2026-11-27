@@ -1,7 +1,6 @@
 #include "Obj.hlsli"
 
-float4 main(VSOutput i) : SV_TARGET
-{
+float4 main(VSOutput i) : SV_TARGET {
     float3 n = normalize(i.normal);
     float3 base = color.rgb;
 

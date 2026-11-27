@@ -6,8 +6,7 @@ Texture2D gScene : register(t0);
 Texture2D gPaper : register(t1); // 未使用
 SamplerState gSmp : register(s0);
 
-cbuffer CBPost : register(b0)
-{
+cbuffer CBPost : register(b0) {
     float gTime;
     float gNoiseStrength;
     float gDistortion;
@@ -18,8 +17,7 @@ cbuffer CBPost : register(b0)
     float pad0;
 };
 
-struct PSIn
-{
+struct PSIn {
     float4 svpos : SV_POSITION;
     float2 uv : TEXCOORD0;
 };
@@ -34,8 +32,7 @@ static const float kernel[5][5] = {
 };
 static const float kernelSum = 256.0;
 
-float4 main(PSIn i) : SV_TARGET
-{
+float4 main(PSIn i) : SV_TARGET {
     float3 sceneColor = gScene.Sample(gSmp, i.uv).rgb;
     float intensity = saturate(gSan);
     float2 texelSize = float2(1.0 / 1280.0, 1.0 / 720.0);
@@ -47,11 +44,9 @@ float4 main(PSIn i) : SV_TARGET
 
     // 5x5 ガウシアンカーネルを適用
     [unroll]
-    for (int y = -2; y <= 2; ++y)
-    {
+    for (int y = -2; y <= 2; ++y) {
         [unroll]
-        for (int x = -2; x <= 2; ++x)
-        {
+        for (int x = -2; x <= 2; ++x) {
             float2 offset = float2(x, y) * texelSize * scale;
             float weight = kernel[y + 2][x + 2];
             col += gScene.Sample(gSmp, i.uv + offset).rgb * weight;
