@@ -11,8 +11,8 @@
 | ポストエフェクト切り替え API とパラメータ | `Engine/Graphics/Renderer.h` |
 | PlayGame 側の状態連動ポストエフェクト | `Game/Systems/PostProcessSystem.h` |
 | 評価課題 scene 側の手動確認・戦闘イベント連動 | `Game/Scenes/AssignmentScene.cpp` |
-| 共通関数、ノイズ、輝度計算 | `Resources/shaders/PostProcessCommon.hlsli` |
-| 各ポストエフェクトの Pixel Shader | `Resources/shaders/*Post*.hlsl` など |
+| 共通関数、ノイズ、輝度計算 | `Resources/Shaders/PostProcessCommon.hlsli` |
+| 各ポストエフェクトの Pixel Shader | `Resources/Shaders/*Post*.hlsl` など |
 
 `Renderer::InitPostProcess_()` でシーンカラーと深度をポストエフェクト用 SRV として作成し、各 Pixel Shader を PSO として `pipelines_` に登録しています。
 登録名は `renderer->SetPostEffect("EffectName")` で指定します。
@@ -21,16 +21,16 @@
 
 | 登録名 | シェーダ | 内容 |
 | --- | --- | --- |
-| `Grayscale` | `Resources/shaders/GrayscalePost.hlsl` | 画面をグレースケールへ補間します。敵発見や緊張感の演出用です。 |
-| `GaussianFilter` | `Resources/shaders/GaussianPost.hlsl` | 5x5 ガウシアンで画面をぼかします。ヒットストップや衝撃表現に使います。 |
-| `OutlinePost` | `Resources/shaders/OutlinePost.hlsl` | 画面色の輝度差からエッジを検出し、輪郭を強調します。ロックオン範囲や注目状態用です。 |
-| `DepthBasedOutline` | `Resources/shaders/DepthBasedOutline.hlsl` | 深度差から輪郭を検出します。敵攻撃の予兆など、奥行きの境界を見せたい場面用です。 |
-| `RadialBlur` | `Resources/shaders/RadialBlurPost.hlsl` | 画面中央方向に放射状ブラーをかけます。攻撃、回避、高速移動の勢いを出します。 |
-| `Vignetting` | `Resources/shaders/Vignetting.hlsl` | 画面端を暗くします。低 HP、死亡、危険状態の演出用です。 |
-| `BoxFilter` | `Resources/shaders/BoxFilter.hlsl` | 3x3 平均化フィルタで軽くぼかします。ガード中の集中状態に使います。 |
-| `Random` | `Resources/shaders/RandomPost.hlsl` | ラインずれ、ノイズ、色ずれを足したダメージグリッチです。被弾時に使います。 |
-| `Dissolve` | `Resources/shaders/Dissolve.hlsl` | FBM ノイズを使って画面を溶けるように変化させます。敵撃破演出で使います。 |
-| `FlowingWaterPost` | `Resources/shaders/FlowingWaterPost.hlsl` | 水流の屈折、色味、コースティクス、深度エッジを重ねます。水関連アクションや川のある場面で使います。 |
+| `Grayscale` | `Resources/Shaders/GrayscalePost.hlsl` | 画面をグレースケールへ補間します。敵発見や緊張感の演出用です。 |
+| `GaussianFilter` | `Resources/Shaders/GaussianPost.hlsl` | 5x5 ガウシアンで画面をぼかします。ヒットストップや衝撃表現に使います。 |
+| `OutlinePost` | `Resources/Shaders/OutlinePost.hlsl` | 画面色の輝度差からエッジを検出し、輪郭を強調します。ロックオン範囲や注目状態用です。 |
+| `DepthBasedOutline` | `Resources/Shaders/DepthBasedOutline.hlsl` | 深度差から輪郭を検出します。敵攻撃の予兆など、奥行きの境界を見せたい場面用です。 |
+| `RadialBlur` | `Resources/Shaders/RadialBlurPost.hlsl` | 画面中央方向に放射状ブラーをかけます。攻撃、回避、高速移動の勢いを出します。 |
+| `Vignetting` | `Resources/Shaders/Vignetting.hlsl` | 画面端を暗くします。低 HP、死亡、危険状態の演出用です。 |
+| `BoxFilter` | `Resources/Shaders/BoxFilter.hlsl` | 3x3 平均化フィルタで軽くぼかします。ガード中の集中状態に使います。 |
+| `Random` | `Resources/Shaders/RandomPost.hlsl` | ラインずれ、ノイズ、色ずれを足したダメージグリッチです。被弾時に使います。 |
+| `Dissolve` | `Resources/Shaders/Dissolve.hlsl` | FBM ノイズを使って画面を溶けるように変化させます。敵撃破演出で使います。 |
+| `FlowingWaterPost` | `Resources/Shaders/FlowingWaterPost.hlsl` | 水流の屈折、色味、コースティクス、深度エッジを重ねます。水関連アクションや川のある場面で使います。 |
 
 既存の `Default` は CRT 系の標準ポストエフェクトとして残しています。
 `Rich`、`Anime`、`Smoothing`、`PaperFrame` も `Renderer::InitPostProcess_()` で登録されていますが、この README では評価課題向けに追加・使用したものを中心にまとめています。
@@ -105,7 +105,7 @@ PlayGame 側では `Game/Systems/PostProcessSystem.h` を `GameScene` の system
 
 新しいポストエフェクトを増やす場合は、基本的に次の流れです。
 
-1. `Resources/shaders/PostProcessCommon.hlsli` の共通関数を使って Pixel Shader を追加する。
+1. `Resources/Shaders/PostProcessCommon.hlsli` の共通関数を使って Pixel Shader を追加する。
 2. `Engine/Graphics/Renderer.cpp` の `Renderer::InitPostProcess_()` で shader を compile し、`pipelines_["登録名"]` に PSO を登録する。
 3. scene または system から `renderer->SetPostEffect("登録名")` を呼ぶ。
 4. 必要に応じて `Renderer::PostProcessParams` を設定する。

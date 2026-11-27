@@ -26,28 +26,28 @@ void ChronoSystem::BuildCityStage(entt::registry& r) {
 	render->SetDirectionalShadowRange(460, 1800, .3f);
 	// 景観・街の面・ガラス・鎧・光・強調のシェーダー
 	render->CreateShaderPipeline(
-	    "EnvironmentSurface", L"Resources/shaders/InstancedObjVS.hlsl", L"Resources/shaders/EnvironmentSurfacePS.hlsl");
+	    "EnvironmentSurface", L"Resources/Shaders/InstancedObjVS.hlsl", L"Resources/Shaders/EnvironmentSurfacePS.hlsl");
 	// 通りの谷間のために空の光を足した環境の陰影。動的メッシュは範囲を持たないので、
 	// 「EnvironmentSurface」で行う景観の個別カリングに入れてはいけない
 	render->CreateShaderPipeline(
-	    "CitySurface", L"Resources/shaders/InstancedObjVS.hlsl", L"Resources/shaders/CitySurfacePS.hlsl");
+	    "CitySurface", L"Resources/Shaders/InstancedObjVS.hlsl", L"Resources/Shaders/CitySurfacePS.hlsl");
 	render->CreateShaderPipeline(
-	    "LowpolySurface", L"Resources/shaders/InstancedObjVS.hlsl", L"Resources/shaders/LowpolySurfacePS.hlsl");
+	    "LowpolySurface", L"Resources/Shaders/InstancedObjVS.hlsl", L"Resources/Shaders/LowpolySurfacePS.hlsl");
 	render->CreateShaderPipeline(
-	    "LowpolyNoShadow", L"Resources/shaders/InstancedObjVS.hlsl", L"Resources/shaders/LowpolySurfacePS.hlsl");
+	    "LowpolyNoShadow", L"Resources/Shaders/InstancedObjVS.hlsl", L"Resources/Shaders/LowpolySurfacePS.hlsl");
 	render->CreateShaderPipeline(
-	    "CityGlass", L"Resources/shaders/InstancedObjVS.hlsl", L"Resources/shaders/CityGlassPS.hlsl");
+	    "CityGlass", L"Resources/Shaders/InstancedObjVS.hlsl", L"Resources/Shaders/CityGlassPS.hlsl");
 	render->CreateShaderPipeline(
-	    "CityArmor", L"Resources/shaders/InstancedObjVS.hlsl", L"Resources/shaders/CityArmorPS.hlsl");
+	    "CityArmor", L"Resources/Shaders/InstancedObjVS.hlsl", L"Resources/Shaders/CityArmorPS.hlsl");
 	render->CreateShaderPipelineTransparent(
-	    "DomainGlow", L"Resources/shaders/InstancedObjVS.hlsl", L"Resources/shaders/DomainGlowPS.hlsl", true, true);
+	    "DomainGlow", L"Resources/Shaders/InstancedObjVS.hlsl", L"Resources/Shaders/DomainGlowPS.hlsl", true, true);
 	render->CreateShaderPipelineTransparent(
-	    "MorphItemHighlight", L"Resources/shaders/InstancedObjVS.hlsl", L"Resources/shaders/MorphItemHighlightPS.hlsl",
+	    "MorphItemHighlight", L"Resources/Shaders/InstancedObjVS.hlsl", L"Resources/Shaders/MorphItemHighlightPS.hlsl",
 	    true, true);
 	render->CreateShaderPipelineTransparent(
-	    "SpillLiquid", L"Resources/shaders/InstancedObjVS.hlsl", L"Resources/shaders/SpillLiquidPS.hlsl", false, true);
+	    "SpillLiquid", L"Resources/Shaders/InstancedObjVS.hlsl", L"Resources/Shaders/SpillLiquidPS.hlsl", false, true);
 	render->CreateShaderPipelineTransparent(
-	    "GimmickCurtain", L"Resources/shaders/InstancedObjVS.hlsl", L"Resources/shaders/GimmickCurtainPS.hlsl", false,
+	    "GimmickCurtain", L"Resources/Shaders/InstancedObjVS.hlsl", L"Resources/Shaders/GimmickCurtainPS.hlsl", false,
 	    true);
 	// 街の面のエンティティの名前 (材質ごと)
 	const char* surfaceIds[CityMaterialCount] = {

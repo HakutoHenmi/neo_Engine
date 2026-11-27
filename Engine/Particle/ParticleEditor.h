@@ -12,7 +12,7 @@ public:
 	void DrawUI();
 	void DrawPreview(const Camera& cam);
 
-	// ★追加: 編集用・プレビュー用のエミッター（対象が外部から与えられない場合に使用）
+	// 編集用・プレビュー用のエミッター（対象が外部から与えられない場合に使用）
 	ParticleEmitter previewEmitter_;
 	GPUParticleSystem gpuParticleSystem_;
 
@@ -22,7 +22,7 @@ public:
 private:
 	char filePathBuf_[256] = "Resources/Scenes/particle.json";
 
-	// ★追加: プレビュー用のレンダーターゲットとカメラ
+	// プレビュー用のレンダーターゲットとカメラ
 	Renderer::CustomRenderTarget previewTarget_;
 	Camera previewCamera_;
 	float camRotX_ = 0.5f;

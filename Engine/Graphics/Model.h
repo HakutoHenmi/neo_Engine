@@ -24,14 +24,14 @@ struct VertexData {
 	DirectX::XMFLOAT4 position;
 	DirectX::XMFLOAT2 texcoord;
 	DirectX::XMFLOAT3 normal;
-	// --- 追加: スキニング用 ---
+	// --- スキニング用 ---
 	float boneWeights[4] = {0.0f, 0.0f, 0.0f, 0.0f};
 	uint32_t boneIndices[4] = {0, 0, 0, 0};
 };
 
 struct MaterialData {
 	std::string textureFilePath;
-	std::vector<std::string> extraTextures; // ★追加: 地形用のスプラットマップやレイヤー
+	std::vector<std::string> extraTextures; // 地形用のスプラットマップやレイヤー
 };
 
 struct MeshSubset {
@@ -55,7 +55,7 @@ struct Node {
 	std::vector<Node> children;
 };
 
-// --- 追加: スケルトン用構造体 ---
+// --- スケルトン用構造体 ---
 struct Joint {
 	QuaternionTransform transform; // ローカル変換
 	Matrix4x4 localMatrix;
@@ -111,8 +111,8 @@ struct ModelData {
 	std::vector<VertexData> vertices;
 	std::vector<uint32_t> indices; // インデックスバッファ対応
 
-	std::vector<MaterialData> materials; // ★修正: 複数マテリアル対応
-	std::vector<MeshSubset> subsets;     // ★追加: サブメッシュ情報
+	std::vector<MaterialData> materials; // 複数マテリアル対応
+	std::vector<MeshSubset> subsets;     // サブメッシュ情報
 
 	// スキニング情報
 	std::vector<Bone> bones;
@@ -183,14 +183,14 @@ public:
 	}
 	const D3D12_VERTEX_BUFFER_VIEW& GetSkinnedVBV() const {
 		return skinnedVbv_;
-	} // ☁️追加
+	}
 	const D3D12_INDEX_BUFFER_VIEW& GetIBV() const {
 		return ibv_;
 	} // 追加
 
 	ID3D12Resource* GetSkinnedBuffer() const {
 		return skinnedVb_.Get();
-	} // ☁️追加
+	}
 
 	bool HasTexture() const {
 		return texs_.size() > 0 || srvGpus_.size() > 0;
@@ -212,7 +212,7 @@ public:
 		}
 	}
 
-	// ★追加: GPU用BVH・メッシュバッファ
+	// GPU用BVH・メッシュバッファ
 	D3D12_GPU_VIRTUAL_ADDRESS GetBvhNodeBufferAddr() const {
 		return vbBvhNodes_ ? vbBvhNodes_->GetGPUVirtualAddress() : 0;
 	}
@@ -276,19 +276,19 @@ private:
 	ModelData data_{};
 
 	Microsoft::WRL::ComPtr<ID3D12Resource> vb_;
-	Microsoft::WRL::ComPtr<ID3D12Resource> skinnedVb_; // ☁️追加: Compute Shader用 UAV兼VB
-	Microsoft::WRL::ComPtr<ID3D12Resource> ib_;        // 追加: インデックスバッファ
+	Microsoft::WRL::ComPtr<ID3D12Resource> skinnedVb_; // Compute Shader用 UAV兼VB
+	Microsoft::WRL::ComPtr<ID3D12Resource> ib_;        // インデックスバッファ
 	D3D12_VERTEX_BUFFER_VIEW vbv_{};
 	D3D12_VERTEX_BUFFER_VIEW skinnedVbv_{};
 	D3D12_INDEX_BUFFER_VIEW ibv_{}; // 追加
 	uint32_t indexCount_ = 0;       // 追加
 	bool staticGpuGeometry_ = false;
 
-	// ★追加: GPU用BVHバッファ
+	// GPU用BVHバッファ
 	Microsoft::WRL::ComPtr<ID3D12Resource> vbBvhNodes_;
 	Microsoft::WRL::ComPtr<ID3D12Resource> vbBvhIndices_;
 
-	// ★修正: 複数テクスチャ保持
+	// 複数テクスチャ保持
 	std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>> texs_;
 	std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>> uploads_;
 	std::vector<D3D12_SHADER_RESOURCE_VIEW_DESC> srvDescs_;

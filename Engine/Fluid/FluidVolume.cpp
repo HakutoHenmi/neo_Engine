@@ -123,8 +123,8 @@ bool Renderer::InitFluidVolume() {
 	}
 	if (!root(shadow, _countof(shadow), rootSigVolumeShadow_))
 		return false;
-	auto shadowVS = CompileShaderFromFile(L"Resources/shaders/FluidShadow.hlsl", "ShadowVS", "vs_5_0");
-	auto shadowPS = CompileShaderFromFile(L"Resources/shaders/FluidShadow.hlsl", "ShadowPS", "ps_5_0");
+	auto shadowVS = CompileShaderFromFile(L"Resources/Shaders/FluidShadow.hlsl", "ShadowVS", "vs_5_0");
+	auto shadowPS = CompileShaderFromFile(L"Resources/Shaders/FluidShadow.hlsl", "ShadowPS", "ps_5_0");
 	if (!shadowVS || !shadowPS)
 		return false;
 	D3D12_GRAPHICS_PIPELINE_STATE_DESC shadowPso{};
@@ -142,7 +142,7 @@ bool Renderer::InitFluidVolume() {
 	if (FAILED(dev_->CreateGraphicsPipelineState(&shadowPso, IID_PPV_ARGS(&psoVolumeShadow_))))
 		return false;
 	auto computePso = [&](const char* entry, ComPtr<ID3D12PipelineState>& pso) {
-		auto cs = CompileShaderFromFile(L"Resources/shaders/FluidVolumeCS.hlsl", entry, "cs_5_0");
+		auto cs = CompileShaderFromFile(L"Resources/Shaders/FluidVolumeCS.hlsl", entry, "cs_5_0");
 		if (!cs)
 			return false;
 		D3D12_COMPUTE_PIPELINE_STATE_DESC desc{};
@@ -156,10 +156,10 @@ bool Renderer::InitFluidVolume() {
 	    !computePso("SplatFarWater", psoFarWaterSplat_) || !computePso("BuildOccupancy", psoVolumeOccupancy_) ||
 	    !computePso("SplatTendrils", psoVolumeTendrils_))
 		return false;
-	auto vs = CompileShaderFromFile(L"Resources/shaders/FluidCompositeVS.hlsl", "main", "vs_5_0");
-	auto ps = CompileShaderFromFile(L"Resources/shaders/FluidRaymarch.hlsl", "RaymarchPS", "ps_5_0");
-	auto sprayVS = CompileShaderFromFile(L"Resources/shaders/FluidRaymarch.hlsl", "SprayVS", "vs_5_0");
-	auto sprayPS = CompileShaderFromFile(L"Resources/shaders/FluidRaymarch.hlsl", "SprayPS", "ps_5_0");
+	auto vs = CompileShaderFromFile(L"Resources/Shaders/FluidCompositeVS.hlsl", "main", "vs_5_0");
+	auto ps = CompileShaderFromFile(L"Resources/Shaders/FluidRaymarch.hlsl", "RaymarchPS", "ps_5_0");
+	auto sprayVS = CompileShaderFromFile(L"Resources/Shaders/FluidRaymarch.hlsl", "SprayVS", "vs_5_0");
+	auto sprayPS = CompileShaderFromFile(L"Resources/Shaders/FluidRaymarch.hlsl", "SprayPS", "ps_5_0");
 	if (!vs || !ps || !sprayVS || !sprayPS)
 		return false;
 	D3D12_GRAPHICS_PIPELINE_STATE_DESC graphics{};
@@ -311,12 +311,12 @@ bool Renderer::InitScreenWater() {
 	if (FAILED(dev_->CreateRootSignature(
 	        0, blob->GetBufferPointer(), blob->GetBufferSize(), IID_PPV_ARGS(&rootSigScreenWater_))))
 		return false;
-	const wchar_t* file = L"Resources/shaders/FluidScreenWater.hlsl";
+	const wchar_t* file = L"Resources/Shaders/FluidScreenWater.hlsl";
 	auto spriteVS = CompileShaderFromFile(file, "WaterSpriteVS", "vs_5_0"),
 	     spritePS = CompileShaderFromFile(file, "WaterSpritePS", "ps_5_0");
 	auto smoothPS = CompileShaderFromFile(file, "WaterSmoothPS", "ps_5_0"),
 	     compositePS = CompileShaderFromFile(file, "WaterCompositePS", "ps_5_0");
-	auto fullscreenVS = CompileShaderFromFile(L"Resources/shaders/FluidCompositeVS.hlsl", "main", "vs_5_0");
+	auto fullscreenVS = CompileShaderFromFile(L"Resources/Shaders/FluidCompositeVS.hlsl", "main", "vs_5_0");
 	if (!spriteVS || !spritePS || !smoothPS || !compositePS || !fullscreenVS)
 		return false;
 	D3D12_GRAPHICS_PIPELINE_STATE_DESC pso{};
@@ -561,8 +561,8 @@ void Renderer::PrepareFluidVolume() {
 	volumeShadowLow_ = origin;
 	volumeShadowHigh_ = origin + Vector3{kVolumeWidth * cell, kVolumeHeight * cell, kVolumeWidth * cell};
 	if (!fluidMorphTargets_.empty()) {
-		// 以前の 0.56 単位のセルでは、水の体がボクセル 1〜2 個分の厚みしかなかった。
-		// 動いているすべての体と実際の表面に合わせて、より細かい領域を当てはめる。
+		// 薄い体にも十分なボクセル数を割り当てるため、
+		// 動いているすべての体と実際の表面に合わせて領域を絞る。
 		Vector3 lo{1e9f, 1e9f, 1e9f}, hi{-1e9f, -1e9f, -1e9f};
 		auto include = [&](Vector3 p) {
 			lo = {(std::min)(lo.x, p.x), (std::min)(lo.y, p.y), (std::min)(lo.z, p.z)};

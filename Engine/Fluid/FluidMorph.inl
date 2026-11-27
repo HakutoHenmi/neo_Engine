@@ -20,7 +20,7 @@ void Renderer::InitFluidMorph() {
 	memset(data, 0, sizeof(FluidMorphTarget));
 	fluidMorphDummy_->Unmap(0, nullptr);
 	auto make = [&](const char* entry, ComPtr<ID3D12PipelineState>& pso) {
-		auto cs = CompileShaderFromFile(L"Resources/shaders/FluidSimCS.hlsl", entry, "cs_5_0");
+		auto cs = CompileShaderFromFile(L"Resources/Shaders/FluidSimCS.hlsl", entry, "cs_5_0");
 		if (!cs)
 			throw std::runtime_error("Slime point-cloud shader failed");
 		D3D12_COMPUTE_PIPELINE_STATE_DESC desc{};

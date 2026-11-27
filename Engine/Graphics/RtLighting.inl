@@ -1,5 +1,5 @@
 bool Renderer::InitRtLighting_() {
-	std::ifstream source("Resources/shaders/RtLighting.cso", std::ios::binary);
+	std::ifstream source("Resources/Shaders/RtLighting.cso", std::ios::binary);
 	std::vector<char> shader((std::istreambuf_iterator<char>(source)), {});
 	if (shader.empty())
 		return false;
@@ -77,7 +77,7 @@ bool Renderer::InitRtLighting_() {
 	}
 	CD3DX12_ROOT_SIGNATURE_DESC filterDesc(8, filterRoots);
 	ComPtr<ID3DBlob> filterBlob;
-	auto filterShader = CompileShaderFromFile(L"Resources/shaders/RtLightingDenoise.hlsl", "main", "cs_5_0");
+	auto filterShader = CompileShaderFromFile(L"Resources/Shaders/RtLightingDenoise.hlsl", "main", "cs_5_0");
 	if (!filterShader ||
 	    FAILED(D3D12SerializeRootSignature(&filterDesc, D3D_ROOT_SIGNATURE_VERSION_1, &filterBlob, &error)) ||
 	    FAILED(dev_->CreateRootSignature(
@@ -92,8 +92,8 @@ bool Renderer::InitRtLighting_() {
 		psoRtLighting_.Reset();
 		return false;
 	}
-	auto vs = CompileShaderFromFile(L"Resources/shaders/FluidCompositeVS.hlsl", "main", "vs_5_0"),
-	     ps = CompileShaderFromFile(L"Resources/shaders/RtLightingComposite.hlsl", "main", "ps_5_0");
+	auto vs = CompileShaderFromFile(L"Resources/Shaders/FluidCompositeVS.hlsl", "main", "vs_5_0"),
+	     ps = CompileShaderFromFile(L"Resources/Shaders/RtLightingComposite.hlsl", "main", "ps_5_0");
 	if (!vs || !ps) {
 		psoRtLighting_.Reset();
 		return false;

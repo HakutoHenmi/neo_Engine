@@ -19,57 +19,57 @@ template<typename T> class ComponentArray : public IComponentArray {
 public:
 	void InsertData(Entity entity, T component) {
 		assert(
-		    entityToIndexMap.find(entity) == entityToIndexMap.end() &&
+		    entityToIndexMap_.find(entity) == entityToIndexMap_.end() &&
 		    "Component added to same entity more than once.");
 
 		// 新しい要素を末尾に置く
-		size_t newIndex = m_size;
-		entityToIndexMap[entity] = newIndex;
-		indexToEntityMap[newIndex] = entity;
-		componentArray[newIndex] = component;
-		m_size++;
+		size_t newIndex = size_;
+		entityToIndexMap_[entity] = newIndex;
+		indexToEntityMap_[newIndex] = entity;
+		componentArray_[newIndex] = component;
+		size_++;
 	}
 
 	void RemoveData(Entity entity) {
-		assert(entityToIndexMap.find(entity) != entityToIndexMap.end() && "Removing non-existent component.");
+		assert(entityToIndexMap_.find(entity) != entityToIndexMap_.end() && "Removing non-existent component.");
 
 		// 隙間を作らないよう、末尾の要素を削除した場所へ移す
-		size_t indexOfRemovedEntity = entityToIndexMap[entity];
-		size_t indexOfLastElement = m_size - 1;
-		componentArray[indexOfRemovedEntity] = componentArray[indexOfLastElement];
+		size_t indexOfRemovedEntity = entityToIndexMap_[entity];
+		size_t indexOfLastElement = size_ - 1;
+		componentArray_[indexOfRemovedEntity] = componentArray_[indexOfLastElement];
 
 		// 移動した場所を指すよう対応表を更新する
-		Entity entityOfLastElement = indexToEntityMap[indexOfLastElement];
-		entityToIndexMap[entityOfLastElement] = indexOfRemovedEntity;
-		indexToEntityMap[indexOfRemovedEntity] = entityOfLastElement;
+		Entity entityOfLastElement = indexToEntityMap_[indexOfLastElement];
+		entityToIndexMap_[entityOfLastElement] = indexOfRemovedEntity;
+		indexToEntityMap_[indexOfRemovedEntity] = entityOfLastElement;
 
-		entityToIndexMap.erase(entity);
-		indexToEntityMap.erase(indexOfLastElement);
-		m_size--;
+		entityToIndexMap_.erase(entity);
+		indexToEntityMap_.erase(indexOfLastElement);
+		size_--;
 	}
 
 	T& GetData(Entity entity) {
-		assert(entityToIndexMap.find(entity) != entityToIndexMap.end() && "Retrieving non-existent component.");
-		return componentArray[entityToIndexMap[entity]];
+		assert(entityToIndexMap_.find(entity) != entityToIndexMap_.end() && "Retrieving non-existent component.");
+		return componentArray_[entityToIndexMap_[entity]];
 	}
 
 	void EntityDestroyed(Entity entity) override {
-		if (entityToIndexMap.find(entity) != entityToIndexMap.end()) {
+		if (entityToIndexMap_.find(entity) != entityToIndexMap_.end()) {
 			RemoveData(entity);
 		}
 	}
 
 private:
 	// コンポーネントを詰めて並べた配列 (コンポーネントの型ごとの SoA)
-	std::array<T, MAX_ENTITIES> componentArray;
+	std::array<T, MAX_ENTITIES> componentArray_;
 
 	// エンティティ ID から配列の番号への対応表
-	std::unordered_map<Entity, size_t> entityToIndexMap;
+	std::unordered_map<Entity, size_t> entityToIndexMap_;
 
 	// 配列の番号からエンティティ ID への対応表
-	std::unordered_map<size_t, Entity> indexToEntityMap;
+	std::unordered_map<size_t, Entity> indexToEntityMap_;
 
-	size_t m_size{};
+	size_t size_{};
 };
 
 } // namespace ECS

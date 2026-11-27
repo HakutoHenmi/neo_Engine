@@ -9,7 +9,7 @@ bool Renderer::InitRtShadows_() {
 	if (FAILED(dev_->CheckFeatureSupport(D3D12_FEATURE_SHADER_MODEL, &model, sizeof(model))) ||
 	    model.HighestShaderModel < D3D_SHADER_MODEL_6_5)
 		return false;
-	std::ifstream source("Resources/shaders/RtShadow.cso", std::ios::binary);
+	std::ifstream source("Resources/Shaders/RtShadow.cso", std::ios::binary);
 	std::vector<char> shader((std::istreambuf_iterator<char>(source)), std::istreambuf_iterator<char>());
 	if (shader.empty())
 		return false;

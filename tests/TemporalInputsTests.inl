@@ -61,8 +61,8 @@ void TestTemporalInputs(Gpu& g) {
 	cb.dimensions = {1, 1, 1};
 	auto constants = g.Constant(sizeof(cb));
 	auto projection = XMMatrixPerspectiveFovLH(1.13f, float(w) / h, .1f, 100);
-	auto vsCode = g.Compile(L"Resources/shaders/FluidCompositeVS.hlsl", "main", "vs_5_0"),
-	     psCode = g.Compile(L"Resources/shaders/TemporalPrepare.hlsl", "main", "ps_5_0");
+	auto vsCode = g.Compile(L"Resources/Shaders/FluidCompositeVS.hlsl", "main", "vs_5_0"),
+	     psCode = g.Compile(L"Resources/Shaders/TemporalPrepare.hlsl", "main", "ps_5_0");
 	ComPtr<ID3D11VertexShader> vs;
 	ComPtr<ID3D11PixelShader> ps;
 	Check(g.device->CreateVertexShader(vsCode->GetBufferPointer(), vsCode->GetBufferSize(), nullptr, &vs));
@@ -173,8 +173,8 @@ void TestTemporalInputs(Gpu& g) {
 	auto albedo = image(DXGI_FORMAT_R32G32B32A32_FLOAT, white.data(), w * 16);
 	std::fill(raw.begin(), raw.end(), 100.f / 99.9f - 10.f / 99.9f / 20);
 	g.context->UpdateSubresource(depth.texture.Get(), 0, nullptr, raw.data(), w * 4, 0);
-	vsCode = g.Compile(L"Resources/shaders/TemporalObject.hlsl", "VSMain", "vs_5_0");
-	psCode = g.Compile(L"Resources/shaders/TemporalObject.hlsl", "PSMain", "ps_5_0");
+	vsCode = g.Compile(L"Resources/Shaders/TemporalObject.hlsl", "VSMain", "vs_5_0");
+	psCode = g.Compile(L"Resources/Shaders/TemporalObject.hlsl", "PSMain", "ps_5_0");
 	Check(g.device->CreateVertexShader(vsCode->GetBufferPointer(), vsCode->GetBufferSize(), nullptr, &vs));
 	Check(g.device->CreatePixelShader(psCode->GetBufferPointer(), psCode->GetBufferSize(), nullptr, &ps));
 	D3D11_INPUT_ELEMENT_DESC elements[] = {

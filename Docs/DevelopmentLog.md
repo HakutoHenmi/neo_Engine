@@ -90,7 +90,7 @@ Hierarchy は `Category`（部品構成とゲームの分類ごと）・`Name`�
 
 | 原因 | 修正内容 |
 | --- | --- |
-| 粒子の丸い輪郭がそのまま影になる | [液体の影](../Resources/shaders/FluidShadow.hlsl)を追加。本体と同じ密度場・同じ表面の閾値を光の方向から探索し、表面の深度を書く |
+| 粒子の丸い輪郭がそのまま影になる | [液体の影](../Resources/Shaders/FluidShadow.hlsl)を追加。本体と同じ密度場・同じ表面の閾値を光の方向から探索し、表面の深度を書く |
 | 影と本体の更新がずれる | [描画順序](../Engine/Graphics/Renderer.cpp)を流体更新→密度再構成→影→本体へ変更。再構成はフレームに1回だけ行う |
 | 成長後のカメラ距離を毎フレーム設定し直して減衰させていた | [追従カメラ](../Game/Systems/ChronoInk.cpp)の目標距離に成長分を足し、距離を継続して補間する |
 | CPUとGPUの時間が違い、33ms超のフレームで追従速度を増幅していた | [ゲームの時計](../Game/Scenes/GameScene.cpp)をエンジンと共有。GPUへ実際の移動時間を渡し、同じ時間を1/100秒以下の刻みに分割して計算する。速度の倍率補償を撤去 |
@@ -117,9 +117,9 @@ RTX 4060 Laptop GPU・Developmentの同じサイズ別シナリオで、前回�
 
 | 修正箇所 | 現在の処理 |
 | --- | --- |
-| [流体ソルバー](../Resources/shaders/FluidSimCS.hlsl) | 個体の粒子間隔で距離を正規化し、密度・圧力・粘性を同じ基準で計算。大きくなっても近傍粒子を失わない |
-| [個体ごとの近傍探索](../Resources/shaders/FluidSimCS.hlsl) | 個体ごとのセル幅と所有者を含むハッシュを使い、大小の個体が混在しても他個体の粒を大量に探索しない。モーフ用テーブルは65536から8192バケットへ縮小 |
-| [表面再構成](../Resources/shaders/FluidVolumeCS.hlsl) | 近傍の入れ替わりで向きが変わるPCAをモーフ表面から外し、粒子間隔に比例した球状カーネルを使う |
+| [流体ソルバー](../Resources/Shaders/FluidSimCS.hlsl) | 個体の粒子間隔で距離を正規化し、密度・圧力・粘性を同じ基準で計算。大きくなっても近傍粒子を失わない |
+| [個体ごとの近傍探索](../Resources/Shaders/FluidSimCS.hlsl) | 個体ごとのセル幅と所有者を含むハッシュを使い、大小の個体が混在しても他個体の粒を大量に探索しない。モーフ用テーブルは65536から8192バケットへ縮小 |
+| [表面再構成](../Resources/Shaders/FluidVolumeCS.hlsl) | 近傍の入れ替わりで向きが変わるPCAをモーフ表面から外し、粒子間隔に比例した球状カーネルを使う |
 | [描画領域](../Engine/Fluid/FluidVolume.cpp) | 粒の幅とセル幅を一緒に拡大。固定6600粒子のまま、1粒あたりの描画処理量を大きさに依存させない |
 
 ゲーム内の成長上限1200と粒子数6600は維持しています。GPU回帰テストはさらに長さ16倍まで密度・圧力補正・粘性の一致を確認し、異なる大きさの13個体を重ねても密度が混ざらないことを検証します。最大サイズの通常形状・3武器でも、表面描画の処理範囲は1軸10セル、代替粒の重ね描きは0でした。
@@ -137,7 +137,7 @@ Developmentビルドと上記検証が通過し、7条件すべてで粒子の�
 | ハンマーが横向きのまま振られる | 頭部の長い軸を振り下ろす面に沿う向きへ90度回転。縦の振り上げ・叩きつけを共通の描画・命中軌道で計算 |
 | 剣のコンボが不自然 | 斜め斬り・回転斬り・コンボ受付・追加命中区間を撤去。毎回0.64秒の横薙ぎだけを行う。次の横薙ぎの入力予約、変形維持、R／Bでの解除は継続 |
 
-主な変更先は [武器ルール](../Game/Chrono/SlimeWeaponRules.h)、[入力・GPU目標点・HUD](../Game/Systems/SlimeLife.cpp)、[GPUの目標位置](../Resources/shaders/FluidMorph.hlsli)、[サブステップの時刻](../Engine/Graphics/Renderer.cpp)、[描画グリッド](../Engine/Fluid/FluidVolumeDomain.h)、[目の配置](../Resources/shaders/SlimeDecoration.hlsli) です。
+主な変更先は [武器ルール](../Game/Chrono/SlimeWeaponRules.h)、[入力・GPU目標点・HUD](../Game/Systems/SlimeLife.cpp)、[GPUの目標位置](../Resources/Shaders/FluidMorph.hlsli)、[サブステップの時刻](../Engine/Graphics/Renderer.cpp)、[描画グリッド](../Engine/Fluid/FluidVolumeDomain.h)、[目の配置](../Resources/Shaders/SlimeDecoration.hlsli) です。
 
 一定速度12の移動を再現したGPU検証では、30fpsでの速度の標準偏差が0.49220から表示精度で0.00000へ減少し、60／120fpsも同じ精度で安定しました。これは目標位置の段差だけを調べるテストで、液体らしい揺れや命中時のカメラ演出は残しています。`tests/Run-SlimeLifeTests.ps1`でCPU・GPUの軌道、移動、ハンマー・剣・飛行機・大型スライムの表面と目を確認できます。`--face-only`ではカメラを回しても草原の顔の向きが変わらないことも確認します。
 
@@ -149,9 +149,9 @@ Developmentのビルド（警告0・エラー0）、CPU/GPUテスト、実ゲー
 
 | 症状・原因 | 変更内容と主なファイル |
 | --- | --- |
-| 武器が静止した形へ強く固定され、厚い液体の光が吸収されすぎる | [武器の共通姿勢](../Game/Chrono/SlimeWeaponRules.h)に体積を保つゆっくりした伸縮・せん断を追加。[追従処理](../Game/Systems/SlimeLife.cpp)は待機中のばねを弱め、攻撃時は従来の追従力を使う。[光学処理](../Resources/shaders/FluidRaymarch.hlsl)の吸収を成長倍率に合わせて調整 |
-| 泡が通常スライムの楕円形の範囲から生成され、ハンマーの頭部へ届かない | [泡の配置](../Resources/shaders/SlimeDecoration.hlsli)を本体の実際のGPU粒子に追従させ、頭部と柄の内部へ分散。皮膚に接する前に薄くし、外へ抜ける泡は12個・小さめ・ゆっくりに変更 |
-| 成長して粒が疎になっても表面の再構成幅が固定で、粒の密度や近傍の変化が凹凸になる | [表面再構成](../Resources/shaders/FluidVolumeCS.hlsl)で成長に合わせて粒の幅を広げ、細長いカーネルを球に近づける。描画の体積は目標密度から求め、物理密度の細かな変動で表面を膨縮させない |
+| 武器が静止した形へ強く固定され、厚い液体の光が吸収されすぎる | [武器の共通姿勢](../Game/Chrono/SlimeWeaponRules.h)に体積を保つゆっくりした伸縮・せん断を追加。[追従処理](../Game/Systems/SlimeLife.cpp)は待機中のばねを弱め、攻撃時は従来の追従力を使う。[光学処理](../Resources/Shaders/FluidRaymarch.hlsl)の吸収を成長倍率に合わせて調整 |
+| 泡が通常スライムの楕円形の範囲から生成され、ハンマーの頭部へ届かない | [泡の配置](../Resources/Shaders/SlimeDecoration.hlsli)を本体の実際のGPU粒子に追従させ、頭部と柄の内部へ分散。皮膚に接する前に薄くし、外へ抜ける泡は12個・小さめ・ゆっくりに変更 |
+| 成長して粒が疎になっても表面の再構成幅が固定で、粒の密度や近傍の変化が凹凸になる | [表面再構成](../Resources/Shaders/FluidVolumeCS.hlsl)で成長に合わせて粒の幅を広げ、細長いカーネルを球に近づける。描画の体積は目標密度から求め、物理密度の細かな変動で表面を膨縮させない |
 | 目と泡だけ旧来の小さい成長倍率を使い、目を液体内部のコアへ置いていた | [描画定数](../Engine/Fluid/FluidVolume.cpp)を実際の成長倍率に合わせ、目を実際の液体表面へ配置。続く正面配置の修正で、草原は体の正面、調合室はカメラ側を使う |
 
 通常スライムの自由な流動、着地の揺れ、変形維持・連打・手動解除は継続します。通常スライムの粒を個別の目標点へ固定する処理は追加していません。
@@ -168,7 +168,7 @@ Developmentのビルド（警告0・エラー0）、CPU/GPUテスト、実ゲー
 - 領域の余白に、粒の広がり・表面フィルター・境界のぼかし・グリッドへの丸めを含め、成長した武器の先端も一つの流体表面で描きます。
 - 遠方の代替描画でも、現在の素材色・透明度を参照するよう統一しました。
 
-変更先は [描画領域の余白](../Engine/Fluid/FluidVolumeDomain.h)、[領域の組み立て](../Engine/Fluid/FluidVolume.cpp)、[表面と代替描画の境界・色](../Resources/shaders/FluidRaymarch.hlsl) です。質量232の青いハンマーを使ったGPU再現テストでは、誤って代替描画へ切り替わる粒子が6021／6600個から0個になり、正面・上・下の3視点で粒の重ね描きも0ピクセルになりました。実行は`tests/Run-FluidTests.ps1 -Case '--surface-only'`。この検証は`Run-SlimeLifeTests.ps1`にも追加しました。
+変更先は [描画領域の余白](../Engine/Fluid/FluidVolumeDomain.h)、[領域の組み立て](../Engine/Fluid/FluidVolume.cpp)、[表面と代替描画の境界・色](../Resources/Shaders/FluidRaymarch.hlsl) です。質量232の青いハンマーを使ったGPU再現テストでは、誤って代替描画へ切り替わる粒子が6021／6600個から0個になり、正面・上・下の3視点で粒の重ね描きも0ピクセルになりました。実行は`tests/Run-FluidTests.ps1 -Case '--surface-only'`。この検証は`Run-SlimeLifeTests.ps1`にも追加しました。
 
 Developmentビルド、CPU・GPUの武器／表面テスト、細かい解像度の水面・遠方表示・目と泡の描画、実ゲームの成長・変形維持・連打・手動解除が通過しました。実ゲームのハンマー画像でも頭部の粒の重なりが消え、粒子数6600を維持し、D3D12の検証エラーはありません。
 
@@ -211,7 +211,7 @@ Developmentビルド、CPU・GPUの武器／表面テスト、細かい解像度
 - 左クリック／RTは序盤にタックル、成長後は選択中の武器で攻撃します。未解放の武器を選んで攻撃した場合は必要質量を表示します。1／2／3または十字キー左右で武器を選択します。
 - GPUの個体管理を4枠から16枠に拡張し、本体＋最大12体の子分を扱います。個体番号を空間ソートキーの上位2bitへ詰めていた処理を改め、子分が増えても異なる個体の粒子割り当てが混ざらないようにしました。
 
-主な変更先は [成長・解放ルール](../Game/Chrono/SlimeLifeRules.h)、[ゲーム進行・HUD](../Game/Systems/SlimeLife.cpp)、[GPU個体管理](../Resources/shaders/FluidMorph.hlsli) です。リトライ・新規出撃で成長・子分・武器条件を初期化し、調合室のプレビューは従来どおり開始サイズのままです。詳細と検証方法は [SlimeLifeの仕様](SlimeLife.md) を参照してください。
+主な変更先は [成長・解放ルール](../Game/Chrono/SlimeLifeRules.h)、[ゲーム進行・HUD](../Game/Systems/SlimeLife.cpp)、[GPU個体管理](../Resources/Shaders/FluidMorph.hlsli) です。リトライ・新規出撃で成長・子分・武器条件を初期化し、調合室のプレビューは従来どおり開始サイズのままです。詳細と検証方法は [SlimeLifeの仕様](SlimeLife.md) を参照してください。
 
 ### 分裂・大きさ・前進時の形状の修正（2026-10-18）
 
@@ -299,20 +299,20 @@ FBX/ufbx から skinning 情報を読み込み、モデルの頂点に bone weig
 頂点構造 `VertexData` に最大 4 本分の bone weight / index を持たせ、`Model::LoadWithUFBX()` で ufbx の skin cluster から値を入れています。
 
 描画時は `Renderer::DrawSkinnedMesh()` で bone palette を draw call に積み、`Renderer` が `CBBone` として GPU に渡します。
-実際の skinning 計算は `Resources/shaders/SkinningVS.hlsl` と `Resources/shaders/ToonSkinningVS.hlsl` の Vertex Shader 側で行っています。
+実際の skinning 計算は `Resources/Shaders/SkinningVS.hlsl` と `Resources/Shaders/ToonSkinningVS.hlsl` の Vertex Shader 側で行っています。
 
 主な実装ファイル:
 - `Engine/Graphics/Model.h`
 - `Engine/Graphics/Model.cpp`
 - `Engine/Graphics/Renderer.cpp`
-- `Resources/shaders/SkinningVS.hlsl`
-- `Resources/shaders/ToonSkinningVS.hlsl`
+- `Resources/Shaders/SkinningVS.hlsl`
+- `Resources/Shaders/ToonSkinningVS.hlsl`
 - `Game/Scenes/AssignmentScene.cpp`
 
 ## ComputeShaderによるSkinning
 
 未接続だった Compute Shader skinning 用 shader は未使用リソース整理で削除しました。
-現在の skinning は `Resources/shaders/SkinningVS.hlsl` と `Resources/shaders/ToonSkinningVS.hlsl` の Vertex Shader 側で行っています。
+現在の skinning は `Resources/Shaders/SkinningVS.hlsl` と `Resources/Shaders/ToonSkinningVS.hlsl` の Vertex Shader 側で行っています。
 
 ## MultiMesh & MultiMaterial対応
 
@@ -401,9 +401,9 @@ Mesh emitter については、`GPUParticleSystem::SetEmitterMesh()` で mesh �
 主な実装ファイル:
 - `Engine/Particle/GPUParticle.h`
 - `Engine/Particle/GPUParticle.cpp`
-- `Resources/shaders/GPUParticleCS.hlsl`
-- `Resources/shaders/GPUParticleVS.hlsl`
-- `Resources/shaders/GPUParticlePS.hlsl`
+- `Resources/Shaders/GPUParticleCS.hlsl`
+- `Resources/Shaders/GPUParticleVS.hlsl`
+- `Resources/Shaders/GPUParticlePS.hlsl`
 - `Game/Scenes/AssignmentScene.cpp`
 
 ## ポストエフェクト
@@ -450,11 +450,11 @@ AssignmentScene に追加した簡易ゲーム要素:
 - `Engine/Graphics/Renderer.h`
 - `Game/Scenes/AssignmentScene.cpp`
 - `Game/Scenes/AssignmentScene.h`
-- `Resources/shaders/*Post*.hlsl`
-- `Resources/shaders/DepthBasedOutline.hlsl`
-- `Resources/shaders/BoxFilter.hlsl`
-- `Resources/shaders/Vignetting.hlsl`
-- `Resources/shaders/Dissolve.hlsl`
+- `Resources/Shaders/*Post*.hlsl`
+- `Resources/Shaders/DepthBasedOutline.hlsl`
+- `Resources/Shaders/BoxFilter.hlsl`
+- `Resources/Shaders/Vignetting.hlsl`
+- `Resources/Shaders/Dissolve.hlsl`
 
 ## GPU流体 / メタボール表現
 
@@ -479,12 +479,12 @@ player core への引力、decoy core、AABB collision、debug arrow 表示も�
 主な実装ファイル:
 - `Engine/Graphics/Renderer.h`
 - `Engine/Graphics/Renderer.cpp`
-- `Resources/shaders/FluidSimCS.hlsl`
-- `Resources/shaders/GPUFluidVS.hlsl`
-- `Resources/shaders/GPUFluidPS.hlsl`
-- `Resources/shaders/GPUFluidDebugVS.hlsl`
-- `Resources/shaders/GPUFluidDebugPS.hlsl`
-- `Resources/shaders/MetaballPS.hlsl`
+- `Resources/Shaders/FluidSimCS.hlsl`
+- `Resources/Shaders/GPUFluidVS.hlsl`
+- `Resources/Shaders/GPUFluidPS.hlsl`
+- `Resources/Shaders/GPUFluidDebugVS.hlsl`
+- `Resources/Shaders/GPUFluidDebugPS.hlsl`
+- `Resources/Shaders/MetaballPS.hlsl`
 - `Game/Scenes/GameScene.cpp`
 - `Game/Systems/PlayerActionSystem.h`
 
@@ -496,10 +496,10 @@ PlayGame で GPU fluid player を出した時に device removed / freeze が起�
 関連ファイル:
 - `Engine/Graphics/Renderer.cpp`
 - `Engine/Graphics/Renderer.h`
-- `Resources/shaders/FluidSimCS.hlsl`
-- `Resources/shaders/CollisionCompute.hlsl`
-- `Resources/shaders/GPUFluidVS.hlsl`
-- `Resources/shaders/GPUFluidDebugVS.hlsl`
+- `Resources/Shaders/FluidSimCS.hlsl`
+- `Resources/Shaders/CollisionCompute.hlsl`
+- `Resources/Shaders/GPUFluidVS.hlsl`
+- `Resources/Shaders/GPUFluidDebugVS.hlsl`
 - `d3d12_validation_log.txt`
 
 ## 補足

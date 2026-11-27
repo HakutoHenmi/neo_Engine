@@ -117,7 +117,7 @@ public:
 	}
 	void Kernel(const char* entry, bool simulation = false) {
 		auto code = Compile(
-		    simulation ? L"Resources/shaders/FluidSimCS.hlsl" : L"Resources/shaders/FluidVolumeCS.hlsl", entry,
+		    simulation ? L"Resources/Shaders/FluidSimCS.hlsl" : L"Resources/Shaders/FluidVolumeCS.hlsl", entry,
 		    "cs_5_0");
 		Check(device->CreateComputeShader(code->GetBufferPointer(), code->GetBufferSize(), nullptr, &kernels[entry]));
 	}
@@ -1194,8 +1194,8 @@ void TestVolume(
 		ComPtr<ID3D11ShaderResourceView> bgSrv, depthSrv;
 		Check(g.device->CreateShaderResourceView(background.Get(), nullptr, &bgSrv));
 		Check(g.device->CreateShaderResourceView(depth.Get(), nullptr, &depthSrv));
-		auto vsCode = g.Compile(L"Resources/shaders/FluidCompositeVS.hlsl", "main", "vs_5_0"),
-		     psCode = g.Compile(L"Resources/shaders/FluidRaymarch.hlsl", "RaymarchPS", "ps_5_0");
+		auto vsCode = g.Compile(L"Resources/Shaders/FluidCompositeVS.hlsl", "main", "vs_5_0"),
+		     psCode = g.Compile(L"Resources/Shaders/FluidRaymarch.hlsl", "RaymarchPS", "ps_5_0");
 		ComPtr<ID3D11VertexShader> vs;
 		ComPtr<ID3D11PixelShader> ps;
 		Check(g.device->CreateVertexShader(vsCode->GetBufferPointer(), vsCode->GetBufferSize(), nullptr, &vs));
@@ -1282,8 +1282,8 @@ void TestVolume(
 		// Move the near grid away: live bulk must still render via the distant LOD.
 		cb.origin = {50, -2, 50};
 		g.context->UpdateSubresource(constants.Get(), 0, nullptr, &cb, 0, 0);
-		auto farVsCode = g.Compile(L"Resources/shaders/FluidRaymarch.hlsl", "SprayVS", "vs_5_0");
-		auto farPsCode = g.Compile(L"Resources/shaders/FluidRaymarch.hlsl", "SprayPS", "ps_5_0");
+		auto farVsCode = g.Compile(L"Resources/Shaders/FluidRaymarch.hlsl", "SprayVS", "vs_5_0");
+		auto farPsCode = g.Compile(L"Resources/Shaders/FluidRaymarch.hlsl", "SprayPS", "ps_5_0");
 		ComPtr<ID3D11VertexShader> farVs;
 		ComPtr<ID3D11PixelShader> farPs;
 		Check(g.device->CreateVertexShader(farVsCode->GetBufferPointer(), farVsCode->GetBufferSize(), nullptr, &farVs));

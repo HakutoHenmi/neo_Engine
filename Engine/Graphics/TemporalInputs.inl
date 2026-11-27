@@ -51,8 +51,8 @@ bool Renderer::InitTemporalInputs_() {
 	if (FAILED(dev_->CreateRootSignature(
 	        0, blob->GetBufferPointer(), blob->GetBufferSize(), IID_PPV_ARGS(&rootSigTemporal_))))
 		return false;
-	auto vs = CompileShaderFromFile(L"Resources/shaders/FluidCompositeVS.hlsl", "main", "vs_5_0"),
-	     ps = CompileShaderFromFile(L"Resources/shaders/TemporalPrepare.hlsl", "main", "ps_5_0");
+	auto vs = CompileShaderFromFile(L"Resources/Shaders/FluidCompositeVS.hlsl", "main", "vs_5_0"),
+	     ps = CompileShaderFromFile(L"Resources/Shaders/TemporalPrepare.hlsl", "main", "ps_5_0");
 	if (!vs || !ps)
 		return false;
 	D3D12_GRAPHICS_PIPELINE_STATE_DESC pso{};
@@ -72,8 +72,8 @@ bool Renderer::InitTemporalInputs_() {
 	pso.DepthStencilState.DepthEnable = FALSE;
 	if (FAILED(dev_->CreateGraphicsPipelineState(&pso, IID_PPV_ARGS(&psoTemporalPrepare_))))
 		return false;
-	vs = CompileShaderFromFile(L"Resources/shaders/TemporalObject.hlsl", "VSMain", "vs_5_0");
-	ps = CompileShaderFromFile(L"Resources/shaders/TemporalObject.hlsl", "PSMain", "ps_5_0");
+	vs = CompileShaderFromFile(L"Resources/Shaders/TemporalObject.hlsl", "VSMain", "vs_5_0");
+	ps = CompileShaderFromFile(L"Resources/Shaders/TemporalObject.hlsl", "PSMain", "ps_5_0");
 	if (!vs || !ps)
 		return false;
 	pso.VS = {vs->GetBufferPointer(), vs->GetBufferSize()};

@@ -197,7 +197,7 @@ BGM・戦闘音・スライム音の音量を分ける。試し場ではBGMを�
 
 | 現行要素・場所 | 新企画での扱い |
 | --- | --- |
-| `Engine/Fluid/FluidVolume.cpp`、`Resources/shaders/FluidSimCS.hlsl`、`Resources/shaders/FluidRaymarch.hlsl` | 流体・表面・光学表現を活用。個体ID、複数コア、変形目標、配合別の制御は追加検証 |
+| `Engine/Fluid/FluidVolume.cpp`、`Resources/Shaders/FluidSimCS.hlsl`、`Resources/Shaders/FluidRaymarch.hlsl` | 流体・表面・光学表現を活用。個体ID、複数コア、変形目標、配合別の制御は追加検証 |
 | `Game/Scenes/GameScene.cpp` | 流体とプレイヤー状態の接続を変更。単体コア・HP連動の前提を見直す |
 | `Game/Systems/GameControls.h`、既存カメラ、ジャンプ・接地処理 | 行動単位と入力対応を組み直して活用 |
 | `Game/Systems/SlimeAssault.inl`、`Game/Systems/ChronoInk.inl` | 軌跡やビームと、新ルールで活用可能な移動・地形・カメラを切り分ける |

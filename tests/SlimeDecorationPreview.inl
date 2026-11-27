@@ -64,10 +64,10 @@ void TestSlimeDecorationPreview(Gpu& g) {
 	ComPtr<ID3D11ShaderResourceView> environmentSrv;
 	Check(g.device->CreateTexture2D(&skyDesc, skyData.data(), &environment));
 	Check(g.device->CreateShaderResourceView(environment.Get(), nullptr, &environmentSrv));
-	auto vsCode = g.Compile(L"Resources/shaders/FluidCompositeVS.hlsl", "main", "vs_5_0"),
-	     psCode = g.Compile(L"Resources/shaders/FluidRaymarch.hlsl", "RaymarchPS", "ps_5_0");
-	auto decorationVS = g.Compile(L"Resources/shaders/FluidRaymarch.hlsl", "SprayVS", "vs_5_0"),
-	     decorationPS = g.Compile(L"Resources/shaders/FluidRaymarch.hlsl", "SprayPS", "ps_5_0");
+	auto vsCode = g.Compile(L"Resources/Shaders/FluidCompositeVS.hlsl", "main", "vs_5_0"),
+	     psCode = g.Compile(L"Resources/Shaders/FluidRaymarch.hlsl", "RaymarchPS", "ps_5_0");
+	auto decorationVS = g.Compile(L"Resources/Shaders/FluidRaymarch.hlsl", "SprayVS", "vs_5_0"),
+	     decorationPS = g.Compile(L"Resources/Shaders/FluidRaymarch.hlsl", "SprayPS", "ps_5_0");
 	ComPtr<ID3D11VertexShader> vs, dvs;
 	ComPtr<ID3D11PixelShader> ps, dps;
 	Check(g.device->CreateVertexShader(vsCode->GetBufferPointer(), vsCode->GetBufferSize(), nullptr, &vs));

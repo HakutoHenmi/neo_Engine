@@ -16,7 +16,7 @@ public:
 	void Draw();
 
 private:
-	Coordinator* m_coordinator = nullptr;
+	Coordinator* coordinator_ = nullptr;
 };
 
 } // namespace ECS

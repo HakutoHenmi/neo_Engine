@@ -18,8 +18,8 @@ void TestVolumeShadow(Gpu& g, VolumeCB cb, Texture& density, Texture& occupancy,
 	g.Unbind();
 	g.context->UpdateSubresource(lightCb.Get(), 0, nullptr, &light, 0, 0);
 	g.context->UpdateSubresource(settings.Get(), 0, nullptr, &cb, 0, 0);
-	auto vsCode = g.Compile(L"Resources/shaders/FluidShadow.hlsl", "ShadowVS", "vs_5_0"),
-	     psCode = g.Compile(L"Resources/shaders/FluidShadow.hlsl", "ShadowPS", "ps_5_0");
+	auto vsCode = g.Compile(L"Resources/Shaders/FluidShadow.hlsl", "ShadowVS", "vs_5_0"),
+	     psCode = g.Compile(L"Resources/Shaders/FluidShadow.hlsl", "ShadowPS", "ps_5_0");
 	ComPtr<ID3D11VertexShader> vs;
 	ComPtr<ID3D11PixelShader> ps;
 	Check(g.device->CreateVertexShader(vsCode->GetBufferPointer(), vsCode->GetBufferSize(), nullptr, &vs));

@@ -532,7 +532,6 @@ void EditorUI::DrawViewport(Engine::Renderer* renderer, GameScene* gameScene, bo
 				gizmoDragStartMouse = mousePos;
 				gizmoStartTranslate = currentPos;
 				// 回転と大きさは物の今の値を覚える (キーフレームでは使わない)。
-				// 以前は 0 と 1 を入れていたため、移動の取り消しで回転と大きさまで初期値に戻っていた
 				gizmoStartRotate = tc.rotate;
 				gizmoStartScale = tc.scale;
 			}

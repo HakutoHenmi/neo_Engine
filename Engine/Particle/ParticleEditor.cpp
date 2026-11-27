@@ -8,13 +8,13 @@ void ParticleEditor::Initialize() {
 	previewEmitter_.Initialize(*Renderer::GetInstance(), "PreviewEmitter");
 	targetEmitter = &previewEmitter_;
 
-	// ★追加: プレビュー用レンダーターゲットとカメラの初期化
+	// プレビュー用レンダーターゲットとカメラの初期化
 	previewTarget_ = Renderer::GetInstance()->CreateRenderTarget(512, 512);
 	// GPUParticleの初期化
 	gpuParticleSystem_.Initialize(Renderer::GetInstance()->GetDevice(), 10000);
 
 	previewCamera_.Initialize();
-	// ★修正: 透視投影行列を設定（これがないと何も描画されない）
+	// 透視投影行列を設定（これがないと何も描画されない）
 	previewCamera_.SetProjection(0.7854f, 1.0f, 0.1f, 200.0f); // FOV=45度, aspect=1:1
 	previewCamera_.SetPosition(0, 2, -10);
 }
@@ -33,14 +33,14 @@ void ParticleEditor::Update(float dt) {
 		gpuParticleSystem_.Update(Renderer::GetInstance()->GetCommandList(), dt, emitters);
 	}
 
-	// ★変更: ImGui コンテキストがない場合は以降の入力をスキップ
+	// ImGui コンテキストがない場合は以降の入力をスキップ
 	if (!ImGui::GetCurrentContext()) {
 		previewCamera_.SetPosition(0, 2, -10);
 		previewCamera_.LookAt(0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f);
 		return;
 	}
 
-	// ★追加: カメラ操作 (ImGuiウィンドウ上でドラッグ可能にする)
+	// カメラ操作 (ImGuiウィンドウ上でドラッグ可能にする)
 	if (ImGui::IsMouseDragging(ImGuiMouseButton_Right)) {
 		ImVec2 delta = ImGui::GetIO().MouseDelta;
 		camRotX_ -= delta.y * 0.01f;
@@ -56,14 +56,13 @@ void ParticleEditor::Update(float dt) {
 	pos.z = camDist_ * cosf(camRotX_) * cosf(camRotY_);
 
 	previewCamera_.SetPosition(pos.x, pos.y, pos.z);
-	// ★修正: LookAtで常に原点方向を向かせる（SetRotationだとズレやすい）
+	// LookAtで常に原点方向を向かせる（SetRotationだとズレやすい）
 	previewCamera_.LookAt(0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f);
 }
 
 void ParticleEditor::DrawPreview(const Camera& cam) {
+	// プレビューのオフスクリーン描画は DrawUI 内で実行する。
 	(void)cam; // 未使用
-	           // ★変更: このDrawPreview自体はメイン描画からは呼ばれないが、
-	           // Renderer内部の独自パスでオフスクリーン描画を実行する
 }
 
 void ParticleEditor::DrawUI() {
@@ -72,17 +71,17 @@ void ParticleEditor::DrawUI() {
 
 	// タブに埋め込めるよう、ImGui::Begin("Particle Editor") は呼ばない
 
-	// ★追加: プレビュー映像の描画
+	// プレビュー映像の描画
 	ImGui::Text("Preview (Right-click drag to rotate, Scroll to zoom)");
 	ImVec2 previewSize(512, 512);
 
 	// レンダリング先をこのウィンドウのテクスチャに変更
 	Renderer::GetInstance()->BeginCustomRenderTarget(previewTarget_);
 
-	// ★追加: プレビュー用カメラを適用
+	// プレビュー用カメラを適用
 	Renderer::GetInstance()->SetCamera(previewCamera_);
 
-	// ★追加: グリッド線の描画（XZ平面、-5〜+5）
+	// グリッド線の描画（XZ平面、-5〜+5）
 	auto* r = Renderer::GetInstance();
 	const float gridSize = 5.0f;
 	const float gridStep = 1.0f;
@@ -92,13 +91,13 @@ void ParticleEditor::DrawUI() {
 		r->DrawLine3D({-gridSize, 0, i}, {gridSize, 0, i}, gridColor);
 	}
 
-	// ★追加: 原点ギズモ（XYZ軸の表示）
+	// 原点ギズモ（XYZ軸の表示）
 	const float axisLen = 2.0f;
 	r->DrawLine3D({0, 0, 0}, {axisLen, 0, 0}, {1.0f, 0.2f, 0.2f, 1.0f}); // X: 赤
 	r->DrawLine3D({0, 0, 0}, {0, axisLen, 0}, {0.2f, 1.0f, 0.2f, 1.0f}); // Y: 緑
 	r->DrawLine3D({0, 0, 0}, {0, 0, axisLen}, {0.3f, 0.3f, 1.0f, 1.0f}); // Z: 青
 
-	// ★修正: 先に FlushDrawCalls() を呼び、Skyboxやグリッドなどを描画させてから、
+	// 先に FlushDrawCalls() を呼び、Skyboxやグリッドなどを描画させてから、
 	// その上にパーティクルを描画するようにする（Skyboxにパーティクルが上書きされるのを防ぐため）
 	r->FlushDrawCalls();
 
@@ -144,7 +143,7 @@ void ParticleEditor::DrawUI() {
 		ImGui::DragFloat("Life Time", &targetEmitter->params.lifeTime, 0.01f, 0.1f, 10.0f);
 		ImGui::DragFloat("Life Time Variance", &targetEmitter->params.lifeTimeVariance, 0.01f, 0.0f, 5.0f);
 
-		// ★追加: 形状
+		// 形状
 		int shapeType = static_cast<int>(targetEmitter->params.shape);
 		const char* shapeNames[] = {"Point", "Sphere", "Cone"};
 		if (ImGui::Combo("Emission Shape", &shapeType, shapeNames, IM_ARRAYSIZE(shapeNames))) {
@@ -166,7 +165,7 @@ void ParticleEditor::DrawUI() {
 		ImGui::DragFloat3("Start Velocity", &targetEmitter->params.startVelocity.x, 0.1f);
 		ImGui::DragFloat3("Velocity Variance", &targetEmitter->params.velocityVariance.x, 0.1f);
 		ImGui::DragFloat3("Acceleration", &targetEmitter->params.acceleration.x, 0.1f);
-		ImGui::DragFloat("Damping", &targetEmitter->params.damping, 0.01f, 0.0f, 100.0f); // ★追加: 摩擦
+		ImGui::DragFloat("Damping", &targetEmitter->params.damping, 0.01f, 0.0f, 100.0f); // 摩擦
 	}
 
 	if (ImGui::CollapsingHeader("Size", ImGuiTreeNodeFlags_DefaultOpen)) {
@@ -193,7 +192,7 @@ void ParticleEditor::DrawUI() {
 			targetEmitter->params.texturePath = texBuf;
 		}
 
-		// ★変更: シェーダー選択ドロップダウン
+		// シェーダー選択ドロップダウン
 		struct ShaderOption {
 			const char* label;
 			const char* shaderName;
@@ -228,7 +227,7 @@ void ParticleEditor::DrawUI() {
 			targetEmitter->params.shaderName = shaderOptions[currentShaderIdx].shaderName;
 			targetEmitter->params.isAdditive = shaderOptions[currentShaderIdx].isAdditive;
 
-			// ★追加: ProceduralSmoke系を選択した場合、煙用プリセットを適用
+			// ProceduralSmoke系を選択した場合、煙用プリセットを適用
 			std::string sn = shaderOptions[currentShaderIdx].shaderName;
 			if (sn == "ProceduralSmoke" || sn == "ProceduralSmokeAdditive") {
 				targetEmitter->params.startVelocity = {0, 1.5f, 0};
@@ -247,7 +246,7 @@ void ParticleEditor::DrawUI() {
 
 		ImGui::Checkbox("Use Billboard", &targetEmitter->params.useBillboard);
 
-		// ★追加: UVアニメーション
+		// UVアニメーション
 		ImGui::Separator();
 		ImGui::Checkbox("Use UV Animation", &targetEmitter->params.useUvAnim);
 		if (targetEmitter->params.useUvAnim) {

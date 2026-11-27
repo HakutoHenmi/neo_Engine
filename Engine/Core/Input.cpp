@@ -89,7 +89,7 @@ void Input::Update() {
 	mouseX_ = static_cast<float>(mouseState_.lX);
 	mouseY_ = static_cast<float>(mouseState_.lY);
 
-	// ★絶対座標の更新（OSカーソルと同期し、内部解像度にスケーリング）
+	// 絶対座標の更新（OSカーソルと同期し、内部解像度にスケーリング）
 	POINT pt;
 	GetCursorPos(&pt);
 	ScreenToClient(hwnd_, &pt);

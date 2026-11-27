@@ -1,4 +1,4 @@
-#include "../Resources/shaders/FluidRaymarch.hlsl"
+#include "../Resources/Shaders/FluidRaymarch.hlsl"
 StructuredBuffer<float4> queries:register(t13);
 RWStructuredBuffer<float4> queryResults:register(u0);
 [numthreads(64,1,1)]

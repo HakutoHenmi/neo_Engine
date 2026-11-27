@@ -104,10 +104,10 @@ float heightAt(float2 xz)
         float2 d3 = normalize(float2( 0.8,  0.6));
         float2 d4 = normalize(float2(-0.6,  0.9));
 
-        // ★ここを強める
-        float  aMid = 0.18;   // 振幅 (前: 0.08)
-        float  kMid = 0.35;   // 波数 (前: 0.20) → 細かく
-        float  sMid = 0.9;    // 速さ (前: 0.7)  → 少し速く
+        // 中間波の振幅・波数・時間方向の速さ
+        float  aMid = 0.18;   // 振幅
+        float  kMid = 0.35;   // 波数
+        float  sMid = 0.9;    // 時間方向の速さ
 
         h += sin(dot(d3, xz) * kMid        + t * sMid      ) * aMid;
         h += sin(dot(d4, xz) * kMid * 1.3  + t * (sMid*1.2)) * aMid;
@@ -115,10 +115,10 @@ float heightAt(float2 xz)
 
     // --- 3) 細かいさざ波（全体にびっしり） ---
     {
-        // ★振幅と細かさをアップ
-        float  aSmall = 0.06; // (前: 0.03)
-        float  kS1 = 0.90;    // (前: 0.55)
-        float  kS2 = 1.30;    // (前: 0.75)
+        // さざ波の振幅と、異なる 2 方向の波数
+        float  aSmall = 0.06;
+        float  kS1 = 0.90;
+        float  kS2 = 1.30;
 
         float2 r1 = xz * kS1 + float2(t * 1.3,  t * 0.9);
         float2 r2 = xz * kS2 + float2(-t * 1.0, t * 1.2);
@@ -131,10 +131,10 @@ float heightAt(float2 xz)
 
     // --- 4) 極小の速い波（シルエット用） ---
     {
-        // ★ここも少し上げる
-        float aTiny = 0.04;   // (前: 0.02)
-        float kT1 = 1.9;      // (前: 1.1)
-        float kT2 = 2.5;      // (前: 1.6)
+        // 輪郭に細かい凹凸を作る波の振幅と波数
+        float aTiny = 0.04;
+        float kT1 = 1.9;
+        float kT2 = 2.5;
 
         float2 s1 = xz * kT1 + float2(t * 1.4,  t * 1.0);
         float2 s2 = xz * kT2 + float2(-t * 1.1, t * 1.6);
@@ -358,7 +358,7 @@ void WaterSurface::Draw(ID3D12GraphicsCommandList* cmd, const Camera& cam) {
 	XMMATRIX MVP = W * V * P;
 	XMStoreFloat4x4(&cb.mvp, XMMatrixTranspose(MVP));
 
-	// ★ カメラ位置をセット
+	// カメラ位置をセット
 	auto camPos = cam.Position();
 	cb.camPos = XMFLOAT4(camPos.x, camPos.y, camPos.z, 1.0f);
 

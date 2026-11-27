@@ -53,7 +53,7 @@ void TestRtLightingDenoise(Gpu& g) {
 	cb.nearPlane = .1f;
 	cb.farPlane = 100;
 	auto constants = g.Constant(sizeof(cb));
-	auto code = g.Compile(L"Resources/shaders/RtLightingDenoise.hlsl", "main", "cs_5_0");
+	auto code = g.Compile(L"Resources/Shaders/RtLightingDenoise.hlsl", "main", "cs_5_0");
 	ComPtr<ID3D11ComputeShader> shader;
 	Check(g.device->CreateComputeShader(code->GetBufferPointer(), code->GetBufferSize(), nullptr, &shader));
 	auto run = [&]() {

@@ -13,7 +13,7 @@
 #include <atomic>
 #include <mutex>
 
-// ★追加: テキスト描画用
+// テキスト描画用
 #include "DynamicGlyphCache.h"
 
 #include <d3d12.h>
@@ -49,8 +49,8 @@ public:
 		float h = 64.0f;
 		float rotationRad = 0.0f;
 		Vector4 color{1, 1, 1, 1};
-		Vector4 uvScaleOffset{1.0f, 1.0f, 0.0f, 0.0f}; // ★追加: UVスケール・オフセット
-		int layer = 0;                                 // ★追加: 描画レイヤー（大きいほど手前）
+		Vector4 uvScaleOffset{1.0f, 1.0f, 0.0f, 0.0f}; // UVスケール・オフセット
+		int layer = 0;                                 // 描画レイヤー（大きいほど手前）
 	};
 
 	struct CollisionRequest {
@@ -145,7 +145,7 @@ public:
 		SpotLight spotLights[kMaxSpotLights];
 		AreaLight areaLights[kMaxAreaLights];
 
-		Matrix4x4 shadowMatrix; // 追加: シャドウマッピング用行列
+		Matrix4x4 shadowMatrix; // シャドウマッピング用行列
 	};
 #ifdef _MSC_VER
 #pragma warning(pop)
@@ -232,7 +232,7 @@ public:
 	Renderer(const Renderer&) = delete;
 	Renderer& operator=(const Renderer&) = delete;
 
-	// ★追加: カスタム描画ジョブの遅延実行
+	// カスタム描画ジョブの遅延実行
 	using CustomDrawJob = std::function<void(ID3D12GraphicsCommandList*)>;
 	void SetCustomDrawJob(CustomDrawJob job) {
 		customDrawJob_ = job;
@@ -247,7 +247,7 @@ public:
 	bool Initialize(WindowDX* window);
 	void Shutdown();
 
-	void WaitGPU(); // ★追加: 外部から安全な同期処理を呼べるようにする
+	void WaitGPU(); // 外部から安全な同期処理を呼べるようにする
 
 	ID3D12Device* GetDevice() const {
 		return dev_;
@@ -302,7 +302,7 @@ public:
 		return cbFrame_.useCubemapBackground != 0;
 	}
 
-	// ★追加: プロファイラ用統計データ取得
+	// プロファイラ用統計データ取得
 	uint32_t frameDrawCalls_ = 0;
 	uint32_t frameParticleCount_ = 0;
 	uint32_t GetDrawCallCount() const {
@@ -367,19 +367,19 @@ public:
 		return ppSrvGpu_;
 	}
 
-	// ★追加: Gameシーンの最終出力テクスチャ。エディタUIからここを描画する。
+	// Gameシーンの最終出力テクスチャ。エディタUIからここを描画する。
 	D3D12_GPU_DESCRIPTOR_HANDLE GetGameFinalSRV() const {
 		return finalSrvGpu_;
 	}
 
-	// ★追加: 描画領域を強制上書きするメソッド
+	// 描画領域を強制上書きするメソッド
 	// これを呼び出すと、次回の BeginFrame()/EndFrame() において指定領域に描画される
 	void SetGameViewport(float x, float y, float w, float h);
 
-	// ★追加: 描画領域を元（フルスクリーン）に戻すメソッド
+	// 描画領域を元（フルスクリーン）に戻すメソッド
 	void ResetGameViewport();
 
-	// ★追加: 現在のメインレンダーターゲットと深度バッファの取得
+	// 現在のメインレンダーターゲットと深度バッファの取得
 	D3D12_CPU_DESCRIPTOR_HANDLE GetMainRTV() const {
 		return ppRtv_;
 	}
@@ -387,7 +387,7 @@ public:
 		return ppDepthDsv_;
 	}
 
-	// ★追加: SRVヒープの取得（CustomDrawJob用）
+	// SRVヒープの取得（CustomDrawJob用）
 	ID3D12DescriptorHeap* GetSrvHeap() const {
 		return srvHeap_;
 	}
@@ -398,14 +398,14 @@ public:
 		return backdropSrvCpuMaster_;
 	}
 
-	// ★追加: 液体メタボール用の専用レンダーターゲット（ステップ1）
+	// 液体メタボール用の専用レンダーターゲット
 	void BeginLiquidPass();
 	void EndLiquidPass();
 	D3D12_GPU_DESCRIPTOR_HANDLE GetLiquidSrv() const {
 		return liquidSrv_[0];
 	}
 
-	// ★追加: 外部（ParticleEditorなど）用のカスタムレンダーターゲット
+	// 外部（ParticleEditorなど）用のカスタムレンダーターゲット
 	struct CustomRenderTarget {
 		Microsoft::WRL::ComPtr<ID3D12Resource> texture;
 		Microsoft::WRL::ComPtr<ID3D12Resource> depth;
@@ -473,7 +473,7 @@ public:
 	MeshHandle LoadObjMesh(const std::string& objFilePath);
 	bool LoadAdditionalAnimation(MeshHandle handle, const std::string& animPath);
 
-	// ★追加: キューブマップ読み込み (DDS) と Skybox 設定
+	// キューブマップ読み込み (DDS) と Skybox 設定
 	TextureHandle LoadCubeMap(const std::string& ddsPath);
 	void SetSkyboxTexture(TextureHandle cubeMap);
 	// 平行光源のシャドウマップ: 正方形の広さと光の向きの奥行き (ワールド単位)、カメラの前方へ
@@ -483,7 +483,7 @@ public:
 		shadowDepth_ = depth;
 		shadowLead_ = lead;
 	}
-	// ★追加: 和風ポストプロセス用テクスチャ
+	// 和風ポストプロセス用テクスチャ
 	void SetSumiETextures(TextureHandle paper, TextureHandle vignette) {
 		sumiEPaperTex_ = paper;
 		sumiEVignetteTex_ = vignette;
@@ -493,15 +493,15 @@ public:
 		return skyboxCubeMapHandle_;
 	}
 
-	// ★追加: 動的メッシュの作成と更新
+	// 動的メッシュの作成と更新
 	MeshHandle CreateDynamicMesh(const std::vector<VertexData>& vertices, const std::vector<uint32_t>& indices);
 	void UpdateDynamicMesh(MeshHandle handle, const std::vector<VertexData>& vertices);
 
-	// ★追加: プリミティブ形状の動的生成
+	// プリミティブ形状の動的生成
 	MeshHandle CreateRingMesh(float outerRadius, float innerRadius, uint32_t segments);
 	MeshHandle CreateCylinderMesh(float radius, float height, uint32_t segments);
 
-	// ★追加: テクスチャのSRVハンドルを取得 (ImGui::Imageでサムネイル表示用)
+	// テクスチャのSRVハンドルを取得 (ImGui::Imageでサムネイル表示用)
 	UINT TextureMipLevels(TextureHandle handle) const {
 		return handle < textures_.size() && textures_[handle].res ? textures_[handle].res->GetDesc().MipLevels : 0;
 	}
@@ -528,17 +528,17 @@ public:
 	    const std::string& shaderName = "Default", const std::vector<TextureHandle>& extraTex = {},
 	    uint64_t motionId = 0);
 
-	// ★追加: パーティクル インスタンス描画
+	// パーティクル インスタンス描画
 	void DrawParticleInstanced(
 	    MeshHandle mesh, TextureHandle texture, const Transform& transform, const Vector4& mulColor,
 	    const Vector4& uvScaleOffset, const std::string& shaderName = "Particle");
 
-	// ★追加: 液体（スライムメタボール）パーティクル インスタンス描画
+	// 液体（スライムメタボール）パーティクル インスタンス描画
 	void DrawLiquidParticleInstanced(
 	    MeshHandle mesh, TextureHandle tex, const Transform& transform, const Vector4& color,
 	    const Vector4& uvScaleOffset, const std::string& shaderName);
 
-	// ★追加: GPU流体パーティクルシステム (フェーズ1)
+	// GPU流体パーティクルシステム
 	struct GPUFluidParticle {
 		Vector3 position;
 		float pad0;
@@ -546,7 +546,7 @@ public:
 		float pad1;
 		Vector4 color;
 		float type;
-		Vector3 pad2; // ★追加: 0=プレイヤー, 1=水しぶき
+		Vector3 pad2; // 0=プレイヤー, 1=水しぶき
 	};
 	// 目標はフレーム中は変えない。割り当ては GPU 上で元の粒子の枠ごとに持つ。
 	// 液体の体 (shape.w=1) の blend: 動きの量 (0〜1) と、足元の傾き (体の右・前の向きに 1 進むごとの高さ、-1〜1) を
@@ -656,7 +656,7 @@ public:
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> psoFluidInit_;
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> psoFluidClearOriginal_;
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> psoFluidClearCount_;
-	Microsoft::WRL::ComPtr<ID3D12PipelineState> psoGPUFluidShadow_; // ★追加: シャドウパス用
+	Microsoft::WRL::ComPtr<ID3D12PipelineState> psoGPUFluidShadow_; // シャドウパス用
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> psoFluidCount_;
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> psoFluidPrefixSum_;
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> psoFluidSort_;
@@ -842,7 +842,7 @@ public:
 	Microsoft::WRL::ComPtr<ID3D12Resource> volumeSurfaceDepth_;
 	Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> volumeRtvHeap_;
 	D3D12_GPU_DESCRIPTOR_HANDLE volumeSurfaceDepthSrv_{};
-	// 坂の町の放水の水を画面の上で面にして描く (Resources/shaders/FluidScreenWater.hlsl)。
+	// 坂の町の放水の水を画面の上で面にして描く (Resources/Shaders/FluidScreenWater.hlsl)。
 	// 0: 粒の近さ (1/奥行きの最大)、1: 厚みと速さ (足し合わせ)、2/3: なめらかにした奥行き (交互に使う)。
 	// 体積の升は放水の届く広さ (数十 m) に合わせると粗くなるので、消火栓の水だけはこちらで描く
 	Microsoft::WRL::ComPtr<ID3D12Resource> screenWaterTargets_[4];
@@ -877,7 +877,7 @@ public:
 	uint32_t volumeHistoryIndex_ = 0, fluidVolumeDebugMode_ = 0;
 	float fluidSimulatedDt_ = 0.0f;
 	float fluidDecorationTime_ = 0; // 強化中の戦闘が止まっている間も、見た目の泡は動き続ける。
-	void DrawGPUFluidShadow();      // ★追加: シャドウパス描画用
+	void DrawGPUFluidShadow();      // シャドウパス描画用
 	void DrawGPUFluidDebug();
 	void SetGPUFluidCore(
 	    const Vector3& pos, float attraction, const Vector3& scale = {1.0f, 1.0f, 1.0f},
@@ -903,7 +903,7 @@ public:
 	float gpuFluidTetherBlend_ = 0.0f;
 	void SetGPUFluidDecoy(
 	    const Vector3& pos, float attraction, const Vector3& scale = {1.0f, 1.0f, 1.0f},
-	    const Vector3& forward = {0.0f, 0.0f, 1.0f}); // ★追加: デコイ用コア情報設定
+	    const Vector3& forward = {0.0f, 0.0f, 1.0f}); // デコイ用コア情報設定
 
 	Vector3 gpuFluidCorePos_ = {0, 0, 0};
 	Vector3 gpuFluidCoreVelocity_ = {0, 0, 0};
@@ -921,13 +921,13 @@ public:
 	bool chronoFluidPaused_ = false, rogueWorldFrozen_ = false;
 	float gpuFluidCoreFlowSpeed_ = 0.0f;
 
-	// ★追加: デコイ用コア情報
+	// デコイ用コア情報
 	Vector3 gpuFluidDecoyPos_ = {0, 0, 0};
 	float gpuFluidDecoyAttraction_ = 0.0f;
 	Vector3 gpuFluidDecoyScale_ = {1.0f, 1.0f, 1.0f};
 	Vector3 gpuFluidDecoyForward_ = {0.0f, 0.0f, 1.0f};
 
-	// ★追加: 流体シミュレーション用のAABBコリジョン
+	// 流体シミュレーション用のAABBコリジョン
 	struct FluidAABB {
 		Vector3 min;
 		float pad0;
@@ -946,10 +946,10 @@ public:
 	std::vector<Vector4> gpuFluidSplashSpheres_;
 	Microsoft::WRL::ComPtr<ID3D12Resource> gpuFluidAABBBuffer_;
 
-	// ★追加: Compute Shader Skinning
+	// Compute Shader Skinning
 	void ComputeSkinning(Model* model, const std::vector<Matrix4x4>& skeletonParams);
 
-	// 追加: デバッグベクトル表示フラグ
+	// デバッグベクトル表示フラグ
 	bool drawFluidDebugArrows_ = false;
 	void SetDrawFluidDebugArrows(bool b) {
 		drawFluidDebugArrows_ = b;
@@ -958,7 +958,7 @@ public:
 		return drawFluidDebugArrows_;
 	}
 
-	// ★追加: 深度ベースのメタボール用
+	// 深度ベースのメタボール用
 	// 相 (phase) ごとのレイヤーを分けることで、手前のプレイヤー / 分身が透明の合成の前に
 	// 水 (や別の流体の体) を消してしまうのを防ぐ。
 	Microsoft::WRL::ComPtr<ID3D12Resource> liquidRT_[3];
@@ -981,7 +981,7 @@ public:
 	    D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
 	    D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE};
 
-	// ★追加: パーティクル描画 (UVスケール・オフセット付き)
+	// パーティクル描画 (UVスケール・オフセット付き)
 	void DrawParticle(
 	    MeshHandle mesh, TextureHandle texture, const Transform& transform, const Vector4& mulColor,
 	    const Vector4& uvScaleOffset, const std::string& shaderName = "Particle");
@@ -989,7 +989,7 @@ public:
 	    MeshHandle mesh, TextureHandle texture, const Matrix4x4& worldMatrix, const Vector4& mulColor,
 	    const Vector4& uvScaleOffset, const std::string& shaderName = "Particle");
 
-	// ★スキニングメッシュ描画
+	// スキニングメッシュ描画
 	void DrawSkinnedMesh(
 	    MeshHandle mesh, TextureHandle texture, const Transform& transform, const std::vector<Matrix4x4>& bones,
 	    const Vector4& mulColor = {1, 1, 1, 1});
@@ -1008,12 +1008,12 @@ public:
 		float left = 0.0f, right = 0.0f, top = 0.0f, bottom = 0.0f; // ピクセル単位の枠の幅
 		Vector4 color{1, 1, 1, 1};
 		float rotationRad = 0.0f;
-		int layer = 0; // ★追加: 描画レイヤー
+		int layer = 0; // 描画レイヤー
 
 		Sprite9SliceDesc() : x(0), y(0), w(64), h(64), left(0), right(0), top(0), bottom(0), rotationRad(0), layer(0) {}
 	};
 	void DrawSprite(TextureHandle texH, const SpriteDesc& s);
-	void DrawSprite9Slice(TextureHandle texH, const Sprite9SliceDesc& s); // ★追加
+	void DrawSprite9Slice(TextureHandle texH, const Sprite9SliceDesc& s);
 	void FlushSprites();                                                  // スプライトの描画実行
 	// 重ねて描く待ち行列が有効な間に積んだスプライト / 文字は、シーンのすべての
 	// スプライトと文字の後に描く (シーンの切り替え、ロード画面)。
@@ -1057,7 +1057,7 @@ public:
 		recordUITextures_ = record;
 	}
 
-	// ★追加: テキスト描画
+	// テキスト描画
 	// text: UTF-8 文字列
 	// x, y: スクリーン座標 (左上基準, ピクセル)
 	// scale: フォントのスケール (1.0 = デフォルトサイズ)
@@ -1075,14 +1075,14 @@ public:
 	    const std::string& text, float scale = 1.0f, const std::string& fontPath = "C:\\Windows\\Fonts\\msgothic.ttc");
 	float GetTextLineHeight(float scale = 1.0f, const std::string& fontPath = "C:\\Windows\\Fonts\\msgothic.ttc") const;
 
-	// ★追加: 3Dライン描画（エディタ用ギズモ・グリッドなど）
+	// 3Dライン描画（エディタ用ギズモ・グリッドなど）
 	void DrawLine3D(const Vector3& p0, const Vector3& p1, const Vector4& color, bool xray = false);
 	void FlushLines();
 
-	// ★追加: 現在のドローコールを直ちにフラッシュ（描画発行）し、キューをクリアする
+	// 現在のドローコールを直ちにフラッシュ（描画発行）し、キューをクリアする
 	void FlushDrawCalls();
 
-	// ★追加: コンピュートシェーダーで衝突判定を実行
+	// コンピュートシェーダーで衝突判定を実行
 	void BeginCollisionCheck(uint32_t maxPairs = 1024);
 	void DispatchCollision(
 	    MeshHandle meshA,                      // メッシュ (対象)
@@ -1117,17 +1117,17 @@ public:
 
 	// Modelへのポインタを取得
 	Model* GetModel(MeshHandle handle);
-	// 追加：透明/加算 シェーダー登録
+	// 透明/加算 シェーダー登録
 	bool CreateShaderPipelineTransparent(
 	    const std::string& shaderName, const std::wstring& vsPath, const std::wstring& psPath, bool additive,
 	    bool depthTest = true);
-	// 追加：透明/加算 用 PSO作成
+	// 透明/加算 用 PSO作成
 	bool CreatePSO_Transparent(
 	    const std::string& name, ID3DBlob* vsBlob, ID3DBlob* psBlob, bool additive, bool depthTest = true);
 
 	bool CreatePSOAlpha(const std::string& name, ID3DBlob* vsBlob, ID3DBlob* psBlob);
 
-	// ★追加: 風とプレイヤーの位置設定
+	// 風とプレイヤーの位置設定
 	void SetWindParams(const Vector4& p) {
 		cbFrame_.windParams = p;
 	}
@@ -1135,7 +1135,7 @@ public:
 		cbFrame_.playerPos = p;
 	}
 
-	// ★追加: DynamicGlyphCache からの SRV 割り当て用
+	// DynamicGlyphCache からの SRV 割り当て用
 	uint32_t AllocateTextSrvIndex() {
 		return AllocateSrvIndex(1);
 	}
@@ -1158,7 +1158,7 @@ private:
 	struct DrawCall {
 		MeshHandle mesh;
 		TextureHandle tex;
-		std::vector<TextureHandle> extraTex; // ★追加: 地形用の追加テクスチャ
+		std::vector<TextureHandle> extraTex; // 地形用の追加テクスチャ
 		Matrix4x4 worldMatrix;
 		Vector4 color;
 		std::string shaderName;
@@ -1168,19 +1168,19 @@ private:
 		Vector4 uvScaleOffset;
 		float reflectivity = 0.5f;
 		bool useCubemap = false;
-		bool useSkinnedVb = false; // ☁️追加: ComputeShaderでスキン済みの場合
+		bool useSkinnedVb = false; // ComputeShaderでスキン済みの場合
 	};
 
 	struct InstanceData {
 		Matrix4x4 world;
 		Vector4 color = {1, 1, 1, 1};
-		Vector4 uvScaleOffset = {1, 1, 0, 0}; // ★追加: UVスケール・オフセット用
+		Vector4 uvScaleOffset = {1, 1, 0, 0}; // UVスケール・オフセット用
 	};
 
 	struct InstancedDrawCall {
 		MeshHandle mesh = 0;
 		TextureHandle tex = 0;
-		std::vector<TextureHandle> extraTex; // ★追加
+		std::vector<TextureHandle> extraTex;
 		std::string shaderName;
 		std::vector<InstanceData> instances;
 	};
@@ -1189,7 +1189,7 @@ private:
 	struct Texture {
 		Microsoft::WRL::ComPtr<ID3D12Resource> res;
 		D3D12_CPU_DESCRIPTOR_HANDLE srvCpu{};
-		D3D12_CPU_DESCRIPTOR_HANDLE srvCpuMaster{}; // ★追加: 非ShaderVisible
+		D3D12_CPU_DESCRIPTOR_HANDLE srvCpuMaster{}; // 非ShaderVisible
 		D3D12_GPU_DESCRIPTOR_HANDLE srvGpu{};
 	};
 
@@ -1219,7 +1219,7 @@ private:
 	    const std::string& name, ID3DBlob* vsBlob, ID3DBlob* psBlob, const D3D12_INPUT_ELEMENT_DESC* layout,
 	    UINT numElements);
 
-	// ★追加: Skybox描画
+	// Skybox描画
 	void DrawSkybox();
 	void InitSkyboxMesh();
 	bool InitSkyboxPipeline();
@@ -1241,7 +1241,7 @@ private:
 	uint32_t srvDynamicEnd_ = 0;
 	static constexpr uint32_t kSrvStaticMax = WindowDX::kSrvStaticCount;
 
-	// ★追加: RTV割り当て用
+	// RTV割り当て用
 	uint32_t rtvCursor_ = 1; // 0番目は finalSceneColor_ 用
 	uint32_t dsvCursor_ = 1; // 0番目は shadowMap_ 用
 
@@ -1277,11 +1277,11 @@ private:
 	void EndFluidProfile(FluidProfileStage stage);
 
 	Microsoft::WRL::ComPtr<ID3D12RootSignature> rootSig3D_;
-	Microsoft::WRL::ComPtr<ID3D12RootSignature> rootSigTerrain_;    // ★追加: 地形用
-	Microsoft::WRL::ComPtr<ID3D12RootSignature> rootSigDistortion_; // ★追加
+	Microsoft::WRL::ComPtr<ID3D12RootSignature> rootSigTerrain_;    // 地形用
+	Microsoft::WRL::ComPtr<ID3D12RootSignature> rootSigDistortion_;
 	Microsoft::WRL::ComPtr<ID3D12RootSignature> rootSigPP_;
 
-	// ☁️追加: コンピュート用
+	// コンピュート用
 	Microsoft::WRL::ComPtr<ID3D12RootSignature> rootSigCompute_;
 	Microsoft::WRL::ComPtr<ID3D12RootSignature> rootSigSkinningCS_;
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> psoSkinningCS_;
@@ -1293,7 +1293,7 @@ private:
 	uint32_t collisionResultCount_[kFrameCount]{};
 	uint32_t collisionDispatchCount_ = 0;
 	uint32_t collisionMaxPairs_ = 0;
-	std::vector<CollisionRequest> collisionRequests_; // ★追加: バッチ用
+	std::vector<CollisionRequest> collisionRequests_; // バッチ用
 
 	std::unordered_map<std::string, Microsoft::WRL::ComPtr<ID3D12PipelineState>> pipelines_;
 	std::vector<std::string> shaderNames_;
@@ -1301,7 +1301,7 @@ private:
 	Microsoft::WRL::ComPtr<ID3D12RootSignature> rootSig2D_;
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> pso2D_;
 
-	// ★追加: テキスト描画用 (複数フォント対応)
+	// テキスト描画用 (複数フォント対応)
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> psoText_;
 	std::unordered_map<std::string, std::unique_ptr<DynamicGlyphCache>> glyphCaches_;
 	struct TextVertex {
@@ -1312,7 +1312,7 @@ private:
 	// フォントパスごとに頂点を蓄積
 	std::unordered_map<std::string, std::vector<TextVertex>> textVerticesMap_;
 
-	// ★追加: 3Dライン描画用
+	// 3Dライン描画用
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> psoLine3D_;
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> psoLine3DXRay_;
 	struct LineVertex {
@@ -1440,10 +1440,10 @@ private:
 	D3D12_GPU_DESCRIPTOR_HANDLE ppSrvGpu_{};
 	D3D12_RESOURCE_STATES ppSceneState_ = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
 
-	// ★追加: カスタムレンダーターゲットのトラッキング
+	// カスタムレンダーターゲットのトラッキング
 	const CustomRenderTarget* currentCustomTarget_ = nullptr;
 
-	// ★追加: 最終描画先(エディタで表示、または画面にコピーする用)
+	// 最終描画先(エディタで表示、または画面にコピーする用)
 	Microsoft::WRL::ComPtr<ID3D12Resource> finalSceneColor_;
 	Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> finalRtvHeap_;
 	D3D12_CPU_DESCRIPTOR_HANDLE finalRtv_{};
@@ -1453,16 +1453,16 @@ private:
 	Microsoft::WRL::ComPtr<ID3D12Resource> backdropColor_;
 	D3D12_CPU_DESCRIPTOR_HANDLE backdropRtv_{};
 	D3D12_CPU_DESCRIPTOR_HANDLE backdropSrvCpu_{};
-	D3D12_CPU_DESCRIPTOR_HANDLE backdropSrvCpuMaster_{}; // ★追加
+	D3D12_CPU_DESCRIPTOR_HANDLE backdropSrvCpuMaster_{};
 	D3D12_GPU_DESCRIPTOR_HANDLE backdropSrv_{};
 
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> psoPP_;
-	Microsoft::WRL::ComPtr<ID3D12PipelineState> psoPPDefault_; // ★追加: デフォルトPSOバックアップ
+	Microsoft::WRL::ComPtr<ID3D12PipelineState> psoPPDefault_; // デフォルトPSOバックアップ
 
-	// ★追加: 最終テクスチャをバックバッファにそのままコピーして映すパイプライン
+	// 最終テクスチャをバックバッファにそのままコピーして映すパイプライン
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> psoCopy_;
 
-	// ★追加: シャドウマップ用リソース
+	// シャドウマップ用リソース
 	Microsoft::WRL::ComPtr<ID3D12Resource> shadowMap_;
 	Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> shadowDsvHeap_;
 	D3D12_CPU_DESCRIPTOR_HANDLE shadowDsv_{};
@@ -1472,7 +1472,7 @@ private:
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> shadowInstancedPso_;
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> shadowCutoutPso_, shadowInstancedCutoutPso_;
 
-	// ★追加: Skybox / 環境マップ
+	// Skybox / 環境マップ
 	Microsoft::WRL::ComPtr<ID3D12RootSignature> rootSigSkybox_;
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> psoSkybox_;
 	Microsoft::WRL::ComPtr<ID3D12Resource> skyboxVB_;
@@ -1495,7 +1495,7 @@ private:
 		float time = 0.0f;
 		Vector4 windParams = {1.0f, 0.0f, 0.5f, 0.2f}; // x,y:方向, z:速度, w:強さ
 		Vector3 playerPos = {0.0f, 0.0f, 0.0f};
-		uint32_t useCubemapBackground = 1; // ★追加: 背景も環境マップを使うか
+		uint32_t useCubemapBackground = 1; // 背景も環境マップを使うか
 	} cbFrame_{};
 #ifdef _MSC_VER
 #pragma warning(pop)
@@ -1509,13 +1509,13 @@ private:
 	bool framePPEnabled_ = false;
 	bool backBufferBarrierState_ = false;
 
-	std::vector<DrawCall> drawCalls_; // ★追加: ドローコールバッファ
+	std::vector<DrawCall> drawCalls_; // ドローコールバッファ
 	// 高速化のためのキャッシュ
 	int lastIDCIndex_ = -1;
-	std::vector<InstancedDrawCall> instancedDrawCalls_;         // ★追加: インスタンスドローコール
-	std::vector<InstancedDrawCall> instancedParticleDrawCalls_; // ★追加: パーティクル用
-	std::vector<InstancedDrawCall> liquidParticleDrawCalls_;    // ★追加: 液体パーティクル用
-	std::vector<SpriteDrawCall> spriteDrawCalls_;               // ★追加: スプライト用
+	std::vector<InstancedDrawCall> instancedDrawCalls_;         // インスタンスドローコール
+	std::vector<InstancedDrawCall> instancedParticleDrawCalls_; // パーティクル用
+	std::vector<InstancedDrawCall> liquidParticleDrawCalls_;    // 液体パーティクル用
+	std::vector<SpriteDrawCall> spriteDrawCalls_;               // スプライト用
 	std::vector<SpriteDrawCall> overlaySprites_;
 	std::unordered_map<std::string, std::vector<TextVertex>> overlayText_;
 	bool overlayQueue_ = false;
@@ -1567,7 +1567,7 @@ private:
 	static thread_local ID3D12GraphicsCommandList* tUiList_;
 	static thread_local bool tUiThread_;
 
-	// ★変更: Mesh構造体ではなくModelクラスへのスマートポインタで管理
+	// モデルは共有ポインタで保持し、描画やキャッシュと寿命を共有する。
 	std::vector<std::shared_ptr<Model>> models_;
 	struct SceneryLods {
 		std::array<uint32_t, 3> meshes{};
@@ -1596,11 +1596,11 @@ private:
 	std::unordered_map<std::string, TextureHandle> textureCache_;
 	std::unordered_map<std::string, MeshHandle> meshCache_;
 
-	// ★追加: コリジョン同期用
+	// コリジョン同期用
 	TextureHandle sumiEPaperTex_ = 0;
 	TextureHandle sumiEVignetteTex_ = 0;
 
-	// ★追加: ポストプロセス用G-Buffer
+	// ポストプロセス用G-Buffer
 	Microsoft::WRL::ComPtr<ID3D12Resource> ppSceneDepth_;
 	D3D12_GPU_DESCRIPTOR_HANDLE ppDepthSrvGpu_{};
 	D3D12_CPU_DESCRIPTOR_HANDLE ppDepthDsv_{};

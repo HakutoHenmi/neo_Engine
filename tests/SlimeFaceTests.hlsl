@@ -1,4 +1,4 @@
-#include "../Resources/shaders/FluidRaymarch.hlsl"
+#include "../Resources/Shaders/FluidRaymarch.hlsl"
 RWStructuredBuffer<float4> faceResults : register(u0);
 [numthreads(1,1,1)]
 void TestGameplayFace(uint3 id:SV_DispatchThreadID){

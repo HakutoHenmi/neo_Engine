@@ -368,7 +368,6 @@ struct GimmickCore {
 	Vec spineA{}, spineB{};
 };
 // ---- 道具の形のデータテーブル (データドリブン) ----
-// 以前は「大きさの範囲」「中に入っているかの判定」「芯の位置」が、形の番号の switch として 3 つの関数に分かれていた。
 // 形 1 つ分のデータを 1 行にまとめ、形の番号で引く。形を足すときは番号を足してこの表に 1 行足す
 struct GimmickShapeData {
 	GimmickBounds bounds;
@@ -435,6 +434,9 @@ struct WeaponShapeGrid {
 	};
 	std::vector<uint8_t> piece;
 	std::vector<Piece> pieces;
+	// (H3) 姿の型紙の名前 (空なら型紙を使っていない) と、形の決まりのために部品にしなかった物の数
+	std::string motif;
+	int motifDrops = 0;
 	int PieceAt(Vec p) const {
 		const int x = int(std::floor((p.x - lo.x) / cell)), y = int(std::floor((p.y - lo.y) / cell)),
 		          z = int(std::floor((p.z - lo.z) / cell));

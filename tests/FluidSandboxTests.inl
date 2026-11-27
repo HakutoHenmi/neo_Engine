@@ -9,8 +9,8 @@ void TestFluidSandbox(Gpu& g) {
 		Require(emitted == 16001, "finite emitter exceeded its cap or depends on FPS");
 		Require(Engine::LimitFluidEmission(40, 16001, emitted) == 0, "completed emitter restarted");
 	}
-	g.Compile(L"Resources/shaders/GlassVS.hlsl", "main", "vs_5_0");
-	g.Compile(L"Resources/shaders/GlassPS.hlsl", "main", "ps_5_0");
+	g.Compile(L"Resources/Shaders/GlassVS.hlsl", "main", "vs_5_0");
+	g.Compile(L"Resources/Shaders/GlassPS.hlsl", "main", "ps_5_0");
 	puts("PASS sandbox: frame-rate independent finite emission and glass shader compilation");
 	const char* entries[] = {"Emit",      "ClearOriginalIndices", "ClearGridCount", "CountParticles",
 	                         "PrefixSum", "SortParticles",        "CalcForce",      "WriteBack"};

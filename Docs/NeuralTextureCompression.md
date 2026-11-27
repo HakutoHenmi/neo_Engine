@@ -18,7 +18,7 @@ NTCの推奨GPUクラスには該当するが、現在公開SDKのDX12 LinAlg高
 
 - Engine/Graphics/Renderer.cpp: LoadTexture2DUncached_ はWICで画像を読み、RGBA8へ変換してCPUでミップ生成する。
 - Engine/Graphics/Renderer.cpp: 一般の描画シェーダーはD3DCompileFromFileでShader Model 5.0としてコンパイルする。On Sampleの統合にはDXC/Slang等の新しい経路が必要。On Load実験ではlibNTCのプリコンパイル済みComputeシェーダーを使用でき、DXCやCUDA Toolkitの追加インストールなしでD3D12復元できた。
-- Resources/shaders/EnvironmentSurfacePS.hlsl: 色・法線・粗さ・AOを個別にサンプリングする。
+- Resources/Shaders/EnvironmentSurfacePS.hlsl: 色・法線・粗さ・AOを個別にサンプリングする。
 - Game/Systems/CityStage.cpp: 材質単位の4マップがそろっており、ニューラルな「テクスチャセット」へ対応付けやすい。
 - Engine/Graphics/Renderer.cpp: LoadCubeMap はDDSを扱うが、通常の2DテクスチャをBCnのままロードする経路は別途必要。
 

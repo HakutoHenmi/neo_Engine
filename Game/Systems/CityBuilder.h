@@ -48,7 +48,7 @@ enum CityMaterialId {
 	CityMaterialCount
 };
 // 吸収モードの材質の色 (写真の材質の代わりに単色で塗り、ローポリの小物と見た目をそろえる)。
-// 材質の番号で引くデータテーブル (CityMaterialId の順。以前は材質ごとの switch だった)
+// 材質の番号で引くデータテーブル (CityMaterialId の順)
 inline Engine::Vector4 FlatCityColor(int material) {
 	static const Engine::Vector4 table[CityMaterialCount] = {
 	    {.3f, .31f, .35f, 1},  // CityRoad

@@ -29,7 +29,7 @@
    - `BuildCityStage` の間は、`LoadTexture2D` がハンドルだけを確保し、`PrepareDistanceLods` は予約だけする。関数を抜けるときに次の順で処理する。
    - LOD: 22モデルの簡略化をJobSystemで並列に行い、頂点のGPU転送を1回の待ちにまとめる。
    - テクスチャ: JPEGの展開とアップロード用バッファへの書き込みをワーカーで並列に行う。メインスレッドはコピー命令を積むだけにし、12枚ずつ、次の組の展開と今の組の転送を重ねる。
-   - **ミップはGPUで作る**（[GenerateMipsCS.hlsl](../Resources/shaders/GenerateMipsCS.hlsl)、2×2の平均。色のマップはリニア空間で平均してsRGBに戻す）。CPUのミップ生成は1枚あたり平均173 msで、並列でも詰まっていた。
+   - **ミップはGPUで作る**（[GenerateMipsCS.hlsl](../Resources/Shaders/GenerateMipsCS.hlsl)、2×2の平均。色のマップはリニア空間で平均してsRGBに戻す）。CPUのミップ生成は1枚あたり平均173 msで、並列でも詰まっていた。
    - まとめ読みは街の組み立てだけで使う。UIなど、それ以外の `LoadTexture2D` は従来どおりCPUでミップを作る。
 
 ## 変更後（Release提出パッケージ）

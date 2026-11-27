@@ -4,7 +4,7 @@
 //   ・シーン登録（名前→Factory）
 //   ・現在シーンの保持/切替/更新/描画
 //   ・即時切替と「次フレーム切替（リクエスト）」に対応
-//   ・デバッグ/自動起動用ユーティリティ追加
+//   ・登録済みシーンの照会と自動起動候補の取得
 // ==================================================
 #include "IScene.h"
 #include "../Core/WindowDX.h"
@@ -68,7 +68,7 @@ public:
 		return arrivedCovered_;
 	}
 
-	void ProcessPendingChange(); // ★追加: BeginFrame前にシーン切り替えを処理する
+	void ProcessPendingChange(); // BeginFrame前にシーン切り替えを処理する
 	void Update();
 	void Draw();
 
@@ -88,9 +88,9 @@ public:
 
 	void Clear();
 
-	// ---- 追加：原因調査＆自動起動用 ----
+	// 登録済みシーンの照会 (デバッグ・自動起動用)
 	bool Has(const std::string& name) const;
-	std::string FirstRegisteredName() const; // 登録済みの先頭（無ければ空）
+	std::string FirstRegisteredName() const; // 登録済みの任意の名前（無ければ空）
 	std::vector<std::string> RegisteredNames() const;
 
 private:

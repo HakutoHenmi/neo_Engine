@@ -257,7 +257,7 @@ void TestHammerSurface(
 	g.context->UpdateSubresource(cameraCb.Get(), 0, nullptr, &camera, 0, 0);
 	struct Includes : ID3DInclude {
 		HRESULT __stdcall Open(D3D_INCLUDE_TYPE, LPCSTR name, LPCVOID, LPCVOID* data, UINT* bytes) override {
-			for (auto root : {"tests/", "Resources/shaders/"}) {
+			for (auto root : {"tests/", "Resources/Shaders/"}) {
 				std::ifstream file(std::string(root) + name, std::ios::binary | std::ios::ate);
 				if (!file)
 					continue;
@@ -324,10 +324,10 @@ void TestHammerSurface(
 	Check(g.device->CreateShaderResourceView(background.Get(), nullptr, &bgSrv));
 	Check(g.device->CreateShaderResourceView(depth.Get(), nullptr, &depthSrv));
 	Check(g.device->CreateShaderResourceView(surface.Get(), nullptr, &surfaceSrv));
-	auto vsCode = g.Compile(L"Resources/shaders/FluidCompositeVS.hlsl", "main", "vs_5_0"),
-	     psCode = g.Compile(L"Resources/shaders/FluidRaymarch.hlsl", "RaymarchPS", "ps_5_0"),
-	     farVsCode = g.Compile(L"Resources/shaders/FluidRaymarch.hlsl", "SprayVS", "vs_5_0"),
-	     farPsCode = g.Compile(L"Resources/shaders/FluidRaymarch.hlsl", "SprayPS", "ps_5_0");
+	auto vsCode = g.Compile(L"Resources/Shaders/FluidCompositeVS.hlsl", "main", "vs_5_0"),
+	     psCode = g.Compile(L"Resources/Shaders/FluidRaymarch.hlsl", "RaymarchPS", "ps_5_0"),
+	     farVsCode = g.Compile(L"Resources/Shaders/FluidRaymarch.hlsl", "SprayVS", "vs_5_0"),
+	     farPsCode = g.Compile(L"Resources/Shaders/FluidRaymarch.hlsl", "SprayPS", "ps_5_0");
 	ComPtr<ID3D11VertexShader> vs, farVs;
 	ComPtr<ID3D11PixelShader> ps, farPs;
 	ComPtr<ID3D11VertexShader> bubbleVs, eyeVs;

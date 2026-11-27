@@ -77,6 +77,7 @@ public:
 	static void PushUndo(const UndoCommand& cmd);
 	static void Undo();
 	static void Redo();
+	static void ClearHistory();
 	static const Engine::CommandHistory& History() {
 		return history_;
 	}

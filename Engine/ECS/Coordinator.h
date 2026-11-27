@@ -14,63 +14,63 @@ namespace ECS {
 class Coordinator {
 public:
 	void Init() {
-		m_componentManager = std::make_unique<ComponentManager>();
-		m_entityManager = std::make_unique<EntityManager>();
-		m_systemManager = std::make_unique<SystemManager>();
+		componentManager_ = std::make_unique<ComponentManager>();
+		entityManager_ = std::make_unique<EntityManager>();
+		systemManager_ = std::make_unique<SystemManager>();
 	}
 
 	// エンティティの操作
 	Entity CreateEntity() {
-		return m_entityManager->CreateEntity();
+		return entityManager_->CreateEntity();
 	}
 
 	void DestroyEntity(Entity entity) {
-		m_entityManager->DestroyEntity(entity);
+		entityManager_->DestroyEntity(entity);
 
-		m_componentManager->EntityDestroyed(entity);
-		m_systemManager->EntityDestroyed(entity);
+		componentManager_->EntityDestroyed(entity);
+		systemManager_->EntityDestroyed(entity);
 	}
 
 	// コンポーネントの操作
 	template<typename T> void RegisterComponent() {
-		m_componentManager->RegisterComponent<T>();
+		componentManager_->RegisterComponent<T>();
 	}
 
 	template<typename T> void AddComponent(Entity entity, T component) {
-		m_componentManager->AddComponent<T>(entity, component);
+		componentManager_->AddComponent<T>(entity, component);
 
-		auto signature = m_entityManager->GetSignature(entity);
-		signature.set(m_componentManager->GetComponentType<T>(), true);
-		m_entityManager->SetSignature(entity, signature);
+		auto signature = entityManager_->GetSignature(entity);
+		signature.set(componentManager_->GetComponentType<T>(), true);
+		entityManager_->SetSignature(entity, signature);
 
-		m_systemManager->EntitySignatureChanged(entity, signature);
+		systemManager_->EntitySignatureChanged(entity, signature);
 	}
 
 	template<typename T> void RemoveComponent(Entity entity) {
-		m_componentManager->RemoveComponent<T>(entity);
+		componentManager_->RemoveComponent<T>(entity);
 
-		auto signature = m_entityManager->GetSignature(entity);
-		signature.set(m_componentManager->GetComponentType<T>(), false);
-		m_entityManager->SetSignature(entity, signature);
+		auto signature = entityManager_->GetSignature(entity);
+		signature.set(componentManager_->GetComponentType<T>(), false);
+		entityManager_->SetSignature(entity, signature);
 
-		m_systemManager->EntitySignatureChanged(entity, signature);
+		systemManager_->EntitySignatureChanged(entity, signature);
 	}
 
 	template<typename T> T& GetComponent(Entity entity) {
-		return m_componentManager->GetComponent<T>(entity);
+		return componentManager_->GetComponent<T>(entity);
 	}
 
 	template<typename T> ComponentType GetComponentType() {
-		return m_componentManager->GetComponentType<T>();
+		return componentManager_->GetComponentType<T>();
 	}
 
 	// システムの操作
 	template<typename T> std::shared_ptr<T> RegisterSystem() {
-		return m_systemManager->RegisterSystem<T>();
+		return systemManager_->RegisterSystem<T>();
 	}
 
 	template<typename T> void SetSystemSignature(Signature signature) {
-		m_systemManager->SetSignature<T>(signature);
+		systemManager_->SetSignature<T>(signature);
 	}
 
 	// システムを並列に更新する
@@ -82,9 +82,9 @@ public:
 	}
 
 private:
-	std::unique_ptr<ComponentManager> m_componentManager;
-	std::unique_ptr<EntityManager> m_entityManager;
-	std::unique_ptr<SystemManager> m_systemManager;
+	std::unique_ptr<ComponentManager> componentManager_;
+	std::unique_ptr<EntityManager> entityManager_;
+	std::unique_ptr<SystemManager> systemManager_;
 };
 
 } // namespace ECS

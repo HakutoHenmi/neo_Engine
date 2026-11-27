@@ -13,7 +13,47 @@
 #include <vector>
 namespace Game::Chrono {
 // (Cone は w の向きの円すい台: 根もと (-half.z) の半径 half.x、先 (+half.z) の半径 half.y。先は丸める)
-enum class SdfKind : uint8_t { Ellipsoid, Capsule, RoundBox, Cone };
+// (Item は物の形そのもの: 物のモデルから作った距離の場 (SdfFields の field 番目) を scale 倍して置く。H1 の作り直し)
+enum class SdfKind : uint8_t { Ellipsoid, Capsule, RoundBox, Cone, Item };
+// 物の形の距離の場: 箱の並び (lo・cell・nx ny nz)・表面までの距離 (外が正、中が負)・その所の太さ (中に入る一番大きな球の直径。外は近くの物の太さ)。
+// 場の座標は、物の範囲の真ん中が 0 (half は範囲の半分の大きさ)
+struct SdfField {
+	Vec lo{}, half{};
+	float cell = 1;
+	int nx = 0, ny = 0, nz = 0;
+	std::vector<float> dist, thick;
+	float maxThick = 1;
+	size_t At(int x, int y, int z) const {
+		return size_t((z * ny + y) * nx + x);
+	}
+	// なめらかに (8 つの箱から) 引く。範囲の外は、範囲のふちの値に、ふちまでの距離を足す
+	void Sample(Vec p, float& d, float& t) const {
+		const Vec hi = lo + Vec{float(nx - 1), float(ny - 1), float(nz - 1)} * cell;
+		const Vec c{std::clamp(p.x, lo.x, hi.x), std::clamp(p.y, lo.y, hi.y), std::clamp(p.z, lo.z, hi.z)};
+		const float fx = (c.x - lo.x) / cell, fy = (c.y - lo.y) / cell, fz = (c.z - lo.z) / cell;
+		const int x0 = std::min(int(fx), nx - 2), y0 = std::min(int(fy), ny - 2), z0 = std::min(int(fz), nz - 2);
+		const float ax = fx - float(x0), ay = fy - float(y0), az = fz - float(z0);
+		auto lerp = [&](const std::vector<float>& f) {
+			float v = 0;
+			for (int k = 0; k < 8; ++k) {
+				const int dx = k & 1, dy = (k >> 1) & 1, dz = (k >> 2) & 1;
+				v += f[At(x0 + dx, y0 + dy, z0 + dz)] * (dx ? ax : 1 - ax) * (dy ? ay : 1 - ay) * (dz ? az : 1 - az);
+			}
+			return v;
+		};
+		const Vec off = p - c;
+		const float outside = std::sqrt(off.x * off.x + off.y * off.y + off.z * off.z);
+		d = lerp(dist) + outside;
+		// (範囲の外は太さが分からない所: 0。ふちの太さを使うと、太らせが範囲の外へどこまでも伸びて、細い棒や板ができる)
+		t = outside > 0 ? 0.f : lerp(thick);
+	}
+};
+// 物の形の、細い所を太らせる量 (太さの下限に対する割合。1 なら下限まで)
+inline constexpr float SdfItemThicken = .5f;
+inline std::vector<SdfField>& SdfFields() {
+	static std::vector<SdfField> fields;
+	return fields;
+}
 // 部品の動き (F5): 無し・はばたく (翼。支点の前後の軸のまわりに上下)・回る (羽根。支点の上下の軸のまわり)・
 // 縮む (ばねの足。支点 (床) へ向けて縮む)・ゆらぐ (炎。支点のまわりに大きさが揺れる)・弾む (分身の玉。上下に揺れる)
 enum class SdfMotion : uint8_t { None, Flap, Rotor, Leg, Flicker, Bob };
@@ -30,6 +70,10 @@ struct SdfPart {
 	bool mirror = false, front = false, flat = false;
 	SdfMotion motion = SdfMotion::None;
 	Vec pivot{};
+	// (物の形 (Item) だけ: 場の番号・場の座標から置く大きさへの倍率・太らせる下限 (半分の太さ。場の座標))
+	int field = -1;
+	float scale = 1, thicken = 0;
+	Vec stretch{1, 1, 1};
 	float Thickness() const {
 		return 2 * std::min({half.x, half.y, half.z});
 	}
@@ -66,6 +110,20 @@ inline float SdfPartDistance(const SdfPart& s, Vec p) {
 		const Vec o{std::max(a.x, 0.f), std::max(a.y, 0.f), std::max(a.z, 0.f)};
 		return SdfLength(o) + std::min(std::max({a.x, a.y, a.z}), 0.f) - r;
 	}
+	case SdfKind::Item: {
+		// 物の形: 場を引き、太さの下限より細い所だけ、足りない分だけ外へ太らせる
+		const auto& fields = SdfFields();
+		if (s.field < 0 || s.field >= int(fields.size()))
+			return 1e9f;
+		// (stretch は薄い向きだけの引き伸ばし。輪郭を崩さずに太さの下限を満たす)
+		float fd = 0, ft = 0;
+		const Vec k{s.scale * s.stretch.x, s.scale * s.stretch.y, s.scale * s.stretch.z};
+		fields[size_t(s.field)].Sample(Vec{q.x / k.x, q.y / k.y, q.z / k.z}, fd, ft);
+		// (太さの下限より細い所だけ、足りない分を太らせる。太さは、薄い向きへ引き伸ばした分も入れて数える (平たい物の輪郭は太らない)。
+		//  四角い物の角は太さを立方体で測るので太く、物から離れた所 (太さが分からない所) は太らせない)
+		const float wide = ft * std::max({s.stretch.x, s.stretch.y, s.stretch.z});
+		return (fd - (ft > 0 ? std::max(0.f, s.thicken - wide * .5f) : 0.f)) * std::min({k.x, k.y, k.z});
+	}
 	case SdfKind::Cone: {
 		// 円すい台の距離 (Inigo Quilez の sdCappedCone)。軸は w
 		const float h = s.half.z, r1 = s.half.x, r2 = s.half.y;
@@ -99,6 +157,20 @@ inline void SdfApplyFloor(SdfPart& s, float minHalf) {
 		s.half.x = std::max(s.half.x, minHalf);
 		s.half.y = std::max(s.half.y, minHalf * .6f);
 		s.half.z = std::max(s.half.z, minHalf);
+		return;
+	}
+	if (s.kind == SdfKind::Item) {
+		// 物の形: 全体の厚みが下限より薄い向き (将棋の駒の厚み・鉛筆の太さ) だけを引き伸ばす (輪郭はそのまま)。
+		// それでも細い所 (柄・骨組みの棒) は、その所だけ下限まで太らせる
+		const auto& fields = SdfFields();
+		if (s.field >= 0 && s.field < int(fields.size())) {
+			const Vec h = fields[size_t(s.field)].half * s.scale;
+			s.stretch = {
+			    std::max(1.f, minHalf / std::max(1e-6f, h.x)), std::max(1.f, minHalf / std::max(1e-6f, h.y)),
+			    std::max(1.f, minHalf / std::max(1e-6f, h.z))};
+			s.half = {h.x * s.stretch.x, h.y * s.stretch.y, h.z * s.stretch.z};
+		}
+		s.thicken = minHalf * SdfItemThicken / std::max(1e-6f, s.scale);
 		return;
 	}
 	s.half = {std::max(s.half.x, minHalf), std::max(s.half.y, minHalf), std::max(s.half.z, minHalf)};

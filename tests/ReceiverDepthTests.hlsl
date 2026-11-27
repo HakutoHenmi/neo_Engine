@@ -1,4 +1,4 @@
-#include "../Resources/shaders/ReceiverDepthTolerance.hlsli"
+#include "../Resources/Shaders/ReceiverDepthTolerance.hlsli"
 StructuredBuffer<float4> positions : register(t0);
 RWStructuredBuffer<float4> results : register(u0);
 cbuffer Test : register(b0){

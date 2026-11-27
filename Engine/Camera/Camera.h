@@ -1,8 +1,8 @@
 #pragma once
 // ===============================
 //  Camera : デバッグ操作 + 俯瞰用API + 画面シェイク
-//  - Initialize/Update/SetProjection は既存のまま
-//  - SetPosition / LookAt / Tick / StartShake を追加
+//  - Initialize/Update/SetProjection で初期化・更新・投影を設定
+//  - SetPosition / LookAt / Tick / StartShake で位置・注視・揺れを制御
 // ===============================
 #include "../Core/Input.h"
 #include <DirectXMath.h>
@@ -16,7 +16,7 @@ public:
 	// 初期化（位置/回転を既定値へ）
 	void Initialize();
 
-	// デバッグ用の自由視点更新（WASD+QE、矢印）※既存APIは維持
+	// デバッグ用の自由視点更新（WASD+QE、矢印）
 	void Update(const Input& in);
 
 	// 1フレーム進める（シェイク等の時間依存処理）
@@ -30,10 +30,10 @@ public:
 		return proj_;
 	}
 
-	// ===== プロジェクション設定（既存） =====
+	// ===== プロジェクション設定 =====
 	void SetProjection(float fovY, float aspect, float nearZ, float farZ);
 
-	// ===== 位置・注視 API（追加/既存） =====
+	// ===== 位置・注視 API =====
 	void SetPosition(const DirectX::XMFLOAT3& p);
 	void SetPosition(float x, float y, float z);
 	DirectX::XMFLOAT3 Position() const {

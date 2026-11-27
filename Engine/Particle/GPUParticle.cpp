@@ -11,7 +11,7 @@ GPUParticleSystem::~GPUParticleSystem() {}
 
 bool GPUParticleSystem::Initialize(ID3D12Device* device, uint32_t maxParticles) {
 	if (isInitialized_)
-		return true; // ★追加: 二重初期化を防止
+		return true; // 二重初期化を防止
 	maxParticles_ = maxParticles;
 	if (!CreateBuffers(device))
 		return false;
@@ -82,9 +82,9 @@ bool GPUParticleSystem::CreatePipelines(ID3D12Device* device) {
 	}
 	device->CreateRootSignature(0, cSig->GetBufferPointer(), cSig->GetBufferSize(), IID_PPV_ARGS(&computeRootSig_));
 
-	auto initCS = CompileShaderFromPath(L"Resources/shaders/GPUParticleCS.hlsl", "InitCS", "cs_5_0");
-	auto emitCS = CompileShaderFromPath(L"Resources/shaders/GPUParticleCS.hlsl", "EmitCS", "cs_5_0");
-	auto updateCS = CompileShaderFromPath(L"Resources/shaders/GPUParticleCS.hlsl", "UpdateCS", "cs_5_0");
+	auto initCS = CompileShaderFromPath(L"Resources/Shaders/GPUParticleCS.hlsl", "InitCS", "cs_5_0");
+	auto emitCS = CompileShaderFromPath(L"Resources/Shaders/GPUParticleCS.hlsl", "EmitCS", "cs_5_0");
+	auto updateCS = CompileShaderFromPath(L"Resources/Shaders/GPUParticleCS.hlsl", "UpdateCS", "cs_5_0");
 	if (!initCS || !emitCS || !updateCS)
 		return false;
 
@@ -120,8 +120,8 @@ bool GPUParticleSystem::CreatePipelines(ID3D12Device* device) {
 	}
 	device->CreateRootSignature(0, gSig->GetBufferPointer(), gSig->GetBufferSize(), IID_PPV_ARGS(&graphicsRootSig_));
 
-	auto vs = CompileShaderFromPath(L"Resources/shaders/GPUParticleVS.hlsl", "main", "vs_5_0");
-	auto ps = CompileShaderFromPath(L"Resources/shaders/GPUParticlePS.hlsl", "main", "ps_5_0");
+	auto vs = CompileShaderFromPath(L"Resources/Shaders/GPUParticleVS.hlsl", "main", "vs_5_0");
+	auto ps = CompileShaderFromPath(L"Resources/Shaders/GPUParticlePS.hlsl", "main", "ps_5_0");
 	if (!vs || !ps)
 		return false;
 

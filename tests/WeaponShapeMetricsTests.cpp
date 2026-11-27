@@ -3,6 +3,7 @@
 #include "../Game/Chrono/WeaponShapeSdf.h"
 #include "../Game/Chrono/WeaponShapeGrammar.h"
 #include "../Game/Chrono/DevourGimmickRules.h"
+#include "../Game/Chrono/ItemProfileRules.h"
 #include <cassert>
 #include <functional>
 #include <iostream>
@@ -360,6 +361,64 @@ int main() {
 		const Vec q = GimmickPosePoint(rotor, {0, 0, 0}, small);
 		assert(SdfLength(q) < 1e-5f);
 		std::cout << "PASS: weapon pose spins rotors, flaps wings symmetrically and scales from the floor\n";
+	}
+	// 物のプロフィール (H1): 箱は 1 つの箱・離れた 2 つの箱は 2 つのパーツ・細長い棒は「長い」・板は「平たい」・
+	// 入れ物 (底と 4 つの壁) は中が埋まって 1 つの塊・板の下に長い棒 (傘) は持ち手
+	{
+		auto profile = [](const std::vector<std::array<Vec, 2>>& boxes) {
+			std::vector<Vec> pts;
+			std::vector<uint32_t> idx;
+			for (const auto& b : boxes)
+				ItemBoxMesh(pts, idx, b[0], b[1]);
+			return BuildItemProfile("test", pts, idx);
+		};
+		const auto box = profile({{Vec{0, 1, 0}, Vec{1, 1, 1}}});
+		assert(box.parts.size() == 1 && box.shape == ItemShapeClass::Box && box.fit > .8f);
+		const auto two = profile({{Vec{-3, 1, 0}, Vec{1, 1, 1}}, {Vec{3, 1, 0}, Vec{1, 1, 1}}});
+		assert(two.parts.size() == 2);
+		const auto rod = profile({{Vec{0, .2f, 0}, Vec{.2f, .2f, 2}}});
+		assert(rod.shape == ItemShapeClass::Long);
+		const auto plate = profile({{Vec{0, .1f, 0}, Vec{1.5f, .1f, 1.2f}}});
+		assert(plate.shape == ItemShapeClass::Flat);
+		const auto cup = profile(
+		    {{Vec{0, .1f, 0}, Vec{1, .1f, 1}},
+		     {Vec{-.95f, 1, 0}, Vec{.05f, 1, 1}},
+		     {Vec{.95f, 1, 0}, Vec{.05f, 1, 1}},
+		     {Vec{0, 1, -.95f}, Vec{1, 1, .05f}},
+		     {Vec{0, 1, .95f}, Vec{1, 1, .05f}}});
+		assert(cup.fit > .6f && cup.parts.size() <= 2);
+		const auto umbrella =
+		    profile({{Vec{0, 3.6f, 0}, Vec{1.4f, .35f, 1.4f}}, {Vec{0, 1.6f, 0}, Vec{.06f, 1.7f, .06f}}});
+		assert(umbrella.Has(ItemHasHandle) && umbrella.parts.size() >= 2);
+		std::cout << "PASS: item profiles split boxes, find long/flat shapes, fill containers and find handles\n";
+	}
+	// 物の形そのもの (H1 の作り直し): 立方体は太さの下限をかけても形が変わらない・L 字は基本形より面影が残る・
+	// 傘の細い柄は、太さの下限をかけると柄の所だけ太くなる (傘の上の板は太らない)
+	{
+		auto build = [](const std::vector<std::array<Vec, 2>>& boxes, ItemProfileDetail::Grid& g) {
+			std::vector<Vec> pts;
+			std::vector<uint32_t> idx;
+			for (const auto& b : boxes)
+				ItemBoxMesh(pts, idx, b[0], b[1]);
+			return BuildItemProfile("test", pts, idx, &g);
+		};
+		ItemProfileDetail::Grid g;
+		const auto cube = build({{Vec{0, 1, 0}, Vec{1, 1, 1}}}, g);
+		assert(ItemProfileDetail::Resemblance(g, {cube.look}, .77f) > .95f);
+		const auto ell = build({{Vec{0, .25f, 0}, Vec{1, .25f, .25f}}, {Vec{-.75f, 1, 0}, Vec{.25f, 1, .25f}}}, g);
+		assert(ItemProfileDetail::Resemblance(g, {ell.look}, .2f) > ItemProfileDetail::Resemblance(g, ell.parts, .2f));
+		const auto umbrella =
+		    build({{Vec{0, 3.6f, 0}, Vec{1.4f, .35f, 1.4f}}, {Vec{0, 1.6f, 0}, Vec{.06f, 1.7f, .06f}}}, g);
+		SdfPart look = umbrella.look;
+		// (物の座標: 一番長い辺 (高さ) が 2。柄は x = 0 の細い棒で、傘の上の端は y = 2)
+		const Vec shaftSide{.07f, .6f, 0}, canopyAbove{0, 2.06f, 0};
+		const bool shaftBefore = SdfPartDistance(look, shaftSide) < 0,
+		           canopyBefore = SdfPartDistance(look, canopyAbove) < 0;
+		SdfApplyFloor(look, .2f);
+		assert(
+		    !shaftBefore && SdfPartDistance(look, shaftSide) < 0 &&
+		    canopyBefore == (SdfPartDistance(look, canopyAbove) < 0));
+		std::cout << "PASS: item look keeps boxes and L shapes and thickens only the thin shaft\n";
 	}
 	std::cout << "ALL PASS\n";
 }

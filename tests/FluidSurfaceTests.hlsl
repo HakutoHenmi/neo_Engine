@@ -1,4 +1,4 @@
-#include "../Resources/shaders/FluidRaymarch.hlsl"
+#include "../Resources/Shaders/FluidRaymarch.hlsl"
 RWStructuredBuffer<float4> surfaceResults : register(u0);
 SprayOut BubbleVS(uint vertex:SV_VertexID,uint instance:SV_InstanceID){return SprayVS(vertex,particleCount+instance);}
 SprayOut EyeVS(uint vertex:SV_VertexID,uint instance:SV_InstanceID){return SprayVS(vertex,particleCount+248+instance);}

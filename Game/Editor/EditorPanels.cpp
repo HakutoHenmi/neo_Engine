@@ -12,7 +12,6 @@ void EditorUI::ShowProject([[maybe_unused]] Engine::Renderer* renderer, [[maybe_
 	// ウィンドウを開く
 	ImGui::Begin(kProjectWindow, &s_windows.project);
 	// currentDir はプロジェクト相対の UTF-8 パス ("Resources/Models")。
-	// 以前は作業ディレクトリ基準で列挙しており、exe の場所によってはフォルダが無く例外で落ちていた
 	static std::string currentDir = "Resources";
 	static char searchBuf[128] = "";
 	static std::map<std::string, uint32_t> s_thumbnails; // 読み込んだサムネイルのテクスチャ (パス → ハンドル)

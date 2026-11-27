@@ -26,7 +26,7 @@ NVIDIA RTX SDKライセンスはこの作業でユーザーが同意済み。全
 
 実行時はEXE隣のStreamlineを優先し、開発時は作業ディレクトリのexternals/Streamline/binへフォールバックする。Release後処理と配布ZIPに署名済みDLLとライセンスを自動同梱する。DLLがなければ通常描画を使う。実行中にDLSS評価が失敗した場合は、その起動中の入力解像度を通常補間で表示し、状態を利用不可へ変更する。
 
-RTシェーダーのソースとResources/shaders/RtShadow.cso、RtLighting.csoを同梱。DXCはゲーム実行時には不要。変更時はscripts/Build-RtShadow.ps1 -Dxc <dxc.exe>で両方のSM6.5シェーダーを再生成する。確認済みコンパイラはMicrosoft DXC v1.9.2609（2026-09-29）。公式ZIPのSHA256：AD31B1FC8443175D204F77A611FDB3EF2EC42759BDC2F1167368DE24A4A7E7F1。
+RTシェーダーのソースとResources/Shaders/RtShadow.cso、RtLighting.csoを同梱。DXCはゲーム実行時には不要。変更時はscripts/Build-RtShadow.ps1 -Dxc <dxc.exe>で両方のSM6.5シェーダーを再生成する。確認済みコンパイラはMicrosoft DXC v1.9.2609（2026-09-29）。公式ZIPのSHA256：AD31B1FC8443175D204F77A611FDB3EF2EC42759BDC2F1167368DE24A4A7E7F1。
 
 PBR画像の出典とCC0ライセンスはResources/Credits/PBR-Materials.md。マニフェストで各画像、クレジット、RT CSOを検査する。
 

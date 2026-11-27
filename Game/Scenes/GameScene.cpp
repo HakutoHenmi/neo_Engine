@@ -31,6 +31,8 @@ using namespace GameSceneConstants;
 
 // 破棄: シグナルの接続を外し、シーンとシステムを片付ける
 GameScene::~GameScene() {
+	// 履歴のコマンドが、破棄後のシーンを参照しないようにする。
+	EditorUI::ClearHistory();
 	// 振動を止める
 	Rumble::Stop();
 	// ポーズから抜けても音が止まったままにならないようにする
@@ -254,7 +256,6 @@ void GameScene::Update() {
 	const auto profileAfterSystems = std::chrono::steady_clock::now();
 #endif
 	// エディタがある構成では Scene ビューのカメラを EditorUI が操作する (ビューポート上で右ドラッグ中のみ)。
-	// 以前はここで停止中に camera_ を生のキー入力で動かしており、Inspector の入力中も WASD でカメラが動いていた
 #ifndef USE_IMGUI
 	if (!isPlaying_) {
 		camera_.Update(*Engine::Input::GetInstance());

@@ -47,7 +47,7 @@ public:
 		return wheel_;
 	}
 
-	// ★追加: 絶対座標とボタン状態
+	// 絶対座標とボタン状態
 	void GetMousePos(float& x, float& y) const {
 		x = absMouseX_;
 		y = absMouseY_;
@@ -128,12 +128,12 @@ private:
 
 	float mouseX_ = 0.0f;
 	float mouseY_ = 0.0f;
-	float absMouseX_ = 0.0f; // ★追加
-	float absMouseY_ = 0.0f; // ★追加
+	float absMouseX_ = 0.0f;
+	float absMouseY_ = 0.0f;
 	bool useViewport_ = false;
 	float viewportX_ = 0.0f, viewportY_ = 0.0f, viewportW_ = 0.0f, viewportH_ = 0.0f;
 	float wheel_ = 0.0f;
-	HWND hwnd_ = nullptr; // ★追加
+	HWND hwnd_ = nullptr;
 
 	// --- ゲームパッド ---
 	int padIndex_ = -1;
