@@ -40,7 +40,7 @@ inline float SignalStopRadius(float mass) {
 }
 // 青: 並ぶ速さ・横断歩道の幅・人影の数と出る間隔・渡る時間・1 人が 1 体に与えるダメージ
 // 横断歩道を端から敷き終える時間 (人影は敷き始めて少ししてから渡り出す)
-inline constexpr float SignalLineRate = 12, SignalCrossWidth = 8, SignalWalkerGap = .12f, SignalWalkTime = 1.1f,
+inline constexpr float SignalCrossWidth = 8, SignalWalkerGap = .12f, SignalWalkTime = 1.1f,
                        SignalLayTime = .6f, SignalWalkDelay = .42f;
 inline constexpr int SignalWalkers = 12;
 inline float SignalWalkerDamage(float mass) {

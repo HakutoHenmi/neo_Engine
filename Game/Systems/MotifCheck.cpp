@@ -8,11 +8,14 @@
 //   samples.tsv 決まった間隔で選んだ組み合わせ (400 個)
 #include "ChronoSystemInternal.h"
 #include "../Data/Collection.h"
+#include "../Chrono/MotifShape.h"
 #include "../Chrono/WeaponShapeMetrics.h"
 #include <filesystem>
 #include <fstream>
 
 namespace Game {
+// 部品の並びを箱に分ける (WeaponCraft.cpp)
+WeaponShapeGrid RasterizeParts(const std::vector<SdfPart>& parts, const std::string& key, int& count);
 namespace {
 MotifSize SizeOf(const std::string& s) {
 	return s == "大" ? MotifSize::Big : s == "小" ? MotifSize::Small : MotifSize::Medium;
@@ -97,6 +100,57 @@ std::vector<Motif> ChronoSystem::LoadMotifs() {
 			}
 			motif.slots.push_back(slot);
 		}
+		// (J1) 土台と、物を並べる所
+		auto vecOf = [](const nlohmann::json& j, const char* key, Vec fallback) {
+			if (!j.contains(key) || !j[key].is_array() || j[key].size() < 3)
+				return fallback;
+			return Vec{j[key][0].get<float>(), j[key][1].get<float>(), j[key][2].get<float>()};
+		};
+		auto axisOf = [](const nlohmann::json& j) {
+			const std::string a = j.value("axis", std::string("z"));
+			return a == "x" ? 0 : a == "y" ? 1 : 2;
+		};
+		if (m.contains("base"))
+			for (const auto& b : m["base"]) {
+				MotifBasePart part;
+				const std::string kind = b.value("kind", std::string());
+				part.kind = kind == "カプセル" ? SdfKind::Capsule
+				            : kind == "箱"     ? SdfKind::RoundBox
+				            : kind == "円すい" ? SdfKind::Cone
+				                               : SdfKind::Ellipsoid;
+				part.center = vecOf(b, "at", {});
+				part.half = vecOf(b, "half", {.5f, .5f, .5f});
+				part.axis = axisOf(b);
+				part.round = b.value("round", .2f);
+				part.mirror = b.value("mirror", false);
+				motif.base.push_back(part);
+			}
+		if (m.contains("sockets"))
+			for (const auto& s : m["sockets"]) {
+				MotifSocket socket;
+				socket.name = s.value("name", std::string());
+				socket.emblem = s.value("role", std::string()) == "紋章";
+				socket.mirror = s.value("mirror", false);
+				const std::string pattern = s.value("pattern", std::string());
+				socket.pattern = pattern == "輪"   ? MotifPattern::Ring
+				                 : pattern == "列" ? MotifPattern::Line
+				                                   : MotifPattern::Point;
+				socket.at = vecOf(s, "at", {});
+				const int axis = axisOf(s);
+				socket.axis = axis == 0 ? Vec{1, 0, 0} : axis == 1 ? Vec{0, 1, 0} : Vec{0, 0, 1};
+				socket.from = vecOf(s, "from", {});
+				socket.to = vecOf(s, "to", {});
+				socket.normal = vecOf(s, "normal", {});
+				if (s.contains("radius") && s["radius"].size() >= 2) {
+					socket.radius1 = s["radius"][0].get<float>();
+					socket.radius2 = s["radius"][1].get<float>();
+				}
+				if (s.contains("angles") && s["angles"].size() >= 2) {
+					socket.angle0 = s["angles"][0].get<float>();
+					socket.angle1 = s["angles"][1].get<float>();
+				}
+				motif.sockets.push_back(socket);
+			}
 		for (const auto& [index, name] : onNames)
 			for (size_t k = 0; k < index; ++k)
 				if (motif.slots[k].name == name)
@@ -295,8 +349,10 @@ void ChronoSystem::WriteMotifShapeCheck() {
 	std::array<int, 4> dropCount{};
 	std::array<int, size_t(WeaponShapeIssue::Count)> issueCount{};
 	long long scoreSum = 0;
+	double symmetrySum = 0;
+	long long repeatSum = 0, visibleSum = 0;
 	std::ofstream rows(dir + "/shapes.tsv");
-	rows << "#\tmotif\tdrops\tscore\tbody\tpart2\tpart3\tpillar\tissues\n";
+	rows << "#\tmotif\tdrops\tscore\tbody\tpart2\tpart3\tpillar\tissues\tsymmetry\trepeats\tvisible\n";
 	for (int t = 0; t < want; ++t) {
 		const std::array<int, 3> ids{(t * 7) % n, (t * 37 + 11) % n, (t * 61 + 29) % n};
 		BattleWeapon w;
@@ -310,12 +366,66 @@ void ChronoSystem::WriteMotifShapeCheck() {
 		if (!g)
 			continue;
 		// (形の箱の並びも書く: nx ny nz (int32) と埋まり・部品の番号 (1 バイトずつ)。絵にして確かめる用)
+		// (J2) 並べるモデルも、箱を 2 倍に細かくして書き込む (部品の番号 2 が繰り返し・3 が紋章)。面より外に出た箱のあるモデルを「見える」と数える
+		int repeats = 0, visible = 0;
 		{
+			constexpr int F = 2;
+			const int NX = g->nx * F, NY = g->ny * F, NZ = g->nz * F;
+			const float fine = g->cell / F;
+			std::vector<uint8_t> fill(size_t(NX) * NY * NZ), part(fill.size());
+			auto baseAt = [&](int X, int Y, int Z) {
+				return g->fill[size_t(((Z / F) * g->ny + Y / F) * g->nx + X / F)] != 0;
+			};
+			for (int Z = 0; Z < NZ; ++Z)
+				for (int Y = 0; Y < NY; ++Y)
+					for (int X = 0; X < NX; ++X)
+						if (baseAt(X, Y, Z)) {
+							fill[size_t((Z * NY + Y) * NX + X)] = 1;
+							part[size_t((Z * NY + Y) * NX + X)] = 1;
+						}
+			const auto& fields = SdfFields();
+			const ItemProfile* profs[3] = {ItemProfileOf(w.ids[0]), ItemProfileOf(w.ids[1]), ItemProfileOf(w.ids[2])};
+			for (const auto& m : g->models) {
+				const ItemProfile* prof = profs[m.item];
+				if (!prof || prof->field < 0)
+					continue;
+				const auto& field = fields[size_t(prof->field)];
+				const float reach = m.scale * std::max({field.half.x, field.half.y, field.half.z}) * 1.8f;
+				const int x0 = std::max(0, int((m.pos.x - reach - g->lo.x) / fine)),
+				          x1 = std::min(NX - 1, int((m.pos.x + reach - g->lo.x) / fine)),
+				          y0 = std::max(0, int((m.pos.y - reach - g->lo.y) / fine)),
+				          y1 = std::min(NY - 1, int((m.pos.y + reach - g->lo.y) / fine)),
+				          z0 = std::max(0, int((m.pos.z - reach - g->lo.z) / fine)),
+				          z1 = std::min(NZ - 1, int((m.pos.z + reach - g->lo.z) / fine));
+				bool out = false;
+				for (int Z = z0; Z <= z1; ++Z)
+					for (int Y = y0; Y <= y1; ++Y)
+						for (int X = x0; X <= x1; ++X) {
+							const Vec p = g->lo + Vec{float(X) + .5f, float(Y) + .5f, float(Z) + .5f} * fine;
+							const Vec d = p - m.pos;
+							const Vec q{
+							    (d.x * m.axes[0].x + d.y * m.axes[0].y + d.z * m.axes[0].z) / m.scale,
+							    (d.x * m.axes[1].x + d.y * m.axes[1].y + d.z * m.axes[1].z) / m.scale,
+							    (d.x * m.axes[2].x + d.y * m.axes[2].y + d.z * m.axes[2].z) / m.scale};
+							float fd = 0, ft = 0;
+							field.Sample(q, fd, ft);
+							if (fd >= 0)
+								continue;
+							const size_t i = size_t((Z * NY + Y) * NX + X);
+							out = out || !fill[i];
+							fill[i] = 1;
+							part[i] = m.emblem ? 3 : 2;
+						}
+				if (!m.emblem) {
+					++repeats;
+					visible += out;
+				}
+			}
 			std::ofstream vox(dir + "/shape-" + std::to_string(t) + ".vox", std::ios::binary);
-			const int32_t dims[3] = {g->nx, g->ny, g->nz};
+			const int32_t dims[3] = {NX, NY, NZ};
 			vox.write(reinterpret_cast<const char*>(dims), sizeof(dims));
-			vox.write(reinterpret_cast<const char*>(g->fill.data()), std::streamsize(g->fill.size()));
-			vox.write(reinterpret_cast<const char*>(g->part.data()), std::streamsize(g->part.size()));
+			vox.write(reinterpret_cast<const char*>(fill.data()), std::streamsize(fill.size()));
+			vox.write(reinterpret_cast<const char*>(part.data()), std::streamsize(part.size()));
 		}
 		WeaponShapeVoxels v{g->nx, g->ny, g->nz, g->cell, &g->fill, &g->part};
 		const WeaponShapeReport r = MeasureWeaponShape(v);
@@ -323,6 +433,24 @@ void ChronoSystem::WriteMotifShapeCheck() {
 		++motifCount[motif];
 		++dropCount[size_t(std::clamp(g->motifDrops, 0, 3))];
 		scoreSum += r.score;
+		// (J2) 規則の数: 左右対称 (埋まった箱を左右に映して重なる割合)・繰り返しの物の数と、スライムの面で残る数
+		// (残る = その物の部品の箱が、太さの下限の玉の 4 割以上)
+		float symmetry = 1;
+		{
+			long long same = 0, total = 0;
+			for (int z = 0; z < g->nz; ++z)
+				for (int y = 0; y < g->ny; ++y)
+					for (int x = 0; x < g->nx; ++x) {
+						const bool a = g->fill[size_t((z * g->ny + y) * g->nx + x)] != 0,
+						           b = g->fill[size_t((z * g->ny + y) * g->nx + (g->nx - 1 - x))] != 0;
+						same += a && b;
+						total += a || b;
+					}
+			symmetry = total ? float(same) / float(total) : 1.f;
+		}
+		symmetrySum += symmetry;
+		repeatSum += repeats;
+		visibleSum += visible;
 		std::string issues;
 		for (int k = 0; k < int(WeaponShapeIssue::Count); ++k)
 			if (r.issues[size_t(k)]) {
@@ -331,10 +459,12 @@ void ChronoSystem::WriteMotifShapeCheck() {
 			}
 		rows << t << '\t' << motif << '\t' << g->motifDrops << '\t' << r.score << '\t' << entries[size_t(ids[0])]->name
 		     << '\t' << entries[size_t(ids[1])]->name << '\t' << entries[size_t(ids[2])]->name << '\t' << r.pillar
-		     << '\t' << issues << '\n';
+		     << '\t' << issues << '\t' << symmetry << '\t' << repeats << '\t' << visible << '\n';
 	}
 	std::ofstream out(dir + "/shapes.txt");
-	out << "形 " << want << " 個。点数の平均 " << double(scoreSum) / double(std::max(1, want)) << "\n\n型紙ごと:\n";
+	out << "形 " << want << " 個。点数の平均 " << double(scoreSum) / double(std::max(1, want)) << "\n左右対称の平均 "
+	    << symmetrySum / std::max(1, want) << "。繰り返しの物の数の平均 " << double(repeatSum) / std::max(1, want)
+	    << " (面から見えるモデルの数の平均 " << double(visibleSum) / std::max(1, want) << ")\n\n型紙ごと:\n";
 	for (const auto& [name, count] : motifCount)
 		out << "  " << name << '\t' << count << '\n';
 	out << "\n部品にしなかった物の数 (0〜3):";
@@ -343,5 +473,71 @@ void ChronoSystem::WriteMotifShapeCheck() {
 	out << "\n\n問題ごとの数:\n";
 	for (int k = 0; k < int(WeaponShapeIssue::Count); ++k)
 		out << "  " << WeaponShapeIssueName(WeaponShapeIssue(k)) << '\t' << issueCount[size_t(k)] << '\n';
+}
+// (J1) --motif-base-sheet: 型紙ごとの土台だけの形を、1 つ目の物を 4 種類 (丸・長い・平たい・箱) 変えて作り、
+// tests/out/motifs/base-<型紙>-<物>.vox (箱の並び) と .pts (並べる所の点: 役 (0 繰り返し・1 紋章) と箱の座標) と
+// base.txt (形の点数・柱の突き出し・土台の倍率) を書く。並べる所の点は、繰り返し 6 個 (左右の所は両側)・紋章 1 個
+void ChronoSystem::WriteMotifBaseSheet() {
+	const std::string dir = "tests/out/motifs";
+	std::filesystem::create_directories(dir);
+	const auto& motifs = Motifs();
+	const std::array<const char*, 4> bodies{"daruma", "enpitsu", "note", "tsumiki"};
+	std::ofstream out(dir + "/base.txt");
+	out << "#motif\tbody\tscale\tscore\tpillar\tissues\n";
+	for (size_t m = 0; m < motifs.size(); ++m)
+		for (size_t b = 0; b < bodies.size(); ++b) {
+			const Vec scale = MotifBaseScale(ItemProfileOf(bodies[b]));
+			std::vector<SdfPart> parts;
+			WeaponShapeGrid g;
+			float minHalf = 0, k = 1;
+			for (int pass = 0; pass < 4; ++pass) {
+				parts = BuildMotifBase(motifs[m], scale);
+				for (auto& s : parts)
+					SdfApplyFloor(s, minHalf);
+				int count = 0;
+				g = RasterizeParts(parts, "base", count);
+				const float longest = float(std::max({g.nx, g.ny, g.nz})) * g.cell;
+				const float volume = std::max(1e-4f, float(count) * g.cell * g.cell * g.cell);
+				k = std::min(std::cbrt(CraftShapeVolume / volume), CraftShapeLongest / std::max(longest, 1e-3f));
+				const float want = CraftMinThick * .5f / k;
+				if (std::abs(want - minHalf) < .01f * want)
+					break;
+				minHalf = want;
+			}
+			const std::string name = dir + "/base-" + motifs[m].id + "-" + bodies[b];
+			{
+				std::ofstream vox(name + ".vox", std::ios::binary);
+				const int32_t dims[3] = {g.nx, g.ny, g.nz};
+				vox.write(reinterpret_cast<const char*>(dims), sizeof(dims));
+				vox.write(reinterpret_cast<const char*>(g.fill.data()), std::streamsize(g.fill.size()));
+				vox.write(reinterpret_cast<const char*>(g.part.data()), std::streamsize(g.part.size()));
+			}
+			{
+				std::ofstream pts(name + ".pts");
+				for (const auto& sk : motifs[m].sockets) {
+					const auto points = MotifSocketPoints(sk, sk.emblem ? 1 : 6, scale, parts, CraftBlend);
+					for (const auto& q : points)
+						for (float side : {1.f, -1.f}) {
+							if (side < 0 && !sk.mirror)
+								continue;
+							const Vec p{q.pos.x * side, q.pos.y, q.pos.z};
+							const Vec n{q.normal.x * side, q.normal.y, q.normal.z};
+							pts << (sk.emblem ? 1 : 0) << ' ' << (p.x - g.lo.x) / g.cell << ' '
+							    << (p.y - g.lo.y) / g.cell << ' ' << (p.z - g.lo.z) / g.cell << ' ' << n.x << ' ' << n.y
+							    << ' ' << n.z << '\n';
+						}
+				}
+			}
+			WeaponShapeVoxels v{g.nx, g.ny, g.nz, g.cell * k, &g.fill, nullptr};
+			const WeaponShapeReport r = MeasureWeaponShape(v);
+			std::string issues;
+			for (int i = 0; i < int(WeaponShapeIssue::Count); ++i)
+				if (r.issues[size_t(i)])
+					issues += WeaponShapeIssueName(WeaponShapeIssue(i)) + std::string(" ");
+			char line[128];
+			snprintf(line, sizeof(line), "%.2f,%.2f,%.2f", scale.x, scale.y, scale.z);
+			out << motifs[m].name << '\t' << bodies[b] << '\t' << line << '\t' << r.score << '\t' << r.pillar << '\t'
+			    << issues << '\n';
+		}
 }
 } // namespace Game

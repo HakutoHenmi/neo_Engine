@@ -1,17 +1,15 @@
 // DevourBattle.cpp
 // 変形チャレンジ (吸収のあとの第 2 フェーズ。ChronoSystem の一部)。規則は Chrono/ChallengeRules.h
 //  - 成長 (吸収) とチャレンジでステージの制限時間を分け合う。長押しか残り 30 秒でチャレンジへ移り、残り時間で挑む
-//  - 準備フェーズで吸収した物は「袋」に入る。物のスロット (ランクで 1〜4 個) には袋から引いた物が入り、使い切ると袋から引き直す。
-//    引く確率は、その物を吸収した数に比例する (吸収した数の BattleBagPower 乗)。飴玉は固定のスロット (無限)
-//    (チャレンジ (旧来の戦闘でないとき) はスロットを使わない。始まる前に、集めた物から変形武器を 3 本作って使う: WeaponCraft.cpp)
+//  - 準備フェーズで吸収した物は「袋」に入る。チャレンジが始まる前に、袋の物から変形武器を作って使う (WeaponCraft.cpp)
 //  - 物ごとに能力がある (collection.json の action。省略は battle の分類の動き)。投げる以外は変形する
 //  - 物を使っても体は縮まない。大きさは威力 (BattlePower) になる
 //  - 時間が来たら終わり。スコアは自己ベストとして残し、次のステージへはいつでも進める。結果画面の L / B でチャレンジだけやり直せる
-//  - 旧来の敵と戦う動き (敵・ボス・HP) は --devour-battle-legacy のときだけ (能力の当たりを確かめる相手として残す)
-// 操作: WASD / 左スティックで移動、マウス / 右スティックで向き、左クリック / RT で使う、1〜5 / 十字キー / LB・RB でスロットを選ぶ
+// 操作: WASD / 左スティックで移動、マウス / 右スティックで向き、左クリック / RT で撃つ
 // 規則は Chrono/DevourBattleRules.h、物の能力は collection.json の battle / action、能力の形は Chrono/DevourGimmickRules.h
 #include "ChronoSystemInternal.h"
 #include "../Data/Collection.h"
+#include "../Chrono/MotifShape.h"
 #include "CityBuilder.h"
 #include <random>
 
@@ -51,10 +49,6 @@ BattleAction ActionOfId(const std::string& id, bool& building) {
 std::string NameOfId(const std::string& id) {
 	const int index = Collection::IndexOf(id);
 	return index < 0 ? id : Collection::Entries()[size_t(index)].name;
-}
-std::string ImageOfId(const std::string& id) {
-	const int index = Collection::IndexOf(id);
-	return index < 0 ? std::string() : Collection::ImagePath(Collection::Entries()[size_t(index)]);
 }
 // 能力の色 (仮の見た目と HUD)
 Engine::Vector4 ActionColor(BattleAction a) {
@@ -139,28 +133,7 @@ void ChronoSystem::StartDevourBattle(entt::registry& r, int rank) {
 	b.rank = rank;
 	// チャレンジ: ステージを始めるときに決めたもの。時間は成長の残り (やり直しも同じ時間)
 	b.challenge = challenge_;
-	b.legacy = HasArg(L"--devour-battle-legacy");
-	b.challengeTime = b.legacy ? BattleTime : ChallengeTimeFor(devourClock_.left);
-	// 敵が落とす物の候補: ステージの物 (建物は除く) の見た目と能力
-	b.dropPool.clear();
-	for (const auto& prop : life_.props) {
-		if (prop.visual == 0xffffffffu || prop.orb || !cityVisuals_.count(prop.visual))
-			continue;
-		auto e = entt::entity(prop.visual);
-		if (!r.valid(e))
-			continue;
-		const auto* name = r.try_get<NameComponent>(e);
-		if (!name)
-			continue;
-		const std::string id = Collection::KeyOfName(name->name);
-		if (id.empty())
-			continue;
-		bool building = false;
-		const BattleAction action = ActionOfId(id, building);
-		if (building)
-			continue;
-		b.dropPool.push_back({prop.visual, id, action, prop.radius});
-	}
+	b.challengeTime = ChallengeTimeFor(devourClock_.left);
 	// 戦う場所: マップの外 (+x の側) に置いた専用の広い平らなステージへ飛ばす
 	BuildBattleArena(r);
 	b.startAt = b.arenaAt + V{0, 1.25f, 0};
@@ -199,8 +172,6 @@ void ChronoSystem::StartDevourBattle(entt::registry& r, int rank) {
 		}
 		bag.absorbed = int(bag.items.size());
 	}
-	// 物のスロットの数はランクで決まる (デモプレイでは最大)
-	b.slotCount = HasArg(L"--devour-battle") || QuickChallenge().active ? BattleSlotMax : BattleSlotsForRank(rank);
 	// 変形武器は新しいチャレンジごとに作り直す (やり直しでは同じ武器のまま)
 	b.crafted = false;
 	// 部屋: 残すのは家具 (机・こたつ・ベッドなど、吸収できない物) だけ。吸収しきれなかった小物は片付ける
@@ -254,7 +225,7 @@ void ChronoSystem::StartDevourBattle(entt::registry& r, int rank) {
 	BeginBattleFight(r);
 }
 
-// 専用の広いステージを作る: マップの外に平らな床と、円の縁に並べた柱 (仮の見た目)。やり直しでは作り直さない
+// 専用の広いステージを作る: マップの外に平らな床 (積み木の街では隠す。確認用の平らな配置で使う)。やり直しでは作り直さない
 void ChronoSystem::BuildBattleArena(entt::registry& r) {
 	auto& b = battle_;
 	const auto& stage = CurrentDevourStage();
@@ -270,11 +241,13 @@ void ChronoSystem::BuildBattleArena(entt::registry& r) {
 		maxX = life_.bodies[0].at.x;
 		minZ = maxZ = life_.bodies[0].at.z;
 	}
-	b.arenaAt = {maxX + b.arenaRadius * BattleArenaGap, 0, (minZ + maxZ) * .5f};
+	// (積み木の街は広いので、街の柵の外に元の部屋や町が見えないよう、ずっと遠く (BattleArenaFar) に置く。普段の描く範囲の外になる)
+	b.arenaAt = {
+	    maxX + std::max(b.arenaRadius * BattleArenaGap, (ChallengeBlocksHalf + BattleArenaFar) * battle_.unit), 0,
+	    (minZ + maxZ) * .5f};
 	if (r.valid(battleArenaEntity_))
 		return;
-	battleArenaDecor_.clear();
-	const float R = b.arenaRadius, floorHalf = R * 1.6f, pillar = battle_.unit * .9f, height = battle_.unit * 3;
+	const float R = b.arenaRadius, floorHalf = R * 1.6f;
 	auto make = [&](const char* name, const std::vector<std::array<V, 2>>& list, V color) {
 		CityParts::CityBuilder builder;
 		for (const auto& box : list)
@@ -296,28 +269,6 @@ void ChronoSystem::BuildBattleArena(entt::registry& r) {
 	battleArenaEntity_ = make(
 	    "Chrono Battle floor", {{V{c.x - floorHalf, -4, c.z - floorHalf}, V{c.x + floorHalf, 0, c.z + floorHalf}}},
 	    stage.battleColor);
-	// 戦う円の目印: 床より少し明るい円の帯 (正方形の板を並べる) と、縁の柱
-	{
-		std::vector<std::array<V, 2>> ring;
-		const int count = 64;
-		const float w = R * 2 * 3.1416f / count * .55f;
-		for (int i = 0; i < count; ++i) {
-			const float a = 6.2831853f * float(i) / count;
-			const V at = c + V{std::cos(a), 0, std::sin(a)} * R;
-			ring.push_back({V{at.x - w, 0, at.z - w}, V{at.x + w, .3f, at.z + w}});
-		}
-		battleArenaDecor_.push_back(make("Chrono Battle ring", ring, {.98f, .85f, .35f}));
-	}
-	{
-		std::vector<std::array<V, 2>> pillars;
-		const int count = 16;
-		for (int i = 0; i < count; ++i) {
-			const float a = 6.2831853f * (float(i) + .5f) / count;
-			const V at = c + V{std::cos(a), 0, std::sin(a)} * (R + pillar * 2);
-			pillars.push_back({V{at.x - pillar, 0, at.z - pillar}, V{at.x + pillar, height, at.z + pillar}});
-		}
-		battleArenaDecor_.push_back(make("Chrono Battle pillars", pillars, {.95f, .95f, .92f}));
-	}
 }
 
 // 戦闘の中身を始めから (やり直しもここ)
@@ -329,9 +280,6 @@ void ChronoSystem::BeginBattleFight(entt::registry& r) {
 	body.mass = b.startMass;
 	body.velocity = {};
 	body.air = 0;
-	// スライム陣取りは専用ステージの手前の真ん中から始める
-	if (!b.legacy && b.challenge == ChallengeKind::Territory)
-		body.at = ArenaPoint(0, ChallengeTerritoryStartZ) + V{0, ChallengeBodyGround, 0};
 	// 準備フェーズの取り込み中に時間切れになると、触手 (grabs) が元のマップの物へ伸びたまま残る。行動と体のひずみも全部戻す
 	body.action = LifeAction::Idle;
 	body.grabs.clear();
@@ -349,8 +297,6 @@ void ChronoSystem::BeginBattleFight(entt::registry& r) {
 	body.aspectVelocity = 0;
 	body.motion = 0;
 	// 飛びかかりの途中だった場合も止める (元のマップの目標へ体を引っぱり続けないように)
-	devourPounce_ = {};
-	devourPounceWait_ = 0;
 	devourBiteAge_ = -1;
 	// 吸い込み中だった物 (devourSucks_) は、元のマップの位置から体へ液体の腕を伸ばして描くので、残ると準備のステージから体が伸びて見える。
 	// 戦闘では吸い込みを進めないので全部やめる。水鉄砲の水も消す
@@ -364,8 +310,6 @@ void ChronoSystem::BeginBattleFight(entt::registry& r) {
 	cameraReady_ = false;
 	lifeReseed_ = true;
 	b.bag = b.startBag;
-	for (auto& slot : b.slots)
-		slot = {};
 	// 確認用: --devour-battle-item=id の物は、袋の中で 40 個に増やす (ステージに少ししか無い物の能力も続けて試せるように)
 	{
 		const std::string forced = ArgText(L"--devour-battle-item=");
@@ -375,7 +319,6 @@ void ChronoSystem::BeginBattleFight(entt::registry& r) {
 					while (bag.items.size() < 40)
 						bag.items.push_back(bag.items.front());
 	}
-	b.maxHp = b.hp = BattleMaxHp(CurrentDevourStage(), body.mass);
 	b.time = b.challengeTime;
 	if (const wchar_t* arg = wcsstr(GetCommandLineW(), L"--devour-battle-time="))
 		b.time = std::max(10.f, float(_wtof(arg + 21)));
@@ -383,16 +326,15 @@ void ChronoSystem::BeginBattleFight(entt::registry& r) {
 	b.intro = 0;
 	b.clock = 0;
 	b.overAge = 0;
-	b.spawnClock = 0;
 	b.cooldown = 0;
 	b.guard = 0;
-	b.hurtFlash = 0;
 	b.score = b.combo = 0;
 	b.comboClock = 0;
 	b.timeBonus = 0;
 	b.newBest = false;
 	b.matrix = {};
 	b.matrix.active = HasArg(L"--challenge-matrix");
+	weaponCheck_.active = HasArg(L"--weapon-check");
 	b.impactMemo.clear();
 	b.tally = {};
 	b.impactCheck = HasArg(L"--challenge-impact-check");
@@ -404,45 +346,38 @@ void ChronoSystem::BeginBattleFight(entt::registry& r) {
 		auto best = challengeBests_.find(ChallengeBestKey(CurrentDevourStage().id, b.challenge));
 		b.best = best == challengeBests_.end() ? 0 : best->second;
 	}
-	b.kills = 0;
-	b.hudTotal = 0;
-	b.regen = b.fluff = b.dropBoost = 0;
+	b.regen = b.fluff = 0;
 	b.toolShape = 0;
 	b.toolAge = b.toolLeft = 0;
 	b.abilityLeft = 0;
 	b.abilityHitAt = -1;
 	b.velocity = {};
-	b.bossSpawned = b.bossDown = b.won = false;
 	b.previousFire = true;
-	b.enemies.clear();
 	b.shots.clear();
 	b.fx.clear();
-	b.drops.clear();
 	b.placed.clear();
 	b.pops.clear();
-	b.pickups = b.spent = b.dropped = 0;
+	b.spent = 0;
 	b.message.clear();
 	b.messageAge = 0;
 	// 物のスロットを袋から埋める (最初はルーレットなし)。最初は物の入った一番前のスロットを選ぶ (無ければ飴玉)
-	ShowChallengeStage(r);
+	// (配置を決めてから、その配置のステージを見せる)
 	BuildChallenge();
-	for (int i = 0; i < b.slotCount; ++i)
-		FillBattleSlot(i, false);
-	b.selected = b.slotCount;
-	for (int i = 0; i < b.slotCount; ++i)
-		if (!b.slots[size_t(i)].items.empty()) {
-			b.selected = i;
-			break;
-		}
+	ShowChallengeStage(r);
+	// 積み木の街は手前の広場の真ん中から始める
+	b.fallSpeed = 0;
+	if (BlocksStageActive()) {
+		body.at = ArenaPoint(0, ChallengeBlocksStartZ) + V{0, ChallengeBodyGround, 0};
+		body.engulfPoint = body.grabOrigin = body.at;
+		if (auto* t = r.try_get<TransformComponent>(player_))
+			t->translate = Write(body.at);
+	}
 	// 変形武器: 回数と待ちを戻す。まだ作っていなければ (新しいチャレンジ) 作る画面を開く
 	b.weapon.cool = 0;
 	b.weaponShape = 0;
 	b.weaponForm = 0;
-	b.powerScale = 1;
-	if (!b.legacy && !b.crafted)
+	if (!b.crafted)
 		OpenWeaponCraft();
-	if (WeaponsActive())
-		b.selected = 0;
 	++b.tries;
 	lifeHitStop_ = 0;
 	V facing = body.forward;
@@ -467,58 +402,7 @@ void ChronoSystem::RetryDevourBattle(entt::registry& r) {
 	BeginBattleFight(r);
 }
 
-// 袋から次の物の種類を引く: 吸収した数の BattleBagPower 乗に比例。残りの無い種類は引かない。引けなければ -1
-// (確認用: --devour-battle-item=id なら、その物が残っている限りそれを引く)
-int ChronoSystem::DrawFromBattleBag() {
-	auto& b = battle_;
-	static const std::string forced = ArgText(L"--devour-battle-item=");
-	if (!forced.empty())
-		for (size_t i = 0; i < b.bag.size(); ++i)
-			if (b.bag[i].id == forced && !b.bag[i].items.empty())
-				return int(i);
-	float total = 0;
-	for (const auto& bag : b.bag)
-		if (!bag.items.empty())
-			total += std::pow(float(std::max(1, bag.absorbed)), BattleBagPower);
-	if (total <= 0)
-		return -1;
-	float pick = BU(0, total);
-	for (size_t i = 0; i < b.bag.size(); ++i) {
-		if (b.bag[i].items.empty())
-			continue;
-		pick -= std::pow(float(std::max(1, b.bag[i].absorbed)), BattleBagPower);
-		if (pick <= 0)
-			return int(i);
-	}
-	for (size_t i = b.bag.size(); i-- > 0;)
-		if (!b.bag[i].items.empty())
-			return int(i);
-	return -1;
-}
 
-// スロットを埋める: roulette なら引く演出 (BattleRouletteTime 秒) のあとで引く。入るのは上限 BattleSlotCapacity 個まで
-void ChronoSystem::FillBattleSlot(int index, bool roulette) {
-	auto& b = battle_;
-	auto& slot = b.slots[size_t(index)];
-	slot.items.clear();
-	if (roulette) {
-		slot.roulette = 0;
-		return;
-	}
-	slot.roulette = -1;
-	const int pick = DrawFromBattleBag();
-	if (pick < 0) {
-		slot.id.clear();
-		return;
-	}
-	auto& bag = b.bag[size_t(pick)];
-	slot.id = bag.id;
-	slot.action = bag.action;
-	for (int k = 0; k < BattleSlotCapacity && !bag.items.empty(); ++k) {
-		slot.items.push_back(bag.items.back());
-		bag.items.pop_back();
-	}
-}
 
 // チャレンジの得点: コンボの倍率をかけて足し、その場所に文字を浮かべる。時間が終わったあとは数えない
 int ChronoSystem::AddChallengeScore(int points, V at, const std::string& label) {
@@ -534,63 +418,19 @@ int ChronoSystem::AddChallengeScore(int points, V at, const std::string& label) 
 	return added;
 }
 
-// 敵にダメージ (倒したら消える演出。ボスを倒したら勝ち)
-void ChronoSystem::HurtBattleEnemy(GameContext& ctx, BattleEnemy& enemy, float damage, V push) {
-	auto& b = battle_;
-	if (enemy.hp <= 0)
-		return;
-	// 消しゴムで弱った敵は、受けるダメージが増える
-	if (enemy.weak > 0)
-		damage *= BattleWeakTake;
-	enemy.hp -= damage;
-	enemy.flash = .15f;
-	enemy.knock = enemy.knock + push * (enemy.boss ? .25f : 1.f);
-	if (enemy.hp <= 0) {
-		++b.kills;
-		AddChallengeScore(enemy.boss ? 500 : 10, enemy.at + V{0, enemy.radius, 0}, "");
-		// 倒したら物を落とす (ボスは倒した時点で勝ちなので落とさない)
-		if (!enemy.boss && float(b.dropped) < float(b.spent) * BattleDropRefill &&
-		    BU(0, 1) < BattleDropChance * (b.dropBoost > 0 ? 2.f : 1.f)) {
-			SpawnBattleDrops(enemy.at, 1);
-			++b.dropped;
-		}
-		b.fx.push_back({enemy.at, enemy.radius * 1.1f, 0, .2f, {1, .9f, .6f, .8f}});
-		LifeImpact(ctx, enemy.boss ? ImpactStructureBreak : ImpactKill, enemy.at, {0, 1, 0}, enemy.boss ? 1.f : .5f);
-		PlayDevourSound(enemy.boss ? devourSounds_.shatter : devourSounds_.hit, enemy.boss ? 1.f : .5f);
-		if (enemy.boss) {
-			b.bossDown = true;
-			b.won = true;
-			b.phase = BattleStep::Over;
-			b.overAge = 0;
-			b.message = "ボスを倒した！ 勝利！";
-			b.messageAge = 3;
-		}
-	}
-}
-
 // ---- 衝撃 (能力の当たり) ----
-// 衝撃を受ける相手の一覧: 旧来の戦闘の敵 (生きているもの)。チャレンジの物もここに並べる
+// 衝撃を受ける相手の一覧: チャレンジの物
 std::vector<ChronoSystem::BattleTarget> ChronoSystem::CollectBattleTargets() const {
 	std::vector<BattleTarget> out;
-	out.reserve(battle_.enemies.size());
-	for (const auto& e : battle_.enemies)
-		if (e.hp > 0)
-			out.push_back({BattleTargetKind::Enemy, e.id, e.at, e.radius, e.boss, e.stun > 0});
+	// (変形武器を作る画面の見本の撃ち方は、相手を持たない: 隠してあるチャレンジの物を狙わない)
+	if (battle_.phase == BattleStep::Craft)
+		return out;
+	out.reserve(battle_.blocks.size());
 	// 積み木 (硬い積み木は重い相手)
 	for (const auto& blk : battle_.blocks)
 		if (blk.alive)
 			out.push_back(
 			    {BattleTargetKind::Block, blk.id, blk.at, blk.size * .6f, blk.type == BlockType::Hard, false});
-	// スライム陣取り: お掃除ロボと首振り扇風機 (扇風機は重い相手)
-	if (!battle_.legacy && battle_.challenge == ChallengeKind::Territory && battle_.territory.reclaim) {
-		const auto& t = battle_.territory;
-		const float u = battle_.unit;
-		out.push_back(
-		    {BattleTargetKind::Robot, ChallengeRobotId, t.robot.at + V{0, u * .3f, 0}, u * RobotRadius, false,
-		     t.robot.stop > 0});
-		out.push_back(
-		    {BattleTargetKind::Fan, ChallengeFanId, t.fan.at + V{0, u * 1.6f, 0}, u * 1.2f, true, t.fan.stop > 0});
-	}
 	return out;
 }
 
@@ -616,12 +456,12 @@ int ChronoSystem::EmitBattleImpact(
     GameContext& ctx, const BattleImpact& impact, std::vector<BattleTarget>* touched,
     const std::vector<uint32_t>* exclude) {
 	auto& b = battle_;
+	// (作る画面の見本の撃ち方は、何にも効かない: チャレンジの物を始まる前に壊さない)
+	if (b.phase == BattleStep::Craft)
+		return 0;
 	const size_t a = std::min(size_t(impact.action), size_t(BattleAction::Count) - 1);
 	++b.tally.emitted[a];
 	++b.tally.effects[a][size_t(impact.effect)];
-	// スライム陣取り: 衝撃の形に床をぬる (相手がいなくても)
-	if (!b.legacy && b.challenge == ChallengeKind::Territory)
-		PaintTerritoryImpact(impact);
 	int count = 0;
 	for (const auto& t : CollectBattleTargets()) {
 		if (impact.limit > 0 && count >= impact.limit)
@@ -645,25 +485,12 @@ int ChronoSystem::EmitBattleImpact(
 		}
 		bool hit = false;
 		switch (t.kind) {
-		case BattleTargetKind::Enemy: {
-			auto e =
-			    std::find_if(b.enemies.begin(), b.enemies.end(), [&](const BattleEnemy& x) { return x.id == t.id; });
-			if (e != b.enemies.end())
-				hit = ApplyImpactToEnemy(ctx, *e, impact);
-			break;
-		}
 		case BattleTargetKind::Block: {
 			const size_t k = size_t(t.id - ChallengeBlockIdBase);
 			if (k < b.blocks.size())
 				hit = ApplyImpactToBlock(ctx, b.blocks[k], impact);
 			break;
 		}
-		case BattleTargetKind::Robot:
-			hit = ApplyImpactToRobot(impact);
-			break;
-		case BattleTargetKind::Fan:
-			hit = ApplyImpactToFan(impact);
-			break;
 		}
 		if (!hit)
 			continue;
@@ -684,69 +511,6 @@ int ChronoSystem::EmitBattleImpact(
 	return count;
 }
 
-// 旧来の戦闘の敵が衝撃を受ける (効き目ごとの動き)。効いたら true
-bool ChronoSystem::ApplyImpactToEnemy(GameContext& ctx, BattleEnemy& e, const BattleImpact& i) {
-	if (e.hp <= 0)
-		return false;
-	const float unit = battle_.unit, big = e.boss ? i.bigScale : 1.f;
-	V d = e.at - i.at;
-	d.y = 0;
-	const float dist = Length(d);
-	V flatDir{i.dir.x, 0, i.dir.z};
-	flatDir = Length(flatDir) > .001f ? Unit(flatDir) : V{0, 0, 1};
-	const V radial = dist > .01f ? d * (1 / dist) : flatDir;
-	const V push = (i.radial ? radial : flatDir) * (unit * i.push);
-	switch (i.effect) {
-	case ImpactEffect::Hit:
-		HurtBattleEnemy(ctx, e, i.damage, push);
-		return true;
-	case ImpactEffect::Pull: {
-		const float strength = i.pullCap > 0 ? unit * std::min(dist, i.pullCap) * i.push : unit * i.push;
-		e.knock = e.knock - radial * (strength * big);
-		if (i.damage > 0)
-			HurtBattleEnemy(ctx, e, i.damage, V{});
-		return true;
-	}
-	case ImpactEffect::PushOut: {
-		const float limit = i.reach + e.radius * .5f;
-		if (dist < limit && dist > .01f)
-			e.at = e.at + d * ((limit - dist) / dist * i.push);
-		return true;
-	}
-	case ImpactEffect::Wall: {
-		V at = e.at;
-		at.y = i.at.y;
-		const V ab = i.to - i.at;
-		const float t = std::clamp(Dot(at - i.at, ab) / std::max(1e-4f, Dot(ab, ab)), 0.f, 1.f);
-		V out = at - (i.at + ab * t);
-		out.y = 0;
-		const float len = Length(out), gap = i.width + e.radius;
-		if (len < gap) {
-			e.at = e.at + (len > .01f ? out * (1 / len) : flatDir) * (gap - len);
-		}
-		return true;
-	}
-	case ImpactEffect::Stun:
-		e.stun = std::max(e.stun, i.seconds * big);
-		if (i.damage > 0)
-			HurtBattleEnemy(ctx, e, i.damage, push);
-		return true;
-	case ImpactEffect::Weaken:
-		e.weak = i.seconds;
-		HurtBattleEnemy(ctx, e, i.damage, push);
-		return true;
-	case ImpactEffect::Burn:
-		e.burn = i.seconds;
-		e.burnDps = i.damage;
-		return true;
-	case ImpactEffect::Capture:
-		e.stun = std::max(e.stun, i.seconds);
-		return true;
-	default:
-		return false;
-	}
-}
-
 // 全部の能力の衝撃の数を書く (--challenge-impact-check)。一度も衝撃を出さなかった能力は missing に並べる
 void ChronoSystem::WriteImpactCheck() const {
 	const auto& b = battle_;
@@ -760,7 +524,7 @@ void ChronoSystem::WriteImpactCheck() const {
 	static_assert(std::size(keys) == size_t(BattleAction::Count));
 	std::string missing;
 	int ok = 0;
-	out << "legacy=" << b.legacy << " step=" << BattleImpactCheckStep << '\n';
+	out << "step=" << BattleImpactCheckStep << '\n';
 	for (size_t a = 0; a < size_t(BattleAction::Count); ++a) {
 		out << keys[a] << " emitted=" << b.tally.emitted[a] << " touched=" << b.tally.touched[a] << " effects=";
 		bool first = true;
@@ -779,84 +543,6 @@ void ChronoSystem::WriteImpactCheck() const {
 	    << " missing=" << (missing.empty() ? "none" : missing) << '\n';
 }
 
-// 敵が倒れた所から、ステージの物をランダムに飛び散らせる
-void ChronoSystem::SpawnBattleDrops(V at, int count) {
-	auto& b = battle_;
-	const float unit = battle_.unit;
-	if (count <= 0 || b.dropPool.empty())
-		return;
-	for (int i = 0; i < count; ++i) {
-		const auto& pick = b.dropPool[size_t(BU(0, float(b.dropPool.size()) - .001f))];
-		BattleDrop d;
-		d.visual = pick.visual;
-		d.id = pick.id;
-		d.action = pick.action;
-		d.itemRadius = pick.radius;
-		d.radius = std::clamp(pick.radius, unit * .25f, unit * .6f);
-		d.shrink = d.radius / std::max(.01f, pick.radius);
-		const float a = BU(0, 6.2831853f);
-		d.at = at + V{0, unit * .5f, 0};
-		d.velocity = V{std::cos(a), 0, std::sin(a)} * (unit * BU(3, 7)) + V{0, unit * BU(6, 10), 0};
-		d.spin = BU(-4, 4);
-		b.drops.push_back(d);
-	}
-}
-
-// 落ちた物を吸収した: 袋に足す (体の大きさは変わらない)
-void ChronoSystem::AbsorbBattleDrop(const BattleDrop& d) {
-	auto& b = battle_;
-	auto& body = life_.bodies[0];
-	auto bag = std::find_if(b.bag.begin(), b.bag.end(), [&](const BattleBag& x) { return x.id == d.id; });
-	if (bag == b.bag.end()) {
-		b.bag.push_back({d.id, d.action, 1, {}});
-		bag = b.bag.end() - 1;
-	}
-	bag->items.push_back({d.visual, d.id, 0, d.itemRadius});
-	++b.pickups;
-	PlayDevourGulp(.4f, b.pickups);
-	b.pops.push_back(
-	    {body.at + V{0, DevourBodyRadius(body.mass) * 1.2f, 0}, "+1 " + NameOfId(d.id), 0, ActionColor(d.action)});
-}
-
-// 飴玉を投げる (固定のスロット。何も持っていなくても使える弱い弾)
-void ChronoSystem::UseBattleCandy() {
-	auto& b = battle_;
-	auto& body = life_.bodies[0];
-	const float R = DevourBodyRadius(body.mass), speed = battle_.unit * 14;
-	const V dir = Forward(yaw_, 0);
-	BattleShot shot;
-	shot.at = body.at + dir * (R * .8f) + V{0, R * .4f, 0};
-	shot.velocity = dir * speed + V{0, speed * .12f, 0};
-	shot.style = 1;
-	shot.radius = battle_.unit * .18f;
-	shot.damage = BattleCandyDamage * BattlePower(CurrentDevourStage(), body.mass);
-	shot.by = BattleAction::Throw;
-	b.shots.push_back(shot);
-	BeginTerritoryUse(BattleAction::Throw, true);
-	b.cooldown = BattleCandyWait(0);
-	PlayDevourSound(devourSounds_.pounce, .35f, 1.5f);
-}
-
-// 物のスロットを使う: 1 つ取り出して能力を始める (体は縮まない)。空になったら袋から引き直す
-void ChronoSystem::UseBattleSlot(GameContext& ctx, int index) {
-	auto& b = battle_;
-	auto& slot = b.slots[size_t(index)];
-	if (slot.items.empty()) {
-		b.message = slot.roulette >= 0 ? "次の物を選んでいる…" : "このスロットは空っぽ";
-		b.messageAge = 1.f;
-		return;
-	}
-	const BattleItem item = slot.items.back();
-	slot.items.pop_back();
-	++b.spent;
-	StartBattleAbility(ctx, slot.action, item);
-	b.cooldown = BattleActionWait(slot.action);
-	// (スライム陣取りは続けて使えるよう短く)
-	if (!b.legacy && b.challenge == ChallengeKind::Territory)
-		b.cooldown = ChallengeTerritoryWait(b.cooldown);
-	if (slot.items.empty())
-		FillBattleSlot(index, true);
-}
 
 // 能力を始める: 体の形を変え (投げる以外)、能力の時間と強さを決める。当たりは TickBattleAbility で進める
 void ChronoSystem::StartBattleAbility(GameContext& ctx, BattleAction action, const BattleItem& item) {
@@ -880,14 +566,11 @@ void ChronoSystem::StartBattleAbility(GameContext& ctx, BattleAction action, con
 	b.abilityLeft = BattleActionTime(action);
 	b.abilityPower = action == BattleAction::Heal ? BattlePower(stage, body.mass) : ChallengePowerNow();
 	b.abilityItem = BattleItemScale(b.unit, item.radius);
-	// (変形武器の連携・重ねがけ・威力の強化)
-	b.abilityPower *= b.powerScale;
 	b.abilityTick = 0;
 	b.abilityHit = false;
 	b.abilityHitAt = -1;
 	b.dashDir = aim;
 	b.abilitySource = b.impactSerial++;
-	BeginTerritoryUse(action, false);
 	// 衝撃を作る (能力・効き目・形。中心は体、向きは狙っている向き)
 	auto make = [&](ImpactEffect effect, ImpactShape shape) {
 		BattleImpact i;
@@ -922,8 +605,7 @@ void ChronoSystem::StartBattleAbility(GameContext& ctx, BattleAction action, con
 		shot.damage = BattleThrowDamage * b.abilityPower * b.abilityItem;
 		shot.by = action;
 		// (チャレンジ: 大きい物ほど当たる数が多く、床に落ちても転がって当たり続ける)
-		if (!b.legacy)
-			shot.hits = ChallengeThrowHits(b.abilityItem);
+		shot.hits = ChallengeThrowHits(b.abilityItem);
 		b.shots.push_back(shot);
 		b.abilityLeft = 0;
 		PlayDevourSound(devourSounds_.pounce, .6f, 1.1f);
@@ -964,16 +646,12 @@ void ChronoSystem::StartBattleAbility(GameContext& ctx, BattleAction action, con
 		b.guard = BattleGuardTime;
 		self(R * 1.2f);
 		PlayDevourSound(devourSounds_.morph, .6f);
-		// (チャレンジ: 盾を構えて前へ短く突進する盾タックル。旧来の戦闘は、その場で守るだけ)
-		if (!b.legacy) {
-			b.abilityLeft = ChallengeTackleTime;
-			LifeImpact(ctx, ImpactTireLaunch, body.at, aim, .7f);
-		} else
-			b.abilityLeft = 0;
+		// (盾を構えて前へ短く突進する盾タックル)
+		b.abilityLeft = ChallengeTackleTime;
+		LifeImpact(ctx, ImpactTireLaunch, body.at, aim, .7f);
 		break;
 	case BattleAction::Heal:
 		setTool(BattleHeartShape, b.abilityLeft);
-		b.hp = std::min(b.maxHp, b.hp + b.maxHp * BattleHealShare);
 		self(R * 1.2f);
 		PlayDevourSound(devourSounds_.rankUp, .6f);
 		break;
@@ -1031,12 +709,11 @@ void ChronoSystem::StartBattleAbility(GameContext& ctx, BattleAction action, con
 		PlayDevourSound(devourSounds_.note, .6f, 1.6f);
 		break;
 	case BattleAction::Tower: {
-		// 積み木の塔: 前に横長の壁を建てる (敵は通れない)
-		// (チャレンジ: 前に物があれば、その手前に建てる。倒れる向きは、物の多い側 (前か後ろ))
+		// 積み木の塔: 前に横長の壁を建てる。前に物があれば、その手前に建てる。倒れる向きは、物の多い側 (前か後ろ)
 		const float size = std::max(R * .55f, battle_.unit * .5f);
 		float ahead = R * BattleTowerAhead;
 		V fall = aim;
-		if (!b.legacy) {
+		{
 			const V side{aim.z, 0, -aim.x};
 			int front = 0, back = 0;
 			for (const auto& t : CollectBattleTargets()) {
@@ -1112,7 +789,7 @@ void ChronoSystem::StartBattleAbility(GameContext& ctx, BattleAction action, con
 		break;
 	}
 	case BattleAction::Decoy: {
-		// ぬいぐるみ: 少し前に置く。敵はそちらへ向かい、最後に弾けてまわりを吹き飛ばす
+		// ぬいぐるみ: 少し前に置く。最後に弾けてまわりを吹き飛ばす
 		BattlePlaced d;
 		d.kind = action;
 		d.visual = item.visual;
@@ -1211,7 +888,7 @@ void ChronoSystem::StartBattleAbility(GameContext& ctx, BattleAction action, con
 	}
 	// 止める・弱らせる
 	case BattleAction::Pause:
-		// リモコン: 敵が全部しばらく止まる (ボスは短い)
+		// リモコン: まわりの物をしばらく止める
 		{
 			BattleImpact i = make(ImpactEffect::Stun, ImpactShape::Sphere);
 			i.reach = 1e9f;
@@ -1226,19 +903,9 @@ void ChronoSystem::StartBattleAbility(GameContext& ctx, BattleAction action, con
 		LifeImpact(ctx, ImpactSignalPulse, body.at, {0, 1, 0}, 1);
 		break;
 	case BattleAction::Read: {
-		// まんが: 前に落とすと、まわりの敵 (ボス以外) が座り込んで読みふける
+		// まんが: 重い本を前に広げて落とし、範囲の中の物を押しつぶす
 		const V at = body.at + aim * (R * 1.5f);
-		if (b.legacy) {
-			BattleImpact i = make(ImpactEffect::Stun, ImpactShape::Sphere);
-			i.at = at;
-			i.reach = R * BattleReadReach;
-			i.seconds = BattleReadTime;
-			i.spareBig = true;
-			i.label = "読みふける…";
-			EmitBattleImpact(ctx, i);
-		}
-		// (チャレンジ: 重い本を広げて落とし、範囲の中の物を押しつぶす)
-		else {
+		{
 			BattleImpact i = make(ImpactEffect::Hit, ImpactShape::Sphere);
 			i.at = at;
 			i.reach = R * BattleReadReach;
@@ -1262,8 +929,8 @@ void ChronoSystem::StartBattleAbility(GameContext& ctx, BattleAction action, con
 		break;
 	}
 	case BattleAction::Cage: {
-		// かご: 前の近い敵 1 体 (ボス以外) を閉じ込める
-		// (選ぶのは前の近い相手 1 つ。大きい相手 (ボス・重い物) は選ばない)
+		// かご: 前の近い相手 1 つを閉じ込める
+		// (大きい相手 (重い物) は選ばない)
 		bool found = false;
 		BattleTarget target;
 		float best = R * BattleCageReach;
@@ -1306,7 +973,7 @@ void ChronoSystem::StartBattleAbility(GameContext& ctx, BattleAction action, con
 		break;
 	}
 	case BattleAction::Sticky: {
-		// ノート: 紙を飛ばして、当たった敵に貼り付けて止める
+		// ノート: 紙を飛ばして、当たった相手に貼り付けて止める
 		const float u = battle_.unit;
 		BattleShot s;
 		s.mode = action;
@@ -1329,7 +996,7 @@ void ChronoSystem::StartBattleAbility(GameContext& ctx, BattleAction action, con
 		PlayDevourSound(devourSounds_.morph, .5f, 1.2f);
 		break;
 	case BattleAction::Tea: {
-		// 湯のみ: 前の扇の範囲へ熱いお茶をまく。かかった敵はやけどでしばらく削られる
+		// 湯のみ: 前の扇の範囲へ熱いお茶をまく。かかった相手はやけどでしばらく削られる
 		{
 			BattleImpact i = make(ImpactEffect::Burn, ImpactShape::Cone);
 			i.reach = R * BattleTeaReach;
@@ -1355,12 +1022,12 @@ void ChronoSystem::StartBattleAbility(GameContext& ctx, BattleAction action, con
 	case BattleAction::Roly:
 		setTool(BattleDarumaShape, b.abilityLeft);
 		self(R * 1.2f);
-		b.message = "起き上がりこぼし！ 殴った敵にはね返す";
+		b.message = "起き上がりこぼし！";
 		b.messageAge = 1.5f;
 		PlayDevourSound(devourSounds_.morph, .6f, .7f);
 		break;
 	case BattleAction::Beckon: {
-		// 招き猫: まわりの敵を前の 1 か所へ招き寄せる。しばらく倒した敵が落とす物が 2 倍
+		// 招き猫: まわりの物を前の 1 か所へ招き寄せる
 		const V spot = body.at + aim * (R * 3);
 		{
 			BattleImpact i = make(ImpactEffect::Pull, ImpactShape::Sphere);
@@ -1371,9 +1038,6 @@ void ChronoSystem::StartBattleAbility(GameContext& ctx, BattleAction action, con
 			i.bigScale = .25f;
 			EmitBattleImpact(ctx, i);
 		}
-		b.dropBoost = BattleBeckonTime;
-		b.message = "招き猫: 物を落としやすくなった！";
-		b.messageAge = 2;
 		BattlePlaced m;
 		m.kind = action;
 		m.visual = item.visual;
@@ -1401,7 +1065,7 @@ void ChronoSystem::StartBattleAbility(GameContext& ctx, BattleAction action, con
 		PlayDevourSound(devourSounds_.morph, .4f, 1.6f);
 		break;
 	case BattleAction::Smell: {
-		// 靴下: 足元ににおいの雲を置く。敵は雲の中に入れない
+		// 靴下: 足元ににおいの雲を置く。中の物を外へ押し出す
 		BattlePlaced c;
 		c.kind = action;
 		c.at = body.at;
@@ -1416,7 +1080,7 @@ void ChronoSystem::StartBattleAbility(GameContext& ctx, BattleAction action, con
 		break;
 	}
 	case BattleAction::Kei: {
-		// 桂馬: 斜め前へ跳ぶ。左右は近い敵のいる側 (いなければ右)
+		// 桂馬: 斜め前へ跳ぶ。左右は近い相手のいる側 (いなければ右)
 		const V right{aim.z, 0, -aim.x};
 		float side = 1;
 		BattleTarget nearest;
@@ -1494,9 +1158,7 @@ void ChronoSystem::TickBattleAbility(GameContext& ctx, float dt) {
 		break;
 	}
 	case BattleAction::Guard: {
-		// 盾タックル (チャレンジ): 盾の前に触れた物に強く当てて押し出す (同じ物には 1 回)
-		if (b.legacy)
-			break;
+		// 盾タックル: 盾の前に触れた物に強く当てて押し出す (同じ物には 1 回)
 		BattleImpact i = make(ImpactEffect::Hit, ImpactShape::Cone);
 		i.dir = b.dashDir;
 		i.reach = R * ChallengeTackleReach;
@@ -1550,16 +1212,6 @@ void ChronoSystem::TickBattleAbility(GameContext& ctx, float dt) {
 			i.bigScale = .2f;
 			EmitBattleImpact(ctx, i);
 		}
-		for (auto& d : b.drops) {
-			if (d.suck >= 0)
-				continue;
-			V to = d.at - body.at;
-			to.y = 0;
-			if (Length(to) < reach * 1.4f) {
-				d.suck = 0;
-				d.suckFrom = d.at;
-			}
-		}
 		b.abilityTick -= dt;
 		if (b.abilityTick <= 0) {
 			b.abilityTick = .2f;
@@ -1597,7 +1249,10 @@ void ChronoSystem::TickBattleAbility(GameContext& ctx, float dt) {
 				    {from + dir * (len * float(k) / float(dots)) + V{0, R * .4f, 0}, R * .28f, 0, .3f,
 				     ActionColor(b.ability)});
 		};
-		const float thrust = R * BattleThrustLength, beam = b.arenaRadius > 0 ? b.arenaRadius * 2 : R * 40;
+		const float thrust = R * BattleThrustLength,
+		            beam = BlocksStageActive() ? ChallengeBlocksHalf * 2 * b.unit
+		                   : b.arenaRadius > 0 ? b.arenaRadius * 2
+		                                       : R * 40;
 		const V back = f * -1.f, left = rt * -1.f;
 		switch (b.ability) {
 		case BattleAction::Fu:
@@ -1685,7 +1340,7 @@ void ChronoSystem::TickBattleAbility(GameContext& ctx, float dt) {
 	}
 }
 
-// 置いた物を進める: ビー玉の罠・積み木の塔の壁と崩れ・ドミノが順に倒れる・においの雲・ぬいぐるみが弾ける (絵の具の床は敵の移動で見る)
+// 置いた物を進める: ビー玉の罠・積み木の塔の壁と崩れ・ドミノが順に倒れる・においの雲・ぬいぐるみが弾ける
 void ChronoSystem::TickBattlePlaced(GameContext& ctx, float dt) {
 	auto& b = battle_;
 	const float unit = battle_.unit;
@@ -1768,19 +1423,6 @@ void ChronoSystem::TickBattlePlaced(GameContext& ctx, float dt) {
 			}
 			break;
 		}
-		case BattleAction::Cage: {
-			// かご: 閉じ込めた敵の上に乗る。敵が倒れたら消える
-			auto found = std::find_if(
-			    b.enemies.begin(), b.enemies.end(), [&](const BattleEnemy& e) { return e.id == pl.target; });
-			if (found == b.enemies.end() || found->hp <= 0)
-				pl.age = pl.life + 1;
-			else {
-				pl.at = found->at;
-				pl.at.y = InkGround(pl.at);
-				found->stun = std::max(found->stun, .1f);
-			}
-			break;
-		}
 		case BattleAction::Smell: {
 			// においの雲: 中にいる相手を外へ押し出す
 			BattleImpact i = make(ImpactEffect::PushOut, ImpactShape::Sphere);
@@ -1848,19 +1490,21 @@ void ChronoSystem::UpdateDevourBattle(entt::registry& r, Player& p, GameContext&
 	b.frameDt = dt;
 	if (lifeHitStop_ > 0) {
 		lifeHitStop_ -= dt;
-		ctx.renderer->SetRogueWorldFrozen(true);
+		ctx.renderer->SetWorldFrozen(true);
 		InkCamera(r, p, ctx);
 		return;
 	}
-	ctx.renderer->SetRogueWorldFrozen(false);
+	ctx.renderer->SetWorldFrozen(false);
 	Engine::WindowDX::SetCursorVisible(b.phase == BattleStep::Craft);
 	// 変形武器を作る画面 (決めたら始まりの演出へ)
-	if (b.phase == BattleStep::Craft)
+	if (b.phase == BattleStep::Craft) {
 		UpdateWeaponCraft(ctx, dt);
+		if (b.phase == BattleStep::Craft)
+			TickCraftPreview(ctx, dt);
+	}
 	CraftScreenOpen() = b.phase == BattleStep::Craft;
 	life_.age += dt;
 	b.messageAge = std::max(0.f, b.messageAge - dt);
-	b.hurtFlash = std::max(0.f, b.hurtFlash - dt);
 	const bool autoPlay = HasArg(L"--devour-battle-auto");
 	const float R = DevourBodyRadius(body.mass), unit = battle_.unit;
 	// カメラ
@@ -1870,12 +1514,12 @@ void ChronoSystem::UpdateDevourBattle(entt::registry& r, Player& p, GameContext&
 		yaw_ += ctx.input->GetMouseDeltaX() * .0025f + y;
 		pitch_ = std::clamp(pitch_ + ctx.input->GetMouseDeltaY() * .0025f + x, -.7f, .85f);
 	}
-	// 始まりの演出 (敵はまだ出ない)
+	// 始まりの演出
 	if (b.phase == BattleStep::Intro) {
 		b.intro += dt;
-		if (b.intro >= (b.legacy ? BattleIntro : ChallengeIntro)) {
+		if (b.intro >= ChallengeIntro) {
 			b.phase = BattleStep::Fight;
-			b.message = b.legacy ? "生き残って、現れるボスを倒せ！" : ChallengeOf(b.challenge).goal;
+			b.message = ChallengeOf(b.challenge).goal;
 			b.messageAge = 2.5f;
 		}
 	}
@@ -1887,23 +1531,6 @@ void ChronoSystem::UpdateDevourBattle(entt::registry& r, Player& p, GameContext&
 	b.impactMemo.erase(
 	    std::remove_if(b.impactMemo.begin(), b.impactMemo.end(), [](const BattleImpactMemo& m) { return m.left <= 0; }),
 	    b.impactMemo.end());
-	// スロットの引き直し: 空いたスロットは袋に物があればルーレットを回し、止まったら引く
-	// (変形武器を使うときは、スロットは使わない)
-	if (!WeaponsActive())
-		for (int i = 0; i < b.slotCount; ++i) {
-			auto& slot = b.slots[size_t(i)];
-			if (slot.roulette >= 0) {
-				slot.roulette += dt;
-				if (slot.roulette >= BattleRouletteTime) {
-					FillBattleSlot(i, false);
-					if (!slot.items.empty())
-						PlayDevourSound(devourSounds_.note, .5f, 1.2f);
-				}
-			} else if (slot.items.empty() && std::any_of(b.bag.begin(), b.bag.end(), [](const BattleBag& x) {
-				           return !x.items.empty();
-			           }))
-				FillBattleSlot(i, true);
-		}
 	// 移動 (突進の間は向きに進む)
 	V move{};
 	if (b.phase == BattleStep::Fight) {
@@ -1914,48 +1541,19 @@ void ChronoSystem::UpdateDevourBattle(entt::registry& r, Player& p, GameContext&
 			b.clock += dt;
 		b.cooldown = std::max(0.f, b.cooldown - dt);
 		b.guard = std::max(0.f, b.guard - dt);
-		// 自分を強くする効き目: 急須は 0.5 秒ごとに回復、ティッシュと招き猫は時間が来たら切れる
+		// 自分を強くする効き目: 時間が来たら切れる
 		b.fluff = std::max(0.f, b.fluff - dt);
-		b.dropBoost = std::max(0.f, b.dropBoost - dt);
 		b.snack = std::max(0.f, b.snack - dt);
-		if (b.regen > 0) {
-			b.regen -= dt;
-			b.regenTick -= dt;
-			if (b.regenTick <= 0) {
-				b.regenTick = .5f;
-				const float add = b.maxHp * BattleBrewShare * .5f;
-				b.hp = std::min(b.maxHp, b.hp + add);
-			}
-		}
+		b.regen = std::max(0.f, b.regen - dt);
 		V input{};
 		Controls::Move(input.x, input.z);
 		if (autoPlay) {
 			input = {std::sin(life_.age * .7f), 0, .3f * std::cos(life_.age * .5f)};
-			// 確認用の自動操作: 近くに敵がいなければ、落ちた物を拾いに行く (向きはカメラ基準に直す)
-			float enemyNear = 1e9f;
-			for (const auto& e : b.enemies)
-				enemyNear = std::min(enemyNear, Length(e.at - body.at));
-			const BattleDrop* drop = nullptr;
-			float dropNear = 1e9f;
-			for (const auto& d : b.drops)
-				if (d.suck < 0) {
-					float len = Length(d.at - body.at);
-					if (len < dropNear) {
-						dropNear = len;
-						drop = &d;
-					}
-				}
-			if (drop && enemyNear > R * 4) {
-				V to = drop->at - body.at;
-				to.y = 0;
-				to = Unit(to);
-				input = {
-				    to.x * std::cos(yaw_) - to.z * std::sin(yaw_), 0, to.x * std::sin(yaw_) + to.z * std::cos(yaw_)};
-			}
-			// スライム陣取り: まだ陣地でない一番近いマスへ向かう
-			V open;
-			if (!b.legacy && b.challenge == ChallengeKind::Territory && NearestOpenCell(body.at, open)) {
-				V to = open - body.at;
+			// 衛星 (体のまわりでしか当たらない撃ち方): 一番近い相手へ近づく
+			BattleTarget close;
+			if (WeaponsActive() && FusePatternOf(b.weapon.lv) == FusePattern::Orbit &&
+			    NearestBattleTarget(body.at, 1e9f, close)) {
+				V to = close.at - body.at;
 				to.y = 0;
 				to = Unit(to);
 				input = {
@@ -1965,11 +1563,15 @@ void ChronoSystem::UpdateDevourBattle(entt::registry& r, Player& p, GameContext&
 		// 確認用 (--challenge-matrix): 全部の能力 x チャレンジの実測。歩く向きも実測が決める
 		if (b.matrix.active)
 			TickChallengeMatrix(ctx, dt, input);
+		// 確認用 (--weapon-check): 全部の変形武器の撃ち方を撃って確かめる
+		if (weaponCheck_.active && WeaponsActive())
+			TickWeaponCheck(ctx, dt, input);
 		V wish{
 		    input.x * std::cos(yaw_) + input.z * std::sin(yaw_), 0,
 		    -input.x * std::sin(yaw_) + input.z * std::cos(yaw_)};
 		// 速さは普段の移動と同じ (配合と大きさで決まり、加速と減速もある)
-		float walk = life_.recipe.Speed() * LifeTravelScale(body) * DevourSpeedScale(body.mass);
+		// (変形武器の体の特徴: 速い・転がるで速く、重いで少し遅く)
+		float walk = life_.recipe.Speed() * LifeTravelScale(body) * DevourSpeedScale(body.mass) * WeaponMoveScale();
 		// 絵の具の床の上では速い
 		for (const auto& pl : b.placed)
 			if (pl.kind == BattleAction::Paint) {
@@ -1995,43 +1597,29 @@ void ChronoSystem::UpdateDevourBattle(entt::registry& r, Player& p, GameContext&
 		    (t == BattleShieldShape || t == BattleHammerShape || t == BattleSwordShape || t == GimmickGunShape ||
 		     t == BattleVacuumShape || t == BattleShogiShape || t == BattleEraserShape))
 			body.forward = Forward(yaw_, 0);
+		// 変形武器: 移動の向きへなめらかに回る (撃つ向きは体の向き。一瞬で向きを変えると、大きな形がガクッと回る)
+		else if (!dashing && WeaponsActive() && Length(wish) > .1f)
+			body.forward = LifeWeaponFacing(body.forward, Unit(wish), dt);
 		else if (!dashing && Length(wish) > .1f)
 			body.forward = Unit(wish);
-		// スロットの選び替え: 1〜5 キー (最後は飴玉)・十字キー・LB / RB
-		// (変形武器は 1 本だけで、回数の制限もないので選ばない)
-		const int slots = WeaponsActive() ? 0 : b.slotCount, choices = slots + 1;
-		if (ctx.input) {
-			const uint8_t keys[] = {DIK_1, DIK_2, DIK_3, DIK_4, DIK_5};
-			for (int i = 0; i < choices && i < 5; ++i)
-				if (ctx.input->Trigger(keys[i]))
-					b.selected = i;
-		}
-		if (UI::PadPressed(XINPUT_GAMEPAD_DPAD_UP))
-			b.selected = 0;
-		if (UI::PadPressed(XINPUT_GAMEPAD_DPAD_RIGHT))
-			b.selected = std::min(1, choices - 1);
-		if (UI::PadPressed(XINPUT_GAMEPAD_DPAD_DOWN))
-			b.selected = std::min(2, choices - 1);
-		if (UI::PadPressed(XINPUT_GAMEPAD_DPAD_LEFT))
-			b.selected = std::min(3, choices - 1);
-		if (UI::PadPressed(XINPUT_GAMEPAD_RIGHT_SHOULDER))
-			b.selected = (b.selected + 1) % choices;
-		if (UI::PadPressed(XINPUT_GAMEPAD_LEFT_SHOULDER))
-			b.selected = (b.selected + choices - 1) % choices;
 		// 使う (押し続けると待ち時間ごとに使う)
 		bool fire = Controls::MorphAttack();
 		if (autoPlay) {
-			// 確認用の自動操作: 一番近い敵を向き、2 秒ごとに使うスロットを替える (空なら飴玉)
+			// 確認用の自動操作: 一番近い相手を向く
 			BattleTarget nearest;
 			const bool found = NearestBattleTarget(body.at, 1e9f, nearest);
 			if (found) {
 				V d = nearest.at - body.at;
 				yaw_ = std::atan2(d.x, d.z);
+				// (変形武器は体の向きへ撃つので、体も相手へ向ける)
+				d.y = 0;
+				if (WeaponsActive() && Length(d) > .01f)
+					body.forward = Unit(d);
 			}
-			fire = found || !b.legacy;
-			b.selected = int(b.clock / 2) % std::max(1, slots);
-			if (!WeaponsActive() && b.slots[size_t(b.selected)].items.empty())
-				b.selected = b.slotCount;
+			fire = true;
+			// (連打で出す撃ち方は、押す・離すをくり返す)
+			if (WeaponsActive() && FusePatternTap(FusePatternOf(b.weapon.lv)))
+				fire = fire && std::fmod(b.clock, .3f) < .15f;
 		}
 		// 確認用 (--challenge-impact-check): 袋は使わず、全部の能力を順に 1 回ずつ使う (一番近い相手がいればそちらを向く)
 		if (b.impactCheck) {
@@ -2051,78 +1639,34 @@ void ChronoSystem::UpdateDevourBattle(entt::registry& r, Player& p, GameContext&
 				StartBattleAbility(ctx, BattleAction(b.checkNext++), item);
 			}
 		}
-		if (b.matrix.active)
+		if (b.matrix.active || weaponCheck_.active)
 			fire = false;
-		// (能力の最中 (突進・回転など) は次を使わない。飴玉はいつでも投げられる)
-		// (変形武器: 押している間、連射の間隔ごとに撃つ)
-		if (fire && WeaponsActive())
-			UseBattleWeapon(ctx);
-		else if (fire && b.cooldown <= 0) {
-			if (b.selected >= slots)
-				UseBattleCandy();
-			else if (
-			    b.abilityLeft <= 0 || BattleActionLiquid(b.ability) ||
-			    (!b.legacy && b.challenge == ChallengeKind::Territory && b.abilityAge >= ChallengeTerritoryChain))
-				UseBattleSlot(ctx, b.selected);
+		// (能力の最中 (突進・回転など) は次を使わない)
+		// (変形武器: 押している間、連射の間隔ごとに撃つ。衛星・置き罠は押した瞬間だけ (連打): FusePatternTap)
+		if (WeaponsActive()) {
+			auto& w = b.weapon;
+			if (FusePatternTap(FusePatternOf(w.lv))) {
+				if (fire && !b.previousFire)
+					w.tapBuffer = FuseTapBuffer;
+				if (w.tapBuffer > 0 && w.cool <= 0) {
+					w.tapBuffer = 0;
+					UseBattleWeapon(ctx);
+				}
+				w.tapBuffer = std::max(0.f, w.tapBuffer - dt);
+			} else if (fire)
+				UseBattleWeapon(ctx);
 		}
 		if (WeaponsActive())
 			TickBattleWeapons(ctx, dt);
 		b.previousFire = fire;
 		// チャレンジ: 時間が来たら終わり (スコアを見せて結果画面へ)
-		if ((!b.legacy || b.impactCheck) && !b.matrix.active && b.clock >= b.time) {
-			b.won = true;
+		if (!b.matrix.active && b.clock >= b.time) {
 			b.phase = BattleStep::Over;
 			b.overAge = 0;
 			b.message.clear();
 			b.messageAge = 0;
 			PlayDevourSound(devourSounds_.rankTop, .8f);
 		}
-		// 敵を出す (旧来の戦闘だけ): 時間とともに間隔が短くなる。最後の 30 秒にボス
-		b.spawnClock -= dt;
-		if (b.legacy && b.spawnClock <= 0 && int(b.enemies.size()) < BattleEnemyLimit) {
-			b.spawnClock = BattleSpawnInterval(b.clock, b.time);
-			BattleEnemy e;
-			e.id = b.nextId++;
-			const float angle = BU(0, 6.2831853f), dist = std::max(R * 3.f, unit * 9.f);
-			e.at = body.at + V{std::cos(angle) * dist, 0, std::sin(angle) * dist};
-			// (広いステージの円の外に出たら、円の縁へ寄せる)
-			if (b.arenaRadius > 0) {
-				V o = e.at - b.arenaAt;
-				o.y = 0;
-				const float len = Length(o), limit = b.arenaRadius * .95f;
-				if (len > limit)
-					e.at = b.arenaAt + o * (limit / len);
-			}
-			e.radius = BattleEnemyRadius(b.unit, false);
-			e.speed = BattleEnemySpeed(b.unit, false) * BU(.85f, 1.15f);
-			e.hp = e.maxHp = BattleEnemyHp(b.clock);
-			b.enemies.push_back(e);
-		}
-		if (b.legacy && !b.bossSpawned && b.clock >= BattleBossAt(b.time)) {
-			b.bossSpawned = true;
-			BattleEnemy e;
-			e.id = b.nextId++;
-			e.boss = true;
-			const float angle = yaw_;
-			const float dist = std::max(R * 4.f, unit * 12.f);
-			e.at = body.at + V{std::sin(angle) * dist, 0, std::cos(angle) * dist};
-			if (b.arenaRadius > 0) {
-				V o = e.at - b.arenaAt;
-				o.y = 0;
-				const float len = Length(o), limit = b.arenaRadius * .9f;
-				if (len > limit)
-					e.at = b.arenaAt + o * (limit / len);
-			}
-			e.radius = BattleEnemyRadius(b.unit, true);
-			e.speed = BattleEnemySpeed(b.unit, true);
-			e.hp = e.maxHp = BattleBossHp;
-			b.enemies.push_back(e);
-			b.message = "ボスが来た！ 倒せばクリア";
-			b.messageAge = 3;
-			LifeImpact(ctx, ImpactGuardianStomp, e.at, {0, 1, 0}, 1);
-		}
-		// 時間いっぱい耐えたら勝ち
-		// (クリアはボスを倒したときだけ。時間が過ぎても、ボスを倒すか HP が 0 になるまで続く)
 	} else
 		b.velocity = LifeMoveVelocity(b.velocity, {}, life_.recipe, true, dt);
 	move = b.velocity * dt;
@@ -2221,10 +1765,9 @@ void ChronoSystem::UpdateDevourBattle(entt::registry& r, Player& p, GameContext&
 			if (len < reach && len > .001f)
 				at = at + d * ((reach - len) / len);
 		}
-		// 戦う場所の円から出ない
-		// スライム陣取り: ラグの外と家具には入れない
-		if (!b.legacy && b.challenge == ChallengeKind::Territory)
-			BlockTerritoryBody(at, R);
+		// 戦う場所から出ない (積み木の街は縁の柵と崖・壁で止める。ほかは戦う円)
+		if (BlocksStageActive())
+			BlockBlocksStageBody(at, body.at, R);
 		else if (b.arenaRadius > 0) {
 			V d = at - b.arenaAt;
 			d.y = 0;
@@ -2232,119 +1775,21 @@ void ChronoSystem::UpdateDevourBattle(entt::registry& r, Player& p, GameContext&
 			if (len > limit)
 				at = b.arenaAt + V{d.x * (limit / len), 0, d.z * (limit / len)};
 		}
-		at.y = InkGround(at) + 1.25f;
+		// 積み木の街: 体の下の 9 か所から求めた傾いた面に乗る (足元から段以内の面。橋の下を通るときは下の面)。
+		// 段より高い所から下りたら、すぐ下へ移さずに落ちる
+		if (BlocksStageActive())
+			at.y = BlocksSettle(at, body.at, R, dt, b.fallSpeed, b.groundSlope);
+		else {
+			at.y = InkGround(at) + 1.25f;
+			b.fallSpeed = 0;
+		}
 		const V moved = (at - body.at) * (1 / std::max(dt, 1e-4f));
 		body.at = at;
 		// 液体の体の動き (中心の遅れ・進む向きへの伸び・核の速さ) を普段の移動と同じように進める。
 		// 進めないと粒子の追いつける速さが上がらず、体の後ろが置いていかれて三日月の形になる
 		LifeTickMotion(body, life_.recipe, moved, true, false, dt, body.forward);
 	}
-	// 敵: 体へ向かい、触れたら攻撃する
-	// ぬいぐるみが置いてあれば、敵はそちらへ向かう (ボス以外)
-	const BattlePlaced* decoy = nullptr;
-	for (const auto& pl : b.placed)
-		if (pl.kind == BattleAction::Decoy && !pl.done)
-			decoy = &pl;
-	for (auto& e : b.enemies) {
-		if (e.hp <= 0)
-			continue;
-		e.flash = std::max(0.f, e.flash - dt);
-		e.hitCool = std::max(0.f, e.hitCool - dt);
-		e.stun = std::max(0.f, e.stun - dt);
-		V d = body.at - e.at;
-		d.y = 0;
-		const float len = Length(d);
-		// 移動: 転んでいる間は止まる。絵の具の床の上は遅い
-		float speed = e.stun > 0 ? 0.f : e.speed;
-		for (const auto& pl : b.placed)
-			if (pl.kind == BattleAction::Paint) {
-				V p2 = e.at - pl.at;
-				p2.y = 0;
-				if (Length(p2) < pl.radius) {
-					speed *= BattlePaintSlow;
-					break;
-				}
-			}
-		if (decoy && !e.boss) {
-			V g = decoy->at - e.at;
-			g.y = 0;
-			const float gl = Length(g);
-			if (b.phase == BattleStep::Fight && gl > .01f)
-				e.at = e.at + g * (std::min(gl - (decoy->size * .6f + e.radius), speed * dt) / gl);
-		} else if (b.phase == BattleStep::Fight && len > .01f)
-			e.at = e.at + d * (std::min(len - (R + e.radius) * .9f, speed * dt) / len);
-		e.at = e.at + e.knock * dt;
-		e.knock = e.knock * std::exp(-6 * dt);
-		if (b.arenaRadius > 0) {
-			V a = e.at - b.arenaAt;
-			a.y = 0;
-			const float out = Length(a), limit = b.arenaRadius;
-			if (out > limit)
-				e.at = b.arenaAt + V{a.x * (limit / out), 0, a.z * (limit / out)};
-		}
-		e.at.y = InkGround(e.at) + e.radius;
-		// 弱り (消しゴム) とやけど (湯のみ): やけどは 0.5 秒ごとに削る
-		e.weak = std::max(0.f, e.weak - dt);
-		if (e.burn > 0) {
-			e.burn -= dt;
-			e.burnTick -= dt;
-			if (e.burnTick <= 0) {
-				e.burnTick = .5f;
-				HurtBattleEnemy(ctx, e, e.burnDps * .5f, V{});
-			}
-		}
-		if (e.hp <= 0)
-			continue;
-		if (b.phase == BattleStep::Fight && e.stun <= 0 && len < R + e.radius + unit * .2f && e.hitCool <= 0) {
-			e.hitCool = BattleEnemyHitCooldown;
-			// だるま: 殴ってきた敵にはね返す
-			if (b.toolShape == BattleDarumaShape) {
-				HurtBattleEnemy(ctx, e, BattleRolyReflect * b.abilityPower, Unit(d * -1.f) * unit * 6);
-				b.pops.push_back({body.at + V{0, R * 1.2f, 0}, "はね返した！", 0, {1, .5f, .4f, 1}});
-			}
-			// 変形している間は無敵 (全部の能力を確かめる間も、やられないようにする)
-			if (b.impactCheck)
-				continue;
-			if (b.toolShape > 0) {
-				b.fx.push_back({body.at + Unit(d * -1.f) * R, R * .3f, 0, .15f, {.8f, .9f, 1, 1}});
-				continue;
-			}
-			// ティッシュの雲の間は攻撃をかわしやすい
-			if (b.fluff > 0 && BU(0, 1) < BattleFluffDodge) {
-				b.pops.push_back({body.at + V{0, R * 1.2f, 0}, "かわした！", 0, {.7f, 1, .9f, 1}});
-				continue;
-			}
-			float damage = e.boss ? BattleBossDamage : BattleEnemyDamage;
-			if (b.guard > 0)
-				damage *= BattleGuardTake;
-			b.hp -= damage;
-			b.hurtFlash = .25f;
-			LifeImpact(ctx, ImpactPlayerHurt, body.at, Unit(d * -1.f + V{0, .01f, 0}), e.boss ? 1.f : .5f);
-			if (b.hp <= 0) {
-				b.hp = 0;
-				b.won = false;
-				b.phase = BattleStep::Over;
-				b.overAge = 0;
-				b.message = "やられた…";
-				b.messageAge = 3;
-			}
-		}
-	}
-	// 敵どうしが重ならないよう少し離す
-	for (size_t i = 0; i < b.enemies.size(); ++i)
-		for (size_t j = i + 1; j < b.enemies.size(); ++j) {
-			auto& a = b.enemies[i];
-			auto& c = b.enemies[j];
-			V d = a.at - c.at;
-			d.y = 0;
-			const float len = Length(d), gap = (a.radius + c.radius) * .9f;
-			if (len < gap && len > .001f) {
-				V push = d * ((gap - len) / len * .5f);
-				a.at = a.at + push;
-				c.at = c.at - push;
-			}
-		}
-	// 投げた物・飴玉・水: 飛んで、敵に当たったら消える
+	// 投げた物・水: 飛んで、物に当たったら消える
 	for (auto& s : b.shots) {
 		// (変形武器の弾は性質ごとに進める)
 		if (s.fused) {
@@ -2358,7 +1803,7 @@ void ChronoSystem::UpdateDevourBattle(entt::registry& r, Player& p, GameContext&
 			s.spin += dt * 12;
 			const float speed = Length(V{s.velocity.x, 0, s.velocity.z});
 			if (s.mode == BattleAction::Homing) {
-				// 紙飛行機: 一番近い敵へ向きを少しずつ曲げる
+				// 紙飛行機: 一番近い相手へ向きを少しずつ曲げる
 				BattleTarget target;
 				const bool found = NearestBattleTarget(s.at, 1e9f, target);
 				if (found && speed > .01f) {
@@ -2371,11 +1816,48 @@ void ChronoSystem::UpdateDevourBattle(entt::registry& r, Player& p, GameContext&
 					s.velocity = {d.x * speed, 0, d.z * speed};
 				}
 				s.at.y += ((InkGround(s.at) + R * .6f) - s.at.y) * std::min(1.f, dt * 4);
+				// (積み木の街: 上り坂で遅れて丘の中を飛ばないように)
+				if (BlocksStageActive())
+					s.at.y = std::max(s.at.y, InkGround(s.at) + s.radius);
 			}
 			if (s.mode == BattleAction::Bounce) {
 				s.velocity.y -= unit * 20 * dt;
 			}
+			const V before = s.at;
 			s.at = s.at + s.velocity * dt;
+			// 積み木の街: 橋・坂・塔・手すりに当たる (上から落ちたら面の上に乗る。壁は、輪とボールは跳ね返り、ほかは終わる)
+			{
+				V hit, n;
+				bool wall = false;
+				if (BlocksSweep(before, s.at, unit * ChallengeBlocksStep, hit, n, wall)) {
+					if (s.mode == BattleAction::Bounce) {
+						// ボール: 当たった面 (床・坂・壁) の向きで跳ね返る。面から離れる速さは少し落とし、床や坂では跳ねる高さを残す
+						const float into = Dot(s.velocity, n);
+						if (into < 0) {
+							s.velocity = s.velocity - n * (into * 1.82f);
+							if (n.y > .3f && Dot(s.velocity, n) < unit * 5)
+								s.velocity = s.velocity + n * (unit * 5 - Dot(s.velocity, n));
+							s.hit.clear();
+						}
+						s.at = (wall ? hit : hit + V{0, s.radius, 0});
+					} else if (!wall)
+						s.at.y = std::max(s.at.y, hit.y);
+					else if (s.mode == BattleAction::Disc) {
+						// 輪: 床に沿って転がるので、壁の横の向きで跳ね返る
+						s.at = hit;
+						V side{n.x, 0, n.z};
+						side = Length(side) > 1e-3f ? Unit(side) : V{0, 0, 1};
+						const float into = Dot(s.velocity, side);
+						if (into < 0) {
+							s.velocity = s.velocity - side * (2 * into);
+							s.hit.clear();
+						}
+					} else {
+						s.at = hit;
+						s.age = 99;
+					}
+				}
+			}
 			// 飛んだ跡: 後ろから見ると細い物 (鉛筆・紙飛行機・輪・十円玉) も道すじが分かるよう、色の粒を少しの間残す
 			if (s.mode != BattleAction::Bounce && s.mode != BattleAction::Fan && s.mode != BattleAction::Sticky &&
 			    std::fmod(s.age, .03f) < dt)
@@ -2387,8 +1869,23 @@ void ChronoSystem::UpdateDevourBattle(entt::registry& r, Player& p, GameContext&
 			}
 			if (s.mode == BattleAction::Disc)
 				s.at.y = InkGround(s.at) + unit * .3f;
-			// 輪とボールはステージの縁で跳ね返る (跳ね返ったら同じ敵にまた当たれる)
-			if ((s.mode == BattleAction::Disc || s.mode == BattleAction::Bounce) && b.arenaRadius > 0) {
+			// 輪とボールはステージの縁で跳ね返る (跳ね返ったら同じ相手にまた当たれる)
+			// (積み木の街は四角い縁の柵で跳ね返る)
+			if ((s.mode == BattleAction::Disc || s.mode == BattleAction::Bounce) && BlocksStageActive()) {
+				const float edge = ChallengeBlocksHalf * unit - s.radius;
+				for (int axis = 0; axis < 2; ++axis) {
+					float& pos = axis == 0 ? s.at.x : s.at.z;
+					float& v = axis == 0 ? s.velocity.x : s.velocity.z;
+					const float mid = axis == 0 ? b.arenaAt.x : b.arenaAt.z, off = pos - mid;
+					if (std::abs(off) > edge) {
+						pos = mid + std::clamp(off, -edge, edge);
+						if (v * off > 0) {
+							v = -v;
+							s.hit.clear();
+						}
+					}
+				}
+			} else if ((s.mode == BattleAction::Disc || s.mode == BattleAction::Bounce) && b.arenaRadius > 0) {
 				V o = s.at - b.arenaAt;
 				o.y = 0;
 				const float len = Length(o);
@@ -2458,11 +1955,26 @@ void ChronoSystem::UpdateDevourBattle(entt::registry& r, Player& p, GameContext&
 			continue;
 		}
 		s.velocity.y -= unit * (s.style == 2 ? 2.f : 6.f) * dt;
+		const V before = s.at;
 		s.at = s.at + s.velocity * dt;
+		// 積み木の街: 橋・坂・塔・手すりに当たる (上から落ちたら面の上。壁には弱く跳ね返る)
+		{
+			V hit, n;
+			bool wall = false;
+			if (BlocksSweep(before, s.at, unit * ChallengeBlocksStep, hit, n, wall)) {
+				if (!wall)
+					s.at.y = std::max(s.at.y, hit.y);
+				else {
+					s.at = hit;
+					const float into = Dot(s.velocity, n);
+					if (into < 0)
+						s.velocity = (s.velocity - n * (2 * into)) * .5f;
+				}
+			}
+		}
 		{
 			BattleImpact i;
 			i.action = s.by;
-			i.candy = s.style == 1;
 			i.shape = ImpactShape::Sphere;
 			i.at = s.at;
 			i.reach = s.radius;
@@ -2487,7 +1999,7 @@ void ChronoSystem::UpdateDevourBattle(entt::registry& r, Player& p, GameContext&
 		}
 		// 投げた物 (飴玉と水以外) は、当たれる数が残っていれば床を転がる (チャレンジ)
 		const float floorY = InkGround(s.at) + s.radius * .5f;
-		if (s.style == 0 && s.hits > 0 && !b.legacy && s.at.y < floorY) {
+		if (s.style == 0 && s.hits > 0 && s.at.y < floorY) {
 			s.at.y = floorY;
 			s.velocity.y = 0;
 			s.velocity.x *= std::exp(-ChallengeThrowRoll * dt);
@@ -2500,67 +2012,15 @@ void ChronoSystem::UpdateDevourBattle(entt::registry& r, Player& p, GameContext&
 	// (変形武器の弾が分かれてできた弾を足す。進めている間に足すと並びが壊れるので、あとで足す)
 	b.shots.insert(b.shots.end(), b.newShots.begin(), b.newShots.end());
 	b.newShots.clear();
-	// 落ちた物: 飛んで跳ね、近づくと吸い寄せられて吸い込まれる (体より大きくても吸収できる)
-	for (auto& d : b.drops) {
-		d.age += dt;
-		if (d.suck >= 0) {
-			d.suck += dt;
-			continue;
-		}
-		d.velocity.y -= unit * 30 * dt;
-		d.at = d.at + d.velocity * dt;
-		const float floor = InkGround(d.at) + d.radius * .6f;
-		if (d.at.y < floor) {
-			d.at.y = floor;
-			if (d.velocity.y < 0)
-				d.velocity.y = -d.velocity.y * .3f;
-			d.velocity.x *= std::exp(-6 * dt);
-			d.velocity.z *= std::exp(-6 * dt);
-			d.spin *= std::exp(-4 * dt);
-		}
-		if (b.phase == BattleStep::Fight) {
-			V to = body.at - d.at;
-			to.y = 0;
-			if (Length(to) < R * BattleDropMagnet + d.radius) {
-				d.suck = 0;
-				d.suckFrom = d.at;
-			}
-		}
-	}
-	for (auto& d : b.drops)
-		if (d.suck >= BattleDropSuck) {
-			AbsorbBattleDrop(d);
-			d.age = 1e9f;
-		}
-	b.drops.erase(
-	    std::remove_if(
-	        b.drops.begin(), b.drops.end(),
-	        [](const BattleDrop& d) { return (d.age > BattleDropLife && d.suck < 0) || d.age > 1e8f; }),
-	    b.drops.end());
 	for (auto& pop : b.pops)
 		pop.age += dt;
 	b.pops.erase(
 	    std::remove_if(b.pops.begin(), b.pops.end(), [](const BattlePop& pop) { return pop.age > 1; }), b.pops.end());
-	// スライム陣取り: 飛んだ物が落ちた・消えた所に体液のしぶき
-	if (!b.legacy && b.challenge == ChallengeKind::Territory)
-		for (const auto& s : b.shots)
-			if (s.age > (s.mode == BattleAction::Throw ? 3.f : s.life) || s.age >= 99) {
-				BattleImpact i;
-				i.action = s.by;
-				i.candy = s.style == 1;
-				i.effect = ImpactEffect::Zone;
-				i.at = s.at;
-				i.reach = unit * (s.style == 1 ? ChallengeTerritoryCandySplash : ChallengeTerritorySplash);
-				PaintTerritoryImpact(i);
-			}
 	b.shots.erase(
 	    std::remove_if(
 	        b.shots.begin(), b.shots.end(),
 	        [](const BattleShot& s) { return s.age > (s.mode == BattleAction::Throw ? 3.f : s.life) || s.age >= 99; }),
 	    b.shots.end());
-	b.enemies.erase(
-	    std::remove_if(b.enemies.begin(), b.enemies.end(), [](const BattleEnemy& e) { return e.hp <= 0; }),
-	    b.enemies.end());
 	for (auto& f : b.fx)
 		f.age += dt;
 	b.fx.erase(std::remove_if(b.fx.begin(), b.fx.end(), [](const BattleFx& f) { return f.age > f.life; }), b.fx.end());
@@ -2574,25 +2034,22 @@ void ChronoSystem::UpdateDevourBattle(entt::registry& r, Player& p, GameContext&
 				int left = 0;
 				for (const auto& x : b.bag)
 					left += int(x.items.size());
-				for (const auto& s : b.slots)
-					left += int(s.items.size());
-				log << "stage=" << stage.id << " challenge=" << ChallengeKindId(b.challenge) << " legacy=" << b.legacy
-				    << " time=" << b.time << " score=" << b.score << " rank=" << b.rank << " won=" << b.won
-				    << " boss_down=" << b.bossDown << " clock=" << b.clock << " kills=" << b.kills
-				    << " pickups=" << b.pickups << " spent=" << b.spent << " pattern=" << b.blockPattern
-				    << " territory=" << TerritoryCoveredCells() << "/" << b.territory.open << " broken=" << b.broken[0]
+				log << "stage=" << stage.id << " challenge=" << ChallengeKindId(b.challenge) << " time=" << b.time
+				    << " score=" << b.score << " rank=" << b.rank << " clock=" << b.clock << " spent=" << b.spent << " pattern=" << b.blockPattern
+				    << " broken=" << b.broken[0]
 				    << "/" << b.broken[1] << "/" << b.broken[2] << " cm=" << DevourSizeCm(stage, body.mass)
 				    << " items_left=" << left;
 				if (b.crafted)
-					log << " weapon=" << b.weapon.name << " shots=" << CraftShots(b.weapon.points[0])
-					    << " power=" << CraftPower(b.weapon.points[1])
-					    << " interval=" << CraftInterval(b.weapon.points[2], b.weapon.lv[size_t(FuseTrait::Heavy)]);
+					log << " weapon=" << b.weapon.name << " pattern=" << FusePatternName(FusePatternOf(b.weapon.lv))
+					    << " shots=" << FuseShotCount(FusePatternOf(b.weapon.lv), b.weapon.points[0], b.weapon.caps[0])
+					    << " power=" << CraftPower(b.weapon.points[1], b.weapon.caps[1]) << " interval="
+					    << CraftInterval(b.weapon.points[2], b.weapon.lv[size_t(FuseTrait::Heavy)], b.weapon.caps[2]);
 				log << '\n';
 			}
 			if (b.impactCheck)
 				WriteImpactCheck();
 			// 自己ベストのスコアを残す
-			if (!b.legacy && !b.impactCheck) {
+			if (!b.impactCheck) {
 				int& best = challengeBests_[ChallengeBestKey(stage.id, b.challenge)];
 				if (b.score > best) {
 					best = b.score;
@@ -2605,7 +2062,7 @@ void ChronoSystem::UpdateDevourBattle(entt::registry& r, Player& p, GameContext&
 			body.mass = b.startMass;
 			// 次のステージへはいつでも進める。結果の「クリア」は大きさの目標に届いたか
 			b.phase = BattleStep::None;
-			Finish(p, b.legacy ? b.won : DevourRankAt(stage, b.startMass) > 0);
+			Finish(p, DevourRankAt(stage, b.startMass) > 0);
 		}
 	}
 	// 体の位置と見た目を反映する
@@ -2615,8 +2072,15 @@ void ChronoSystem::UpdateDevourBattle(entt::registry& r, Player& p, GameContext&
 	transform.scale = {size, size, size};
 	transform.rotate.y = std::atan2(body.forward.x, body.forward.z);
 	ink.fluidDirection = body.forward;
-	ink.groundHeight = InkGround(body.at);
-	ink.groundSlope = {};
+	// (積み木の街: 体が乗っている傾いた面を流体の床にする。坂でも体の粒子が坂に沿って接地する)
+	if (BlocksStageActive() && b.fallSpeed <= 0) {
+		ink.groundHeight = body.at.y - ChallengeBodyGround;
+		// (傾きは体の形と同じもの (なめらかにした傾き)。目の場所もこれで傾ける)
+		ink.groundSlope = lifeTiltWorld_;
+	} else {
+		ink.groundHeight = InkGround(body.at);
+		ink.groundSlope = {};
+	}
 	ink.airBlend = 0;
 	ink.fluidAspect = body.aspect;
 	ink.fluidMotion = std::min(
@@ -2631,49 +2095,43 @@ void ChronoSystem::UpdateDevourBattle(entt::registry& r, Player& p, GameContext&
 	SyncSlimeBodies(ctx);
 }
 
-// 仮の見た目: 敵は色の付いた球 (ボスは大きい紫)、投げた物はその物のモデル (無ければ球)、飴玉はピンク、水は水色の粒
+// 見た目: 投げた物・置いた物はその物のモデル (無ければ描かない)、飴玉はアメのモデル。水の粒・効果の粒は描かない
 void ChronoSystem::DrawDevourBattle(GameContext& ctx) {
-	if (!BattleActive() || finished_)
+	// 結果の積み木の山: 場に残った積み木と、降ってきて積もる山を描く
+	if (finished_) {
+		if (BlocksPileResult()) {
+			DrawChallenge(ctx);
+			DrawBlocksPile(ctx);
+		}
 		return;
+	}
+	if (!BattleActive())
+		return;
+	// 積み木の街のまわりの景色 (変形武器を作る画面では、背景の箱に隠れるので描かない)
+	if (BlocksStageActive() && battle_.phase != BattleStep::Craft)
+		DrawStageScenery(ctx);
 	const auto& b = battle_;
 	const auto& body = life_.bodies[0];
-	DrawBattleFloorGauge(ctx);
 	DrawChallenge(ctx);
-	auto orb = [&](V at, float radius, Engine::Vector4 color) {
-		Engine::Transform t;
-		t.translate = EV(at);
-		t.scale = {radius, radius, radius};
-		ctx.renderer->DrawMeshInstanced(sphere_, white_, t, color);
+	// 変形武器を作る画面: 見本の窓にステージが映らないよう、スライムのまわりを背景の箱で囲む
+	DrawCraftBackdrop(ctx);
+	// (見た目の無い物の代わりの玉・飛んだ跡や当たったときの効果の粒・水の玉・ふわふわの粒は描かない。技の物 (モデル) だけを見せる)
+	// 飛ぶ物のモデルは、弾の位置を真ん中にして描く (下の面を弾の位置から半分下げると、寝かせた細長い物 (鉛筆) が丸ごと弾より下になり、
+	// 地面すれすれの弾では地面に埋まって見えない)
+	auto propAround = [&](uint32_t visual, V at, float size, float yaw, float tilt) {
+		auto found = cityVisuals_.find(visual);
+		if (found == cityVisuals_.end())
+			return;
+		const auto& v = found->second;
+		const float big = std::max(v.height, 2 * (std::max(v.half.x, v.half.z) + v.round)),
+		            half = v.height * (size / std::max(.01f, big)) * .5f;
+		DrawBattleProp(ctx, visual, at - V{0, half, 0}, size, yaw, tilt);
 	};
-	// スライム陣取り: 仮の玉 (見た目の無い物の代わりの玉・効果の粒・水の玉) は描かない (体液のしずくが代わりになる)
-	const bool territory = !b.legacy && b.challenge == ChallengeKind::Territory;
-	auto stub = [&](V at, float radius, Engine::Vector4 color) {
-		if (!territory)
-			orb(at, radius, color);
-	};
-	for (const auto& e : b.enemies) {
-		Engine::Vector4 color = e.boss ? Engine::Vector4{.55f, .25f, .75f, 1} : Engine::Vector4{.85f, .22f, .2f, 1};
-		// 状態の色: 弱っている (消しゴム) は薄い色、やけど (湯のみ) は橙、止まっている (リモコン・まんが・ノート・ビー玉) は灰色
-		if (e.weak > 0)
-			color = {color.x * .5f + .45f, color.y * .5f + .45f, color.z * .5f + .5f, 1};
-		if (e.burn > 0 && std::fmod(e.burn * 6, 1.f) < .5f)
-			color = {1, .55f, .15f, 1};
-		if (e.stun > 0)
-			color = {color.x * .55f + .2f, color.y * .55f + .2f, color.z * .55f + .25f, 1};
-		if (e.flash > 0)
-			color = {1, 1, 1, 1};
-		orb(e.at, e.radius, color);
-		// 目 (向きが分かるように)
-		V d = body.at - e.at;
-		d.y = 0;
-		d = Length(d) > .01f ? Unit(d) : V{0, 0, 1};
-		const V side{d.z, 0, -d.x};
-		for (int k = -1; k <= 1; k += 2)
-			orb(e.at + d * (e.radius * .8f) + side * (e.radius * .35f * float(k)) + V{0, e.radius * .25f, 0},
-			    e.radius * .18f, {1, 1, 1, 1});
-	}
 	// (F4) 変形武器の形の間は、材料の物を体の中のそれぞれの所に浮かべる (どれを混ぜた武器か分かるように)。形になるにつれて大きくなり、ゆっくり回る
-	if (WeaponsActive() && b.weaponShape > 0 && b.weaponForm > 0)
+	// (作る画面では、見本の窓に映るスライムにも、今の材料で並べる)
+	const bool crafting = b.phase == BattleStep::Craft;
+	const BattleWeapon shownWeapon = crafting ? CraftedWeapon() : b.weapon;
+	if ((WeaponsActive() || crafting) && b.weaponShape > 0 && b.weaponForm > 0)
 		if (const auto* g = WeaponShapeOf(b.weaponShape)) {
 			const float scale = LifeScale(body.mass),
 			            grow = std::clamp(b.weaponAge / .3f, 0.f, 1.f) * std::clamp(b.weaponForm / .15f, 0.f, 1.f);
@@ -2681,33 +2139,96 @@ void ChronoSystem::DrawDevourBattle(GameContext& ctx) {
 			f.y = 0;
 			f = Length(f) > .01f ? Unit(f) : V{0, 0, 1};
 			const V right{f.z, 0, -f.x};
-			for (int i = 0; i < std::min(g->anchors, b.weapon.filled); ++i) {
-				const V local = WeaponShapePose(b.weaponShape, g->anchor[size_t(i)], b.weaponPose);
+			// (J3) 土台に並べる本物のモデル: 並べた所に、形の向きのまま半分沈めて描く (物の場の座標 → モデルの座標は
+			// ItemProfileRules.h のそろえ方: 左右前後の真ん中・一番下を 0、一番長い辺を 2。場の原点は profile.look.center)
+			if (!g->models.empty()) {
+				static std::map<std::string, bool> hasModel;
+				for (const auto& m : g->models) {
+					if (m.item >= shownWeapon.filled)
+						continue;
+					const std::string& id = shownWeapon.ids[m.item];
+					auto known = hasModel.find(id);
+					if (known == hasModel.end())
+						known = hasModel.emplace(id, std::filesystem::exists("Resources/Models/Lowpoly/" + id + ".obj"))
+						            .first;
+					const ItemProfile* prof = ItemProfileOf(id);
+					if (!known->second || !prof)
+						continue;
+					const auto& low = LowModelOf(id);
+					const V size = low.hi - low.lo;
+					const float kk = 2 / std::max({size.x, size.y, size.z, 1e-4f});
+					const V mid{(low.lo.x + low.hi.x) * .5f, low.lo.y, (low.lo.z + low.hi.z) * .5f};
+					// 左右に映した物は向きが鏡になるので、左右の向きに一番近い軸を裏返して、回転にする (裏返しの面にしない)
+					std::array<V, 3> axes = m.axes;
+					if (m.mirrored) {
+						int flip = 0;
+						for (int a = 1; a < 3; ++a)
+							if (std::abs(axes[size_t(a)].x) > std::abs(axes[size_t(flip)].x))
+								flip = a;
+						axes[size_t(flip)] = axes[size_t(flip)] * -1.f;
+					}
+					// 形の座標 → 世界: 体の向き (right・上・f) に回し、体の大きさ scale と、形になる途中の大きさ grow をかける
+					// (積み木の街では、体の形と同じく坂の傾きに合わせて回す: 坂で物が体の外へ出ないように)
+					auto world = [&](V v) {
+						v = BodyTiltApply(v);
+						return right * v.x + V{0, v.y, 0} + f * v.z;
+					};
+					const V local = WeaponShapePose(b.weaponShape, m.pos, b.weaponPose);
+					V origin = local;
+					// (液体が形に寄るのは少し遅れるので、モデルは形になって MotifModelDelay 秒たってから出す。先に出ると体の外に浮いて見える)
+					const float s =
+					    m.scale * grow * std::clamp((b.weaponAge - MotifModelDelay) / MotifModelFade, 0.f, 1.f);
+					const float offs[3] = {
+					    mid.x * kk + prof->look.center.x, mid.y * kk + prof->look.center.y,
+					    mid.z * kk + prof->look.center.z};
+					for (int a = 0; a < 3; ++a)
+						origin = origin - axes[size_t(a)] * (s * offs[a]);
+					const V at = body.at + V{0, -1.25f, 0} + world(origin) * scale;
+					Engine::Matrix4x4 mat{};
+					for (int a = 0; a < 3; ++a) {
+						const V row = world(axes[size_t(a)]) * (s * kk * scale);
+						mat.m[a][0] = row.x;
+						mat.m[a][1] = row.y;
+						mat.m[a][2] = row.z;
+						mat.m[a][3] = 0;
+					}
+					mat.m[3][0] = at.x;
+					mat.m[3][1] = at.y;
+					mat.m[3][2] = at.z;
+					mat.m[3][3] = 1;
+					if (s * scale > .01f)
+						ctx.renderer->DrawMeshInstanced(
+						    low.mesh, lowPalette_, mat, {1, 1, 1, 1}, "LowpolySurface", lowMaps_);
+				}
+			}
+			for (int i = 0; i < std::min(g->anchors, shownWeapon.filled); ++i) {
+				// (J3) モデルを並べた形では、浮かべるのは 1 つ目の物 (土台の比率を決めた物) だけ
+				if (!g->models.empty() && i > 0)
+					break;
+				const V local = BodyTiltApply(WeaponShapePose(b.weaponShape, g->anchor[size_t(i)], b.weaponPose));
 				const float size = 2 * g->anchorFit[size_t(i)] * scale * grow;
 				if (size < .05f)
 					continue;
 				const V at = body.at + V{0, -1.25f, 0} + right * (local.x * scale) + V{0, local.y * scale, 0} +
 				             f * (local.z * scale);
 				DrawBattleProp(
-				    ctx, b.weapon.items[size_t(i)].visual, at - V{0, size * .5f, 0}, size,
+				    ctx, shownWeapon.items[size_t(i)].visual, at - V{0, size * .5f, 0}, size,
 				    std::atan2(f.x, f.z) + life_.age * .6f * (i % 2 ? -1.f : 1.f), 0);
 			}
 		}
-	for (const auto& s : b.shots) {
+	// (変形武器を作る画面では、見本の撃ち方の弾を描く)
+	for (const auto& s : crafting ? b.craft.demoShots : b.shots) {
 		if (s.style == 1) {
-			// 飴玉 (スライム陣取りではアメのモデル。回りながら飛ぶ)
-			if (territory) {
-				const auto& m = LowModelOf("candy");
-				Engine::Transform t;
-				const float scale = LowScaleFor("candy", s.radius * 3.2f);
-				t.scale = {scale, scale, scale};
-				t.rotate = {s.age * 9, s.age * 6, 0};
-				t.translate = EV(s.at - V{0, (m.lo.y + m.hi.y) * .5f * scale, 0});
-				ctx.renderer->DrawMeshInstanced(m.mesh, lowPalette_, t, {1, 1, 1, 1}, "LowpolySurface", lowMaps_);
-			} else
-				orb(s.at, s.radius, {1, .55f, .8f, 1});
+			// 飴玉 (アメのモデル。回りながら飛ぶ)
+			const auto& m = LowModelOf("candy");
+			Engine::Transform t;
+			const float scale = LowScaleFor("candy", s.radius * 3.2f);
+			t.scale = {scale, scale, scale};
+			t.rotate = {s.age * 9, s.age * 6, 0};
+			t.translate = EV(s.at - V{0, (m.lo.y + m.hi.y) * .5f * scale, 0});
+			ctx.renderer->DrawMeshInstanced(m.mesh, lowPalette_, t, {1, 1, 1, 1}, "LowpolySurface", lowMaps_);
 		} else if (s.style == 2)
-			stub(s.at, s.radius, {.45f, .8f, 1, 1});
+			continue;
 		else if (s.mode != BattleAction::Throw) {
 			// 飛び道具: 進む向きを向いて飛ぶ。十円玉と輪とボールは回る
 			// (十円玉とトランプは寝かせたモデルなので、起こして面を見せる。鉛筆はモデルの長い向き (x) を進む向きへ向ける)
@@ -2721,34 +2242,15 @@ void ChronoSystem::DrawDevourBattle(GameContext& ctx) {
 			if (s.mode == BattleAction::Pierce)
 				yaw -= 1.5707963f;
 			if (cityVisuals_.count(s.visual))
-				DrawBattleProp(ctx, s.visual, s.at - V{0, s.size * .5f, 0}, s.size, yaw, tilt);
-			else
-				stub(s.at, s.radius, ActionColor(s.mode));
-		} else if (!DrawCityPropInTentacle(ctx, s.visual, s.at, 1.f))
-			stub(s.at, s.radius, {.95f, .62f, .2f, 1});
-	}
-	for (const auto& d : b.drops) {
-		// 吸い込まれている途中は体の中心へ飛びながら小さくなる。消える前の 3 秒は点滅する
-		V at = d.at;
-		float shrink = d.shrink;
-		if (d.suck >= 0) {
-			const float t = std::clamp(d.suck / BattleDropSuck, 0.f, 1.f), e = t * t;
-			at = Lerp(d.suckFrom, body.at + V{0, DevourBodyRadius(body.mass) * .3f, 0}, e);
-			shrink *= 1 - .7f * e;
-		} else if (d.age > BattleDropLife - 3 && std::fmod(d.age * 8, 2.f) < 1)
-			continue;
-		else
-			at.y += std::sin(d.age * 4 + d.spin) * d.radius * .15f;
-		if (!DrawCityPropInTentacle(ctx, d.visual, at, shrink))
-			stub(at, d.radius * (shrink / std::max(.001f, d.shrink)), ActionColor(d.action));
+				propAround(s.visual, s.at, s.size, yaw, tilt);
+		} else
+			DrawCityPropInTentacle(ctx, s.visual, s.at, 1.f);
 	}
 	// 置いた物
 	for (const auto& pl : b.placed) {
 		switch (pl.kind) {
 		case BattleAction::Marbles: {
-			if (!cityVisuals_.count(pl.visual))
-				stub(pl.at, pl.size, {.55f, .85f, 1, 1});
-			else
+			if (cityVisuals_.count(pl.visual))
 				DrawBattleProp(ctx, pl.visual, pl.at - V{0, pl.size * .5f, 0}, pl.size * 1.4f, pl.age * 3, 0);
 			break;
 		}
@@ -2764,8 +2266,6 @@ void ChronoSystem::DrawDevourBattle(GameContext& ctx) {
 					       V{0, cube * 1.1f * float(row) * rise, 0} + pl.dir * (cube * 1.4f * float(row) * fall);
 					if (cityVisuals_.count(pl.visual))
 						DrawBattleProp(ctx, pl.visual, at, cube, yaw + .2f * float((row + col) % 3 - 1), fall * 1.2f);
-					else
-						stub(at + V{0, cube * .5f, 0}, cube * .5f, {.95f, .75f, .3f, 1});
 				}
 			break;
 		}
@@ -2777,14 +2277,10 @@ void ChronoSystem::DrawDevourBattle(GameContext& ctx) {
 				break;
 			if (cityVisuals_.count(pl.visual))
 				DrawBattleProp(ctx, pl.visual, pl.at, pl.size, std::atan2(pl.dir.x, pl.dir.z), 1.45f * fall * fall);
-			else
-				stub(pl.at + V{0, pl.size * .5f, 0}, pl.size * .4f, {.95f, .95f, .9f, 1});
 			break;
 		}
 		case BattleAction::Paint: {
-			// 塗った床: 平たくつぶした球 (最後の 1 秒で小さくなる)。スライム陣取りでは体液の水たまりが床そのものなので描かない
-			if (!b.legacy && b.challenge == ChallengeKind::Territory)
-				break;
+			// 塗った床: 平たくつぶした球 (最後の 1 秒で小さくなる)
 			const float fade = std::clamp(pl.life - pl.age, 0.f, 1.f), grow = std::min(1.f, pl.age / .2f);
 			Engine::Transform t;
 			t.translate = EV(pl.at + V{0, .15f, 0});
@@ -2806,195 +2302,33 @@ void ChronoSystem::DrawDevourBattle(GameContext& ctx) {
 		case BattleAction::Cage:
 			if (cityVisuals_.count(pl.visual))
 				DrawBattleProp(ctx, pl.visual, pl.at, pl.size, pl.age * .5f, 3.14159f);
-			else
-				stub(pl.at + V{0, pl.size * .5f, 0}, pl.size * .5f, {.8f, .65f, .4f, 1});
 			break;
 		case BattleAction::Smell: {
 			// においの雲: 地面に広がる緑がかった雲と、ゆらゆら立ちのぼる粒
 			const float fade = std::clamp(pl.life - pl.age, 0.f, 1.f), grow = std::min(1.f, pl.age / .3f);
 			Engine::Transform t;
 			t.translate = EV(pl.at + V{0, .2f, 0});
-			// (スライム陣取りでは地面の雲は描かず、立ちのぼる粒だけ。床は体液の色のまま見せる)
 			const float r2 = pl.radius * grow * (.6f + .4f * fade);
 			t.scale = {r2, .15f, r2};
-			if (b.legacy || b.challenge != ChallengeKind::Territory)
-				ctx.renderer->DrawMeshInstanced(sphere_, white_, t, {.65f, .75f, .45f, 1});
-			for (int k = 0; k < 6; ++k) {
-				const float a = float(k) * 1.05f + pl.age * .6f, h = std::fmod(pl.age * .6f + float(k) * .17f, 1.f);
-				orb(pl.at + V{std::cos(a) * pl.radius * .5f, h * pl.radius * .5f, std::sin(a) * pl.radius * .5f},
-				    pl.radius * .08f * (1 - h), {.7f, .8f, .5f, 1});
-			}
+			ctx.renderer->DrawMeshInstanced(sphere_, white_, t, {.65f, .75f, .45f, 1});
 			break;
 		}
 		case BattleAction::Decoy: {
-			// ぬいぐるみ: 跳ねて敵を呼ぶ。弾ける直前はふくらむ
+			// ぬいぐるみ: 跳ねる。弾ける直前はふくらむ
 			const float hop = std::abs(std::sin(pl.age * 6)) * pl.size * .25f,
 			            swell = 1 + .4f * std::clamp((pl.age - (pl.life - .6f)) / .6f, 0.f, 1.f);
 			if (cityVisuals_.count(pl.visual))
 				DrawBattleProp(ctx, pl.visual, pl.at + V{0, hop, 0}, pl.size * swell * 1.4f, pl.age * 2, 0);
-			else
-				orb(pl.at + V{0, pl.size * .6f + hop, 0}, pl.size * .6f * swell, {.85f, .65f, .45f, 1});
 			break;
 		}
 		default:
 			break;
 		}
 	}
-	// ティッシュの雲: 体のまわりをふわふわ回る白い粒
-	if (b.fluff > 0) {
-		const float R = DevourBodyRadius(body.mass);
-		for (int k = 0; k < 8; ++k) {
-			const float a = float(k) * .785f + life_.age * 1.5f;
-			orb(body.at + V{std::cos(a) * R * 1.3f, R * (.3f + .3f * std::sin(life_.age * 3 + float(k))),
-			                std::sin(a) * R * 1.3f},
-			    R * .25f, {1, 1, 1, 1});
-		}
-	}
-	for (const auto& f : b.fx) {
-		const float t = f.age / f.life;
-		Engine::Vector4 c = f.color;
-		c.w *= 1 - t;
-		stub(f.at, f.radius * (.6f + .6f * t), c);
-	}
 }
 
-// 戦闘の HUD (チリツモの巻尺のデザイン。Docs/ui_designs/design1_tape.png):
-//  - 下: 巻尺の「おなかメーター」。1 目盛りが物 1 回分で、種類の色が並ぶ。左の端が限界、赤い線が今の体。上の細い帯が HP
-//  - 体のまわり: 足元の巻尺の輪 (残りの分が種類の色、使った分は灰色、次に使う分は赤い点線) と、頭の上の「あと N」の札
-//  - 右下: スロットのステッカー (図鑑の絵・残りの数)。左上: ボスまでの時間とランク、小ささと効き目
-// 残りの物を 1 回分ずつ並べる: スロットの物 (スロットの順) のあとに、袋の物を種類の順で。種類はステッカー・床のゲージ・巻尺の色になる
-// (種類: 0 投げる・飛び道具 / 1 変形 / 2 置く / 3 止める / 4 回復・守る)。nextCell は次に使う 1 回分
-const Engine::Vector4 BattleGroupColor[] = {
-    {.94f, .47f, .16f, 1}, {.43f, .35f, .78f, 1}, {.24f, .55f, .86f, 1}, {.51f, .51f, .59f, 1}, {.35f, .71f, .31f, 1}};
-void ChronoSystem::BattleHudCells(std::vector<int>& cells, int& nextCell) const {
-	const auto& b = battle_;
-	cells.clear();
-	nextCell = -1;
-	auto group = [](BattleAction a) {
-		switch (a) {
-		case BattleAction::Marbles:
-		case BattleAction::Tower:
-		case BattleAction::Paint:
-		case BattleAction::Decoy:
-		case BattleAction::Smell:
-			return 2;
-		case BattleAction::Pause:
-		case BattleAction::Read:
-		case BattleAction::Cage:
-		case BattleAction::Sticky:
-		case BattleAction::Tea:
-			return 3;
-		case BattleAction::Guard:
-		case BattleAction::Heal:
-		case BattleAction::Beckon:
-		case BattleAction::Brew:
-		case BattleAction::Fluff:
-			return 4;
-		case BattleAction::Throw:
-		case BattleAction::Water:
-		case BattleAction::Coin:
-		case BattleAction::Disc:
-		case BattleAction::Bounce:
-		case BattleAction::Homing:
-		case BattleAction::Fan:
-		case BattleAction::Pierce:
-			return 0;
-		default:
-			return 1;
-		}
-	};
-	// (変形武器: 武器ごとの残りの回数。色は土台の技)
-	if (WeaponsActive())
-		return;
-	for (int i = 0; i < b.slotCount; ++i) {
-		const auto& slot = b.slots[size_t(i)];
-		for (size_t k = 0; k < slot.items.size(); ++k) {
-			if (i == b.selected && k + 1 == slot.items.size())
-				nextCell = int(cells.size());
-			cells.push_back(group(slot.action));
-		}
-	}
-	std::vector<int> rest;
-	for (const auto& bag : b.bag)
-		for (size_t k = 0; k < bag.items.size(); ++k)
-			rest.push_back(group(bag.action));
-	std::stable_sort(rest.begin(), rest.end());
-	cells.insert(cells.end(), rest.begin(), rest.end());
-}
-
-// 足元の床に描く円いゲージ (地面に貼った板なので、上を通るスライムや敵の下に隠れる)。
-// 内側 R*1.3〜外側 R*1.8 の帯を、物 1 回分ずつの区切りで色分けする。スライムの正面から始まり、体と一緒に回る
-void ChronoSystem::DrawBattleFloorGauge(GameContext& ctx) {
-	const auto& b = battle_;
-	const auto& body = life_.bodies[0];
-	if (plane_ == 0 || b.phase == BattleStep::None || WeaponsActive() || b.phase == BattleStep::Craft)
-		return;
-	std::vector<int> cells;
-	int nextCell = -1;
-	BattleHudCells(cells, nextCell);
-	const int left = int(cells.size()), total = std::max(10, std::max(b.hudTotal, int(cells.size())));
-	// 大きさは見えている体の幅から決める (DevourBodyRadius より体の見た目の方が広い。止まって地面にいるときの形で測ると、動いても輪が揺れない)
-	LifeBody rest = body;
-	rest.aspect = 1;
-	rest.air = 0;
-	const V radii = LifeRadii(rest, life_.recipe);
-	const float R = std::max(radii.x, radii.z) * 1.15f, inner = R * 1.12f, outer = R * 1.5f,
-	            mid = (inner + outer) * .5f, lift = .02f + R * .01f;
-	V center = body.at;
-	center.y = InkGround(center);
-	V facing = body.forward;
-	facing.y = 0;
-	const float front = Length(facing) > .01f ? std::atan2(facing.z, facing.x) : 1.5707963f;
-	const int steps = 72;
-	const float da = 6.2831853f / float(steps);
-	// 板 (plane_ は 2x2 の両面の XZ 板)。angle は板の x を向ける向き (xz 平面の角度)、len と wide は長さと幅
-	auto quad = [&](V at, float angle, float len, float wide, float y, Engine::Vector4 color) {
-		Engine::Transform t;
-		t.translate = EV(V{at.x, center.y + y, at.z});
-		t.rotate = EV(V{0, -angle, 0});
-		t.scale = {len * .5f, 1, wide * .5f};
-		// UI の色は sRGB で書いてあるので、3D の色 (リニア) に直してから描く (そのままだと白っぽくなる)
-		const Engine::Vector4 linear{
-		    std::pow(color.x, 2.2f), std::pow(color.y, 2.2f), std::pow(color.z, 2.2f), color.w};
-		ctx.renderer->DrawMeshInstanced(plane_, white_, t, linear);
-	};
-	// 使った分は消す: 帯は正面から「残りの数 / いちばん多かった数」の角度までだけ描く (減るほど輪が欠けていく)
-	if (left <= 0)
-		return;
-	const float pad = R * .06f, blink = std::fmod(life_.age * 4, 1.f), reach = 6.2831853f * float(left) / float(total);
-	// 1 区間 (k 番目) のうち残りの範囲に入る部分を描く。最後の区間は途中で切る
-	auto arc = [&](int k, float grow, float wide, float y, Engine::Vector4 c) {
-		const float a0 = da * float(k), a1 = std::min(da * float(k + 1), reach);
-		if (a1 <= a0)
-			return;
-		const float half = (a1 - a0) * .5f, a = front + a0 + half;
-		const V d{std::cos(a), 0, std::sin(a)};
-		quad(center + d * mid, a + 1.5707963f, 2 * (outer + grow) * std::sin(half) * 1.04f, wide, y, c);
-	};
-	// 黒い下地 (縁取り) と、両端のふた
-	for (int k = 0; k < steps; ++k)
-		arc(k, pad, outer - inner + pad * 2, lift, UI::Scale::Black);
-	for (float a : {front, front + reach}) {
-		const V d{std::cos(a), 0, std::sin(a)};
-		quad(center + d * mid, a, outer - inner + pad * 2, R * .1f, lift, UI::Scale::Black);
-	}
-	// 色の帯: 1 区間ごとに、その位置の 1 回分の色 (次に使う分は赤く点滅)
-	for (int k = 0; k < steps; ++k) {
-		const int cell = std::min(left - 1, int((float(k) + .5f) / float(steps) * float(total)));
-		Engine::Vector4 c = BattleGroupColor[cells[size_t(cell)]];
-		if (cell == nextCell && blink < .6f)
-			c = UI::Scale::Red;
-		arc(k, 0, outer - inner, lift * 2, c);
-	}
-	// 目盛り: 区切りの線 (内から外へ)。24 本くらいまで。正面 (0) は太い
-	const int ringStep = std::max(1, (total + 23) / 24);
-	for (int cell = 0; cell < left; cell += ringStep) {
-		const float a = front + 6.2831853f * float(cell) / float(total);
-		const V d{std::cos(a), 0, std::sin(a)};
-		quad(center + d * mid, a, outer - inner, cell == 0 ? R * .09f : R * .04f, lift * 3, UI::Scale::Black);
-	}
-}
-
+// 戦闘の HUD (チリツモの巻尺のデザイン): 左上にチャレンジの名前と遊び方と効き目、上の真ん中にスコアとコンボ、右上に残り時間、
+// 下の真ん中に変形武器のステッカー
 void ChronoSystem::DrawDevourBattleUI(GameContext& ctx) {
 	using namespace UI::Scale;
 	// 変形武器を作る画面
@@ -3006,21 +2340,9 @@ void ChronoSystem::DrawDevourBattleUI(GameContext& ctx) {
 	auto& b = battle_;
 	const auto& info = ChallengeOf(b.challenge);
 	const Engine::Vector4 cream{.99f, .97f, .925f, 1}, used{.9f, .84f, .59f, 1}, gray{.6f, .6f, .6f, 1};
-	std::vector<int> cells;
-	int nextCell = -1;
-	BattleHudCells(cells, nextCell);
-	const auto* groupColor = BattleGroupColor;
-	const int left = int(cells.size());
-	b.hudTotal = std::max(b.hudTotal, int(cells.size()));
-	const int total = std::max(10, b.hudTotal);
-	// 足元の円いゲージは床に貼った板で描く (DrawBattleFloorGauge)。スライムが上を通ると隠れる
-	// ---- 左上: チャレンジの名前と遊び方 (旧来の戦闘は倒した数) ----
+	// ---- 左上: チャレンジの名前と遊び方 ----
 	{
-		const std::string name = b.legacy ? std::string("たたかい") : info.name,
-		                  sub = b.legacy
-		                            ? "倒した " + std::to_string(b.kills) + "   拾った " + std::to_string(b.pickups)
-		                            : info.goal,
-		                  status = ChallengeStatus();
+		const std::string name = info.name, sub = info.goal, status = ChallengeStatus();
 		const float x = 24, top = 24,
 		            w = std::max({ui.Width(name, 30, Jp), ui.Width(sub, 20, Jp), ui.Width(status, 18, Jp)}) + 32,
 		            h = status.empty() ? 90.f : 120.f;
@@ -3037,8 +2359,6 @@ void ChronoSystem::DrawDevourBattleUI(GameContext& ctx) {
 			buffs += "回復中 " + std::to_string(int(std::ceil(b.regen))) + "秒  ";
 		if (b.fluff > 0)
 			buffs += "ふわふわ " + std::to_string(int(std::ceil(b.fluff))) + "秒  ";
-		if (b.dropBoost > 0)
-			buffs += "落としやすい " + std::to_string(int(std::ceil(b.dropBoost))) + "秒";
 		if (b.snack > 0)
 			buffs += "おやつパワー " + std::to_string(int(std::ceil(b.snack))) + "秒  ";
 		if (b.heavy > 0)
@@ -3052,7 +2372,7 @@ void ChronoSystem::DrawDevourBattleUI(GameContext& ctx) {
 		}
 	}
 	// ---- 上の真ん中: スコアとコンボ、自己ベスト ----
-	if (!b.legacy) {
+	{
 		const std::string value = std::to_string(b.score);
 		const float vw = ui.Width(value, 52, Num), lw = ui.Width("スコア", 22, Jp), w = std::max(220.f, vw + lw + 48),
 		            x = 640 - w * .5f, top = 24;
@@ -3076,18 +2396,8 @@ void ChronoSystem::DrawDevourBattleUI(GameContext& ctx) {
 			ui.Text(text, x + w + 30, top + 12 + size * .15f, size, White, Jp);
 		}
 	}
-	// ---- 上の真ん中 (旧来の戦闘): ボスの HP ----
-	for (const auto& e : b.enemies)
-		if (e.boss) {
-			const UI::Rect frame{440, 24, 400, 30};
-			Plate(ui, frame, Black, 3, 4);
-			ui.Fill(
-			    {frame.x + 3, frame.y + 3, (frame.w - 6) * std::clamp(e.hp / e.maxHp, 0.f, 1.f), frame.h - 6},
-			    {.62f, .3f, .85f, 1});
-			ui.Text("ボス", frame.x + 10, frame.y + 2, 22, White, Jp);
-		}
 	// ---- 右上: 残り時間 (残り 10 秒で赤く脈打つ) ----
-	if (!b.legacy) {
+	{
 		const float leftTime = std::max(0.f, b.time - b.clock);
 		const bool hurry = leftTime <= 10 && b.phase == BattleStep::Fight;
 		const float beat = hurry ? .5f + .5f * std::sin(life_.age * 10) : 0, size = 64 * (1 + .06f * beat);
@@ -3099,123 +2409,9 @@ void ChronoSystem::DrawDevourBattleUI(GameContext& ctx) {
 		ui.Text(label, x + 16, 24 + 22, 22, ink, Jp);
 		ui.Text(clock, x + labelW + 28, 24 + 35 - .56f * size, size, ink, Num);
 	}
-	// ---- 下: 巻尺の「持ち物」メーター (残りの物 1 回分ずつ。変形武器は回数の制限がないので出さない) ----
-	if (!WeaponsActive()) {
-		const float x0 = 150, x1 = 1100, y0 = 628, h = 46, cell = (x1 - x0) / float(total);
-		Plate(ui, {x0, y0, x1 - x0, h}, Yellow, 3, 5);
-		const float readX = x0 + cell * float(left);
-		ui.Fill({readX, y0, x1 - readX, h}, used);
-		for (int k = 0; k < left; ++k)
-			ui.Fill(
-			    {x0 + cell * float(k) + std::min(3.f, cell * .15f), y0 + 26,
-			     std::max(1.f, cell - std::min(6.f, cell * .3f)), 16},
-			    groupColor[cells[size_t(k)]]);
-		if (nextCell >= 0 && nextCell < left) {
-			const float nx = x0 + cell * float(nextCell);
-			ui.Fill({nx, y0 + 23, cell, 3}, Red);
-			ui.Fill({nx, y0 + 43, cell, 3}, Red);
-			ui.Fill({nx, y0 + 23, 3, 23}, Red);
-			ui.Fill({nx + cell - 3, y0 + 23, 3, 23}, Red);
-		}
-		// 目盛り: 物が多くて 1 目盛りが細いときは、5 回分・25 回分ごとにまとめる (数字は太い目盛りに)
-		const int step = cell >= 8 ? 1 : cell >= 2 ? 5 : 25, every = step * 5;
-		for (int k = 0; k <= total; k += step) {
-			const bool major = k % every == 0;
-			const float tx = x0 + cell * float(k);
-			ui.Fill({tx - (major ? 1.5f : 1.f), y0, major ? 3.f : 2.f, major ? 22.f : 13.f}, Black);
-			if (major && k > 0 && k < total)
-				ui.Text(std::to_string(k), tx + 4, y0 - 2, 18, Black, Num);
-		}
-		// 左の端: 「持ち物」の札
-		Plate(ui, {x0 - 104, y0, 92, h}, Black, 3, 4);
-		ui.Text("持ち物", x0 - 94, y0 + 10, 22, Yellow, Jp);
-		// 赤い読み取り線と「あと N 回」の札 (札は巻尺の右の端。真ん中のスロットと重ならない)
-		ui.Fill({readX - 2.5f, y0 - 36, 5, h + 40}, Red);
-		{
-			const std::string value = std::to_string(left);
-			const float w = ui.Width("あと", 20, Jp) + ui.Width(value, 36, Num) + ui.Width("回", 20, Jp) + 16 + 24,
-			            px = x1 + 12;
-			Plate(ui, {px, y0, w, h}, Red, 3, 4);
-			float tx = px + 12;
-			ui.Text("あと", tx, y0 + 12, 20, White, Jp);
-			tx += ui.Width("あと", 20, Jp) + 6;
-			ui.Text(value, tx, y0 - 1, 36, White, Num);
-			tx += ui.Width(value, 36, Num) + 6;
-			ui.Text("回", tx, y0 + 12, 20, White, Jp);
-		}
-		// HP (旧来の戦闘だけ): 巻尺の上の細い帯
-		if (b.legacy) {
-			const float share = std::clamp(b.hp / std::max(1.f, b.maxHp), 0.f, 1.f);
-			ui.Fill({x0, y0 - 20, x1 - x0, 12}, Black);
-			ui.Fill(
-			    {x0 + 2, y0 - 18, (x1 - x0 - 4) * share, 8}, b.hurtFlash > 0 ? White
-			                                                 : share < .3f   ? Red
-			                                                                 : Engine::Vector4{.5f, .76f, .2f, 1});
-			ui.Text("HP " + std::to_string(int(std::ceil(b.hp))), x0, y0 - 48, 24, Black, Num);
-		}
-	}
-	// ---- 下の真ん中 (巻尺の上): スロットのステッカー (選んでいるのは黄色)。飴玉は最後 ----
+	// ---- 下の真ん中: 変形武器のステッカー ----
 	if (WeaponsActive())
 		DrawWeaponStickers(ctx);
-	else {
-		const int boxes = b.slotCount + 1;
-		const float size = 60, gap = 72, x0 = 640 - gap * float(boxes - 1) * .5f, cy = 548;
-		static const float tilt[] = {5, -6, 4, -3, 6};
-		std::vector<const BattleBag*> spinning;
-		for (const auto& x : b.bag)
-			if (!x.items.empty())
-				spinning.push_back(&x);
-		for (int i = 0; i < boxes; ++i) {
-			const bool candy = i == b.slotCount, selected = i == b.selected;
-			const float cx = x0 + gap * float(i), rot = tilt[i % 5] * .0174533f;
-			const UI::Rect outer{cx - size * .5f, cy - size * .5f, size, size},
-			    inner{outer.x + 5, outer.y + 5, size - 10, size - 10};
-			const BattleSlot* slot = candy ? nullptr : &b.slots[size_t(i)];
-			const bool faded = !candy && slot->items.empty() && slot->roulette < 0;
-			ui.ImageRot(
-			    "Resources/Textures/UI/HUD/sticker.png", {outer.x + 3, outer.y + 6, outer.w, outer.h}, rot,
-			    {0, 0, 0, .45f});
-			ui.ImageRot("Resources/Textures/UI/HUD/sticker.png", outer, rot, Black);
-			ui.ImageRot(
-			    "Resources/Textures/UI/HUD/sticker.png", inner, rot,
-			    selected ? Yellow
-			    : faded  ? Engine::Vector4{.8f, .8f, .8f, 1}
-			             : White);
-			ui.Text(std::to_string(i + 1), outer.x - 6, outer.y - 24, 24, Black, Num);
-			if (candy) {
-				ui.Dot(cx, cy, 12, {1, .55f, .8f, 1});
-				ui.Text("∞", cx + size * .18f, cy + size * .18f, 26, Black, Num);
-				continue;
-			}
-			std::string image;
-			if (slot->roulette >= 0) {
-				if (!spinning.empty())
-					image = ImageOfId(spinning[size_t(int(slot->roulette * 18)) % spinning.size()]->id);
-			} else if (!slot->items.empty())
-				image = ImageOfId(slot->id);
-			if (!image.empty())
-				ui.ImageRot(
-				    image, {inner.x + 3, inner.y + 3, inner.w - 6, inner.h - 6}, rot,
-				    faded ? Engine::Vector4{1, 1, 1, .4f} : Engine::Vector4{1, 1, 1, 1});
-			if (!slot->items.empty()) {
-				const std::string count = "x" + std::to_string(slot->items.size());
-				const float cw = ui.Width(count, 22, Num) + 10;
-				ui.Fill({cx + size * .12f, cy + size * .22f, cw, 26}, Black);
-				ui.Text(count, cx + size * .12f + 5, cy + size * .22f - 2, 22, Yellow, Num);
-			} else if (slot->roulette < 0)
-				ui.Text("空", cx - 8, cy - 14, 22, gray, Jp);
-		}
-		// 選んでいる物の名前と技
-		if (b.selected < b.slotCount && !b.slots[size_t(b.selected)].items.empty()) {
-			const auto& slot = b.slots[size_t(b.selected)];
-			const std::string name = NameOfId(slot.id) + "  " + BattleActionName(slot.action);
-			const float nw = ui.Width(name, 20, Jp) + 24;
-			// 名前の札はスロットの左に並べる (上に置くと足元の輪とぶつかる)
-			const float nx = x0 - gap * .5f - 12 - nw;
-			Plate(ui, {nx, cy - 16, nw, 32}, cream, 3, 4);
-			ui.Text(name, nx + 12, cy - 13, 20, Black, Jp);
-		}
-	}
 	// 得点や拾った物の文字 (その場所に浮かべる)
 	for (const auto& pop : b.pops) {
 		float x, y;
@@ -3235,33 +2431,25 @@ void ChronoSystem::DrawDevourBattleUI(GameContext& ctx) {
 	};
 	if (b.phase == BattleStep::Intro) {
 		const float a = std::min(1.f, b.intro * 3);
-		if (b.legacy) {
-			banner("戦闘開始！", 56, 230, Yellow, Black, a);
-			banner("吸収した物を使って生き残り、ボスを倒せ", 24, 320, cream, Black, a);
-		} else {
-			banner("チャレンジ開始！", 30, 190, Red, White, a);
-			banner(info.name, 56, 240, Yellow, Black, a);
-			banner(info.goal, 24, 330, cream, Black, a);
-			banner("制限時間 " + Clock(b.time), 22, 382, cream, Black, a);
-		}
+		banner("チャレンジ開始！", 30, 190, Red, White, a);
+		banner(info.name, 56, 240, Yellow, Black, a);
+		banner(info.goal, 24, 330, cream, Black, a);
+		banner("制限時間 " + Clock(b.time), 22, 382, cream, Black, a);
 	} else if (b.messageAge > 0)
 		banner(b.message, 24, 208, cream, Black, std::min(1.f, b.messageAge * 2));
 	if (b.phase == BattleStep::Over) {
-		if (b.legacy)
-			banner(b.won ? "クリア！" : "敗北…", 64, 250, b.won ? Yellow : Red, b.won ? Black : White, 1);
-		else {
-			banner("タイムアップ！", 56, 220, Yellow, Black, 1);
-			banner("スコア " + std::to_string(b.score), 40, 310, cream, Black, 1);
-			if (b.score > b.best && b.best > 0)
-				banner("自己ベスト更新！", 26, 380, Red, White, 1);
-		}
+		banner("タイムアップ！", 56, 220, Yellow, Black, 1);
+		banner("スコア " + std::to_string(b.score), 40, 310, cream, Black, 1);
+		if (b.score > b.best && b.best > 0)
+			banner("自己ベスト更新！", 26, 380, Red, White, 1);
 	}
 }
 
 // 結果画面に重ねるチャレンジの記録と、チャレンジだけやり直す案内
 void ChronoSystem::DrawDevourBattleRecord(GameContext& ctx) {
 	const auto& b = battle_;
-	if (b.tries <= 0 || finishAge_ < 1.f)
+	// (こわした積み木の山の結果では、記録はその画面の中に出す)
+	if (b.tries <= 0 || finishAge_ < 1.f || BlocksPileResult())
 		return;
 	UI::Canvas ui(ctx.renderer, ctx.viewportSize.x, ctx.viewportSize.y);
 	ui.MultiplyAlpha(std::min(1.f, (finishAge_ - 1) / .4f));
@@ -3271,14 +2459,7 @@ void ChronoSystem::DrawDevourBattleRecord(GameContext& ctx) {
 	auto text = [&](const std::string& s, float x, float y, float size, Engine::Vector4 color) {
 		ui.Text(s, x, y, size, color, UI::JapaneseFont);
 	};
-	if (b.legacy) {
-		text(
-		    std::string("戦闘 ") + (b.won ? "クリア (ボス撃破)" : "敗北"), panel.x + 16, panel.y + 12, 24,
-		    b.won ? hazard : white);
-		text(
-		    "倒した数 " + std::to_string(b.kills) + "   残り HP " + std::to_string(int(std::ceil(b.hp))), panel.x + 16,
-		    panel.y + 50, 20, white);
-	} else {
+	{
 		text(ChallengeOf(b.challenge).name, panel.x + 16, panel.y + 10, 24, hazard);
 		text("スコア " + std::to_string(b.score), panel.x + 16, panel.y + 44, 28, white);
 		if (b.newBest)
@@ -3294,20 +2475,20 @@ void ChronoSystem::DrawDevourBattleRecord(GameContext& ctx) {
 	}
 	text(std::to_string(b.tries) + " 回目", panel.x + 16, panel.y + 112, 18, white);
 	text(
-	    b.legacy ? "L / Bボタン: 戦闘だけやり直す" : "L / Bボタン: チャレンジだけやり直す", panel.x + 16, panel.y + 136,
-	    20, hazard);
+	    "L / Bボタン: チャレンジだけやり直す", panel.x + 16, panel.y + 136, 20, hazard);
 }
 
 // ---- 変形チャレンジの成長の間の部分 ----
-// このステージで挑むチャレンジを決める: --challenge=id で決められる。無ければランダム
+// このステージで挑むチャレンジを決める: --challenge=id で決められる。無ければランダム (どれも遊べるチャレンジの中から)
 void ChronoSystem::PickChallenge() {
+	// (遊べないチャレンジ (色ぬり) は、指定されても選ばない)
 	const int forced = ChallengeIndexOf(ArgText(L"--challenge="));
-	if (forced >= 0) {
+	if (forced >= 0 && ChallengeReady(ChallengeKind(forced))) {
 		challenge_ = ChallengeKind(forced);
 		return;
 	}
 	// タイトルの隠しコマンドのチャレンジ直行: 札で選んだチャレンジ
-	if (QuickChallenge().active) {
+	if (QuickChallenge().active && ChallengeReady(ChallengeKind(QuickChallenge().kind))) {
 		challenge_ = ChallengeKind(QuickChallenge().kind);
 		return;
 	}
@@ -3444,7 +2625,9 @@ void ChronoSystem::PrepareBattleForTest(entt::registry& r) {
 		}
 		PostQuitMessage(0);
 	}
-	float cm = stage.goals[std::min<size_t>(1, stage.goals.size() - 1)];
+	// (--devour-battle-all: ステージの物を全部集め、最後の目標の大きさで始める。全部集めたときの強化の点を確かめる用)
+	const bool all = HasArg(L"--devour-battle-all");
+	float cm = all ? stage.goals.back() : stage.goals[std::min<size_t>(1, stage.goals.size() - 1)];
 	if (const wchar_t* arg = wcsstr(GetCommandLineW(), L"--devour-battle-cm="))
 		cm = std::max(stage.start, float(_wtof(arg + 19)));
 	const float mass = DevourGoalMass(stage, cm);
@@ -3466,7 +2649,7 @@ void ChronoSystem::PrepareBattleForTest(entt::registry& r) {
 	std::map<std::string, int> taken;
 	std::vector<size_t> order;
 	for (size_t i : candidates) {
-		if (order.size() >= 300)
+		if (!all && order.size() >= 300)
 			break;
 		auto e = entt::entity(life_.props[i].visual);
 		if (!r.valid(e))
@@ -3481,7 +2664,7 @@ void ChronoSystem::PrepareBattleForTest(entt::registry& r) {
 		ActionOfId(id, building);
 		if (building)
 			continue;
-		if (taken[id] >= 6)
+		if (!all && taken[id] >= 6)
 			continue;
 		++taken[id];
 		order.push_back(i);

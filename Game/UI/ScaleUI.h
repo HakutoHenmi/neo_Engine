@@ -1,10 +1,13 @@
 // ScaleUI.h
 // 「物差し」の UI: タイトル・セレクト・リザルトで共通の巻尺・小道具・スライム・ロゴ・保存した記録。
+// 積み木クラッシャーの結果は、こわした積み木の山を縦の巻尺で測る (PileResult。チリも積もれば山となる)。
 // 巻尺は対数の目盛りで、5cm から 126m までを 1 本に載せる。画像は Resources/Textures/UI/Scale/
 // (Docs/UIDesign/chiritsumo/bake_sprites.py でゲームのモデルから書き出した物)。
 #pragma once
 #include "GameUI.h"
 #include "../Chrono/DevourStageRules.h"
+#include "../Chrono/ChallengeRules.h"
+#include "UISound.h"
 #include "../../externals/nlohmann/json.hpp"
 #include <array>
 #include <filesystem>
@@ -778,7 +781,7 @@ inline void Hud(Canvas& ui, const HudView& view) {
 	}
 }
 
-inline constexpr Rect ResultNext{48, 574, 410, 50}, ResultRetry{48, 650, 196, 50}, ResultTitle{254, 650, 204, 50},
+inline constexpr Rect ResultChallenge{468, 650, 250, 50}, ResultNext{48, 574, 410, 50}, ResultRetry{48, 650, 196, 50}, ResultTitle{254, 650, 204, 50},
     ResultRetryOnly{48, 650, 196, 50}, ResultTitleOnly{254, 650, 204, 50};
 // 結果画面に出す内容。live ならゲームの本物のスライムの上に重ね、体の左右と上の端 (UI 座標) を測る
 struct ResultView {
@@ -936,6 +939,244 @@ inline void Result(Canvas& ui, const ResultView& view, float age) {
 		ResultButton(
 		    ui, view.hasNext ? ResultTitle : ResultTitleOnly, "keyboard_tab", "xbox_button_y", Str("scale.title"),
 		    false);
+	}
+	lastAge = age;
+}
+// ---- 積み木クラッシャーの結果: こわした積み木の山 (チリも積もれば山となる) ----
+// 山そのものはゲームの 3D の世界に積む (ChallengeBlocks.cpp の BlocksPile。こわした積み木が積み木の街の広場に降って山になり、
+// カメラはてっぺんと一緒に上空へ上る)。ここは、その上に重ねる結果の札: 大きさの結果と同じ部品 (終了の合図・記録の札・ランクの判・
+// 比べる物の写真・ボタン) で、山の高さ (段の数 x 4cm) と、こわした数・金・スコアを出す。積み終わると「チリも積もれば山となる」。
+// 演出の途中は決定の操作で最後まで飛ばせる (PileEnd)。山の形とランクは Chrono/ChallengeRules.h
+struct PileView {
+	std::string stage;
+	int count = 0, golds = 0, score = 0;
+	bool newBest = false, hasNext = false, canRetryChallenge = false;
+};
+// 積み木が降り続ける秒 (多いほど長いが、長すぎないように)・降り始める時刻・1 個が落ちる秒
+inline constexpr float PileStart = 1.1f, PileDrop = .45f;
+inline float PileFallTime(int count) {
+	return std::clamp(1.4f + float(count) * .006f, 2.2f, 5.f);
+}
+// i 番目の積み木が山に着く時刻 (始めはゆっくり、だんだん速く積もる)
+inline float PileLand(int i, int count) {
+	return PileStart + PileFallTime(count) * std::pow((float(i) + 1) / float((std::max)(count, 1)), .8f);
+}
+// 比べる物とランクが出る時刻
+inline float PileCompareAt(int count) {
+	return PileStart + PileFallTime(count) + .3f;
+}
+// 宇宙まで積もる (Chrono::ChallengePileShells): 本当の山のあと、同じ積み木で山をひと回りずつ包む殻。
+// k 番目の殻を積む秒 (始めはゆっくり、だんだん速く)・始まる時刻 (前の殻が 7 割積めたら次へ)・i 番目の積み木が着く時刻・
+// 着いた数・演出の終わり (ボタンが出る。飛ばすとここへ行く)
+inline const std::vector<Chrono::PileShell>& PileShells(int count) {
+	static int lastCount = -1;
+	static std::vector<Chrono::PileShell> shells;
+	if (lastCount != count) {
+		shells = Chrono::ChallengePileShells(count);
+		lastCount = count;
+	}
+	return shells;
+}
+inline int PileRows(int count) {
+	static int lastCount = -1, rows = 0;
+	if (lastCount != count) {
+		rows = Chrono::ChallengePileRows(Chrono::ChallengePileLayout(count));
+		lastCount = count;
+	}
+	return rows;
+}
+inline float PileShellTime(int k) {
+	return (std::max)(.2f, 1.f * std::pow(.9f, float(k)));
+}
+inline float PileShellAt(int count, int k) {
+	float at = PileCompareAt(count) + 1.2f;
+	for (int j = 0; j < k; ++j)
+		at += PileShellTime(j) * .7f;
+	return at;
+}
+inline float PileShellLand(float shellAt, int k, int i, int blocks) {
+	return shellAt + PileShellTime(k) * std::pow((float(i) + 1) / float((std::max)(blocks, 1)), .9f);
+}
+inline int PileShellLanded(float shellAt, int k, int blocks, float age) {
+	const float f = Clamp01((age - shellAt) / PileShellTime(k));
+	return (std::min)(blocks, int(float(blocks) * std::pow(f, 1 / .9f) + 1e-3f));
+}
+inline float PileEnd(int count) {
+	const auto& shells = PileShells(count);
+	if (shells.empty())
+		return PileCompareAt(count) + .9f;
+	const int last = int(shells.size()) - 1;
+	return PileShellAt(count, last) + PileShellTime(last) + .3f;
+}
+// 積もった山の高さ (m): 本当の山と、着いた殻の積み木のてっぺん
+inline float PileEchoMeters(int count, float age) {
+	float top = float(PileRows(count));
+	const auto& shells = PileShells(count);
+	float at = PileShellAt(count, 0);
+	for (int k = 0; k < int(shells.size()) && age >= at; ++k) {
+		top = (std::max)(top, Chrono::ChallengePileShellTop(shells[size_t(k)], PileShellLanded(at, k, shells[size_t(k)].blocks, age)));
+		at += PileShellTime(k) * .7f;
+	}
+	return top * Chrono::ChallengePileBlockCm / 100;
+}
+inline std::string PileMetersText(float m) {
+	char text[32];
+	if (m < 1000)
+		snprintf(text, sizeof(text), "%.0f m", m);
+	else
+		snprintf(text, sizeof(text), "%.1f km", m / 1000);
+	return text;
+}
+// 着いた数と、着いた段の数
+inline void PileLanded(int count, float age, int& landed, int& rows) {
+	static int lastCount = -1;
+	static std::vector<Chrono::PileSlot> slots;
+	if (lastCount != count) {
+		slots = Chrono::ChallengePileLayout(count);
+		lastCount = count;
+	}
+	landed = rows = 0;
+	for (int i = 0; i < count && age >= PileLand(i, count); ++i) {
+		landed = i + 1;
+		rows = (std::max)(rows, slots[size_t(i)].row + 1);
+	}
+}
+// 比べる物 (小さい順。タイトルのならびの写真と、結果で出す名前の文字の項目)
+struct PileReference {
+	const Sprite* sprite;
+	const char* name;
+};
+inline const PileReference* PilePick(float cm) {
+	static const PileReference items[] = {
+	    {&Tsumiki, "pile.refTsumiki"}, {&Mikan, "pile.refMikan"},       {&Nuigurumi, "pile.refNuigurumi"},
+	    {&Kago, "pile.refKago"},       {&Danboru, "pile.refDanboru"},   {&Neko, "pile.refNeko"},
+	    {&Shitsugaiki, "pile.refShitsugaiki"}, {&Inugoya, "pile.refInugoya"}, {&Jitensha, "pile.refJitensha"},
+	    {&Jihanki, "pile.refJihanki"}, {&KeiCar, "pile.refKeiCar"},   {&MyHouse, "pile.refMyHouse"}};
+	const PileReference* pick = nullptr;
+	for (const auto& item : items)
+		if (cm > item.sprite->tall)
+			pick = &item;
+	return pick;
+}
+// 黒い帯の大きな文字 (終了の合図と同じ見た目)。in は出てくる割合、alpha は消える割合
+inline void PileBand(Canvas& ui, const std::string& label, float cx, float y, float size, float in, float alpha) {
+	const float w = ui.BigWidth(label, size, JpBig, JpBigBase) + size * .85f;
+	ui.Fill({cx - w * .5f * in, y, w * in, size * 1.4f}, WithAlpha(Black, alpha));
+	if (in > .9f)
+		ui.Big(label, cx - w * .5f + size * .42f, y + size * .12f, size, WithAlpha(Yellow, alpha), JpBig, JpBigBase);
+}
+inline void PileResult(Canvas& ui, const PileView& view, float age) {
+	if (SkipIntro())
+		age = 99;
+	static float lastAge = 0;
+	auto crossed = [&](float at) { return lastAge < at && age >= at; };
+	const int count = view.count;
+	int landed = 0, rows = 0, fullLanded = 0, fullRows = 0;
+	PileLanded(count, age, landed, rows);
+	PileLanded(count, 1e9f, fullLanded, fullRows);
+	const float nowCm = float(rows) * Chrono::ChallengePileBlockCm,
+	            fullCm = float(fullRows) * Chrono::ChallengePileBlockCm;
+	const float compareAt = PileCompareAt(count), end = PileEnd(count);
+	// 終了の合図 (大きさの結果と同じ)
+	if (age < 1.15f)
+		PileBand(ui, Str("scale.finish"), 640, 264, 84, EaseOut(age / .18f), 1 - Clamp01((age - .9f) / .25f));
+	// 記録の札 (左): ステージ・山の高さ (積もるにつれて増える)・こわした数と金・スコア・比べる物・ランクの判
+	const float enter = EaseOut((age - .7f) / .32f), dx = -480 * (1 - enter);
+	if (age > .7f) {
+		Plate(ui, {24 + dx, 20, 420, 396}, Cream, 3, 6);
+		ui.Text(view.stage, 46 + dx, 32, 20, Black, Jp);
+		ui.Text(Str("pile.heading"), 46 + dx, 60, 24, Black, Jp);
+		const std::string value = SizeText(nowCm);
+		const auto space = value.find(' ');
+		const std::string number = value.substr(0, space), unit = space == std::string::npos ? "" : value.substr(space + 1);
+		ui.Big(number, 44 + dx, 82, 100, Black, NumBig, NumBigBase);
+		ui.Big(unit, 52 + dx + ui.BigWidth(number, 100, NumBig, NumBigBase), 124, 46, Black, NumBig, NumBigBase);
+		float y = 206;
+		auto stat = [&](const std::string& head, const std::string& number2, const std::string& tail, float x) {
+			ui.Text(head, x, y + 14, 22, Black, Jp);
+			x += ui.Width(head, 22, Jp) + 8;
+			ui.Text(number2, x, y, 38, Black, Num);
+			x += ui.Width(number2, 38, Num) + 6;
+			ui.Text(tail, x, y + 14, 22, Black, Jp);
+			return x + ui.Width(tail, 22, Jp) + 22;
+		};
+		const int golds = (std::min)(view.golds, (std::max)(0, landed - (count - view.golds)));
+		float x = stat(Str("pile.broken"), std::to_string(landed), Str("pile.unit"), 46 + dx);
+		stat(Str("pile.gold"), std::to_string(golds), Str("pile.unit"), x);
+		y += 50;
+		stat(Str("pile.score"), std::to_string(int(float(view.score) * Clamp01(float(landed) / float((std::max)(1, count))))),
+		     "", 46 + dx);
+		// 比べる物: 山の高さを越えた一番大きい実物の写真と「〜より高い！」
+		if (age > compareAt) {
+			const float a = EaseOut((age - compareAt) / .3f);
+			if (const auto* ref = PilePick(fullCm)) {
+				const float h = 46, w = h * ref->sprite->aspect;
+				ui.Photo(SpritePath(ref->sprite->name), {46 + dx, 342 - h * a, w, h * a});
+				ui.Text(Str(ref->name) + Str("pile.taller"), 58 + dx + w, 308, 24, WithAlpha(Black, a), Jp);
+			} else
+				ui.Text(Str("pile.small"), 46 + dx, 308, 24, WithAlpha(Black, a), Jp);
+		}
+		// 宇宙まで積もる山の高さ: 本当の山の高さの下に「積もり積もって ○○」
+		if (count > 0 && !PileShells(count).empty() && age > PileShellAt(count, 0)) {
+			const float a = EaseOut((age - PileShellAt(count, 0)) / .3f);
+			const std::string& head = Str("pile.echo");
+			ui.Text(head, 46 + dx, 370, 22, WithAlpha(Black, a), Jp);
+			ui.Text(PileMetersText(PileEchoMeters(count, age)), 56 + dx + ui.Width(head, 22, Jp), 354, 40, WithAlpha(Black, a),
+			        Num);
+		}
+		// ランクの判 (大きさの結果と同じ赤い丸)
+		if (age > compareAt + .2f) {
+			const float pop = Overshoot((age - compareAt - .2f) / .28f), r = 52 * pop;
+			const std::string rank = Chrono::ChallengePileRank(fullCm);
+			ui.Dot(372 + dx, 120, r, Red);
+			ui.Big(rank, 372 + dx - ui.BigWidth(rank, 72 * pop, NumBig, NumBigBase) * .5f, 120 - 36 * pop, 72 * pop, White,
+			       NumBig, NumBigBase);
+			if (crossed(compareAt + .2f))
+				PlayGulp(true);
+		}
+		if (age > compareAt + .4f && view.newBest) {
+			const std::string& label = Str("scale.newBest");
+			const float w = ui.Width(label, 18, Jp) + 18;
+			ui.Fill({424 - w + dx, 186, w, 26}, Black);
+			ui.Text(label, 433 - w + dx, 188, 18, Yellow, Jp);
+		}
+	}
+	// 積み終わり: 「チリも積もれば山となる」(終了の合図と同じ黒い帯。記録の札の右の空いた所の真ん中)
+	if (age > compareAt + .5f) {
+		PileBand(ui, Str("pile.catch"), 862, 30, 46, EaseOut((age - compareAt - .5f) / .2f), 1);
+		if (crossed(compareAt + .5f))
+			PlayUISound(UISound::Confirm);
+	}
+	// 殻まで積み終わったら、どこまでとどいたか (チリも積もれば山となるの帯の下に、同じ黒い帯)
+	if (count > 0 && !PileShells(count).empty() && age > end - .2f) {
+		const float m = PileEchoMeters(count, 1e9f);
+		const char* key = m < 1000 ? "pile.reachSky" : m < 10000 ? "pile.reachCloud" : m < 100000 ? "pile.reachEdge"
+		                                                                                          : "pile.reachSpace";
+		PileBand(ui, Str(key), 862, 104, 38, EaseOut((age - end + .2f) / .2f), 1);
+		if (crossed(end - .2f))
+			PlayGulp(true);
+	}
+	// ボタン (演出が終わってから)。途中は「とばす」(ボタンと同じ黒い札)
+	if (age >= end) {
+		if (view.hasNext)
+			ResultButton(ui, ResultNext, "keyboard_n", "xbox_button_a", Str("scale.next"), true);
+		ResultButton(
+		    ui, view.hasNext ? ResultRetry : ResultRetryOnly, "keyboard_r", "xbox_button_x", Str("scale.retry"),
+		    !view.hasNext);
+		ResultButton(
+		    ui, view.hasNext ? ResultTitle : ResultTitleOnly, "keyboard_tab", "xbox_button_y", Str("scale.title"),
+		    false);
+		if (view.canRetryChallenge)
+			ResultButton(ui, ResultChallenge, "keyboard_l", "xbox_button_b", Str("pile.retryChallenge"), false);
+	} else if (age > .7f) {
+		const std::string& skip = Str("pile.skip");
+		const float w = ui.Width(skip, 20, Jp) + 62;
+		const Rect b{1256 - w, 676, w, 36};
+		ui.Fill(b, WithAlpha(Black, .85f));
+		const std::string root = "Resources/Textures/UI/kenney_input-prompts_1.5/";
+		ui.Image(UsingPad() ? root + "Xbox Series/Default/xbox_button_a.png" : root + "Keyboard & Mouse/Default/keyboard_enter.png",
+		         {b.x + 6, b.y + 4, 28, 28});
+		ui.Text(skip, b.x + 42, b.y + 7, 20, White, Jp);
 	}
 	lastAge = age;
 }

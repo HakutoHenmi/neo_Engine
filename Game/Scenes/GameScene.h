@@ -77,8 +77,6 @@ public:
 	void InvalidateWorldMatrices() const {
 		ClearMatrixCache();
 	}
-	// 名前もトランスフォームも持たない空のエンティティを作る / エディタ用の一時エンティティを即座に消す
-	entt::entity CreateEmptyEntity();
 	void DestroyEditorEntity(entt::entity entity);
 	// レジストリの読み取り専用参照 (書き換えは GetComponents 経由)
 	const entt::registry& GetRegistry() const {
@@ -98,9 +96,6 @@ public:
 	bool IsSlimePlayerDemo() const {
 		return slimePlayerDemo_;
 	}
-	bool IsPlaying() const {
-		return isPlaying_;
-	} // 古い名前のための別名
 	// ゲーム内のポーズ / ステージクリアの結果画面を表示中か
 	bool IsPaused() const {
 		return isPaused_;
@@ -163,8 +158,6 @@ public:
 
 	// 名前でエンティティを探す (最初に見つかった1つ)
 	entt::entity FindObjectByName(const std::string& name);
-	// 指定座標のメッシュ表面の高さを取得する (startY から下向きに探す)
-	float GetHeightAt(float x, float z, float startY = 1000.0f, uint32_t excludeId = 0);
 	// レイキャスト (壁の判定などに使う)。当たれば距離を返す
 	bool RayCast(
 	    const Engine::Vector3& origin, const Engine::Vector3& direction, float maxDist, uint32_t excludeId,

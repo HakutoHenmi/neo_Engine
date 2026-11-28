@@ -1,7 +1,7 @@
 // ChallengeMatrix.cpp
 // 全部の能力 x チャレンジの効き方の実測 (--devour-battle --challenge-matrix。ChronoSystem の一部)。
 // 決まった場面 (チャレンジ・配置・体の位置) を作り、何もしない 1 回と、44 種の能力を 1 つずつ使う 44 回を試して、起きたことを数える。
-//  場面: 積み木 (普通の壁の前・硬い壁の前。前へ歩き続ける)・陣取り (手前の広い所。動かない。a はぬったマスの数)
+//  場面: 積み木 (普通の壁の前・硬い壁の前。前へ歩き続ける)
 // 結果は tests/out/challenge-matrix.txt (1 行 1 回の試し) と、能力ごとのまとめ (どの場面でも効かない能力)
 #include "ChronoSystemInternal.h"
 
@@ -16,8 +16,7 @@ struct MatrixScenario {
 };
 constexpr MatrixScenario kScenarios[] = {
     {ChallengeKind::Blocks, 0, 0, 5, true, "積み木_壁"},
-    {ChallengeKind::Blocks, 0, 0, 13, true, "積み木_硬い壁"},
-    {ChallengeKind::Territory, 0, 0, -6, false, "陣取り"}};
+    {ChallengeKind::Blocks, 0, 0, 13, true, "積み木_硬い壁"}};
 constexpr int kTrialsPerScenario = int(BattleAction::Count) + 1;
 constexpr const char* kKeys[] = {"throw",  "ride",  "smash",  "guard",  "heal",    "heli",   "water",  "roll",  "spin",
                                  "sword",  "fly",   "spring", "vacuum", "rc",      "fu",     "kyo",    "kei",   "gin",
@@ -27,10 +26,7 @@ constexpr const char* kKeys[] = {"throw",  "ride",  "smash",  "guard",  "heal", 
 static_assert(std::size(kKeys) == size_t(BattleAction::Count));
 constexpr float kBaseTime = 1e6f;
 // 試しの長さ: 積み木の塔とぬいぐるみは崩れる・弾けるまで待つ
-// (陣取りは、どの能力も体液を使い終わる (いちばん長い積み木の塔で 6.3 秒) まで待つ)
-float TrialLength(ChallengeKind kind, int action) {
-	if (kind == ChallengeKind::Territory)
-		return 7.5f;
+float TrialLength(ChallengeKind, int action) {
 	return action == int(BattleAction::Tower) ? 6.3f : action == int(BattleAction::Decoy) ? 5.3f : 3.5f;
 }
 } // namespace
@@ -44,13 +40,10 @@ void ChronoSystem::StartMatrixTrial() {
 	b.challenge = sc.kind;
 	b.forcedPattern = sc.pattern;
 	BuildChallenge();
-	// (陣取りは能力 1 回の量を測るので、取り返すもの (お掃除ロボ・扇風機) は止めておく)
-	b.territory.reclaim = false;
 	b.placed.clear();
 	b.shots.clear();
 	b.fx.clear();
 	b.pops.clear();
-	b.drops.clear();
 	b.impactMemo.clear();
 	b.ability = BattleAction::Throw;
 	b.abilityLeft = 0;
@@ -58,7 +51,7 @@ void ChronoSystem::StartMatrixTrial() {
 	b.toolShape = 0;
 	b.toolLeft = 0;
 	b.cooldown = 0;
-	b.guard = b.regen = b.fluff = b.dropBoost = b.heavy = b.timeStop = 0;
+	b.guard = b.regen = b.fluff = b.heavy = b.timeStop = 0;
 	b.score = 0;
 	b.combo = 0;
 	b.comboClock = 0;
@@ -88,12 +81,8 @@ void ChronoSystem::TickChallengeMatrix(GameContext& ctx, float dt, V& input) {
 				out += char(*at);
 		return out;
 	}();
-	// (--challenge-matrix-territory で、陣取りの場面だけを試す)
-	static const bool territoryOnly = wcsstr(GetCommandLineW(), L"--challenge-matrix-territory") != nullptr;
 	auto skip = [&](int trial) {
 		const int a = trial % kTrialsPerScenario - 1;
-		if (territoryOnly && kScenarios[size_t(trial / kTrialsPerScenario)].kind != ChallengeKind::Territory)
-			return true;
 		return !only.empty() && a >= 0 && only != kKeys[a];
 	};
 	if (m.trial < 0) {
@@ -134,20 +123,11 @@ void ChronoSystem::TickChallengeMatrix(GameContext& ctx, float dt, V& input) {
 		return;
 	row->score = b.score;
 	row->time = b.time - kBaseTime;
-	if (sc.kind == ChallengeKind::Territory) {
-		row->a = TerritoryCoveredCells();
-		for (const auto& use : b.territory.uses)
-			if (!use.candy) {
-				row->b += use.used;
-				row->c = std::max(row->c, use.budget);
-			}
-	} else {
-		row->a = b.broken[0] + b.broken[1] + b.broken[2];
-		row->c = b.broken[1] + b.broken[2];
-		for (const auto& blk : b.blocks)
-			if (blk.alive && (blk.hp < blk.maxHp || blk.fragile > 0 || blk.painted || blk.burn > 0 || blk.loose))
-				++row->b;
-	}
+	row->a = b.broken[0] + b.broken[1] + b.broken[2];
+	row->c = b.broken[1] + b.broken[2];
+	for (const auto& blk : b.blocks)
+		if (blk.alive && (blk.hp < blk.maxHp || blk.fragile > 0 || blk.painted || blk.burn > 0 || blk.loose))
+			++row->b;
 	++m.trial;
 	while (m.trial < total && skip(m.trial))
 		++m.trial;

@@ -12,7 +12,6 @@
 #include "../Systems/ChronoSystem.h"
 #include "../UI/GameUI.h"
 #include "../UI/GraphicsUI.h"
-#include "../UI/RogueliteUI.h"
 #include <algorithm>
 
 namespace Game {
@@ -127,15 +126,13 @@ bool GameScene::HandlePlayInput(float dt, bool stageClear) {
 				return true;
 			}
 			auto* input = Engine::Input::GetInstance();
-			// スライム本編の強化パレット画面かどうか (ボタンの位置が違う)
-			bool roguePause = chronoMode_ && !registry_.view<Chrono::InkPlayer>().empty();
 			// タイトルへ戻るボタンか Tab でタイトルへ
-			if (ui.Click(roguePause ? UI::PaletteTitle : UI::Title) || input->Trigger(DIK_TAB)) {
+			if (ui.Click(UI::Title) || input->Trigger(DIK_TAB)) {
 				Engine::SceneManager::GetInstance()->RequestCoveredChange("Title");
 				return true;
 			}
 			// 再開ボタン・Enter・パッドの B でポーズを解く (同じ押下を他で使わないよう止める)
-			if (ui.Click(roguePause ? UI::PaletteResume : UI::Resume) || input->Trigger(DIK_RETURN) ||
+			if (ui.Click(UI::Resume) || input->Trigger(DIK_RETURN) ||
 			    input->PadTrigger(XINPUT_GAMEPAD_B)) {
 				UI::PlayUISound(UI::UISound::Confirm);
 				SetPaused(false);
@@ -153,17 +150,11 @@ bool GameScene::HandlePlayInput(float dt, bool stageClear) {
 		if (stageClear) {
 			Engine::WindowDX::SetCursorVisible(true);
 		} else if (!isPaused_) {
-			// 強化の選択画面が開いているか
-			bool upgradeOpen = false;
-			for (auto e : registry_.view<Chrono::InkPlayer>())
-				upgradeOpen |= registry_.get<Chrono::InkPlayer>(e).rogue.menu;
-			// 開いていなければプレイ時間を進める
-			if (!upgradeOpen)
-				playTime_ += dt;
+			playTime_ += dt;
 
 			// PLAY 中はマウスカーソルを画面中央に固定する (メニューを開いていない場合)
 			// (変形武器を作る画面が開いている間は固定しない。マウスで材料を選ぶ)
-			if (!upgradeOpen && !Chrono::CraftScreenOpen() && dx_ && dx_->GetHwnd()) {
+			if (!Chrono::CraftScreenOpen() && dx_ && dx_->GetHwnd()) {
 				// 画面中央をスクリーン座標に直してカーソルを置く
 				POINT center = {(LONG)Engine::WindowDX::kW / 2, (LONG)Engine::WindowDX::kH / 2};
 				ClientToScreen(dx_->GetHwnd(), &center);

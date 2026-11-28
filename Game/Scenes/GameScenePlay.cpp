@@ -19,25 +19,21 @@ using namespace GameSceneConstants;
 
 // ゲーム内のポーズの切り替え。BGM を小さくし、カーソルを出し、流体などを止めてメニューを出す
 void GameScene::SetPaused(bool paused) {
-	// 強化の選択画面が開いているか
 	if (paused && !isPaused_) {
 		pauseOpenedAt_ = UI::Seconds();
 		pauseMenu_ = 0;
 	}
 	isPaused_ = paused;
-	bool upgradeOpen = false;
-	for (auto e : registry_.view<Chrono::InkPlayer>())
-		upgradeOpen |= registry_.get<Chrono::InkPlayer>(e).rogue.menu;
 	// BGM の音量を下げる
 	if (auto* audio = Engine::Audio::GetInstance()) {
-		audio->SetBGMDucked(paused || upgradeOpen);
-		audio->SetSEPaused(paused || upgradeOpen);
+		audio->SetBGMDucked(paused);
+		audio->SetSEPaused(paused);
 	}
 	// カーソルを出す
-	Engine::WindowDX::SetCursorVisible(paused || upgradeOpen);
+	Engine::WindowDX::SetCursorVisible(paused);
 	// 流体などの世界を止める
 	if (renderer_)
-		renderer_->SetRogueWorldFrozen(paused || upgradeOpen);
+		renderer_->SetWorldFrozen(paused);
 	// ポーズメニューを作る / 消す
 	if (paused)
 		CreatePauseMenu();
@@ -52,9 +48,9 @@ void GameScene::SetEditorPaused(bool paused) {
 		return;
 	if (renderer_) {
 		if (paused)
-			worldFrozenBeforeEditorPause_ = renderer_->GetRogueWorldFrozen();
+			worldFrozenBeforeEditorPause_ = renderer_->GetWorldFrozen();
 		else
-			renderer_->SetRogueWorldFrozen(worldFrozenBeforeEditorPause_);
+			renderer_->SetWorldFrozen(worldFrozenBeforeEditorPause_);
 	}
 	editorPaused_ = paused;
 	// Step で進める残りのフレームを 0 に戻す

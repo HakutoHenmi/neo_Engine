@@ -12,7 +12,7 @@ namespace {
 const char* const kRoomAreas[] = {"bed", "floor", "back", "high"};
 // 飲み方の名前 (DevourEatBy の順)
 // (mikoshi は 2026-11-15 に足した。一覧 (summary.csv) は列をそろえるため、前からの 6 つだけを書く)
-const char* const kEatNames[] = {"touch", "vacuum", "pounce", "spring", "hammer", "tire", "mikoshi"};
+const char* const kEatNames[] = {"touch", "vacuum", "spring", "hammer", "tire", "mikoshi"};
 constexpr int kCsvEatColumns = 6;
 std::string DevourLogNumber(float value) {
 	char text[32];
@@ -170,7 +170,6 @@ void ChronoSystem::SaveDevourLog(const char* result) {
 		    {"moved", log.moved},
 		    {"longestIdle", log.longestIdle},
 		    {"maxCombo", log.maxCombo},
-		    {"pounces", log.pounces},
 		    {"bounces", log.bounces},
 		    {"hops", log.hops},
 		    {"biggestRadius", log.biggest},
@@ -188,9 +187,6 @@ void ChronoSystem::SaveDevourLog(const char* result) {
 		data["tuning"] = {
 		    {"growth", DevourGrowth},
 		    {"coverRatio", DevourCoverRatio},
-		    {"leapRange", DevourLeapRange(LifeStartMass)},
-		    {"coverRadius", DevourCoverRadius(LifeStartMass)},
-		    {"pounceCooldown", DevourPounceCooldown},
 		    {"itemTime", stage.itemTime},
 		    {"half", stage.half},
 		    {"vacuumRange", DevourVacuumRange(LifeStartMass)}};
@@ -232,7 +228,7 @@ void ChronoSystem::SaveDevourLog(const char* result) {
 		std::ofstream file(summary, std::ios::app);
 		if (fresh) {
 			file
-			    << "stamp,stage,result,rank,final_cm,time_limit,played_s,left_s,eaten,total,goal1_s,goal2_s,goal3_s,goal4_s,gate1_size_s,gate1_open_s,gate2_size_s,gate2_open_s,item_taken_s,morph_s,pounces,bounces,max_combo,longest_idle_s,moved";
+			    << "stamp,stage,result,rank,final_cm,time_limit,played_s,left_s,eaten,total,goal1_s,goal2_s,goal3_s,goal4_s,gate1_size_s,gate1_open_s,gate2_size_s,gate2_open_s,item_taken_s,morph_s,bounces,max_combo,longest_idle_s,moved";
 			for (int i = 0; i < kCsvEatColumns; ++i)
 				file << ",mass_" << kEatNames[i];
 			file << ",avg_fps,worst_frame_ms\n";
@@ -247,8 +243,8 @@ void ChronoSystem::SaveDevourLog(const char* result) {
 			file << ',' << at(log.goalTimes, i);
 		for (size_t i = 0; i < 2; ++i)
 			file << ',' << at(log.gateSizeTimes, i) << ',' << at(log.gateOpenTimes, i);
-		file << ',' << DevourLogNumber(log.itemTaken) << ',' << DevourLogNumber(log.morphTime) << ',' << log.pounces
-		     << ',' << log.bounces << ',' << log.maxCombo << ',' << DevourLogNumber(log.longestIdle) << ','
+		file << ',' << DevourLogNumber(log.itemTaken) << ',' << DevourLogNumber(log.morphTime) << ',' << log.bounces
+		     << ',' << log.maxCombo << ',' << DevourLogNumber(log.longestIdle) << ','
 		     << DevourLogNumber(log.moved);
 		for (int i = 0; i < kCsvEatColumns; ++i)
 			file << ',' << DevourLogNumber(log.gainBy[size_t(i)]);

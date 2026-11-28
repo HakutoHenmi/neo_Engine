@@ -43,7 +43,7 @@ void ChronoSystem::UpdateMorphShowcase(entt::registry& r, Player& p, GameContext
 	auto* control = r.try_get<ControlFrame>(player_);
 	Engine::WindowDX::SetCursorVisible(false);
 	// 取り込みのヒットストップの直後に始まっても、体の流体は動かして変形させる
-	ctx.renderer->SetRogueWorldFrozen(false);
+	ctx.renderer->SetWorldFrozen(false);
 	lifeHitStop_ = 0;
 	// 太陽: 始めに今の明るさを記録し、暗くした分だけ下げる
 	DirectionalLightComponent* sun = nullptr;

@@ -24,6 +24,7 @@
 #include <filesystem>
 #include <functional>
 #include <array>
+#include <fstream>
 #include <map>
 #include <unordered_map>
 #include <vector>
@@ -172,9 +173,10 @@ public:
 	bool DevourMode() const {
 		return devour_;
 	}
-	// 自動テスト用: 輪の壁を全部開ける
-	void DevourUseAllForms() {
-		devourFreeForms_ = true;
+	// 自動テスト用: このステージの変形アイテムを form にして、拾った状態にする (本編と同じく 1 つの形へ変形できる)
+	void DevourTestForm(Chrono::LifeAction form) {
+		devourTestForm_ = int(form);
+		devourItemReady_ = true;
 	}
 	const std::filesystem::path& DevourLogPath() const {
 		return devourLog_.path;
@@ -200,34 +202,10 @@ public:
 	Chrono::DevourClock& DevourClockState() {
 		return devourClock_;
 	}
-	// 変形アイテムを初めて取ったときの見せ場 (カメラが正面へ寄り、周りの時間が止まる) の最中か
-	bool MorphShowcaseActive() const {
-		return showcase_.active;
-	}
 	// 手応えの設定 (ヒットストップ秒・揺れの秒・揺れの大きさ・揺れの速さ・振動の重い側・軽い側・振動の秒)
 	struct LifeImpactSpec {
 		float stop = 0, shakeTime = 0, shake = 0, frequency = 14, low = 0, high = 0, rumble = 0;
 	};
-	// ステージ開始のカメラ演出の最中か
-	const Chrono::CityGates& CityGateState() const {
-		return cityGates_;
-	}
-	const Chrono::HydrantAim& HydrantAimState() const {
-		return hydrantAim_;
-	}
-	// 確認用: 区画の出口を手前から exits 個だけ壊したように開ける (1 路地の壁・2 バリケード・3 鉄の門)
-	void OpenCityGates(entt::registry& r, int exits = 3) {
-		if (exits >= 1)
-			for (size_t i = 0; i < Chrono::CityWalls().size(); ++i)
-				if (!cityGates_.WallOpen(i))
-					BreakCityWall(i);
-		if (exits >= 2 && !cityGates_.barricadeOpen)
-			BreakCityGate(r, true, false);
-		if (exits >= 3 && !cityGates_.gateOpen) {
-			cityGateUnlocked_ = true;
-			BreakCityGate(r, false, false);
-		}
-	}
 	// スライムの研究所の画面を描く
 	// 次の Update で作り直す (シーンを空にしたときも同じ)
 	void Invalidate() {
@@ -246,13 +224,6 @@ private:
 	// デモ (スライム試験場) 以外は常にこのモード
 	bool devour_ = false;
 	Chrono::DevourClock devourClock_{};
-	// 飛びかかり: 跳んだ位置・目標の小物 (無ければ -1)・覆えるか・覆う処理を済ませたか
-	struct DevourPounce {
-		Chrono::Vec from{}, to{};
-		int target = -1;
-		bool fits = true, covered = false, bounced = false;
-		float seed = 0;
-	} devourPounce_;
 	// 体の中に見えたまま溶けていく物 (小物の見た目・体の中心からのずれ・経過時間・体に収める縮小)
 	// dir は体の中心から見た向き (飲んだ方向)、now は今の深さ (1 で表面)、lift は前の物の外へ積む量 (体の半径が単位)。古い順に並ぶ
 	struct DevourMeal {
@@ -288,7 +259,7 @@ private:
 		bool toBody = false;
 	};
 	std::vector<DevourSuck> devourSucks_;
-	float devourSuckClock_ = 0, devourPounceWait_ = 0;
+	float devourSuckClock_ = 0;
 	bool devourSucking_ = false;
 	void DevourPull(entt::registry&, size_t index, float flight, bool toBody);
 	void DevourOpenMouth(const Chrono::LifeCollectible&, bool turn);
@@ -557,7 +528,6 @@ private:
 	std::vector<MikoshiHelper> mikoshiHelpers_;
 	float mikoshiSend_ = 0, mikoshiTalk_ = 0;
 	void TickMikoshiHelpers(entt::registry&, Chrono::Vec home, float dt);
-	void EndMikoshiHelpers(entt::registry&);
 	void DrawMikoshiHelpers(GameContext&);
 	// 町の乗り物の当たり: from から to へ進むと町の端・高い段差・飲めない物にぶつかるか。ぶつかるなら跳ね返る面の向き (水平) を normal に書く
 	bool TownRideHit(Chrono::Vec from, Chrono::Vec to, float radius, Chrono::Vec& normal) const;
@@ -624,12 +594,16 @@ private:
 	void TickDevourTrail(const Chrono::Player&, float dt);
 	void DrawDevourTrail(GameContext&);
 	void TickDevourHeli(Chrono::Player&, float dt, Chrono::Vec wish, bool blocked);
+	// チャレンジの形 (変形武器・技の形) を見せるか: チャレンジの間と、積み木の山の結果の間 (結果でも変形したままでいる)
+	bool BattleShapeShown() const {
+		return devour_ && (battle_.phase != BattleStep::None || BlocksPileResult());
+	}
 	// 体が道具の形になっている (ギミックに乗っている・ヘリコプター)。形の番号 (無ければ 0)・形になってからの時間・姿勢
 	// (変形武器を使っている間は、武器の形 (材料 3 つを組み合わせた形)。動き (姿勢) は今の技の形のものを使う: DevourPoseShape)
 	int DevourToolShape() const {
-		if (devour_ && battle_.phase != BattleStep::None && battle_.weaponShape > 0 && battle_.weaponForm > 0)
+		if (BattleShapeShown() && battle_.weaponShape > 0 && battle_.weaponForm > 0)
 			return battle_.weaponShape;
-		if (devour_ && battle_.toolShape > 0 && battle_.phase != BattleStep::None)
+		if (BattleShapeShown() && battle_.toolShape > 0)
 			return battle_.toolShape;
 		return devour_ && GimmickRiding() && gimmickRide_.shape > 0 ? gimmickRide_.shape
 		       : devour_ && devourHeli_.active                      ? Chrono::GimmickHeliShape
@@ -637,9 +611,9 @@ private:
 	}
 	// (変形武器の形でいる間は、その形になってからの秒。技の形の秒が 0 のままだと形へ寄せる強さが 0 で、形にならない)
 	float DevourToolAge() const {
-		if (devour_ && battle_.phase != BattleStep::None && battle_.weaponShape > 0 && battle_.weaponForm > 0)
+		if (BattleShapeShown() && battle_.weaponShape > 0 && battle_.weaponForm > 0)
 			return battle_.weaponAge;
-		if (devour_ && battle_.toolShape > 0 && battle_.phase != BattleStep::None)
+		if (BattleShapeShown() && battle_.toolShape > 0)
 			return battle_.toolAge;
 		return GimmickRiding() ? gimmickRide_.age : devourHeli_.age;
 	}
@@ -648,9 +622,9 @@ private:
 		return DevourToolShape();
 	}
 	const Chrono::GimmickPose& DevourToolPose(bool previous = false) const {
-		if (devour_ && battle_.phase != BattleStep::None && battle_.weaponShape > 0 && battle_.weaponForm > 0)
+		if (BattleShapeShown() && battle_.weaponShape > 0 && battle_.weaponForm > 0)
 			return previous ? battle_.weaponPosePrevious : battle_.weaponPose;
-		if (devour_ && battle_.toolShape > 0 && battle_.phase != BattleStep::None)
+		if (BattleShapeShown() && battle_.toolShape > 0)
 			return previous ? battle_.toolPrevious : battle_.toolPose;
 		return GimmickRiding() ? (previous ? gimmickRide_.previous : gimmickRide_.pose)
 		                       : (previous ? devourHeli_.previous : devourHeli_.pose);
@@ -675,7 +649,6 @@ private:
 	void StartDevourHop(float power, Chrono::Vec wish);
 	// ステージの番号・読み込んだか・届いた目標の数・ステージごとの自己ベストの量
 	// ---- 変形チャレンジ (DevourBattle.cpp): 吸収のあと、残り時間で吸収した物を使ってチャレンジに挑む。結果画面からチャレンジだけやり直せる ----
-	// (旧来の敵と戦う動きは --devour-battle-legacy のときだけ。DevourBattle.legacy)
 	// (Craft は変形武器を作る画面。チャレンジの始まりの演出の前)
 	enum class BattleStep { None, Craft, Intro, Fight, Over };
 	struct BattleItem {
@@ -684,15 +657,7 @@ private:
 		float gain = 0, radius = 1;
 	};
 	// stun は止まっている残りの秒 (ビー玉で転んだなど)
-	struct BattleEnemy {
-		uint32_t id = 0;
-		Chrono::Vec at{}, knock{};
-		float hp = 1, maxHp = 1, radius = 1, speed = 1, hitCool = 0, flash = 0, stun = 0, weak = 0, burn = 0,
-		      burnDps = 0, burnTick = 0;
-		bool boss = false;
-	};
 	// 置いた物 (ビー玉・積み木の塔・ドミノ・絵の具の床・ぬいぐるみ)。kind は能力、index はドミノの何枚目か
-	// (かごは閉じ込めた敵の id を target に持ち、その敵の上に描く)
 	struct BattlePlaced {
 		Chrono::BattleAction kind = Chrono::BattleAction::Marbles;
 		Chrono::Vec at{}, dir{}, velocity{};
@@ -702,8 +667,8 @@ private:
 		bool landed = false, done = false;
 		Engine::Vector4 color{1, 1, 1, 1};
 	};
-	// 投げた物・飴玉・水の粒 (style 0 物・1 飴玉・2 水)
-	// mode は飛び道具の飛び方 (Chrono::BattleAction の Coin〜Pierce。Throw ならふつうに投げる)。by は撃った能力 (衝撃の数え方)。hits は残りの当たれる数、hit は当てた敵 (同じ敵に続けて当てない)
+	// 投げた物・飴玉・水の粒 (style 0 物・1 飴玉・2 水。水は描かない)
+	// mode は飛び道具の飛び方 (Chrono::BattleAction の Coin〜Pierce。Throw ならふつうに投げる)。by は撃った能力 (衝撃の数え方)。hits は残りの当たれる数、hit は当てた相手 (同じ相手に続けて当てない)
 	struct BattleShot {
 		Chrono::Vec at{}, velocity{};
 		float radius = 1, damage = 1, age = 0, push = 1, life = 3, size = 1, hitCool = 0, spin = 0;
@@ -713,11 +678,17 @@ private:
 		Chrono::BattleAction by = Chrono::BattleAction::Throw;
 		std::vector<uint32_t> hit;
 		// 変形武器の弾 (WeaponCraft.cpp の TickFusedShot で進める): 性質のレベル・床を転がっているか・分かれたか・残りの跳ねる数と跳び移る数・
-		// 吸い寄せと塗りの跡の時計・威力の倍率・戻り始めたか
+		// 吸い寄せの時計・威力の倍率・戻り始めたか
 		bool fused = false, rolling = false, split = false, returning = false;
 		Chrono::FuseLevels lv{};
 		int bounces = 0, chain = 0;
-		float pulse = 0, trail = 0, power = 1;
+		float pulse = 0, power = 1;
+		// 撃ち方 (FusePattern)。衛星: 体のまわりの角度と半径。挟み撃ち: 曲がる速さ (ラジアン/秒)。
+		// 槍はまっすぐ (重力なし)、降り注ぎは真下へ落ちる、罠は止まって相手を待つ
+		Chrono::FusePattern pattern = Chrono::FusePattern::Single;
+		float orbitAngle = 0, orbitRadius = 0, curve = 0;
+		// 作る画面の見本の弾 (見本の窓に収まるよう縮めて飛ばし、見える大きさだけ戻してある)
+		bool demo = false;
 	};
 	// 袋: 準備フェーズで吸収した物の種類ごとの山。absorbed は吸収した数 (引く重み)、items は残り
 	struct BattleBag {
@@ -725,28 +696,6 @@ private:
 		Chrono::BattleAction action = Chrono::BattleAction::Throw;
 		int absorbed = 0;
 		std::vector<BattleItem> items;
-	};
-	// 物のスロット: 入っている物の種類と残り。roulette が 0 以上なら引いている途中 (秒)
-	struct BattleSlot {
-		std::string id;
-		Chrono::BattleAction action = Chrono::BattleAction::Throw;
-		std::vector<BattleItem> items;
-		float roulette = -1;
-	};
-	// 敵が落とした物: 飛んで落ち、触れると (体より大きくても) 吸い込まれて袋と体積が戻る。suck が 0 以上なら吸い込まれている途中
-	struct BattleDrop {
-		Chrono::Vec at{}, velocity{}, suckFrom{};
-		uint32_t visual = 0xffffffffu;
-		std::string id;
-		Chrono::BattleAction action = Chrono::BattleAction::Throw;
-		float shrink = 1, radius = 1, itemRadius = 1, age = 0, suck = -1, spin = 0;
-	};
-	// 落とす物の候補 (ステージの物の見た目と能力)
-	struct BattleDropKind {
-		uint32_t visual = 0xffffffffu;
-		std::string id;
-		Chrono::BattleAction action = Chrono::BattleAction::Throw;
-		float radius = 1;
 	};
 	// 拾ったときに出す文字 (画面のその位置に浮かべる)
 	struct BattlePop {
@@ -760,8 +709,8 @@ private:
 		float radius = 1, age = 0, life = .4f;
 		Engine::Vector4 color{1, 1, 1, 1};
 	};
-	// 衝撃を受ける相手 (旧来の戦闘の敵。チャレンジの物もここに並べる)。id は相手ごとに違う番号、big はボスや重い物、stopped は止まっている
-	enum class BattleTargetKind : uint8_t { Enemy, Block, Robot, Fan };
+	// 衝撃を受ける相手 (チャレンジの物)。id は相手ごとに違う番号、big は重い物、stopped は止まっている
+	enum class BattleTargetKind : uint8_t { Block };
 	// 積み木クラッシャーの積み木 (at は中心)。fragile はひびの残りの秒、painted は色ぬりされた、falling は下が無くなって落ちている、loose は吸い寄せられて滑っている
 	struct ChallengeBlock {
 		uint32_t id = 0;
@@ -769,82 +718,6 @@ private:
 		float size = 1, hp = 1, maxHp = 1, fragile = 0, burn = 0, burnDps = 0, burnTick = 0, flash = 0, tint = 0;
 		Chrono::BlockType type = Chrono::BlockType::Normal;
 		bool alive = true, painted = false, falling = false, loose = false;
-	};
-	// スライム陣取り (ChallengeTerritory.cpp): マス (ChallengeTerritoryCells 四方。並びは z の行ごと)・陣地になってからの秒 (広がる演出)・
-	// 陣地の数・陣地にできるマスの数 (家具を除く)・広げた合計・家具の四角 (中心 x,z と半分の大きさ x,z。ワールドの位置)
-	// 能力 1 回分の体液: 能力 (飴玉か)・始めてからの秒・終わる秒・ぬれる上限と下限・ぬった数・最後にぬった所
-	// (budget・minimum・used はしずくの数。allow は毎フレーム当たる能力が今までに出してよいしずくの数、span はそれを出し切る秒)
-	// (style・origin・dir は最後に当たったときの飛ばし方。下限に足りないときは、同じ所から同じ飛ばし方で足す)
-	struct TerritoryUse {
-		Chrono::BattleAction action = Chrono::BattleAction::Throw;
-		bool candy = false, open = true, aimed = false;
-		float age = 0, settle = 1, allow = 0, span = 0;
-		int budget = 0, minimum = 0, used = 0;
-		Chrono::Vec last{};
-		Chrono::InkStyle style = Chrono::InkStyle::Burst;
-		Chrono::Vec origin{}, dir{0, 0, 1};
-	};
-	// 外へ広がる体液 (熱いお茶): どの 1 回分か・中心・半径 (from から to へ life 秒で)
-	struct TerritoryRipple {
-		size_t use = 0;
-		Chrono::Vec at{};
-		float from = 0, to = 0, age = 0, life = 1;
-	};
-	struct TerritoryState {
-		std::vector<Chrono::TerritoryCell> cells;
-		std::vector<float> age;
-		int owned = 0, open = 0, spread = 0;
-		std::vector<std::array<float, 4>> furniture;
-		std::vector<TerritoryUse> uses;
-		std::vector<TerritoryRipple> ripples;
-		// インクマップ: 量 (0..255)・陣地に数える点か (ラグの中で家具の下でない)・数える点の数・量が半分以上の点の数・送り直しが要るか・しぶきの乱数
-		std::vector<uint8_t> ink, inkOpen;
-		int inkOpenCount = 0, inkCovered = 0;
-		bool inkDirty = false;
-		uint32_t inkSeed = 1;
-		// ぬれたての度合い (0..255。インクマップの G)・まだぬれている点があるか・広がっている途中のしぶき (中心・最後の半径・形の種・秒・広がり終わる秒)
-		std::vector<uint8_t> wet;
-		bool anyWet = false;
-		struct Growing {
-			Chrono::Vec at{};
-			float radius = 0;
-			uint32_t seed = 0;
-			float age = 0, life = .3f;
-		};
-		std::vector<Growing> growing;
-		// 飛んでいるしずく (流体の粒子): 出た所・初めの速さ・落ちる所 (しぶきの中心と半径と形の種)・飛んでからの秒・落ちる秒・まわりにしずくを飛ばすか
-		// (delay は飛び出すまでの秒。particle が無ければ粒子を飛ばさず、delay + time の時刻にその場で広げる)
-		// 陣地を取り返すもの: お掃除ロボ (位置・向き・はじかれた速さ・止まる/遅い残り・次に曲がるまで・回転の見た目) と首振り扇風機 (位置・向きの中心・首振りの時刻・ずれ・送風までの秒・送風の経過 (負なら休み)・止まる残り・羽根の角度・受け止められた)
-		struct Robot {
-			Chrono::Vec at{}, dir{1, 0, 0}, push{};
-			float stop = 0, slow = 0, turn = 0, spin = 0;
-		};
-		struct Fan {
-			Chrono::Vec at{};
-			float face = 0, phase = 0, offset = 0, clock = 0, blow = -1, stop = 0, spin = 0;
-			bool blocked = false;
-		};
-		Robot robot;
-		Fan fan;
-		bool reclaim = false;
-		struct Flight {
-			Chrono::Vec from{}, velocity{}, to{};
-			float radius = 0, size = 0, grow = 1;
-			uint32_t seed = 0;
-			float age = 0, delay = 0, time = .3f;
-			int count = 3;
-			bool drops = false, particle = true, launched = false;
-		};
-		std::vector<Flight> flights;
-	};
-	// 体液の飛ばし方 (Chrono::InkStyle): 型・当たりの中心・向き (線・狙い)
-	// (action は能力、effect は当たりの効き目、order は均等に並べるときの順番 (0〜1。負なら並べない))
-	struct InkLaunch {
-		Chrono::InkStyle style = Chrono::InkStyle::Burst;
-		Chrono::Vec origin{}, dir{0, 0, 1};
-		Chrono::BattleAction action = Chrono::BattleAction::Throw;
-		Chrono::ImpactEffect effect = Chrono::ImpactEffect::Hit;
-		float order = -1;
 	};
 	// 全部の能力 x チャレンジの効き方の実測 (--challenge-matrix。ChallengeMatrix.cpp)。trial は今の試し (場面 x (何もしない + 44 能力))
 	struct MatrixResult {
@@ -865,7 +738,7 @@ private:
 		Engine::Vector4 color{1, 1, 1, 1};
 	};
 	struct BattleTarget {
-		BattleTargetKind kind = BattleTargetKind::Enemy;
+		BattleTargetKind kind = BattleTargetKind::Block;
 		uint32_t id = 0;
 		Chrono::Vec at{};
 		float radius = 1;
@@ -886,7 +759,14 @@ private:
 		int filled = 0, shape = 0;
 		Chrono::FuseLevels lv{};
 		std::array<int, Chrono::CraftBoostCount> points{};
+		// 強化の上限の点 (ステージで決まる)
+		Chrono::CraftCaps caps = Chrono::CraftDefaultCaps;
 		float cool = 0;
+		// 連なり撃ち: 残りの数と次の 1 発までの秒。体当たりの次までの秒
+		int burstLeft = 0;
+		float burstClock = 0, bodyHitClock = 0;
+		// 連打で出す撃ち方: 待ちの間に押した分を覚えている残りの秒
+		float tapBuffer = 0;
 	};
 	// 作る画面で入れた材料: 袋の番号・強化 (負なら枠)
 	struct CraftPick {
@@ -899,21 +779,49 @@ private:
 		std::vector<CraftPick> picks;
 		int boost = 0, cursor = 0;
 		float age = 0, hold = -1;
+		// 入れられなかったときの知らせ (最大になった強化など) と、出してからの秒
+		std::string notice;
+		float noticeAge = 99;
+		// 段階: 0 材料を 3 つ選ぶ・1 残りの物を cm (大きさ) に変える演出・2 cm を強化に割り振る。段階に入ってからの秒
+		int step = 0;
+		float stepAge = 0;
+		// cm (決定したときに残りの物を変えた量。1 点 = 1cm) と、強化ごとに入れた量
+		int energy = 0;
+		std::array<int, Chrono::CraftBoostCount> alloc{};
+		// ＋− の長押し: 押している行と向き・押している秒・速く入れる分の貯め。レベルが上がった光の秒 (行ごと)
+		int holdRow = -1, holdDir = 0;
+		float holdTime = 0, holdCarry = 0;
+		std::array<float, Chrono::CraftBoostCount> levelFlash{99, 99, 99};
+		// cm を残したまま「挑戦」を押した (もう一度押すと始まる)
+		bool warned = false;
+		// 見本の撃ち方: 見本の窓のスライムが、今の材料と強化で撃って見せる弾 (チャレンジの弾とは別に持ち、何にも効かない)・
+		// 分かれてできた弾・撃つ時計 (撃つ間と休む間をくり返す)
+		std::vector<BattleShot> demoShots, demoNewShots;
+		float demoClock = 0;
+		// 見本を撃っている形 (材料が変わったら、出ている弾を消して最初から)
+		int demoShape = 0;
+		// 形の見本: 今の材料で作った形の番号 (実際のスライムをこの形にして、見本の窓に映す)
+		int previewShape = 0;
+		// 見本の回し方: 横の角度・縦の角度 (ラジアン)・ドラッグ中か・前のマウスの位置・最後に手で回してからの秒
+		// (手で回していないときは、ゆっくり自動で回る)
+		float previewYaw = 0, previewPitch = .5f, previewIdle = 99;
+		bool previewDrag = false;
+		std::array<float, 2> previewMouse{};
+		// 見本のカメラの位置・向き (CraftPreviewCamera が置く。背景の箱をこの向きに合わせて描く)・スライムの中心と大きさ
+		Chrono::Vec previewEye{}, previewView{0, 0, 1}, previewCenter{};
+		float previewRadius = 1, previewFloor = 0;
 	};
 	struct DevourBattle {
 		BattleStep phase = BattleStep::None;
 		// 吸収が終わったときの体と袋 (やり直しはここから)・吸収のランク・物のスロットの数
 		Chrono::Vec startAt{}, startForward{0, 0, 1};
 		float startMass = 0, unit = 1;
-		int rank = 0, slotCount = 1;
+		int rank = 0;
 		std::vector<BattleBag> startBag;
-		// 今の袋・スロット・HP・時間。selected は使うスロット (slotCount なら飴玉)
+		// 今の袋
 		std::vector<BattleBag> bag;
-		std::array<BattleSlot, Chrono::BattleSlotMax> slots;
-		float finalCm = 0, hp = 100, maxHp = 100, clock = 0, intro = 0, overAge = 0, spawnClock = 0, cooldown = 0,
-		      guard = 0, hurtFlash = 0;
+		float finalCm = 0, clock = 0, intro = 0, overAge = 0, cooldown = 0, guard = 0;
 		// チャレンジ: 種類・スコア・コンボ (続いている数と、切れるまでの秒)・このチャレンジの時間 (移ったときの残り)・自己ベスト (始めたとき) と更新したか
-		// legacy は旧来の敵と戦う動き (--devour-battle-legacy。敵・ボス・HP がある)
 		// 衝撃: 次に配る source の番号・今の能力の source・同じ相手に続けて当てないための記録・能力ごとの数 (確認用)
 		uint32_t impactSerial = 1, abilitySource = 0;
 		std::vector<BattleImpactMemo> impactMemo;
@@ -927,19 +835,21 @@ private:
 		std::vector<ChallengeDebris> debris;
 		int blockPattern = 0;
 		std::array<int, 3> broken{};
+		// 積み木の街: 崖から落ちている体の下向きの速さ
+		float fallSpeed = 0;
+		// 積み木の街: 体の下の面の傾き (流体の床に渡す)
+		Chrono::Vec groundSlope{};
 		// 実測 (--challenge-matrix) と、配置を決めて作るときの番号 (負ならランダム)
 		ChallengeMatrixState matrix;
 		int forcedPattern = -1;
-		// スライム陣取り
-		TerritoryState territory;
-		// 変形武器: 作った武器・作り終えたか・作る画面・武器の形 (番号と見せる残りの秒)・塗る量の倍率 (BeginTerritoryUse)
+		// 変形武器: 作った武器・作り終えたか・作る画面・武器の形 (番号と見せる残りの秒)
 		BattleWeapon weapon;
 		bool crafted = false;
 		CraftState craft;
 		std::vector<BattleShot> newShots;
 		// (weaponAge は武器の形になってからの秒)
 		int weaponShape = 0;
-		float weaponForm = 0, weaponAge = 0, powerScale = 1;
+		float weaponForm = 0, weaponAge = 0;
 		// (F5) 武器の形の姿勢 (今と前のフレーム)・撃った反動の強さ (すぐに 0 へ戻る)
 		Chrono::GimmickPose weaponPose{}, weaponPosePrevious{};
 		float weaponKick = 0;
@@ -953,21 +863,16 @@ private:
 		Chrono::ChallengeKind challenge = Chrono::ChallengeKind::Blocks;
 		int score = 0, combo = 0, best = 0;
 		float comboClock = 0, challengeTime = Chrono::BattleTime;
-		bool newBest = false, legacy = false;
-		// 自分を強くする効き目の残り秒: 回復し続ける (急須)・攻撃が当たりにくい (ティッシュ)・落とす物が 2 倍 (招き猫)
-		float regen = 0, fluff = 0, dropBoost = 0, regenTick = 0;
-		// HUD の巻尺の長さ (戦闘中に残りの物の数が一番多かったとき)
-		int hudTotal = 0;
-		int selected = 0, kills = 0, tries = 0;
+		bool newBest = false;
+		// 自分を強くする効き目の残り秒: 急須・ティッシュ (HUD に出す)
+		float regen = 0, fluff = 0;
+		int tries = 0;
 		uint32_t nextId = 1;
-		bool bossSpawned = false, bossDown = false, won = false, previousFire = false;
-		std::vector<BattleEnemy> enemies;
+		bool previousFire = false;
 		std::vector<BattleShot> shots;
 		std::vector<BattleFx> fx;
-		std::vector<BattleDrop> drops;
-		std::vector<BattleDropKind> dropPool;
 		std::vector<BattlePop> pops;
-		int pickups = 0, spent = 0, dropped = 0;
+		int spent = 0;
 		std::vector<BattlePlaced> placed;
 		// 戦闘で戻した建物 (小物の番号)
 		std::vector<size_t> buildings;
@@ -1000,26 +905,31 @@ private:
 	void BeginBattleFight(entt::registry&);
 	void RetryDevourBattle(entt::registry&);
 	void UpdateDevourBattle(entt::registry&, Chrono::Player&, GameContext&);
-	void UseBattleSlot(GameContext&, int slot);
-	void UseBattleCandy();
 	void StartBattleAbility(GameContext&, Chrono::BattleAction, const BattleItem&);
 	void TickBattleAbility(GameContext&, float dt);
-	void FillBattleSlot(int slot, bool roulette);
-	int DrawFromBattleBag();
 	// 変形武器 (WeaponCraft.cpp): 作る画面を開く・進める・描く・おまかせで埋める・決めて武器にする・武器の形を作る・使う・進める
 	bool WeaponsActive() const {
-		return !battle_.legacy && battle_.crafted;
+		return battle_.crafted;
 	}
 	void OpenWeaponCraft();
 	void UpdateWeaponCraft(GameContext&, float dt);
+	// 作る画面の形の見本: 実際のスライムを今の材料の形にし (TickCraftPreview)、カメラを見本の窓に映るように置く (CraftPreviewCamera)
+	void TickCraftPreview(GameContext&, float dt);
+	void CraftPreviewCamera(GameContext&);
+	// 見本の窓の背景: スライムのまわりを無地の箱で囲んで、ステージを隠す
+	void DrawCraftBackdrop(GameContext&);
 	void DrawWeaponCraft(GameContext&);
 	void DrawWeaponCraftInventory(UI::Canvas&) const;
+	// 左下の cm の巻尺と、変える演出でテープへ飛び込む物の絵
+	void DrawWeaponCraftEnergy(UI::Canvas&) const;
+	// cm の量 (材料にしなかった残りの物の点の合計。1 点 = 1cm)
+	int CraftEnergy() const;
 	void DrawWeaponCraftSelection(UI::Canvas&, int filled) const;
 	void DrawWeaponCraftSockets(UI::Canvas&, const BattleWeapon&) const;
 	void DrawWeaponCraftPreview(UI::Canvas&, const BattleWeapon&);
 	void DrawWeaponCraftTraits(UI::Canvas&, const BattleWeapon&) const;
 	void DrawWeaponCraftBoosts(UI::Canvas&, const BattleWeapon&) const;
-	void AutoWeaponCraft();
+	void AutoWeaponCraft(bool boosts);
 	void FinishWeaponCraft();
 	BattleWeapon CraftedWeapon() const;
 	int BuildWeaponShape(const BattleWeapon&);
@@ -1034,7 +944,14 @@ private:
 	static const std::vector<Chrono::Motif>& Motifs();
 	void WriteMotifStats();
 	void WriteMotifShapeCheck();
+	void WriteMotifBaseSheet();
 	void UseBattleWeapon(GameContext&);
+	// 変形武器の弾を 1 つ作る (向き yaw へ。撃ち方ごとの置き方は UseBattleWeapon)・狙いの補正をした向き・体の特徴 (体当たり・塗り跡)
+	BattleShot MakeFusedShot(float yaw) const;
+	float FusedAimYaw() const;
+	void TickWeaponBody(GameContext&, float dt);
+	// 体の特徴の動く速さの倍率 (変形武器を使っていなければ 1)
+	float WeaponMoveScale() const;
 	void TickBattleWeapons(GameContext&, float dt);
 	void DrawWeaponStickers(GameContext&);
 	// 変形武器の弾を進める (性質ごとの動きと当たり)・終わるときの爆発・分裂・壁
@@ -1043,7 +960,6 @@ private:
 	void BurstFusedShot(GameContext&, BattleShot&, bool landed);
 	// チャレンジの得点を足す (コンボの倍率をかけ、at の位置に label と点数を浮かべる)。足した点数を返す
 	int AddChallengeScore(int points, Chrono::Vec at, const std::string& label);
-	void HurtBattleEnemy(GameContext&, BattleEnemy&, float damage, Chrono::Vec push);
 	// 衝撃を出す: 形に入った相手に効き目を与え、当たった数を返す (touched に当たった相手を足す。exclude の相手には当てない)
 	int EmitBattleImpact(
 	    GameContext&, const Chrono::BattleImpact&, std::vector<BattleTarget>* touched = nullptr,
@@ -1052,7 +968,6 @@ private:
 	// from に一番近い相手 (exclude の相手と、maxDistance より遠い相手は除く)。いなければ false
 	bool NearestBattleTarget(
 	    Chrono::Vec from, float maxDistance, BattleTarget& out, const std::vector<uint32_t>* exclude = nullptr) const;
-	bool ApplyImpactToEnemy(GameContext&, BattleEnemy&, const Chrono::BattleImpact&);
 	// チャレンジの物 (ChallengeBlocks.cpp): 作る・進める・描く・衝撃を受ける・HUD の状況の文字
 	void BuildChallenge();
 	void TickChallenge(GameContext&, float dt);
@@ -1064,50 +979,107 @@ private:
 	void DropBlocksAbove(const ChallengeBlock&);
 	// チャレンジの場の位置 (unit を単位にした、場の真ん中からの x,z と床からの高さ)
 	Chrono::Vec ArenaPoint(float x, float z, float y = 0) const;
-	// スライム陣取り (ChallengeTerritory.cpp): 専用ステージを作る・見せる (ほかのチャレンジでは隠す)・マスを作る・体液を丸く広げる (新しく陣地になった数)・
-	// 進める (歩いた跡)・描く・家具と部屋の端で体を止める・HUD の状況・まだ陣地でない一番近いマスの真ん中 (無ければ false)
+	// チャレンジの場を見せる (積み木の街か、平らな床か)
 	void ShowChallengeStage(entt::registry&);
-	void BuildTerritory();
-	int SpreadTerritory(Chrono::Vec at, float radius);
-	void TickTerritory(GameContext&, float dt);
-	void DrawTerritory(GameContext&);
-	void BlockTerritoryBody(Chrono::Vec& at, float radius) const;
-	std::string TerritoryStatus() const;
-	bool NearestOpenCell(Chrono::Vec from, Chrono::Vec& out) const;
-	// 体液: 能力 1 回分を始める・衝撃の形にぬる・origin から近い順に、inside に入る床を limit マスまでぬる (ぬった数)
-	void BeginTerritoryUse(Chrono::BattleAction, bool candy);
-	void PaintTerritoryImpact(const Chrono::BattleImpact&);
-	// インクマップに体液を押す: マス 1 つ分のしぶき (とまわりのしずく)・丸いしぶき 1 つ (ワールドの位置と半径)
-	void SplatTerritoryCell(int cell, const InkLaunch* launch = nullptr);
-	// 取り返すもの (ChallengeTerritory.cpp): 体液を消す (丸・扇)・進める・描く・衝撃を受ける・扇風機の今の向き
-	void EraseTerritoryInk(Chrono::Vec at, float radius);
-	void EraseTerritoryCone(Chrono::Vec at, float yaw, float reach, float cone);
-	void TickReclaimers(float dt);
-	void DrawReclaimers(GameContext&);
-	bool ApplyImpactToRobot(const Chrono::BattleImpact&);
-	bool ApplyImpactToFan(const Chrono::BattleImpact&);
-	float FanYaw() const;
-	void LaunchTerritoryInk(Chrono::Vec at, const InkLaunch* launch);
-	int RingTerritory(TerritoryUse& use, int count, const InkLaunch& launch);
-	int SprayTerritory(
-	    TerritoryUse& use, int count, const std::function<bool(Chrono::Vec)>& inside, Chrono::Vec low, Chrono::Vec high,
-	    const InkLaunch& launch);
-	int TerritoryCoveredCells() const;
-	void DripTerritoryInk(Chrono::Vec from, Chrono::Vec velocity);
-	float TerritoryDropFloor(Chrono::Vec from, Chrono::Vec to) const;
-	void LandTerritorySplat(Chrono::Vec at, float radius, uint32_t seed, bool drops);
-	void StampTerritoryInk(Chrono::Vec at, float radius, uint32_t seed);
-	void GrowTerritoryInk(Chrono::Vec at, float radius, uint32_t seed);
-	uint32_t territoryInkMesh_ = 0, territoryInkTexture_ = 0;
-	bool territoryInkPipeline_ = false;
-	std::vector<uint8_t> territoryInkPixels_;
-	int PaintTerritoryNearest(
-	    Chrono::Vec origin, int limit, const std::function<bool(Chrono::Vec)>& inside, Chrono::Vec* last = nullptr,
-	    const InkLaunch* launch = nullptr);
-	std::vector<entt::entity> battleArenaDecor_, territoryStage_;
+	// 積み木の街 (ChallengeBlocksLand.cpp): 見た目の物と、作ったときの unit と場の真ん中 (違えば作り直す)
+	std::vector<entt::entity> blocksStage_;
+	float blocksStageUnit_ = 0;
+	Chrono::Vec blocksStageAt_{};
+	// 積み木の街か・街を作る/見せる・崖と壁と低い橋で体を止める (from は前のフレームの位置)・
+	// 体を乗せる傾いた面 (真ん中での高さと傾き)・動いた物が街の物に当たったか (弾)・確認用の書き出し (--blocks-land-check)
+	bool BlocksStageActive() const;
+	// 結果を「こわした積み木の山」で見せるか (積み木クラッシャーを遊んだあと)・こわした数・積む順の積み木の色と金か (金は最後)
+	bool BlocksPileResult() const;
+	int BlocksPileCount() const;
+	void BlocksPileBlocks(std::vector<Engine::Vector4>& colors, std::vector<bool>& gold) const;
+	// 結果の積み木の山 (3D。ChallengeBlocks.cpp): 広場の地面の真ん中・積み木 1 個の大きさ・置き場所・色と金か・
+	// 今の山の高さ (地面から、なめらかに追う)・カメラ (位置と見る所・回り込む角度)。結果が始まったときに作る
+	// 宇宙まで積もる殻 (Chrono::ChallengePileShells): 形・積み始める時刻・置き場所 (下の段から)
+	struct BlocksPileShell {
+		Chrono::PileShell shape;
+		float at = 0;
+		std::vector<Chrono::PileSlot> slots;
+	};
+	// 山のまわりの景色の 1 つの部品: ローポリのモデル (mesh。at は原点、half は大きさの倍率、yaw は向き) か、
+	// 積み木の箱 (mesh が 0。at は真ん中、half は半分の大きさ、color)。size は見える大きさ (半分。小さく見える物は描かない)
+	struct BlocksPileDecor {
+		Chrono::Vec at{}, half{};
+		Engine::Vector4 color{1, 1, 1, 1};
+		uint32_t mesh = 0;
+		float yaw = 0, size = 0;
+		// 雲 (カメラと山の間にあるときは描かない)
+		bool cloud = false;
+	};
+	struct BlocksPileState {
+		bool active = false, cameraReady = false;
+		Chrono::Vec at{}, cameraAt{}, cameraLook{};
+		// (height は今のてっぺん (スライムを乗せる)。top と span は今の高さと裾の広さで、カメラが使う (何倍にも変わるので対数でなめらかに追う))
+		float block = 1, height = 0, reach = 0, orbit = 0, top = 1, span = 1, nearClip = .1f, farClip = 2000, space = 0;
+		std::vector<Chrono::PileSlot> slots;
+		std::vector<Engine::Vector4> colors;
+		std::vector<bool> gold;
+		std::vector<BlocksPileShell> shells;
+		// 景色: 地面の物 (おもちゃの街・木・池。遠い物ほど大きいので、どこまで上っても何かが見える) と雲
+		std::vector<BlocksPileDecor> decor;
+		// 1 m (本当の積み木 1 個が 4cm) の場の長さ・地球の半径 (場の長さ)・地面の高さ (場の床より少し下)
+		float meter = 1, earth = 1, groundY = 0;
+		// 積み終わった殻が隠す広さ (半分。中の場の積み木は描かない)
+		float cover = 0;
+	};
+	BlocksPileState pile_;
+	// 山の下に置く地球 (半球の形。真ん中から外へ距離の対数で輪を分けて、近くほど細かい。模様もその割合で描いた絵) と月
+	uint32_t earthMesh_ = 0, earthTex_ = 0, moonTex_ = 0;
+	// 景色を描く (地球・地面の物・雲・月)
+	void DrawPileWorld(GameContext&);
+	// 積み木の街のまわりの景色 (遊んでいる間。ChallengeBlocksLand.cpp): 地面の高さ・近くのモデル (木と家)・積み木の家の箱・遠くの板。
+	// unit か場の真ん中が変わったら作り直す
+	struct StageBoard {
+		Chrono::Vec at{};
+		float size = 1;
+		int cell = 0;
+	};
+	struct StageScenery {
+		float unit = 0, groundY = 0;
+		Chrono::Vec center{};
+		std::vector<BlocksPileDecor> models, cubes;
+		std::vector<StageBoard> boards;
+	} stageScenery_;
+	// 遠くの板の絵 (billboards.png)・升ごとの板の形・升ごとの物の幅と高さと家か (1)
+	uint32_t boardTex_ = 0;
+	std::vector<uint32_t> boardMeshes_;
+	std::vector<std::array<float, 3>> boardShapes_;
+	void BuildStageScenery();
+	void DrawStageScenery(GameContext&, bool ground = true);
+	void PreparePileWorld(bool wait);
+	// 山を進める (積み木が降る・スライムをてっぺんに乗せる)・描く・カメラ (wanted と view を書きかえる)
+	void TickBlocksPile(float dt);
+	void DrawBlocksPile(GameContext&);
+	void BlocksPileCamera(float dt, Chrono::Vec& wanted, Chrono::Vec& view);
+	void ShowBlocksStage(entt::registry&, bool show);
+	void BlockBlocksStageBody(Chrono::Vec& at, Chrono::Vec from, float radius) const;
+	float BlocksFootprint(Chrono::Vec at, float fromY, float radius, Chrono::Vec& slope) const;
+	// 積み木の街: 体の形の点 (体の右・上・前の座標、原点は体の真下の地面) を、乗っている面の傾きに合わせて回す (ほかの所ではそのまま)
+	Chrono::Vec BodyTiltApply(Chrono::Vec local) const;
+	float BlocksSettle(Chrono::Vec at, Chrono::Vec from, float radius, float dt, float& fallSpeed, Chrono::Vec& slope) const;
+	bool BlocksSweep(Chrono::Vec from, Chrono::Vec to, float lift, Chrono::Vec& hit, Chrono::Vec& normal, bool& wall) const;
+	void WriteBlocksLandCheck() const;
 	// 実測 (ChallengeMatrix.cpp): 試しを始める・進める (input に歩く向きを入れる)・書き出す
 	void StartMatrixTrial();
 	void TickChallengeMatrix(GameContext&, float dt, Chrono::Vec& input);
+	// 確認用 (--weapon-check。WeaponCraft.cpp): 全部の変形武器の撃ち方を撃って確かめる。list は試す性質、sub は 0 的なし・1 近い列・2 遠い列
+	struct WeaponCheckState {
+		bool active = false, started = false, done = false, fired = false;
+		int trial = 0, sub = -1, nearHits = 0, farHits = 0, flagged = 0;
+		float clock = 0, spawnH = 0, spawnLow = 0, lowest = 0, maxDist = 0, slopeLife = 0, slopeDist = 0;
+		std::array<bool, 21> band{};
+		Chrono::Vec spot{}, slope{}, slopeDir{0, 0, 1};
+		std::vector<Chrono::FuseLevels> list;
+		std::ofstream log;
+	} weaponCheck_;
+	void TickWeaponCheck(GameContext&, float dt, Chrono::Vec& input);
+	// 変形武器の性質の、積み木への効き目 (WeaponCraft.cpp): 揺らす (まわりの積み木にも当たる)・ひび (まわりにもひびを入れる)
+	void ShakeAround(GameContext&, const BattleTarget& target, float damage, int level);
+	void CrackAround(GameContext&, const BattleTarget& target);
 	void WriteChallengeMatrix() const;
 	// どのチャレンジでも同じ、自分に効く能力 (回復・急須・リモコン・守る・だるま)
 	void ApplyChallengeSelf(Chrono::BattleAction);
@@ -1116,14 +1088,10 @@ private:
 	void WriteImpactCheck() const;
 	void DrawDevourBattle(GameContext&);
 	void DrawDevourBattleUI(GameContext&);
-	void DrawBattleFloorGauge(GameContext&);
-	void BattleHudCells(std::vector<int>& cells, int& nextCell) const;
 	void DrawDevourBattleRecord(GameContext&);
 	void PrepareBattleForTest(entt::registry&);
 	void TickBattlePlaced(GameContext&, float dt);
 	void DrawBattleProp(GameContext&, uint32_t visual, Chrono::Vec at, float shrink, float yaw, float tilt);
-	void SpawnBattleDrops(Chrono::Vec at, int count);
-	void AbsorbBattleDrop(const BattleDrop&);
 	void BuildBattleArena(entt::registry&);
 	entt::entity battleArenaEntity_ = entt::null;
 	int devourStage_ = 0, devourRank_ = 0;
@@ -1140,7 +1108,9 @@ private:
 	bool TickChallengeMove(Chrono::Player&, float dt, bool held);
 	void DrawChallengeCard(GameContext&);
 	// 変形アイテムを拾って使える状態か・変形の残り時間・テスト用に全部の形を使うか
-	bool devourItemReady_ = false, devourFreeForms_ = false;
+	bool devourItemReady_ = false;
+	// 自動テストで決めた変形アイテムの形 (-1 ならステージの物)
+	int devourTestForm_ = -1;
 	float devourMorphLeft_ = 0;
 	// 台座の上の変形アイテムの高さ
 	float devourItemY_ = 0;
@@ -1167,10 +1137,10 @@ private:
 		std::filesystem::path path;
 		float elapsed = 0, nextSample = 0, nextSave = 15, moved = 0, sinceEat = 0, longestIdle = 0, frameSum = 0,
 		      worstFrame = 0, morphTime = 0, itemTaken = -1, biggest = 0, biggestAt = 0, bestBefore = 0;
-		int frames = 0, eaten = 0, total = 0, pounces = 0, bounces = 0, hops = 0, morphs = 0, maxCombo = 0;
+		int frames = 0, eaten = 0, total = 0, bounces = 0, hops = 0, morphs = 0, maxCombo = 0;
 		Chrono::Vec last{};
-		std::array<int, 7> eatBy{};
-		std::array<float, 7> gainBy{};
+		std::array<int, 6> eatBy{};
+		std::array<float, 6> gainBy{};
 		std::array<int, 8> areaEaten{}, areaTotal{};
 		std::array<float, 8> areaGain{}, areaMassTotal{}, areaFirst{};
 		std::vector<float> goalTimes, gateSizeTimes, gateOpenTimes;
@@ -1200,9 +1170,10 @@ private:
 				t[i] = {A(i)};
 			return t;
 		}();
-		if (devour_ && !devourFreeForms_)
-			return single[size_t(Chrono::DevourItemForm(CurrentDevourStage().item))];
-		return devour_ ? all : slimePlayerDemo_ ? demo : battle;
+		if (devour_)
+			return single[size_t(
+			    devourTestForm_ >= 0 ? devourTestForm_ : int(Chrono::DevourItemForm(CurrentDevourStage().item)))];
+		return slimePlayerDemo_ ? demo : battle;
 	}
 	int LifeFormIndex() const {
 		const auto& forms = LifeForms();
@@ -1230,9 +1201,7 @@ private:
 	// 路地の塀・バリケードを吸収の対象にした小物の番号 (塀は CityWalls の順)
 	std::vector<int> devourWallProps_;
 	int devourBarricadeProp_ = -1;
-	bool StartDevourPounce(Chrono::Player&, GameContext&);
-	void TickDevourPounce(entt::registry&, Chrono::Player&, GameContext&, float);
-	int DevourCapture(entt::registry&, Chrono::Vec landing, float& gained);
+	void TickDevourBody(entt::registry&, Chrono::Player&, GameContext&, float);
 	void DevourTouch(entt::registry&, Chrono::Vec from);
 	void TickDevourFlies(entt::registry&, float dt);
 	// 飲めない物へぶつかる: 弾かれて体が縮み、飲んだ物が飛び出す
@@ -1306,6 +1275,8 @@ private:
 	std::array<int, Chrono::LifeBodyCount> lifeLastAction_{};
 	// 体ごとの足元の傾き (x 右向き・z 前向きの、1 単位進むごとの高さの変化)。斜面で体の形を傾けるのに使い、なめらかに変える
 	std::array<Chrono::Vec, Chrono::LifeBodyCount> lifeSlope_{};
+	// 体の形の傾き (lifeSlope_[0] を世界の x・z へ 1 進むごとの高さに直したもの)。積み木の街では流体の床と目の場所に渡し、体の形と合わせる
+	Chrono::Vec lifeTiltWorld_{};
 	std::array<uint32_t, Chrono::LifeBodyCount> lifeLastCounts_{};
 	bool lifeWasLab_ = false, lifeReseed_ = true, lifePreviewEmitted_ = false;
 	// 章の見出しを出した段階と、出し始めた時刻 (life_.age)
@@ -1617,8 +1588,6 @@ private:
 	// 群れの作成・描画
 	void BuildSwarm(entt::registry&);
 	void DrawSwarm(entt::registry&, GameContext&);
-	// reach が 1e8 未満なら、origin (発射した輪) から水平距離 reach 以内の敵だけを選ぶ
-	uint32_t ChooseSwarmTarget(entt::registry&, Chrono::Vec, bool, Chrono::Vec origin = {}, float reach = 1e9f);
 	// インク (ChronoInk.cpp): カメラが潜らないための地面の面・作成・カメラ
 	// こぼれた液体の管のメッシュ
 	uint32_t slimeBeamMesh_ = 0;

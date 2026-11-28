@@ -6,6 +6,7 @@
 #include "../Game/Chrono/ItemProfileRules.h"
 #include <cassert>
 #include <functional>
+#include <algorithm>
 #include <iostream>
 using namespace Game::Chrono;
 // 40 x 40 x 40 の箱 (1 箱 0.25) に、inside の形を詰める。part は部品の番号
@@ -66,45 +67,34 @@ void TestRectangularSilhouettes() {
 }
 
 void TestWeaponDescriptions() {
-	FuseLevels levels{};
-	assert(FuseWeaponDescriptionPhrases(levels) == std::vector<std::string>{"放物線で飛び"});
-
-	levels[size_t(FuseTrait::Roll)] = 1;
-	levels[size_t(FuseTrait::Homing)] = 1;
-	levels[size_t(FuseTrait::Float)] = 1;
-	levels[size_t(FuseTrait::Pierce)] = 2;
-	levels[size_t(FuseTrait::Bounce)] = 3;
-	levels[size_t(FuseTrait::Wall)] = 1;
-	const std::vector<std::string> rolling{
-	    "床を転がり", "相手を追いかけ", "7体まで突き抜け", "9回跳ね", "止まった所に壁を建てる"};
-	assert(FuseWeaponDescriptionPhrases(levels) == rolling);
-
-	levels[size_t(FuseTrait::Roll)] = 0;
-	assert(FuseWeaponDescriptionPhrases(levels).front() == "宙を飛び");
-	levels[size_t(FuseTrait::Homing)] = 0;
-	assert(FuseWeaponDescriptionPhrases(levels).front() == "宙を飛び");
-
-	levels.fill(1);
-	const std::vector<std::string> allTraits{
-	    "床を転がり",
-	    "相手を追いかけ",
-	    "とても速く",
-	    "大きく重く",
-	    "4体まで突き抜け",
-	    "3回跳ね",
-	    "次の相手へ跳び移り",
-	    "回ってまとめて当て",
-	    "まわりを吸い寄せ",
-	    "戻ってきて",
-	    "通った跡を塗り",
-	    "当てた相手を止め",
-	    "弱らせ",
-	    "やけどさせ",
-	    "当たると分かれ",
-	    "爆発する",
-	    "止まった所に壁を建てる"};
-	assert(FuseWeaponDescriptionPhrases(levels) == allTraits);
-	std::cout << "PASS: weapon descriptions preserve movement priority, trait order and level-dependent counts\n";
+	auto with = [](std::initializer_list<std::pair<FuseTrait, int>> traits) {
+		FuseLevels levels{};
+		for (const auto& [trait, level] : traits)
+			levels[size_t(trait)] = level;
+		return FuseWeaponDescriptionPhrases(levels);
+	};
+	auto has = [](const std::vector<std::string>& phrases, const std::string& phrase) {
+		return std::find(phrases.begin(), phrases.end(), phrase) != phrases.end();
+	};
+	// 1 番目は飛び方 (撃ち方が一発のとき): 放物線・床を転がる・宙を飛ぶ
+	assert(with({}) == std::vector<std::string>{"放物線で飛び"});
+	assert(with({{FuseTrait::Roll, 1}}).front() == "床を転がり");
+	assert(with({{FuseTrait::Homing, 1}}).front() == "宙を飛び");
+	assert(with({{FuseTrait::Float, 1}}).front() == "宙を飛び");
+	// 撃ち方が決まる組み合わせは、撃ち方の説明が先
+	assert(with({{FuseTrait::Bounce, 2}}).front() == "【全方位】体のまわり全部へ撃つ");
+	// レベルで数が変わる
+	assert(has(with({{FuseTrait::Pierce, 1}}), "4個まで突き抜け"));
+	assert(has(with({{FuseTrait::Bounce, 2}}), "6回跳ね"));
+	// 揺らす・ひび・熱いは、積み木に何が起きるかを書く (相手を止める・弱らせるような言葉は無い)
+	assert(has(with({{FuseTrait::Stun, 1}}), "当たった所のまわりを揺さぶって崩し"));
+	assert(has(with({{FuseTrait::Weaken, 1}}), "当てた所にひびを入れて次の当たりを 2 倍にし"));
+	assert(has(with({{FuseTrait::Burn, 1}}), "当てた積み木を焦がして崩し"));
+	FuseLevels all{};
+	all.fill(1);
+	for (const auto& phrase : FuseWeaponDescriptionPhrases(all))
+		assert(phrase.find("相手を") == std::string::npos && phrase.find("弱らせ") == std::string::npos);
+	std::cout << "PASS: weapon descriptions show movement first, pattern phrases, level counts and block effects\n";
 }
 
 int main() {

@@ -27,9 +27,6 @@ struct ControlFrame {
 	Vec move{};
 	// 攻撃・狙い・切り替え・ジャンプ・回避・ロックオン
 	bool attack = false, aim = false, toggle = false, jump = false, dodge = false, lockOn = false;
-	// 強化の選択・引き直し・見送り
-	int upgradeChoice = -1;
-	bool upgradeReroll = false, upgradeSkip = false;
 	int attackPattern = -1;   // 確認用の上書き。通常のプレイは状況で選ぶ
 	bool cameraInput = false; // スクリプトによる視点の変更は、マウスの動きと同じ優先度
 	// 取り込み・研究所・やり直し・スライムに戻る

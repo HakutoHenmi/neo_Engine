@@ -373,10 +373,6 @@ public:
 		(void)w;
 		(void)h;
 	}
-	// Kenney の UI パックの画像のパス
-	static std::string Asset(const char* name) {
-		return std::string("Resources/Textures/UI/kenney_ui-pack/PNG/") + name;
-	}
 	// マウス座標は EditorUI が Game ビューから最終画像の座標へ換算済み。
 	// スプライトと文字もその画像の座標で置くので、ImGui での拡大は1回だけになる
 	void SetPointer(float x, float y) {
@@ -484,10 +480,6 @@ public:
 			Dot(dx, y + length + width * .15f, width * .72f, color);
 		}
 	}
-	// 3D の画面の上でも読めるよう、箱ではなく柔らかい暗いぼかしを敷く
-	void Shade(Rect b, float strength = .55f) {
-		Halo(b.x + b.w * .5f, b.y + b.h * .5f, (std::max)(b.w, b.h) * .75f, WithAlpha(Night, strength));
-	}
 	// 画面全体に粒状感の画像を薄く重ねる (画面の大きさに合わせて繰り返す)
 	void Grain(float amount = .05f) {
 		const float w = 1280 + 2 * ox_ / s_, h = 720 + 2 * oy_ / s_;
@@ -553,13 +545,6 @@ public:
 		// 幅の半分だけ左へずらして書く
 		Text(label, x - Width(label, size, font) * .5f, y, size, color, font);
 	}
-	// ゲーム画面の上で読みやすいよう、少しずらした影を付けた文字
-	void Bold(
-	    const std::string& label, float x, float y, float size, Engine::Vector4 color = Paper,
-	    const char* font = Font) {
-		Text(label, x + size * .04f, y + size * .06f, size, {0, 0, 0, .55f * color.w}, font);
-		Text(label, x, y, size, color, font);
-	}
 	// 大きな文字: 解像度は Text と同じく大きさから選ぶ
 	void
 	    Big(const std::string& label, float x, float y, float size, Engine::Vector4 color, const char* font,
@@ -608,22 +593,9 @@ public:
 		nav.Begin();
 		return UsingPad() && nav.hasFocus && Navigator::Same(nav.focus, b);
 	}
-	// ゲームパッドでフォーカスされている矩形の周りの枠 (ボタン以外のフォーカス対象用)
-	void FocusFrame(Rect b, float radius = 14) {
-		if (!Focused(b))
-			return;
-		RoundedRing({b.x - 5, b.y - 5, b.w + 10, b.h + 10}, WithAlpha(Paper, .9f), radius + 5);
-	}
 	// クリックはさせずにフォーカス対象としてだけ登録する (情報カードなど)
 	void Track(Rect b, bool primary = false) const {
 		Nav().Register(b, primary);
-	}
-	// 内部解像度 (WindowDX::kW x kH) のピクセルの点が矩形に入っているか (保存したクリックなど)
-	bool HitPixel(Rect b, float x, float y) const {
-		// 画面の座標から設計座標へ戻す
-		x = (x - ox_) / s_;
-		y = (y - oy_) / s_;
-		return x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h;
 	}
 	// マウスが乗っているか (ゲームパッドならフォーカス中か)
 	bool Hover(Rect b) const {

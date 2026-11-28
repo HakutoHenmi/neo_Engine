@@ -52,63 +52,6 @@ inline constexpr float DevourStepHold = .2f, DevourStepTime = .3f;
 inline float DevourStepHeight(float mass) {
 	return 2 * DevourBodyRadius(mass);
 }
-// 飛びかかり (ガバッ) の間隔。飛びかかりは連打する物ではなく、ここぞというときの大技
-inline constexpr float DevourPounceCooldown = 1;
-// 飛びかかって覆う広さ (体より少し広げる) と、飛びかかれる距離 (体の半径の 2.5 倍)。
-// 飛びかかりは 1 個〜数個の物を狙う動きで、小物の群れはタイヤ、少し大きい物はハンマーの役目
-inline float DevourCoverRadius(float mass) {
-	return 1.1f * DevourBodyRadius(mass);
-}
-inline float DevourLeapRange(float mass) {
-	return 7.5f * LifeScale(mass);
-}
-// 着地した位置で覆いかぶされるか (reach は塀のように平たく長い物の分の余裕)
-inline bool DevourUnderCover(Vec landing, Vec at, float mass, float radius, float reach = 0) {
-	return LifeDistance(landing, at) <= DevourCoverRadius(mass) + radius * .5f + reach &&
-	       std::abs(at.y - landing.y) < 3 * LifeScale(mass) + radius;
-}
-// 飛びかかりの目標: 前の半分 (真横まで) にある覆える物を、近く正面の順に選ぶ。無ければ近くの大きすぎる物 (弾かれる)、それも無ければ正面へ跳ぶ
-struct DevourPick {
-	int index = -1;
-	Vec at{};
-	bool fits = false;
-};
-inline DevourPick DevourChooseTarget(Vec from, Vec forward, float mass, const std::vector<LifeCollectible>& props) {
-	DevourPick best, blocked;
-	float bestScore = 1e9f, blockedScore = 1e9f, range = DevourLeapRange(mass);
-	for (size_t i = 0; i < props.size(); ++i) {
-		const auto& prop = props[i];
-		if (!prop.active || prop.sealed)
-			continue;
-		Vec delta = prop.at - from;
-		delta.y = 0;
-		float distance = Length(delta) - prop.reach;
-		if (distance > range + prop.radius || std::abs(prop.at.y - from.y) > 4 * LifeScale(mass) + prop.radius)
-			continue;
-		float facing = Length(delta) > .5f ? Dot(Unit(delta), forward) : 1;
-		if (facing < -.05f)
-			continue;
-		float score = std::max(0.f, distance) + range * .5f * (1 - facing);
-		if (DevourCanCover(mass, prop.radius)) {
-			if (score < bestScore) {
-				bestScore = score;
-				best = {int(i), prop.at, true};
-			}
-		}
-		// 大きすぎる物は、表面まで跳んで届くときだけ弾かれる目標にする
-		else if (distance - prop.radius * .5f < range && score < blockedScore) {
-			blockedScore = score;
-			blocked = {int(i), prop.at, false};
-		}
-	}
-	if (best.index >= 0)
-		return best;
-	if (blocked.index >= 0)
-		return blocked;
-	DevourPick ahead;
-	ahead.at = from + forward * (range * .35f);
-	return ahead;
-}
 // 飛び込んでから包み終えるまでに進んだ割合 (勢いよく飛び出し、口で包みながら目標の上で止まる)。
 // 体は地面に着いたまま進むので上には上がらない
 inline float DevourLeapProgress(float age) {

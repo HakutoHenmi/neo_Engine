@@ -396,7 +396,7 @@ SprayOut SprayVS(uint vertex:SV_VertexID, uint instance:SV_InstanceID) {
             if(morph&&id>=slimeInteriorBubbles+12)visibility=0;
         }else{
             uint eye=id-slimeInteriorBubbles-slimeEscapedBubbles;
-            float3 front=SlimeFaceForward(),guide=SlimeEyeGuide(eye);
+            float3 front=SlimeEyeSearch(),guide=SlimeEyeGuide(eye);
             float extent=max(playerRadii.x,playerRadii.z)*(1+.55f*playerMotion)*1.45f;
             bool found=false;float previous=extent;
             world=guide;

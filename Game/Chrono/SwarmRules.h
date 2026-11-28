@@ -13,9 +13,7 @@ enum class SwarmEvent { None, Detonate };
 // ボスが出るまでの撃破数と、同時に出せる上限
 inline constexpr int SwarmBossKills = 1000, SwarmCapacity = 180;
 // 輪はこの高さまでの敵を捕獲する: 歩く敵・急降下する飛ぶ敵・落ちる自爆の敵
-inline constexpr float SwarmCaptureHeight = 8.f;
 inline constexpr float SwarmEmergenceSeconds = 3.2f;
-inline constexpr uint32_t SwarmNoTarget = 0xffffffffu;
 // 群れの敵 1 体の状態
 struct SwarmEnemy {
 	float scale = 1, maxHealth = 3;

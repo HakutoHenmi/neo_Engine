@@ -298,6 +298,14 @@ public:
 	void SetUseCubemapBackground(bool use) {
 		cbFrame_.useCubemapBackground = use ? 1 : 0;
 	}
+	// 環境マップの空を、星空 (宇宙) へ少しずつ変える (0 で空のまま、1 で宇宙)。環境マップを使っているときだけ効く。
+	// useCubemapBackground に 2 + 割合 x 1000 として入れる (SkyboxPS.hlsl が読む)
+	void SetSkySpaceBlend(float blend) {
+		if (cbFrame_.useCubemapBackground == 0)
+			return;
+		const float k = blend < 0 ? 0.f : blend > 1 ? 1.f : blend;
+		cbFrame_.useCubemapBackground = k <= 0 ? 1u : 2u + uint32_t(k * 1000 + .5f);
+	}
 	bool GetUseCubemapBackground() const {
 		return cbFrame_.useCubemapBackground != 0;
 	}
@@ -887,11 +895,11 @@ public:
 		gpuFluidTetherTip_ = tip;
 		gpuFluidTetherActive_ = active;
 	}
-	void SetRogueWorldFrozen(bool value) {
-		rogueWorldFrozen_ = value;
+	void SetWorldFrozen(bool value) {
+		worldFrozen_ = value;
 	}
-	bool GetRogueWorldFrozen() const {
-		return rogueWorldFrozen_;
+	bool GetWorldFrozen() const {
+		return worldFrozen_;
 	}
 	void SetChronoFluidPresentation(float opacity, float flash, bool paused) {
 		chronoFluidOpacity_ = opacity;
@@ -918,7 +926,7 @@ public:
 		fluidInterior_ = amount;
 		fluidInteriorDepth_ = itemDepth;
 	}
-	bool chronoFluidPaused_ = false, rogueWorldFrozen_ = false;
+	bool chronoFluidPaused_ = false, worldFrozen_ = false;
 	float gpuFluidCoreFlowSpeed_ = 0.0f;
 
 	// デコイ用コア情報
@@ -1130,6 +1138,10 @@ public:
 	// 風とプレイヤーの位置設定
 	void SetWindParams(const Vector4& p) {
 		cbFrame_.windParams = p;
+	}
+	// かすみの距離の倍率 (大きいほど遠くからかすむ。1 が街の大きさ)
+	void SetFogScale(float scale) {
+		cbFrame_.fogParams.x = scale > 0 ? scale : 1.0f;
 	}
 	void SetPlayerPos(const Vector3& p) {
 		cbFrame_.playerPos = p;
@@ -1496,6 +1508,8 @@ private:
 		Vector4 windParams = {1.0f, 0.0f, 0.5f, 0.2f}; // x,y:方向, z:速度, w:強さ
 		Vector3 playerPos = {0.0f, 0.0f, 0.0f};
 		uint32_t useCubemapBackground = 1; // 背景も環境マップを使うか
+		// かすみ (EnvironmentSurfacePS の CityFog): x は距離の倍率 (かすみの距離を x 倍に伸ばす。1 が街の大きさ)
+		Vector4 fogParams = {1.0f, 0.0f, 0.0f, 0.0f};
 	} cbFrame_{};
 #ifdef _MSC_VER
 #pragma warning(pop)

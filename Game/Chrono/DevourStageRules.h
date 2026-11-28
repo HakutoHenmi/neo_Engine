@@ -39,6 +39,8 @@ struct DevourStage {
 	std::string id, name, map, music = "Battle";
 	float time = 240, start = 5, itemTime = 15, half = 0, smallFood = 0, growth = 1;
 	std::vector<float> goals, gates;
+	// 変形武器の強化の上限の点 (弾数・威力・連射。Chrono/WeaponCraftRules.h の CraftCaps)
+	std::array<int, 3> craftMax{215, 215, 215};
 	LifeMorphItem item = LifeMorphItem::None;
 	Vec itemAt{}, spawn{};
 };
@@ -69,6 +71,8 @@ inline const std::vector<DevourStage>& DevourStages() {
 			stage.spawn = vec(s.at("spawn"));
 			if (s.contains("battleColor"))
 				stage.battleColor = vec(s.at("battleColor"));
+			if (s.contains("craftMax"))
+				stage.craftMax = Data::ReadArray<int, 3>(s.at("craftMax"), file);
 			// 吸収モードで使える変形アイテムの名前の表。知らない名前は None のままで、下の確認で止める
 			struct ItemName {
 				const char* name;

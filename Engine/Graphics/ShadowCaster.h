@@ -3,7 +3,7 @@
 namespace Engine {
 inline bool CastsOpaqueShadow(std::string_view shader) {
 	// 部屋の天井と照明器具は光を遮らない
-	if (shader == "LowpolyNoShadow")
+	if (shader == "LowpolyNoShadow" || shader == "CraftBackdrop")
 		return false;
 	for (auto effect :
 	     {"2D",

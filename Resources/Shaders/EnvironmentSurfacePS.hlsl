@@ -12,6 +12,7 @@ cbuffer CBFrame : register(b0) {
     row_major float4x4 gViewProj;
     float3 gCamPos; float gTime;
     float4 gWindParams; float3 gPlayerPos; float gFramePad;
+    float4 gFogParams;
 };
 struct DirLight { float3 dir; float pad0; float3 color; float pad1; uint enabled; float3 pad2; };
 struct PointLight { float3 pos; float pad0; float3 color; float range; float3 atten; float pad1; uint enabled; float3 pad2; };
@@ -42,7 +43,8 @@ float CityNoise(float2 p){float2 i=floor(p),f=frac(p);f=f*f*(3-2*f);
 float3 CityFog(float3 colour,float3 worldPos,float3 daylight){
     // かすみはプレイヤーより遠くから始まり、スライムが大きくなってカメラが引くと
     // 薄くなるので、巨大になっても周りの街が見える。
-    float distance=length(worldPos-gCamPos),follow=length(gPlayerPos-gCamPos);
+    // (gFogParams.x はかすみの距離の倍率。積み木の街のように物の大きさが違う場所で、かすむ距離を合わせる)
+    float scale=max(gFogParams.x,.001),distance=length(worldPos-gCamPos)/scale,follow=length(gPlayerPos-gCamPos)/scale;
     float amount=(1-exp(-max(distance-110-follow,0)*.0009*220/(220+follow)))*lerp(1,.75,saturate(worldPos.y/(600+follow)));
     float3 haze=float3(.6,.65,.72)*saturate(length(daylight)*.6+.25);
     return lerp(colour,haze,saturate(amount)*.82);
@@ -64,6 +66,10 @@ float4 main(float4 svpos:SV_POSITION,float3 worldPos:TEXCOORD0,float3 normal:TEX
     float4 texel=gTex.Sample(gSmp,uv);
 #ifdef VEGETATION_CUTOUT
     clip(texel.a-.42f);
+#endif
+#ifdef LOWPOLY_SURFACE
+    // (遠くの景色の板の絵は、透明な所を切り抜く。ローポリの色の絵は全部不透明なので変わらない)
+    clip(texel.a-.1f);
 #endif
     float3 albedo=texel.rgb*color.rgb;
 #ifdef VEGETATION_CUTOUT

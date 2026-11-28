@@ -15,7 +15,7 @@ struct RoomSurface {
 	float hill = 0, base = 0, minY = 0;
 };
 // 本の階段のいちばん上の段の高さ (ベッドへ乗り移る所) と、1 段の高さと奥行き
-inline constexpr float RoomBedTop = 56, RoomStairRise = 7, RoomStairDepth = 12;
+inline constexpr float RoomBedTop = 56, RoomStairRise = 7;
 // ベッドのマットレスと掛け布団の上の面の高さ (モデルに合わせる)
 inline constexpr float RoomMattressTop = 54.8f, RoomQuiltTop = 58.6f;
 // ベッドの下を囲む収納ケースの高さ (開始の大きさでは跳び越えられず、8cm で跳び越えられる)

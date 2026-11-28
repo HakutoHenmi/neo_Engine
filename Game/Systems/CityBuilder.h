@@ -153,21 +153,6 @@ struct CityBuilder {
 		Polygon(material, {{hi.x, lo.y, hi.z}, {lo.x, lo.y, hi.z}, {lo.x, hi.y, hi.z}, {hi.x, hi.y, hi.z}}, {0, 0, 1});
 		Polygon(material, {{lo.x, lo.y, lo.z}, {hi.x, lo.y, lo.z}, {hi.x, hi.y, lo.z}, {lo.x, hi.y, lo.z}}, {0, 0, -1});
 	}
-	// 壁に付いた箱: along は壁に沿う向き、out は壁から出る向き。ずれは壁の平面からの距離
-	void FacadeBox(
-	    int material, Chrono::Vec center, Chrono::Vec along, Chrono::Vec out, float halfAlong, float halfY, float out0,
-	    float out1) {
-		// パイプラインは両面を描くので、壁から始まる箱は裏の面が壁の平面に重なって
-		// Z ファイティングを起こす。そこで壁に付く箱は少し壁に埋める
-		// 外へ出る箱が壁から始まるなら、壁へ少し埋める
-		if (out0 <= .01f && out1 > out0)
-			out0 = -.4f;
-		// 壁に沿う向きと外へ出る向きで箱の 2 つの角を求める
-		using Chrono::Vec;
-		Vec a = center + along * halfAlong + out * out0, b = center - along * halfAlong + out * out1;
-		Box(material, {std::min(a.x, b.x), center.y - halfY, std::min(a.z, b.z)},
-		    {std::max(a.x, b.x), center.y + halfY, std::max(a.z, b.z)});
-	}
 	// 道路に塗った平らな帯 (a から b まで、指定の幅)
 	void Strip(int material, Chrono::Vec a, Chrono::Vec b, float width, float y = -.08f) {
 		// 道の向きに垂直な幅の分だけ広げた四角形
@@ -190,10 +175,8 @@ struct CityBuilding {
 // スキャンしたネズミと大砲: 敵の大きさあたりの長さと、向きに合わせるヨー
 constexpr float CityRatWidth = 5.6f, CityRatYaw = 0, CityCannonWidth = 3.4f, CityCannonYaw = 0;
 // 1 階と 2 階以上の高さ
-constexpr float CityGroundFloor = 24, CityFloor = 19;
 // 路面の塗装の高さ (路面は -0.2)。重なる塗装どうしを同じ高さに置くと奥行きの精度が足りずにちらつくので、
 // 重なり得る層ごとに高さを分ける: 車線と中央線 < タイヤ痕 < 横断歩道と停止線 < 斜めの横断歩道の片方 < 事故の焦げ跡
-constexpr float PaintLaneY = -.16f, PaintSkidY = -.13f, PaintCrossY = -.1f, PaintCrossTopY = -.07f, PaintStainY = -.04f;
 // 整数から 0〜1 の疑似乱数を作る
 inline float CityNoise(int seed) {
 	float n = std::sin(float(seed) * 12.9898f + 78.233f) * 43758.5453f;

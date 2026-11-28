@@ -50,8 +50,8 @@ void ChronoSystem::Reset(entt::registry& r) {
 	CraftScreenOpen() = false;
 	battlePendingRank_ = -1;
 	battleArenaEntity_ = entt::null;
-	battleArenaDecor_.clear();
-	territoryStage_.clear();
+	blocksStage_.clear();
+	blocksStageUnit_ = 0;
 	Engine::LoadProfile::Scope profile("phase", "ChronoSystem::Reset");
 	// デモのシーンか
 	slimePlayerDemo_ = scene_->IsSlimePlayerDemo();
@@ -170,6 +170,9 @@ void ChronoSystem::Reset(entt::registry& r) {
 		}
 		disc_ = renderer->CreateDynamicMesh(v, idx);
 	}
+	// 変形武器を作る画面の見本の窓の背景 (光も影も受けない無地。影も落とさない: Engine/Graphics/ShadowCaster.h)
+	renderer->CreateShaderPipeline(
+	    "CraftBackdrop", L"Resources/Shaders/InstancedObjVS.hlsl", L"Resources/Shaders/CraftBackdropPS.hlsl");
 	if (hitSound_ == 0xffffffff)
 		hitSound_ = Engine::Audio::GetInstance()->Load("Resources/Sound/Devour/hit.wav");
 	if (coreSound_ == 0xffffffff)
@@ -183,13 +186,13 @@ void ChronoSystem::Reset(entt::registry& r) {
 	renderer->SetAmbientColor({0.65f, 0.68f, 0.75f});
 	// 確認用 (Release でも使える): --devour-battle で吸収を飛ばして戦闘から始める。
 	// 大きさは --devour-battle-cm=大きさ (省略で 2 番目の目標)、ステージは --devour-stage=番号、戦闘の秒数は --devour-battle-time=秒。
-	// --devour-battle-auto を足すと自動で戦い、記録を tests/out/devour-battle.txt に書く。--devour-battle-legacy も吸収を飛ばす
+	// --devour-battle-auto を足すと自動で戦い、記録を tests/out/devour-battle.txt に書く
 	// (--devour-battle-auto などだけのときは、吸収から普通に始める)
 	const auto skipGrowth = [] {
 		const wchar_t* line = GetCommandLineW();
 		for (const wchar_t* at = wcsstr(line, L"--devour-battle"); at; at = wcsstr(at + 1, L"--devour-battle")) {
 			const wchar_t next = at[15];
-			if (next == 0 || next == L' ' || next == L'"' || wcsncmp(at + 15, L"-legacy", 7) == 0)
+			if (next == 0 || next == L' ' || next == L'"')
 				return true;
 		}
 		return false;
@@ -319,6 +322,7 @@ void ChronoSystem::Finish(Player& p, bool win) {
 	resultCameraAge_ = 0;
 	resultMeasured_ = false;
 	resultScreenSet_ = false;
+	pile_ = {};
 	p.target = entt::null;
 	p.preview = entt::null;
 	p.action = Action::Free;
@@ -366,6 +370,9 @@ void ChronoSystem::Update(entt::registry& r, GameContext& ctx) {
 			ink.monoAge = -1;
 			ink.phase = SlimePhase::Roaming;
 			ink.charge = ink.spent = 0;
+			// (積み木クラッシャーの結果: こわした積み木の山を積み、スライムをてっぺんに乗せる)
+			if (BlocksPileResult())
+				TickBlocksPile(ctx.dt);
 			InkCamera(r, p, ctx);
 			Presentation(r, p, ctx);
 			// 吸収モードの結果では本物の体を映し続ける
@@ -384,9 +391,12 @@ void ChronoSystem::Update(entt::registry& r, GameContext& ctx) {
 				using namespace UI::Scale;
 				const bool next = devourStage_ + 1 < int(Chrono::DevourStages().size());
 				const bool confirm = UI::Pressed(DIK_RETURN) || UI::PadPressed(XINPUT_GAMEPAD_A);
-				if (finishAge_ < 2.2f) {
+				// (こわした積み木の山の結果は、積み終わってランクと「山となる！」が出るまで。飛ばすとそこへ行く)
+				const bool pile = BlocksPileResult();
+				const float shown = pile ? UI::Scale::PileEnd(BlocksPileCount()) : 2.2f;
+				if (finishAge_ < shown) {
 					if (confirm || ctx.input->IsMouseTrigger(0))
-						finishAge_ = 2.2f;
+						finishAge_ = shown;
 					return;
 				}
 				// 計測用 (--load-profile-auto): 「おなかの中」を見せたあと、やり直しを 1 回押したことにする
@@ -398,10 +408,11 @@ void ChronoSystem::Update(entt::registry& r, GameContext& ctx) {
 					return;
 				}
 				// 「おなかの中」の升の操作 (大きく見ている間は他の操作を止める)
-				if (UpdateDevourShelf(ctx, ui))
+				if (!pile && UpdateDevourShelf(ctx, ui))
 					return;
 				// L / B: チャレンジだけやり直す (吸収が終わったときの体と在庫から)
-				if (battle_.tries > 0 && (UI::Pressed(DIK_L) || UI::PadPressed(XINPUT_GAMEPAD_B))) {
+				if (battle_.tries > 0 &&
+				    (UI::Pressed(DIK_L) || UI::PadPressed(XINPUT_GAMEPAD_B) || (pile && ui.Click(ResultChallenge)))) {
 					RetryDevourBattle(r);
 					return;
 				}

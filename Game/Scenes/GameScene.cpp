@@ -20,7 +20,6 @@
 #include "../Editor/EditorUI.h"
 #include "../Scripts/ScriptEngine.h"
 #include "../Systems/ChronoSystem.h"
-#include "../Systems/FluidSystem.h"
 #include "../Systems/GameRumble.h"
 #include "../UI/SceneMusic.h"
 #include <chrono>
@@ -94,9 +93,6 @@ void GameScene::Initialize(Engine::WindowDX* dx, const Engine::SceneParameters& 
 	// シーンファイルを読み込む (読み込めなければ予備のシーンを使う)
 	const bool loaded = LoadStageFile(params);
 
-	// GPU 流体の初期化
-	Game::FluidSystem::GetInstance()->Initialize(renderer_->GetDevice());
-
 	// エディタ UI の初期化 (アイコンの読み込みなど)
 #ifndef NDEBUG
 	EditorUI::Initialize(renderer_);
@@ -157,12 +153,12 @@ void GameScene::Update() {
 		// Step が要求された分だけ1フレームずつ進める。それ以外は描画のみ (GPU の流体も止める)
 		// Step の要求が無ければ世界を止めて何もしない
 		if (editorStepFrames_ <= 0) {
-			renderer_->SetRogueWorldFrozen(true);
+			renderer_->SetWorldFrozen(true);
 			return;
 		}
 		// 1 フレーム分を使い、止める前の状態に戻して進める
 		--editorStepFrames_;
-		renderer_->SetRogueWorldFrozen(worldFrozenBeforeEditorPause_);
+		renderer_->SetWorldFrozen(worldFrozenBeforeEditorPause_);
 	}
 // Debug / Development: システムごとの処理時間の計測を始める
 #ifndef NDEBUG

@@ -1002,8 +1002,7 @@ void TestDevour() {
 	for (float mass : {500.f, 450000.f})
 		CheckLife(
 		    DevourSpringRange(mass, 1) > DevourSpringRange(mass, .5f) &&
-		        DevourSpringRise(mass, DevourSpringMinPower) > DevourBodyRadius(mass) * 5 &&
-		        DevourLeapRange(mass) < DevourSpringRange(mass, DevourSpringMinPower),
+		        DevourSpringRise(mass, DevourSpringMinPower) > DevourBodyRadius(mass) * 5,
 		    "spring reach is wrong");
 	// 部屋の高さ: 坂はつながっていて登れる傾きで、床は 0
 	// 部屋: ベッドと机は下を通れて上にも乗れる。こたつの布団と座布団はなだらかで、そのまま登れる
@@ -1074,28 +1073,6 @@ void TestDevour() {
 	    DevourShed(LifeStartMass, 20) == 0 && DevourShed(1000, 10) > 10 &&
 	        1000 - DevourShed(1000, 5000) == LifeStartMass,
 	    "shedding shrinks below the start size");
-	// 目標: 正面の覆える物を選び、後ろは無視し、覆えない物しか無ければ弾かれる目標にする
-	std::vector<LifeCollectible> props(3);
-	props[0].at = {0, 1.2f, 7};
-	props[0].radius = 1.5f;
-	props[1].at = {0, 1.2f, -5};
-	props[1].radius = 1;
-	props[2].at = {2, 1.2f, 5};
-	props[2].radius = 20;
-	auto pick = DevourChooseTarget({0, 1.25f, 0}, {0, 0, 1}, LifeStartMass, props);
-	CheckLife(pick.index == 0 && pick.fits, "front coverable object is not chosen");
-	props[0].active = false;
-	pick = DevourChooseTarget({0, 1.25f, 0}, {0, 0, 1}, LifeStartMass, props);
-	CheckLife(pick.index == 2 && !pick.fits, "oversized object is not the bounce target");
-	props[2].active = false;
-	pick = DevourChooseTarget({0, 1.25f, 0}, {0, 0, 1}, LifeStartMass, props);
-	CheckLife(pick.index < 0 && pick.at.z > 0, "empty pounce does not leap forward");
-	// 着地した所の下だけを覆う。塀のような長い物は余裕の分まで届く
-	CheckLife(
-	    DevourUnderCover({0, 1.25f, 0}, {3, 1.2f, 0}, LifeStartMass, 1) &&
-	        !DevourUnderCover({0, 1.25f, 0}, {9, 1.2f, 0}, LifeStartMass, 1) &&
-	        DevourUnderCover({0, 1.25f, 0}, {9, 1.2f, 0}, LifeStartMass, 1, 6),
-	    "cover reach is wrong");
 	// 吸収のアニメーション: 塊とキー
 	{
 		const auto anim = DevourDefaultAnimation();
@@ -1342,7 +1319,7 @@ void TestDevour() {
 	    "leap does not burst out and stop on the target");
 	CheckLife(DevourPounceTime < .85f, "pounce is too slow to chain");
 	puts(
-	    "PASS devour: cover/sink sizes, growth per bite, tiers and time bonus, caps, pounce targets, cover reach and shape phases");
+	    "PASS devour: cover/sink sizes, growth per bite, tiers and time bonus, caps and shape phases");
 }
 // 部屋のギミック: 形の体積・だるま落としの狙い・ボウリングのピン・道のたどり方・家具の上の面
 void TestGimmick() {

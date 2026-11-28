@@ -38,9 +38,6 @@ inline bool Dodge() {
 inline bool Jump() {
 	return Key(VK_SPACE) || Pad(XINPUT_GAMEPAD_A);
 }
-inline bool LockOn() {
-	return Key(VK_MBUTTON) || Pad(XINPUT_GAMEPAD_RIGHT_THUMB | XINPUT_GAMEPAD_LEFT_SHOULDER);
-}
 inline bool Absorb() {
 	return Key(VK_RBUTTON) || Pad(Engine::Input::kPadLT | XINPUT_GAMEPAD_X);
 }

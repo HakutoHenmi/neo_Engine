@@ -46,7 +46,7 @@ float3 SlimeFieldPosition(float3 field) {
     return playerBodyCenter+local;
 }
 float3 SlimeEyeRadii() { return (SlimeMorphActive()&&playerMorph.x==-3?float3(.11f,.22f,.10f):float3(.145f,.285f,.105f))*SlimeDecorationScale(); }
-float3 SlimeEyeGuide(uint eye) {
+float3 SlimeEyeGuideFlat(uint eye) {
     float3 front=SlimeFaceForward(),right=float3(front.z,0,-front.x);
     if(SlimeMorphActive()){
         float height=playerMorph.x<-1.5f&&playerMorph.x>-2.5f?.58f:.38f;
@@ -56,6 +56,23 @@ float3 SlimeEyeGuide(uint eye) {
     if(SlimeCoreActive())return SlimeCorePosition()+right*((eye==0?-1:1)*.46f*SlimeDecorationScale())+front*(SlimeCoreRadii().z*.86f)+float3(0,.09f*SlimeDecorationScale(),0);
     return playerBodyCenter+right*((eye==0?-1:1)*.46f*SlimeDecorationScale())+float3(0,playerRadii.y*.48f,0);
 }
+// 上の向きを、傾き s (x・z へ 1 進むごとの高さ) の面の法線に重ねる回転 (ChronoSystem::BodyTiltApply と同じ)
+float3 SlimeTiltUp(float3 d,float2 s){
+    float3 n=normalize(float3(-s.x,1,-s.y)),axis=float3(n.z,0,-n.x);float sn=length(axis);
+    if(sn<1e-4f)return d;
+    float3 a=axis/sn;return d*n.y+cross(a,d)*sn+a*dot(a,d)*(1-n.y);}
+// 目の場所の目安: 坂の上では体が坂に沿って傾くので、目も体と同じ傾け方で動かす (体の形の傾き playerSlope.xz。坂でなければ 0)。
+// 形の点で作る体 (武器・道具の形) は回して傾け、液体の体は高さをずらして傾けている
+float3 SlimeEyeGuide(uint eye) {
+    float3 guide=SlimeEyeGuideFlat(eye),d=guide-playerBodyCenter;
+    float2 s=playerSlope.xz*(1-playerAir);
+    if(SlimeMorphActive()&&playerMorph.x<.5f)d=SlimeTiltUp(d,s);
+    else d.y+=dot(d.xz,s);
+    return playerBodyCenter+d;
+}
+// 目が体の表面を探す向き: 坂の上では、顔の向きを坂に沿わせる
+float3 SlimeEyeSearch(){float3 f=SlimeFaceForward();float2 s=playerSlope.xz*(1-playerAir);
+    return normalize(f+float3(0,dot(f.xz,s),0));}
 float3 SlimeBubblePosition(uint id,out float radius,out float visibility) {
     float3 random=SlimeHash(float(id));
     if(SlimeMorphActive()){

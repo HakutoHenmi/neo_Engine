@@ -42,7 +42,7 @@ inline constexpr std::array<LifeActionDefinition, 11> LifeActionTable{{
     {"取り込み中", 0, 0, "", nullptr, nullptr, nullptr},
     {"ハンマー", LifeHammerMass, 1, "", "ゴミを吸い込んで本体%dまで育つと、ハンマーに変形できる",
      "ハンマー変形！ 左クリック・RTで叩きつけ (押し続けると連続) / R・Bで戻る",
-     "ハンマー変形！ 左クリック・RTで大きな物を砕く / 右クリック・LTで飛びかかりへ"},
+     "ハンマー変形！ 左クリック・RTで大きな物を砕く / R・Bで戻る"},
     {"剣", LifeSwordMass, 2, "", "本体%dまで育つと変形できる", "剣変形！ 左クリック・RTで横なぎ / R・Bで戻る", nullptr},
     {"飛行機", LifePlaneMass, 3, "", "本体%dまで育つと変形できる", "飛行機変形！ 左クリック・RTで突撃 / R・Bで戻る",
      nullptr},

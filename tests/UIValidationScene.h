@@ -7,7 +7,6 @@
 #include "../Game/Scenes/TitleScene.h"
 #include "../Game/UI/CollectionUI.h"
 #include "../Game/Scenes/SelectScene.h"
-#include "../Game/Scenes/GameOverScene.h"
 // プレイヤー向けの UI (共通部品・グラフィック設定・BGM・クレジット)
 #include "../Game/UI/GameUI.h"
 #include "../Game/UI/GraphicsUI.h"

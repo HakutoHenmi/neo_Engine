@@ -102,7 +102,7 @@ bool Renderer::EvaluateDlss_(uint32_t frame) {
 	cb.nearPlane = std::abs(b / a);
 	cb.farPlane = std::abs(b / (a - 1));
 	cb.includeFluid = volumeSurfaceDepth_ && gpuFluidCoreMode_ >= 4 && fluidVolumeDebugMode_ == 0 ? 1.f : 0.f;
-	cb.dt = rogueWorldFrozen_ ? 0 : fluidSimulatedDt_;
+	cb.dt = worldFrozen_ ? 0 : fluidSimulatedDt_;
 	cb.origin = volumePreviousOrigin_;
 	cb.dimensions = {176, 64, 176};
 	// 変形するスライムは決まった 0.56 ではなく、合わせたセルを使う。古いセルのままだと
