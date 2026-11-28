@@ -18,9 +18,8 @@ void ChronoSystem::BuildInk(entt::registry& r) {
 	health.SetMaxHp(SlimeMaximumMass);
 	health.SetDead(false);
 	// ローグライトの乱数の種を時刻から決める
-	r.get<InkPlayer>(player_).rogue.random = uint32_t(GetTickCount64()) | 1u;
 	// 世界を動かし、流体のデバッグ表示を消す
-	Engine::Renderer::GetInstance()->SetRogueWorldFrozen(false);
+	Engine::Renderer::GetInstance()->SetWorldFrozen(false);
 	Engine::Renderer::GetInstance()->SetDrawFluidDebugArrows(false);
 	Engine::Renderer::GetInstance()->SetFluidVolumeDebugMode(0);
 	// 前回作った「Chrono 」で始まるエンティティを消す
@@ -110,6 +109,17 @@ void ChronoSystem::BuildInk(entt::registry& r) {
 }
 // インクの地面の高さ (真下へのレイで一番高い面)。surface に面の番号を返す
 float ChronoSystem::InkGround(V at, int* surface) const {
+	// 積み木の街 (積み木クラッシャーの専用ステージ) の上なら、その高さより下から始まる物の一番上
+	// (橋の下・トンネルの中では下の面、橋の上では橋。塔の中に入った弾は塔の上の面より下なので当たる)
+	if (BlocksStageActive()) {
+		const float u = battle_.unit, x = (at.x - battle_.arenaAt.x) / u, z = (at.z - battle_.arenaAt.z) / u,
+		            reach = ChallengeBlocksHalf + 3;
+		if (std::abs(x) < reach && std::abs(z) < reach) {
+			if (surface)
+				*surface = 0;
+			return battle_.arenaAt.y + Chrono::Land().Support(x, z, (at.y - battle_.arenaAt.y) / u + .05f) * u;
+		}
+	}
 	// 戦闘フェーズの専用の広いステージ (マップの外に置いた平らな床) の上なら、その床の高さ
 	if (battle_.arenaRadius > 0 && std::abs(at.x - battle_.arenaAt.x) < battle_.arenaRadius * 1.6f &&
 	    std::abs(at.z - battle_.arenaAt.z) < battle_.arenaRadius * 1.6f) {
@@ -323,6 +333,15 @@ void ChronoSystem::InkCamera(entt::registry& r, Player& p, GameContext& ctx) {
 		float open = devour_ ? 1.f : reach(direction, distance);
 		cameraReach_ = open < cameraReach_ ? open : cameraReach_ + (open - cameraReach_) * (1 - std::exp(-3 * ctx.dt));
 		wanted = focus + direction * std::max(.5f, cameraReach_ * distance - .3f);
+		// 積み木の街: カメラを地面 (床・丘・すり鉢・こぶ) より上に保つ。坂を下るとき、後ろの上り坂の中にカメラが埋まって何も見えなくならないように
+		// (塔や橋はカメラと体の間に入ったら透かす: CameraOccluder)
+		if (BlocksStageActive()) {
+			const float u = battle_.unit;
+			const V c = battle_.arenaAt;
+			const float ground =
+			    c.y + Chrono::Land().Base((wanted.x - c.x) / u, (wanted.z - c.z) / u) * u + u * Chrono::BlocksCameraLift;
+			wanted.y = std::max(wanted.y, ground);
+		}
 		// 消火栓のときは肩越しの照準の位置へ移る
 		if (hydrant) {
 			// 高さは体に合わせ、ピッチとは別にする。上を見てもカメラが
@@ -397,10 +416,23 @@ void ChronoSystem::InkCamera(entt::registry& r, Player& p, GameContext& ctx) {
 		ctx.camera->StopShake();
 	// 吸収モードの結果: 本物の体を測れるよう、横から全身を見る構図へゆっくり移る。体は画面の右、地面は巻尺の高さに置く
 	float resultBlend = 0;
-	constexpr float resultFov = .62f;
+	float resultFov = .62f;
 	if (!(devour_ && finished_))
 		ctx.renderer->SetFluidInterior(0, 0);
-	if (devour_ && finished_) {
+	// (空を星空へ変えるのは、積み木の山の結果の間だけ)
+	ctx.renderer->SetSkySpaceBlend(0);
+	// かすみの距離: 積み木の街 (遊んでいる間と山の結果) は、まわりの景色の大きさに合わせて伸ばす。ほかは街の大きさ
+	ctx.renderer->SetFogScale(
+	    devour_ && BlocksStageActive() && (BattleActive() || BlocksPileResult()) ? battle_.unit * StageSceneryFogScale : 1.f);
+	// 積み木クラッシャーの結果: 積み木の山と一緒に上るカメラ (ChallengeBlocks.cpp)
+	if (devour_ && finished_ && BlocksPileResult()) {
+		ctx.camera->StopShake();
+		ctx.camera->SetHandheld(0);
+		BlocksPileCamera(std::min(ctx.dt, .05f), wanted, view);
+		resultBlend = 1;
+		resultFov = .9f;
+		ctx.renderer->SetSkySpaceBlend(pile_.space);
+	} else if (devour_ && finished_) {
 		resultCameraAge_ += std::min(ctx.dt, .05f);
 		resultBlend = ShotEase(std::min(1.f, resultCameraAge_ / 1.25f), 0, 1);
 		const float aspect = ctx.viewportSize.x / std::max(1.f, ctx.viewportSize.y), half = std::tan(resultFov * .5f);
@@ -498,13 +530,22 @@ void ChronoSystem::InkCamera(entt::registry& r, Player& p, GameContext& ctx) {
 	    // 大きくなってカメラが引くほど、遠くまで描く (体が描く範囲の外へ出て消えないように)
 	    // (坂の町は、手前の面をカメラと体の表面の間の半分まで遠くして奥行きの細かさを上げる。遠くの家の壁と窓が重なってちらついていた。
 	    //  奥行きの細かさは手前の面の距離にほぼ比例する。結果の画面ではカメラが体の中へ入るので使わない)
-	    clipNear, 2000 + 4 * ink.cameraPullback);
+	    // (積み木の山の結果は、山の山が大きくなるにつれて手前と奥を広げる)
+	    devour_ && finished_ && BlocksPileResult() ? pile_.nearClip : clipNear,
+	    devour_ && finished_ && BlocksPileResult() ? pile_.farClip
+	    // (積み木の街は、まわりの景色の遠くの板まで描く)
+	    : devour_ && BattleActive() && BlocksStageActive()
+	        ? std::max(2000 + 4 * ink.cameraPullback, battle_.unit * StageSceneryFar * 1.3f)
+	        : 2000 + 4 * ink.cameraPullback);
 	// 消火栓のときは揺れを止める
 	ctx.camera->SetHandheld(aimingHydrant ? 0.f : .008f);
 	// 吸収モードで大きくなったら、影を落とす範囲も広げる
 	if (devour_)
 		ctx.renderer->SetDirectionalShadowRange(460 + 1.5f * ink.cameraPullback, 1800 + 3 * ink.cameraPullback, .3f);
 	ctx.camera->SetShakeStrength(aimingHydrant ? 0.f : shakeSetting_ * .5f);
+	// 変形武器を作る画面: カメラをスライムの形の見本の窓に映るように置き直す
+	if (devour_ && battle_.phase == BattleStep::Craft)
+		CraftPreviewCamera(ctx);
 	// 近いほどプレイヤーを半透明にする
 	p.cameraOpacity = std::clamp((Length(wanted - pos) - 2.5f) / 5.f, .2f, 1.f);
 	// 吸収モードの輪の町: カメラからプレイヤーの体までの間にある建物と、カメラが中に入った建物を透かす

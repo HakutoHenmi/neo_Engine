@@ -41,9 +41,30 @@ struct MotifSlot {
 	MotifSize size = MotifSize::Medium;
 	bool mirror = false, main = false;
 };
+// (J1) 土台の部品: スライムだけで作る決まった形。中心・世界の向きの半分の大きさ (円すいは 根もとの半径・先の半径・長さの半分)・
+// 軸 (カプセルと円すい。0 x・1 y・2 z)・角の丸み (箱)・左右に 2 つ置くか
+struct MotifBasePart {
+	SdfKind kind = SdfKind::Ellipsoid;
+	Vec center{}, half{.5f, .5f, .5f};
+	int axis = 2;
+	float round = .2f;
+	bool mirror = false;
+};
+// (J1) 物を並べる所: 繰り返し (2 つ目の物を並べる) か紋章 (3 つ目の物を 1 つ)。並べ方は 輪 (中心・軸・2 つの半径・角度の範囲)・
+// 列 (from から to)・点。normal が 0 なら土台の面の向きを使う。左右に 2 つ置くか
+enum class MotifPattern : uint8_t { Ring, Line, Point };
+struct MotifSocket {
+	std::string name;
+	bool emblem = false, mirror = false;
+	MotifPattern pattern = MotifPattern::Point;
+	Vec at{}, axis{0, 1, 0}, from{}, to{}, normal{};
+	float radius1 = .3f, radius2 = .3f, angle0 = 0, angle1 = 360;
+};
 struct Motif {
 	std::string id, name, family, nameFormat;
 	std::vector<MotifSlot> slots;
+	std::vector<MotifBasePart> base;
+	std::vector<MotifSocket> sockets;
 	std::array<float, FuseTraitCount> traitFit{};
 	std::map<std::string, float> tagFit;
 };
@@ -100,16 +121,22 @@ inline uint32_t MotifHash(uint32_t a, uint32_t b) {
 }
 inline MotifChoice
     ChooseMotif(const std::vector<Motif>& motifs, const std::array<const MotifItem*, 3>& items, uint32_t seed) {
+	// (作る画面で物がまだ 3 つそろっていないときは、無い物を nullptr で渡す。無い物は枠に入れず、減点もしない。
+	//  型紙を使わない下限 MotifFallbackScore も使わない: 1 つ目から同じ作り方の形を見せて、物を足すたびに形が育つように)
+	int present = 0;
+	for (const auto* it : items)
+		present += it != nullptr;
 	// 3 つの中での大きさの順 (同じなら並べた順)
 	std::array<int, 3> rank{};
 	for (int i = 0; i < 3; ++i)
 		for (int j = 0; j < 3; ++j)
-			if (j != i && (items[size_t(j)]->profile->realSize < items[size_t(i)]->profile->realSize ||
-			               (items[size_t(j)]->profile->realSize == items[size_t(i)]->profile->realSize && j < i)))
+			if (j != i && items[size_t(i)] && items[size_t(j)] &&
+			    (items[size_t(j)]->profile->realSize < items[size_t(i)]->profile->realSize ||
+			     (items[size_t(j)]->profile->realSize == items[size_t(i)]->profile->realSize && j < i)))
 				++rank[size_t(i)];
 	FuseLevels lv{};
 	for (const auto* it : items)
-		for (FuseTrait t : it->traits)
+		for (FuseTrait t : it ? it->traits : std::array<FuseTrait, 2>{FuseTrait::Count, FuseTrait::Count})
 			if (t != FuseTrait::Count)
 				++lv[size_t(t)];
 	MotifChoice best;
@@ -120,13 +147,14 @@ inline MotifChoice
 			trait += motif.traitFit[size_t(t)] * float(lv[size_t(t)]);
 		trait /= 3;
 		for (const auto* it : items)
-			tag += it->tagScore[m];
+			if (it)
+				tag += it->tagScore[m];
 		tag /= 3;
 		const int slots = int(motif.slots.size());
 		// 物ごとの枠の合い方
 		std::array<std::array<float, 8>, 3> fit{};
 		for (int i = 0; i < 3; ++i)
-			for (int s = 0; s < std::min(slots, 8); ++s)
+			for (int s = 0; s < std::min(slots, 8) && items[size_t(i)]; ++s)
 				fit[size_t(i)][size_t(s)] =
 				    MotifSlotFit(motif.slots[size_t(s)], *items[size_t(i)]->profile, rank[size_t(i)]);
 		const float jitter = float(MotifHash(seed, uint32_t(m)) & 1023) / 1023.f * .01f;
@@ -141,6 +169,12 @@ inline MotifChoice
 					std::array<bool, 8> used{};
 					for (int i = 0; i < 3; ++i) {
 						const int s = pick[size_t(i)];
+						if (!items[size_t(i)]) {
+							ok = s < 0;
+							if (!ok)
+								break;
+							continue;
+						}
 						if (s < 0) {
 							if (!items[size_t(i)]->sensitive)
 								shape -= MotifUnusedPenalty;
@@ -171,7 +205,7 @@ inline MotifChoice
 					}
 				}
 	}
-	if (best.score < MotifFallbackScore)
+	if (present == 3 && best.score < MotifFallbackScore)
 		best.motif = -1;
 	return best;
 }

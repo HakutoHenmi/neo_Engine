@@ -51,12 +51,6 @@ public:
 	    GameScene* scene, const std::string& eventName, std::function<void(const std::string&)> callback);
 	void SubscribeVoid(GameScene* scene, const std::string& eventName, std::function<void()> callback);
 
-	// 共有変数の取得・設定 (VariableComponent と連携)
-	void SetVar(entt::entity entity, GameScene* scene, const std::string& key, float value);
-	void SetVarString(entt::entity entity, GameScene* scene, const std::string& key, const std::string& value);
-	float GetVar(entt::entity entity, GameScene* scene, const std::string& key, float defaultVal = 0.0f);
-	std::string
-	    GetVarString(entt::entity entity, GameScene* scene, const std::string& key, const std::string& defaultVal = "");
 };
 
 } // namespace Game

@@ -198,4 +198,244 @@ inline std::vector<SdfPart> BuildMotifParts(
 	}
 	return parts;
 }
+// ---- (J1) 型紙の土台と、物を並べる所 ----
+// 土台: 型紙ごとに決まったスライムの形。1 つ目の物は、土台の比率 (幅・高さ・長さ) だけを ±MotifBaseFlex まで変える (外形がぶれないように)
+inline constexpr float MotifBaseFlex = .15f;
+// 1 つ目の物の比率から、土台の向きごとの倍率 (3 つをかけると 1)。物の前後左右の長い方を長さ (z)、短い方を幅 (x) とみる
+inline Vec MotifBaseScale(const ItemProfile* body) {
+	if (!body)
+		return {1, 1, 1};
+	const Vec s = body->size;
+	const float len = std::max({s.x, s.z, 1e-3f}), wid = std::max(std::min(s.x, s.z), 1e-3f), h = std::max(s.y, 1e-3f);
+	const float mean = std::cbrt(len * wid * h);
+	auto f = [&](float v) { return std::clamp(std::pow(v / mean, .35f), 1 - MotifBaseFlex, 1 + MotifBaseFlex); };
+	Vec k{f(wid), f(h), f(len)};
+	const float c = std::cbrt(k.x * k.y * k.z);
+	return k * (1 / c);
+}
+// 土台の部品を作る (scale は MotifBaseScale。部品の part は 0 = スライム)。太さの下限は呼ぶ側で SdfApplyFloor
+inline std::vector<SdfPart> BuildMotifBase(const Motif& motif, Vec scale) {
+	using namespace MotifShapeDetail;
+	std::vector<SdfPart> parts;
+	for (const auto& b : motif.base) {
+		SdfPart s;
+		s.kind = b.kind;
+		s.center = Mul(b.center, scale);
+		s.mirror = b.mirror;
+		s.part = 0;
+		// 軸の向き w = 世界の軸 a、u・v は残りの 2 つ (a の次、その次)
+		const int a = std::clamp(b.axis, 0, 2), u = (a + 1) % 3, v = (a + 2) % 3;
+		if (b.kind == SdfKind::Cone) {
+			const float across = (Comp(scale, u) + Comp(scale, v)) * .5f;
+			s.half = {b.half.x * across, b.half.y * across, b.half.z * Comp(scale, a)};
+			s.axes = {AxisVec(u), AxisVec(v), AxisVec(a)};
+		} else if (b.kind == SdfKind::Capsule) {
+			const Vec h = Mul(b.half, scale);
+			s.half = {Comp(h, u), Comp(h, v), Comp(h, a)};
+			s.axes = {AxisVec(u), AxisVec(v), AxisVec(a)};
+		} else {
+			s.half = Mul(b.half, scale);
+		}
+		s.round = b.round * (scale.x + scale.y + scale.z) / 3;
+		parts.push_back(s);
+	}
+	return parts;
+}
+// 並べる所の 1 つの点: 場所・外への向き (面の法線)・並びの向き
+struct MotifSocketPoint {
+	Vec pos{}, normal{0, 1, 0}, tangent{1, 0, 0};
+};
+// 並べる所に count 個の点を作る (右側。mirror の所は呼ぶ側で x を反転して左にも置く)。
+// 点は土台の面に寄せる (データの点が少しずれていても面の上に乗る)
+inline std::vector<MotifSocketPoint>
+    MotifSocketPoints(const MotifSocket& socket, int count, Vec scale, const std::vector<SdfPart>& base, float blend) {
+	using namespace MotifShapeDetail;
+	using ShapeGrammarDetail::Norm;
+	std::vector<MotifSocketPoint> points;
+	count = std::max(1, count);
+	auto distance = [&](Vec p) { return SdfShapeDistance(base, p, blend); };
+	auto gradient = [&](Vec p) {
+		const float e = .02f;
+		return Norm(
+		    {distance(p + Vec{e, 0, 0}) - distance(p - Vec{e, 0, 0}),
+		     distance(p + Vec{0, e, 0}) - distance(p - Vec{0, e, 0}),
+		     distance(p + Vec{0, 0, e}) - distance(p - Vec{0, 0, e})});
+	};
+	for (int i = 0; i < count; ++i) {
+		MotifSocketPoint q;
+		if (socket.pattern == MotifPattern::Ring) {
+			// 軸が y なら u = x・v = z (90 度が前)、x なら u = z・v = y、z なら u = x・v = y
+			const Vec a = socket.axis;
+			const Vec u = std::abs(a.y) > .5f ? Vec{1, 0, 0} : std::abs(a.x) > .5f ? Vec{0, 0, 1} : Vec{1, 0, 0};
+			const Vec v = std::abs(a.y) > .5f ? Vec{0, 0, 1} : Vec{0, 1, 0};
+			const bool closed = std::abs(socket.angle1 - socket.angle0) >= 359.f;
+			const float t = closed ? float(i) / float(count) : count == 1 ? .5f : float(i) / float(count - 1);
+			const float th = (socket.angle0 + (socket.angle1 - socket.angle0) * t) * 3.14159265f / 180.f;
+			q.pos = socket.at + u * (socket.radius1 * std::cos(th)) + v * (socket.radius2 * std::sin(th));
+			q.tangent = Norm(u * (-socket.radius1 * std::sin(th)) + v * (socket.radius2 * std::cos(th)));
+		} else if (socket.pattern == MotifPattern::Line) {
+			const float t = count == 1 ? .5f : float(i) / float(count - 1);
+			q.pos = socket.from + (socket.to - socket.from) * t;
+			q.tangent = Norm(socket.to - socket.from);
+		} else {
+			q.pos = socket.at;
+		}
+		q.pos = Mul(q.pos, scale);
+		q.tangent = Norm(Mul(q.tangent, scale));
+		// 面に寄せる (2 回)。外への向きは、データの normal か、面の向き
+		for (int k = 0; k < 2; ++k)
+			q.pos = q.pos - gradient(q.pos) * distance(q.pos);
+		q.normal = SdfLength(socket.normal) > 0 ? Norm(socket.normal) : gradient(q.pos);
+		points.push_back(q);
+	}
+	return points;
+}
+// ---- (J2) 並べる所に物を並べて埋め込む ----
+//  スライムの面は粗い (体積 CraftShapeVolume に太さの下限 CraftMinThick なので、体の幅に読める出っぱりは 2 つくらい)。
+//  そこで、スライムは土台の決まった形だけを作り、並べる物は本物のモデル (細かさが流体に縛られない) を、土台の面に半分沈めて置く。
+//  ここでは置き方 (場所・向き・大きさ) だけを決める (描くのはゲームの側。J3)
+//  - 役は並べた順で決まる: 1 つ目 = 土台の比率・2 つ目 = 繰り返し (並べる所に何個も)・3 つ目 = 紋章 (1 つ)。配慮の物は置かない (nullptr)
+//  - 個数と大きさ: 1 つ目の物に比べて小さい物ほど多く (4・5・7 個)。並べる所の長さを個数で割り、間隔は大きさの MotifPitch 倍。
+//    大きさ (並びの向きの半分の大きさ) は MotifModelMin〜Max
+//  - 向き: 長い物は、輪では外へ放射 (車輪のスポーク)・列では列を横切る向き。そのほかの物は一番薄い向きを外 (面の向き) へ、一番長い向きを並びの向きへ。
+//    立つ物を横向きの面 (紋章) に置くときは、上下を保つ。どれも面に沿って寝かせるので、面から出るのは物の厚みの半分まで
+//  - 埋め込み: 物の真ん中を、太さの下限を入れた土台の面から、外への向きの半分の厚みの MotifModelOut 倍だけ外に置く (6〜7 割が沈む)
+inline constexpr float MotifPitch = 1.15f, MotifModelMin = .15f, MotifModelMax = .34f, MotifEmblemSize = .3f,
+                       MotifModelOut = .4f;
+inline constexpr int MotifRepeatMin = 3, MotifRepeatMax = 8;
+// (J3) 並べたモデルを出す時: 形になってからの秒 (液体が形に寄るのを待つ) と、出てくるまでの秒
+inline constexpr float MotifModelDelay = .35f, MotifModelFade = .3f;
+// (J3) 液体の見える面は、表面張力で形の面より少し内側になる (特に左右の端)。並べる所の面を、太さの下限の半分の MotifSurfaceInset 倍だけ内側とみる
+inline constexpr float MotifSurfaceInset = .5f;
+// 置く物 1 つ: 3 つの中の番号・場所・向き (axes[m] が物の場の向き m の世界の向き)・場の座標から世界への倍率・
+// 左右に映した物か (向きが鏡になる)・繰り返しか紋章か
+struct MotifModel {
+	int item = 0;
+	Vec pos{};
+	std::array<Vec, 3> axes{Vec{1, 0, 0}, Vec{0, 1, 0}, Vec{0, 0, 1}};
+	float scale = 1;
+	bool mirrored = false, emblem = false;
+};
+namespace MotifShapeDetail {
+inline float VecDot(Vec a, Vec b) {
+	return a.x * b.x + a.y * b.y + a.z * b.z;
+}
+// 物の場の向き m を、世界のどの向きにするか (n は外、spread は長い物を伸ばす向き、along は並びの向き)
+inline std::array<Vec, 3> ItemAxes(Vec h, bool longItem, bool upright, Vec n, Vec spread, Vec along) {
+	using ShapeGrammarDetail::Cross;
+	using ShapeGrammarDetail::Norm;
+	auto flat = [&](Vec v) { return Norm(v - n * VecDot(v, n)); };
+	std::array<int, 3> order{0, 1, 2};
+	std::stable_sort(order.begin(), order.end(), [&](int a, int b) { return Comp(h, a) > Comp(h, b); });
+	std::array<Vec, 3> axes{};
+	if (upright && std::abs(n.y) < .5f) {
+		// 上下を保つ: 場の y は上。x と z の薄い方を外へ
+		const Vec up = Norm(Vec{0, 1, 0} - n * n.y), side = Norm(Cross(up, n));
+		const bool xThin = h.x <= h.z;
+		axes[1] = up;
+		axes[xThin ? 0 : 2] = n;
+		axes[xThin ? 2 : 0] = side;
+		return axes;
+	}
+	const Vec first = flat(longItem ? spread : along);
+	const Vec third = Norm(Cross(n, first));
+	axes[size_t(order[0])] = first;
+	axes[size_t(order[2])] = n;
+	axes[size_t(order[1])] = third;
+	return axes;
+}
+} // namespace MotifShapeDetail
+// 並べる所の長さ (輪は弧の長さ、列は端から端)
+inline float MotifSocketLength(const MotifSocket& s, Vec scale) {
+	using namespace MotifShapeDetail;
+	if (s.pattern == MotifPattern::Ring) {
+		const float span = std::abs(s.angle1 - s.angle0) * 3.14159265f / 180.f;
+		const float across = (scale.x + scale.y + scale.z) / 3;
+		return span * (s.radius1 + s.radius2) * .5f * across;
+	}
+	if (s.pattern == MotifPattern::Line)
+		return SdfLength(Mul(s.to - s.from, scale));
+	return 0;
+}
+// 土台の部品を作り (part 1・太さの下限を入れる)、並べる物の置き方を models に返す。items は 3 つの物 (置かない物は nullptr。
+// items[0] は土台の比率だけ)。左右の所の物は、右と左 (鏡) の 2 つを返す。最後に一番低い所を床 (y = 0) にそろえる (物も一緒に)
+inline std::vector<SdfPart> BuildSocketParts(
+    const Motif& motif, const std::array<const ItemProfile*, 3>& items, float minHalf,
+    std::vector<MotifModel>* models = nullptr) {
+	using namespace MotifShapeDetail;
+	using ShapeGrammarDetail::Cross;
+	using ShapeGrammarDetail::Norm;
+	const auto& fields = SdfFields();
+	const Vec scale = MotifBaseScale(items[0]);
+	std::vector<SdfPart> parts = BuildMotifBase(motif, scale);
+	for (auto& s : parts) {
+		s.part = 1;
+		SdfApplyFloor(s, minHalf);
+	}
+	std::vector<MotifModel> placed;
+	for (const auto& socket : motif.sockets) {
+		const int item = socket.emblem ? 2 : 1;
+		const ItemProfile* prof = items[size_t(item)];
+		if (!prof || prof->field < 0 || prof->field >= int(fields.size()))
+			continue;
+		const Vec h = fields[size_t(prof->field)].half;
+		const float big = std::max({h.x, h.y, h.z, 1e-4f});
+		int count = 1;
+		float size = MotifEmblemSize;
+		if (!socket.emblem) {
+			// 1 つ目の物に比べて小さい物ほど多く並べる
+			const float ratio = items[0] ? prof->realSize / std::max(1e-4f, items[0]->realSize) : 1.f;
+			const int want = ratio < .5f ? 7 : ratio < 1.f ? 5 : 4;
+			const float length = MotifSocketLength(socket, scale);
+			const bool closed =
+			    socket.pattern == MotifPattern::Ring && std::abs(socket.angle1 - socket.angle0) >= 359.f;
+			const float gaps = float(closed ? want : want - 1);
+			size = std::clamp(length / (2 * MotifPitch * std::max(1.f, gaps)), MotifModelMin, MotifModelMax);
+			count =
+			    std::clamp(int(length / (2 * MotifPitch * size)) + (closed ? 0 : 1), MotifRepeatMin, MotifRepeatMax);
+		}
+		const bool longItem = prof->shape == ItemShapeClass::Long;
+		for (const auto& q : MotifSocketPoints(socket, count, scale, parts, CraftBlend)) {
+			// 長い物を伸ばす向き: 輪は中心から外 (放射)、列は列を横切る向き、点は上 (面が上向きなら前)
+			Vec spread{0, 1, 0};
+			if (socket.pattern == MotifPattern::Ring)
+				spread = Norm(q.pos - Mul(socket.at, scale));
+			else if (socket.pattern == MotifPattern::Line)
+				spread = Norm(Cross(q.normal, q.tangent));
+			else if (std::abs(q.normal.y) > .9f)
+				spread = {0, 0, 1};
+			MotifModel m;
+			m.item = item;
+			m.axes = ItemAxes(h, longItem, prof->Has(ItemUpright), q.normal, spread, q.tangent);
+			m.scale = size / big;
+			const float out =
+			    m.scale * (std::abs(VecDot(m.axes[0], q.normal)) * h.x + std::abs(VecDot(m.axes[1], q.normal)) * h.y +
+			               std::abs(VecDot(m.axes[2], q.normal)) * h.z);
+			m.pos = q.pos + q.normal * (out * MotifModelOut - minHalf * MotifSurfaceInset);
+			m.emblem = socket.emblem;
+			placed.push_back(m);
+			if (socket.mirror) {
+				MotifModel l = m;
+				l.pos.x = -l.pos.x;
+				for (auto& a : l.axes)
+					a.x = -a.x;
+				l.mirrored = true;
+				placed.push_back(l);
+			}
+		}
+	}
+	// 床にそろえる
+	float low = 1e9f;
+	for (const auto& p : parts)
+		low = std::min(low, p.center.y - SdfExtent(p).y);
+	for (auto& p : parts) {
+		p.center.y -= low;
+		p.pivot = p.center;
+	}
+	for (auto& m : placed)
+		m.pos.y -= low;
+	if (models)
+		*models = std::move(placed);
+	return parts;
+}
 } // namespace Game::Chrono

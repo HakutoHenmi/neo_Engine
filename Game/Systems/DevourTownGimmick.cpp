@@ -755,7 +755,7 @@ void ChronoSystem::TickMikoshiHelpers(entt::registry& r, V home, float dt) {
 			if (h.phase == 1 && valid && life_.props[size_t(h.prop)].active) {
 				auto& prop = life_.props[size_t(h.prop)];
 				prop.at = home;
-				devourEatBy_ = 6;
+				devourEatBy_ = 5;
 				gained += DevourEat(r, size_t(h.prop));
 				++eaten;
 			}
@@ -833,27 +833,6 @@ void ChronoSystem::TickMikoshiHelpers(entt::registry& r, V home, float dt) {
 	h.at.y = InkGround(h.at);
 	h.from = h.at;
 	mikoshiHelpers_.push_back(h);
-}
-// ステージを作り直した: 子分を全部消す (持っていた物は元の場所に戻す)
-void ChronoSystem::EndMikoshiHelpers(entt::registry& r) {
-	for (auto& h : mikoshiHelpers_) {
-		if (h.prop < 0 || size_t(h.prop) >= life_.props.size())
-			continue;
-		auto& prop = life_.props[size_t(h.prop)];
-		if (!prop.active)
-			continue;
-		prop.sealed = false;
-		if (h.phase == 1) {
-			prop.at = h.at + V{0, 1.2f, 0};
-			if (prop.visual != kNone) {
-				auto e = entt::entity(prop.visual);
-				if (r.valid(e) && r.all_of<MeshRendererComponent>(e))
-					r.get<MeshRendererComponent>(e).enabled = true;
-			}
-		}
-	}
-	mikoshiHelpers_.clear();
-	mikoshiSend_ = 0;
 }
 // 子分を描く: 体と同じ色の小さなスライムが跳ねながら走り、持ってくる物を頭の上に載せる。
 // 担いでいる間は、担ぎ棒の下に担ぎ手の子分 4 匹もいて、わっしょいに合わせて跳ねる

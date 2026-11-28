@@ -4,7 +4,8 @@
 #include "ChronoRules.h"
 #include "DomainRules.h"
 #include "SwarmRules.h"
-#include "RogueliteRules.h"
+#include "CinematicRules.h"
+#include "../Data/GameData.h"
 #include <array>
 #include <cstdint>
 namespace Game::Chrono {
@@ -152,12 +153,8 @@ inline float SlimeMono(float age) {
 inline float SlimeActiveStep(float age, float duration, float dt) {
 	return std::min(dt, std::max(0.f, duration - age));
 }
-// インクのモードのプレイヤーの状態 (強化・群れ・輪・溜めとビーム・液体の見た目・カメラ・回避)
+// インクのモードのプレイヤーの状態 (群れ・輪・溜めとビーム・液体の見た目・カメラ・回避)
 struct InkPlayer {
-	Roguelite rogue;
-	// ボスへの状態異常の効果の時間
-	float rogueBossCorrosion = 0, rogueBossBurn = 0, rogueBossSlow = 0;
-	bool rogueBossPool = false;
 	// 群れのモードと戦闘の段階
 	bool hordeEnabled = true;
 	BattlePhase battlePhase = BattlePhase::Horde;

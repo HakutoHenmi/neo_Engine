@@ -219,9 +219,6 @@ void DevourAnimEditor::DrawToolbar(GameScene* scene) {
 	const bool ready = Ready(scene);
 	ImGui::BeginDisabled(!ready);
 	ImGui::Checkbox("ゲームのスライムで確認 (止まったまま今の時間の形にする)", &gamePreview_);
-	ImGui::SameLine();
-	if (ImGui::Button("実際に飛びかかる"))
-		scene->GetChronoSystem()->lifeAbsorbBuffer_ = 0.3f;
 	ImGui::EndDisabled();
 	if (!ready) {
 		ImGui::SameLine();

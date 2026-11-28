@@ -625,7 +625,7 @@ void Renderer::BeginFrame(const float clearColorRGBA[4]) {
 	sceneryLodStats_ = {};
 	frameParticleCount_ = 0;
 
-	if (!rogueWorldFrozen_)
+	if (!worldFrozen_)
 		cbFrame_.time += TimeManager::GetInstance().GetDeltaTime();
 
 	// インスタンス描画用のキューをクリア
@@ -650,7 +650,7 @@ void Renderer::BeginFrame(const float clearColorRGBA[4]) {
 
 	framePPEnabled_ = ppEnabled_ && ppSceneColor_;
 
-	if (!rogueWorldFrozen_)
+	if (!worldFrozen_)
 		cbFrame_.time += 1.0f / 60.0f;
 
 	{
@@ -6812,7 +6812,7 @@ void Renderer::UpdateGPUFluid(float dt) {
 	cb.decoyPos = gpuFluidDecoyPos_;
 	cb.decoyAttraction = gpuFluidDecoyAttraction_;
 	cb.decoyScale = gpuFluidDecoyScale_;
-	cb.pad7 = rogueWorldFrozen_ ? 1.f : 0.0f;
+	cb.pad7 = worldFrozen_ ? 1.f : 0.0f;
 	// 変形の計算は 8192 個のバケットに詰めた近傍テーブルを使う (FluidSimCS の GetGridHash)。
 	// ボリュームの BuildShapes も同じテーブルを探すので、大きさも渡す。
 	fluidHashBuckets_ = morphActive ? 8192u : 65536u;
@@ -7238,7 +7238,7 @@ void Renderer::EmitGPUFluid(
 	cb.decoyPos = gpuFluidDecoyPos_;
 	cb.decoyAttraction = gpuFluidDecoyAttraction_;
 	cb.decoyScale = gpuFluidDecoyScale_;
-	cb.pad7 = rogueWorldFrozen_ ? 1.f : 0.0f;
+	cb.pad7 = worldFrozen_ ? 1.f : 0.0f;
 	cb.decoyForward = gpuFluidDecoyForward_;
 	cb.pad8 = 0.0f;
 

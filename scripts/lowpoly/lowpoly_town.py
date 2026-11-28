@@ -1573,3 +1573,66 @@ def senro():
     for z in (-54, 54):
         bx(s, (-L, 40, z - 4), (L, 56, z + 4), "steel")
     return s
+
+
+# ==== 結果の景色 (積み木の山のまわり) ================================================================
+def cloud(puffs, seed):
+    """もこもこの雲: 玉 (x, y, z, 半径) を寄せて、底を平らに切る。上は白、底の面は少し灰色"""
+    import bmesh
+    s = Shape()
+    for n, (x, y, z, r) in enumerate(puffs):
+        mesh = bmesh.new()
+        bmesh.ops.create_icosphere(mesh, subdivisions=2, radius=r)
+        for i, f in enumerate(mesh.faces):
+            pts = []
+            low = True
+            for v in f.verts:
+                # (面ごとに少しだけ揺らして、手でこねたような凸凹にする)
+                k = 1 + .06 * math.sin(v.co.x * .09 + seed + n) * math.cos(v.co.y * .07 + n * 1.7)
+                py = y + v.co.z * k
+                low = low and py <= 1
+                pts.append((x + v.co.x * k, max(py, 0.0), z + v.co.y * k))
+            s.face(pts, "gray_light" if low else "white")
+        mesh.free()
+    return s
+
+
+@model()
+def kumo_a():
+    # 横に長い雲 (幅 12m 前後。大きさは使う側で決める)
+    return cloud([(-380, 60, 0, 230), (-60, 120, 30, 320), (280, 90, -20, 270), (520, 40, 10, 170), (80, 40, -160, 220),
+                  (-200, 30, 150, 200)], 1.0)
+
+
+@model()
+def kumo_b():
+    # 背の高い入道雲
+    return cloud([(0, 120, 0, 340), (-260, 60, 40, 240), (250, 70, -30, 250), (40, 380, 20, 260), (-90, 560, -10, 190),
+                  (120, 300, 160, 200), (60, 50, -200, 210)], 2.0)
+
+
+@model()
+def kumo_c():
+    # 小さなちぎれ雲
+    return cloud([(-150, 40, 0, 150), (40, 80, 20, 200), (210, 40, -10, 140), (60, 30, -110, 120)], 3.0)
+
+
+@model()
+def ki_maru():
+    # 丸い広葉樹 (高さ 6m)
+    s = Shape()
+    tree_on(s, [(30, 0), (22, 25), (18, 220), (14, 280)],
+            [(-120, 380, 30, 140), (120, 400, -30, 145), (0, 500, 0, 160), (40, 360, 150, 120), (-40, 370, -140, 120)],
+            leafy("grass", "green_dark"),
+            branches=[((0, 240, 0), (-100, 360, 30), 12), ((0, 250, 0), (100, 380, -30), 12), ((0, 260, 0), (0, 460, 0), 12)])
+    return s
+
+
+@model()
+def sugi():
+    # 杉 (高さ 9m)。とがった葉の段
+    s = Shape()
+    s.lathe([(26, 0), (20, 30), (12, 300), (6, 820)], "bark", sides=6)
+    for k, (y, r) in enumerate(((180, 190), (330, 160), (470, 125), (600, 90), (720, 55))):
+        s.lathe([(0, y), (r, y + 20), (r * .55, y + 140), (0, y + 200)], "green_dark" if k % 2 else "moss", sides=8)
+    return s

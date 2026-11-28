@@ -365,8 +365,6 @@ void ChronoSystem::BuildSlimeLife(entt::registry& r) {
 	health.SetDead(false);
 	// 強化メニューを止め、群れのモードで戦う
 	auto& ink = r.get<InkPlayer>(player_);
-	ink.rogue.enabled = false;
-	ink.rogue.menu = false;
 	ink.battlePhase = BattlePhase::Horde;
 	ink.hordeEnabled = true;
 	ink.swarmKills = 0;
@@ -402,14 +400,16 @@ void ChronoSystem::BuildSlimeLife(entt::registry& r) {
 		life_.props.push_back(prop);
 	}
 	// 部屋のギミック: 動かす物を止め、ばらまく物を隠す
-	if (devour_)
+	if (devour_) {
 		ResetDevourGimmicks(r);
+		// (チャレンジの景色の地球の絵は描くのに数秒かかるので、ステージを始めたときに別の糸で描き始めておく)
+		PreparePileWorld(false);
+	}
 	// 吸収モード: 路地の塀とバリケードも、大きくなれば覆って飲み込める
 	devourWallProps_.clear();
 	devourBarricadeProp_ = -1;
 	devourClock_ = {};
 	devourHeli_ = {};
-	devourPounce_ = {};
 	devourMeals_.clear();
 	devourEaten_.clear();
 	shelf_ = {};
@@ -417,7 +417,6 @@ void ChronoSystem::BuildSlimeLife(entt::registry& r) {
 	devourSplashes_.clear();
 	devourDigest_ = 0;
 	devourGulp_ = {};
-	devourPounceWait_ = 0;
 	devourBiteAge_ = -1;
 	devourChew_ = 0;
 	devourSizePulse_ = 0;
@@ -498,7 +497,7 @@ void ChronoSystem::BuildSlimeLife(entt::registry& r) {
 	// 流体の見本と変形を初期化する
 	scene_->ResetFluidPreview();
 	auto* render = Engine::Renderer::GetInstance();
-	render->SetRogueWorldFrozen(false);
+	render->SetWorldFrozen(false);
 	render->SetFluidMorphTargets({}, 0);
 	render->SetFluidTendrils({});
 	// 分裂と飲み込みの音を一度だけ読み込む
@@ -932,7 +931,7 @@ void ChronoSystem::SyncSlimeBodies(GameContext& ctx) {
 				entry.second = DevourRanks(entry.first);
 			}
 			// 今の形と、点ごとの口の壁の割合。本当に飛びかかっているときは体そのものが進む。確認中は進んだ分を形に足す
-			DevourPose(DevourAnim(), age, entry.first, entry.second, pose, devourPounce_.seed, &wall);
+			DevourPose(DevourAnim(), age, entry.first, entry.second, pose, 0, &wall);
 			if (preview) {
 				float travel = DevourLeapProgress(age) * devourPreviewDistance_;
 				for (auto& p : pose)
@@ -986,9 +985,13 @@ void ChronoSystem::SyncSlimeBodies(GameContext& ctx) {
 		               : b.action == LifeAction::Engulf ? 36.f
 		               : b.weapon.active                ? 80.f
 		                                                : 32.f;
+		// (積み木の街: 床は体が乗っている傾いた面の、体の真ん中での高さ。橋の上下で取り違えないように)
+		const bool blocksLand = i == 0 && BlocksStageActive();
 		common.material = {
 		    life_.recipe.Damping(), life_.recipe.Viscosity(), life_.recipe.SurfaceTension(),
-		    life_.lab ? 1200.f : InkGround(b.at)};
+		    life_.lab                                    ? 1200.f
+		    : blocksLand && battle_.fallSpeed <= 0 ? b.at.y - Chrono::ChallengeBodyGround
+		                                                 : InkGround(b.at)};
 		V drive = liquid ? b.coreVelocity : b.velocity;
 		common.motion = {drive.x, drive.y, drive.z, b.air};
 		common.shape = {
@@ -1012,7 +1015,13 @@ void ChronoSystem::SyncSlimeBodies(GameContext& ctx) {
 		//     GPU 側 (FluidMorph.hlsli の MorphLocal / MorphGround) で楕円体と床を坂に沿って傾ける
 		//   飛びかかりの形: 点の行き先で形を作るので、各点を傾きの分だけ上下にずらす
 		V slope{};
-		if (devour_ && !life_.lab && (liquid || wrapping) && !b.down) {
+		// 積み木の街: 体を乗せる面の傾き (縁の 8 か所から求めたもの。傾きの変わる丘のふもとや肩でも 0 にしない) を、体の右と前の向きに直す
+		if (blocksLand && !b.down) {
+			V f{heading.x, 0, heading.z};
+			f = Length(f) > .01f ? Unit(f) : V{0, 0, 1};
+			const V right{f.z, 0, -f.x}, g = battle_.groundSlope;
+			slope = {std::clamp(Dot(g, right), -1.f, 1.f), 0, std::clamp(Dot(g, f), -1.f, 1.f)};
+		} else if (devour_ && !life_.lab && (liquid || wrapping) && !b.down) {
 			V f{heading.x, 0, heading.z};
 			f = Length(f) > .01f ? Unit(f) : V{0, 0, 1};
 			const V right{f.z, 0, -f.x};
@@ -1031,9 +1040,19 @@ void ChronoSystem::SyncSlimeBodies(GameContext& ctx) {
 		}
 		auto& tilt = lifeSlope_[i];
 		tilt = Lerp(tilt, slope, 1 - std::exp(-10 * frameDt));
-		const bool tilted = wrapping && std::abs(tilt.x) + std::abs(tilt.z) > .01f;
+		if (i == 0) {
+			V hf{heading.x, 0, heading.z};
+			hf = Length(hf) > .01f ? Unit(hf) : V{0, 0, 1};
+			lifeTiltWorld_ = V{hf.z, 0, -hf.x} * tilt.x + hf * tilt.z;
+		}
+		// (積み木の街では、武器やギミックの形も点を傾けて坂に沿わせる)
+		const bool tilted =
+		    (wrapping || (blocksLand && (weapon || gimmick))) && std::abs(tilt.x) + std::abs(tilt.z) > .01f;
 		if (liquid)
 			common.blend = Engine::Renderer::PackLiquidBlend(b.motion, devour_ ? tilt.x : 0.f, devour_ ? tilt.z : 0.f);
+		// (積み木の街: 液体の体は GPU で高さをずらして坂に沿わせるので、坂が急なほど坂に垂直な厚みが薄くなる。その分だけ高さを足して元の厚みに戻す)
+		if (blocksLand && liquid)
+			common.shape.y *= std::sqrt(1 + tilt.x * tilt.x + tilt.z * tilt.z);
 		// 飛びかかりの形: 下の側の点が地面で止まらないよう、流体の床を坂の下の端の高さまで下げる
 		if (tilted)
 			common.material.w -= (std::abs(tilt.x) + std::abs(tilt.z)) * std::max(radii.x, radii.z) * 1.2f;
@@ -1070,8 +1089,14 @@ void ChronoSystem::SyncSlimeBodies(GameContext& ctx) {
 			Target target = common;
 			target.local = {local.x, std::max(.18f, local.y), local.z};
 			// 斜面の傾きの分だけ上下にずらす (点の位置は体の右・上・前の向きの座標)
-			if (tilted)
-				target.local.y += tilt.x * local.x + tilt.z * local.z;
+			// (積み木の街では、形をずらさずに回して傾ける: 平たくならない。体の中に浮かべる物も同じ回し方 (BodyTiltApply))
+			if (tilted) {
+				if (blocksLand) {
+					const V turned = BodyTiltApply(V{target.local.x, target.local.y, target.local.z});
+					target.local = {turned.x, turned.y, turned.z};
+				} else
+					target.local.y += tilt.x * local.x + tilt.z * local.z;
+			}
 			// 形ができる前から点の速度を渡す。渡さないと動いている間は粒子がばねで遅れ続け、形が完成しない
 			if (weapon) {
 				V velocity = LifeWeaponVelocity(b, {point.x, point.y, point.z}, frameDt);
@@ -1130,15 +1155,6 @@ void ChronoSystem::SyncSlimeBodies(GameContext& ctx) {
 		std::vector<Engine::Vector4> splashes;
 		for (const auto& s : devourSplashes_)
 			splashes.push_back({s.at.x, s.at.y, s.at.z, s.radius});
-		// スライム陣取りの飛んでいる体液のしずく (今の位置と、落ちる所)
-		for (const auto& f : battle_.territory.flights) {
-			if (!f.launched)
-				continue;
-			const float k = f.age - f.delay;
-			const V p = f.from + f.velocity * k - V{0, ChallengeTerritoryFlightGravity * k * k, 0};
-			splashes.push_back({p.x, p.y, p.z, battle_.unit * .8f});
-			splashes.push_back({f.to.x, f.to.y + battle_.unit * .3f, f.to.z, battle_.unit * .8f});
-		}
 		// 消火栓の水が飛ぶ範囲と、落ちた所 (地面に残った水が消えるまで)。
 		// 水を画面の上の面で描くときは入れない (体積の升がスライムの体まで粗くなり、重くもなる)
 		// (水の道は細く、落ちた水は読み戻した粒を囲む箱だけを入れる。広く入れると升が粗くなり、水がかたまりに見える)
@@ -1167,13 +1183,13 @@ bool ChronoSystem::HandleLifeFramePause(entt::registry& r, Player& p, GameContex
 	// ヒットストップ: 敵・弾・体・流体を止め、カメラ (揺れ) だけを進める。押した入力は止まった後に受け付ける
 	// チュートリアルの巻尺の説明の間は、ゲーム全体を止めて説明だけを進める
 	if (devour_ && TickDevourTutorialPause(dt)) {
-		ctx.renderer->SetRogueWorldFrozen(true);
+		ctx.renderer->SetWorldFrozen(true);
 		InkCamera(r, p, ctx);
 		return true;
 	}
 	if (lifeHitStop_ > 0) {
 		lifeHitStop_ -= dt;
-		ctx.renderer->SetRogueWorldFrozen(true);
+		ctx.renderer->SetWorldFrozen(true);
 		InkCamera(r, p, ctx);
 		return true;
 	}
@@ -1184,7 +1200,7 @@ ChronoSystem::LifeUnlocks ChronoSystem::TickLifeFrameTimers(Player& p, GameConte
 	auto& body = life_.bodies[0];
 	life_.messageAge = std::max(0.f, life_.messageAge - dt);
 	// 世界を動かし、カーソルを隠す
-	ctx.renderer->SetRogueWorldFrozen(false);
+	ctx.renderer->SetWorldFrozen(false);
 	Engine::WindowDX::SetCursorVisible(false);
 	life_.age += dt;
 	life_.morphAge += dt;
@@ -1300,8 +1316,9 @@ ChronoSystem::LifeFrameInput ChronoSystem::ReadLifeActionInput(
 		say("スライムに戻る / 再び取り込み可能");
 	}
 	// 武器の形で吸収を押したら、そのままスライムへ戻って吸収する (消火栓は同じボタンが水の防御なので除く)。
-	// 戻りきるまでの間は押した入力を覚えておき、離していても戻った瞬間に吸収を始める
-	if (absorb && !life_.previousAbsorb && LifeWeaponForm(body.action) && body.action != LifeAction::Hydrant) {
+	// 戻りきるまでの間は押した入力を覚えておき、離していても戻った瞬間に吸収を始める (吸収モードには吸収ボタンの技が無いので除く)
+	if (!devour_ && absorb && !life_.previousAbsorb && LifeWeaponForm(body.action) &&
+	    body.action != LifeAction::Hydrant) {
 		LifeReturnToSlime(body);
 		body.restoreDuration = .2f;
 		life_.tackleTime = 0;
@@ -1316,7 +1333,7 @@ ChronoSystem::LifeFrameInput ChronoSystem::ReadLifeActionInput(
 		life_.form = forms[size_t(hotkey - 1)];
 	// 攻撃か数字キーを押したとき: 選んだ形が解放済みなら変形し、まだなら (攻撃なら) タックルする
 	// 吸収モードの変形は、アイテムを拾って使える状態のときだけ
-	bool itemLocked = devour_ && !devourFreeForms_ && !devourItemReady_;
+	bool itemLocked = devour_ && !devourItemReady_;
 	if (!itemLocked && !GimmickRiding() && ((firePressed && !returned) || morphNow) && body.cooldown <= 0 &&
 	    (body.action == LifeAction::Idle || (LifeWeaponForm(body.action) && body.action != life_.form))) {
 		bool unlocked = LifeCanMorph(body, life_.form);
@@ -1338,7 +1355,7 @@ ChronoSystem::LifeFrameInput ChronoSystem::ReadLifeActionInput(
 			++life_.revision;
 			if (devour_)
 				PlayDevourSound(devourSounds_.morph, .55f);
-			if (devour_ && !devourFreeForms_) {
+			if (devour_) {
 				devourItemReady_ = false;
 				devourMorphLeft_ = CurrentDevourStage().itemTime;
 				++devourLog_.morphs;
@@ -1552,7 +1569,7 @@ ChronoSystem::LifeMovement ChronoSystem::UpdateLifeMovement(
 	prevSpace_ = jump;
 	// 吸収モードの飛びかかり: 溜め・跳ぶ・覆うの間は入力で動かさず、飛びかかりの速度に任せる
 	if (devour_ || slimePlayerDemo_) {
-		TickDevourPounce(r, p, ctx, dt);
+		TickDevourBody(r, p, ctx, dt);
 		// 掃除機とバネは、変形した押しっぱなしを離してから使える
 		if ((body.action == LifeAction::Vacuum || body.action == LifeAction::Spring) && !fire)
 			life_.chargeLocked = false;
@@ -1560,7 +1577,7 @@ ChronoSystem::LifeMovement ChronoSystem::UpdateLifeMovement(
 		TickDevourVacuum(r, ctx, dt, held);
 		TickDevourSpring(p, dt, held, wish);
 		// 吸収モードの変形は時間が来たらスライムへ戻る (跳んでいる間は着地を待つ)
-		if (devour_ && !devourFreeForms_ && LifeWeaponForm(body.action) && !devourHop_.active) {
+		if (devour_ && LifeWeaponForm(body.action) && !devourHop_.active) {
 			devourMorphLeft_ -= dt;
 			if (devourMorphLeft_ <= 0) {
 				DevourLogEvent("morph_end");
@@ -1690,13 +1707,11 @@ void ChronoSystem::CollectLifeContacts(entt::registry& r, Vec old) {
 	}
 }
 
-void ChronoSystem::UpdateLifeAbsorptionInput(Player& p, GameContext& ctx, bool absorb, float dt) {
+void ChronoSystem::UpdateLifeAbsorptionInput(Player&, GameContext&, bool absorb, float dt) {
 	auto& body = life_.bodies[0];
-	// 吸収モード: 吸収ボタンで全身ごと飛びかかる (押し続けると、覆い終えるたびに次へ飛びかかる)
-	if (devour_) {
-		if (!GimmickRiding() && (absorb || lifeAbsorbBuffer_ > 0) && StartDevourPounce(p, ctx))
-			lifeAbsorbBuffer_ = 0;
-	}
+	// 吸収モードには吸収ボタンの技は無い (物は触れて飲む。飛びかかりは無くした)
+	if (devour_)
+		lifeAbsorbBuffer_ = 0;
 	// 取り込みを始める (対象が無ければ知らせる)
 	else if (LifeWantsAbsorb(absorb || lifeAbsorbBuffer_ > 0, body)) {
 		if (StartLifeAbsorb(0))
@@ -1924,7 +1939,6 @@ void ChronoSystem::TickLifeBodyActions(
 		// 武器の形: 攻撃の当たりを 2 回に分けて調べ、敵や門にダメージを与える
 		TickLifeBodyWeapon(r, p, ctx, index, input, dt);
 		// 取り込み → 回復 → 待機の順に進め、回復の終わりで成長を反映する
-		// 吸収モードの飛びかかりは TickDevourPounce が終わらせる
 		TickLifeBodyRecovery(b);
 	}
 }
@@ -2425,75 +2439,6 @@ void ChronoSystem::DrawSlimeLifeUI(entt::registry& r, GameContext& ctx) {
 		DrawDevourUI(ctx);
 		DrawChallengeCard(ctx);
 		// 左下: 体力の数値と、工事の縞の上を満たすスライムのゲージ
-		// 右下: 変形のステッカー。選んでいる形は大きく、未解放は斜線
-		if (devourFreeForms_) {
-			const auto& forms = LifeForms();
-			const char* icons[] = {"form_hammer", "form_tire", "form_vacuum", "form_spring"};
-			const char* names[] = {"ハンマー", "タイヤ", "掃除機", "バネ"};
-			const float tilt[] = {5, -6, 4, -3};
-			int picked = LifeFormIndex();
-			const auto& signal = life_.signal;
-			for (int i = 0; i < 4; ++i) {
-				bool open = LifeCanMorph(body, forms[i]), sel = i == picked, active = body.action == forms[i];
-				float size = sel ? 87.f : 74.f, unit = size / 74, cx = 984 + float(i) * 80,
-				      cy = 580.f - (sel ? 8.f : 0.f), rotation = (sel ? 0 : tilt[i]) * .0174533f,
-				      alpha = open ? 1 : .55f;
-				UI::Rect outer{cx - size * .5f, cy - size * .5f, size, size},
-				    inner{outer.x + 4 * unit, outer.y + 4 * unit, size - 8 * unit, size - 8 * unit};
-				ui.ImageRot(
-				    "Resources/Textures/UI/HUD/sticker.png", {outer.x + 2, outer.y + 6, outer.w, outer.h}, rotation,
-				    {0, 0, 0, .45f * alpha});
-				ui.ImageRot("Resources/Textures/UI/HUD/sticker.png", outer, rotation, UI::WithAlpha(white, alpha));
-				ui.ImageRot(
-				    "Resources/Textures/UI/HUD/sticker.png", inner, rotation,
-				    sel ? slime : UI::WithAlpha(black, alpha));
-				if (active && body.weapon.ready)
-					ui.Halo(cx, cy, size * .8f, UI::WithAlpha(slime, .35f + .15f * std::sin(life_.age * 6)));
-				float icon = 40 * unit;
-				ui.ImageRot(
-				    std::string("Resources/Textures/UI/HUD/") + icons[i] + ".png",
-				    {cx - icon * .5f, cy - icon * .5f, icon, icon}, rotation,
-				    sel    ? black
-				    : open ? hazard
-				           : Engine::Vector4{.53f, .53f, .53f, alpha});
-				if (!open)
-					ui.Line(
-					    inner.x + 6, inner.y + inner.h - 6, inner.x + inner.w - 6, inner.y + 6, 5,
-					    {.84f, .2f, .16f, alpha});
-				float bx = outer.x + 5, by = outer.y + 3;
-				ui.Dot(bx, by, 14, UI::WithAlpha(black, alpha));
-				ui.Dot(bx, by, 12, UI::WithAlpha(hazard, alpha));
-				// パッドなら変形する十字キーの向き、キーボードなら数字キーを札に出す
-				if (UI::UsingPad()) {
-					static const char* dpad[] = {"xbox_dpad_up", "xbox_dpad_right", "xbox_dpad_down", "xbox_dpad_left"};
-					ui.PadGlyph(dpad[i], bx - 12, by - 12, 24);
-				} else
-					ui.Center(std::to_string(i + 1), bx, by - 11, 16, black, UI::JapaneseFont);
-			}
-			// パッドなら LB / RB で前後の形へ変形できることを、ステッカーの左上に出す
-			if (UI::UsingPad()) {
-				ui.PadGlyph("xbox_lb", 866, 616, 26);
-				ui.PadGlyph("xbox_rb", 894, 616, 26);
-			}
-			// ステッカーの上: 選んでいる形の名前と状態
-			bool open = LifeCanMorph(body, forms[picked]), active = body.action == forms[picked];
-			const char* nextName = signal.next == SignalColor::Red     ? "NEXT  RED"
-			                       : signal.next == SignalColor::Green ? "NEXT  GREEN"
-			                                                           : "NEXT  YELLOW";
-			std::string state =
-			    active && !body.weapon.ready                  ? "FORMING"
-			    : forms[picked] == LifeAction::Signal && open ? (SignalResting(signal) ? "REST" : nextName)
-			    : active                                      ? (body.weapon.dash > 0   ? "DASH"
-			                                                     : body.weapon.charging ? "CHARGE"
-			                                                                            : "READY")
-			    : open                                        ? ""
-			    : forms[picked] == LifeAction::Hammer         ? "LOCK  MASS " + std::to_string(int(LifeHammerMass))
-			                                                  : "LOCK  ITEM";
-			char label[32];
-			snprintf(label, sizeof(label), "FORM %02d", picked + 1);
-			spaced(std::string(label) + (state.empty() ? "" : "  /  " + state), 1246, 465.f, 13, hazard, 2, 1);
-			shadowed(names[picked], 1246, 483.f, 30, open ? white : UI::WithAlpha(white, .6f), UI::JapaneseFont, 1);
-		}
 		// 下中央: 今の形で使う操作だけを 1 枚の札に並べる (ゲーム全体で同じ「黒い台のキー + 名前」の見た目。UI::Scale::PromptBar)
 		{
 			namespace S = UI::Scale;
@@ -2530,11 +2475,8 @@ void ChronoSystem::DrawSlimeLifeUI(entt::registry& r, GameContext& ctx) {
 				keys = {{S::KeyMorph, next}, absorbHint, back};
 			} else if (GimmickRiding())
 				GimmickRidePrompts(keys);
-			else if (!devourFreeForms_) {
-				if (devourItemReady_)
-					keys = {{S::KeyMorph, "変形"}};
-			} else
-				keys = {{S::KeyMorph, attack}, {S::KeyForms, "形を選ぶ"}};
+			else if (devourItemReady_)
+				keys = {{S::KeyMorph, "変形"}};
 			// 巻尺の上に出す
 			S::PromptBar(ui, keys, 640, 568.f, 20.f);
 		}

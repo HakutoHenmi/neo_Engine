@@ -235,10 +235,6 @@ inline Vec CityTireItem() {
 inline Vec CitySignalItem() {
 	return CityData().signalItem;
 }
-// 交差する 2 本の道路の幅の半分
-inline float CityRoadHalf() {
-	return CityData().roadHalf;
-}
 inline Vec CityStart() {
 	return CityData().start;
 }
@@ -251,9 +247,6 @@ inline float CityGateHealth() {
 }
 inline float CityGateAbsorbMass() {
 	return CityData().gateAbsorbMass;
-}
-inline float CityGateReward() {
-	return CityData().gateReward;
 }
 // 火事場の炎: 位置と半径・触れたときのダメージ・消すのに必要な水の量
 inline const std::vector<CityFireSpot>& CityFires() {
@@ -272,9 +265,6 @@ inline CityArea CityAreaAt(Vec p) {
 	while (area < CityAreaCount - 1 && p.z >= ends[size_t(area)])
 		++area;
 	return CityArea(area);
-}
-inline const char* CityAreaName(CityArea area) {
-	return CityData().areaNames[size_t(area)].c_str();
 }
 // 門が開いているか。路地の壁は壊れたものの番号のビット
 struct CityGates {
@@ -388,10 +378,6 @@ inline Vec CityConstrain(Vec from, Vec to, float margin, CityGates gates) {
 inline CityEnemyStats CityStats(CityEnemy kind) {
 	return CityData().stats[size_t(kind)];
 }
-// 接触と突進のダメージ。遠距離の敵は代わりに弾で傷つける (CityShotDamage)
-inline float CityDamage(CityEnemy kind) {
-	return CityData().damage[size_t(kind)];
-}
 // 砲弾と矢のダメージ / 敵の名前
 inline float CityShotDamage(bool shell) {
 	return shell ? CityData().shellDamage : CityData().arrowDamage;
@@ -457,14 +443,6 @@ inline float CityEnemyReward(const SwarmEnemy& enemy) {
 }
 inline LifeCollectible CityEnemyDrop(const SwarmEnemy& enemy) {
 	return {enemy.at, CityEnemyRequired(enemy), CityEnemyReward(enemy), true, 0xffffffffu, true};
-}
-// 敵が侵入者に気付く距離
-inline float CityAlertRange(CityEnemy kind) {
-	return CityData().alertRange[size_t(kind)];
-}
-// 弓兵は目標からこの距離を保つ。それ以外は近づく
-inline float CityStandoff(CityEnemy kind) {
-	return CityData().standoff[size_t(kind)];
 }
 // 放物線の砲弾: from の砲口から flight 秒後に target に落ちる
 inline Vec CityShellVelocity(Vec from, Vec target, float flight, float gravity = 30) {

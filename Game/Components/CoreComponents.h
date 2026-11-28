@@ -116,12 +116,6 @@ public:
 	float MaxHp() const {
 		return maxHp_;
 	}
-	float Stamina() const {
-		return stamina_;
-	}
-	float MaxStamina() const {
-		return maxStamina_;
-	}
 	bool IsDead() const {
 		return isDead_;
 	}
@@ -143,9 +137,6 @@ public:
 	}
 	void RecoverHp(float amount) {
 		hp_ = (std::min)(maxHp_, hp_ + amount);
-	}
-	void RecoverStamina(float amount) {
-		stamina_ = (std::min)(maxStamina_, stamina_ + amount);
 	}
 	// HP を消費して技を使う (足りなければ false)
 	bool TryConsumeHp(float cost) {
@@ -219,17 +210,7 @@ struct VariableComponent : public Component {
 		auto it = values.find(key);
 		return (it != values.end()) ? it->second : defaultVal;
 	}
-	void SetValue(const std::string& key, float val) {
-		values[key] = val;
-	}
 
-	std::string GetString(const std::string& key, const std::string& defaultVal = "") const {
-		auto it = strings.find(key);
-		return (it != strings.end()) ? it->second : defaultVal;
-	}
-	void SetString(const std::string& key, const std::string& val) {
-		strings[key] = val;
-	}
 };
 
 // モーションエディタで作るキーフレームアニメーション
@@ -268,14 +249,6 @@ struct MotionComponent : public Component {
 		clips["Default"] = defaultClip;
 	}
 
-	// 指定した名前のモーションを最初から再生する
-	void PlayAnimation(const std::string& clipName) {
-		if (clips.find(clipName) != clips.end()) {
-			activeClip = clipName;
-			currentTime = 0.0f;
-			isPlaying = true;
-		}
-	}
 };
 
 } // namespace Game

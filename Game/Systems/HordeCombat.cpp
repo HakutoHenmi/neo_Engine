@@ -62,36 +62,6 @@ void ChronoSystem::BuildSwarm(entt::registry& r) {
 	ink.swarmSpawned = int(swarm_.size());
 	ink.swarmAlive = int(swarm_.size());
 }
-// 誘導弾の目標を選ぶ (輪の届く範囲だけか)
-uint32_t ChronoSystem::ChooseSwarmTarget(entt::registry& r, V from, bool preferBoss, V origin, float reach) {
-	(void)preferBoss;
-	// 群れのモードでなければ狙えない
-	const auto& ink = r.get<InkPlayer>(player_);
-	if (!ink.hordeEnabled)
-		return SwarmNoTarget;
-	// 届く範囲の指定があるか
-	const bool ranged = reach < 1e8f;
-	// 輪から出た弾は輪の近くの敵を、それ以外の弾はプレイヤーの近くの敵を優先する
-	V anchor = ranged ? origin : Read(r.get<TransformComponent>(player_).translate);
-	float best = 1e9f;
-	uint32_t target = SwarmNoTarget;
-	// 生きている敵を、近さと予約済みのダメージで点数を付けて選ぶ
-	for (const auto& enemy : swarm_)
-		if (SwarmAlive(enemy)) {
-			if (ranged && DomainDistance(origin, enemy.at) > reach)
-				continue;
-			float score = DomainDistance(anchor, enemy.at) + DomainDistance(from, enemy.at) * .04f +
-			              (enemy.reserved >= enemy.health ? 10000.f : 0.f);
-			// 攻撃の予告中の自爆の敵を優先する
-			if (enemy.bomber && enemy.phase == SwarmPhase::Windup)
-				score -= 15;
-			if (score < best) {
-				best = score;
-				target = enemy.id;
-			}
-		}
-	return target;
-}
 // 群れの描画: 鎧の部品・目・自爆の核・攻撃の予告・出現のエフェクト
 void ChronoSystem::DrawSwarm(entt::registry& r, GameContext& ctx) {
 	// 群れのモードでなければ描かない

@@ -12,8 +12,8 @@ class SlimeLifeValidationScene final : public Game::GameScene {
 	float elapsed_ = 0;
 	int frames_ = 0;
 	std::ofstream trace_;
-	int devourPhase_ = 0, devourPounces_ = 0, devourMaxCombo_ = 0, devourTarget_ = -1;
-	float devourClock_ = 0, devourMass_ = 0, devourLeft_ = 0, devourLastAge_ = 0, devourBaseY_ = 0, devourLift_ = 0;
+	int devourPhase_ = 0, devourMaxCombo_ = 0, devourTarget_ = -1;
+	float devourClock_ = 0, devourMass_ = 0, devourLeft_ = 0, devourBaseY_ = 0, devourLift_ = 0;
 	int devourAbsorbed_ = 0;
 	int devourLagStage_ = -1;
 	std::array<float, 3> devourLag_{};
@@ -21,9 +21,7 @@ class SlimeLifeValidationScene final : public Game::GameScene {
 	// 家を飲む確認 (phase 5) で一時的に片付けた物 (確認のあとに戻す)
 	std::vector<size_t> devourCleared_;
 	int devourGrounded_ = 0, devourFrames_ = 0;
-	Game::Chrono::DevourPick devourPrevPick_{}, devourTracePick_{};
-	bool devourTraced_ = true;
-	bool devourValid_ = true, devourBounced_ = false, devourWasPouncing_ = false, devourFresh_ = true;
+	bool devourValid_ = true, devourBounced_ = false, devourFresh_ = true;
 	std::array<bool, 5> devourImages_{};
 	std::string devourNotes_;
 	// 部屋のステージ: 時間と開始の大きさ、アイテムを拾って使うと一時的に変形し、最初の目標でクリア
@@ -2072,7 +2070,6 @@ class SlimeLifeValidationScene final : public Game::GameScene {
 		}
 	}
 	void UpdateDevour() {
-		GetChronoSystem()->DevourUseAllForms();
 		using namespace Game;
 		using namespace Game::Chrono;
 		// 進み具合 (遅すぎるときの調査用)
@@ -2147,32 +2144,6 @@ class SlimeLifeValidationScene final : public Game::GameScene {
 			}
 			return best;
 		};
-		bool pouncing = body.action == LifeAction::Engulf;
-		if (pouncing && (!devourWasPouncing_ || body.actionAge < devourLastAge_)) {
-			devourTracePick_ = devourPrevPick_;
-			devourTraced_ = false;
-		}
-		// 調査用: 飛びかかりごとに、選んだ目標と覆い終えたときの結果を記録する
-		if (pouncing && !devourTraced_ && body.actionAge > DevourCoverEnd) {
-			devourTraced_ = true;
-			const auto& pick = devourTracePick_;
-			trace_ << "pounce phase=" << devourPhase_ << " mass=" << body.mass << " target=" << pick.index
-			       << " fits=" << pick.fits;
-			if (pick.index >= 0) {
-				const auto& prop = life.props[size_t(pick.index)];
-				trace_ << " radius=" << prop.radius << " eaten=" << !prop.active
-				       << " gap=" << LifeDistance(prop.at, body.at) << " dy=" << prop.at.y - body.at.y
-				       << " can_cover=" << DevourCanCover(body.mass, prop.radius)
-				       << " under=" << DevourUnderCover(body.at, prop.at, body.mass, prop.radius, prop.reach)
-				       << " sealed=" << prop.sealed << " target=" << devourTarget_;
-			}
-			trace_ << '\n';
-		}
-		devourPrevPick_ = DevourChooseTarget(body.at, body.forward, body.mass, life.props);
-		if (pouncing && (!devourWasPouncing_ || body.actionAge < devourLastAge_))
-			++devourPounces_;
-		devourWasPouncing_ = pouncing;
-		devourLastAge_ = body.actionAge;
 		devourMaxCombo_ = std::max(devourMaxCombo_, clock.combo);
 		auto next = [&]() {
 			devourNotes_ += " |p" + std::to_string(devourPhase_) + ":a" + std::to_string(life.absorbed) + "t" +
@@ -2184,24 +2155,21 @@ class SlimeLifeValidationScene final : public Game::GameScene {
 		};
 		float before = life.age;
 		const int phaseAtStart = devourPhase_;
-		// 実際の遊び方: 開始位置から前へ進みながら吸収ボタンを連打して、ちゃんと飲み込めるか
+		// 実際の遊び方: 開始位置から前へ進んで、触れた物をちゃんと飲み込めるか
 		if (devourPhase_ == 0 && frames_ > 30) {
 			if (frames_ == 31) {
 				devourClock_ = 0;
 				devourAbsorbed_ = life.absorbed;
-				devourPounces_ = 0;
 				devourGrounded_ = devourFrames_ = 0;
 			}
 			input.move = {0, 0, devourClock_ < 6 ? 1.f : 0.f};
-			input.absorb = std::fmod(devourClock_, .45f) < .12f;
 			++devourFrames_;
 			if (controller.grounded)
 				++devourGrounded_;
 			if (devourClock_ > 8) {
 				bool ok = life.absorbed >= devourAbsorbed_ + 2;
 				devourValid_ &= ok;
-				devourNotes_ += " play_pounces=" + std::to_string(devourPounces_) +
-				                " play_eaten=" + std::to_string(life.absorbed - devourAbsorbed_) +
+				devourNotes_ += " play_eaten=" + std::to_string(life.absorbed - devourAbsorbed_) +
 				                " grounded=" + std::to_string(devourGrounded_ * 100 / std::max(1, devourFrames_)) + "%";
 				next();
 				devourPhase_ = 9;
@@ -2222,65 +2190,19 @@ class SlimeLifeValidationScene final : public Game::GameScene {
 			next();
 			devourPhase_ = 1;
 		}
-		// 1 回飛びかかる: 跳ぶ・覆う・満足の画像を撮り、飲み込んで大きくなったか
-		// (カメラを横へ回してから跳び、包み込みの形を横から撮る)
+		// 1 個に向かって進み、触れて飲み込んで大きくなったか (飲み込んだ所の画像を撮る)
 		else if (devourPhase_ == 1) {
-			input.yaw = 1.5708f;
-			input.pitch = .12f;
-			input.absorb = devourClock_ > .8f && devourClock_ < .85f;
-			const wchar_t* images[] = {
-			    L"tests/out/slime-life-devour-leap.png", L"tests/out/slime-life-devour-cover.png",
-			    L"tests/out/slime-life-devour-settle.png"};
-			const float at[] = {DevourWindup + DevourLeap * .6f, DevourLandAt + .03f, DevourCoverEnd + .12f};
-			for (int i = 0; i < 3; ++i)
-				if (pouncing && body.actionAge >= at[i] && !devourImages_[size_t(i)]) {
-					Capture(images[i]);
-					devourImages_[size_t(i)] = true;
-				}
-			if (devourClock_ > 1.9f) {
+			const bool left = devourTarget_ >= 0 && life.props[size_t(devourTarget_)].active;
+			input.move = {0, 0, left && devourClock_ < 2.5f ? 1.f : 0.f};
+			if (!left && !devourImages_[0]) {
+				Capture(L"tests/out/slime-life-devour-touch.png");
+				devourImages_[0] = true;
+			}
+			if (devourClock_ > 2.6f) {
 				bool ok = devourTarget_ >= 0 && life.absorbed > devourAbsorbed_ && body.mass > devourMass_ &&
 				          !life.props[size_t(devourTarget_)].active;
 				devourValid_ &= ok;
 				devourNotes_ += " single=" + std::to_string(ok);
-				next();
-			}
-		}
-		// 押し続けると、近くの物へ次々に飛びかかる
-		else if (devourPhase_ == 2) {
-			input.absorb = true;
-			if (devourFresh_) {
-				devourAbsorbed_ = life.absorbed;
-				devourPounces_ = 0;
-			}
-			int target = nearest(60, true);
-			if (target >= 0 && (body.action != LifeAction::Engulf || body.actionAge >= DevourCoverEnd)) {
-				Vec d = life.props[size_t(target)].at - body.at;
-				d.y = 0;
-				if (Length(d) > .1f)
-					body.forward = body.liquidForward = Unit(d);
-			}
-			if (devourClock_ > 5) {
-				bool ok = devourPounces_ >= 3 && devourPounces_ <= 6;
-				devourValid_ &= ok;
-				devourNotes_ += " held_pounces=" + std::to_string(devourPounces_) +
-				                " held_eaten=" + std::to_string(life.absorbed - devourAbsorbed_) +
-				                " max_combo=" + std::to_string(devourMaxCombo_);
-				next();
-				devourPhase_ = 20;
-			}
-		}
-		// 連打しても空へ上っていかない (何も無い所へ何度も飛びかかり、高さが変わらないか)
-		else if (devourPhase_ == 20) {
-			if (devourFresh_) {
-				devourBaseY_ = body.at.y;
-				devourLift_ = 0;
-			}
-			input.absorb = (frames_ / 4) % 2 == 0;
-			devourLift_ = std::max(devourLift_, body.at.y - devourBaseY_);
-			if (devourClock_ > 3) {
-				bool ok = devourLift_ < 1.5f;
-				devourValid_ &= ok;
-				devourNotes_ += " mash_lift=" + std::to_string(devourLift_);
 				next();
 				devourPhase_ = 3;
 			}
@@ -2302,14 +2224,16 @@ class SlimeLifeValidationScene final : public Game::GameScene {
 					if (int(i) != devourTarget_ && LifeDistance(life.props[i].at, body.at) < 40)
 						life.props[i].active = false;
 			}
-			input.absorb = devourClock_ > .1f && devourClock_ < .3f;
-			if (devourClock_ > .1f && pouncing && body.actionAge > DevourLandAt + .02f &&
-			    body.actionAge < DevourCoverEnd && !devourImages_[3]) {
+			if (devourFresh_)
+				devourBounced_ = false;
+			input.move = {0, 0, devourClock_ < 1.5f ? 1.f : 0.f};
+			if (devourClock_ > .1f && !devourBounced_ &&
+			    Dot(Vec{controller.velocity.x, 0, controller.velocity.z}, body.forward) < -1) {
 				Capture(L"tests/out/slime-life-devour-bounce.png");
 				devourImages_[3] = true;
-				devourBounced_ = Dot(Vec{controller.velocity.x, 0, controller.velocity.z}, body.forward) < 0;
+				devourBounced_ = true;
 			}
-			if (devourClock_ > 1.2f) {
+			if (devourClock_ > 2) {
 				bool ok = devourBounced_ && life.props[size_t(devourTarget_)].active;
 				devourValid_ &= ok;
 				devourNotes_ += " bounce=" + std::to_string(ok);
@@ -2332,12 +2256,13 @@ class SlimeLifeValidationScene final : public Game::GameScene {
 					if (int(i) != devourTarget_ && LifeDistance(life.props[i].at, body.at) < 45)
 						life.props[i].active = false;
 			}
-			input.absorb = devourClock_ > .4f && devourClock_ < .6f;
-			if (devourClock_ > .4f && pouncing && body.actionAge > DevourCoverEnd + .15f && !devourImages_[4]) {
+			const bool carLeft = life.props[size_t(devourTarget_)].active;
+			input.move = {0, 0, carLeft && devourClock_ < 3 ? 1.f : 0.f};
+			if (!carLeft && !devourImages_[4]) {
 				Capture(L"tests/out/slime-life-devour-car.png");
 				devourImages_[4] = true;
 			}
-			if (devourClock_ > 2) {
+			if (devourClock_ > 3.2f) {
 				bool ok = !life.props[size_t(devourTarget_)].active;
 				devourValid_ &= ok;
 				devourNotes_ += " car=" + std::to_string(ok);
@@ -2376,8 +2301,8 @@ class SlimeLifeValidationScene final : public Game::GameScene {
 						devourCleared_.push_back(i);
 					}
 			}
-			input.absorb = devourClock_ > .4f && devourClock_ < .6f;
-			if (devourClock_ > 1.6f) {
+			input.move = {0, 0, life.props[size_t(devourTarget_)].active && devourClock_ < 3 ? 1.f : 0.f};
+			if (devourClock_ > 3.2f) {
 				const auto& house = life.props[size_t(devourTarget_)];
 				// 飲み込めて、跡の真ん中を通れる
 				const bool eaten = !house.active,
@@ -2468,6 +2393,8 @@ class SlimeLifeValidationScene final : public Game::GameScene {
 		// ハンマー: 大きすぎる建物を叩くと砕けて、飲める欠片が散らばる
 		else if (devourPhase_ == 23) {
 			input.yaw = 0;
+			// (このステップの変形アイテムをHammerにして拾った状態にする。本編と同じく、その 1 つの形へ変形する)
+			chrono->DevourTestForm(LifeAction::Hammer);
 			input.morphForm = 1;
 			if (devourFresh_) {
 				devourTarget_ = -1;
@@ -2509,7 +2436,9 @@ class SlimeLifeValidationScene final : public Game::GameScene {
 		// タイヤ: 転がるだけで、普段は沈まない大きさの物を通り道で吸い込む
 		else if (devourPhase_ == 24) {
 			input.yaw = 0;
-			input.morphForm = 2;
+			// (このステップの変形アイテムをTireにして拾った状態にする。本編と同じく、その 1 つの形へ変形する)
+			chrono->DevourTestForm(LifeAction::Tire);
+			input.morphForm = 1;
 			if (devourFresh_) {
 				setMass(3000);
 				body.tireUnlocked = true;
@@ -2571,7 +2500,9 @@ class SlimeLifeValidationScene final : public Game::GameScene {
 		else if (devourPhase_ == 27) {
 			input.yaw = devourClock_ > 1.6f ? 1.5708f : 0;
 			input.pitch = .2f;
-			input.morphForm = 3;
+			// (このステップの変形アイテムをVacuumにして拾った状態にする。本編と同じく、その 1 つの形へ変形する)
+			chrono->DevourTestForm(LifeAction::Vacuum);
+			input.morphForm = 1;
 			if (devourFresh_) {
 				setMass(3000);
 				body.vacuumUnlocked = true;
@@ -2616,7 +2547,9 @@ class SlimeLifeValidationScene final : public Game::GameScene {
 		else if (devourPhase_ == 28) {
 			input.yaw = devourClock_ > .4f ? 1.5708f : 0;
 			input.pitch = .2f;
-			input.morphForm = 4;
+			// (このステップの変形アイテムをSpringにして拾った状態にする。本編と同じく、その 1 つの形へ変形する)
+			chrono->DevourTestForm(LifeAction::Spring);
+			input.morphForm = 1;
 			if (devourFresh_) {
 				devourTarget_ = -1;
 				float best = 1e9f;
@@ -2720,7 +2653,9 @@ class SlimeLifeValidationScene final : public Game::GameScene {
 				tr.translate = {at.x, at.y, at.z};
 			}
 			input.move = {0, 0, 1};
-			input.morphForm = 2;
+			// (このステップの変形アイテムをTireにして拾った状態にする。本編と同じく、その 1 つの形へ変形する)
+			chrono->DevourTestForm(LifeAction::Tire);
+			input.morphForm = 1;
 			input.absorb = t > 2.5f && t < 5.5f;
 			input.morphNow = t > 6 && t < 6.05f;
 			input.attack = t > 6.8f && t < 7.8f;
@@ -2848,13 +2783,13 @@ class SlimeLifeValidationScene final : public Game::GameScene {
 			input.move = {1, 0, 0};
 		const int warm = spritePose_ == 0 ? 150 : spritePose_ == SpriteIdle ? 60 : rolling ? 4 : 6;
 		if (spriteStep_ < warm) {
-			render->SetRogueWorldFrozen(false);
+			render->SetWorldFrozen(false);
 			spriteBack_ = {.96f, .77f, 0, 1};
 			Game::GameScene::Update();
 			++spriteStep_;
 			return;
 		}
-		render->SetRogueWorldFrozen(true);
+		render->SetWorldFrozen(true);
 		const int local = spriteStep_ - warm;
 		++spriteStep_;
 		wchar_t path[96];

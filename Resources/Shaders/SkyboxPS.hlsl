@@ -31,6 +31,10 @@ float4 main(PSIn p) : SV_TARGET {
         // 実写HDRI等の高輝度テクスチャが白飛び・青飛びするのを防ぐためトーンマッピングを適用
         color = color / (color + 1.0);
         color = pow(color, 1.0 / 2.2);
+        // 2 以上は、星空 (宇宙) へ変える割合 ((値 - 2) / 1000。Renderer::SetSkySpaceBlend)
+        if (gUseCubemapBackground >= 2)
+            // (星雲は少し暗くして、宇宙の暗さを出す)
+            color = lerp(color, GetProceduralSpaceColor(dir, gTime) * float3(.55, .6, .7), saturate((gUseCubemapBackground - 2) / 1000.0));
     } else {
         // キューブマップ未使用時は、視線方向と時刻から星空を生成する。
         color = GetProceduralSpaceColor(dir, gTime);

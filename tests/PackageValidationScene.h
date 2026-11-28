@@ -2,7 +2,6 @@
 #include "../Game/Scenes/TitleScene.h"
 #include "../Game/Scenes/SelectScene.h"
 #include "../Game/Scenes/GameScene.h"
-#include "../Game/Scenes/GameOverScene.h"
 #include "../Game/UI/CreditsUI.h"
 #include "../Game/UI/GraphicsUI.h"
 #include "../Game/Chrono/InkRules.h"
@@ -68,27 +67,17 @@ class PackageValidationScene final : public Engine::IScene {
 	int page_ = 0, frame_ = 0;
 	bool passed_ = true;
 	void Load() {
-		if (page_ >= 8) {
-			auto* game = static_cast<Game::GameScene*>(scene_.get());
-			auto view = game->GetComponents().view<Game::Chrono::InkPlayer>();
-			auto& state = view.get<Game::Chrono::InkPlayer>(*view.begin()).rogue;
-			if (page_ == 8)
-				state.Gain(20);
-			else {
-				for (auto& rank : state.ranks)
-					rank = 1;
-				game->SetPaused(true);
-			}
+		// 7: ゲームのポーズ画面
+		if (page_ >= 7) {
+			static_cast<Game::GameScene*>(scene_.get())->SetPaused(true);
 			return;
 		}
 		if (page_ == 0)
 			scene_ = std::make_unique<Game::TitleScene>();
 		else if (page_ == 1)
 			scene_ = std::make_unique<Game::SelectScene>();
-		else if (page_ == 7)
+		else if (page_ == 6)
 			scene_ = std::make_unique<Game::GameScene>();
-		else if (page_ == 2)
-			scene_ = std::make_unique<Game::GameOverScene>();
 		else
 			scene_.reset();
 		if (scene_) {
@@ -105,7 +94,7 @@ public:
 		Load();
 	}
 	void Update() override {
-		if (page_ >= 7)
+		if (page_ >= 6)
 			scene_->Update();
 		if (++frame_ < 90)
 			return;
@@ -113,7 +102,7 @@ public:
 		passed_ &= r->MeasureTextWidth(Game::UI::GameTitle(), 1, Game::UI::JapaneseFont) > 0;
 		passed_ &= r->MeasureTextWidth("BEGIN EXPEDITION", 1, Game::UI::Font) > 0;
 		// 道路の材質は配布版の NTC ランタイムで復元できること (失敗すると空が返る)
-		if (page_ == 7) {
+		if (page_ == 6) {
 			auto road = r->LoadNtcTextureSet(
 			    "Resources/Textures/PolyHaven/asphalt_02_material.ntc", {"albedo", "roughness", "ao"});
 			passed_ &= road.size() == 3;
@@ -186,10 +175,10 @@ public:
 			    *image.GetImage(0, 0, 0), DirectX::WIC_FLAGS_NONE, DirectX::GetWICCodec(DirectX::WIC_CODEC_PNG),
 			    (L"PackageCheck/page-" + std::to_wstring(page_) + L".png").c_str());
 		passed_ &= SUCCEEDED(hr);
-		if (++page_ == 10) {
+		if (++page_ == 8) {
 			std::ofstream("PackageCheck/result.txt")
 			    << (passed_ ? "PASS" : "FAIL")
-			    << " Release package: title, select, battle (NTC road, HUD textures), upgrade selection, palette pause, result, credits, both fonts";
+			    << " Release package: title, select, battle (NTC road, HUD textures), pause, credits, both fonts";
 			PostQuitMessage(passed_ ? 0 : 2);
 			return;
 		}
@@ -201,7 +190,7 @@ public:
 			scene_->Draw();
 		else {
 			Game::UI::Canvas ui(Engine::Renderer::GetInstance());
-			Game::UI::DrawCredits(ui, page_ - 3);
+			Game::UI::DrawCredits(ui, page_ - 2);
 		}
 	}
 };

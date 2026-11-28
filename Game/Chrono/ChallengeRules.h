@@ -15,10 +15,10 @@
 #include <vector>
 namespace Game::Chrono {
 // チャレンジの種類 (challenges.json の id と同じ順)
-enum class ChallengeKind : uint8_t { Blocks, Tower, Territory, Count };
+enum class ChallengeKind : uint8_t { Blocks, Tower, Count };
 inline constexpr int ChallengeKindCount = int(ChallengeKind::Count);
 inline const char* ChallengeKindId(ChallengeKind kind) {
-	static constexpr const char* ids[] = {"blocks", "tower", "territory"};
+	static constexpr const char* ids[] = {"blocks", "tower"};
 	return ids[std::min(int(kind), ChallengeKindCount - 1)];
 }
 // 画面に出す文章: 名前・ひとこと・遊び方・おすすめの能力 (collection.json の action の名前)
@@ -95,8 +95,8 @@ inline std::string ChallengeBestKey(const std::string& stage, ChallengeKind kind
 	return stage + "/" + ChallengeKindId(kind);
 }
 
-// できあがっているチャレンジ (ランダムに選ぶのはここに入っているものだけ。--challenge=id ならどれでも選べる)
-// (タワーブレイカーは積み木クラッシャーと似ているので作らない。スライム陣取りは作っている途中なので、できるまでランダムには出さない)
+// 遊べるチャレンジ (積み木クラッシャーだけで勝負する)。ランダムでも、--challenge=id でも、タイトルの隠しコマンドの札でも、ここに入っているものだけを選ぶ
+// (タワーブレイカーは積み木クラッシャーと似ているので作らない)
 inline bool ChallengeReady(ChallengeKind kind) {
 	return kind == ChallengeKind::Blocks;
 }
@@ -108,7 +108,7 @@ inline bool ChallengeReady(ChallengeKind kind) {
 // (時間が増えるのは 1 回のチャレンジで合わせて ChallengeTimeBonusMax 秒まで。変形武器で回復を何度も使っても延びすぎないように)
 inline constexpr float ChallengeTimeBonusMax = 12;
 inline constexpr float ChallengeHealBonus = 3, ChallengeBrewBonus = 2, ChallengeHeavyDamage = 14,
-                       ChallengeHeavyRehit = .5f, ChallengeFluffCombo = 2;
+                       ChallengeHeavyRehit = .5f;
 // 回復 (アメ・スイカなど): 時間に加えて「おやつパワー」。ChallengeSnackTime 秒のあいだ、ほかの能力の威力が ChallengeSnackPower 倍
 inline constexpr float ChallengeSnackTime = 6, ChallengeSnackPower = 1.5f;
 // 投げる (ハト・空き缶など): 投げた物の大きさ (BattleItemScale) で当たる数が増え、床に落ちても転がって当たり続ける
@@ -122,6 +122,162 @@ inline constexpr float ChallengeTackleTime = .45f, ChallengeTackleDamage = 22, C
 inline constexpr float ChallengeTowerGap = .4f;
 // まんが: 重い本を広げて前へ落とし、範囲の中の物に当てる (止めるのではなく、押しつぶす)
 inline constexpr float ChallengeBookDamage = 18;
+
+// ---- 結果: こわした積み木の山 (チリも積もれば山となる) ----
+// こわした積み木を、積み木の街の広場に 1 個ずつ降らせて立体の山に積む (ChallengeBlocks.cpp の BlocksPile)。カメラはてっぺんと一緒に上る。
+// 山は四角い段を重ねた形で、段の一辺は 2 段ごとに 1 つ狭くなる (一本の柱でも、低い台でもない山の形)。一番下の段の一辺 base は、
+// 全部の段がそろう数がこわした数を越えない一番大きいもの。余った分は山のふもとのまわりに輪にして置く (先に積む)。
+// 段の中は決まった順にばらばらに置き (上から降ってくるように見える)、金の積み木は最後に積むので、山のてっぺんが金になる。
+// 高さは段の数 x ChallengePileBlockCm (タイトルのならびの積み木と同じ 4cm)
+inline constexpr float ChallengePileBlockCm = 4;
+// 1 個の置き場所: 山の真ん中からの x・z (積み木の数) と段 (row。0 が地面)
+struct PileSlot {
+	float x = 0, z = 0;
+	int row = 0;
+};
+inline int ChallengePileBase(int count) {
+	int base = 0;
+	while ((base + 1) * (base + 2) * (2 * base + 3) / 3 <= count)
+		++base;
+	return base;
+}
+inline std::vector<PileSlot> ChallengePileLayout(int count) {
+	std::vector<PileSlot> out;
+	if (count <= 0)
+		return out;
+	out.reserve(size_t(count));
+	auto scramble = [](uint32_t v) {
+		v ^= v >> 16;
+		v *= 0x7feb352du;
+		v ^= v >> 15;
+		v *= 0x846ca68bu;
+		return v ^ (v >> 16);
+	};
+	// 1 つの段 (一辺 side・高さ row。ring なら外周だけ) を、決まった順にばらばらに並べて足す
+	auto layer = [&](int side, int row, bool ring, int limit) {
+		std::vector<std::pair<uint32_t, PileSlot>> cells;
+		for (int i = 0; i < side; ++i)
+			for (int j = 0; j < side; ++j) {
+				if (ring && i > 0 && j > 0 && i < side - 1 && j < side - 1)
+					continue;
+				const PileSlot cell{float(i) - float(side - 1) * .5f, float(j) - float(side - 1) * .5f, row};
+				cells.push_back({scramble(uint32_t(i * 73 + j * 9151 + row * 524287 + side * 31)), cell});
+			}
+		std::sort(cells.begin(), cells.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
+		for (const auto& c : cells)
+			if (int(out.size()) < limit)
+				out.push_back(c.second);
+	};
+	const int base = ChallengePileBase(count);
+	const int full = base * (base + 1) * (2 * base + 1) / 3;
+	// ふもとの輪 (余った分)。山の外側に一辺を 2 ずつ広げた輪を、地面に置く
+	for (int side = base + 2; int(out.size()) < count - full; side += 2)
+		layer(side, 0, true, count - full);
+	// 山: 下の段から
+	for (int row = 0; base - row / 2 > 0 && int(out.size()) < count; ++row)
+		layer(base - row / 2, row, false, count);
+	return out;
+}
+inline int ChallengePileRows(const std::vector<PileSlot>& slots) {
+	int rows = 0;
+	for (const auto& s : slots)
+		rows = std::max(rows, s.row + 1);
+	return rows;
+}
+// 山の高さのランク: ChallengePileRankCm (cm) を越えるごとに C → B → A → S
+// (40cm は約 110 個・56cm は約 280 個・72cm は約 570 個)
+inline constexpr float ChallengePileRankCm[] = {40, 56, 72};
+inline int ChallengePileRankIndex(float cm) {
+	int rank = 0;
+	for (float line : ChallengePileRankCm)
+		if (cm >= line)
+			++rank;
+	return rank;
+}
+inline const char* ChallengePileRank(float cm) {
+	static constexpr const char* names[] = {"C", "B", "A", "S"};
+	return names[ChallengePileRankIndex(cm)];
+}
+// 宇宙まで積もる: 本当の山 (こわした積み木) が積み終わったら、そのまま同じおもちゃの積み木を山の上に積み続けて、山をひと回りずつ
+// 包んでいく (殻。中は見えないので外側の 1 個分だけ)。殻の積み木は前の殻の ChallengePileShellGrow 倍だけ大きい (少しずつしか変わらない)。
+// 殻は本当の山と同じ形 (段の一辺は 2 段ごとに 1 つ狭くなる) で、一番下の段は前の殻より積み木 1 個ぶん広い (どの高さでも前の殻の外)。
+// 一辺は 2g/(g-1) (約 10) に近づくので、カメラが同じ割合で離れれば、積み木はいつも同じ大きさに見えて、山だけが育っていく。
+// 殻の数は、ランクごとの高さ ChallengePileShellMeters (C 空・B 雲・A 空の果て・S 宇宙) にとどくまで
+inline constexpr float ChallengePileShellGrow = 1.25f;
+inline constexpr float ChallengePileShellMeters[] = {300, 3000, 30000, 200000};
+// 1 つの殻: 積み木の大きさ (本当の積み木 1 個が 1)・一番下の段の一辺・段の数・積み木の数
+struct PileShell {
+	float size = 1;
+	int side = 1, rows = 1, blocks = 0;
+	float Height() const { return float(rows) * size; }
+	float Width() const { return float(side) * size; }
+};
+// 殻の段 row の一辺と、その段の積み木の数 (外側の輪。2 以下はうめる)
+inline int ChallengePileShellSide(const PileShell& s, int row) {
+	return std::max(1, s.side - row / 2);
+}
+inline int ChallengePileShellRowBlocks(int side) {
+	return side <= 2 ? side * side : 4 * (side - 1);
+}
+inline std::vector<PileShell> ChallengePileShells(int count) {
+	std::vector<PileShell> out;
+	const auto slots = ChallengePileLayout(count);
+	if (slots.empty())
+		return out;
+	float half = 0;
+	for (const auto& sl : slots)
+		half = std::max({half, std::abs(sl.x), std::abs(sl.z)});
+	float width = 2 * half + 1, height = float(ChallengePileRows(slots)), size = 1;
+	const float target =
+	    ChallengePileShellMeters[ChallengePileRankIndex(height * ChallengePileBlockCm)] * 100 / ChallengePileBlockCm;
+	while (height < target && out.size() < 200) {
+		PileShell s;
+		s.size = size *= ChallengePileShellGrow;
+		s.side = int(std::ceil(width / size - 1e-3f)) + 2;
+		s.rows = std::max(2 * s.side - 1, int(std::ceil(height / size - 1e-3f)) + 1);
+		for (int r = 0; r < s.rows; ++r)
+			s.blocks += ChallengePileShellRowBlocks(ChallengePileShellSide(s, r));
+		width = s.Width();
+		height = s.Height();
+		out.push_back(s);
+	}
+	return out;
+}
+// 殻の積み木の置き場所 (殻の真ん中からの x・z (殻の積み木の数) と段)。下の段から、段の中は決まった順にばらばら
+inline std::vector<PileSlot> ChallengePileShellLayout(const PileShell& s, uint32_t seed) {
+	std::vector<PileSlot> out;
+	out.reserve(size_t(s.blocks));
+	auto scramble = [](uint32_t v) {
+		v ^= v >> 16;
+		v *= 0x7feb352du;
+		v ^= v >> 15;
+		v *= 0x846ca68bu;
+		return v ^ (v >> 16);
+	};
+	for (int row = 0; row < s.rows; ++row) {
+		const int side = ChallengePileShellSide(s, row);
+		std::vector<std::pair<uint32_t, PileSlot>> cells;
+		for (int i = 0; i < side; ++i)
+			for (int j = 0; j < side; ++j) {
+				if (side > 2 && i > 0 && j > 0 && i < side - 1 && j < side - 1)
+					continue;
+				cells.push_back(
+				    {scramble(uint32_t(i * 97 + j * 7919 + row * 104729) ^ seed),
+				     {float(i) - float(side - 1) * .5f, float(j) - float(side - 1) * .5f, row}});
+			}
+		std::sort(cells.begin(), cells.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
+		for (const auto& c : cells)
+			out.push_back(c.second);
+	}
+	return out;
+}
+// 殻の積み木が landed 個着いたときの高さ (本当の積み木 1 個が 1。下の段から積むので、最後に着いた積み木の段まで)
+inline float ChallengePileShellTop(const PileShell& s, int landed) {
+	int row = 0, total = 0;
+	while (row < s.rows && total < landed)
+		total += ChallengePileShellRowBlocks(ChallengePileShellSide(s, row++));
+	return float(row) * s.size;
+}
 
 // ---- 積み木クラッシャー ----
 // 積み木は 3 種類: 普通 (小さくても壊せる)・硬い (当たりから armor を引いて削る。弱い当たりは効かない)・金色 (高得点。まわりを囲まれている)
@@ -142,12 +298,16 @@ struct BlockSpot {
 	float x = 0, z = 0;
 	int level = 0;
 	BlockType type = BlockType::Normal;
+	// (積み木の街だけ) この高さより下から始まる面に置く (BlocksLandRules.h)
+	float y = 1;
 };
-inline constexpr int ChallengeBlockPatterns = 4;
+// pattern 4 は専用の立体ステージ「積み木の街」(形と配置は BlocksLandRules.h)。ふだんはこれを使い、0〜3 は平らな場の確認用 (--challenge-pattern=番号・実測)
+inline constexpr int ChallengeBlockPatterns = 5, ChallengeBlocksStagePattern = 4;
 inline const char* ChallengeBlockPatternName(int pattern) {
-	static constexpr const char* names[] = {"長い壁", "円形", "高い塔", "硬い密集地"};
+	static constexpr const char* names[] = {"長い壁", "円形", "高い塔", "硬い密集地", "積み木の街"};
 	return names[std::clamp(pattern, 0, ChallengeBlockPatterns - 1)];
 }
+
 inline std::vector<BlockSpot> ChallengeBlockLayout(int pattern) {
 	std::vector<BlockSpot> out;
 	const float s = ChallengeBlockSize;
@@ -226,236 +386,4 @@ inline std::vector<BlockSpot> ChallengeBlockLayout(int pattern) {
 	return out;
 }
 
-// ---- スライム陣取り ----
-// 専用ステージ「ひろい子ども部屋」: 戦う場所の床の上に、unit (チャレンジを始めたときの体の半径) を単位にした ChallengeTerritoryCells 四方のラグを敷き、1 x 1 のマスに分ける (+z が奥)。
-// マスは床・陣地・家具 (通れず、陣地に数えない) のどれか。スライムの体液が能力の当たりの形で床に広がって陣地になる。歩いた跡も細く残る
-//  (体液を使っても体は縮まない。体が大きいほど 1 回で広がる量が増える)
-enum class TerritoryCell : uint8_t { Floor, Owned, Furniture };
-inline constexpr int ChallengeTerritoryCells = 80;
-inline constexpr float ChallengeTerritoryHalf = ChallengeTerritoryCells * .5f;
-// 始める位置 (手前の真ん中)・歩いた跡の半径 (体の半径の倍率)
-inline constexpr float ChallengeTerritoryStartZ = -32, ChallengeTerritoryTrail = .45f;
-// 家具: モデル・ラグの真ん中からの位置 (unit)・一番長い辺の長さ (unit)・向き (ラジアン)。家具の下のマスは陣地に数えない
-struct TerritoryFurniture {
-	const char* model;
-	float x, z, width, yaw;
-};
-inline constexpr TerritoryFurniture ChallengeTerritoryFurniture[] = {
-    {"bed", -29.3f, 26.7f, 11.5f, 0},
-    {"desk", 28.7f, 34.6f, 8, 3.1416f},
-    {"chair", 28.7f, 29.9f, 3, 0},
-    {"kotatsu", 0, 5.3f, 8, 0},
-    {"toybox", -35, -8, 4, 1.5708f},
-    {"bookshelf", 36.6f, -2.7f, 9, -1.5708f},
-    {"storage_case", -16.7f, -36, 4.6f, 0},
-    {"toybox", 17.3f, -21.3f, 4, .35f},
-    {"bookshelf", -8, 36.7f, 7, 3.1416f},
-    {"storage_case", 30.7f, -29.3f, 4.6f, .6f},
-    {"chair", -12, 12, 3, 2.2f},
-    {"toybox", -24, -20, 3.6f, -.4f},
-    {"storage_case", 10, 22, 4, 1.2f}};
-// 部屋の壁 (奥と左右。手前はカメラがあるので作らない) の高さとラグの縁からの距離 (unit)
-inline constexpr float ChallengeTerritoryWall = 5, ChallengeTerritoryWallGap = 1.5f;
-// ---- 陣地を取り返すもの (倒せない。能力で一瞬じゃまできるだけ) ----
-// お掃除ロボ: ラグの上を走り、通った所の体液をふき取る (半径 RobotWipe)。RobotTurnEvery 秒ごとに、前方 RobotLook (unit) までの体液の多い向きを選んで曲がる
-//  当てる・押し出す: はじかれて向きが変わる (RobotPush unit/秒)・引き寄せる: そちらへ向かう・止める/閉じ込める: 止まる (秒)・弱らせる/やけど/置いた物: しばらく遅い (RobotSlow 倍)
-inline constexpr float RobotSpeed = 5, RobotRadius = 1.3f, RobotWipe = 1.3f, RobotTurnEvery = 1.6f, RobotLook = 8,
-                       RobotPush = 7, RobotStun = 2.2f, RobotSlow = .4f, RobotSlowTime = 3;
-inline constexpr float RobotStartX = -30, RobotStartZ = -30;
-// 首振り扇風機: 置いた所で首を左右 FanSweep (ラジアン) に FanPeriod 秒で振り、FanEvery 秒ごとに前の扇 (半分の角度の cos が FanCone、長さ FanReach) の体液を FanBlowTime 秒で吹き飛ばす
-//  止める: 首振りと送風がしばらく止まる・当てる: 首の向きがずれる (FanNudge)・積み木の塔が前にあると、その 1 回の風を受け止める
-inline constexpr float FanX = 14, FanZ = -8, FanSweep = 1.05f, FanPeriod = 7, FanEvery = 4, FanCone = .5f,
-                       FanReach = 11, FanBlowTime = .7f, FanStun = 2.2f, FanNudge = .6f;
-inline constexpr uint32_t ChallengeRobotId = 0x70000000u, ChallengeFanId = 0x70000001u;
-// 体液の量: 能力を 1 回使うと、当たりの形の中の床を当たりの中心に近い順にぬる。ぬれる数は ChallengeTerritoryUseMax マスまで。
-// 使い終わって (飛んだ物・置いた物も終わって) ぬった数が ChallengeTerritoryUseMin に足りなければ、最後にぬった所のまわりに足す
-// (どの能力でも 1 回の量がそろう。形だけが能力ごとに違う)。体が大きいほど量が増える: 威力の平方根 (ChallengeTerritoryScaleLow〜High 倍)
-inline constexpr int ChallengeTerritoryUseMin = 25, ChallengeTerritoryUseMax = 65, ChallengeTerritoryCandyMax = 4;
-inline constexpr float ChallengeTerritoryScaleLow = .6f, ChallengeTerritoryScaleHigh = 1.6f;
-inline float ChallengeTerritoryScale(float power) {
-	return std::clamp(std::sqrt(std::max(0.f, power)), ChallengeTerritoryScaleLow, ChallengeTerritoryScaleHigh);
-}
-// 飛んだ物が落ちた・消えた所のしぶきの半径 (unit。飴玉は小さい)・熱いお茶が外へ広がる最後の半径 (お茶の届く長さの倍率)
-// ぬる形は当たりの形より少し広い (当たりの長さ・太さを ChallengeTerritoryGrow 倍して ChallengeTerritoryPad (unit) 足す。小さな当たりでも形が床に見えるように)
-inline constexpr float ChallengeTerritoryGrow = 1.5f, ChallengeTerritoryPad = .8f;
-// 見た目と陣地の広さ (インクマップ): ラグ全体を覆う ChallengeTerritoryInk 四方の量の地図 (1 unit に 6 点)。
-// 陣地になったマスごとに、しぶき (波打つ縁の丸。向きと大きさは毎回ばらばら) を押し、まわりに小さなしずくを飛ばす。量が半分以上の点が陣地 (割合はこの点の数で数える)
-inline constexpr int ChallengeTerritoryInk = ChallengeTerritoryCells * 6;
-// しぶきは押した瞬間に完成させず、小さく出て ChallengeTerritoryGrowLow〜High 秒で形まで広がる (始めは速く、だんだん遅く)。
-// ぬれたての度合いは ChallengeTerritoryWetTime 秒で消える (その間は縁が揺れ、強く光る)
-// 体液は流体の粒子 (体と同じ GPU の流体。決まった放物線で飛ぶ種類) のしずくで飛ばし、落ちた時刻と場所でしぶきを押す。
-// 飛ぶ秒は ChallengeTerritoryFlightLow + 距離 / ChallengeTerritoryFlightSpeed (unit/秒) で、High まで。出す所からの距離が ChallengeTerritoryFlightMin (unit) より近ければ飛ばさずにその場で広げる。
-// しずく 1 つは ChallengeTerritoryDropParticles 粒。重力は流体の計算と同じ 18 (位置は v t - 9 t^2)
-inline constexpr float ChallengeTerritoryFlightLow = .1f, ChallengeTerritoryFlightHigh = .6f,
-                       ChallengeTerritoryFlightSpeed = 16, ChallengeTerritoryFlightMin = 1.2f,
-                       ChallengeTerritoryFlightGravity = 9;
-inline constexpr int ChallengeTerritoryDropParticles = 3;
-// しずくの大きさの下限。流体は、体と飛んでいるしずくを全部囲む範囲を、同じ数 (横 InkVolumeColumns) の升で描く。
-// しずくが広く散るほど升が粗くなり、升 1 つほどの小さなしずくは面にならず消える。
-// そこで、飛ばすときの散らばり (体・飛んでいるしずく・これから飛ぶしずくを囲む広さ) から升の大きさを見積もり、升 InkDropCells 個ぶん以上の大きさにする
-// (近くに散るときは小さく、部屋の端まで飛ぶときは大きくなる)
-inline constexpr float InkVolumeColumns = 168, InkDropCells = 1.3f;
-// しずくの大きさは、体の半径の InkDropBody 倍より小さくしない (升より大きくても、体に比べて小さすぎると見えない)
-inline constexpr float InkDropBody = .38f;
-// しずくの不ぞろい (規則正しく並んで見えないように): 大きさの倍率の幅・出す所のずれ (unit)・出る時刻のずれ (秒)・飛ぶ秒の倍率の幅・
-// 粒子を飛ばさないしずくの割合 (そのマスは近くのしずくから広がったように見える)。大きいしずくほど粒が多い (2〜4)
-inline constexpr float InkDropSizeLow = .6f, InkDropSizeHigh = 1.35f, InkDropScatter = .4f, InkDropLag = .09f,
-                       InkDropTimeLow = .8f, InkDropTimeHigh = 1.25f, InkDropSkip = .3f;
-// 体液の飛ばし方 (道具の形と動きに合わせた 11 の型。スプラトゥーンのブキの種類にならう)。どこから出して、いつ届くかが型ごとに違う
-//  Burst 炸裂: 当たった所の上から、まわりへ放物線で飛び散る (ばね・王・桂馬・叩く・まんが・おとり・積み木の塔・ドミノ倒し・閉じ込める)
-//  Lay 転がし: 体 (や転がる物) の真下にそのまま広がる (粒子は飛ばさない。轢く・ラジコン・転がる・香車・守る・飛ぶ・ビー玉)
-//  Swing 振り回し: 体の縁 (刃の先) から、振った向きの順に飛ぶ (剣・消しゴム)
-//  Spray 発射: 前の口から、近い順に吹き出す (吸い込む)
-//  Drip 投げ物: 飛んでいる物からしずくが垂れる (投げる・はじく・円盤・はねる・追いかける・扇投げ・突き抜ける・貼り付ける・水鉄砲・飴玉)
-//  Line 一直線: 体から線の先へ、体液が走るように順に届く (角・飛車・歩・銀・金)
-//  Spin 回転: 体の縁の少し手前の角度から、うず巻きにまく (回る翼・こま)
-//  Pool 水たまり: 真ん中から外へ、粒子を飛ばさずにじわっと広がる (色ぬり・熱いお茶)
-//  Rain 雨: 上から少しずつ降る (におい)
-//  Pulse 噴き出す: 体の表面から、まわりへ輪になって飛ぶ (回復・お茶で回復・ふわふわ・起き上がり・一時停止)
-//  Gather 招き寄せる: まわりの外側から、招いた所へ集まる (招き猫)
-//  Topple 崩れる: 倒れる物 (積み木の塔・ドミノ) の上の方から、倒れた向きへ降りかかる
-enum class InkStyle : uint8_t { Burst, Lay, Swing, Spray, Drip, Line, Spin, Pool, Rain, Pulse, Gather, Topple };
-// 投げた物・飛び道具・飴玉・転がるビー玉は、動いている間ずっとしずくを垂らす (平均 InkDripEvery 秒ごと)。
-// 垂れたしずくは小さく (しずくの大きさの InkDripSize 倍)、落ちた所に小さな点 (半径 InkDripSpot unit) を残す。能力の体液の量とは別
-inline constexpr float InkDripEvery = .09f, InkDripSize = .6f, InkDripSpot = .28f;
-inline InkStyle InkStyleOf(BattleAction a) {
-	switch (a) {
-	case BattleAction::Ride:
-	case BattleAction::Rc:
-	case BattleAction::Roll:
-	case BattleAction::Kyo:
-	case BattleAction::Fly:
-	case BattleAction::Marbles:
-		return InkStyle::Lay;
-	case BattleAction::Guard:
-		return InkStyle::Spray;
-	case BattleAction::Tower:
-	case BattleAction::Domino:
-		return InkStyle::Topple;
-	case BattleAction::Sword:
-	case BattleAction::Erase:
-		return InkStyle::Swing;
-	case BattleAction::Vacuum:
-		return InkStyle::Spray;
-	case BattleAction::Throw:
-	case BattleAction::Coin:
-	case BattleAction::Disc:
-	case BattleAction::Bounce:
-	case BattleAction::Homing:
-	case BattleAction::Fan:
-	case BattleAction::Pierce:
-	case BattleAction::Sticky:
-	case BattleAction::Water:
-		return InkStyle::Drip;
-	case BattleAction::Kaku:
-	case BattleAction::Hi:
-	case BattleAction::Fu:
-	case BattleAction::Gin:
-	case BattleAction::Kin:
-		return InkStyle::Line;
-	case BattleAction::Heli:
-	case BattleAction::Spin:
-		return InkStyle::Spin;
-	case BattleAction::Paint:
-	case BattleAction::Tea:
-		return InkStyle::Pool;
-	case BattleAction::Smell:
-		return InkStyle::Rain;
-	case BattleAction::Heal:
-	case BattleAction::Brew:
-	case BattleAction::Fluff:
-	case BattleAction::Roly:
-	case BattleAction::Pause:
-		return InkStyle::Pulse;
-	case BattleAction::Beckon:
-		return InkStyle::Gather;
-	default:
-		return InkStyle::Burst;
-	}
-}
-// 能力ごとの体液の量の倍率 (しずくの数と下限にかける)。しずくの重なり方は飛び散り方で違うので、
-// 自動チェック (--challenge-matrix-territory) で、まだぬれていない床に 1 回使ったときの広さが 32〜60 マスに入るように合わせた
-inline float InkAmountOf(BattleAction a) {
-	switch (a) {
-	case BattleAction::Throw:
-		return 1.5f;
-	case BattleAction::Ride:
-	case BattleAction::Rc:
-	case BattleAction::Fly:
-		return 1.2f;
-	case BattleAction::Smash:
-		return 1.8f;
-	case BattleAction::Guard:
-		return 1.25f;
-	case BattleAction::Water:
-	case BattleAction::Kyo:
-		return 1.3f;
-	case BattleAction::Roll:
-	case BattleAction::Marbles:
-		return 1.15f;
-	case BattleAction::Fu:
-		return 1.8f;
-	case BattleAction::Tower:
-		return 2.3f;
-	case BattleAction::Domino:
-		return 1.2f;
-	case BattleAction::Cage:
-		return 2.2f;
-	case BattleAction::Erase:
-		return 1.1f;
-	case BattleAction::Sticky:
-		return 1.05f;
-	case BattleAction::Kaku:
-		return .85f;
-	case BattleAction::Paint:
-		return .83f;
-	case BattleAction::Beckon:
-		return .75f;
-	case BattleAction::Read:
-	case BattleAction::Smell:
-		return .92f;
-	case BattleAction::Decoy:
-	case BattleAction::Ou:
-	case BattleAction::Pause:
-	case BattleAction::Heal:
-	case BattleAction::Brew:
-	case BattleAction::Fluff:
-	case BattleAction::Roly:
-		return .95f;
-	default:
-		return 1;
-	}
-}
-// 物ごとの飛び散り方の数値 (unit・秒):
-//  炸裂は王冠の形: 近い所へも山なりに飛ぶよう、飛ぶ秒の下限 InkCrownTime。出す所は当たった所の床すれすれ (InkCrownHeight)
-//  叩くはハンマーの頭 (体の前 InkHammerReach x 体の半径) から。王は体から輪が広がる (届くまでの秒 = 距離 / InkWaveSpeed)
-//  噴き出す・王は、体のまわりの輪 (体の半径の InkRingInner 倍から InkRingWidth unit の幅) に、角度をそろえて均等に落とす
-//  転がしは InkTailShare の割合を、車輪 (体の後ろ) から後ろと横へ巻き上げる (前の落ちる所は後ろへ折り返す)
-//  崩れるは、物の高さ InkToppleHeight (unit) までのどこかから降りかかる。色ぬりは InkBurstShare を前へ大きな塊で飛ばし、残りは水たまり。
-//  熱いお茶は最初の InkPourShare を体の前の高い所 (InkPourHeight) から注ぐ
-inline constexpr float InkCrownTime = .3f, InkCrownHeight = .35f, InkHammerReach = 1.6f, InkWaveSpeed = 18,
-                       InkRingInner = 1.4f, InkRingWidth = 3.5f, InkTailShare = .4f;
-inline constexpr float InkToppleHeight = 3.5f, InkBurstShare = .35f, InkPourShare = .3f, InkPourHeight = 1.8f;
-// 型ごとの数値 (unit・秒): 一直線の走る速さ・振り回しの時間・水たまりの広がる速さ・雨の高さと降る時間・招き寄せの出す距離と高さ
-// (一直線のしずくは、届く所の InkLineHop 手前・高さ InkLineHeight から跳ねる)
-inline constexpr float InkLineHop = 2.2f, InkLineHeight = .6f;
-inline constexpr float InkLineSpeed = 35, InkSwingTime = .12f, InkPoolSpeed = 12, InkRainHeight = 3.5f,
-                       InkRainTime = .8f, InkGatherReach = 3, InkGatherHeight = 1.6f;
-inline constexpr float ChallengeTerritoryGrowLow = .2f, ChallengeTerritoryGrowHigh = .35f,
-                       ChallengeTerritoryGrowStart = .25f, ChallengeTerritoryWetTime = 1.f;
-// 能力の体液はしずくの数で数える: 1 回で使えるしずくは、ぬれるマスの目安 (ChallengeTerritoryUseMin〜Max) を、しずく 1 つでぬれる広さ (InkCellsPerDrop マス) で割った数。
-// 当たりの形の中に、広さに比例した数の落ちる所をばらばらに選び、それぞれへしずくを飛ばす (もうぬれている所へも飛ぶ。どの方向にも飛び散る)。
-// 毎フレーム当たる能力 (転がし・回転・発射・投げ物) は、しずくを能力の時間 (InkContinuousSpan 秒以上) に分けて少しずつ出す
-// 陣取りのテンポ: どの能力も床をぬるので、続けて使えるよう待ち時間を ChallengeTerritoryWaitScale 倍 (ChallengeTerritoryWaitLow〜High 秒) にし、
-// 前の能力が ChallengeTerritoryChain 秒たてば終わる前でも次を使える
-inline constexpr float ChallengeTerritoryWaitScale = .45f, ChallengeTerritoryWaitLow = .3f,
-                       ChallengeTerritoryWaitHigh = .9f, ChallengeTerritoryChain = .35f;
-inline float ChallengeTerritoryWait(float wait) {
-	return std::clamp(wait * ChallengeTerritoryWaitScale, ChallengeTerritoryWaitLow, ChallengeTerritoryWaitHigh);
-}
-inline constexpr float InkCellsPerDrop = 1.5f, InkContinuousSpan = .35f, InkSampleReach = 7;
-inline constexpr float ChallengeTerritorySplatLow = .6f, ChallengeTerritorySplatHigh = .8f,
-                       ChallengeTerritorySplatJitter = .22f, ChallengeTerritoryDropChance = .35f;
-inline constexpr float ChallengeTerritorySplash = 1.4f, ChallengeTerritoryCandySplash = .6f,
-                       ChallengeTerritoryTeaGrow = 1.5f;
 } // namespace Game::Chrono

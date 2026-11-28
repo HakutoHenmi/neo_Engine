@@ -222,7 +222,7 @@ inline bool GimmickInsideSpark(Vec p) {
 // 全体を GimmickMikoshiLift だけ浮かせ、下に担ぎ手の子分が入る (DrawMikoshiHelpers)
 inline constexpr float GimmickMikoshiPoleX = 1.35f, GimmickMikoshiPoleZ = 4.6f, GimmickMikoshiCrossZ = 3.4f,
                        GimmickMikoshiCrossX = 3.2f, GimmickMikoshiLift = 1.2f,
-                       GimmickMikoshiRoofY = 3.4f + GimmickMikoshiLift, GimmickMikoshiTop = 6.1f + GimmickMikoshiLift;
+                       GimmickMikoshiTop = 6.1f + GimmickMikoshiLift;
 inline bool GimmickInsideMikoshi(Vec p) {
 	p.y -= GimmickMikoshiLift;
 	for (float z : {-GimmickMikoshiCrossZ, GimmickMikoshiCrossZ})
@@ -437,6 +437,16 @@ struct WeaponShapeGrid {
 	// (H3) 姿の型紙の名前 (空なら型紙を使っていない) と、形の決まりのために部品にしなかった物の数
 	std::string motif;
 	int motifDrops = 0;
+	// (J2) 土台に半分沈めて並べる本物のモデル: 3 つの中の番号・場所 (形の座標)・向き (axes[m] が物の場の向き m の世界の向き)・
+	// 物の場の座標から形の座標への倍率・左右に映した物か・紋章か (作り方は Chrono/MotifShape.h)
+	struct Model {
+		uint8_t item = 0;
+		Vec pos{};
+		std::array<Vec, 3> axes{Vec{1, 0, 0}, Vec{0, 1, 0}, Vec{0, 0, 1}};
+		float scale = 1;
+		bool mirrored = false, emblem = false;
+	};
+	std::vector<Model> models;
 	int PieceAt(Vec p) const {
 		const int x = int(std::floor((p.x - lo.x) / cell)), y = int(std::floor((p.y - lo.y) / cell)),
 		          z = int(std::floor((p.z - lo.z) / cell));
@@ -572,7 +582,7 @@ inline Vec GimmickPathHeading(const std::vector<Vec>& path, float s) {
 
 // ---- 時間と速さ ----
 // 変形にかける時間 (形へ寄せきるまで) と、元の体へ戻る時間
-inline constexpr float GimmickFormTime = .35f, GimmickReleaseTime = .25f;
+inline constexpr float GimmickFormTime = .35f;
 // 液体をつたう速さ・紙飛行機の速さ・ボウリングの玉の速さ (1 秒に進む長さ)
 inline constexpr float GimmickFlowSpeed = 78, GimmickPlaneSpeed = 95, GimmickBallSpeed = 190;
 // 紙飛行機をスティックでずらせる幅 (道の左右)
@@ -699,7 +709,7 @@ inline Vec KomaReflect(Vec heading, Vec normal) {
 // 放水できる時間・1 秒に出す水の粒の数・狙いを探す距離 (m ではなく単位)・水が当たる範囲の半径 (体の大きさの平方根をかける)・
 // 引き寄せる物が飛んでくる速さ・1 回に引き寄せる数と間隔・押し流す坂の傾きの下限・水の向きと坂の下りの向きのそろい (内積の下限)・
 // 押し流す物の速さの上限と、坂で速くなる強さ・止まる速さ・押し流せる大きさ (覆える大きさに対する倍率)・使った後に休む時間
-inline constexpr float HoseTime = 12, HoseRate = 5200, HoseAimRange = 260, HoseSplash = 22, HosePullSpeed = 55,
+inline constexpr float HoseTime = 12, HoseRate = 5200, HoseSplash = 22, HosePullSpeed = 55,
                        HosePullEvery = .12f, HoseWashSlope = .06f, HoseWashAlign = .15f, HoseWashMax = 42,
                        HoseWashAccel = 160, HoseWashStop = 2.5f, HoseWashSize = 1.6f, HoseRest = 5;
 inline constexpr int HosePullCount = 2, HoseWashLimit = 60;

@@ -10,9 +10,8 @@
 #endif
 #include "./GameScene.h"
 #include "./GameSceneConstants.h"
-// プレイヤー向けの UI (共通部品・強化カード・グラフィック設定)
+// プレイヤー向けの UI (共通部品・グラフィック設定)
 #include "../UI/GameUI.h"
-#include "../UI/RogueliteUI.h"
 #include "../UI/GraphicsUI.h"
 // 流体の放出と時間の管理 (エンジン側)
 #include "../../Engine/Fluid/FluidEmission.h"
@@ -29,7 +28,6 @@
 // ゲームの処理を分担するシステム群
 #include "../Systems/AudioSystem.h"
 #include "../Systems/CleanupSystem.h"
-#include "../Systems/FluidSystem.h"
 #include "../../Engine/Core/Input.h" // キーボード・マウス入力
 
 #include "../Systems/MotionSystem.h" // キーフレームのモーション
@@ -69,12 +67,6 @@ void GameScene::SelectEntity(entt::entity entity) {
 	}
 }
 
-// 名前もトランスフォームも付けない空のエンティティを作る
-entt::entity GameScene::CreateEmptyEntity() {
-	// 生成・破棄の予約と同時に触らないようロックする
-	std::lock_guard<std::mutex> lock(spawnMutex_);
-	return registry_.create();
-}
 
 // エディタ用の一時エンティティ (プレビューなど) を即座に削除する
 void GameScene::DestroyEditorEntity(entt::entity entity) {
@@ -136,75 +128,6 @@ entt::entity GameScene::FindObjectByName(const std::string& name) {
 	return entt::null;
 }
 
-// 指定座標の真下にあるメッシュ表面の高さを求める
-float GameScene::GetHeightAt(float x, float z, float startY, uint32_t excludeId) {
-	// 当たった中で一番高い面の高さ。何にも当たらなければ kNoGroundHeight
-	float maxHeight = kLowestSurfaceHeight;
-	bool hitAny = false;
-
-	// startY (既定 1000) から真下へレイを飛ばす
-	DirectX::XMVECTOR rayPos = DirectX::XMVectorSet(x, startY, z, 1.0f);
-	DirectX::XMVECTOR rayDir = DirectX::XMVectorSet(0.0f, -1.0f, 0.0f, 0.0f);
-
-	// 位置を持つエンティティを順に調べる
-	auto view = registry_.view<TransformComponent>();
-	for (auto entity : view) {
-		// 除外するもの (自分自身など) は飛ばす
-		if (excludeId != 0 && static_cast<uint32_t>(entity) == excludeId)
-			continue;
-
-		// 敵・弾・プレイヤー・エフェクトは地面として扱わない
-		bool isEnemyOrBullet = false;
-		if (registry_.all_of<TagComponent>(entity)) {
-			// タグを調べる
-			const auto tag = registry_.get<TagComponent>(entity).tag;
-			if (tag == TagType::Enemy || tag == TagType::Bullet || tag == TagType::Player ||
-			    tag == TagType::Projectile || tag == TagType::VFX) {
-				isEnemyOrBullet = true;
-			}
-		}
-		if (isEnemyOrBullet)
-			continue;
-
-		// 当たり判定用のメッシュがあればそれを使い、無ければ描画用のメッシュを使う
-		uint32_t modelHandle = 0;
-		if (registry_.all_of<GpuMeshColliderComponent>(entity)) {
-			auto& mc = registry_.get<GpuMeshColliderComponent>(entity);
-			if (mc.enabled)
-				modelHandle = mc.meshHandle;
-		}
-		if (modelHandle == 0 && registry_.all_of<MeshRendererComponent>(entity)) {
-			auto& mr = registry_.get<MeshRendererComponent>(entity);
-			if (mr.enabled)
-				modelHandle = mr.modelHandle;
-		}
-
-		// メッシュが無ければ飛ばす
-		if (modelHandle == 0)
-			continue;
-
-		// モデルの実体 (無ければ飛ばす)
-		auto* model = renderer_->GetModel(modelHandle);
-		if (!model)
-			continue;
-
-		// 当たった距離・位置と、このエンティティのワールド行列
-		float dist = 0.0f;
-		Engine::Vector3 hitPoint;
-		Engine::Matrix4x4 worldMat = this->GetWorldMatrix(static_cast<int>(entity));
-
-		// 当たったら、一番高い位置を覚える
-		if (model->RayCast(rayPos, rayDir, worldMat, dist, hitPoint)) {
-			if (hitPoint.y > maxHeight) {
-				maxHeight = hitPoint.y;
-				hitAny = true;
-			}
-		}
-	}
-
-	// 当たったものがあればその高さ、無ければ kNoGroundHeight
-	return hitAny ? maxHeight : kNoGroundHeight;
-}
 
 // レイキャスト: 地形などのメッシュに当たった最も近い距離を返す (敵・弾・プレイヤーなどは無視)
 bool GameScene::RayCast(
@@ -408,7 +331,7 @@ void GameScene::ClearScene() {
 	// 選択を外し、止めていた世界を動かす
 	ClearSelection();
 	if (renderer_)
-		renderer_->SetRogueWorldFrozen(false);
+		renderer_->SetWorldFrozen(false);
 	// すべてのスクリプトを止める
 	StopAllScripts(registry_, this);
 	// 1. 各システムの状態をリセットする

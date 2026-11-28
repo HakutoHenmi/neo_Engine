@@ -133,13 +133,6 @@ bool DevourScreen(const GameContext& ctx, Vec point, float& x, float& y) {
 	y = (.5f - clip.y / clip.w * .5f) * 720;
 	return true;
 }
-// 残り時間を「分:秒」にする
-std::string DevourClockText(float seconds) {
-	int s = int(std::ceil(std::max(0.f, seconds)));
-	char text[16];
-	snprintf(text, sizeof(text), "%d:%02d", s / 60, s % 60);
-	return text;
-}
 // 増えた量を整数の文字列にする
 std::string DevourAmount(float value) {
 	return std::to_string(int(std::round(value)));
@@ -370,7 +363,7 @@ void ChronoSystem::DevourHammerHits(entt::registry& r, GameContext& ctx, const L
 		if (LifeDistance(prop.at, b.at) > range + radius || !LifeWeaponTouches(b, prop.at, radius, pulse))
 			continue;
 		if (DevourCanCover(mass, prop.radius)) {
-			devourEatBy_ = 4;
+			devourEatBy_ = 3;
 			gained += DevourEat(r, i);
 			++eaten;
 		} else if (prop.morphItem == LifeMorphItem::None && DevourCanShatter(mass, prop.radius))
@@ -585,22 +578,6 @@ void ChronoSystem::LoadDevourStage() {
 		} catch (...) {
 		}
 	devourStage_ = std::clamp(devourStage_, 0, int(DevourStages().size()) - 1);
-}
-// 広げた体の下にある、覆える大きさの物をまとめて飲み込む。飲み込んだ数を返す
-int ChronoSystem::DevourCapture(entt::registry& r, V landing, float& gained) {
-	// 途中で大きくなっても、覆った瞬間の大きさで判定する
-	float mass = life_.bodies[0].mass;
-	int count = 0;
-	devourEatBy_ = 2;
-	for (size_t i = 0; i < life_.props.size(); ++i) {
-		const auto& prop = life_.props[i];
-		if (!prop.active || prop.sealed || !DevourCanCover(mass, prop.radius) ||
-		    !DevourUnderCover(landing, prop.at, mass, prop.radius, prop.reach))
-			continue;
-		gained += DevourEat(r, i);
-		++count;
-	}
-	return count;
 }
 // ずっと小さい物は、通り道で触れただけで沈み込む (前フレームの位置からの線分で調べ、速く動いても取りこぼさない)
 void ChronoSystem::DevourTouch(entt::registry& r, V from) {
@@ -980,58 +957,6 @@ void ChronoSystem::DevourShedBody(Player& p, GameContext& ctx, float damage, V s
 	++life_.revision;
 	LifeImpact(ctx, ImpactPlayerHurt, body.at, away * .6f + V{0, .8f, 0}, std::clamp(damage / 10, .8f, 1.4f));
 }
-// 飛びかかりを始める: 正面の覆える物へ向かって跳ぶ。満足の間に押せば、次の飛びかかりへつなげる
-bool ChronoSystem::StartDevourPounce(Player& p, GameContext& ctx) {
-	(void)ctx;
-	auto& body = life_.bodies[0];
-	if (body.mass <= 0 || body.down || finished_ || devourPounceWait_ > 0)
-		return false;
-	bool chain = body.action == LifeAction::Engulf && body.actionAge >= DevourCoverEnd;
-	if (body.action != LifeAction::Idle && !chain)
-		return false;
-	// 空中からは飛びかからない (連打で空へ上っていかないように、着地を待つ)
-	if (!p.grounded)
-		return false;
-	// 目標を選び、そちらを向く
-	auto pick = DevourChooseTarget(body.at, body.forward, body.mass, life_.props);
-	V to = pick.at, delta = to - body.at;
-	delta.y = 0;
-	float distance = Length(delta);
-	V direction = distance > .01f ? delta * (1 / distance) : body.forward;
-	// 大きすぎる物には、手前で覆いかぶさって弾かれる
-	if (!pick.fits && pick.index >= 0) {
-		float stop = life_.props[size_t(pick.index)].radius * .5f + DevourBodyRadius(body.mass);
-		to = body.at + direction * std::max(0.f, distance - stop);
-	}
-	// 跳べる距離に収める
-	V hop = to - body.at;
-	hop.y = 0;
-	float range = DevourLeapRange(body.mass);
-	if (Length(hop) > range)
-		to = body.at + Unit(hop) * range;
-	// 仮足の形は飛びかかりごとに変える
-	devourPounce_ = {body.at,
-	                 to,
-	                 pick.index,
-	                 pick.fits,
-	                 false,
-	                 false,
-	                 std::uniform_real_distribution<float>(0, 100)(DevourRandom())};
-	// 液体から包み込みの形 (体の各点の行き先) へ移るので、最初の 1 回だけ粒子の割り当てを作り直す。
-	// 続けて飛びかかるときは包み込みの形のままなので作り直さない
-	body.forward = direction;
-	body.action = LifeAction::Engulf;
-	body.actionAge = 0;
-	body.grabs.clear();
-	body.committed = false;
-	body.restoreDuration = Data::SlimeSettings()->engulfRestoreSeconds;
-	life_.tackleTime = 0;
-	devourPounceWait_ = DevourPounceCooldown;
-	++devourLog_.pounces;
-	if (!chain)
-		++life_.revision;
-	return true;
-}
 // 体と同じ流体の粒子を周りへばらまく (本体と同じ流体シミュレーションの、弾道で飛ぶ粒子。描き方も本体と同じ)。
 // 飛沫は毎回ばらばら: 向き・高さ・速さ・しずくの大きさ・粒の数・飛ぶ時間をすべて乱数で決める。
 // 大きめのしずくを count 個と、細かく速く飛ぶ霧のような飛沫をその半分混ぜる。
@@ -1070,13 +995,12 @@ void ChronoSystem::DevourSplash(V at, float radius, int count, float strength) {
 	for (int i = 0; i < count / 2; ++i)
 		throwDrop(.45f, 1.35f, 1, 2, .3f, .55f);
 }
-// 飛びかかりを進める: 溜め → 跳ぶ → 覆う (飲み込む・弾かれる) → 満足。体の中の物の時間も進める
-void ChronoSystem::TickDevourPounce(entt::registry& r, Player& p, GameContext& ctx, float dt) {
+// 吸収モードの体を毎フレーム進める: 大口の形・体の中の物・しずく・コンボの時間・ギミックなど
+void ChronoSystem::TickDevourBody(entt::registry& r, Player& p, GameContext& ctx, float dt) {
 	auto& body = life_.bodies[0];
 	TickDevourLog(dt);
 	DevourDigest(body, devourDigest_, dt);
 	devourGulp_.age += dt;
-	devourPounceWait_ = std::max(0.f, devourPounceWait_ - dt);
 	devourSizePulse_ = std::max(0.f, devourSizePulse_ - dt * 4);
 	// 大口は形の時間を進め、閉じ終えたら液体の体へ戻る
 	if (devourBiteAge_ >= 0) {
@@ -1132,93 +1056,6 @@ void ChronoSystem::TickDevourPounce(entt::registry& r, Player& p, GameContext& c
 	devourClock_.comboClock = std::max(0.f, devourClock_.comboClock - dt);
 	if (devourClock_.comboClock <= 0)
 		devourClock_.combo = 0;
-	// (試験場の取り込みは飛びかかりではないので、ここまでの体の中の物の時間だけを進める)
-	if (!devour_ || body.action != LifeAction::Engulf)
-		return;
-	float age = body.actionAge, next = age + dt, scale = LifeScale(body.mass);
-	V leap = devourPounce_.to - devourPounce_.from;
-	leap.y = 0;
-	float distance = Length(leap);
-	V direction = distance > .01f ? leap * (1 / distance) : body.forward;
-	if (age < DevourLandAt)
-		body.forward = direction;
-	// 溜め: その場で踏ん張る
-	if (age < DevourWindup) {
-		float brake = std::exp(-24 * dt);
-		p.velocity.x *= brake;
-		p.velocity.z *= brake;
-		if (next >= DevourWindup)
-			PlayDevourSound(devourSounds_.pounce, .4f);
-	}
-	// 口を開けて飛び込む (ズバーッ) から包む (ガバッ) まで: 勢いよく飛び出し、口で包みながら目標の上で止まる。上には跳ばない
-	if (next > DevourWindup && age < DevourCoverEnd && dt > 0 && !devourPounce_.bounced) {
-		float speed = distance * (DevourLeapProgress(next) - DevourLeapProgress(age)) / dt;
-		p.velocity.x = direction.x * speed;
-		p.velocity.z = direction.z * speed;
-		if (next >= DevourCoverEnd)
-			p.velocity.x = p.velocity.z = 0;
-	}
-	// 覆う: 体の上の方が物の上へ届いた瞬間に、行き先で覆える物をまとめて飲み込む
-	// (根元は覆う間に追いつく。壁などで行き先まで進めていなければ今の位置で調べる)
-	if (!devourPounce_.covered && next >= DevourLandAt) {
-		devourPounce_.covered = true;
-		V rest = devourPounce_.to - body.at;
-		rest.y = 0;
-		V landing = Length(rest) <= distance * (1 - DevourLeapProgress(age)) + .5f ? devourPounce_.to : body.at;
-		landing.y = body.at.y;
-		float gained = 0;
-		int count = DevourCapture(r, landing, gained);
-		const auto* target = devourPounce_.target >= 0 && size_t(devourPounce_.target) < life_.props.size()
-		                         ? &life_.props[size_t(devourPounce_.target)]
-		                         : nullptr;
-		bool bounced = target && target->active && !devourPounce_.fits;
-		float cover = DevourCoverRadius(body.mass);
-		if (count) {
-			++devourClock_.combo;
-			devourClock_.comboClock = 1.4f;
-			// ガバッ: 止めずに体をつぶして揺らす。飲み込む音はコンボで高くし、たくさん飲むほど大きく低くする
-			float weight = DevourGulpWeight(count, gained, body.mass);
-			devourGulp_ = {0, weight};
-			PlayDevourSound(devourSounds_.splat, .45f + .35f * weight, 1.1f - .25f * weight);
-			PlayDevourGulp(weight, devourClock_.combo);
-			LifeImpact(ctx, ImpactDevour, body.at, {0, 1, 0}, .8f + .7f * weight);
-			life_.message =
-			    std::string(
-			        devourClock_.combo > 1 ? "ガバッ！ " + std::to_string(devourClock_.combo) + "コンボ" : "ガバッ！") +
-			    "  " + std::to_string(count) + "個 / 成長 +" + DevourAmount(gained);
-			life_.messageAge = 1.4f;
-		} else if (!bounced)
-			PlayDevourSound(devourSounds_.splat, .3f, 1.25f);
-		// 体のしずくが周りへ飛び散る (飲み込んだ数が多いほど多く)
-		DevourSplash(landing, cover * .8f, count ? std::min(30, 16 + 3 * count) : 8, std::sqrt(scale));
-		// 大きすぎた: ぼよんと弾かれて少しよろける
-		if (bounced) {
-			++devourLog_.bounces;
-			devourPounce_.bounced = true;
-			p.velocity = direction * -(7 + 1.5f * scale) + V{0, 5, 0};
-			p.grounded = false;
-			body.aspectVelocity -= 8;
-			if (!count)
-				devourGulp_ = {0, .5f};
-			LifeImpact(ctx, ImpactDevourBounce, body.at, direction * -1.f + V{0, .5f, 0});
-			PlayDevourSound(devourSounds_.bounce, .6f);
-			DevourBump(r, p, ctx, target->at, .5f);
-			if (!count) {
-				life_.message = "ぼよん！ まだ大きい / 本体 " + std::to_string(int(DevourMassToCover(target->radius))) +
-				                " で飲み込める";
-				life_.messageAge = 1.8f;
-			}
-		}
-	}
-	// (包み込んでいる間に口の縁から液をこぼすと、唇がちぎれて破片が飛んでいるように見えるので出さない。
-	//  飛び散るのは覆った瞬間の 1 回だけ)
-	// 満足: 空洞を閉じたドームから液体の体へ戻り、ばねでぷるんと弾む
-	if (next >= DevourPounceTime) {
-		body.action = LifeAction::Idle;
-		body.actionAge = 0;
-		body.aspect = 1;
-		body.aspectVelocity = 4 + 2 * (devourGulp_.age < .7f ? devourGulp_.weight : 0);
-	}
 }
 // 掃除機の吸い口 (形の前の端の床の近く)
 ChronoSystem::V ChronoSystem::DevourVacuumMouth() const {
@@ -1381,7 +1218,7 @@ void ChronoSystem::DevourSpringLand(entt::registry& r, GameContext& ctx) {
 	body.springStretch = .5f;
 	float gained = 0, shock = DevourSpringShock(body.mass), mass = body.mass;
 	int count = 0;
-	devourEatBy_ = 3;
+	devourEatBy_ = 2;
 	for (size_t i = 0; i < life_.props.size(); ++i) {
 		const auto& prop = life_.props[i];
 		if (!prop.active || prop.sealed || !DevourCanCover(mass, prop.radius) ||
@@ -1589,6 +1426,19 @@ void ChronoSystem::DrawDevourUI(GameContext& ctx) {
 		}
 	float cm = DevourSizeCm(stage, body.mass), bestMass = devourBests_[size_t(devourStage_)];
 	std::string size = DevourSizeText(cm), best = DevourSizeText(DevourSizeCm(stage, bestMass));
+	// 積み木クラッシャーを遊んだあとの結果: こわした積み木の山の高さを巻尺で測る (チリも積もれば山となる)
+	if (finished_ && BlocksPileResult()) {
+		UI::Scale::PileView view;
+		view.stage = stage.name;
+		view.count = BlocksPileCount();
+		view.golds = battle_.broken[2];
+		view.score = battle_.score;
+		view.newBest = battle_.newBest;
+		view.hasNext = devourStage_ + 1 < int(DevourStages().size());
+		view.canRetryChallenge = battle_.tries > 0;
+		UI::Scale::PileResult(ui, view, finishAge_);
+		return;
+	}
 	if (finished_) {
 		// 結果画面: 大きさを巻尺で見せる。届かなかったら次の目標までの差を出す
 		int rank = DevourRankAt(stage, body.mass);
@@ -1719,8 +1569,8 @@ void ChronoSystem::DrawDevourUI(GameContext& ctx) {
 			hud.flags.insert(hud.flags.begin(), {mark, "BEST " + best, false});
 		}
 		// このステージの変形アイテム
-		if (!devourFreeForms_) {
-			const LifeAction form = DevourItemForm(stage.item);
+		{
+			const LifeAction form = devourTestForm_ >= 0 ? LifeAction(devourTestForm_) : DevourItemForm(stage.item);
 			const bool active = body.action == form, taken = LifeCanMorph(body, form);
 			hud.item = true;
 			hud.itemLit = active || devourItemReady_;

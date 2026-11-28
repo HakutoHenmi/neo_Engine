@@ -151,11 +151,6 @@ struct Flow {
 			remaining = std::min(3.0f, remaining + 1.6f);
 		}
 	}
-	// コンボを切る
-	void Break() {
-		combo = 0;
-		grace = 0;
-	}
 };
 // 量から決まる届く距離と体の大きさ
 inline float Reach(float mass) {
@@ -198,11 +193,6 @@ struct Stats {
 		float speed = 20 * std::clamp((360 - seconds) / 240, 0.0f, 1.0f);
 		float control = std::max(0.0f, 10 - 0.8f * static_cast<float>(hitsTaken) - 2 * static_cast<float>(collapses));
 		return chain + counter + speed + control;
-	}
-	// 85 以上で S、65 以上で A、40 以上で B、それ以外は C
-	const char* Rank(int maxCombo) const {
-		float s = Score(maxCombo);
-		return s >= 85 ? "S" : s >= 65 ? "A" : s >= 40 ? "B" : "C";
 	}
 };
 } // namespace Game::Chrono

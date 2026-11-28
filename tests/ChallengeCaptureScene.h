@@ -8,10 +8,16 @@
 #include "../externals/DirectXTex/DirectXTex.h"
 #include <chrono>
 #include <filesystem>
+#include <fstream>
 class ChallengeCaptureScene final : public Game::GameScene {
 	Engine::WindowDX* window_ = nullptr;
 	std::chrono::steady_clock::time_point start_;
 	int next_ = 0, burst_ = 0;
+	// (--challenge-capture-frames で、1 秒ごとのフレームの平均と一番長い時間 (ms) を tests/out/challenge-frames.txt に書く)
+	std::chrono::steady_clock::time_point lastFrame_{};
+	int frameSecond_ = -1, frameCount_ = 0;
+	float frameSum_ = 0, frameMax_ = 0;
+	std::string frameLog_;
 	void Capture(const wchar_t* path) {
 		DirectX::ScratchImage image;
 		auto result = DirectX::CaptureTexture(
@@ -42,7 +48,24 @@ public:
 		    {7.5f, L"tests/out/challenge-intro.png"},
 		    {14.f, L"tests/out/challenge-play.png"},
 		    {24.f, L"tests/out/challenge-result.png"}};
-		const float elapsed = std::chrono::duration<float>(std::chrono::steady_clock::now() - start_).count();
+		const auto now = std::chrono::steady_clock::now();
+		const float elapsed = std::chrono::duration<float>(now - start_).count();
+		static const bool logFrames = wcsstr(GetCommandLineW(), L"--challenge-capture-frames") != nullptr;
+		if (logFrames && lastFrame_.time_since_epoch().count() != 0) {
+			const float ms = std::chrono::duration<float, std::milli>(now - lastFrame_).count();
+			if (int(elapsed) != frameSecond_) {
+				if (frameCount_ > 0)
+					frameLog_ += std::to_string(frameSecond_) + "s avg=" + std::to_string(frameSum_ / float(frameCount_)) +
+					             " max=" + std::to_string(frameMax_) + '\n';
+				frameSecond_ = int(elapsed);
+				frameCount_ = 0;
+				frameSum_ = frameMax_ = 0;
+			}
+			++frameCount_;
+			frameSum_ += ms;
+			frameMax_ = (std::max)(frameMax_, ms);
+		}
+		lastFrame_ = now;
 		if (next_ < int(std::size(shots)) && elapsed >= shots[next_].at) {
 			Capture(shots[next_].path);
 			++next_;
@@ -65,7 +88,17 @@ public:
 			Capture(path.c_str());
 			++burst_;
 		}
-		if (next_ >= int(std::size(shots)) && elapsed > 26.f)
+		// (--challenge-capture-end=秒 で、終わる時刻を遅らせられる。長い結果の演出を連写するとき)
+		static const float quitAt = [] {
+			const wchar_t* e = wcsstr(GetCommandLineW(), L"--challenge-capture-end=");
+			return e ? float(_wtof(e + 24)) : 26.f;
+		}();
+		if (next_ >= int(std::size(shots)) && elapsed > quitAt) {
+			if (logFrames && !frameLog_.empty()) {
+				std::ofstream("tests/out/challenge-frames.txt") << frameLog_;
+				frameLog_.clear();
+			}
 			PostQuitMessage(0);
+		}
 	}
 };

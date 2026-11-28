@@ -19,13 +19,13 @@
 #include <map>
 #include "../UI/SceneMusic.h"
 #include "ChronoSystem.h"
+#include "../Chrono/BlocksLandRules.h"
 #include "DevourGimmickBehaviors.h"
 #include "GameControls.h"
 #include <set>
 #include <unordered_map>
 #include "../UI/GameUI.h"
 #include "../UI/ScaleUI.h"
-#include "../UI/RogueliteUI.h"
 #include "../Scenes/GameScene.h"
 #include "../../Engine/Scene/SceneManager.h"
 #include "../../Engine/Graphics/Model.h"
@@ -89,15 +89,12 @@ inline constexpr LifeImpactSpec ImpactStructureHit{.06f, .12f, .16f, 16, .6f, .5
 inline constexpr LifeImpactSpec ImpactStructureBreak{.1f, .28f, .26f, 10, 1, .7f, .4f};
 inline constexpr LifeImpactSpec ImpactShellBlast{0, .12f, .1f, 14, .45f, .3f, .2f};
 inline constexpr LifeImpactSpec ImpactGuardianStomp{0, .3f, .22f, 9, .85f, .4f, .35f};
-inline constexpr LifeImpactSpec ImpactCannonFire{0, .06f, .04f, 18, .15f, .1f, .08f};
 inline constexpr LifeImpactSpec ImpactSignalPulse{0, .1f, .06f, 12, .2f, .25f, .1f};
-inline constexpr LifeImpactSpec ImpactMarker{.03f, .08f, .06f, 16, .3f, .25f, .1f};
 // 吸収モード: 全身で覆いかぶさった瞬間・弾かれたとき・大きさの段階が上がったとき
 // 覆いかぶさりは何度も続けて起きるので時間は止めない (手応えは体のつぶれと揺れで出す)。止めるのは段階が上がったときだけ
 inline constexpr LifeImpactSpec ImpactDevour{0, .14f, .07f, 12, .45f, .3f, .12f};
 inline constexpr LifeImpactSpec ImpactDevourBounce{0, .12f, .07f, 12, .4f, .2f, .1f};
 inline constexpr LifeImpactSpec ImpactDevourTier{.12f, .32f, .2f, 9, .9f, .6f, .4f};
-inline constexpr LifeImpactSpec ImpactMarkerBig{.05f, .1f, .12f, 16, .6f, .4f, .16f};
 } // namespace ChronoDetail
 using namespace ChronoDetail;
 // 吸収モードの描き文字の言葉・乱数・ワールドの点の画面の位置 (SlimeDevour.cpp)

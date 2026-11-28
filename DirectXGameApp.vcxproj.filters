@@ -141,9 +141,6 @@
     <ClCompile Include="Game\Scenes\AssignmentSceneDraw.cpp">
       <Filter>2. Scenes（シーン）</Filter>
     </ClCompile>
-    <ClCompile Include="Game\Scenes\GameOverScene.cpp">
-      <Filter>2. Scenes（シーン）</Filter>
-    </ClCompile>
     <ClCompile Include="Game\Scenes\GameScene.cpp">
       <Filter>2. Scenes（シーン）</Filter>
     </ClCompile>
@@ -225,6 +222,9 @@
     <ClCompile Include="Game\Systems\ChallengeBlocks.cpp">
       <Filter>3. Systems（システム）\スライム本編</Filter>
     </ClCompile>
+    <ClCompile Include="Game\Systems\ChallengeBlocksLand.cpp">
+      <Filter>3. Systems（システム）\スライム本編</Filter>
+    </ClCompile>
     <ClCompile Include="Game\Systems\ChallengeMatrix.cpp">
       <Filter>3. Systems（システム）\スライム本編</Filter>
     </ClCompile>
@@ -240,9 +240,6 @@
     <ClCompile Include="Game\Systems\WeaponCraft.cpp">
       <Filter>3. Systems（システム）\スライム本編</Filter>
     </ClCompile>
-    <ClCompile Include="Game\Systems\ChallengeTerritory.cpp">
-      <Filter>3. Systems（システム）\スライム本編</Filter>
-    </ClCompile>
     <ClCompile Include="Game\Systems\SlopeTown.cpp">
       <Filter>3. Systems（システム）\スライム本編</Filter>
     </ClCompile>
@@ -251,9 +248,6 @@
     </ClCompile>
     <ClCompile Include="Game\Systems\SlimeLife.cpp">
       <Filter>3. Systems（システム）\スライム本編</Filter>
-    </ClCompile>
-    <ClCompile Include="Game\Systems\FluidSystem.cpp">
-      <Filter>3. Systems（システム）\共通</Filter>
     </ClCompile>
     <ClCompile Include="Game\Systems\AudioSystem.cpp">
       <Filter>3. Systems（システム）\共通</Filter>
@@ -271,9 +265,6 @@
       <Filter>2. Scenes（シーン）</Filter>
     </ClCompile>
     <ClCompile Include="Game\Systems\PhysicsSystem.cpp">
-      <Filter>3. Systems（システム）\共通</Filter>
-    </ClCompile>
-    <ClCompile Include="Game\Systems\RiverSystem.cpp">
       <Filter>3. Systems（システム）\共通</Filter>
     </ClCompile>
     <ClCompile Include="Game\Systems\UISystem.cpp">
@@ -380,9 +371,6 @@
     <ClInclude Include="Game\Scenes\AssignmentScene.h">
       <Filter>2. Scenes（シーン）</Filter>
     </ClInclude>
-    <ClInclude Include="Game\Scenes\GameOverScene.h">
-      <Filter>2. Scenes（シーン）</Filter>
-    </ClInclude>
     <ClInclude Include="Game\Scenes\SlimePlayerDemoScene.h">
       <Filter>2. Scenes（シーン）</Filter>
     </ClInclude>
@@ -416,9 +404,6 @@
     <ClInclude Include="Game\Systems\CleanupSystem.h">
       <Filter>3. Systems（システム）\共通</Filter>
     </ClInclude>
-    <ClInclude Include="Game\Systems\FluidSystem.h">
-      <Filter>3. Systems（システム）\共通</Filter>
-    </ClInclude>
     <ClInclude Include="Game\Systems\GameControls.h">
       <Filter>3. Systems（システム）\共通</Filter>
     </ClInclude>
@@ -432,9 +417,6 @@
       <Filter>3. Systems（システム）\共通</Filter>
     </ClInclude>
     <ClInclude Include="Game\Systems\PhysicsSystem.h">
-      <Filter>3. Systems（システム）\共通</Filter>
-    </ClInclude>
-    <ClInclude Include="Game\Systems\RiverSystem.h">
       <Filter>3. Systems（システム）\共通</Filter>
     </ClInclude>
     <ClInclude Include="Game\Systems\ScriptSystem.h">
@@ -467,9 +449,6 @@
     <ClInclude Include="Game\Chrono\LiquidTrail.h">
       <Filter>4. Chrono（スライム本編のルール）</Filter>
     </ClInclude>
-    <ClInclude Include="Game\Chrono\RogueliteRules.h">
-      <Filter>4. Chrono（スライム本編のルール）</Filter>
-    </ClInclude>
     <ClInclude Include="Game\Chrono\SlimeHydrantRules.h">
       <Filter>4. Chrono（スライム本編のルール）</Filter>
     </ClInclude>
@@ -483,6 +462,9 @@
       <Filter>4. Chrono（スライム本編のルール）</Filter>
     </ClInclude>
     <ClInclude Include="Game\Chrono\ChallengeRules.h">
+      <Filter>4. Chrono（スライム本編のルール）</Filter>
+    </ClInclude>
+    <ClInclude Include="Game\Chrono\BlocksLandRules.h">
       <Filter>4. Chrono（スライム本編のルール）</Filter>
     </ClInclude>
     <ClInclude Include="Game\Chrono\WeaponShapeSdf.h">
@@ -548,9 +530,6 @@
     <ClInclude Include="Game\Scripts\ScriptLifecycle.h">
       <Filter>6. Scripts（スクリプト）</Filter>
     </ClInclude>
-    <ClInclude Include="Game\Scripts\ScriptUtils.h">
-      <Filter>6. Scripts（スクリプト）</Filter>
-    </ClInclude>
     <ClInclude Include="Game\UI\CreditsUI.h">
       <Filter>7. UI（画面表示）</Filter>
     </ClInclude>
@@ -564,9 +543,6 @@
       <Filter>7. UI（画面表示）</Filter>
     </ClInclude>
     <ClInclude Include="Game\UI\LoadingUI.h">
-      <Filter>7. UI（画面表示）</Filter>
-    </ClInclude>
-    <ClInclude Include="Game\UI\RogueliteUI.h">
       <Filter>7. UI（画面表示）</Filter>
     </ClInclude>
     <ClInclude Include="Game\UI\SceneMusic.h">

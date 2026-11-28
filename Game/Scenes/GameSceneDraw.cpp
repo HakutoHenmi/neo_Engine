@@ -10,9 +10,8 @@
 #endif
 #include "./GameScene.h"
 #include "./GameSceneConstants.h"
-// プレイヤー向けの UI (共通部品・強化カード・グラフィック設定)
+// プレイヤー向けの UI (共通部品・グラフィック設定)
 #include "../UI/GameUI.h"
-#include "../UI/RogueliteUI.h"
 #include "../UI/GraphicsUI.h"
 // 流体の放出と時間の管理 (エンジン側)
 #include "../../Engine/Fluid/FluidEmission.h"
@@ -29,7 +28,6 @@
 // ゲームの処理を分担するシステム群
 #include "../Systems/AudioSystem.h"
 #include "../Systems/CleanupSystem.h"
-#include "../Systems/FluidSystem.h"
 #include "../../Engine/Core/Input.h" // キーボード・マウス入力
 
 #include "../Systems/MotionSystem.h" // キーフレームのモーション
@@ -175,12 +173,8 @@ void GameScene::Draw() {
 			UI::Scale::Pause(ui, view, pauseMenu_, UI::Seconds() - pauseOpenedAt_);
 			return;
 		}
-		// スライム本編は強化パレット、旧アクションゲームはポーズメニュー
-		if (chronoMode_ && !registry_.view<Chrono::InkPlayer>().empty()) {
-			auto view = registry_.view<Chrono::InkPlayer>();
-			UI::RoguePalette(ui, view.get<Chrono::InkPlayer>(*view.begin()).rogue);
-		} else
-			ui.Pause();
+		// (吸収モードでないときの) ポーズメニュー
+		ui.Pause();
 		// 右上のグラフィック設定ボタン
 		ui.Button(
 		    UI::GraphicsButton, UI::Str(UI::UsingPad() ? "pause.graphics" : "pause.graphicsKey"), false,
@@ -411,7 +405,7 @@ void GameScene::UpdatePlayerSlimeFluid(PlayerDrawState& player) {
 					    {ink->groundSlope.x, ink->groundHeight, ink->groundSlope.z},
 					    registry_.get<Chrono::Player>(playerEntity).grounded);
 					renderer_->SetSlimeFaceCamera(
-					    std::max(ink->rogue.MenuEase(), chronoSystem_ ? chronoSystem_->DevourResultFace() : 0.f));
+					    chronoSystem_ ? chronoSystem_->DevourResultFace() : 0.f);
 					scaleVec = {ink->fluidAspect, ink->airBlend, ink->fluidMotion};
 					forward = {ink->fluidDirection.x, 0, ink->fluidDirection.z};
 				}
@@ -436,10 +430,6 @@ void GameScene::UpdatePlayerSlimeFluid(PlayerDrawState& player) {
 				renderer_->SetGPUFluidCore(targetCore, attraction, scaleVec, forward, fluidMode, mass);
 				// 被弾時の点滅・不安定時の明滅、ヒットストップ中の停止、触手を伸ばしている間の糸
 				if (auto* action = registry_.try_get<Chrono::Player>(playerEntity)) {
-					// 強化の選択画面を開いているか
-					bool upgradeOpenForFluid = false;
-					if (auto* ink = registry_.try_get<Chrono::InkPlayer>(playerEntity))
-						upgradeOpenForFluid = ink->rogue.menu;
 					// 被弾直後は激しく点滅する
 					float flash = 0.0f;
 					if (action->damageAge < PlayerFluid::kDamageFlashSeconds &&
@@ -455,7 +445,7 @@ void GameScene::UpdatePlayerSlimeFluid(PlayerDrawState& player) {
 					// カメラ用の透明度・点滅・止めるか (ポーズ中かヒットストップ中) を渡す
 					renderer_->SetChronoFluidPresentation(
 					    action->cameraOpacity, flash,
-					    isPaused_ || (action->hitStop > 0 && !upgradeOpenForFluid) ||
+					    isPaused_ || action->hitStop > 0 ||
 					        (chronoSystem_ && chronoSystem_->DevourResultFrozen()));
 					// 触手を伸ばしている・引き寄せている間は手まで糸を張る
 					bool tether = action->action == Chrono::Action::Extending ||

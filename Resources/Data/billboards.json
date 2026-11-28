@@ -1,0 +1,47 @@
+{
+  "_comment": "積み木の街の遠くの景色の板 (billboards.png の升。4 x 2。幅と高さは升に対する割合)",
+  "columns": 4,
+  "rows": 2,
+  "cells": [
+    {
+      "id": "ki_maru",
+      "width": 0.7421875,
+      "height": 0.984375
+    },
+    {
+      "id": "sugi",
+      "width": 0.40625,
+      "height": 0.984375
+    },
+    {
+      "id": "sakura",
+      "width": 0.83984375,
+      "height": 0.984375
+    },
+    {
+      "id": "matsu",
+      "width": 0.7578125,
+      "height": 0.984375
+    },
+    {
+      "id": "kaki_no_ki",
+      "width": 0.67578125,
+      "height": 0.984375
+    },
+    {
+      "id": "house_hiraya",
+      "width": 0.96875,
+      "height": 0.41796875
+    },
+    {
+      "id": "house_kawara",
+      "width": 0.96875,
+      "height": 0.68359375
+    },
+    {
+      "id": "my_house",
+      "width": 0.96875,
+      "height": 0.72265625
+    }
+  ]
+}

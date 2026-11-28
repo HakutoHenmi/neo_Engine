@@ -117,7 +117,7 @@ constexpr int kLogoItem = kPropCount, kMenuItem = kLogoItem + 4, kHintItem = kMe
 std::vector<Chrono::ChallengeKind> QuickChoices() {
 	std::vector<Chrono::ChallengeKind> out;
 	for (int i = 0; i < Chrono::ChallengeKindCount; ++i)
-		if (Chrono::ChallengeKind(i) != Chrono::ChallengeKind::Tower)
+		if (Chrono::ChallengeReady(Chrono::ChallengeKind(i)))
 			out.push_back(Chrono::ChallengeKind(i));
 	return out;
 }

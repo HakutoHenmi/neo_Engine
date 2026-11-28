@@ -723,8 +723,11 @@ void Renderer::PrepareFluidVolume() {
 		if (t.shape.w > .5f) {
 			cb.playerBodyCenter = t.origin;
 			cb.playerRadii = {t.shape.x, t.shape.y, t.shape.z};
+			// (核が体の真ん中から横へずれていれば、坂の傾き (slimeGround_ の x・z) の分だけ高さもずらす: 坂で核が体の外へ出ないように)
 			cb.playerLiquidCore = {
-			    t.origin.x + t.reserved.z, t.origin.y + t.shape.y * .43f, t.origin.z + t.reserved.w, 1};
+			    t.origin.x + t.reserved.z,
+			    t.origin.y + t.shape.y * .43f + slimeGround_.x * t.reserved.z + slimeGround_.z * t.reserved.w,
+			    t.origin.z + t.reserved.w, 1};
 		} else {
 			Vector3 lo{1e9f, 1e9f, 1e9f}, hi{-1e9f, -1e9f, -1e9f};
 			for (UINT i = 0; i < mainCount; ++i) {

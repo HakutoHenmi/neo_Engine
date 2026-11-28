@@ -6,7 +6,6 @@
 #include "../Scenes/GameScene.h"
 #include "../Scenes/SlimePlayerDemoScene.h"
 #include "../Scenes/WaterDioramaDemoScene.h"
-#include "../Scenes/GameOverScene.h"
 #include "../Scenes/TitleScene.h"
 #include "../Scenes/SelectScene.h"
 #include "../Scenes/AssignmentScene.h"
@@ -62,7 +61,6 @@ void RegisterGameScenes(Engine::SceneManager& sm) {
 	Register<GameScene>(sm, "Game");
 	// 評価課題の確認用デモ (スキニング・パーティクルなど)
 	Register<AssignmentScene>(sm, "Assignment");
-	Register<GameOverScene>(sm, "GameOver");
 }
 
 #ifndef NDEBUG

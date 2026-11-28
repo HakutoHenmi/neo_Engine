@@ -47,10 +47,4 @@ inline CinematicPose FrameShot(Bounds bounds, Vec outward, float fov, float aspe
 			}
 	return AimShot(center + outward * (distance + 3), center, fov);
 }
-// 開幕とボスの出現のムービーの長さ / 強化カードの表示の時間
-inline constexpr float OpeningShotSeconds = 3.4f, BossShotHoldSeconds = .65f, BossShotReturnSeconds = .85f;
-inline float CardReveal(float age, int slot) {
-	return std::clamp((age - float(slot) * .07f) / .14f, 0.f, 1.f);
-}
-inline constexpr float CardRevealSeconds = .28f;
 } // namespace Game::Chrono
