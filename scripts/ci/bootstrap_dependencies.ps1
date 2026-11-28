@@ -1,16 +1,20 @@
 [CmdletBinding()]
-param()
+param([ValidateSet('Debug', 'Development', 'Release')][string]$Configuration = 'Development')
 
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 $repoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $dependency = (Get-Content "$PSScriptRoot/dependencies.json" -Raw | ConvertFrom-Json).assimp
 $dependencyRoot = Join-Path $repoRoot 'artifacts/ci/deps'
-$installRoot = Join-Path $dependencyRoot 'assimp'
+$dependencyConfiguration = if ($Configuration -eq 'Debug') { 'Debug' } else { 'Release' }
+$installName = if ($Configuration -eq 'Debug') { 'assimp-Debug' } else { 'assimp' }
+$assimpLibrary = if ($Configuration -eq 'Debug') { 'assimp-vc143-mtd.lib' } else { 'assimp-vc143-mt.lib' }
+$zlibLibrary = if ($Configuration -eq 'Debug') { 'zlibstaticd.lib' } else { 'zlibstatic.lib' }
+$installRoot = Join-Path $dependencyRoot $installName
 $stamp = Join-Path $installRoot 'source.sha256'
 if ((Test-Path $stamp) -and ([IO.File]::ReadAllText($stamp).Trim() -eq $dependency.sha256) -and
-    (Test-Path "$installRoot/lib/assimp-vc143-mt.lib") -and (Test-Path "$installRoot/lib/zlibstatic.lib")) {
-    Write-Host 'The CI Assimp dependency is already built.'
+    (Test-Path "$installRoot/lib/$assimpLibrary") -and (Test-Path "$installRoot/lib/$zlibLibrary")) {
+    Write-Host "The CI Assimp $dependencyConfiguration dependency is already built."
     exit 0
 }
 
@@ -37,26 +41,26 @@ if (-not (Test-Path "$source/CMakeLists.txt")) {
     Expand-Archive -LiteralPath $archive -DestinationPath (Join-Path $dependencyRoot 'source') -Force
 }
 $build = Join-Path $dependencyRoot 'assimp-build'
-$logs = Join-Path $repoRoot 'artifacts/ci/logs'
+$logs = Join-Path $repoRoot "artifacts/ci/logs/$Configuration"
 New-Item -ItemType Directory -Force $logs | Out-Null
 
 & $cmake -S $source -B $build -G 'Visual Studio 17 2022' -A x64 `
     "-DCMAKE_INSTALL_PREFIX=$installRoot" -DCMAKE_POLICY_VERSION_MINIMUM=3.5 `
     -DBUILD_SHARED_LIBS=OFF -DUSE_STATIC_CRT=ON -DASSIMP_BUILD_ZLIB=ON `
     -DASSIMP_BUILD_TESTS=OFF -DASSIMP_BUILD_ASSIMP_TOOLS=OFF -DASSIMP_BUILD_SAMPLES=OFF `
-    -DASSIMP_WARNINGS_AS_ERRORS=OFF -DASSIMP_INSTALL=ON 2>&1 |
+    -DASSIMP_WARNINGS_AS_ERRORS=OFF -DASSIMP_INSTALL=ON -DASSIMP_INSTALL_PDB=OFF 2>&1 |
     Tee-Object -FilePath "$logs/assimp-configure.log"
 if ($LASTEXITCODE -ne 0) { throw 'Assimp CMake configuration failed.' }
-& $cmake --build $build --config Release --parallel 2 2>&1 |
+& $cmake --build $build --config $dependencyConfiguration --parallel 2 2>&1 |
     Tee-Object -FilePath "$logs/assimp-build.log"
 if ($LASTEXITCODE -ne 0) { throw 'Assimp build failed.' }
-& $cmake --install $build --config Release 2>&1 | Tee-Object -FilePath "$logs/assimp-install.log"
+& $cmake --install $build --config $dependencyConfiguration 2>&1 | Tee-Object -FilePath "$logs/assimp-install.log"
 if ($LASTEXITCODE -ne 0) { throw 'Assimp installation failed.' }
 
 # Assimp's static archive depends on its bundled zlib archive as well.
-if (-not (Test-Path "$installRoot/lib/zlibstatic.lib")) {
-    Copy-Item -LiteralPath "$build/contrib/zlib/Release/zlibstatic.lib" -Destination "$installRoot/lib/zlibstatic.lib"
+if (-not (Test-Path "$installRoot/lib/$zlibLibrary")) {
+    Copy-Item -LiteralPath "$build/contrib/zlib/$dependencyConfiguration/$zlibLibrary" -Destination "$installRoot/lib/$zlibLibrary"
 }
-if (-not (Test-Path "$installRoot/lib/assimp-vc143-mt.lib")) { throw 'Expected the v143 static Assimp library.' }
+if (-not (Test-Path "$installRoot/lib/$assimpLibrary")) { throw 'Expected the v143 static Assimp library.' }
 [IO.File]::WriteAllText($stamp, $dependency.sha256 + "`n")
 Write-Host "CI dependencies installed in $installRoot"

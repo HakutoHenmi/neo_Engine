@@ -18,11 +18,9 @@ class UIGalleryScene final : public Engine::IScene {
 	static constexpr int kPages = 9;
 	static const wchar_t* PagePath(int page) {
 		static const wchar_t* paths[kPages] = {
-		    L"tests/out/gallery-title.png",      L"tests/out/gallery-select.png",
-		    L"tests/out/gallery-result-win.png", L"tests/out/gallery-result-lose.png",
-		    L"tests/out/gallery-pause.png",      L"tests/out/gallery-graphics.png",
-		    L"tests/out/gallery-credits.png",    L"tests/out/gallery-loading.png",
-		    L"tests/out/gallery-splash.png"};
+		    L"tests/out/gallery-title.png",       L"tests/out/gallery-select.png",  L"tests/out/gallery-result-win.png",
+		    L"tests/out/gallery-result-lose.png", L"tests/out/gallery-pause.png",   L"tests/out/gallery-graphics.png",
+		    L"tests/out/gallery-credits.png",     L"tests/out/gallery-loading.png", L"tests/out/gallery-splash.png"};
 		return paths[page];
 	}
 	void Load() {
@@ -34,6 +32,7 @@ class UIGalleryScene final : public Engine::IScene {
 		if (scene_)
 			scene_->Initialize(window_, {});
 	}
+
 public:
 	void Initialize(Engine::WindowDX* dx, const Engine::SceneParameters&) override {
 		window_ = dx;

@@ -1060,8 +1060,10 @@ private:
 	float BlocksFootprint(Chrono::Vec at, float fromY, float radius, Chrono::Vec& slope) const;
 	// 積み木の街: 体の形の点 (体の右・上・前の座標、原点は体の真下の地面) を、乗っている面の傾きに合わせて回す (ほかの所ではそのまま)
 	Chrono::Vec BodyTiltApply(Chrono::Vec local) const;
-	float BlocksSettle(Chrono::Vec at, Chrono::Vec from, float radius, float dt, float& fallSpeed, Chrono::Vec& slope) const;
-	bool BlocksSweep(Chrono::Vec from, Chrono::Vec to, float lift, Chrono::Vec& hit, Chrono::Vec& normal, bool& wall) const;
+	float BlocksSettle(
+	    Chrono::Vec at, Chrono::Vec from, float radius, float dt, float& fallSpeed, Chrono::Vec& slope) const;
+	bool BlocksSweep(
+	    Chrono::Vec from, Chrono::Vec to, float lift, Chrono::Vec& hit, Chrono::Vec& normal, bool& wall) const;
 	void WriteBlocksLandCheck() const;
 	// 実測 (ChallengeMatrix.cpp): 試しを始める・進める (input に歩く向きを入れる)・書き出す
 	void StartMatrixTrial();

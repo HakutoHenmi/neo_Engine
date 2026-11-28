@@ -4,15 +4,22 @@
     <_NeoCiRoot>$(MSBuildThisFileDirectory)..\..\artifacts\ci\</_NeoCiRoot>
     <OutDir>$(_NeoCiRoot)bin\$(Configuration)\</OutDir>
     <IntDir>$(_NeoCiRoot)obj\$(MSBuildProjectName)\$(Configuration)\</IntDir>
+    <_NeoCiAssimp>$(_NeoCiRoot)deps\assimp</_NeoCiAssimp>
+    <_NeoCiAssimp Condition="'$(Configuration)'=='Debug'">$(_NeoCiRoot)deps\assimp-Debug</_NeoCiAssimp>
+    <_NeoCiZlib>zlibstatic.lib</_NeoCiZlib>
+    <_NeoCiZlib Condition="'$(Configuration)'=='Debug'">zlibstaticd.lib</_NeoCiZlib>
+    <PackageWorkDirectory>$(_NeoCiRoot)package</PackageWorkDirectory>
+    <PackageDirectXTexLibrary>$(_NeoCiRoot)bin\Release\DirectXTex.lib</PackageDirectXTexLibrary>
+    <NtcRuntimePath>$(_NeoCiRoot)deps\ntc\libntc.dll</NtcRuntimePath>
   </PropertyGroup>
   <ItemDefinitionGroup>
     <!-- Use the headers built with this library, rather than a machine-local SDK. -->
     <ClCompile>
-      <AdditionalIncludeDirectories>$(_NeoCiRoot)deps\assimp\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(_NeoCiAssimp)\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
-      <AdditionalLibraryDirectories>$(_NeoCiRoot)deps\assimp\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>zlibstatic.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(_NeoCiAssimp)\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>$(_NeoCiZlib);%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
 </Project>

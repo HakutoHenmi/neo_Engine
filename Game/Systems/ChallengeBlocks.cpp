@@ -41,8 +41,7 @@ Engine::Vector4 BlockColor(BlockType type, uint32_t id) {
 // 積み木の街か (積み木クラッシャーで、専用ステージの配置のとき)
 bool ChronoSystem::BlocksStageActive() const {
 	const auto& b = battle_;
-	return b.arenaRadius > 0 && b.challenge == ChallengeKind::Blocks &&
-	       b.blockPattern == ChallengeBlocksStagePattern;
+	return b.arenaRadius > 0 && b.challenge == ChallengeKind::Blocks && b.blockPattern == ChallengeBlocksStagePattern;
 }
 
 // 結果を「こわした積み木の山」で見せるか: 積み木クラッシャーを遊んで (やり直しも含む) 終わったとき
@@ -80,7 +79,9 @@ float PileRand(uint32_t& s) {
 	return float(s >> 8) / 16777216.f;
 }
 float PileLattice(int64_t x, int64_t z, uint32_t seed) {
-	return float(PileHash(uint32_t(x) * 73856093u ^ uint32_t(z) * 19349663u ^ uint32_t(x >> 32) * 83492791u ^ seed) >> 8) /
+	return float(
+	           PileHash(uint32_t(x) * 73856093u ^ uint32_t(z) * 19349663u ^ uint32_t(x >> 32) * 83492791u ^ seed) >>
+	           8) /
 	       16777216.f;
 }
 // (-1〜1)
@@ -126,7 +127,8 @@ Vec PileEarthColor(double r, double x, double z, double t) {
 	float coast = 1;
 	// (山のまわりの大陸は、遠くへ行くほどなめらかに海へ変わる。境目の丸が見えないように、近くでも同じノイズを使う)
 	{
-		const float m = PileFbm(x, z, 5e6, std::max(fine, 200.), 11) + 2.4f * float(std::exp(-std::pow(r / 1.1e6, 2))) - .1f;
+		const float m =
+		    PileFbm(x, z, 5e6, std::max(fine, 200.), 11) + 2.4f * float(std::exp(-std::pow(r / 1.1e6, 2))) - .1f;
 		water = m < 0;
 		coast = std::abs(m);
 	}
@@ -143,7 +145,8 @@ Vec PileEarthColor(double r, double x, double z, double t) {
 	// 地方の色: 草原・森・乾いた土地・砂漠・山 (雪)
 	const Vec meadow{.44f, .64f, .3f}, forest{.2f, .42f, .2f}, dry{.7f, .64f, .4f}, sand{.86f, .75f, .52f},
 	    rock{.52f, .47f, .41f}, snow{.94f, .95f, .97f};
-	const float wet = PileFbm(x, z, 3e6, std::max(fine, 5000.), 41) + .8f * float(std::exp(-std::pow(r / 2e6, 2))), wood = PileFbm(x, z, 250000, std::max(fine, 8.), 43);
+	const float wet = PileFbm(x, z, 3e6, std::max(fine, 5000.), 41) + .8f * float(std::exp(-std::pow(r / 2e6, 2))),
+	            wood = PileFbm(x, z, 250000, std::max(fine, 8.), 43);
 	Vec c = PileMix(meadow, forest, PileSmooth(-.1f, .45f, wood));
 	c = PileMix(c, dry, PileSmooth(-.2f, -.55f, wet));
 	c = PileMix(c, sand, PileSmooth(-.55f, -.85f, wet));
@@ -151,7 +154,8 @@ Vec PileEarthColor(double r, double x, double z, double t) {
 	c = PileMix(c, rock, PileSmooth(.82f, .93f, ridge) * (r > 30000 ? 1.f : 0.f));
 	c = PileMix(c, snow, PileSmooth(.95f, .99f, ridge) * (r > 30000 ? 1.f : 0.f));
 	// 畑のつぎはぎ (近いほど多い)。区切りの大きさごとに、見える大きさ (絵のマスの 4 倍) 以上なら描く。区切りの境目はあぜ (濃い緑)
-	const float farm = PileSmooth(120, 400, float(r)) * std::clamp(1.1f - float(r) / 40000.f + PileFbm(x, z, 60000, 15000, 53) * .5f, 0.f, 1.f) *
+	const float farm = PileSmooth(120, 400, float(r)) *
+	                   std::clamp(1.1f - float(r) / 40000.f + PileFbm(x, z, 60000, 15000, 53) * .5f, 0.f, 1.f) *
 	                   (1 - PileSmooth(.2f, .5f, wood)) * (1 - PileSmooth(-.3f, -.6f, wet));
 	if (farm > 0) {
 		static const Vec crops[] = {{.82f, .76f, .42f}, {.58f, .76f, .36f}, {.36f, .58f, .27f},
@@ -165,7 +169,8 @@ Vec PileEarthColor(double r, double x, double z, double t) {
 			const double ang = .5 + n * 1.1, ca = std::cos(ang), sa = std::sin(ang);
 			const double u = (x * ca - z * sa) / cell, v = (x * sa + z * ca) / cell * 1.7;
 			const double fu = std::floor(u), fv = std::floor(v);
-			const uint32_t h = PileHash(uint32_t(int64_t(fu)) * 9781u ^ uint32_t(int64_t(fv)) * 6271u ^ uint32_t(n) * 131u);
+			const uint32_t h =
+			    PileHash(uint32_t(int64_t(fu)) * 9781u ^ uint32_t(int64_t(fv)) * 6271u ^ uint32_t(n) * 131u);
 			c = PileMix(c, crops[h % 6], see * farm * .8f);
 			const double edge = std::min({u - fu, 1 - (u - fu), (v - fv) / 1.7, (1 - (v - fv)) / 1.7}) * cell;
 			if (edge < t * .8 && cell > 12 * t)
@@ -180,7 +185,8 @@ Vec PileEarthColor(double r, double x, double z, double t) {
 			return;
 		const double cx = (fx + .25 + .5 * double((h >> 16) & 255) / 255) * cell,
 		             cz = (fz + .25 + .5 * double((h >> 24) & 255) / 255) * cell;
-		const double d = std::hypot(x - cx, z - cz) / radius + PileNoise(x / (radius * .3), z / (radius * .3), seed) * .3;
+		const double d =
+		    std::hypot(x - cx, z - cz) / radius + PileNoise(x / (radius * .3), z / (radius * .3), seed) * .3;
 		if (d > 1 || radius < 2 * t)
 			return;
 		const float roof = PileNoise(x / std::max(t * 2, radius * .02), z / std::max(t * 2, radius * .02), seed + 7);
@@ -197,7 +203,8 @@ Vec PileEarthColor(double r, double x, double z, double t) {
 }
 // 地球の絵を描く (重いので、結果が始まったときに別の糸で。描き終わるまでは野原の色だけ)
 std::vector<uint8_t> PileEarthPaint() {
-	const double nearM = double(ChallengeBlocksHalf) * ChallengePileBlockCm / 100 / (ChallengeBlockSize * BlocksPileScale),
+	const double nearM =
+	                 double(ChallengeBlocksHalf) * ChallengePileBlockCm / 100 / (ChallengeBlockSize * BlocksPileScale),
 	             span = std::log(PileEarthFar() / nearM);
 	std::vector<uint8_t> pixels(size_t(PileEarthW) * PileEarthH * 4);
 	// (行を 2 つの糸に分けて描く。全部の糸を使うと、遊んでいる間のフレームが遅れる)
@@ -205,20 +212,20 @@ std::vector<uint8_t> PileEarthPaint() {
 	std::vector<std::thread> threads;
 	for (int w = 0; w < workers; ++w)
 		threads.emplace_back([&, w] {
-	for (int j = w; j < PileEarthH; j += workers) {
-		const double r = nearM * std::exp((double(j) + .5) / PileEarthH * span);
-		const double t = std::max(r * 6.2831853 / PileEarthW, r * span / PileEarthH);
-		for (int i = 0; i < PileEarthW; ++i) {
-			const double ph = 6.2831853 * (double(i) + .5) / PileEarthW;
-			const Vec c = PileEarthColor(r, r * std::cos(ph), r * std::sin(ph), t);
-			uint8_t* px = &pixels[(size_t(j) * PileEarthW + size_t(i)) * 4];
-			// (絵は色をそのまま読むので、明るさの線形の値で入れる)
-			px[0] = uint8_t(std::clamp(std::pow(c.x, 2.2f), 0.f, 1.f) * 255 + .5f);
-			px[1] = uint8_t(std::clamp(std::pow(c.y, 2.2f), 0.f, 1.f) * 255 + .5f);
-			px[2] = uint8_t(std::clamp(std::pow(c.z, 2.2f), 0.f, 1.f) * 255 + .5f);
-			px[3] = 255;
-		}
-	}
+			for (int j = w; j < PileEarthH; j += workers) {
+				const double r = nearM * std::exp((double(j) + .5) / PileEarthH * span);
+				const double t = std::max(r * 6.2831853 / PileEarthW, r * span / PileEarthH);
+				for (int i = 0; i < PileEarthW; ++i) {
+					const double ph = 6.2831853 * (double(i) + .5) / PileEarthW;
+					const Vec c = PileEarthColor(r, r * std::cos(ph), r * std::sin(ph), t);
+					uint8_t* px = &pixels[(size_t(j) * PileEarthW + size_t(i)) * 4];
+					// (絵は色をそのまま読むので、明るさの線形の値で入れる)
+					px[0] = uint8_t(std::clamp(std::pow(c.x, 2.2f), 0.f, 1.f) * 255 + .5f);
+					px[1] = uint8_t(std::clamp(std::pow(c.y, 2.2f), 0.f, 1.f) * 255 + .5f);
+					px[2] = uint8_t(std::clamp(std::pow(c.z, 2.2f), 0.f, 1.f) * 255 + .5f);
+					px[3] = 255;
+				}
+			}
 		});
 	for (auto& t : threads)
 		t.join();
@@ -253,7 +260,8 @@ PileEarthShape PileEarthBuild() {
 	PileEarthShape out;
 	auto& vertices = out.vertices;
 	auto& indices = out.indices;
-	const double nearM = double(ChallengeBlocksHalf) * ChallengePileBlockCm / 100 / (ChallengeBlockSize * BlocksPileScale),
+	const double nearM =
+	                 double(ChallengeBlocksHalf) * ChallengePileBlockCm / 100 / (ChallengeBlockSize * BlocksPileScale),
 	             span = std::log(PileEarthFar() / nearM);
 	constexpr int rings = 256, slices = 256;
 	for (int k = 0; k <= rings; ++k) {
@@ -298,7 +306,7 @@ std::future<PileEarthShape>& PileShapeJob() {
 	static std::future<PileEarthShape> job;
 	return job;
 }
-template <class T> bool PileReady(std::future<T>& job, bool wait) {
+template<class T> bool PileReady(std::future<T>& job, bool wait) {
 	return job.valid() && (wait || job.wait_for(std::chrono::seconds(0)) == std::future_status::ready);
 }
 } // namespace
@@ -372,7 +380,9 @@ void ChronoSystem::TickBlocksPile(float dt) {
 				d.color = Engine::Vector4{color.x, color.y, color.z, 1};
 				p.decor.push_back(d);
 			};
-			auto pick = [&](std::initializer_list<const char*> ids) { return ids.begin()[PileHash(seed++) % ids.size()]; };
+			auto pick = [&](std::initializer_list<const char*> ids) {
+				return ids.begin()[PileHash(seed++) % ids.size()];
+			};
 			// (街のまわりの景色 (StageScenery) の外から置く)
 			const float nearM = StageSceneryFar * battle_.unit / p.meter, farM = 6000;
 			const int objects = 340;
@@ -392,41 +402,57 @@ void ChronoSystem::TickBlocksPile(float dt) {
 					// 家 (遠くでは村や町)
 					const int houses = distant ? 3 + int(PileRand(seed) * 7) : 1;
 					for (int b = 0; b < houses; ++b)
-						place(distant ? pick({"house_hiraya", "house_kawara", "house_tin", "my_house", "apartment", "danchi", "dagashiya"})
-						          : pick({"house_hiraya", "house_kawara", "my_house"}),
-						      spot(size * .5f), size * (.16f + PileRand(seed) * .1f));
+						place(
+						    distant ? pick(
+						                  {"house_hiraya", "house_kawara", "house_tin", "my_house", "apartment",
+						                   "danchi", "dagashiya"})
+						            : pick({"house_hiraya", "house_kawara", "my_house"}),
+						    spot(size * .5f), size * (.16f + PileRand(seed) * .1f));
 				} else if (roll < (distant ? .85f : .55f)) {
 					// 木 (遠くでは林)
 					const int trees = distant ? 5 + int(PileRand(seed) * 10) : 2 + int(PileRand(seed) * 4);
 					for (int b = 0; b < trees; ++b)
-						place(distant ? pick({"sugi", "ki_maru", "matsu", "sugi"}) : pick({"kaki_no_ki", "sakura", "ki_maru", "matsu", "ki_maru"}),
-						      spot(size * .45f), size * (.09f + PileRand(seed) * .06f));
+						place(
+						    distant ? pick({"sugi", "ki_maru", "matsu", "sugi"})
+						            : pick({"kaki_no_ki", "sakura", "ki_maru", "matsu", "ki_maru"}),
+						    spot(size * .45f), size * (.09f + PileRand(seed) * .06f));
 				} else if (roll < (distant ? .93f : .82f)) {
 					// 野原に転がるおもちゃ (遠くでは大きなおもちゃ)
-					place(pick({"toybox", "minicar", "toy_ball", "daruma", "nuigurumi", "rc_car", "toy_plane", "bowling_pin", "kei_car"}),
-					      at, size * (.18f + PileRand(seed) * .12f));
+					place(
+					    pick(
+					        {"toybox", "minicar", "toy_ball", "daruma", "nuigurumi", "rc_car", "toy_plane",
+					         "bowling_pin", "kei_car"}),
+					    at, size * (.18f + PileRand(seed) * .12f));
 				} else {
 					// 積み木の塔 (山と同じおもちゃの積み木)
 					const int levels = 3 + int(PileRand(seed) * 5);
 					const float w = size * (.05f + PileRand(seed) * .04f);
 					for (int b = 0; b < levels; ++b) {
 						const auto c = BlockColor(BlockType::Normal, PileHash(seed++));
-						block(V{at.x + (PileRand(seed) - .5f) * w * .3f, (float(b) * 2 + 1) * w, at.z + (PileRand(seed) - .5f) * w * .3f}, w,
-						      Vec{c.x, c.y, c.z});
+						block(
+						    V{at.x + (PileRand(seed) - .5f) * w * .3f, (float(b) * 2 + 1) * w,
+						      at.z + (PileRand(seed) - .5f) * w * .3f},
+						    w, Vec{c.x, c.y, c.z});
 					}
 				}
 			}
 			// 雲のモデル: もこもこの雲 (高さ 1.2〜2.8km) と、宇宙から見える広い雲 (高さ 6km。平たくして大きく並べる)
 			for (int n = 0; n < 150; ++n) {
-				const float rm = 700 * std::pow(250000.f / 700, (float(n) + PileRand(seed)) / 150.f), ang = PileRand(seed) * 6.2831853f;
+				const float rm = 700 * std::pow(250000.f / 700, (float(n) + PileRand(seed)) / 150.f),
+				            ang = PileRand(seed) * 6.2831853f;
 				const V at = center + V{std::cos(ang), 0, std::sin(ang)} * (rm * p.meter);
 				const float w = (700 + PileRand(seed) * 1100) * (1 + rm / 60000) * p.meter;
-				place(pick({"kumo_a", "kumo_b", "kumo_c", "kumo_a"}), at, w, (1200 + PileRand(seed) * 1600) * p.meter, 1, true);
+				place(
+				    pick({"kumo_a", "kumo_b", "kumo_c", "kumo_a"}), at, w, (1200 + PileRand(seed) * 1600) * p.meter, 1,
+				    true);
 			}
 			for (int n = 0; n < 180; ++n) {
-				const float rm = 60000 * std::pow(3e6f / 60000, (float(n) + PileRand(seed)) / 180.f), ang = PileRand(seed) * 6.2831853f;
+				const float rm = 60000 * std::pow(3e6f / 60000, (float(n) + PileRand(seed)) / 180.f),
+				            ang = PileRand(seed) * 6.2831853f;
 				const V at = center + V{std::cos(ang), 0, std::sin(ang)} * (rm * p.meter);
-				place(pick({"kumo_a", "kumo_c"}), at, rm * (.06f + PileRand(seed) * .08f) * p.meter, 6000 * p.meter, .12f, true);
+				place(
+				    pick({"kumo_a", "kumo_c"}), at, rm * (.06f + PileRand(seed) * .08f) * p.meter, 6000 * p.meter, .12f,
+				    true);
 			}
 		}
 		// (体を山のふもとへ移すので、粒子も置き直す)
@@ -450,20 +476,23 @@ void ChronoSystem::TickBlocksPile(float dt) {
 	}
 	// (何倍にも変わるので、対数でなめらかに追う)
 	auto follow = [&](float& value, float target, float rate) {
-		value = std::exp(std::log(std::max(value, 1e-4f)) +
-		                 (std::log(std::max(target, 1e-4f)) - std::log(std::max(value, 1e-4f))) * (1 - std::exp(-rate * dt)));
+		value = std::exp(
+		    std::log(std::max(value, 1e-4f)) +
+		    (std::log(std::max(target, 1e-4f)) - std::log(std::max(value, 1e-4f))) * (1 - std::exp(-rate * dt)));
 	};
 	follow(p.height, std::max(top, 1e-4f), 10);
 	// カメラ: 殻を積む間は、積み木が着くたびの高さではなく、予定の高さと広さ (殻が積み終わる時刻ごとの高さと次の殻の広さを、
 	// 対数でつないだ線) を追う。殻が速くなっても、カメラは段のたびに止まったり跳ねたりせず、なめらかに上る
 	if (!p.shells.empty() && finishAge_ >= p.shells[0].at - .3f) {
-		float t0 = p.shells[0].at - .3f, h0 = std::log(std::max(float(ChallengePileRows(p.slots)) * p.block, p.block * 2)),
+		float t0 = p.shells[0].at - .3f,
+		      h0 = std::log(std::max(float(ChallengePileRows(p.slots)) * p.block, p.block * 2)),
 		      s0 = std::log(p.shells[0].shape.Width() * p.block * .6f);
 		float hNow = h0, sNow = s0;
 		for (int k = 0; k < int(p.shells.size()); ++k) {
 			const auto& sh = p.shells[size_t(k)];
 			const float t1 = sh.at + UI::Scale::PileShellTime(k) * .85f, h1 = std::log(sh.shape.Height() * p.block),
-			            s1 = std::log(p.shells[size_t(std::min(k + 1, int(p.shells.size()) - 1))].shape.Width() * p.block * .6f);
+			            s1 = std::log(
+			                p.shells[size_t(std::min(k + 1, int(p.shells.size()) - 1))].shape.Width() * p.block * .6f);
 			hNow = h1;
 			sNow = s1;
 			if (finishAge_ < t1) {
@@ -605,8 +634,9 @@ void ChronoSystem::DrawBlocksPile(GameContext& ctx) {
 			const float k = std::clamp((finishAge_ - start) / UI::Scale::PileDrop, 0.f, 1.f);
 			const float lift = BlocksPileFall * (1 - k * k);
 			const auto& sl = p.slots[size_t(i)];
-			cube(p.at + V{sl.x * p.block, (float(sl.row) + .5f + lift) * p.block, sl.z * p.block}, V{half, half, half},
-			     p.colors[size_t(i)]);
+			cube(
+			    p.at + V{sl.x * p.block, (float(sl.row) + .5f + lift) * p.block, sl.z * p.block}, V{half, half, half},
+			    p.colors[size_t(i)]);
 		}
 	}
 	// 殻: 同じおもちゃの積み木を下の段から積む (色はこわした積み木の色から選ぶ)。一番下の段は地面まで伸ばす (街の板の外で浮かないように)
@@ -695,9 +725,10 @@ void ChronoSystem::BuildChallenge() {
 	if (const wchar_t* arg = wcsstr(GetCommandLineW(), L"--challenge-pattern="))
 		b.blockPattern = std::clamp(_wtoi(arg + 20), 0, ChallengeBlockPatterns - 1);
 	// 結果の景色のモデルは、ここで先に読んでおく (結果が始まったときに読むと、一瞬止まる)
-	for (const char* id : {"house_hiraya", "house_kawara", "house_tin", "my_house", "apartment", "danchi", "dagashiya", "sugi",
-	                       "ki_maru", "matsu", "kaki_no_ki", "sakura", "toybox", "minicar", "toy_ball", "daruma", "nuigurumi",
-	                       "rc_car", "toy_plane", "bowling_pin", "kei_car", "kumo_a", "kumo_b", "kumo_c"})
+	for (const char* id :
+	     {"house_hiraya", "house_kawara", "house_tin",  "my_house",    "apartment", "danchi",  "dagashiya", "sugi",
+	      "ki_maru",      "matsu",        "kaki_no_ki", "sakura",      "toybox",    "minicar", "toy_ball",  "daruma",
+	      "nuigurumi",    "rc_car",       "toy_plane",  "bowling_pin", "kei_car",   "kumo_a",  "kumo_b",    "kumo_c"})
 		LowModelOf(id);
 	// (地球の絵はステージを始めたときに描き始めてある。ここで描き終わりを待って GPU へ送る。遊んでいる途中で送ると止まる)
 	PreparePileWorld(true);
@@ -1044,7 +1075,8 @@ void ChronoSystem::DrawChallenge(GameContext& ctx) {
 		if (!blk.alive)
 			continue;
 		// (結果の積み木の山の場所に残っていた積み木は描かない)
-		if (pile_.active && std::abs(blk.at.x - pile_.at.x) < pile_.cover && std::abs(blk.at.z - pile_.at.z) < pile_.cover)
+		if (pile_.active && std::abs(blk.at.x - pile_.at.x) < pile_.cover &&
+		    std::abs(blk.at.z - pile_.at.z) < pile_.cover)
 			continue;
 		Engine::Vector4 c = BlockColor(blk.type, blk.id);
 		if (blk.painted)

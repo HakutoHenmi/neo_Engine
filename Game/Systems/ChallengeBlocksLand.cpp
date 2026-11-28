@@ -20,7 +20,8 @@ using Builder = CityParts::CityBuilder;
 constexpr Vec kFloor{.82f, .79f, .72f}, kFence{.60f, .44f, .31f}, kBridge{.68f, .52f, .38f}, kSpiral{.90f, .80f, .58f},
     kRoad{.62f, .78f, .56f}, kHill{.60f, .78f, .52f}, kBowl{.84f, .76f, .60f}, kBump{.70f, .84f, .62f};
 constexpr Vec kTowers[] = {{.72f, .79f, .89f}, {.88f, .74f, .72f}};
-constexpr Vec kBoxes[] = {{.84f, .74f, .84f}, {.92f, .82f, .60f}, {.66f, .76f, .88f}, {.88f, .72f, .66f}, {.88f, .72f, .66f}};
+constexpr Vec kBoxes[] = {
+    {.84f, .74f, .84f}, {.92f, .82f, .60f}, {.66f, .76f, .88f}, {.88f, .72f, .66f}, {.88f, .72f, .66f}};
 constexpr Vec kUp{0, 1, 0}, kDown{0, -1, 0};
 
 // unit の位置から世界の位置へ
@@ -48,10 +49,11 @@ void Cylinder(Builder& b, const LandSpace& s, float x, float z, float r, float y
 	for (int i = 0; i < count; ++i) {
 		const float a0 = 6.2831853f * float(i) / float(count), a1 = 6.2831853f * float(i + 1) / float(count);
 		const float c0 = std::cos(a0), s0 = std::sin(a0), c1 = std::cos(a1), s1 = std::sin(a1);
-		Face(b,
-		     {s.Pos(x + c0 * r, y0, z + s0 * r), s.Pos(x + c1 * r, y0, z + s1 * r), s.Pos(x + c1 * r, y1, z + s1 * r),
-		      s.Pos(x + c0 * r, y1, z + s0 * r)},
-		     Vec{(c0 + c1), 0, (s0 + s1)});
+		Face(
+		    b,
+		    {s.Pos(x + c0 * r, y0, z + s0 * r), s.Pos(x + c1 * r, y0, z + s1 * r), s.Pos(x + c1 * r, y1, z + s1 * r),
+		     s.Pos(x + c0 * r, y1, z + s0 * r)},
+		    Vec{(c0 + c1), 0, (s0 + s1)});
 		if (top)
 			Face(b, {s.Pos(x, y1, z), s.Pos(x + c0 * r, y1, z + s0 * r), s.Pos(x + c1 * r, y1, z + s1 * r)}, kUp);
 	}
@@ -110,8 +112,12 @@ void ChronoSystem::ShowBlocksStage(entt::registry& r, bool show) {
 					            h01 = land.Base(x, z + 1);
 					if (!keepFlat && std::max({std::abs(h00), std::abs(h10), std::abs(h11), std::abs(h01)}) < 1e-3f)
 						continue;
-					Face(b, {s.Pos(x, h00 + lift, z), s.Pos(x + 1, h10 + lift, z), s.Pos(x + 1, h11 + lift, z + 1)}, kUp);
-					Face(b, {s.Pos(x, h00 + lift, z), s.Pos(x + 1, h11 + lift, z + 1), s.Pos(x, h01 + lift, z + 1)}, kUp);
+					Face(
+					    b, {s.Pos(x, h00 + lift, z), s.Pos(x + 1, h10 + lift, z), s.Pos(x + 1, h11 + lift, z + 1)},
+					    kUp);
+					Face(
+					    b, {s.Pos(x, h00 + lift, z), s.Pos(x + 1, h11 + lift, z + 1), s.Pos(x, h01 + lift, z + 1)},
+					    kUp);
 				}
 		};
 		auto all = [](float, float) { return true; };
@@ -140,8 +146,9 @@ void ChronoSystem::ShowBlocksStage(entt::registry& r, bool show) {
 			make("Chrono Blocks bowl", bowl, kBowl, false, {}, {});
 			Builder bumps;
 			for (const auto& b : land.bumps)
-				heightfield(bumps, std::floor(b.x - b.r), std::floor(b.z - b.r), std::ceil(b.x + b.r),
-				            std::ceil(b.z + b.r), false, all);
+				heightfield(
+				    bumps, std::floor(b.x - b.r), std::floor(b.z - b.r), std::ceil(b.x + b.r), std::ceil(b.z + b.r),
+				    false, all);
 			make("Chrono Blocks bumps", bumps, kBump, false, {}, {});
 			const float f = ChallengeBlocksFence, h = ChallengeBlocksHalf;
 			Builder fence;
@@ -167,8 +174,9 @@ void ChronoSystem::ShowBlocksStage(entt::registry& r, bool show) {
 						const float h0 = covered ? top : LandDomeHeight(d, x, z),
 						            h1 = covered ? top : LandDomeHeight(d, x, z + 1);
 						if (h0 > 1e-3f || h1 > 1e-3f)
-							Face(hill, {s.Pos(x, 0, z), s.Pos(x, 0, z + 1), s.Pos(x, h1, z + 1), s.Pos(x, h0, z)},
-							     V{side == 0 ? 1.f : -1.f, 0, 0});
+							Face(
+							    hill, {s.Pos(x, 0, z), s.Pos(x, 0, z + 1), s.Pos(x, h1, z + 1), s.Pos(x, h0, z)},
+							    V{side == 0 ? 1.f : -1.f, 0, 0});
 					}
 					if (covered)
 						for (float x = tx0; x < tx1 - 1e-3f; x += 1) {
@@ -176,20 +184,26 @@ void ChronoSystem::ShowBlocksStage(entt::registry& r, bool show) {
 							            h11 = LandDomeHeight(d, x + 1, z + 1), h01 = LandDomeHeight(d, x, z + 1);
 							Face(hill, {s.Pos(x, h00, z), s.Pos(x + 1, h10, z), s.Pos(x + 1, h11, z + 1)}, kUp);
 							Face(hill, {s.Pos(x, h00, z), s.Pos(x + 1, h11, z + 1), s.Pos(x, h01, z + 1)}, kUp);
-							Face(hill, {s.Pos(x, top, z), s.Pos(x + 1, top, z), s.Pos(x + 1, top, z + 1), s.Pos(x, top, z + 1)},
-							     kDown);
+							Face(
+							    hill,
+							    {s.Pos(x, top, z), s.Pos(x + 1, top, z), s.Pos(x + 1, top, z + 1),
+							     s.Pos(x, top, z + 1)},
+							    kDown);
 						}
 					// 入口の面 (屋根の下の面から丘の面まで)
 					const bool before = LandTunnelCovered(d, z - .5f);
 					if (covered != before)
 						for (float x = tx0; x < tx1 - 1e-3f; x += 1)
-							Face(hill,
-							     {s.Pos(x, top, z), s.Pos(x + 1, top, z), s.Pos(x + 1, LandDomeHeight(d, x + 1, z), z),
-							      s.Pos(x, LandDomeHeight(d, x, z), z)},
-							     V{0, 0, covered ? -1.f : 1.f});
+							Face(
+							    hill,
+							    {s.Pos(x, top, z), s.Pos(x + 1, top, z), s.Pos(x + 1, LandDomeHeight(d, x + 1, z), z),
+							     s.Pos(x, LandDomeHeight(d, x, z), z)},
+							    V{0, 0, covered ? -1.f : 1.f});
 				}
 			}
-			make("Chrono Blocks hill", hill, kHill, d.h >= 6, s.Pos(d.x - d.r, 0, d.z - d.r), s.Pos(d.x + d.r, d.h, d.z + d.r));
+			make(
+			    "Chrono Blocks hill", hill, kHill, d.h >= 6, s.Pos(d.x - d.r, 0, d.z - d.r),
+			    s.Pos(d.x + d.r, d.h, d.z + d.r));
 		}
 		// 四角い塔・坂・階段
 		for (size_t i = 0; i < land.boxes.size(); ++i) {
@@ -216,30 +230,36 @@ void ChronoSystem::ShowBlocksStage(entt::registry& r, bool show) {
 				    BlocksTerrainHeight(p, p.x0, p.z0), BlocksTerrainHeight(p, p.x1, p.z0),
 				    BlocksTerrainHeight(p, p.x1, p.z1), BlocksTerrainHeight(p, p.x0, p.z1)};
 				const float xs[4] = {p.x0, p.x1, p.x1, p.x0}, zs[4] = {p.z0, p.z0, p.z1, p.z1};
-				Face(builder,
-				     {s.Pos(xs[0], hs[0], zs[0]), s.Pos(xs[1], hs[1], zs[1]), s.Pos(xs[2], hs[2], zs[2]),
-				      s.Pos(xs[3], hs[3], zs[3])},
-				     kUp);
+				Face(
+				    builder,
+				    {s.Pos(xs[0], hs[0], zs[0]), s.Pos(xs[1], hs[1], zs[1]), s.Pos(xs[2], hs[2], zs[2]),
+				     s.Pos(xs[3], hs[3], zs[3])},
+				    kUp);
 				const V outs[4] = {{0, 0, -1}, {1, 0, 0}, {0, 0, 1}, {-1, 0, 0}};
 				for (int k = 0; k < 4; ++k) {
 					const int j = (k + 1) % 4;
 					if (hs[k] <= 1e-3f && hs[j] <= 1e-3f)
 						continue;
-					Face(builder,
-					     {s.Pos(xs[k], 0, zs[k]), s.Pos(xs[j], 0, zs[j]), s.Pos(xs[j], hs[j], zs[j]), s.Pos(xs[k], hs[k], zs[k])},
-					     outs[k]);
+					Face(
+					    builder,
+					    {s.Pos(xs[k], 0, zs[k]), s.Pos(xs[j], 0, zs[j]), s.Pos(xs[j], hs[j], zs[j]),
+					     s.Pos(xs[k], hs[k], zs[k])},
+					    outs[k]);
 				}
 			}
-			make(p.rise == BlocksRise::Flat ? "Chrono Blocks tower" : "Chrono Blocks ramp", builder,
-			     kBoxes[i % std::size(kBoxes)], p.rise == BlocksRise::Flat, s.Pos(p.x0, 0, p.z0), s.Pos(p.x1, top, p.z1));
+			make(
+			    p.rise == BlocksRise::Flat ? "Chrono Blocks tower" : "Chrono Blocks ramp", builder,
+			    kBoxes[i % std::size(kBoxes)], p.rise == BlocksRise::Flat, s.Pos(p.x0, 0, p.z0),
+			    s.Pos(p.x1, top, p.z1));
 		}
 		// 丸い塔
 		for (size_t i = 0; i < land.towers.size(); ++i) {
 			const auto& t = land.towers[i];
 			Builder builder;
 			Cylinder(builder, s, t.x, t.z, t.r, 0, t.h, 48, true);
-			make("Chrono Blocks round tower", builder, kTowers[i % std::size(kTowers)], true,
-			     s.Pos(t.x - t.r, 0, t.z - t.r), s.Pos(t.x + t.r, t.h, t.z + t.r));
+			make(
+			    "Chrono Blocks round tower", builder, kTowers[i % std::size(kTowers)], true,
+			    s.Pos(t.x - t.r, 0, t.z - t.r), s.Pos(t.x + t.r, t.h, t.z + t.r));
 		}
 		// 帯 (らせんの坂・橋・高架の道): 16 区切りごとに 1 つの物。断面は前後の区切りで共有する
 		for (const auto& rb : land.ribbons) {
@@ -268,9 +288,12 @@ void ChronoSystem::ShowBlocksStage(entt::registry& r, bool show) {
 							continue;
 						const float sg = side == 0 ? 1.f : -1.f;
 						Face(b, {P(a, sg * hl, R), P(z, sg * hl, R), P(z, sg * in, R), P(a, sg * in, R)}, kUp);
-						Face(b, {P(a, sg * in, 0), P(z, sg * in, 0), P(z, sg * in, R), P(a, sg * in, R)},
-						     rb.left[a] * -sg);
-						Face(b, {P(a, sg * hl, 0), P(z, sg * hl, 0), P(z, sg * hl, R), P(a, sg * hl, R)}, rb.left[a] * sg);
+						Face(
+						    b, {P(a, sg * in, 0), P(z, sg * in, 0), P(z, sg * in, R), P(a, sg * in, R)},
+						    rb.left[a] * -sg);
+						Face(
+						    b, {P(a, sg * hl, 0), P(z, sg * hl, 0), P(z, sg * hl, R), P(a, sg * hl, R)},
+						    rb.left[a] * sg);
 					}
 				}
 				// 帯の両端のふた
@@ -291,10 +314,15 @@ void ChronoSystem::ShowBlocksStage(entt::registry& r, bool show) {
 						const V& p = rb.at[size_t(k)];
 						Cylinder(b, s, p.x, p.z, LandPillarRadius, land.Base(p.x, p.z) - .2f, p.y - T, 10, false);
 					}
-				make(rb.kind == 1   ? "Chrono Blocks spiral"
-				     : rb.kind == 2 ? "Chrono Blocks road"
-				                    : "Chrono Blocks bridge",
-				     b, rb.kind == 1 ? kSpiral : rb.kind == 2 ? kRoad : kBridge, true, lo, hi);
+				make(
+				    rb.kind == 1   ? "Chrono Blocks spiral"
+				    : rb.kind == 2 ? "Chrono Blocks road"
+				                   : "Chrono Blocks bridge",
+				    b,
+				    rb.kind == 1   ? kSpiral
+				    : rb.kind == 2 ? kRoad
+				                   : kBridge,
+				    true, lo, hi);
 			}
 		}
 	}
@@ -543,7 +571,8 @@ void ChronoSystem::WriteBlocksLandCheck() const {
 	// 歩いて行ける所: 0.25 unit の升 (1 フレームに進む長さに近い)と足元の高さ (0.25 刻み) で広げる。体の半径は 1 unit とする (積み木は壊せるので数えない)
 	const float step = .25f, H = ChallengeBlocksHalf - .6f;
 	auto key = [](int ix, int iz, int iy) {
-		return (uint64_t(uint32_t(ix + 4096)) << 40) | (uint64_t(uint32_t(iz + 4096)) << 20) | uint64_t(uint32_t(iy + 4096));
+		return (uint64_t(uint32_t(ix + 4096)) << 40) | (uint64_t(uint32_t(iz + 4096)) << 20) |
+		       uint64_t(uint32_t(iy + 4096));
 	};
 	// (体の縁の 8 か所と真ん中。ゲームの体の止め方と同じ)
 	auto blocked = [&](float x, float z, float feet) {
@@ -551,8 +580,9 @@ void ChronoSystem::WriteBlocksLandCheck() const {
 			return true;
 		for (int k = 0; k < 8; ++k) {
 			const float a = .78539816f * float(k);
-			if (land.Blocked(x + std::cos(a) * BlocksBodyEdge, z + std::sin(a) * BlocksBodyEdge, feet,
-			                 ChallengeBlocksStep + BlocksBodyEdge * BlocksEdgeRise, BlocksBodyHeight))
+			if (land.Blocked(
+			        x + std::cos(a) * BlocksBodyEdge, z + std::sin(a) * BlocksBodyEdge, feet,
+			        ChallengeBlocksStep + BlocksBodyEdge * BlocksEdgeRise, BlocksBodyHeight))
 				return true;
 		}
 		return false;
@@ -628,8 +658,9 @@ void ChronoSystem::WriteBlocksLandCheck() const {
 		const float feet = (at.y - ChallengeBodyGround - c.y) / u;
 		for (int k = 0; k < 8; ++k) {
 			const float a = .78539816f * float(k);
-			if (land.Blocked((at.x - c.x) / u + std::cos(a) * BlocksBodyEdge, (at.z - c.z) / u + std::sin(a) * BlocksBodyEdge,
-			                 feet, ChallengeBlocksStep + BlocksBodyEdge * BlocksEdgeRise, BlocksBodyHeight))
+			if (land.Blocked(
+			        (at.x - c.x) / u + std::cos(a) * BlocksBodyEdge, (at.z - c.z) / u + std::sin(a) * BlocksBodyEdge,
+			        feet, ChallengeBlocksStep + BlocksBodyEdge * BlocksEdgeRise, BlocksBodyHeight))
 				++count;
 		}
 		return count;
@@ -664,7 +695,8 @@ void ChronoSystem::WriteBlocksLandCheck() const {
 				const float feet = (at.y - ChallengeBodyGround - c.y) / u;
 				for (float rr : {.5f, 1.f, 1.5f})
 					for (int k = 0; k < 8; ++k) {
-						const float a = .78539816f * float(k), ox = std::cos(a) * rr * R / u, oz = std::sin(a) * rr * R / u;
+						const float a = .78539816f * float(k), ox = std::cos(a) * rr * R / u,
+						            oz = std::sin(a) * rr * R / u;
 						const float ground = land.Stand((at.x - c.x) / u + ox, (at.z - c.z) / u + oz, feet, 2.f);
 						const float plane = feet + slope.x * ox + slope.z * oz, gap = plane - ground;
 						if (std::abs(gap) < 2)
@@ -738,8 +770,9 @@ void ChronoSystem::WriteBlocksLandCheck() const {
 		simulate("fall_off_bridge", world(m.x, m.y + .1f, m.z), [&](V) { return side; }, 240);
 		const auto& t = land.towers[0];
 		const float a = 1.f, rr = t.r + 5.2f + .3f;
-		simulate("drop_beside_spiral", world(t.x + std::cos(a) * rr, 30, t.z + std::sin(a) * rr),
-		         [&](V) { return V{-std::cos(a), 0, -std::sin(a)}; }, 240);
+		simulate(
+		    "drop_beside_spiral", world(t.x + std::cos(a) * rr, 30, t.z + std::sin(a) * rr),
+		    [&](V) { return V{-std::cos(a), 0, -std::sin(a)}; }, 240);
 	}
 	// 弾の試し: 速い弾が橋を上から下へ 1 フレームで抜ける・塔の壁へ横から・らせんの坂の横の面へ横から
 	{
@@ -758,8 +791,9 @@ void ChronoSystem::WriteBlocksLandCheck() const {
 		const auto& t = land.towers[0];
 		// (らせんの坂の 1 周目の 1/4 の所。上の面の高さは 3 なので、高さ 2.5 は坂の横の面)
 		const float a = -.2f + 1.5707963f;
-		shot("into_spiral_side", world(t.x + std::cos(a) * 18, 2.5f, t.z + std::sin(a) * 18),
-		     world(t.x + std::cos(a) * 11, 2.5f, t.z + std::sin(a) * 11));
+		shot(
+		    "into_spiral_side", world(t.x + std::cos(a) * 18, 2.5f, t.z + std::sin(a) * 18),
+		    world(t.x + std::cos(a) * 11, 2.5f, t.z + std::sin(a) * 11));
 		shot("along_ground", world(0, .5f, -100), world(0, .5f, -95));
 		// (丘の坂へ上から・すり鉢の坂へ横から: 面の向きが坂に沿って傾くか)
 		shot("onto_hill_slope", world(12, 10, -30), world(12, 7, -30));
@@ -865,7 +899,9 @@ void ChronoSystem::BuildStageScenery() {
 				const float a = SceneryRand(seed) * 6.2831853f, d = SceneryRand(seed) * 10 * u;
 				const V spot = at + V{std::cos(a) * d, 0, std::sin(a) * d};
 				if (outside(spot, 6 * u))
-					model(pick({"ki_maru", "sugi", "sakura", "matsu", "kaki_no_ki", "ki_maru"}), spot, (16 + SceneryRand(seed) * 16) * u);
+					model(
+					    pick({"ki_maru", "sugi", "sakura", "matsu", "kaki_no_ki", "ki_maru"}), spot,
+					    (16 + SceneryRand(seed) * 16) * u);
 			}
 		} else if (roll < .7f) {
 			model(pick({"house_hiraya", "house_kawara", "my_house"}), at, (12 + SceneryRand(seed) * 6) * u);
@@ -873,8 +909,10 @@ void ChronoSystem::BuildStageScenery() {
 			// 積み木の家: 壁 (一辺 3 個・高さ 2 段の外周。前の真ん中の下は戸口) と、段々の屋根 (2 段) と煙突。積み木は場の積み木の色
 			const float b = (2.2f + SceneryRand(seed) * .8f) * u, yaw = SceneryRand(seed) * 6.2831853f;
 			const V fx{std::cos(yaw), 0, std::sin(yaw)}, fz{-std::sin(yaw), 0, std::cos(yaw)};
-			static constexpr Engine::Vector4 walls[] = {{.98f, .95f, .88f, 1}, {.98f, .78f, .3f, 1}, {.4f, .72f, .95f, 1}, {.95f, .6f, .85f, 1}};
-			static constexpr Engine::Vector4 roofs[] = {{.95f, .42f, .38f, 1}, {.4f, .72f, .95f, 1}, {.5f, .85f, .45f, 1}};
+			static constexpr Engine::Vector4 walls[] = {
+			    {.98f, .95f, .88f, 1}, {.98f, .78f, .3f, 1}, {.4f, .72f, .95f, 1}, {.95f, .6f, .85f, 1}};
+			static constexpr Engine::Vector4 roofs[] = {
+			    {.95f, .42f, .38f, 1}, {.4f, .72f, .95f, 1}, {.5f, .85f, .45f, 1}};
 			const auto wall = walls[SceneryHash(seed++) % 4], roof = roofs[SceneryHash(seed++) % 3];
 			auto cube = [&](float i, float j, float level, Engine::Vector4 color, float scale = 1) {
 				BlocksPileDecor d;
@@ -900,7 +938,8 @@ void ChronoSystem::BuildStageScenery() {
 	// 遠く: 木と家の絵の板 (家は 3 割)。遠いほど少し大きい
 	for (int n = 0; n < StageSceneryBoards; ++n) {
 		const V at = ring(StageSceneryMid, StageSceneryFar);
-		const float away = std::clamp((Length(at - center) / u - StageSceneryMid) / (StageSceneryFar - StageSceneryMid), 0.f, 1.f);
+		const float away =
+		    std::clamp((Length(at - center) / u - StageSceneryMid) / (StageSceneryFar - StageSceneryMid), 0.f, 1.f);
 		const bool house = SceneryRand(seed) < .3f;
 		int cell = 0;
 		for (int tries = 0; tries < 16; ++tries) {
@@ -964,7 +1003,8 @@ void ChronoSystem::DrawStageScenery(GameContext& ctx, bool ground) {
 		t.scale = {bd.size, bd.size, bd.size};
 		t.rotate = {0, std::atan2(to.x, to.z), 0};
 		// (近くのモデルと同じ描き方で、同じかすみがかかる)
-		ctx.renderer->DrawMeshInstanced(boardMeshes_[size_t(bd.cell)], boardTex_, t, {1, 1, 1, 1}, "LowpolySurface", lowMaps_);
+		ctx.renderer->DrawMeshInstanced(
+		    boardMeshes_[size_t(bd.cell)], boardTex_, t, {1, 1, 1, 1}, "LowpolySurface", lowMaps_);
 	}
 }
 

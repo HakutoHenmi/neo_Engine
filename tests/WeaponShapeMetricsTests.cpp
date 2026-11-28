@@ -4,6 +4,10 @@
 #include "../Game/Chrono/WeaponShapeGrammar.h"
 #include "../Game/Chrono/DevourGimmickRules.h"
 #include "../Game/Chrono/ItemProfileRules.h"
+// Production headers above use the selected configuration; test checks stay active.
+#ifdef NDEBUG
+#undef NDEBUG
+#endif
 #include <cassert>
 #include <functional>
 #include <algorithm>

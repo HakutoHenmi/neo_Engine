@@ -12,6 +12,10 @@
 #include "../Engine/Core/Input.h"
 #undef private
 #include "../Game/UI/CreditsUI.h"
+// Production headers above use the selected configuration; test checks stay active.
+#ifdef NDEBUG
+#undef NDEBUG
+#endif
 #include <cassert>
 #include <crtdbg.h>
 #include <iostream>

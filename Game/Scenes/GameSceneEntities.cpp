@@ -67,7 +67,6 @@ void GameScene::SelectEntity(entt::entity entity) {
 	}
 }
 
-
 // エディタ用の一時エンティティ (プレビューなど) を即座に削除する
 void GameScene::DestroyEditorEntity(entt::entity entity) {
 	RemoveEntity(entity);
@@ -127,7 +126,6 @@ entt::entity GameScene::FindObjectByName(const std::string& name) {
 	// 見つからなければ無し
 	return entt::null;
 }
-
 
 // レイキャスト: 地形などのメッシュに当たった最も近い距離を返す (敵・弾・プレイヤーなどは無視)
 bool GameScene::RayCast(

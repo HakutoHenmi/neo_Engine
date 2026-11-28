@@ -402,8 +402,6 @@ void ChronoSystem::RetryDevourBattle(entt::registry& r) {
 	BeginBattleFight(r);
 }
 
-
-
 // チャレンジの得点: コンボの倍率をかけて足し、その場所に文字を浮かべる。時間が終わったあとは数えない
 int ChronoSystem::AddChallengeScore(int points, V at, const std::string& label) {
 	auto& b = battle_;
@@ -542,7 +540,6 @@ void ChronoSystem::WriteImpactCheck() const {
 	out << "summary emitted=" << ok << "/" << int(BattleAction::Count)
 	    << " missing=" << (missing.empty() ? "none" : missing) << '\n';
 }
-
 
 // 能力を始める: 体の形を変え (投げる以外)、能力の時間と強さを決める。当たりは TickBattleAbility で進める
 void ChronoSystem::StartBattleAbility(GameContext& ctx, BattleAction action, const BattleItem& item) {
@@ -1249,10 +1246,9 @@ void ChronoSystem::TickBattleAbility(GameContext& ctx, float dt) {
 				    {from + dir * (len * float(k) / float(dots)) + V{0, R * .4f, 0}, R * .28f, 0, .3f,
 				     ActionColor(b.ability)});
 		};
-		const float thrust = R * BattleThrustLength,
-		            beam = BlocksStageActive() ? ChallengeBlocksHalf * 2 * b.unit
-		                   : b.arenaRadius > 0 ? b.arenaRadius * 2
-		                                       : R * 40;
+		const float thrust = R * BattleThrustLength, beam = BlocksStageActive() ? ChallengeBlocksHalf * 2 * b.unit
+		                                                    : b.arenaRadius > 0 ? b.arenaRadius * 2
+		                                                                        : R * 40;
 		const V back = f * -1.f, left = rt * -1.f;
 		switch (b.ability) {
 		case BattleAction::Fu:
@@ -2035,10 +2031,9 @@ void ChronoSystem::UpdateDevourBattle(entt::registry& r, Player& p, GameContext&
 				for (const auto& x : b.bag)
 					left += int(x.items.size());
 				log << "stage=" << stage.id << " challenge=" << ChallengeKindId(b.challenge) << " time=" << b.time
-				    << " score=" << b.score << " rank=" << b.rank << " clock=" << b.clock << " spent=" << b.spent << " pattern=" << b.blockPattern
-				    << " broken=" << b.broken[0]
-				    << "/" << b.broken[1] << "/" << b.broken[2] << " cm=" << DevourSizeCm(stage, body.mass)
-				    << " items_left=" << left;
+				    << " score=" << b.score << " rank=" << b.rank << " clock=" << b.clock << " spent=" << b.spent
+				    << " pattern=" << b.blockPattern << " broken=" << b.broken[0] << "/" << b.broken[1] << "/"
+				    << b.broken[2] << " cm=" << DevourSizeCm(stage, body.mass) << " items_left=" << left;
 				if (b.crafted)
 					log << " weapon=" << b.weapon.name << " pattern=" << FusePatternName(FusePatternOf(b.weapon.lv))
 					    << " shots=" << FuseShotCount(FusePatternOf(b.weapon.lv), b.weapon.points[0], b.weapon.caps[0])
@@ -2474,8 +2469,7 @@ void ChronoSystem::DrawDevourBattleRecord(GameContext& ctx) {
 		    panel.x + 16, panel.y + 84, 18, white);
 	}
 	text(std::to_string(b.tries) + " 回目", panel.x + 16, panel.y + 112, 18, white);
-	text(
-	    "L / Bボタン: チャレンジだけやり直す", panel.x + 16, panel.y + 136, 20, hazard);
+	text("L / Bボタン: チャレンジだけやり直す", panel.x + 16, panel.y + 136, 20, hazard);
 }
 
 // ---- 変形チャレンジの成長の間の部分 ----

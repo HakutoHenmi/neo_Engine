@@ -989,9 +989,9 @@ void ChronoSystem::SyncSlimeBodies(GameContext& ctx) {
 		const bool blocksLand = i == 0 && BlocksStageActive();
 		common.material = {
 		    life_.recipe.Damping(), life_.recipe.Viscosity(), life_.recipe.SurfaceTension(),
-		    life_.lab                                    ? 1200.f
+		    life_.lab                              ? 1200.f
 		    : blocksLand && battle_.fallSpeed <= 0 ? b.at.y - Chrono::ChallengeBodyGround
-		                                                 : InkGround(b.at)};
+		                                           : InkGround(b.at)};
 		V drive = liquid ? b.coreVelocity : b.velocity;
 		common.motion = {drive.x, drive.y, drive.z, b.air};
 		common.shape = {

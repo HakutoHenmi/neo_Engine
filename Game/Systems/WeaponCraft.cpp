@@ -2261,10 +2261,10 @@ void ChronoSystem::TickFusedShot(GameContext& ctx, BattleShot& s, float dt) {
 	// (槍はまっすぐ宙を飛ぶ。大砲と降り注ぎは重力で落ちる)
 	const bool falls = pattern == FusePattern::Mortar || pattern == FusePattern::Rain;
 	// (挟み撃ちも宙を飛ぶ: 落ちると、曲がって前で交わる前に地面に着いて終わる)
-	const bool flying =
-	    !stays && !falls &&
-	    (pattern == FusePattern::Lance || pattern == FusePattern::Twin ||
-	     (!s.rolling && L(FuseTrait::Roll) == 0 && (L(FuseTrait::Homing) > 0 || L(FuseTrait::Float) > 0 || s.returning)));
+	const bool flying = !stays && !falls &&
+	                    (pattern == FusePattern::Lance || pattern == FusePattern::Twin ||
+	                     (!s.rolling && L(FuseTrait::Roll) == 0 &&
+	                      (L(FuseTrait::Homing) > 0 || L(FuseTrait::Float) > 0 || s.returning)));
 	// 追いかける: 近い相手へ向きを曲げる (当てた相手は追わない)
 	auto steer = [&](V to, float rate) {
 		to.y = 0;
@@ -2313,8 +2313,9 @@ void ChronoSystem::TickFusedShot(GameContext& ctx, BattleShot& s, float dt) {
 		}
 	} else if (flying) {
 		// (ふわふわの弾も、地面の積み木 1 段に当たれる高さで揺れる)
-		const float want = InkGround(s.at) + R * .6f +
-		                   (L(FuseTrait::Float) > 0 ? unit * (FuseFloatHeight + FuseFloatWave * std::sin(s.age * 3)) : 0.f);
+		const float want =
+		    InkGround(s.at) + R * .6f +
+		    (L(FuseTrait::Float) > 0 ? unit * (FuseFloatHeight + FuseFloatWave * std::sin(s.age * 3)) : 0.f);
 		s.at.y += (want - s.at.y) * std::min(1.f, dt * 4);
 		s.velocity.y = 0;
 	} else
@@ -2821,7 +2822,10 @@ void ChronoSystem::TickWeaponCheck(GameContext& ctx, float dt, V& input) {
 			for (float x = -100; x <= 100; x += 2)
 				for (float z = -100; z <= 100; z += 2)
 					for (int dir = 0; dir < 4; ++dir) {
-						const V f = dir == 0 ? V{0, 0, 1} : dir == 1 ? V{0, 0, -1} : dir == 2 ? V{1, 0, 0} : V{-1, 0, 0};
+						const V f = dir == 0   ? V{0, 0, 1}
+						            : dir == 1 ? V{0, 0, -1}
+						            : dir == 2 ? V{1, 0, 0}
+						                       : V{-1, 0, 0};
 						const V at = center + V{x * u, 0, z * u};
 						const float g = InkGround(at);
 						if (std::abs(InkGround(at + f * (2 * u)) - g) > .05f * u)
@@ -2842,10 +2846,12 @@ void ChronoSystem::TickWeaponCheck(GameContext& ctx, float dt, V& input) {
 		std::filesystem::create_directories("tests/out");
 		c.log.open("tests/out/weapon-check.txt");
 		c.log << "spot=(" << (c.spot.x - center.x) / u << "," << (c.spot.z - center.z) / u << ") unit=" << u
-		      << " body_radius=" << DevourBodyRadius(body.mass) / u << " body_ground=" << ChallengeBodyGround / u << '\n';
-		c.log << "slope=(" << (c.slope.x - center.x) / u << "," << (c.slope.z - center.z) / u << ") dir=(" << c.slopeDir.x
-		      << "," << c.slopeDir.z << ")\n";
-		c.log << "traits\tpattern\tspawn_h\tlow_h\tmax_dist\tband(1..20)\tnear_hits\tfar_hits\tslope_life\tslope_dist\tflags\n";
+		      << " body_radius=" << DevourBodyRadius(body.mass) / u << " body_ground=" << ChallengeBodyGround / u
+		      << '\n';
+		c.log << "slope=(" << (c.slope.x - center.x) / u << "," << (c.slope.z - center.z) / u << ") dir=("
+		      << c.slopeDir.x << "," << c.slopeDir.z << ")\n";
+		c.log
+		    << "traits\tpattern\tspawn_h\tlow_h\tmax_dist\tband(1..20)\tnear_hits\tfar_hits\tslope_life\tslope_dist\tflags\n";
 		c.trial = 0;
 		c.sub = -1;
 	}
@@ -2893,9 +2899,9 @@ void ChronoSystem::TickWeaponCheck(GameContext& ctx, float dt, V& input) {
 				flags += " NEVER_LOW";
 			if (!flags.empty())
 				++c.flagged;
-			c.log << traits << '\t' << FusePatternName(pattern) << '\t' << c.spawnH << '\t' << c.lowest << '\t' << c.maxDist
-			      << '\t' << band << '\t' << c.nearHits << "/7\t" << c.farHits << "/7\t" << c.slopeLife << '\t'
-			      << c.slopeDist << '\t' << flags << '\n';
+			c.log << traits << '\t' << FusePatternName(pattern) << '\t' << c.spawnH << '\t' << c.lowest << '\t'
+			      << c.maxDist << '\t' << band << '\t' << c.nearHits << "/7\t" << c.farHits << "/7\t" << c.slopeLife
+			      << '\t' << c.slopeDist << '\t' << flags << '\n';
 			c.log.flush();
 			++c.trial;
 			c.sub = -1;
@@ -2944,7 +2950,8 @@ void ChronoSystem::TickWeaponCheck(GameContext& ctx, float dt, V& input) {
 	for (const auto& s : b.shots) {
 		if (!s.fused || s.age >= 99)
 			continue;
-		const float h = (s.at.y - InkGround(s.at)) / u, reach = s.radius * (1 + FuseSpinGrow * float(s.lv[size_t(FuseTrait::Spin)])) / u;
+		const float h = (s.at.y - InkGround(s.at)) / u,
+		            reach = s.radius * (1 + FuseSpinGrow * float(s.lv[size_t(FuseTrait::Spin)])) / u;
 		const float d = (s.at.z - c.spot.z) / u;
 		if (c.sub == 0) {
 			if (s.age < .05f) {

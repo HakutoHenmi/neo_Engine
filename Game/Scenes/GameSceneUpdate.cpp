@@ -132,8 +132,7 @@ bool GameScene::HandlePlayInput(float dt, bool stageClear) {
 				return true;
 			}
 			// 再開ボタン・Enter・パッドの B でポーズを解く (同じ押下を他で使わないよう止める)
-			if (ui.Click(UI::Resume) || input->Trigger(DIK_RETURN) ||
-			    input->PadTrigger(XINPUT_GAMEPAD_B)) {
+			if (ui.Click(UI::Resume) || input->Trigger(DIK_RETURN) || input->PadTrigger(XINPUT_GAMEPAD_B)) {
 				UI::PlayUISound(UI::UISound::Confirm);
 				SetPaused(false);
 				input->LatchPad();

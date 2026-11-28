@@ -14,10 +14,14 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  windows-build-and-tests:
-    name: Windows build and tests
+  windows-configurations:
+    name: Windows ${{ matrix.configuration }}
     runs-on: windows-2022
     timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        configuration: [Debug, Development, Release]
     defaults:
       run:
         shell: pwsh
@@ -53,17 +57,27 @@ jobs:
         run: ./scripts/build/format_code.ps1 -All -Check
 
       - name: Build Assimp dependency
-        run: ./scripts/ci/bootstrap_dependencies.ps1
+        run: ./scripts/ci/bootstrap_dependencies.ps1 -Configuration ${{ matrix.configuration }}
 
-      - name: Build Development x64
-        run: ./scripts/ci/run_ci.ps1 -Stage Build
+      - name: Prepare verified Release runtime
+        if: ${{ matrix.configuration == 'Release' }}
+        run: ./scripts/ci/prepare_release.ps1
+
+      - name: Build ${{ matrix.configuration }} x64
+        id: build
+        run: ./scripts/ci/run_ci.ps1 -Configuration ${{ matrix.configuration }} -Stage Build
 
       - name: Run CPU and tool regression tests
         if: ${{ !cancelled() && steps.tools.outcome == 'success' }}
-        run: ./scripts/ci/run_ci.ps1 -Stage Tests
+        run: ./scripts/ci/run_ci.ps1 -Configuration ${{ matrix.configuration }} -Stage Tests
+
+      - name: Verify Release resources and DLLs
+        id: package
+        if: ${{ !cancelled() && matrix.configuration == 'Release' && steps.build.outcome == 'success' }}
+        run: ./scripts/ci/run_ci.ps1 -Configuration Release -Stage Package
 
       - name: Collect quality reports
-        if: ${{ !cancelled() && steps.tools.outcome == 'success' }}
+        if: ${{ !cancelled() && matrix.configuration == 'Development' && steps.tools.outcome == 'success' }}
         run: |
           ./scripts/build/quality_log.ps1 -LogDirectory artifacts/ci/quality
           if ($LASTEXITCODE -ne 0) { throw 'Quality report collection failed.' }
@@ -82,7 +96,7 @@ jobs:
         if: ${{ always() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: ci-logs-${{ github.run_id }}-${{ github.run_attempt }}
+          name: ci-logs-${{ matrix.configuration }}-${{ github.run_id }}-${{ github.run_attempt }}
           retention-days: 14
           if-no-files-found: warn
           path: |
@@ -95,3 +109,31 @@ jobs:
             artifacts/ci/quality/work/cpd/*.json
             artifacts/ci/quality/work/cpd/*.csv
             artifacts/ci/quality/work/cpd/*.xml
+
+      - name: Upload verified Release package
+        if: ${{ success() && matrix.configuration == 'Release' && steps.package.outcome == 'success' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-package-${{ github.run_id }}-${{ github.run_attempt }}
+          retention-days: 14
+          if-no-files-found: error
+          path: |
+            artifacts/ci/bin/Release/DirectXGameApp.exe
+            artifacts/ci/bin/Release/Resources/
+            artifacts/ci/bin/Release/NTC/
+            artifacts/ci/bin/Release/Streamline/
+
+  windows-build-and-tests:
+    name: Windows build and tests
+    needs: windows-configurations
+    if: ${{ always() }}
+    runs-on: windows-2022
+    steps:
+      - name: Require all three configurations to pass
+        shell: pwsh
+        env:
+          CONFIGURATION_RESULT: ${{ needs.windows-configurations.result }}
+        run: |
+          if ($env:CONFIGURATION_RESULT -ne 'success') {
+              throw "One or more configurations failed or were cancelled: $env:CONFIGURATION_RESULT"
+          }

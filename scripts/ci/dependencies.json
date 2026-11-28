@@ -3,5 +3,11 @@
     "version": "5.3.1",
     "url": "https://github.com/assimp/assimp/archive/refs/tags/v5.3.1.zip",
     "sha256": "f4020735fe4601de9d85cb335115568cce0e027a65e546dd8895081696d624bd"
+  },
+  "ntc": {
+    "version": "v0.10.0-beta",
+    "url": "https://github.com/NVIDIA-RTX/RTXNTC/releases/download/v0.10.0-beta/RTXNTC_windows_x64_v0.10.0b.zip",
+    "sha256": "2d349fae349a14d0f35e856963f2c53d1cbbc4bb5fb1fe129ea6159c93d9e39d",
+    "runtime_sha256": "db97f3ac6ef032525c29c87278568a8c67def7f36fc90aa918675e74c3989c71"
   }
 }
