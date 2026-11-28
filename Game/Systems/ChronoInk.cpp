@@ -338,8 +338,8 @@ void ChronoSystem::InkCamera(entt::registry& r, Player& p, GameContext& ctx) {
 		if (BlocksStageActive()) {
 			const float u = battle_.unit;
 			const V c = battle_.arenaAt;
-			const float ground =
-			    c.y + Chrono::Land().Base((wanted.x - c.x) / u, (wanted.z - c.z) / u) * u + u * Chrono::BlocksCameraLift;
+			const float ground = c.y + Chrono::Land().Base((wanted.x - c.x) / u, (wanted.z - c.z) / u) * u +
+			                     u * Chrono::BlocksCameraLift;
 			wanted.y = std::max(wanted.y, ground);
 		}
 		// 消火栓のときは肩越しの照準の位置へ移る
@@ -423,7 +423,8 @@ void ChronoSystem::InkCamera(entt::registry& r, Player& p, GameContext& ctx) {
 	ctx.renderer->SetSkySpaceBlend(0);
 	// かすみの距離: 積み木の街 (遊んでいる間と山の結果) は、まわりの景色の大きさに合わせて伸ばす。ほかは街の大きさ
 	ctx.renderer->SetFogScale(
-	    devour_ && BlocksStageActive() && (BattleActive() || BlocksPileResult()) ? battle_.unit * StageSceneryFogScale : 1.f);
+	    devour_ && BlocksStageActive() && (BattleActive() || BlocksPileResult()) ? battle_.unit * StageSceneryFogScale
+	                                                                             : 1.f);
 	// 積み木クラッシャーの結果: 積み木の山と一緒に上るカメラ (ChallengeBlocks.cpp)
 	if (devour_ && finished_ && BlocksPileResult()) {
 		ctx.camera->StopShake();

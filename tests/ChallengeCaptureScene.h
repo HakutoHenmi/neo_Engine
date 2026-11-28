@@ -55,7 +55,8 @@ public:
 			const float ms = std::chrono::duration<float, std::milli>(now - lastFrame_).count();
 			if (int(elapsed) != frameSecond_) {
 				if (frameCount_ > 0)
-					frameLog_ += std::to_string(frameSecond_) + "s avg=" + std::to_string(frameSum_ / float(frameCount_)) +
+					frameLog_ += std::to_string(frameSecond_) +
+					             "s avg=" + std::to_string(frameSum_ / float(frameCount_)) +
 					             " max=" + std::to_string(frameMax_) + '\n';
 				frameSecond_ = int(elapsed);
 				frameCount_ = 0;

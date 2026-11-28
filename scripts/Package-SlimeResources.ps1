@@ -1,5 +1,13 @@
-param([string]$Destination = '', [switch]$CheckOnly)
+param(
+    [string]$Destination = '',
+    [switch]$CheckOnly,
+    [switch]$Verify,
+    [string]$DirectXTexLibrary = '',
+    [string]$WorkDirectory = ''
+)
 $ErrorActionPreference = 'Stop'
+Import-Module (Join-Path $PSHOME 'Modules/Microsoft.PowerShell.Utility/Microsoft.PowerShell.Utility.psd1')
+if ($CheckOnly -and $Verify) { throw 'Choose either CheckOnly or Verify.' }
 $repoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $sourceRoot = Join-Path $repoRoot 'Resources'
 $releaseRoot = [IO.Path]::GetFullPath((Join-Path $repoRoot '../Generated/Outputs/Release/Resources'))
@@ -7,9 +15,10 @@ if (!$Destination) { $Destination = $releaseRoot }
 $targetRoot = [IO.Path]::GetFullPath($Destination).TrimEnd('\','/')
 $testRoot = Join-Path $repoRoot 'tests/out'
 $distRoot = Join-Path $repoRoot 'dist'
+$ciRoot = Join-Path $repoRoot 'artifacts/ci/bin/Release/Resources'
 if ([IO.Path]::GetFileName($targetRoot) -ne 'Resources' -or
-    ($targetRoot -ne $releaseRoot -and !$targetRoot.StartsWith($testRoot+'\',[StringComparison]::OrdinalIgnoreCase) -and !$targetRoot.StartsWith($distRoot+'\',[StringComparison]::OrdinalIgnoreCase))) {
-    throw 'Destination must be Release/Resources or a Resources directory under this project tests/out or dist.'
+    ($targetRoot -ne $releaseRoot -and $targetRoot -ne $ciRoot -and !$targetRoot.StartsWith($testRoot+'\',[StringComparison]::OrdinalIgnoreCase) -and !$targetRoot.StartsWith($distRoot+'\',[StringComparison]::OrdinalIgnoreCase))) {
+    throw 'Destination must be Release/Resources, the CI Release/Resources, or a Resources directory under tests/out or dist.'
 }
 $manifest = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'SlimeResources.json') -Raw -Encoding UTF8 | ConvertFrom-Json
 # Runtime-compiled shaders and their includes must never be silently omitted
@@ -23,13 +32,14 @@ if ($manifest.Count -lt 20) { throw 'Resource manifest is unexpectedly empty.' }
 # BCn DDS with mips (Model.cpp prefers a .dds next to the named image). Converted files are cached.
 $modelTextures = 'Models/PolyHaven/textures/'
 $toolSource = Join-Path $PSScriptRoot 'Compress-Textures.cpp'
-$toolRoot = [IO.Path]::GetFullPath((Join-Path $repoRoot '../Generated/Tools'))
+if (!$WorkDirectory) { $WorkDirectory = Join-Path $repoRoot '../Generated' }
+$toolRoot = [IO.Path]::GetFullPath((Join-Path $WorkDirectory 'Tools'))
 $tool = Join-Path $toolRoot 'Compress-Textures.exe'
-$cacheRoot = [IO.Path]::GetFullPath((Join-Path $repoRoot '../Generated/TextureCache'))
+$cacheRoot = [IO.Path]::GetFullPath((Join-Path $WorkDirectory 'TextureCache'))
 if (!(Test-Path -LiteralPath $tool) -or (Get-Item -LiteralPath $tool).LastWriteTime -lt (Get-Item -LiteralPath $toolSource).LastWriteTime) {
-    $library = Join-Path $repoRoot 'externals/Generated/Outputs/Release/DirectXTex.lib'
+    $library = if ($DirectXTexLibrary) { [IO.Path]::GetFullPath($DirectXTexLibrary) } else { Join-Path $repoRoot 'externals/Generated/Outputs/Release/DirectXTex.lib' }
     if (!(Test-Path -LiteralPath $library)) { throw "DirectXTex Release library not found: $library" }
-    $vs = & "${env:ProgramFiles(x86)}/Microsoft Visual Studio/Installer/vswhere.exe" -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+    $vs = & "${env:ProgramFiles(x86)}/Microsoft Visual Studio/Installer/vswhere.exe" -latest -products '*' -version '[17.0,18.0)' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
     if (!$vs) { throw 'Visual Studio C++ tools not found.' }
     [void][IO.Directory]::CreateDirectory($toolRoot)
     $command = 'call "{0}" -arch=x64 -host_arch=x64 >nul && cl /nologo /std:c++17 /EHsc /O2 /MT /W3 "{1}" "{2}" /Fo"{3}\\" /Fe"{4}" /link "{5}" d3d11.lib dxgi.lib ole32.lib windowscodecs.lib >nul' -f (Join-Path $vs 'Common7/Tools/VsDevCmd.bat'),$toolSource,(Join-Path $repoRoot 'externals/ufbx/ufbx.c'),$toolRoot,$tool,$library
@@ -85,7 +95,16 @@ if (Test-Path -LiteralPath $targetRoot) {
 }
 $beforeBytes = ($existing | Where-Object {!$_.PSIsContainer} | Measure-Object Length -Sum).Sum
 $obsolete = @($existing | Where-Object {!$_.PSIsContainer -and !$keep.Contains($_.FullName)})
-if (!$CheckOnly) {
+if ($Verify) {
+    foreach ($entry in $entries) {
+        $dest = [IO.Path]::GetFullPath((Join-Path $targetRoot $entry.Relative))
+        if (!(Test-Path -LiteralPath $dest -PathType Leaf)) { throw "Missing packaged resource: $($entry.Relative)" }
+        if ((Get-FileHash -LiteralPath $entry.Source -Algorithm SHA256).Hash -ne (Get-FileHash -LiteralPath $dest -Algorithm SHA256).Hash) {
+            throw "Packaged resource differs from its source: $($entry.Relative)"
+        }
+    }
+    if ($obsolete.Count) { throw "Package contains $($obsolete.Count) unexpected resources." }
+} elseif (!$CheckOnly) {
     foreach ($entry in $entries) {
         $dest = [IO.Path]::GetFullPath((Join-Path $targetRoot $entry.Relative))
         [void][IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($dest))
@@ -97,4 +116,4 @@ if (!$CheckOnly) {
         if (!(Get-ChildItem -LiteralPath $dir.FullName -Force | Select-Object -First 1)) { Remove-Item -LiteralPath $dir.FullName -Force }
     }
 }
-[pscustomobject]@{ Destination=$targetRoot; Files=@($entries).Count; RemovedFiles=$obsolete.Count; BeforeMB=[Math]::Round($beforeBytes/1MB,2); AfterMB=[Math]::Round($totalBytes/1MB,2); CheckOnly=[bool]$CheckOnly } | ConvertTo-Json
+[pscustomobject]@{ Destination=$targetRoot; Files=@($entries).Count; RemovedFiles=$obsolete.Count; BeforeMB=[Math]::Round($beforeBytes/1MB,2); AfterMB=[Math]::Round($totalBytes/1MB,2); CheckOnly=[bool]$CheckOnly; Verified=[bool]$Verify } | ConvertTo-Json

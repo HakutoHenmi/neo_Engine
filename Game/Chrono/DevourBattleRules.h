@@ -170,14 +170,13 @@ inline constexpr int BattleCoinHops = 5, BattleDiscHits = 10, BattleBounceHits =
 inline constexpr float BattlePauseTime = 2.2f, BattlePauseBoss = .8f, BattleReadReach = 4, BattleReadTime = 3,
                        BattleCageReach = 6, BattleCageTime = 6, BattleStickyTime = 2.5f, BattleStickyDamage = 6;
 // 消しゴム: 届く範囲・弱らせる秒・こすった当たり。湯のみ: 届く範囲・やけどの秒と 1 秒の当たり
-inline constexpr float BattleEraseReach = 2.6f, BattleWeakTime = 6, BattleEraseDamage = 6,
-                       BattleTeaReach = 3.6f, BattleBurnTime = 4, BattleBurnDps = 7;
+inline constexpr float BattleEraseReach = 2.6f, BattleWeakTime = 6, BattleEraseDamage = 6, BattleTeaReach = 3.6f,
+                       BattleBurnTime = 4, BattleBurnDps = 7;
 // 招き猫: 招く範囲。急須: 効き目の秒。ティッシュ: 効き目の秒。靴下: 雲の半径と秒
 inline constexpr float BattleBeckonReach = 9, BattleBrewTime = 6, BattleFluffTime = 6, BattleSmellRadius = 4,
                        BattleSmellLife = 7;
 inline constexpr float BattleCoinLife = 2.5f, BattleDiscLife = 4.5f, BattleBounceLife = 5, BattleHomingLife = 4,
                        BattlePierceLife = 1.6f, BattleHomingTurn = 5;
-
 
 // 時間の基準 (チャレンジの時間が決まる前の値)
 inline constexpr float BattleTime = 120;

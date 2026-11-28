@@ -210,7 +210,6 @@ struct VariableComponent : public Component {
 		auto it = values.find(key);
 		return (it != values.end()) ? it->second : defaultVal;
 	}
-
 };
 
 // モーションエディタで作るキーフレームアニメーション
@@ -248,7 +247,6 @@ struct MotionComponent : public Component {
 		defaultClip.keyframes.push_back({1.0f, {5, 0, 0}, {0, 0, 0}, {1, 1, 1}});
 		clips["Default"] = defaultClip;
 	}
-
 };
 
 } // namespace Game

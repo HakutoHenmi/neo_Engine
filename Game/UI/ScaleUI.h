@@ -781,8 +781,8 @@ inline void Hud(Canvas& ui, const HudView& view) {
 	}
 }
 
-inline constexpr Rect ResultChallenge{468, 650, 250, 50}, ResultNext{48, 574, 410, 50}, ResultRetry{48, 650, 196, 50}, ResultTitle{254, 650, 204, 50},
-    ResultRetryOnly{48, 650, 196, 50}, ResultTitleOnly{254, 650, 204, 50};
+inline constexpr Rect ResultChallenge{468, 650, 250, 50}, ResultNext{48, 574, 410, 50}, ResultRetry{48, 650, 196, 50},
+    ResultTitle{254, 650, 204, 50}, ResultRetryOnly{48, 650, 196, 50}, ResultTitleOnly{254, 650, 204, 50};
 // 結果画面に出す内容。live ならゲームの本物のスライムの上に重ね、体の左右と上の端 (UI 座標) を測る
 struct ResultView {
 	std::string stage;
@@ -1014,7 +1014,9 @@ inline float PileEchoMeters(int count, float age) {
 	const auto& shells = PileShells(count);
 	float at = PileShellAt(count, 0);
 	for (int k = 0; k < int(shells.size()) && age >= at; ++k) {
-		top = (std::max)(top, Chrono::ChallengePileShellTop(shells[size_t(k)], PileShellLanded(at, k, shells[size_t(k)].blocks, age)));
+		top = (std::max)(
+		    top,
+		    Chrono::ChallengePileShellTop(shells[size_t(k)], PileShellLanded(at, k, shells[size_t(k)].blocks, age)));
 		at += PileShellTime(k) * .7f;
 	}
 	return top * Chrono::ChallengePileBlockCm / 100;
@@ -1047,11 +1049,12 @@ struct PileReference {
 	const char* name;
 };
 inline const PileReference* PilePick(float cm) {
-	static const PileReference items[] = {
-	    {&Tsumiki, "pile.refTsumiki"}, {&Mikan, "pile.refMikan"},       {&Nuigurumi, "pile.refNuigurumi"},
-	    {&Kago, "pile.refKago"},       {&Danboru, "pile.refDanboru"},   {&Neko, "pile.refNeko"},
-	    {&Shitsugaiki, "pile.refShitsugaiki"}, {&Inugoya, "pile.refInugoya"}, {&Jitensha, "pile.refJitensha"},
-	    {&Jihanki, "pile.refJihanki"}, {&KeiCar, "pile.refKeiCar"},   {&MyHouse, "pile.refMyHouse"}};
+	static const PileReference items[] = {{&Tsumiki, "pile.refTsumiki"},         {&Mikan, "pile.refMikan"},
+	                                      {&Nuigurumi, "pile.refNuigurumi"},     {&Kago, "pile.refKago"},
+	                                      {&Danboru, "pile.refDanboru"},         {&Neko, "pile.refNeko"},
+	                                      {&Shitsugaiki, "pile.refShitsugaiki"}, {&Inugoya, "pile.refInugoya"},
+	                                      {&Jitensha, "pile.refJitensha"},       {&Jihanki, "pile.refJihanki"},
+	                                      {&KeiCar, "pile.refKeiCar"},           {&MyHouse, "pile.refMyHouse"}};
 	const PileReference* pick = nullptr;
 	for (const auto& item : items)
 		if (cm > item.sprite->tall)
@@ -1088,7 +1091,8 @@ inline void PileResult(Canvas& ui, const PileView& view, float age) {
 		ui.Text(Str("pile.heading"), 46 + dx, 60, 24, Black, Jp);
 		const std::string value = SizeText(nowCm);
 		const auto space = value.find(' ');
-		const std::string number = value.substr(0, space), unit = space == std::string::npos ? "" : value.substr(space + 1);
+		const std::string number = value.substr(0, space),
+		                  unit = space == std::string::npos ? "" : value.substr(space + 1);
 		ui.Big(number, 44 + dx, 82, 100, Black, NumBig, NumBigBase);
 		ui.Big(unit, 52 + dx + ui.BigWidth(number, 100, NumBig, NumBigBase), 124, 46, Black, NumBig, NumBigBase);
 		float y = 206;
@@ -1104,8 +1108,9 @@ inline void PileResult(Canvas& ui, const PileView& view, float age) {
 		float x = stat(Str("pile.broken"), std::to_string(landed), Str("pile.unit"), 46 + dx);
 		stat(Str("pile.gold"), std::to_string(golds), Str("pile.unit"), x);
 		y += 50;
-		stat(Str("pile.score"), std::to_string(int(float(view.score) * Clamp01(float(landed) / float((std::max)(1, count))))),
-		     "", 46 + dx);
+		stat(
+		    Str("pile.score"),
+		    std::to_string(int(float(view.score) * Clamp01(float(landed) / float((std::max)(1, count))))), "", 46 + dx);
 		// 比べる物: 山の高さを越えた一番大きい実物の写真と「〜より高い！」
 		if (age > compareAt) {
 			const float a = EaseOut((age - compareAt) / .3f);
@@ -1121,16 +1126,18 @@ inline void PileResult(Canvas& ui, const PileView& view, float age) {
 			const float a = EaseOut((age - PileShellAt(count, 0)) / .3f);
 			const std::string& head = Str("pile.echo");
 			ui.Text(head, 46 + dx, 370, 22, WithAlpha(Black, a), Jp);
-			ui.Text(PileMetersText(PileEchoMeters(count, age)), 56 + dx + ui.Width(head, 22, Jp), 354, 40, WithAlpha(Black, a),
-			        Num);
+			ui.Text(
+			    PileMetersText(PileEchoMeters(count, age)), 56 + dx + ui.Width(head, 22, Jp), 354, 40,
+			    WithAlpha(Black, a), Num);
 		}
 		// ランクの判 (大きさの結果と同じ赤い丸)
 		if (age > compareAt + .2f) {
 			const float pop = Overshoot((age - compareAt - .2f) / .28f), r = 52 * pop;
 			const std::string rank = Chrono::ChallengePileRank(fullCm);
 			ui.Dot(372 + dx, 120, r, Red);
-			ui.Big(rank, 372 + dx - ui.BigWidth(rank, 72 * pop, NumBig, NumBigBase) * .5f, 120 - 36 * pop, 72 * pop, White,
-			       NumBig, NumBigBase);
+			ui.Big(
+			    rank, 372 + dx - ui.BigWidth(rank, 72 * pop, NumBig, NumBigBase) * .5f, 120 - 36 * pop, 72 * pop, White,
+			    NumBig, NumBigBase);
 			if (crossed(compareAt + .2f))
 				PlayGulp(true);
 		}
@@ -1150,8 +1157,10 @@ inline void PileResult(Canvas& ui, const PileView& view, float age) {
 	// 殻まで積み終わったら、どこまでとどいたか (チリも積もれば山となるの帯の下に、同じ黒い帯)
 	if (count > 0 && !PileShells(count).empty() && age > end - .2f) {
 		const float m = PileEchoMeters(count, 1e9f);
-		const char* key = m < 1000 ? "pile.reachSky" : m < 10000 ? "pile.reachCloud" : m < 100000 ? "pile.reachEdge"
-		                                                                                          : "pile.reachSpace";
+		const char* key = m < 1000     ? "pile.reachSky"
+		                  : m < 10000  ? "pile.reachCloud"
+		                  : m < 100000 ? "pile.reachEdge"
+		                               : "pile.reachSpace";
 		PileBand(ui, Str(key), 862, 104, 38, EaseOut((age - end + .2f) / .2f), 1);
 		if (crossed(end - .2f))
 			PlayGulp(true);
@@ -1174,8 +1183,10 @@ inline void PileResult(Canvas& ui, const PileView& view, float age) {
 		const Rect b{1256 - w, 676, w, 36};
 		ui.Fill(b, WithAlpha(Black, .85f));
 		const std::string root = "Resources/Textures/UI/kenney_input-prompts_1.5/";
-		ui.Image(UsingPad() ? root + "Xbox Series/Default/xbox_button_a.png" : root + "Keyboard & Mouse/Default/keyboard_enter.png",
-		         {b.x + 6, b.y + 4, 28, 28});
+		ui.Image(
+		    UsingPad() ? root + "Xbox Series/Default/xbox_button_a.png"
+		               : root + "Keyboard & Mouse/Default/keyboard_enter.png",
+		    {b.x + 6, b.y + 4, 28, 28});
 		ui.Text(skip, b.x + 42, b.y + 7, 20, White, Jp);
 	}
 	lastAge = age;

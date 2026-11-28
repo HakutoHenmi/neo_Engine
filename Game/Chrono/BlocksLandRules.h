@@ -278,8 +278,8 @@ inline LandRibbon Spiral(const LandTower& t, float end, float laps, float half) 
 }
 // 曲がった帯: from (x,高さ,z) を dir0 の向きに出て、to に dir1 の向きで着く (xz は 3 次ベジェ)。高さは両端が水平になるようになめらかに変え、arch だけ真ん中を持ち上げる
 // pillarEvery があれば、その区切りごとに柱を立てる (高さが 3 より高い所だけ)
-inline LandRibbon Curve(Vec from, Vec dir0, Vec to, Vec dir1, float arch, float half, int kind, int pillarEvery,
-                        bool rails) {
+inline LandRibbon
+    Curve(Vec from, Vec dir0, Vec to, Vec dir1, float arch, float half, int kind, int pillarEvery, bool rails) {
 	LandRibbon r;
 	r.kind = kind;
 	r.half = half;
@@ -324,10 +324,8 @@ inline const BlocksLand& Land() {
 		const float half = 2.6f;
 		// 四角い塔 (北の大きな塔・真ん中の塔・東の低い塔・西の低い塔) と、西の塔へ上る坂
 		L.boxes = {
-		    {-13, 47, 3, 63, 20, 20, BlocksRise::Flat, 0},
-		    {28, 8, 42, 22, 14, 14, BlocksRise::Flat, 0},
-		    {69, -26, 81, -14, 10, 10, BlocksRise::Flat, 0},
-		    {-86, -36, -74, -24, 8, 8, BlocksRise::Flat, 0},
+		    {-13, 47, 3, 63, 20, 20, BlocksRise::Flat, 0},     {28, 8, 42, 22, 14, 14, BlocksRise::Flat, 0},
+		    {69, -26, 81, -14, 10, 10, BlocksRise::Flat, 0},   {-86, -36, -74, -24, 8, 8, BlocksRise::Flat, 0},
 		    {-74, -34, -62, -26, 0, 8, BlocksRise::MinusX, 0},
 		};
 		// 丸い塔 (らせんの坂で上る)
@@ -335,18 +333,29 @@ inline const BlocksLand& Land() {
 		// 丸い丘 (手前の大きな丘はトンネルが通る)・すり鉢・こぶ
 		L.domes = {{0, -30, 24, 12, 3, 5}, {-75, 70, 18, 8, 0, 0}, {80, 85, 12, 6, 0, 0}};
 		L.bowls = {{-60, -75, 18, 6}};
-		for (const auto& b : {std::array<float, 2>{-30, -75}, {-20, -75}, {-10, -75}, {10, -75}, {-25, -63}, {-15, -63},
-		                      {15, -63}, {70, 30}, {80, 30}, {90, 30}, {75, 40}, {85, 40}})
+		for (const auto& b :
+		     {std::array<float, 2>{-30, -75},
+		      {-20, -75},
+		      {-10, -75},
+		      {10, -75},
+		      {-25, -63},
+		      {-15, -63},
+		      {15, -63},
+		      {70, 30},
+		      {80, 30},
+		      {90, 30},
+		      {75, 40},
+		      {85, 40}})
 			L.bumps.push_back({b[0], b[1], 4, 1.5f});
 		// らせんの坂 (西の丸い塔は 2 周、東は 1 周半)
 		LandRibbon sp0 = LandBuild::Spiral(L.towers[0], -.2f, 2, half);
 		LandRibbon sp1 = LandBuild::Spiral(L.towers[1], 1.5707963f, 1.5f, half);
 		// 橋: らせんの坂の終わりから北の大きな塔へ (坂の最後の断面から続ける)。大きな塔から真ん中の塔へ、真ん中の塔から東の塔へ、西の塔から手前の丘の上へ
 		const Vec east{1, 0, 0}, west{-1, 0, 0}, north{0, 0, 1}, south{0, 0, -1};
-		LandRibbon b0 = LandBuild::Curve(sp0.at.back(), sp0.Tangent(sp0.at.size() - 1), {-13, 20, 55}, east, 2, half,
-		                                 0, 0, true);
-		LandRibbon b1 = LandBuild::Curve(sp1.at.back(), sp1.Tangent(sp1.at.size() - 1), {3, 20, 55}, west, 2, half, 0,
-		                                 0, true);
+		LandRibbon b0 =
+		    LandBuild::Curve(sp0.at.back(), sp0.Tangent(sp0.at.size() - 1), {-13, 20, 55}, east, 2, half, 0, 0, true);
+		LandRibbon b1 =
+		    LandBuild::Curve(sp1.at.back(), sp1.Tangent(sp1.at.size() - 1), {3, 20, 55}, west, 2, half, 0, 0, true);
 		LandRibbon b2 = LandBuild::Curve({-5, 20, 47}, south, {35, 14, 22}, south, 2, half, 0, 0, true);
 		LandRibbon b3 = LandBuild::Curve({42, 14, 15}, east, {75, 10, -14}, south, 1.5f, half, 0, 14, true);
 		LandRibbon b4 = LandBuild::Curve({-80, 8, -24}, north, {-5, 12, -30}, east, 2, half, 0, 14, true);

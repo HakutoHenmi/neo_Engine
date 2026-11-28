@@ -1318,8 +1318,7 @@ void TestDevour() {
 	        DevourLeapProgress(DevourLandAt) > .8f && DevourLeapProgress(DevourWindup + DevourLeap * .5f) > .45f,
 	    "leap does not burst out and stop on the target");
 	CheckLife(DevourPounceTime < .85f, "pounce is too slow to chain");
-	puts(
-	    "PASS devour: cover/sink sizes, growth per bite, tiers and time bonus, caps and shape phases");
+	puts("PASS devour: cover/sink sizes, growth per bite, tiers and time bonus, caps and shape phases");
 }
 // 部屋のギミック: 形の体積・だるま落としの狙い・ボウリングのピン・道のたどり方・家具の上の面
 void TestGimmick() {

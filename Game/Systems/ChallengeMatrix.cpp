@@ -15,8 +15,7 @@ struct MatrixScenario {
 	const char* name;
 };
 constexpr MatrixScenario kScenarios[] = {
-    {ChallengeKind::Blocks, 0, 0, 5, true, "積み木_壁"},
-    {ChallengeKind::Blocks, 0, 0, 13, true, "積み木_硬い壁"}};
+    {ChallengeKind::Blocks, 0, 0, 5, true, "積み木_壁"}, {ChallengeKind::Blocks, 0, 0, 13, true, "積み木_硬い壁"}};
 constexpr int kTrialsPerScenario = int(BattleAction::Count) + 1;
 constexpr const char* kKeys[] = {"throw",  "ride",  "smash",  "guard",  "heal",    "heli",   "water",  "roll",  "spin",
                                  "sword",  "fly",   "spring", "vacuum", "rc",      "fu",     "kyo",    "kei",   "gin",

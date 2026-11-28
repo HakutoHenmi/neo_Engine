@@ -244,8 +244,7 @@ void ChronoSystem::SaveDevourLog(const char* result) {
 		for (size_t i = 0; i < 2; ++i)
 			file << ',' << at(log.gateSizeTimes, i) << ',' << at(log.gateOpenTimes, i);
 		file << ',' << DevourLogNumber(log.itemTaken) << ',' << DevourLogNumber(log.morphTime) << ',' << log.bounces
-		     << ',' << log.maxCombo << ',' << DevourLogNumber(log.longestIdle) << ','
-		     << DevourLogNumber(log.moved);
+		     << ',' << log.maxCombo << ',' << DevourLogNumber(log.longestIdle) << ',' << DevourLogNumber(log.moved);
 		for (int i = 0; i < kCsvEatColumns; ++i)
 			file << ',' << DevourLogNumber(log.gainBy[size_t(i)]);
 		file << ',' << DevourLogNumber(fps) << ',' << DevourLogNumber(log.worstFrame * 1000) << '\n';

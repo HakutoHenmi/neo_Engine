@@ -47,8 +47,4 @@ void IScript::SubscribeVoid(GameScene* scene, const std::string& eventName, std:
 		scene->GetEventSystem().SubscribeVoid(eventName, callback);
 }
 
-
-
-
-
 } // namespace Game

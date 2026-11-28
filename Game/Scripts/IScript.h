@@ -50,7 +50,6 @@ public:
 	void SubscribeString(
 	    GameScene* scene, const std::string& eventName, std::function<void(const std::string&)> callback);
 	void SubscribeVoid(GameScene* scene, const std::string& eventName, std::function<void()> callback);
-
 };
 
 } // namespace Game

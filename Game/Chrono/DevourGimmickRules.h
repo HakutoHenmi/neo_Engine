@@ -709,9 +709,9 @@ inline Vec KomaReflect(Vec heading, Vec normal) {
 // 放水できる時間・1 秒に出す水の粒の数・狙いを探す距離 (m ではなく単位)・水が当たる範囲の半径 (体の大きさの平方根をかける)・
 // 引き寄せる物が飛んでくる速さ・1 回に引き寄せる数と間隔・押し流す坂の傾きの下限・水の向きと坂の下りの向きのそろい (内積の下限)・
 // 押し流す物の速さの上限と、坂で速くなる強さ・止まる速さ・押し流せる大きさ (覆える大きさに対する倍率)・使った後に休む時間
-inline constexpr float HoseTime = 12, HoseRate = 5200, HoseSplash = 22, HosePullSpeed = 55,
-                       HosePullEvery = .12f, HoseWashSlope = .06f, HoseWashAlign = .15f, HoseWashMax = 42,
-                       HoseWashAccel = 160, HoseWashStop = 2.5f, HoseWashSize = 1.6f, HoseRest = 5;
+inline constexpr float HoseTime = 12, HoseRate = 5200, HoseSplash = 22, HosePullSpeed = 55, HosePullEvery = .12f,
+                       HoseWashSlope = .06f, HoseWashAlign = .15f, HoseWashMax = 42, HoseWashAccel = 160,
+                       HoseWashStop = 2.5f, HoseWashSize = 1.6f, HoseRest = 5;
 inline constexpr int HosePullCount = 2, HoseWashLimit = 60;
 // 扇: 1 つの口から扇に広げる水の筋の数・扇の半分の開き (ラジアン)・筋ごとの速さのばらつき (外の筋ほど遅い)
 // 地面の高さの表: 1 辺のマスの数・1 マスの幅 (単位)・作り直す間隔 (秒)・中心がこれだけ動いたら作り直す (マス)

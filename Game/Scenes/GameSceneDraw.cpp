@@ -404,8 +404,7 @@ void GameScene::UpdatePlayerSlimeFluid(PlayerDrawState& player) {
 					renderer_->SetSlimeGround(
 					    {ink->groundSlope.x, ink->groundHeight, ink->groundSlope.z},
 					    registry_.get<Chrono::Player>(playerEntity).grounded);
-					renderer_->SetSlimeFaceCamera(
-					    chronoSystem_ ? chronoSystem_->DevourResultFace() : 0.f);
+					renderer_->SetSlimeFaceCamera(chronoSystem_ ? chronoSystem_->DevourResultFace() : 0.f);
 					scaleVec = {ink->fluidAspect, ink->airBlend, ink->fluidMotion};
 					forward = {ink->fluidDirection.x, 0, ink->fluidDirection.z};
 				}
@@ -445,8 +444,7 @@ void GameScene::UpdatePlayerSlimeFluid(PlayerDrawState& player) {
 					// カメラ用の透明度・点滅・止めるか (ポーズ中かヒットストップ中) を渡す
 					renderer_->SetChronoFluidPresentation(
 					    action->cameraOpacity, flash,
-					    isPaused_ || action->hitStop > 0 ||
-					        (chronoSystem_ && chronoSystem_->DevourResultFrozen()));
+					    isPaused_ || action->hitStop > 0 || (chronoSystem_ && chronoSystem_->DevourResultFrozen()));
 					// 触手を伸ばしている・引き寄せている間は手まで糸を張る
 					bool tether = action->action == Chrono::Action::Extending ||
 					              action->action == Chrono::Action::Pulling ||

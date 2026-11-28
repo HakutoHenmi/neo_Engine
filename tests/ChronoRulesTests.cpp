@@ -4,6 +4,10 @@
 #include "../Game/Chrono/LiquidTrail.h"
 #include "../Game/Chrono/DomainHighlight.h"
 #include "../Game/Chrono/SwarmRules.h"
+// Production headers above use the selected configuration; test checks stay active.
+#ifdef NDEBUG
+#undef NDEBUG
+#endif
 #include <cassert>
 #include <iostream>
 #include <chrono>
@@ -40,8 +44,7 @@ int main() {
 						}
 			}
 		std::cout << "PASS: full boss bounds stay inside letterbox/caption margins throughout camera orbit\n";
-		std::cout
-		    << "PASS: camera return and shortest yaw arc\n";
+		std::cout << "PASS: camera return and shortest yaw arc\n";
 	}
 	{
 		Vec camera{0, 0, 0}, hero{0, 0, 20};

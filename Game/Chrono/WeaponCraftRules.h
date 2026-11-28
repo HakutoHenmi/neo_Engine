@@ -57,16 +57,16 @@ enum class FuseTrait : uint8_t {
 };
 inline constexpr int FuseTraitCount = int(FuseTrait::Count);
 inline const char* FuseTraitName(FuseTrait t) {
-	static constexpr const char* names[] = {"追尾", "貫通", "跳ねる", "転がる",   "重い",     "分裂",
-	                                        "爆発", "連鎖", "回転",   "揺らす",   "熱い",     "吸い寄せ",
-	                                        "速い", "塗り", "壁",     "ふわふわ", "ひび",     "戻る"};
+	static constexpr const char* names[] = {"追尾", "貫通", "跳ねる", "転がる",   "重い", "分裂",
+	                                        "爆発", "連鎖", "回転",   "揺らす",   "熱い", "吸い寄せ",
+	                                        "速い", "塗り", "壁",     "ふわふわ", "ひび", "戻る"};
 	return names[std::min(int(t), FuseTraitCount - 1)];
 }
 // 武器の名前に付ける言葉
 inline const char* FuseTraitWord(FuseTrait t) {
-	static constexpr const char* words[] = {"追いかける", "突き抜ける", "跳ねる",    "転がる",       "重い",
-	                                        "分かれる",   "爆発する",   "跳び移る",  "回る",         "揺さぶる",
-	                                        "熱い",       "吸い寄せる", "速い",      "たっぷり塗る", "壁を建てる",
+	static constexpr const char* words[] = {"追いかける", "突き抜ける",   "跳ねる",    "転がる",       "重い",
+	                                        "分かれる",   "爆発する",     "跳び移る",  "回る",         "揺さぶる",
+	                                        "熱い",       "吸い寄せる",   "速い",      "たっぷり塗る", "壁を建てる",
 	                                        "ふわふわ",   "ひびを入れる", "戻ってくる"};
 	return words[std::min(int(t), FuseTraitCount - 1)];
 }

@@ -1,15 +1,16 @@
+param([ValidateSet('Debug', 'Development', 'Release')][string]$Configuration = 'Development')
 $ErrorActionPreference = 'Stop'
 $repoPath = Split-Path $PSScriptRoot -Parent
 Push-Location $repoPath
 try {
-    New-Item -ItemType Directory -Force -Path 'tests/out' | Out-Null
+    $settings = & "$PSScriptRoot/Get-CppTestSettings.ps1" -Configuration $Configuration
     $vswhere = "${env:ProgramFiles(x86)}/Microsoft Visual Studio/Installer/vswhere.exe"
-    $vsPath = & $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+    $vsPath = & $vswhere -latest -products '*' -version '[17.0,18.0)' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
     if (!$vsPath) { throw 'Visual Studio C++ tools not found.' }
     $devCmd = Join-Path $vsPath 'Common7/Tools/VsDevCmd.bat'
-    $command = 'call "{0}" -arch=x64 -host_arch=x64 >nul && cl /nologo /utf-8 /std:c++20 /EHsc /W4 /WX /MDd /I Engine /I Engine/ThirdParty /I Game /I Game/Scenes /I Game/Editor /I externals/imgui /I externals/DirectXTex tests/EncapsulationTests.cpp Game/Scripts/ScriptLifecycle.cpp /Fo:tests/out/ /Fe:tests/out/EncapsulationTests.exe' -f $devCmd
+    $command = 'call "{0}" -arch=x64 -host_arch=x64 >nul && cl /nologo /utf-8 /std:c++20 /EHsc /W4 /WX {1} /I Engine /I Engine/ThirdParty /I Game /I Game/Scenes /I Game/Editor /I externals/imgui /I externals/DirectXTex tests/EncapsulationTests.cpp Game/Scripts/ScriptLifecycle.cpp /Fo:{2}/ /Fe:{2}/EncapsulationTests.exe' -f $devCmd, $settings.Flags, $settings.Output
     & $env:ComSpec /d /s /c $command
     if ($LASTEXITCODE) { throw 'Encapsulation test build failed.' }
-    & './tests/out/EncapsulationTests.exe'
+    & "./$($settings.Output)/EncapsulationTests.exe"
     if ($LASTEXITCODE) { throw 'Encapsulation tests failed.' }
 } finally { Pop-Location }

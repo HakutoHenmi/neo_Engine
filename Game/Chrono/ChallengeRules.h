@@ -209,8 +209,12 @@ inline constexpr float ChallengePileShellMeters[] = {300, 3000, 30000, 200000};
 struct PileShell {
 	float size = 1;
 	int side = 1, rows = 1, blocks = 0;
-	float Height() const { return float(rows) * size; }
-	float Width() const { return float(side) * size; }
+	float Height() const {
+		return float(rows) * size;
+	}
+	float Width() const {
+		return float(side) * size;
+	}
 };
 // 殻の段 row の一辺と、その段の積み木の数 (外側の輪。2 以下はうめる)
 inline int ChallengePileShellSide(const PileShell& s, int row) {
